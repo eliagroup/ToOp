@@ -40,7 +40,6 @@ jobs:
 
       - name: Get new version
         run: |
-
           if [ "$isDevRelease" = "true" ]; then
             newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes --devrelease $GITHUB_RUN_ID)
           else
@@ -62,13 +61,11 @@ jobs:
 
       - name: Create release tag
         run: |
-
           echo "Creating git tag"
           git tag "v$newVersion"
 
       - name: Push tags to remote
         run: |
-
           echo "Pushing changes to remote."
           git push --tags
 

@@ -48,27 +48,25 @@ jobs:
           fi 
 
           if [[ -z "$newVersion" ]]; then
-            echo "No new version to release."
+            echo "No new version to release. Exiting."
+            exit 1
           else
             echo "New version: $newVersion"
             echo "newVersion=$newVersion" >> $GITHUB_ENV
           fi
 
       - name: Configure git profile
-        if: env.newVersion != ''
         run: |
           git config user.name "ToOp Build Service"
           git config user.email ToOp@eliagroup.eu
 
       - name: Create release tag
-        if: env.newVersion != ''
         run: |
 
           echo "Creating git tag"
           git tag "v$newVersion"
 
       - name: Push tags to remote
-        if: env.newVersion != ''
         run: |
 
           echo "Pushing changes to remote."

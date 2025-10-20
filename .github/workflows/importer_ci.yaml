@@ -1,0 +1,38 @@
+name: importer tests
+
+on: push
+
+env:
+  PYTEST_ON_CI: True
+
+jobs:
+  test-importer-package:
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on:
+      labels: Runner-ToOp-Projects
+    env:
+      UV_PROJECT: packages/importer_pkg
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "packages/importer_pkg/pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --all-groups --all-extras --frozen
+
+      - name: set PY
+        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
+
+      - name: Run tests with code coverage report
+        run: uv run pytest packages/importer_pkg/importer_tests --cov=packages/importer_pkg/src --cov-config=.coveragerc --cov-report term-missing
+        env:
+          CLEANUP_RAY_AFTER_TESTS: 1

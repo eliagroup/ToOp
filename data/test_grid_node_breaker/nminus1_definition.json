@@ -1,0 +1,156 @@
+{
+  "monitored_elements": [
+    {
+      "id": "L1",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L2",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L3",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "VL1_0",
+      "type": "BUS",
+      "kind": "node"
+    },
+    {
+      "id": "VL2_0",
+      "type": "BUS",
+      "kind": "node"
+    },
+    {
+      "id": "VL3_0",
+      "type": "BUS",
+      "kind": "node"
+    }
+  ],
+  "contingencies": [
+    {
+      "elements": [
+        {
+          "id": "L1",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "name": "L1"
+    },
+    {
+      "elements": [
+        {
+          "id": "L2",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "name": "L2"
+    },
+    {
+      "elements": [
+        {
+          "id": "L3",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "name": "L3"
+    },
+    {
+      "elements": [
+        {
+          "id": "L4",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "name": "L4"
+    },
+    {
+      "elements": [
+        {
+          "id": "L5",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "name": "L5"
+    },
+    {
+      "elements": [
+        {
+          "id": "L6",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "name": "L6"
+    },
+    {
+      "elements": [
+        {
+          "id": "L7",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "name": "L7"
+    },
+    {
+      "elements": [
+        {
+          "id": "L8",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "name": "L8"
+    },
+    {
+      "elements": [
+        {
+          "id": "generator3",
+          "type": "GENERATOR",
+          "kind": "injection"
+        }
+      ],
+      "name": "generator3"
+    },
+    {
+      "elements": [
+        {
+          "id": "load2",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "name": "load2"
+    },
+    {
+      "elements": [
+        {
+          "id": "load6",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "name": "load6"
+    },
+    {
+      "elements": [
+        {
+          "id": "load1",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "name": "load1"
+    }
+  ]
+}

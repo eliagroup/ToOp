@@ -1,0 +1,465 @@
+{
+  "monitored_elements": [
+    {
+      "id": "0%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "1%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "2%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "3%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "4%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "5%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "6%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "7%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "8%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "9%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "10%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "11%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "12%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "13%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "14%%line",
+      "name": "",
+      "type": "line",
+      "kind": "branch"
+    },
+    {
+      "id": "0%%trafo",
+      "name": "",
+      "type": "trafo",
+      "kind": "branch"
+    },
+    {
+      "id": "1%%trafo",
+      "name": "",
+      "type": "trafo",
+      "kind": "branch"
+    },
+    {
+      "id": "2%%trafo",
+      "name": "",
+      "type": "trafo",
+      "kind": "branch"
+    },
+    {
+      "id": "3%%trafo",
+      "name": "",
+      "type": "trafo",
+      "kind": "branch"
+    },
+    {
+      "id": "4%%trafo",
+      "name": "",
+      "type": "trafo",
+      "kind": "branch"
+    },
+    {
+      "id": "1%%bus",
+      "name": "2",
+      "type": null,
+      "kind": "bus"
+    },
+    {
+      "id": "14%%bus",
+      "name": "2",
+      "type": null,
+      "kind": "bus"
+    },
+    {
+      "id": "3%%bus",
+      "name": "4",
+      "type": null,
+      "kind": "bus"
+    },
+    {
+      "id": "15%%bus",
+      "name": "4",
+      "type": null,
+      "kind": "bus"
+    },
+    {
+      "id": "4%%bus",
+      "name": "5",
+      "type": null,
+      "kind": "bus"
+    },
+    {
+      "id": "16%%bus",
+      "name": "5",
+      "type": null,
+      "kind": "bus"
+    },
+    {
+      "id": "5%%bus",
+      "name": "6",
+      "type": null,
+      "kind": "bus"
+    },
+    {
+      "id": "17%%bus",
+      "name": "6",
+      "type": null,
+      "kind": "bus"
+    },
+    {
+      "id": "8%%bus",
+      "name": "9",
+      "type": null,
+      "kind": "bus"
+    },
+    {
+      "id": "18%%bus",
+      "name": "9",
+      "type": null,
+      "kind": "bus"
+    },
+    {
+      "id": "1%%switch",
+      "name": "",
+      "type": null,
+      "kind": "switch"
+    },
+    {
+      "id": "2%%switch",
+      "name": "",
+      "type": null,
+      "kind": "switch"
+    },
+    {
+      "id": "3%%switch",
+      "name": "",
+      "type": null,
+      "kind": "switch"
+    },
+    {
+      "id": "4%%switch",
+      "name": "",
+      "type": null,
+      "kind": "switch"
+    },
+    {
+      "id": "5%%switch",
+      "name": "",
+      "type": null,
+      "kind": "switch"
+    }
+  ],
+  "contingencies": [
+    {
+      "elements": [],
+      "id": "BASECASE",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "0%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "0%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "1%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "1%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "2%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "3%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "3%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "4%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "4%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "5%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "5%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "6%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "6%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "7%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "7%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "8%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "8%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "9%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "9%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "10%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "10%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "11%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "11%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "12%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "12%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "13%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "13%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "14%%line",
+          "name": "",
+          "type": "line",
+          "kind": "branch"
+        }
+      ],
+      "id": "14%%line",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "0%%trafo",
+          "name": "",
+          "type": "trafo",
+          "kind": "branch"
+        }
+      ],
+      "id": "0%%trafo",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "1%%trafo",
+          "name": "",
+          "type": "trafo",
+          "kind": "branch"
+        }
+      ],
+      "id": "1%%trafo",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2%%trafo",
+          "name": "",
+          "type": "trafo",
+          "kind": "branch"
+        }
+      ],
+      "id": "2%%trafo",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "4%%trafo",
+          "name": "",
+          "type": "trafo",
+          "kind": "branch"
+        }
+      ],
+      "id": "4%%trafo",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "0%%gen",
+          "name": "None",
+          "type": "gen",
+          "kind": "injection"
+        }
+      ],
+      "id": "0%%gen",
+      "name": "None"
+    }
+  ],
+  "loadflow_parameters": {
+    "distributed_slack": true
+  },
+  "id_type": null
+}

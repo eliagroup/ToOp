@@ -1,0 +1,136 @@
+default_stages: [pre-commit, pre-push]
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+  
+fail_fast: false
+minimum_pre_commit_version: 4.1.0
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: no-commit-to-branch
+        name: Check for protected branches
+        description: Prevent commits to specific branches.
+        args:
+          - "--branch=main"
+      - id: check-added-large-files
+        name: Check for large files
+        description: Checks for large files (>500kB) that were added to the repository.
+        args:
+          - "--maxkb=10000"
+      - id: check-ast
+        name: Check python syntax
+        description: Checks python files for syntax errors.
+      - id: check-json
+        name: Check JSON files
+        description: Attempts to load json files to verify syntax.
+        exclude: .vscode/settings.json
+      - id: check-yaml
+        name: Check YAML files
+        description: Attempts to load yaml files to verify syntax.
+      - id: check-toml
+        name: Check TOML files
+        description: Attempts to load TOML files to verify syntax.
+      - id: check-xml
+        name: Check XML files
+        description: Attempts to load XML files to verify syntax.
+      - id: check-symlinks
+        name: Check symlinks
+        description: Checks for symlinks that point to files outside the repository.
+      - id: check-vcs-permalinks
+        name: Check links to vcs websites
+        description: Ensures that links to version control websites are permalinks.
+      - id: check-case-conflict
+        name: Check case conflicts
+        description: Checks for files that would cause case conflicts on case-insensitive filesystems.
+      - id: check-merge-conflict
+        name: Check merge conflicts
+        description: Checks for files that contain merge conflict markers.
+      - id: check-docstring-first
+        name: Check docstrings come first
+        description: Checks for a common error of placing code before the docstring.
+      - id: mixed-line-ending
+        name: Mixed line endings
+        description: Replaces or checks mixed line ending (like mix of LF and CRLF).
+      - id: end-of-file-fixer
+        name: End of files have newlines
+        description: Makes sure files end in a newline and only a newline.
+        exclude: '\.ipynb$'
+      - id: detect-private-key
+        name: Private key detection
+        description: Checks for the existence of private keys.
+
+  - repo: https://github.com/srstevenson/nb-clean
+    rev: 4.0.1
+    hooks:
+      - id: nb-clean
+        name: Clean Jupyter Notebooks
+        description: Clean Jupyter Notebooks by removing output and metadata.
+        args:
+          - --remove-empty-cells
+          - --preserve-cell-metadata
+          - --remove-all-notebook-metadata
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      - id: nbstripout
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.13.2
+    hooks:
+      # --include=["dc_solver/**/*.py", "tests/**/*.py"] overwrites the ruff.toml include.
+      # Run the linter.
+      - id: ruff
+        args: [--fix, --config=ruff.toml, --exclude=**/*tests]
+      # Run the formatter.
+      - id: ruff-format
+        stages: [pre-commit] # Exclude from pre-push by only running on pre-commit
+        args: [--config=ruff.toml, --exclude=**/*tests]
+      - id: ruff
+        args: [--fix-only, --config=ruff.toml]
+      - id: ruff-format
+        stages: [pre-commit] # Exclude from pre-push by only running on pre-commit
+        args: [--config=ruff.toml]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
+        name: "Gitleaks: detect secrets"
+        description: Scan repository for secrets.
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.6
+    hooks:
+      - id: bandit
+        additional_dependencies: [pbr]
+        name: "Bandit: scan for security issues"
+        description: Security linter for Python code.
+        args: [--config, pyproject.toml, "-iii", "-lll"] # Only report HIGH severity & HIGH confidence
+
+  - repo: https://github.com/owenlamont/uv-secure
+    rev: 0.13.0
+    hooks:
+      - id: uv-secure
+        name: "Scan uv.lock for vulnerabilities"
+        description: Scan your uv.lock file for dependencies with known vulnerabilities.
+        exclude: ^requirements\.txt$
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.8.22
+    hooks:
+      - id: uv-export
+        args:
+          [
+            --no-hashes,
+            --frozen,
+            --format=requirements.txt,
+            --output-file=requirements.txt,
+            --quiet,
+          ]
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.9.1
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]

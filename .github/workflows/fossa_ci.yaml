@@ -1,0 +1,19 @@
+name: Fossa scan
+
+on: push
+
+jobs:
+  fossa-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - id: fossa-analyze
+        uses: fossas/fossa-action@main # Use a specific version if locking is preferred
+        with:
+          api-key: ${{secrets.FOSSA_API_KEY}}
+          run-tests: false # Add another run with run-tests: true if ci should fail on issues
+      - id: fossa-test
+        uses: fossas/fossa-action@main # Use a specific version if locking is preferred
+        with:
+          api-key: ${{secrets.FOSSA_API_KEY}}
+          run-tests: true # Add another run with run-tests: true if ci should fail on issues

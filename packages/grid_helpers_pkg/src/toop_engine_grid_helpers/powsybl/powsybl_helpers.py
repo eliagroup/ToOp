@@ -1,0 +1,318 @@
+"""Provides general helper functions for pypowsybl networks.
+
+These functions are used to extract and manipulate data from pypowsybl networks,
+such as loadflow results, branch limits, and monitored elements.
+"""
+
+import math
+
+import numpy as np
+import pandas as pd
+from beartype.typing import Literal, Optional
+from pypowsybl.network import Network
+
+
+def extract_single_injection_loadflow_result(injections: pd.DataFrame, injection_id: str) -> tuple[float, float]:
+    """Extract the loadflow results for a single injection.
+
+    Parameters
+    ----------
+    injections : pd.DataFrame
+        The injections dataframe with the loadflow results
+    injection_id : str
+        The id of the injection to extract
+
+    Returns
+    -------
+    tuple[float, float]
+        The active and reactive power of the injection
+    """
+    p = injections.loc[injection_id, "p"]
+    q = injections.loc[injection_id, "q"]
+    return p, q
+
+
+def extract_single_branch_loadflow_result(
+    branches: pd.DataFrame, branch_id: str, from_side: bool = True
+) -> tuple[float, float]:
+    """Extract the loadflow results for a single branch
+
+    Parameters
+    ----------
+    branches : pd.DataFrame
+        The branches dataframe with the loadflow results
+    branch_id : str
+        The id of the branch to extract
+    from_side : bool, optional
+        If True, the from side is used, by default True
+        If False, the to side is used
+
+    Returns
+    -------
+    tuple[float, float]
+        The active and reactive power of the branch
+    """
+    p_mapper = "p1" if from_side else "p2"
+    q_mapper = "q1" if from_side else "q2"
+
+    p = branches.loc[branch_id, p_mapper]
+    q = branches.loc[branch_id, q_mapper]
+    return p, q
+
+
+def monitored_buses_to_monitored_voltage_levels(
+    net: Network, monitored_buses: list[str], bus_breaker_view: bool = False
+) -> list[str]:
+    """Convert a list of monitored buses to the corresponding voltage levels
+
+    Parameters
+    ----------
+    net : Network
+        The powsybl network
+    monitored_buses : list[str]
+        The list of bus ids to convert
+    bus_breaker_view : bool, optional
+        If True, the bus breaker view is used, by default False
+
+    Returns
+    -------
+    list[str]
+        The corresponding voltage levels
+    """
+    buses = net.get_bus_breaker_view_buses() if bus_breaker_view else net.get_buses()
+    return buses.loc[monitored_buses, "voltage_level_id"].unique().tolist()
+
+
+def buses_to_bus_breaker_view_bus(
+    net: Network,
+    buses: list[str],
+) -> list[str]:
+    """Find a corresponding bus breaker view bus id.
+
+    (referring to net.get_bus_breaker_view_buses().index
+    for a list of electrical buses (referring tonet.get_buses().index)
+
+    Parameters
+    ----------
+    net : Network
+        The powsybl network
+    buses : list[str]
+        The list of bus ids into net.get_buses().index
+
+    Returns
+    -------
+    list[str]
+        The corresponding bus breaker view bus ids, indexing into net.get_bus_breaker_view_buses().index
+    """
+    bus_breaker_buses = net.get_bus_breaker_view_buses()[["bus_id"]]
+    bus_breaker_buses = bus_breaker_buses.reset_index().sort_values(by="id")
+    first_breaker_bus_per_bus = bus_breaker_buses.groupby("bus_id").first()
+    return first_breaker_bus_per_bus.loc[buses].id.values.tolist()
+
+
+def get_branches_with_i(branches: pd.DataFrame, net: Network) -> pd.DataFrame:
+    """Get the get_branches results with the i values filled
+
+    In DC, they are Nan and will be computed through p = i * v, in AC they are already computed
+
+    Parameters
+    ----------
+    branches : pd.DataFrame
+        The result of net.get_branches() with or without i values
+    net : Network
+        The powsybl network to load voltage information from
+
+    Returns
+    -------
+    pd.DataFrame
+        The result of net.get_branches(), but with the i values filled
+    """
+    if np.any(branches["i1"].notna()):
+        return branches
+    # DC loadflow, compute i = p / v
+    # # P[kW] = sqrt(3) * U[kV] * I[A]
+    # P[MW] = P[kW] / 1000
+    # I[A] = P[MW] / (1000 * sqrt(3) * U[kV])
+    branches = pd.merge(
+        left=branches,
+        right=net.get_voltage_levels()["nominal_v"].rename("nominal_v_1"),
+        left_on="voltage_level1_id",
+        right_index=True,
+    )
+    branches = pd.merge(
+        left=branches,
+        right=net.get_voltage_levels()["nominal_v"].rename("nominal_v_2"),
+        left_on="voltage_level2_id",
+        right_index=True,
+    )
+    branches["i1"] = (branches["p1"] / (branches["nominal_v_1"] * math.sqrt(3) * 1e-3)).abs()
+    branches["i2"] = (branches["p2"] / (branches["nominal_v_2"] * math.sqrt(3) * 1e-3)).abs()
+    del branches["nominal_v_1"]
+    del branches["nominal_v_2"]
+    return branches
+
+
+def get_injections_with_i(injections: pd.DataFrame, net: Network) -> pd.DataFrame:
+    """Get the get_injections results with the i values filled
+
+    In DC, they are Nan and will be computed through p = i * v, in AC they are already computed
+
+    Parameters
+    ----------
+    injections : pd.DataFrame
+        The result of net.get_injections() with or without i values
+    net : Network
+        The powsybl network to load voltage information from
+
+    Returns
+    -------
+    pd.DataFrame
+        The result of net.get_injections(), but with the i values filled
+    """
+    if np.any(injections["i"].notna()):
+        return injections
+    # DC loadflow, compute i = p / v
+    # # P[kW] = sqrt(3) * U[kV] * I[A]
+    # P[MW] = P[kW] / 1000
+    # I[A] = P[MW] / (1000 * sqrt(3) * U[kV])
+    injections = pd.merge(
+        left=injections,
+        right=net.get_voltage_levels()["nominal_v"],
+        left_on="voltage_level_id",
+        right_index=True,
+    )
+    injections["i"] = (injections["p"] / (injections["nominal_v"] * math.sqrt(3) * 1e-3)).abs()
+    del injections["nominal_v"]
+    return injections
+
+
+def get_branches_with_i_max(branches: pd.DataFrame, net: Network, limit_name: str = "permanent_limit") -> pd.DataFrame:
+    """Get the get_branches results with the i_max values
+
+    These will be pulled from the current limits table. If one side is missing, the other side will
+    be taken. If both sides are missing, the value will be NaN
+
+    Parameters
+    ----------
+    branches : pd.DataFrame
+        The result of net.get_branches() without i_max values
+    net : Network
+        The powsybl network with current limits
+    limit_name : str, optional
+        The name of the limit to pull, by default "permanent_limit"
+
+    Returns
+    -------
+    pd.DataFrame
+        The result of net.get_branches(), but with i1_max and i2_max columns
+    """
+    current_limits = net.get_operational_limits()
+    current_limits = current_limits[current_limits["name"] == limit_name]
+
+    current_limits1 = current_limits[current_limits["side"] == "ONE"]["value"].reindex(current_limits.index)
+    current_limits2 = current_limits[current_limits["side"] == "TWO"]["value"].reindex(current_limits.index)
+
+    # Take the other side if one side is missing
+    current_limits1 = current_limits1.fillna(current_limits2)
+    current_limits2 = current_limits2.fillna(current_limits1)
+
+    branches = pd.merge(
+        left=branches,
+        right=current_limits1.rename("i1_max"),
+        left_index=True,
+        right_index=True,
+        how="left",
+    )
+    branches = pd.merge(
+        left=branches,
+        right=current_limits2.rename("i2_max"),
+        left_index=True,
+        right_index=True,
+        how="left",
+    )
+
+    return branches
+
+
+def get_voltage_level_with_region(
+    network: Network, attributes: Optional[list[str]] = None, all_attributes: Optional[Literal[True, False]] = None
+) -> pd.DataFrame:
+    """Get the region for each voltage level in the network.
+
+    This function is an extension to the network.get_voltage_levels() function.
+    It retrieves the region for each voltage level using the substation region.
+
+    Parameters
+    ----------
+    network: Network
+        The network for which the regions should be retrieved.
+    attributes: Optional[list[str]]
+        The attributes that should be retrieved for the voltage levels.
+        Behaves like the attributes parameter in network.get_voltage_levels().
+    all_attributes: Optional[Union[True,False]]
+        If True, all attributes are retrieved for the voltage levels.
+        Behaves like the all_attributes parameter in network.get_voltage_levels().
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with the voltage levels and their regions.
+    """
+    substation_region = network.get_substations(attributes=["country"])
+    substation_region.rename(columns={"country": "region"}, inplace=True)
+    if attributes is not None and all_attributes is not None:
+        raise ValueError("Only one of 'attributes' and 'all_attributes' can be specified")
+    if ((attributes is None) and (not all_attributes)) or attributes == ["region"]:
+        voltage_level = network.get_voltage_levels()
+    elif all_attributes:
+        voltage_level = network.get_voltage_levels(all_attributes=True)
+    elif attributes is not None:
+        if "region" in attributes:
+            attributes = [attr for attr in attributes if attr != "region"]
+        voltage_level = network.get_voltage_levels(attributes=attributes)
+    voltage_level = voltage_level.merge(
+        substation_region, left_on="substation_id", right_on="id", how="left", suffixes=("", "_substation")
+    ).set_index(voltage_level.index)
+    if ["region"] == attributes:
+        voltage_level = voltage_level[["region"]]
+    return voltage_level
+
+
+def change_dangling_to_tie(dangling_lines: pd.DataFrame, station_elements: pd.DataFrame) -> pd.DataFrame:
+    """Change the type of the dangling lines to TIE_LINE.
+
+    Changes dangling lines if a tie line is present.
+    Keep Dangling lines if no tie line is present.
+
+    Parameters
+    ----------
+    dangling_lines: pd.DataFrame
+        Dataframe of all dangling lines in the network with column "tie_line_id"
+    station_elements: pd.DataFrame
+        DataFrame with the injections and branches of the bus
+
+    Returns
+    -------
+    pd.DataFrame
+        A copy of the station_elements dataframe with all dangling lines that are actually part of a tie line set to
+        TIE_LINE.
+    """
+    dangling = station_elements[station_elements["type"] == "DANGLING_LINE"].copy()
+    dangling_index = dangling.index
+    # if dangling lines are present -> check for tie lines
+    if not dangling.empty:
+        dangling = dangling.merge(
+            dangling_lines,
+            left_index=True,
+            right_index=True,
+        )
+        condition_empty = dangling["tie_line_id"] == ""
+        dangling.loc[~condition_empty, "type"] = "TIE_LINE"
+        dangling.loc[condition_empty, "tie_line_id"] = dangling[condition_empty].index
+        dangling.rename(columns={"tie_line_id": "id"}, inplace=True)
+        dangling.set_index("id", inplace=True)
+
+        station_elements = station_elements.drop(dangling_index)
+        station_elements = pd.concat([station_elements, dangling])
+
+    return station_elements

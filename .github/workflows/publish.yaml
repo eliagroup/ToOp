@@ -1,0 +1,37 @@
+name: Publish packages
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags
+
+jobs:
+  publish-packages:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - interfaces
+          - grid_helpers
+          - contingency_analysis
+          - dc_solver
+          - importer
+          - topology_optimizer
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Build and publish ${{ matrix.package }} package
+        working-directory: packages/${{ matrix.package }}_pkg
+        run: |
+          uv build
+          uv publish --index MCCS --username __token__ --password ${{ secrets.MCCS_INDEX_TOKEN }}

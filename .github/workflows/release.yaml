@@ -8,6 +8,7 @@ permissions:
 jobs:
   bump-version:
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4

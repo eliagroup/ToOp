@@ -1,0 +1,122 @@
+resources:
+  repositories:
+    - repository: templatesRepository
+      type: git
+      name: MCCS nextgen/pipeline-template
+      ref: refs/tags/1.4.0
+    - repository: egaf-pipeline-templates
+      type: git
+      name: Elia Group Application Framework/egaf-pipeline-templates
+
+variables:
+  - name: "poetry_version"
+    value: 2.1.0
+  - name: "sourceArtifactFeed"
+    value: "MCCS"
+  - name: "publishArtifactFeed"
+    value: "MCCS"
+  - name: "azureProject"
+    value: "MCCS nextgen"
+
+parameters:
+  - name: buildScope
+    displayName: Build Scope
+    type: string
+    default: "SNAPSHOT"
+    values:
+      - SNAPSHOT
+      - Patch
+      - Minor
+      - Major
+  - name: prereleaseScope
+    displayName: prerelease scope to append to the version (e.g. rc) - default 'NONE'
+    type: string
+    default: "NONE"
+  - name: buildVersionMetadata
+    displayName: Metadata to append to the build version - default 'NONE'
+    type: string
+    default: "NONE"
+  # [SemVer Automated Tagging] automatic tag creation has to be an active decision
+  - name: createReleaseTag
+    type: boolean
+    default: false
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - refs/tags/*
+
+stages:
+
+  - template: techdocs.yaml@egaf-pipeline-templates
+    parameters:
+      targetBranch: 'refs/heads/main'
+      entity: 'default/component/Topology-Optimizer-ToOp'
+
+  - stage: Build_Docs
+    displayName: Build Documentation
+    jobs:
+      - job: Build_Docs
+        steps:
+          - checkout: self
+            persistCredentials: true
+            clean: true
+            fetchTags: true
+            submodules: true
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.11'
+
+          # Install uv
+          - script: |
+              pip install uv
+            displayName: Install uv
+
+          # Install only the doc dependencies group
+          - script: |
+              uv venv
+              uv pip install -r pyproject.toml --group doc
+            displayName: Install MkDocs dependencies
+
+          # Push the site/ build to deploy-backstage-docs branch
+          - script: |
+              echo "Setting git credentials..."
+              git config --global user.email "docbuilder@belgrid.net"
+              git config --global user.name "DocBuilder"
+
+              echo "Building the MkDocs site..."
+              uv run mkdocs build
+
+              echo "Copying new docs to temporary folder..."
+              rm -rf /tmp/docs-build
+              mkdir -p /tmp/docs-build
+              cp -r site docs mkdocs.yml _backstage/backstage.yaml _backstage/config.yaml /tmp/docs-build/
+
+              echo "Checking if deploy-backstage-docs branch exists on remote..."
+              if git ls-remote --exit-code --heads origin deploy-backstage-docs; then
+                echo "Branch exists. Checking out..."
+                git fetch --all
+                git checkout deploy-backstage-docs
+              else
+                echo "Branch does not exist. Creating..."
+                git checkout -b deploy-backstage-docs
+              fi
+
+              echo "Cleaning old files..."
+              git rm -rf . || true
+              rm -rf *
+
+              echo "Restoring new docs into _backstage/..."
+              mkdir -p _backstage
+              cp -r /tmp/docs-build/* _backstage/
+
+              echo "Adding changes to git..."
+              git add .
+              echo "Committing changes..."
+              git commit -m "Update MkDocs site" || echo "No changes to commit"
+              echo "Pushing to deploy-backstage-docs branch..."
+              git push origin deploy-backstage-docs --force
+            displayName: Push site to deploy-backstage-docs branch

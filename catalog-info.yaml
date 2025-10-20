@@ -1,0 +1,15 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: Topology-Optimizer-ToOp
+  displayName: Topology Optimizer (ToOp)
+  description: A GPU based Topology Optimizer.
+  links: []
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    developerhub.eliagroup.io/techdocs-builder: external
+spec:
+  type: service
+  lifecycle: experimental
+  owner: mccs-team

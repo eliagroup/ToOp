@@ -1,0 +1,618 @@
+{
+  "topology_id": "random_topology",
+  "grid_model_file": null,
+  "name": null,
+  "stations": [
+    {
+      "grid_model_id": "1%%bus",
+      "name": null,
+      "type": null,
+      "region": null,
+      "voltage_level": null,
+      "busbars": [
+        {
+          "grid_model_id": "1%%bus",
+          "type": null,
+          "name": "2",
+          "int_id": 0,
+          "in_service": true,
+          "bus_branch_bus_id": null
+        },
+        {
+          "grid_model_id": "14%%bus",
+          "type": null,
+          "name": "2",
+          "int_id": 1,
+          "in_service": true,
+          "bus_branch_bus_id": null
+        }
+      ],
+      "couplers": [
+        {
+          "grid_model_id": "1%%switch",
+          "type": null,
+          "name": null,
+          "busbar_from_id": 0,
+          "busbar_to_id": 1,
+          "open": false,
+          "in_service": true,
+          "asset_bay": null
+        }
+      ],
+      "assets": [
+        {
+          "grid_model_id": "2%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "3%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "4%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "0%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "to",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "0%%gen",
+          "type": "gen",
+          "name": "None",
+          "in_service": true,
+          "branch_end": null,
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "0%%load",
+          "type": "load",
+          "name": "None",
+          "in_service": true,
+          "branch_end": null,
+          "asset_bay": null
+        }
+      ],
+      "asset_switching_table": [
+        [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "asset_connectivity": [
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "model_log": null
+    },
+    {
+      "grid_model_id": "3%%bus",
+      "name": null,
+      "type": null,
+      "region": null,
+      "voltage_level": null,
+      "busbars": [
+        {
+          "grid_model_id": "3%%bus",
+          "type": null,
+          "name": "4",
+          "int_id": 0,
+          "in_service": true,
+          "bus_branch_bus_id": null
+        },
+        {
+          "grid_model_id": "15%%bus",
+          "type": null,
+          "name": "4",
+          "int_id": 1,
+          "in_service": true,
+          "bus_branch_bus_id": null
+        }
+      ],
+      "couplers": [
+        {
+          "grid_model_id": "2%%switch",
+          "type": null,
+          "name": null,
+          "busbar_from_id": 0,
+          "busbar_to_id": 1,
+          "open": false,
+          "in_service": true,
+          "asset_bay": null
+        }
+      ],
+      "assets": [
+        {
+          "grid_model_id": "6%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "0%%trafo",
+          "type": "trafo",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "1%%trafo",
+          "type": "trafo",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "3%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "to",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "5%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "to",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "2%%load",
+          "type": "load",
+          "name": "None",
+          "in_service": true,
+          "branch_end": null,
+          "asset_bay": null
+        }
+      ],
+      "asset_switching_table": [
+        [
+          false,
+          false,
+          false,
+          true,
+          false,
+          true
+        ],
+        [
+          true,
+          true,
+          true,
+          false,
+          true,
+          false
+        ]
+      ],
+      "asset_connectivity": [
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "model_log": null
+    },
+    {
+      "grid_model_id": "4%%bus",
+      "name": null,
+      "type": null,
+      "region": null,
+      "voltage_level": null,
+      "busbars": [
+        {
+          "grid_model_id": "4%%bus",
+          "type": null,
+          "name": "5",
+          "int_id": 0,
+          "in_service": true,
+          "bus_branch_bus_id": null
+        },
+        {
+          "grid_model_id": "16%%bus",
+          "type": null,
+          "name": "5",
+          "int_id": 1,
+          "in_service": true,
+          "bus_branch_bus_id": null
+        }
+      ],
+      "couplers": [
+        {
+          "grid_model_id": "3%%switch",
+          "type": null,
+          "name": null,
+          "busbar_from_id": 0,
+          "busbar_to_id": 1,
+          "open": false,
+          "in_service": true,
+          "asset_bay": null
+        }
+      ],
+      "assets": [
+        {
+          "grid_model_id": "2%%trafo",
+          "type": "trafo",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "1%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "to",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "4%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "to",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "6%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "to",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "3%%load",
+          "type": "load",
+          "name": "None",
+          "in_service": true,
+          "branch_end": null,
+          "asset_bay": null
+        }
+      ],
+      "asset_switching_table": [
+        [
+          true,
+          false,
+          false,
+          false,
+          false
+        ],
+        [
+          false,
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "asset_connectivity": [
+        [
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "model_log": null
+    },
+    {
+      "grid_model_id": "5%%bus",
+      "name": null,
+      "type": null,
+      "region": null,
+      "voltage_level": null,
+      "busbars": [
+        {
+          "grid_model_id": "5%%bus",
+          "type": null,
+          "name": "6",
+          "int_id": 0,
+          "in_service": true,
+          "bus_branch_bus_id": null
+        },
+        {
+          "grid_model_id": "17%%bus",
+          "type": null,
+          "name": "6",
+          "int_id": 1,
+          "in_service": true,
+          "bus_branch_bus_id": null
+        }
+      ],
+      "couplers": [
+        {
+          "grid_model_id": "4%%switch",
+          "type": null,
+          "name": null,
+          "busbar_from_id": 0,
+          "busbar_to_id": 1,
+          "open": false,
+          "in_service": true,
+          "asset_bay": null
+        }
+      ],
+      "assets": [
+        {
+          "grid_model_id": "7%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "8%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "9%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "2%%trafo",
+          "type": "trafo",
+          "name": "",
+          "in_service": true,
+          "branch_end": "to",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "2%%gen",
+          "type": "gen",
+          "name": "None",
+          "in_service": true,
+          "branch_end": null,
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "4%%load",
+          "type": "load",
+          "name": "None",
+          "in_service": true,
+          "branch_end": null,
+          "asset_bay": null
+        }
+      ],
+      "asset_switching_table": [
+        [
+          true,
+          false,
+          true,
+          true,
+          true,
+          false
+        ],
+        [
+          false,
+          true,
+          false,
+          false,
+          false,
+          true
+        ]
+      ],
+      "asset_connectivity": [
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "model_log": null
+    },
+    {
+      "grid_model_id": "8%%bus",
+      "name": null,
+      "type": null,
+      "region": null,
+      "voltage_level": null,
+      "busbars": [
+        {
+          "grid_model_id": "8%%bus",
+          "type": null,
+          "name": "9",
+          "int_id": 0,
+          "in_service": true,
+          "bus_branch_bus_id": null
+        },
+        {
+          "grid_model_id": "18%%bus",
+          "type": null,
+          "name": "9",
+          "int_id": 1,
+          "in_service": true,
+          "bus_branch_bus_id": null
+        }
+      ],
+      "couplers": [
+        {
+          "grid_model_id": "5%%switch",
+          "type": null,
+          "name": null,
+          "busbar_from_id": 0,
+          "busbar_to_id": 1,
+          "open": false,
+          "in_service": true,
+          "asset_bay": null
+        }
+      ],
+      "assets": [
+        {
+          "grid_model_id": "10%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "11%%line",
+          "type": "line",
+          "name": "",
+          "in_service": true,
+          "branch_end": "from",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "1%%trafo",
+          "type": "trafo",
+          "name": "",
+          "in_service": true,
+          "branch_end": "to",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "4%%trafo",
+          "type": "trafo",
+          "name": "",
+          "in_service": true,
+          "branch_end": "to",
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "5%%load",
+          "type": "load",
+          "name": "None",
+          "in_service": true,
+          "branch_end": null,
+          "asset_bay": null
+        },
+        {
+          "grid_model_id": "0%%shunt",
+          "type": "shunt",
+          "name": "None",
+          "in_service": true,
+          "branch_end": null,
+          "asset_bay": null
+        }
+      ],
+      "asset_switching_table": [
+        [
+          true,
+          false,
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          false,
+          true,
+          false,
+          false,
+          false,
+          false
+        ]
+      ],
+      "asset_connectivity": [
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "model_log": null
+    }
+  ],
+  "asset_setpoints": null,
+  "timestamp": "2025-10-08T15:41:36.680192",
+  "metrics": null
+}

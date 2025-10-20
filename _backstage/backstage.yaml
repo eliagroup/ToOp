@@ -1,0 +1,16 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: mccs-toop-engine # 👈 if you have a service here thats deployed via argo, make sure they are called the same
+  description: | # 👈 Here you may add you own high level description
+    The `mccs-toop-engine` is a mono repository that contains the importer, optimiser and loadflow solver. 
+  # links: # you do not have to link to grafana, argo cd, etc. we will do that for you in mccs-backstage
+  #   - url: https://www.youtube.com/watch?v=dQw4w9WgXcQ # 👈
+  #     type: website # 👈
+  #     title: Some text you want to show # 👈
+spec:
+  type: service # 👈 can be service, library or website
+  lifecycle: experimental # 👈 experimental or production
+  owner: grid_analysis # this need to be one of `adaptation`, `alarming`, `control`, `data_modelling`, `devops`, `forecasting`, `grid_analysis`, `grid_calculation`, `hops`, `master_data`, `monitoring`
+  # system: master_data_systems # Add a system if you want to use one, see mds-meta for an example
+  # dependsOn: ["component:mccs-toop-optimiser", "component:mccs-toop-importer", "component:mccs-toop-loadflowsolver"] # 👈 you may also reference other components you have defined in other repositories

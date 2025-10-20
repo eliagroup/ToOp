@@ -1,0 +1,84 @@
+[project]
+name = "toop_engine_topology_optimizer"
+dynamic = ["version", "dependencies"]
+description = "An optimizer to run on top of the fast GPU DC Solver"
+authors = [
+    {name = "Nico Westerbeck", email = "Nico.Westerbeck@50hertz.com"},
+    {name = "Akash Sinha", email = "akash.sinha@externel.be"},
+    {name = "Benjamin Petrick", email = "Benjamin.Petrick@externel.be"},
+    {name = "Leonard Hilfrich", email = "Leonard.Hilfrich@50hertz.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+
+[tool.hatch.metadata.hooks.uv-dynamic-versioning]
+dependencies=[
+    "pydantic (>=2.8.2,<3.0.0)",
+    "qdax (>=0.4.0,<0.5.0)",
+    "tyro (>=0.8.0,<0.9.0)",
+    "average (>=1.0,<2.0)",
+    "beartype (>=0.22.0,<0.23.0)",
+    "ray [tune] (>=2.8.1,<3.0.0)",
+    "tensorboardx (>=2.6.2.2,<3.0.0.0)",
+    "seaborn (>=0.13.2,<0.14.0)",
+    "optuna (>=3.6.1,<4.0.0)",
+    "hydra-core (>=1.3.2,<2.0.0)",
+    "jax (>=0.4.30)",
+    "chex (>=0.1.88,<0.2.0)",
+    "sqlmodel (>=0.0.24,<0.0.25)",
+    "logbook (>=1.8.1,<2.0.0)",
+    "confluent-kafka (>=2.10.0,<3.0.0)",
+    "toop_engine_dc_solver=={{ version }}",
+    "toop_engine_interfaces=={{ version }}",
+    "toop_engine_grid_helpers=={{ version }}",
+    "toop_engine_contingency_analysis=={{ version }}",
+    "jax-dataclasses (>=1.6.2,<2.0.0)",
+    "polars>=1.33.0",
+    "orjson>=3.11.3",
+]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[dependency-groups]
+dev = [
+    "pep8-naming",
+    "pre-commit",
+    "pre-commit-hooks",
+    "pytest",
+    "pytest-cov",
+    "pytest-coverage",
+    "pytest-dotenv",
+    "pytest-mock",
+    "pytest-timeout",
+    "pytest-xdist>=3.8.0",
+    "ipykernel>=6.25.2",
+    "jupyter>=1.0.0",
+    "seaborn>=0.13.0",
+    "plotly>=3.0.0",
+    "openpyxl>=3.1.2",
+    "ruff",
+    "types-confluent-kafka>=1.3.3",
+    "pytest-logbook>=1.2.0",
+    "pypowsybl-jupyter>=1.0.0",
+    "docker>=7.1.0",
+]
+
+[tool.uv.sources]
+toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }
+toop_engine_grid_helpers = { path = "../grid_helpers_pkg", editable = true }
+toop_engine_contingency_analysis = { path = "../contingency_analysis_pkg", editable = true }
+toop_engine_dc_solver = { path = "../dc_solver_pkg", editable = true }
+
+[[tool.uv.index]]
+name = "MCCS"
+url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/simple/"
+publish-url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/upload/"
+explicit = true
+
+[tool.uv-secure.ignore_packages]
+ray = [] # Ignore issues with all versions of the ray package

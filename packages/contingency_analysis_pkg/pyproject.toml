@@ -1,0 +1,103 @@
+[project]
+name = "toop_engine_contingency_analysis"
+dynamic = ["version", "dependencies"]
+description = "Python Package to run a contingency analysis in pandapower or pypowsybl"
+authors = [
+    {name = "Nico Westerbeck", email = "Nico.Westerbeck@50hertz.com"},
+    {name = "Leonard Hilfrich", email = "Leonard.Hilfrich@50hertz.com"},
+    {name = "Benjamin Petrick", email = "Benjamin.Petrick@externel.be"},
+]
+
+readme = "README.md"
+
+keywords = [
+    "Contingency Analysis",
+    "N-1",
+    "Exceptional Contingencies",
+    "Outage",
+    "Grid",
+    "Security Analysis",
+    "Parallel N-1",
+]
+classifiers=[
+        'Development Status :: 4 - Beta',
+        'Environment :: Console',
+        'Intended Audience :: Developers',
+        'Intended Audience :: Education',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: MIT License',
+        'Natural Language :: English',
+        'Operating System :: OS Independent',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3.11'
+]
+
+requires-python = ">=3.11,<3.12"
+
+[tool.hatch.metadata.hooks.uv-dynamic-versioning]
+dependencies = [
+    "pandera[polars] (>=0.22.1,<0.23.0)",
+    "ray (>=2.42.1,<3.0.0)",
+    "beartype (>=0.22.0,<0.23.0)",
+    "numpy (>=1.26.0,<2.0.0)",
+    "pandas (>=2.2.3,<3.0.0)",
+    "pydantic (>=1.10.3,<3.0.0)",
+    "confluent-kafka (>=2.3.0,<3.0.0)",
+    "logbook (>=1.8.1,<2.0.0)",
+    "toop_engine_interfaces=={{ version }}",
+    "toop_engine_grid_helpers=={{ version }}",
+    "tyro (>=0.8.8,<0.9.0)",
+    "polars>=1.33.0",
+    "orjson>=3.11.3",
+    "pyarrow>=21.0.0",
+]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[project.optional-dependencies]
+pypowsybl = ["pypowsybl>=1.11.2"]
+pandapower = ["pandapower>=3.0.0"]
+
+[dependency-groups]
+dev = [
+    "pep8-naming",
+    "pre-commit",
+    "pre-commit-hooks",
+    "pytest",
+    "pytest-cov",
+    "pytest-coverage",
+    "pytest-dotenv",
+    "pytest-mock",
+    "pytest-timeout",
+    "pytest-xdist>=3.8.0",
+    "ipykernel>=6.25.2",
+    "jupyter>=1.0.0",
+    "seaborn>=0.13.0",
+    "plotly>=3.0.0",
+    "openpyxl>=3.1.2",
+    "ruff",
+    "types-confluent-kafka>=1.3.3",
+    "pytest-logbook>=1.2.0",
+    "pypowsybl-jupyter>=1.0.0",
+    "docker>=7.1.0",
+    "numba>=0.61.2",
+    "orjson>=3.11.3",
+]
+
+[tool.uv.sources]
+toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }
+toop_engine_grid_helpers = { path = "../grid_helpers_pkg", editable = true }
+
+[[tool.uv.index]]
+name = "MCCS"
+url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/simple/"
+publish-url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/upload/"
+explicit = true
+
+[tool.uv-secure.ignore_packages]
+ray = [] # Ignore issues with all versions of the ray package

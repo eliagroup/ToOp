@@ -73,9 +73,12 @@ jobs:
   publish-docs:
     needs: bump-version
     if: ${{ github.ref == 'refs/heads/main' }}
+    environment: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
 
       - name: Configure git profile
         run: |

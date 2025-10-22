@@ -40,6 +40,7 @@ dependencies = [
     "polars>=1.33.0",
     "pyarrow>=21.0.0",
     "fsspec>=2024.0.0",
+    "protobuf_to_pydantic>=0.3.3.1"
 ]
 
 [build-system]

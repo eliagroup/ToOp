@@ -2785,6 +2785,19 @@ wheels = [
 ]
 
 [[package]]
+name = "protobuf-to-pydantic"
+version = "0.3.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "protobuf" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8d/d0/a19365b373a299992583656ff8f297fac27c27f702de9a228b71f4ab690a/protobuf_to_pydantic-0.3.3.1.tar.gz", hash = "sha256:7861e229c1de4de9ae9f7df9f2e72d330448319ca137a2a4362833704ca75c11", size = 149581, upload-time = "2025-06-07T19:28:46.66Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d9/04/8bbe9bd1d10b9a655505c1225284b8b9e328123ffd5e09f7cd6230512d26/protobuf_to_pydantic-0.3.3.1-py3-none-any.whl", hash = "sha256:a719921d14534f8e303ea13df77715fad604cb1b388c4a743af9d58813fd8995", size = 159165, upload-time = "2025-06-07T19:28:44.685Z" },
+]
+
+[[package]]
 name = "psutil"
 version = "7.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4128,6 +4141,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pandera" },
     { name = "polars" },
+    { name = "protobuf-to-pydantic" },
     { name = "pyarrow" },
     { name = "pydantic" },
 ]
@@ -4146,6 +4160,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2.3,<3.0.0" },
     { name = "pandera", specifier = ">=0.22.1,<0.23.0" },
     { name = "polars", specifier = ">=1.33.0" },
+    { name = "protobuf-to-pydantic", specifier = ">=0.3.3.1" },
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pydantic", specifier = ">=1.10.3,<3.0.0" },
     { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.11.2" },

@@ -51,7 +51,6 @@ dev = [
     "pre-commit-hooks",
     "pytest",
     "pytest-cov",
-    "pytest-coverage",
     "pytest-dotenv",
     "pytest-mock",
     "pytest-timeout",

@@ -1107,6 +1107,7 @@ def test_two_matches_different_jumps():
     assert set(matched["original_node"]) == {0}
     assert set(matched["unique_id"]) == {"cgmes1", "cgmes3"}
 
+
 def test_matches_with_indizes_missing_cgmes_id():
     data = {
         "bus": [0, 1, 1, 3],
@@ -1116,7 +1117,7 @@ def test_matches_with_indizes_missing_cgmes_id():
         "closed": [True, True, True, True],
         "origin_id": ["cgmes0", "cgmes1", "cgmes2", "cgmes3"],
     }
-    switches_df = pd.DataFrame(data, index=[0, 1, 2, 4]) # Note missing index 3
+    switches_df = pd.DataFrame(data, index=[0, 1, 2, 4])  # Note missing index 3
     node_ids = np.array([0])
     actual_buses = np.array([4])
     # Should match CB switches for nodes 0 and 1, not for 2 (DS type)
@@ -1136,7 +1137,7 @@ def test_matches_with_indizes_missing_unique_pandapower_id():
         "closed": [True, True, True, True],
         "origin_id": ["cgmes0", "cgmes1", "cgmes2", "cgmes3"],
     }
-    switches_df = pd.DataFrame(data, index=[0, 1, 2, 4]) # Note missing index 3
+    switches_df = pd.DataFrame(data, index=[0, 1, 2, 4])  # Note missing index 3
     node_ids = np.array([0])
     actual_buses = np.array([4])
     # Should match CB switches for nodes 0 and 1, not for 2 (DS type)

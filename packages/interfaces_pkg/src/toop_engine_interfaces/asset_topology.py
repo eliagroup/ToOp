@@ -640,3 +640,50 @@ class RealizedTopology(BaseModel):
     disconnection_diff: list[tuple[str, int]]
     """A list of disconnections that have been made. Each tuple contains the station grid_model_id
     and the asset index that was disconnected. This can also include non-relevant stations."""
+
+
+class EdgeTopology(BaseModel):
+    """Edge topology data describing a single branch/edge topology.
+
+    A single edge is a branch between two buses, including their switches (AssetBay)
+    """
+
+    branch_id: str
+    """ The unique identifier of the branch. """
+
+    from_busbar_id: str
+    """ The unique identifier of the from busbar. """
+
+    to_busbar_id: str
+    """ The unique identifier of the to busbar. """
+
+    in_service: bool
+    """ Whether the branch is in service. If False, it will be ignored in the switching table"""
+
+    from_asset_bay: AssetBay
+    """ The asset bay (Schaltfeld) at the from busbar of the edge. """
+
+    to_asset_bay: AssetBay
+    """ The asset bay (Schaltfeld) at the to busbar of the edge. """
+
+    branch_topology_id: str
+    """ The id of the BranchTopology this edge belongs to.
+    Defaults to branch_id if not part of a BranchTopology."""
+
+
+class BranchTopology(BaseModel):
+    """Branch topology is a collection of edges that are grouped together.
+
+    A branch topology includes multiple edges that are grouped together
+    e.g. by their N-1 relevance.
+    If one of these edges is disconnected, the whole branch topology is considered disconnected.
+    """
+
+    topology_id: str
+    """ The unique identifier of the branch topology. """
+
+    name: Optional[str] = None
+    """ The name of the branch topology. """
+
+    edges: list[EdgeTopology]
+    """ The list of edges in the branch topology. """

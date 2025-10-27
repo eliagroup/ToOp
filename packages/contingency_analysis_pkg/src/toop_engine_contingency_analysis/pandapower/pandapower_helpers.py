@@ -532,17 +532,17 @@ def match_node_to_next_switch_type(
     pd.DataFrame
         A dataframe with the original node id, the switch id, switch name and unique id.
     """
-    switches_to_check = switches_df.reset_index().query("closed")
+    switches_to_check = switches_df.reset_index(names="original_index").query("closed")
     if id_type == "unique_pandapower":
-        switches_to_check["unique_id"] = get_globally_unique_id_from_index(switches_to_check.index, "switch")
+        switches_to_check["unique_id"] = get_globally_unique_id_from_index(switches_to_check.original_index, "switch")
     elif id_type == "cgmes":
         switches_to_check["unique_id"] = switches_to_check["origin_id"]
     else:
         raise ValueError(f"Unsupported ID Type: {id_type}")
     bidirectional_switches = np.concatenate(
         [
-            switches_to_check[["index", "bus", "element", "type", "name", "unique_id"]].values,
-            switches_to_check[["index", "element", "bus", "type", "name", "unique_id"]].values,
+            switches_to_check[["original_index", "bus", "element", "type", "name", "unique_id"]].values,
+            switches_to_check[["original_index", "element", "bus", "type", "name", "unique_id"]].values,
         ],
         axis=0,
     )

@@ -29,7 +29,7 @@ import os
 import hydra
 import logbook
 from omegaconf import DictConfig
-from toop_engine_topology_optimizer.benchmark import run_task_process
+from toop_engine_topology_optimizer.benchmark.benchmark import run_task_process
 
 logger = logbook.Logger(__name__)
 

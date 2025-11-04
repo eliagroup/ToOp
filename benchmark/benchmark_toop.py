@@ -241,19 +241,43 @@ def _single_file_or_dir(cfg: DictConfig) -> list[Path]:
     return grids
 
 
-@hydra.main(config_path="configs", config_name="benchmark_configs.yaml", version_base="1.2")
+@hydra.main(config_path="configs", config_name="benchmark.yaml", version_base="1.2")
 def main(cfg: DictConfig) -> None:
     """Run the ToOp benchmark based on the provided configuration.
 
     Parameters
     ----------
     cfg : DictConfig
-        Configuration object containing benchmark settings.
+        Configuration object containing benchmark settings and config groups:
+        - area_settings.cutoff_voltage
+        - ga_config.{runtime_seconds, split_subs, switching_distance, n_worst_contingencies, random_seed}
+        - lf_config.{max_num_splits, batch_size_bsdf}
+        - grid_file or grid_dir (+ optional file_name)
+        - output_dir
     """
     grids = _single_file_or_dir(cfg)
     output_dir = Path(cfg.output_dir)
 
     preprocess_params = PreprocessParameters(action_set_clip=2**10, enable_bb_outage=True, bb_outage_as_nminus1=False)
+
+    # Build GA config from Hydra group values
+    ga_cfg = {
+        "runtime_seconds": cfg.ga_config.runtime_seconds,
+        "me_descriptors": [
+            {"metric": "split_subs", "num_cells": cfg.ga_config.split_subs},
+            {"metric": "switching_distance", "num_cells": cfg.ga_config.switching_distance},
+        ],
+        "observed_metrics": ["overload_energy_n_1", "split_subs"],
+        "n_worst_contingencies": cfg.ga_config.n_worst_contingencies,
+        "random_seed": cfg.ga_config.random_seed,
+    }
+
+    # Lightflow config from Hydra group
+    lf_cfg = {
+        "distributed": False,
+        "max_num_splits": cfg.lf_config.max_num_splits,
+        "batch_size_bsdf": cfg.lf_config.batch_size_bsdf,
+    }
 
     dc_optmization_cfg = {
         "task_name": "benchmark" + time.strftime("_%Y%m%d_%H%M%S"),
@@ -268,19 +292,10 @@ def main(cfg: DictConfig) -> None:
         "omp_num_threads": 1,
         "xla_force_host_platform_device_count": None,
         "output_json": "output_test.json",
-        "lf_config": {
-            "distributed": False,
-            "max_num_splits": 10,
-        },
-        "ga_config": {
-            "runtime_seconds": 30,
-            "me_descriptors": [{"metric": "split_subs", "num_cells": 4}, {"metric": "switching_distance", "num_cells": 20}],
-            "observed_metrics": ["overload_energy_n_1", "split_subs"],
-            "n_worst_contingencies": 2,
-            "random_seed": 6543345,
-        },
+        "lf_config": lf_cfg,
+        "ga_config": ga_cfg,
         "area_settings": {
-            "cutoff_voltage": cfg.get("cutoff_voltage", 380),  # in kV
+            "cutoff_voltage": cfg.area_settings.cutoff_voltage,
         },
     }
     benchmark_grids(grids, output_dir, dc_optmization_cfg, preprocess_params)

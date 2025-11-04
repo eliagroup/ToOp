@@ -1,0 +1,3 @@
+name: lf_config
+max_num_splits: 10
+batch_size_bsdf: 8

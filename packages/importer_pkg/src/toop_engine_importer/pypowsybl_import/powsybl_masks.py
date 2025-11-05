@@ -575,6 +575,12 @@ def update_bus_masks(
     else:
         raise ValueError(f"Data type {importer_parameters.data_type} is not supported.")
 
+    if importer_parameters.select_by_voltage_level_id_list is not None:
+        relevant_subs = np.logical_and(
+            relevant_subs,
+            np.isin(buses["voltage_level_id"].values, importer_parameters.select_by_voltage_level_id_list),
+        )
+
     # apply ignore list
     if importer_parameters.ignore_list_file is not None:
         ignore_df = pd.read_csv(importer_parameters.ignore_list_file, sep=";")

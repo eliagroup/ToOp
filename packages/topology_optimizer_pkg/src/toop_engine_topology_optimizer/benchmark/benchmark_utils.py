@@ -9,11 +9,11 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import sys
 
 # Keep warnings under control
 import warnings
 from dataclasses import dataclass
+from multiprocessing.connection import Connection
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
 
@@ -24,8 +24,6 @@ import pandapower
 # Domain-specific imports (may raise if not available in the environment)
 import pypowsybl
 from omegaconf import DictConfig
-
-# Local project imports
 from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
@@ -67,7 +65,14 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import ActionSet
-from toop_engine_topology_optimizer.benchmark.benchmark import run_task_process as run_optimization
+from toop_engine_topology_optimizer.dc.main import CLIArgs
+from toop_engine_topology_optimizer.dc.main import main as opt_main
+
+# Local project imports
+from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
+    BatchedMEParameters,
+    LoadflowSolverParameters,
+)
 from tqdm import tqdm
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -77,8 +82,6 @@ jax.config.update("jax_enable_x64", True)
 
 # Logging setup
 logger = logbook.Logger(__name__)
-logbook.StreamHandler(sys.stdout, level="DEBUG").push_application()
-logger.info("Logging level set to DEBUG")
 
 
 @dataclass
@@ -105,6 +108,90 @@ class PipelineConfig:
     omp_num_threads: int = 1
     num_cuda_devices: int = 1
     grid_type: Literal["powsybl", "pandapower"] = "powsybl"
+
+
+def set_environment_variables(cfg: DictConfig) -> None:
+    """Set environment variables for OpenMP, CUDA, and XLA based on the provided configuration.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        Configuration object containing the following keys:
+        - omp_num_threads (int): Number of OpenMP threads.
+        - num_cuda_devices (int): Number of CUDA devices.
+        - xla_force_host_platform_device_count (Optional[int]): Number of XLA host platform devices.
+
+    Returns
+    -------
+    None
+    """
+    os.environ["OMP_NUM_THREADS"] = str(cfg["omp_num_threads"])
+    logger.debug(f"Set OMP_NUM_THREADS to {os.environ['OMP_NUM_THREADS']}")
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(x) for x in range(0, cfg["num_cuda_devices"])])
+    logger.debug(f"Set CUDA_VISIBLE_DEVICES to {os.environ['CUDA_VISIBLE_DEVICES']}")
+
+    if cfg["xla_force_host_platform_device_count"] is not None:
+        os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={cfg['xla_force_host_platform_device_count']}"
+        logger.debug(f"Set XLA_FLAGS to {os.environ.get('XLA_FLAGS', 'Not Set')}")
+
+
+def run_task_process(cfg: DictConfig, conn: Optional[Connection] = None) -> Optional[dict]:
+    """Execute a task process based on the provided configuration.
+
+    This function initializes parameters for a genetic algorithm and a load flow solver
+    from the given configuration, constructs command-line arguments, and runs the main
+    optimization function. If a connection object is provided, the result is sent through
+    the connection; otherwise, the result is returned directly.
+    Args:
+        cfg (DictConfig): Configuration object containing parameters for the task.
+        conn (Connection, optional): Connection object for inter-process communication. Defaults to None.
+
+    Returns
+    -------
+        None
+    """
+    logger.info(f"************Experiment name: {cfg['task_name']}****************")
+
+    ga_params = BatchedMEParameters(**{k: v for k, v in cfg.ga_config.items() if v is not None})
+    lf_params = LoadflowSolverParameters(**{k: v for k, v in cfg.lf_config.items() if v is not None})
+
+    if "{task_name}" in cfg.tensorboard_dir:
+        cfg.tensorboard_dir = cfg.tensorboard_dir.replace("{task_name}", cfg.task_name)
+
+    if "{task_name}" in cfg.stats_dir:
+        cfg.stats_dir = cfg.stats_dir.replace("{task_name}", cfg.task_name)
+
+    # Combine all config data into the CLIArgs Pydantic model
+    cli_args = {
+        "ga_config": ga_params,
+        "lf_config": lf_params,
+        "fixed_files": tuple(cfg.fixed_files) if cfg.fixed_files is not None else None,
+        "double_precision": cfg.double_precision if cfg.double_precision is not None else None,
+        "tensorboard_dir": cfg.tensorboard_dir if cfg.tensorboard_dir is not None else None,
+        "stats_dir": cfg.stats_dir if cfg.stats_dir is not None else None,
+        "summary_frequency": cfg.summary_frequency if cfg.summary_frequency is not None else None,
+        "checkpoint_frequency": cfg.checkpoint_frequency if cfg.checkpoint_frequency is not None else None,
+        "double_limits": tuple(cfg.double_limits) if cfg.double_limits is not None else None,
+    }
+
+    # Remove None values
+    cli_args = {key: value for key, value in cli_args.items() if value is not None}
+    cli_args = CLIArgs(**cli_args)
+
+    # If the connection is None, run the task without sending the result
+    if conn is None:
+        res = opt_main(cli_args)
+        return res
+
+    try:
+        res = opt_main(cli_args)
+        conn.send(res)
+        del res
+    except Exception as exception:  # pylint: disable=broad-exception-caught
+        conn.send({"error": str(exception)})
+    conn.close()
+    return None
 
 
 def get_paths(cfg: PipelineConfig) -> Tuple[Path, Path, Path, Path]:
@@ -381,14 +468,10 @@ def run_dc_optimization(dc_optim_config: dict) -> dict:
     dict
         The result of the optimization process.
     """
-    os.environ["OMP_NUM_THREADS"] = str(dc_optim_config["omp_num_threads"])
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(x) for x in range(0, dc_optim_config["num_cuda_devices"])])
-    if dc_optim_config["xla_force_host_platform_device_count"] is not None:
-        os.environ["XLA_FLAGS"] = (
-            f"--xla_force_host_platform_device_count={dc_optim_config['xla_force_host_platform_device_count']}"
-        )
+    #  Set the env variables
+    set_environment_variables(dc_optim_config)
 
-    res = run_optimization(DictConfig(dc_optim_config))
+    res = run_task_process(DictConfig(dc_optim_config))
     return res
 
 

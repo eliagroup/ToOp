@@ -5,6 +5,8 @@ defaults:
   - ga_config: ga_config
   - area_settings: area_settings
 
+logging_level: INFO
+
 hydra: 
   run:
     dir: ${output_dir}/hydra/

@@ -3,24 +3,27 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 from statistics import mean
 
 import hydra
+import logbook
 from omegaconf import DictConfig
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     PipelineConfig,
     copy_to_initial_topology,
     get_paths,
-    logger,
     perform_ac_analysis,
     prepare_importer_parameters,
     remove_unsupported_elements_and_save,
     run_dc_optimization_stage,
     run_preprocessing,
 )
+
+logger = logbook.Logger(__name__)
 
 
 class PhaseTimer:
@@ -255,29 +258,12 @@ def main(cfg: DictConfig) -> None:
         - grid_file or grid_dir (+ optional file_name)
         - output_dir
     """
+    logbook.StreamHandler(sys.stdout, level=cfg.get("logging_level", "INFO")).push_application()
+
     grids = _single_file_or_dir(cfg)
     output_dir = Path(cfg.output_dir)
 
     preprocess_params = PreprocessParameters(action_set_clip=2**10, enable_bb_outage=True, bb_outage_as_nminus1=False)
-
-    # Build GA config from Hydra group values
-    ga_cfg = {
-        "runtime_seconds": cfg.ga_config.runtime_seconds,
-        "me_descriptors": [
-            {"metric": "split_subs", "num_cells": cfg.ga_config.split_subs},
-            {"metric": "switching_distance", "num_cells": cfg.ga_config.switching_distance},
-        ],
-        "observed_metrics": ["overload_energy_n_1", "split_subs"],
-        "n_worst_contingencies": cfg.ga_config.n_worst_contingencies,
-        "random_seed": cfg.ga_config.random_seed,
-    }
-
-    # Lightflow config from Hydra group
-    lf_cfg = {
-        "distributed": False,
-        "max_num_splits": cfg.lf_config.max_num_splits,
-        "batch_size_bsdf": cfg.lf_config.batch_size_bsdf,
-    }
 
     dc_optmization_cfg = {
         "task_name": "benchmark" + time.strftime("_%Y%m%d_%H%M%S"),
@@ -292,11 +278,9 @@ def main(cfg: DictConfig) -> None:
         "omp_num_threads": 1,
         "xla_force_host_platform_device_count": None,
         "output_json": "output_test.json",
-        "lf_config": lf_cfg,
-        "ga_config": ga_cfg,
-        "area_settings": {
-            "cutoff_voltage": cfg.area_settings.cutoff_voltage,
-        },
+        "lf_config": cfg.lf_config,
+        "ga_config": cfg.ga_config,
+        "area_settings": cfg.area_settings,
     }
     benchmark_grids(grids, output_dir, dc_optmization_cfg, preprocess_params)
 

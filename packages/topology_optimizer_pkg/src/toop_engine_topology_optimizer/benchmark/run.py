@@ -24,12 +24,11 @@ with all possible combinations of the specified values for `batch_size` and `pop
 """
 
 import json
-import os
 
 import hydra
 import logbook
 from omegaconf import DictConfig
-from toop_engine_topology_optimizer.benchmark.benchmark import run_task_process
+from toop_engine_topology_optimizer.benchmark.benchmark_utils import run_task_process, set_environment_variables
 
 logger = logbook.Logger(__name__)
 
@@ -52,10 +51,7 @@ def main(cfg: DictConfig) -> None:
     None
     """
     #  Set the env variables
-    os.environ["OMP_NUM_THREADS"] = str(cfg["omp_num_threads"])
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(x) for x in range(0, cfg["num_cuda_devices"])])
-    if cfg["xla_force_host_platform_device_count"] is not None:
-        os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={cfg['xla_force_host_platform_device_count']}"
+    set_environment_variables(cfg)
 
     # Run the task
     res = run_task_process(cfg)

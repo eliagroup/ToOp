@@ -410,12 +410,12 @@ def loaded_net(data_folder: Path) -> pp.pandapowerNet:
 @pytest.fixture(scope="session")
 def benchmark_config_file(
     tmp_path_factory: pytest.TempPathFactory,
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
+    _jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
 ) -> Path:
     orig_path = Path(__file__).parent / "files" / "jax" / "benchmarks" / "test.yaml"
     tmp_path = tmp_path_factory.mktemp("benchmarks")
 
-    save_static_information(tmp_path / "static_information.hdf5", jax_inputs[2])
+    save_static_information(tmp_path / "static_information.hdf5", _jax_inputs[2])
 
     with open(orig_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)

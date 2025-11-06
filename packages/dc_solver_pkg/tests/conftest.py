@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import time
+from copy import deepcopy
 from pathlib import Path
 
 import chex
@@ -146,7 +147,7 @@ def case14_network_data(case14_data_folder: Path) -> NetworkData:
 
 
 @pytest.fixture(scope="session")
-def jax_inputs(
+def _jax_inputs(
     case14_network_data: NetworkData,
 ) -> tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation]:
     static_information = convert_to_jax(
@@ -193,6 +194,13 @@ def jax_inputs(
         ),
     )
     return computations, candidates, static_information
+
+
+@pytest.fixture(scope="function")
+def jax_inputs(
+    _jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
+) -> tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation]:
+    return deepcopy(_jax_inputs)
 
 
 @pytest.fixture

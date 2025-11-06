@@ -160,6 +160,8 @@ class BaseImporterParameters(BaseModel):
     select_by_voltage_level_id_list: Optional[list[str]] = None
     """If given, only the voltage levels in this list will be imported.
     Note: not all voltage levels in this list might be considered relevant after preprocessing.
+    This can happen if the requirements for relevant substations are not met.
+    E.g. minimum number of busbars, connected branches or missing busbar couplers.
     """
 
     ingress_id: Optional[str] = None

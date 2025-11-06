@@ -235,6 +235,13 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
     updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
     assert not (updated_masks.relevant_subs).any()
 
+    # test independent of area codes
+    importer_parameters.area_settings.control_area = ["D2"]
+    importer_parameters.area_settings.cutoff_voltage = 1000
+    importer_parameters.select_by_voltage_level_id_list = ["D8SU1_1"]
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
+
 
 def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network_powsybl):
     network = basic_node_breaker_network_powsybl
@@ -275,6 +282,14 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
     )
     expected_bus_mask_no_slack = np.array([False, True, False, False, False])
     assert np.array_equal(network_masks.relevant_subs, expected_bus_mask_no_slack)
+
+    # test independent of area codes
+    importer_parameters.area_settings.control_area = ["FR"]
+    importer_parameters.area_settings.cutoff_voltage = 1000
+    importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)[:2]
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    expected_bus_mask = np.array([True, True, False, False, False])
+    assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
 
 def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
@@ -552,6 +567,34 @@ def test_get_switchable_buses():
     assert all(bus.startswith(tuple(voltage_level_prefix)) for bus in buses)
     assert len(buses) > 0
     assert len(buses) <= len(network.get_buses())
+    assert buses == expected
+
+    # test select by voltage level
+    expected = ["S1VL1_0", "S1VL2_0", "S2VL1_0", "S3VL1_0", "S4VL1_0"]
+    select_by_voltage_level_id_list = ["S1VL1", "S1VL2", "S2VL1", "S3VL1", "S4VL1"]
+    network = pypowsybl.network.create_four_substations_node_breaker_network_with_extensions()
+    voltage_level_prefix = ["OVERWRITE"]
+    cutoff_voltage = 1000
+    buses = get_switchable_buses_ucte(
+        network,
+        voltage_level_prefix,
+        cutoff_voltage=cutoff_voltage,
+        select_by_voltage_level_id_list=select_by_voltage_level_id_list,
+    )
+    assert buses == expected
+
+    # test select by voltage level
+    expected = ["S1VL1_0", "S1VL2_0", "S4VL1_0"]
+    select_by_voltage_level_id_list = ["S1VL1", "S1VL2", "S4VL1"]
+    network = pypowsybl.network.create_four_substations_node_breaker_network_with_extensions()
+    voltage_level_prefix = ["OVERWRITE"]
+    cutoff_voltage = 1000
+    buses = get_switchable_buses_ucte(
+        network,
+        voltage_level_prefix,
+        cutoff_voltage=cutoff_voltage,
+        select_by_voltage_level_id_list=select_by_voltage_level_id_list,
+    )
     assert buses == expected
 
 

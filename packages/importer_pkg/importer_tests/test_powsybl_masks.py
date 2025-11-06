@@ -1,4 +1,5 @@
 import tempfile
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -188,10 +189,11 @@ def test_update_load_and_generation_masks(ucte_file_with_border, ucte_importer_p
 
 
 def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
+    importer_parameters = deepcopy(ucte_importer_parameters)
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
 
-    network_masks = powsybl_masks.update_bus_masks(default_masks, network, ucte_importer_parameters)
+    network_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
 
     expected_bus_mask = np.zeros(17, dtype=bool)
     expected_bus_mask[3] = True
@@ -204,8 +206,8 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
         with open(temp_file_path, "w") as temp_file:
             temp_file.write(file_content)
 
-        ucte_importer_parameters.ignore_list_file = temp_file_path
-        updated_masks = powsybl_masks.update_bus_masks(default_masks, network, ucte_importer_parameters)
+        importer_parameters.ignore_list_file = temp_file_path
+        updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
         expected_bus_mask[3] = False
         assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
@@ -216,21 +218,21 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
         with open(temp_file_path, "w") as temp_file:
             temp_file.write(file_content)
 
-        ucte_importer_parameters.ignore_list_file = temp_file_path
-        updated_masks = powsybl_masks.update_bus_masks(default_masks, network, ucte_importer_parameters)
+        importer_parameters.ignore_list_file = temp_file_path
+        updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
         expected_bus_mask[3] = True
         assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
     # test select_station_grid_model_id_list
-    ucte_importer_parameters.ignore_list_file = None
-    ucte_importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, ucte_importer_parameters)
+    importer_parameters.ignore_list_file = None
+    importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
-    ucte_importer_parameters.select_by_voltage_level_id_list = ["D8SU1_1"]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, ucte_importer_parameters)
+    importer_parameters.select_by_voltage_level_id_list = ["D8SU1_1"]
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
-    ucte_importer_parameters.select_by_voltage_level_id_list = ["D8SU1_2"]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, ucte_importer_parameters)
+    importer_parameters.select_by_voltage_level_id_list = ["D8SU1_2"]
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
     assert not (updated_masks.relevant_subs).any()
 
 

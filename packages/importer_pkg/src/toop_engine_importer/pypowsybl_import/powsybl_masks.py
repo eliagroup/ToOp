@@ -561,25 +561,25 @@ def update_bus_masks(
     if importer_parameters.data_type == "ucte":
         relevant_subs = buses.index.isin(
             get_switchable_buses_ucte(
-                network, importer_parameters.area_settings.control_area, importer_parameters.area_settings.cutoff_voltage
+                network,
+                importer_parameters.area_settings.control_area,
+                importer_parameters.area_settings.cutoff_voltage,
+                importer_parameters.select_by_voltage_level_id_list,
             )
         )
         substation_ids = buses["voltage_level_id"].values
     elif importer_parameters.data_type == "cgmes":
         relevant_subs = buses.index.isin(
             get_switchable_buses_cgmes(
-                network, importer_parameters.area_settings.control_area, importer_parameters.area_settings.cutoff_voltage
+                network,
+                importer_parameters.area_settings.control_area,
+                importer_parameters.area_settings.cutoff_voltage,
+                importer_parameters.select_by_voltage_level_id_list,
             )
         )
         substation_ids = buses["name"].str[:-2].values
     else:
         raise ValueError(f"Data type {importer_parameters.data_type} is not supported.")
-
-    if importer_parameters.select_by_voltage_level_id_list is not None:
-        relevant_subs = np.logical_and(
-            relevant_subs,
-            np.isin(buses["voltage_level_id"].values, importer_parameters.select_by_voltage_level_id_list),
-        )
 
     # apply ignore list
     if importer_parameters.ignore_list_file is not None:

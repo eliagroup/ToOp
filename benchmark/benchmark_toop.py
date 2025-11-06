@@ -278,8 +278,21 @@ def main(cfg: DictConfig) -> None:
         "omp_num_threads": 1,
         "xla_force_host_platform_device_count": None,
         "output_json": "output_test.json",
-        "lf_config": cfg.lf_config,
-        "ga_config": cfg.ga_config,
+        "lf_config": {
+            "max_num_splits": cfg.lf_config.max_num_splits,
+            "max_num_disconnections": cfg.lf_config.max_num_disconnections,
+            "batch_size": cfg.lf_config.batch_size,
+        },
+        "ga_config": {
+            "runtime_seconds": cfg.ga_config.runtime_seconds,
+            "me_descriptors": [
+                {"metric": "switching_distance", "num_cells": cfg.ga_config.switching_distance},
+                {"metric": "split_subs", "num_cells": cfg.ga_config.split_subs},
+            ],
+            "n_worst_contingencies": cfg.ga_config.n_worst_contingencies,
+            "random_seed": cfg.ga_config.random_seed,
+            "target_metrics": [["overload_energy_n_1", 1.0], ["split_subs", 1.0]],
+        },
         "area_settings": cfg.area_settings,
     }
     benchmark_grids(grids, output_dir, dc_optmization_cfg, preprocess_params)

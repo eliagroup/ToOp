@@ -1,3 +1,4 @@
 name: lf_config
 max_num_splits: 10
-batch_size_bsdf: 8
+max_num_disconnections: 4
+batch_size: 8

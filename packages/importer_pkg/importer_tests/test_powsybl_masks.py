@@ -1,5 +1,7 @@
 import tempfile
+from copy import deepcopy
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -12,6 +14,8 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    AreaSettings,
+    CgmesImporterParameters,
     LimitAdjustmentParameters,
     UcteImporterParameters,
 )
@@ -185,10 +189,11 @@ def test_update_load_and_generation_masks(ucte_file_with_border, ucte_importer_p
 
 
 def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
+    importer_parameters = deepcopy(ucte_importer_parameters)
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
 
-    network_masks = powsybl_masks.update_bus_masks(default_masks, network, ucte_importer_parameters)
+    network_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
 
     expected_bus_mask = np.zeros(17, dtype=bool)
     expected_bus_mask[3] = True
@@ -201,8 +206,8 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
         with open(temp_file_path, "w") as temp_file:
             temp_file.write(file_content)
 
-        ucte_importer_parameters.ignore_list_file = temp_file_path
-        updated_masks = powsybl_masks.update_bus_masks(default_masks, network, ucte_importer_parameters)
+        importer_parameters.ignore_list_file = temp_file_path
+        updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
         expected_bus_mask[3] = False
         assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
@@ -213,10 +218,78 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
         with open(temp_file_path, "w") as temp_file:
             temp_file.write(file_content)
 
-        ucte_importer_parameters.ignore_list_file = temp_file_path
-        updated_masks = powsybl_masks.update_bus_masks(default_masks, network, ucte_importer_parameters)
+        importer_parameters.ignore_list_file = temp_file_path
+        updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
         expected_bus_mask[3] = True
         assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
+
+    # test select_station_grid_model_id_list
+    importer_parameters.ignore_list_file = None
+    importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
+    importer_parameters.select_by_voltage_level_id_list = ["D8SU1_1"]
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
+    importer_parameters.select_by_voltage_level_id_list = ["D8SU1_2"]
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    assert not (updated_masks.relevant_subs).any()
+
+    # test independent of area codes
+    importer_parameters.area_settings.control_area = ["D2"]
+    importer_parameters.area_settings.cutoff_voltage = 1000
+    importer_parameters.select_by_voltage_level_id_list = ["D8SU1_1"]
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
+
+
+def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network_powsybl):
+    network = basic_node_breaker_network_powsybl
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=Path("cgmes_file.zip"),
+        data_folder="data_folder",
+        area_settings=AreaSettings(cutoff_voltage=220, control_area=["BE"], view_area=["BE"], nminus1_area=["BE"]),
+    )
+    default_masks = powsybl_masks.create_default_network_masks(network)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+
+    expected_bus_mask = np.array([True, True, True, False, False])
+    assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
+
+    # make sure the slack is removed from relevant subs
+    network_masks = powsybl_masks.make_masks(
+        network=network,
+        importer_parameters=importer_parameters,
+        blacklisted_ids=[],
+    )
+    expected_bus_mask_no_slack = np.array([False, True, True, False, False])
+    assert np.array_equal(network_masks.relevant_subs, expected_bus_mask_no_slack)
+
+    importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
+
+    importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)[:2]
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    expected_bus_mask = np.array([True, True, False, False, False])
+    assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
+
+    # make sure the slack is removed from relevant subs
+    network_masks = powsybl_masks.make_masks(
+        network=network,
+        importer_parameters=importer_parameters,
+        blacklisted_ids=[],
+    )
+    expected_bus_mask_no_slack = np.array([False, True, False, False, False])
+    assert np.array_equal(network_masks.relevant_subs, expected_bus_mask_no_slack)
+
+    # test independent of area codes
+    importer_parameters.area_settings.control_area = ["FR"]
+    importer_parameters.area_settings.cutoff_voltage = 1000
+    importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)[:2]
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    expected_bus_mask = np.array([True, True, False, False, False])
+    assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
 
 def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
@@ -494,6 +567,34 @@ def test_get_switchable_buses():
     assert all(bus.startswith(tuple(voltage_level_prefix)) for bus in buses)
     assert len(buses) > 0
     assert len(buses) <= len(network.get_buses())
+    assert buses == expected
+
+    # test select by voltage level
+    expected = ["S1VL1_0", "S1VL2_0", "S2VL1_0", "S3VL1_0", "S4VL1_0"]
+    select_by_voltage_level_id_list = ["S1VL1", "S1VL2", "S2VL1", "S3VL1", "S4VL1"]
+    network = pypowsybl.network.create_four_substations_node_breaker_network_with_extensions()
+    voltage_level_prefix = ["OVERWRITE"]
+    cutoff_voltage = 1000
+    buses = get_switchable_buses_ucte(
+        network,
+        voltage_level_prefix,
+        cutoff_voltage=cutoff_voltage,
+        select_by_voltage_level_id_list=select_by_voltage_level_id_list,
+    )
+    assert buses == expected
+
+    # test select by voltage level
+    expected = ["S1VL1_0", "S1VL2_0", "S4VL1_0"]
+    select_by_voltage_level_id_list = ["S1VL1", "S1VL2", "S4VL1"]
+    network = pypowsybl.network.create_four_substations_node_breaker_network_with_extensions()
+    voltage_level_prefix = ["OVERWRITE"]
+    cutoff_voltage = 1000
+    buses = get_switchable_buses_ucte(
+        network,
+        voltage_level_prefix,
+        cutoff_voltage=cutoff_voltage,
+        select_by_voltage_level_id_list=select_by_voltage_level_id_list,
+    )
     assert buses == expected
 
 

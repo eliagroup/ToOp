@@ -2,13 +2,15 @@
 
 import math
 from copy import deepcopy
-from typing import Union
+from beartype.typing import Union, Literal, Optional
 
 import pandapower as pp
+import pandapower.topology as top
 import pandera as pa
 import pandera.typing as pat
 import ray
-from beartype.typing import Literal, Optional
+from networkx.classes import MultiGraph
+
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
     PandapowerMonitoredElementSchema,
@@ -21,6 +23,8 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     get_va_diff_results,
     translate_nminus1_for_pandapower,
 )
+from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
+from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
 from toop_engine_interfaces.loadflow_result_helpers import (
     concatenate_loadflow_results,
     convert_pandas_loadflow_results_to_polars,
@@ -37,13 +41,13 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
 @pa.check_types
 def run_single_outage(
-    net: pp.pandapowerNet,
-    contingency: PandapowerContingency,
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
-    timestep: int,
-    job_id: str,
-    method: Literal["ac", "dc"],
-    runpp_kwargs: Optional[dict] = None,
+        net: pp.pandapowerNet,
+        contingency: PandapowerContingency,
+        monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
+        timestep: int,
+        job_id: str,
+        method: Literal["ac", "dc"],
+        runpp_kwargs: Optional[dict] = None,
 ) -> LoadflowResults:
     """Compute a single outage for the given network
 
@@ -114,7 +118,8 @@ def run_single_outage(
     element_name_map = monitored_elements["name"].to_dict()
     for df in [branch_results_df, node_results_df, regulating_elements_df, va_diff_results]:
         no_name_yet = df["element_name"] == ""
-        df.loc[no_name_yet, "element_name"] = df.loc[no_name_yet].index.get_level_values("element").map(element_name_map)
+        df.loc[no_name_yet, "element_name"] = df.loc[no_name_yet].index.get_level_values("element").map(
+            element_name_map)
         df["contingency_name"] = contingency.name
     lf_result = LoadflowResults(
         job_id=job_id,
@@ -129,12 +134,15 @@ def run_single_outage(
 
 
 def run_contingency_analysis_sequential(
-    net: pp.pandapowerNet,
-    n_minus_1_definition: PandapowerNMinus1Definition,
-    job_id: str,
-    timestep: int,
-    method: Literal["ac", "dc"] = "dc",
-    runpp_kwargs: Optional[dict] = None,
+        net: pp.pandapowerNet,
+        n_minus_1_definition: PandapowerNMinus1Definition,
+        job_id: str,
+        timestep: int,
+        net_graph: MultiGraph,
+        bus_lookup: list,
+        min_island_size: int = 11,
+        method: Literal["ac", "dc"] = "dc",
+        runpp_kwargs: Optional[dict] = None,
 ) -> list[LoadflowResults]:
     """Compute a full N-1 analysis for the given network, but a single timestep
 
@@ -148,6 +156,8 @@ def run_contingency_analysis_sequential(
         The job id of the current job
     timestep : int
         The timestep of the results
+    min_island_size: int
+        The minimum island size to consider
     method : Literal["ac", "dc"], optional
         The method to use for the loadflow, by default "dc"
     runpp_kwargs : Optional[dict], optional
@@ -158,9 +168,21 @@ def run_contingency_analysis_sequential(
     list[LoadflowResults]
         A list of the results per contingency
     """
-    results = [
-        run_single_outage(
-            net=deepcopy(net),
+    results = []
+
+    for contingency in n_minus_1_definition.contingencies:
+        copy_net = deepcopy(net)
+        elements_ids = [element.unique_id for element in contingency.elements]
+        removed_edges = assign_slack_per_island(
+            net=copy_net,
+            net_graph=net_graph,
+            bus_lookup=bus_lookup,
+            elements_ids=elements_ids,
+            min_island_size=min_island_size,
+        )
+
+        single_res = run_single_outage(
+            net=copy_net,
             contingency=contingency,
             monitored_elements=n_minus_1_definition.monitored_elements,
             timestep=timestep,
@@ -168,21 +190,25 @@ def run_contingency_analysis_sequential(
             method=method,
             runpp_kwargs=runpp_kwargs,
         )
-        for contingency in n_minus_1_definition.contingencies
-    ]
+
+        results.append(single_res)
+        net_graph.add_edges_from(removed_edges)
 
     return results
 
 
 def run_contingency_analysis_parallel(
-    net: pp.pandapowerNet,
-    n_minus_1_definition: PandapowerNMinus1Definition,
-    job_id: str,
-    timestep: int,
-    method: Literal["ac", "dc"] = "dc",
-    n_processes: int = 1,
-    batch_size: Optional[int] = None,
-    runpp_kwargs: Optional[dict] = None,
+        net: pp.pandapowerNet,
+        n_minus_1_definition: PandapowerNMinus1Definition,
+        job_id: str,
+        timestep: int,
+        net_graph: MultiGraph,
+        bus_lookup: list,
+        min_island_size: int = 11,
+        method: Literal["ac", "dc"] = "dc",
+        n_processes: int = 1,
+        batch_size: Optional[int] = None,
+        runpp_kwargs: Optional[dict] = None,
 ) -> list[LoadflowResults]:
     """Compute the N-1 AC/DC power flow for the network.
 
@@ -218,7 +244,7 @@ def run_contingency_analysis_parallel(
     n_outages = len(n_minus_1_definition.contingencies)
     if batch_size is None:
         batch_size = math.ceil(n_outages / n_processes)
-    work = [n_minus_1_definition[i : i + batch_size] for i in range(0, n_outages, batch_size)]
+    work = [n_minus_1_definition[i: i + batch_size] for i in range(0, n_outages, batch_size)]
 
     # Schedule work until the handle list is too long, then wait for the first result and continue
     handles = []
@@ -231,6 +257,9 @@ def run_contingency_analysis_parallel(
                 n_minus_1_definition=batch,
                 job_id=job_id,
                 timestep=timestep,
+                bus_lookup=bus_lookup,
+                net_graph=net_graph,
+                min_island_size=min_island_size,
                 method=method,
                 runpp_kwargs=runpp_kwargs,
             )
@@ -249,15 +278,16 @@ def run_contingency_analysis_parallel(
 
 
 def run_contingency_analysis_pandapower(
-    net: pp.pandapowerNet,
-    n_minus_1_definition: Nminus1Definition,
-    job_id: str,
-    timestep: int,
-    method: Literal["ac", "dc"] = "ac",
-    n_processes: int = 1,
-    batch_size: Optional[int] = None,
-    runpp_kwargs: Optional[dict] = None,
-    polars: bool = False,
+        net: pp.pandapowerNet,
+        n_minus_1_definition: Nminus1Definition,
+        job_id: str,
+        timestep: int,
+        min_island_size: int = 11,
+        method: Literal["ac", "dc"] = "ac",
+        n_processes: int = 1,
+        batch_size: Optional[int] = None,
+        runpp_kwargs: Optional[dict] = None,
+        polars: bool = False,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the N-1 AC/DC power flow for the network.
 
@@ -292,6 +322,8 @@ def run_contingency_analysis_pandapower(
         The results of the loadflow computation
     """
     pp_n1_definition = translate_nminus1_for_pandapower(n_minus_1_definition, net)
+    net_graph = top.create_nxgraph(net)
+    bus_lookup, _ = create_bus_lookup_simple(net)
 
     if n_processes == 1 and batch_size is None:
         results = run_contingency_analysis_sequential(
@@ -299,6 +331,9 @@ def run_contingency_analysis_pandapower(
             n_minus_1_definition=pp_n1_definition,
             job_id=job_id,
             timestep=timestep,
+            net_graph=net_graph,
+            bus_lookup=bus_lookup,
+            min_island_size=min_island_size,
             method=method,
             runpp_kwargs=runpp_kwargs,
         )
@@ -308,6 +343,9 @@ def run_contingency_analysis_pandapower(
             n_minus_1_definition=pp_n1_definition,
             job_id=job_id,
             timestep=timestep,
+            net_graph=net_graph,
+            bus_lookup=bus_lookup,
+            min_island_size=min_island_size,
             method=method,
             n_processes=n_processes,
             batch_size=batch_size,

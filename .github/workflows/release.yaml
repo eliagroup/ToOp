@@ -8,6 +8,7 @@ permissions:
 jobs:
   bump-version:
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -40,7 +41,6 @@ jobs:
 
       - name: Get new version
         run: |
-
           if [ "$isDevRelease" = "true" ]; then
             newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes --devrelease $GITHUB_RUN_ID)
           else
@@ -48,38 +48,37 @@ jobs:
           fi 
 
           if [[ -z "$newVersion" ]]; then
-            echo "No new version to release."
+            echo "No new version to release. Exiting."
+            exit 1
           else
             echo "New version: $newVersion"
             echo "newVersion=$newVersion" >> $GITHUB_ENV
           fi
 
       - name: Configure git profile
-        if: env.newVersion != ''
         run: |
           git config user.name "ToOp Build Service"
           git config user.email ToOp@eliagroup.eu
 
       - name: Create release tag
-        if: env.newVersion != ''
         run: |
-
           echo "Creating git tag"
           git tag "v$newVersion"
 
       - name: Push tags to remote
-        if: env.newVersion != ''
         run: |
-
           echo "Pushing changes to remote."
           git push --tags
 
   publish-docs:
     needs: bump-version
     if: ${{ github.ref == 'refs/heads/main' }}
+    environment: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
 
       - name: Configure git profile
         run: |
@@ -98,4 +97,4 @@ jobs:
         run: uv sync --only-group doc --frozen
 
       - name: Conditional Deployment
-        run: uv run mkdocs gh-deploy
+        run: uv run mkdocs gh-deploy --force

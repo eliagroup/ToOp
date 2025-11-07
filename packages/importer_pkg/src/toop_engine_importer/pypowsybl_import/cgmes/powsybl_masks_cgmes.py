@@ -1,5 +1,6 @@
 """Specific functions to extract masks from pypowsybl network for CGMES data."""
 
+from beartype.typing import Optional
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_voltage_level_with_region
 from toop_engine_interfaces.asset_topology import AssetBranchTypePowsybl, AssetInjectionTypePowsybl
@@ -8,7 +9,12 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 
-def get_switchable_buses_cgmes(net: Network, area_codes: list[RegionType], cutoff_voltage: int = 220) -> list[str]:
+def get_switchable_buses_cgmes(
+    net: Network,
+    area_codes: list[RegionType],
+    cutoff_voltage: int = 220,
+    select_by_voltage_level_id_list: Optional[list[int]] = None,
+) -> list[str]:
     """Return the buses in the given voltage level and area, if they have more than one busbar and connected switches.
 
     Checks for number of branches are happening later during network data preprocessing
@@ -21,6 +27,9 @@ def get_switchable_buses_cgmes(net: Network, area_codes: list[RegionType], cutof
         The prefixes of the voltage levels to consider.
     cutoff_voltage: int
         The minimal voltage to be considered for relevant substations. Defaults to 220
+    select_by_voltage_level_id_list: Optional[list[int]]
+        If given, only voltage levels with these IDs are considered.
+        Note: This overrides the area_codes and cutoff_voltage parameters.
 
     Returns
     -------
@@ -30,14 +39,19 @@ def get_switchable_buses_cgmes(net: Network, area_codes: list[RegionType], cutof
     """
     # TODO: set as import parameter
     rules = {"min_busbars": 2, "min_elements": 4, "allow_pst": False}
-    # Gets all voltage levels in the area
     voltage_levels = get_voltage_level_with_region(network=net)
-    voltage_levels = voltage_levels[
-        voltage_levels["region"].str.startswith(tuple(area_codes)) & (voltage_levels["nominal_v"] >= cutoff_voltage)
-    ]
+    if select_by_voltage_level_id_list is None:
+        # Gets all voltage levels in the area
+        voltage_levels = voltage_levels[
+            voltage_levels["region"].str.startswith(tuple(area_codes)) & (voltage_levels["nominal_v"] >= cutoff_voltage)
+        ]
+        voltage_level_list = voltage_levels.index.tolist()
+    else:
+        voltage_level_list = [vl for vl in select_by_voltage_level_id_list if vl in voltage_levels.index]
+
     allowed_elements = list(AssetBranchTypePowsybl.__args__ + AssetInjectionTypePowsybl.__args__)
     switchable_buses = []
-    for vl_index in voltage_levels.index:
+    for vl_index in voltage_level_list:
         bus_breaker_topology = net.get_bus_breaker_topology(vl_index)
         node_breaker_topology = net.get_node_breaker_topology(vl_index)
         switches = bus_breaker_topology.switches

@@ -161,3 +161,4 @@ update_changelog_on_bump = false
 
 [tool.uv-secure.ignore_packages]
 ray = [] # Ignore issues with all versions of the ray package
+protobuf = [] # Ignore issues with all versions of the protobuf package

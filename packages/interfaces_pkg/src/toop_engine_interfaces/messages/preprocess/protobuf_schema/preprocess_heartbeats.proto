@@ -1,0 +1,105 @@
+syntax = "proto3";
+import "google/protobuf/timestamp.proto";
+
+package preprocessing;
+
+// Enums for various preprocessing stages
+
+enum ConvertToJaxStage {
+  CONVERT_TO_JAX_STARTED = 0;
+  CONVERT_TOT_STAT = 1;
+  CONVERT_RELEVANT_INJ = 2;
+  CONVERT_MASKS = 3;
+  SWITCHING_DISTANCE_INFO = 4;
+  PAD_OUT_BRANCH_ACTIONS = 5;
+  CONVERT_REL_BB_OUTAGE_DATA = 6;
+  CREATE_STATIC_INFORMATION = 7;
+  FILTER_BRANCH_ACTIONS = 8;
+  UNSPLIT_N2_ANALYSIS = 9;
+  BB_OUTAGE_BASELINE_ANALYSIS = 10;
+  CONVERT_TO_JAX_DONE = 11;
+}
+
+enum NumpyPreprocessStage {
+  PREPROCESS_STARTED = 0;
+  EXTRACT_NETWORK_DATA_FROM_INTERFACE = 1;
+  FILTER_RELEVANT_NODES = 2;
+  ASSERT_NETWORK_DATA = 3;
+  COMPUTE_PTDF_IF_NOT_GIVEN = 4;
+  COMPUTE_PSDF_IF_NOT_GIVEN = 5;
+  ADD_NODAL_INJECTIONS_TO_NETWORK_DATA = 6;
+  COMBINE_PHASESHIFT_AND_INJECTION = 7;
+  COMPUTE_BRIDGING_BRANCHES = 8;
+  EXCLUDE_BRIDGES_FROM_OUTAGE_MASKS = 9;
+  REDUCE_BRANCH_DIMENSION = 10;
+  REDUCE_NODE_DIMENSION = 11;
+  FILTER_DISCONNECTABLE_BRANCHES_NMINUS2 = 12;
+  COMPUTE_BRANCH_TOPOLOGY_INFO = 13;
+  COMPUTE_ELECTRICAL_ACTIONS = 14;
+  ENUMERATE_STATION_REALIZATIONS = 15;
+  REMOVE_RELEVANT_SUBS_WITHOUT_ACTIONS = 16;
+  SIMPLIFY_ASSET_TOPOLOGY = 17;
+  CONVERT_MULTI_OUTAGES = 18;
+  FILTER_INACTIVE_INJECTIONS = 19;
+  COMPUTE_INJECTION_TOPOLOGY_INFO = 20;
+  PROCESS_INJECTION_OUTAGES = 21;
+  ADD_MISSING_ASSET_TOPO_INFO = 22;
+  ADD_BUS_B_COLUMNS_TO_PTDF = 23;
+  ENUMERATE_INJECTION_ACTIONS = 24;
+  PREPROCESS_BB_OUTAGE = 25;
+  PREPROCESS_DONE = 26;
+}
+
+enum LoadGridStage {
+  LOAD_GRID_INTO_LOADFLOW_SOLVER_BACKEND = 0;
+  COMPUTE_BASE_LOADFLOWS = 1;
+  SAVE_ARTIFACTS = 2;
+}
+
+enum InitialLoadflowStage {
+  PREPARE_CONTINGENCY_ANALYSIS = 0;
+  RUN_CONTINGENCY_ANALYSIS = 1;
+}
+
+enum ImporterStage {
+  IMPORTER_START = 0;
+  LOAD_UCTE = 1;
+  GET_TOPOLOGY_MODEL = 2;
+  MODIFY_LOW_IMPEDANCE_LINES = 3;
+  MODIFY_BRANCHES_OVER_SWITCHES = 4;
+  APPLY_CB_LIST = 5;
+  CROSS_BORDER_CURRENT = 6;
+  GET_MASKS = 7;
+  IMPORTER_END = 8;
+}
+
+/*
+ * Since PreprocessStage is a union of all these possible enums,
+ * we represent it using a `oneof` construct.
+ */
+message PreprocessStage {
+  oneof stage_type {
+    ConvertToJaxStage convert_to_jax = 1;
+    NumpyPreprocessStage numpy_preprocess = 2;
+    LoadGridStage load_grid = 3;
+    InitialLoadflowStage initial_loadflow = 4;
+    ImporterStage importer = 5;
+  }
+}
+
+// Represents an ongoing preprocessing action.
+message PreprocessStatusInfo {
+  string preprocess_id = 1;  // ID of the preprocess job
+  double runtime = 2;        // Time since start (seconds)
+  PreprocessStage stage = 3; // Current stage
+  string message = 4;        // Optional message
+}
+
+// The heartbeat message from a preprocessing worker.
+message PreprocessHeartbeat {
+  bool idle = 1;                       // Whether the worker is idle
+  PreprocessStatusInfo status_info = 2; // Status update if not idle
+  string instance_id = 3;              // Worker instance ID
+  google.protobuf.Timestamp timestamp = 4;                // When the heartbeat was sent
+  string uuid = 5;                     // Unique ID to avoid duplicates
+}

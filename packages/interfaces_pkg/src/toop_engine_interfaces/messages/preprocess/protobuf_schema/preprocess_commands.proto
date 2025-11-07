@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package preprocessing;
+
+import "google/protobuf/timestamp.proto";
+
+
+/**
+ * Parameters for the adjustment of limits of special branches.
+ *
+ * The new operational limits will be created like this:
+ * 1) Compute AC Loadflow
+ * 2) new_limit = current_flow * n_0_factor (or n_1_factor)
+ * 3) If new_limit > min_increase (=old_limit * n_0_min_increase)
+ *      new_limit = min_increase
+ * 4) If new_limit > old_limit
+ *      new_limit = old_limit
+ */
+message LimitAdjustmentParameters {
+    // The factor for the N-0 current limit. Default is 1.2.
+    double n_0_factor = 1;
+
+    // The factor for the N-1 current limit. Default is 1.4.
+    double n_1_factor = 2;
+
+    // The minimal allowed load increase in percent for the n-0 case.
+    // This value multiplied with the current limit gives a lower border for the new limit.
+    // This ensures that lines that are currently barely loaded can be used at all.
+    // Default is 5%.
+    double n_0_min_increase = 3;
+
+    // The minimal allowed load increase in percent for the n-1 case.
+    // This value multiplied with the current limit gives a lower border for the new limit.
+    // This ensures that lines that are currently barely loaded can be used at all.
+    // Default is 5%.
+    double n_1_min_increase = 4;
+}
+
+// ---------------------------
+// AreaSettings
+// ---------------------------
+message AreaSettings {
+  repeated string control_area = 1;
+  repeated string view_area = 2;
+  repeated string nminus1_area = 3;
+    uint32 cutoff_voltage = 4;
+    LimitAdjustmentParameters dso_trafo_factors = 5;
+    double dso_trafo_weight = 6;
+    LimitAdjustmentParameters border_line_factors = 7;
+    double border_line_weight = 8;
+}
+
+message BaseImporterParameters {
+    AreaSettings area_settings = 1;
+    string data_folder = 2;
+    string grid_model_file = 3;
+    string data_type = 4;
+    string white_list_file = 5;
+    string black_list_file = 6;
+    string ignore_list_file = 7;
+    string ingress_id = 8;
+    string contingency_list_file = 9;
+    string schema_format = 10;
+}
+
+message PreprocessParameters {
+    int32 filter_disconnectable_branches_processes = 1;
+    bool action_set_filter_bridge_lookup = 2;
+    bool action_set_filter_bsdf_lodf = 3;
+    int32 action_set_filter_bsdf_lodf_batch_size = 4;
+    int32 action_set_clip = 5;
+    bool asset_topo_close_couplers = 6;
+    string realise_station_busbar_choice_heuristic = 7;
+    double ac_dc_interpolation = 8;
+    bool enable_n_2 = 9;
+    double n_2_more_splits_penalty = 10;
+    bool enable_bb_outage = 11;
+    bool bb_outage_as_nminus1 = 12;
+    double bb_outage_more_splits_penalty = 13;
+    bool clip_bb_outage_penalty = 14;
+    double double_limit_n0 = 15;
+    double double_limit_n1 = 16;
+    int32 initial_loadflow_processes = 17;
+}
+
+message StartPreprocessingCommand {
+    BaseImporterParameters importer_parameters=1;
+    PreprocessParameters preprocess_parameters = 2;
+    string preprocess_id = 3;
+}
+
+message ShutdownCommand {
+    int32 exit_code = 1;
+}
+
+message Command {
+    oneof command {
+        StartPreprocessingCommand start_preprocessing = 1;
+        ShutdownCommand shutdown = 2;
+    }
+    google.protobuf.Timestamp timestamp = 3;
+    string uuid = 4;
+}

@@ -157,6 +157,13 @@ class BaseImporterParameters(BaseModel):
     The implementation is expected to ignore all elements that are in the ignore list.
     """
 
+    select_by_voltage_level_id_list: Optional[list[str]] = None
+    """If given, only the voltage levels in this list will be imported.
+    Note: not all voltage levels in this list might be considered relevant after preprocessing.
+    This can happen if the requirements for relevant substations are not met.
+    E.g. minimum number of busbars, connected branches or missing busbar couplers.
+    """
+
     ingress_id: Optional[str] = None
     """An optional id that is used to identify the source of the data.
     This can be used to track where the data came from, e.g. if it was imported from a specific

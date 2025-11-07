@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package preprocessing;
+import "google/protobuf/timestamp.proto";
+
+/*
+ * ==============================
+ *  Importer Result Variants
+ * ==============================
+ */
+
+message UcteImportResult {
+  string data_folder = 1;
+
+  uint32 n_relevant_subs = 2;
+  uint32 n_low_impedance_lines = 3;
+  uint32 n_branch_across_switch = 4;
+  uint32 n_line_for_nminus1 = 5;
+  uint32 n_line_for_reward = 6;
+  uint32 n_line_disconnectable = 7;
+  uint32 n_trafo_for_nminus1 = 8;
+  uint32 n_trafo_for_reward = 9;
+  uint32 n_trafo_disconnectable = 10;
+  uint32 n_tie_line_for_reward = 11;
+  uint32 n_tie_line_for_nminus1 = 12;
+  uint32 n_tie_line_disconnectable = 13;
+  uint32 n_dangling_line_for_nminus1 = 14;
+  uint32 n_generator_for_nminus1 = 15;
+  uint32 n_load_for_nminus1 = 16;
+  uint32 n_switch_for_nminus1 = 17;
+  uint32 n_switch_for_reward = 18;
+
+  uint32 n_white_list = 19;
+  uint32 n_white_list_applied = 20;
+  uint32 n_black_list = 21;
+  uint32 n_black_list_applied = 22;
+
+  string grid_type = 23; // "ucte"
+}
+
+message PowerFactoryImportResult {
+  string grid_type = 1; // "power_factory"
+}
+
+/*
+ * ==============================
+ *  Static Information Statistics
+ * ==============================
+ */
+
+message StaticInformationStats {
+  string time = 1;
+  string fp_dtype = 2;
+  bool has_double_limits = 3;
+
+  uint32 n_branches = 4;
+  uint32 n_nodes = 5;
+  uint32 n_branch_outages = 6;
+  uint32 n_multi_outages = 7;
+  uint32 n_injection_outages = 8;
+  uint32 n_busbar_outages = 9;
+  uint32 n_nminus1_cases = 10;
+  uint32 n_controllable_psts = 11;
+  uint32 n_monitored_branches = 12;
+  uint32 n_timesteps = 13;
+  uint32 n_relevant_subs = 14;
+  uint32 n_disc_branches = 15;
+
+  double overload_energy_n0 = 16;
+  double overload_energy_n1 = 17;
+
+  uint32 n_actions = 18;
+  uint32 max_station_branch_degree = 19;
+  uint32 max_station_injection_degree = 20;
+  double mean_station_branch_degree = 21;
+  double mean_station_injection_degree = 22;
+  uint32 reassignable_branch_assets = 23;
+  uint32 reassignable_injection_assets = 24;
+  uint32 max_reassignment_distance = 25;
+}
+
+/*
+ * ==============================
+ *  Loadflow Reference
+ * ==============================
+ *
+ * Placeholder for StoredLoadflowReference.
+ * Replace with its actual definition if known.
+ */
+message StoredLoadflowReference {
+  string reference_id = 1;
+  string description = 2;
+}
+
+/*
+ * ==============================
+ *  Success / Error / Started Results
+ * ==============================
+ */
+
+message PreprocessingSuccessResult {
+  string data_folder = 1;
+  StoredLoadflowReference initial_loadflow = 2;
+
+  // MetricType -> float mapping
+  map<string, double> initial_metrics = 3;
+
+  StaticInformationStats static_information_stats = 4;
+
+  oneof importer_results {
+    UcteImportResult ucte_result = 5;
+    PowerFactoryImportResult power_factory_result = 6;
+  }
+
+  string result_type = 7; // "preprocessing_success"
+}
+
+message PreprocessingStartedResult {
+  string result_type = 1; // "preprocessing_started"
+}
+
+message ErrorResult {
+  string error = 1;
+  string result_type = 2; // "error"
+}
+
+/*
+ * ==============================
+ *  Result Union
+ * ==============================
+ */
+
+message Result {
+  string preprocess_id = 1;
+  string instance_id = 2;
+  double runtime = 3;
+
+  oneof result {
+    ErrorResult error_result = 4;
+    PreprocessingSuccessResult success_result = 5;
+    PreprocessingStartedResult started_result = 6;
+  }
+
+  string uuid = 7;
+  google.protobuf.Timestamp timestamp = 8;
+}

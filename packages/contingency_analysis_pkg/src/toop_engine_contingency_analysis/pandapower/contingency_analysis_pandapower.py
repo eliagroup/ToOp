@@ -156,6 +156,10 @@ def run_contingency_analysis_sequential(
         The job id of the current job
     timestep : int
         The timestep of the results
+    net_graph : MultiGraph
+        Precomputed graph representation of the network used to detect islands.
+    bus_lookup : list
+        Lookup table mapping graph nodes to pandapower bus indices.
     min_island_size: int
         The minimum island size to consider
     method : Literal["ac", "dc"], optional
@@ -224,6 +228,12 @@ def run_contingency_analysis_parallel(
         The job id of the current job
     timestep : int
         The timestep of the results
+    net_graph : MultiGraph
+        Precomputed graph representation of the network used to detect islands.
+    bus_lookup : list
+        Lookup table mapping graph nodes to pandapower bus indices.
+    min_island_size: int
+        The minimum island size to consider
     method : Literal["ac", "dc"], optional
         The method to use for the loadflow, by default "dc"
     n_processes : int, optional
@@ -301,6 +311,8 @@ def run_contingency_analysis_pandapower(
         The job id of the current job
     timestep : int
         The timestep of the results
+    min_island_size: int
+        The minimum island size to consider
     method : Literal["ac", "dc"], optional
         The method to use for the loadflow, by default "ac"
     n_processes : int, optional

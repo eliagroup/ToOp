@@ -3,25 +3,24 @@
 from itertools import chain
 
 import pandapower as pp
-
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 
 
 def _get_line_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]:
     """
-       For a line element, return its edge as (from_bus, to_bus).
+    For a line element, return its edge as (from_bus, to_bus).
 
-       Parameters
-       ----------
-       net : pp.pandapowerNet
-           The pandapower network object.
-       el_id : int
-           ID of the line element.
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network object.
+    el_id : int
+        ID of the line element.
 
-       Returns
-       -------
-       list[tuple[int, int]]
-           A single edge [(from_bus, to_bus)] for the specified line.
+    Returns
+    -------
+    list[tuple[int, int]]
+        A single edge [(from_bus, to_bus)] for the specified line.
     """
     row = net.line.loc[el_id]
     return [(int(row.from_bus), int(row.to_bus))]
@@ -29,19 +28,19 @@ def _get_line_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]:
 
 def _get_switch_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]:
     """
-        For a switch element, return its edge as (from_bus, to_bus).
+    For a switch element, return its edge as (from_bus, to_bus).
 
-        Parameters
-        ----------
-        net : pp.pandapowerNet
-            The pandapower network object.
-        el_id : int
-            ID of the switch element.
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network object.
+    el_id : int
+        ID of the switch element.
 
-        Returns
-        -------
-        list[tuple[int, int]]
-            A single edge [(from_bus, to_bus)] for the specified switch.
+    Returns
+    -------
+    list[tuple[int, int]]
+        A single edge [(from_bus, to_bus)] for the specified switch.
     """
     row = net.switch.loc[el_id]
     return [(int(row.bus), int(row.element))]
@@ -49,19 +48,19 @@ def _get_switch_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]
 
 def _get_trafo_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]:
     """
-        For a 2-winding transformer, return its edge as (hv_bus, lv_bus).
+    For a 2-winding transformer, return its edge as (hv_bus, lv_bus).
 
-        Parameters
-        ----------
-        net : pandapowerNet
-            The pandapower network object.
-        el_id : int
-            ID of the transformer element.
+    Parameters
+    ----------
+    net : pandapowerNet
+        The pandapower network object.
+    el_id : int
+        ID of the transformer element.
 
-        Returns
-        -------
-        list[tuple[int, int]]
-            A single edge [(hv_bus, lv_bus)] for the specified transformer.
+    Returns
+    -------
+    list[tuple[int, int]]
+        A single edge [(hv_bus, lv_bus)] for the specified transformer.
     """
     row = net.trafo.loc[el_id]
     return [(int(row.hv_bus), int(row.lv_bus))]
@@ -69,24 +68,24 @@ def _get_trafo_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]
 
 def _get_trafo3w_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]:
     """
-        For a 3-winding transformer, return edges between all three windings.
+    For a 3-winding transformer, return edges between all three windings.
 
-        Connections:
-            hv <-> lv
-            mv <-> lv
-            hv <-> mv
+    Connections:
+        hv <-> lv
+        mv <-> lv
+        hv <-> mv
 
-        Parameters
-        ----------
-        net : pp.pandapowerNet
-            The pandapower network object.
-        el_id : int
-            ID of the 3-winding transformer element.
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network object.
+    el_id : int
+        ID of the 3-winding transformer element.
 
-        Returns
-        -------
-        list[tuple[int, int]]
-            Edges connecting all transformer windings: [(hv, lv), (mv, lv), (hv, mv)].
+    Returns
+    -------
+    list[tuple[int, int]]
+        Edges connecting all transformer windings: [(hv, lv), (mv, lv), (hv, mv)].
     """
     row = net.trafo3w.loc[el_id]
     hv, mv, lv = int(row.hv_bus), int(row.mv_bus), int(row.lv_bus)
@@ -100,19 +99,19 @@ def _get_trafo3w_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int
 
 def _get_bus_edges(net: pp.pandapowerNet, bus_id: int) -> list[tuple[int, int]]:
     """
-        Get all edges connected to a given bus via closed switches.
+    Get all edges connected to a given bus via closed switches.
 
-        Parameters
-        ----------
-        net : pp.pandapowerNet
-            The pandapower network.
-        bus_id : int
-            ID of the target bus.
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network.
+    bus_id : int
+        ID of the target bus.
 
-        Returns
-        -------
-        list[tuple[int, int]]
-            Edges (from_bus, to_bus) connected to the given bus.
+    Returns
+    -------
+    list[tuple[int, int]]
+        Edges (from_bus, to_bus) connected to the given bus.
     """
     closed_switches = net.switch[net.switch.closed]
     switches = closed_switches[(closed_switches.element == bus_id) | (closed_switches.bus == bus_id)]
@@ -122,24 +121,24 @@ def _get_bus_edges(net: pp.pandapowerNet, bus_id: int) -> list[tuple[int, int]]:
 
 def _edges_for_branch_element(net: pp.pandapowerNet, el_type: str, el_id: int) -> list[tuple[int, int]]:
     """
-        Dispatch helper: given an element type and its ID, return its corresponding edges.
-        Unknown element types raise a ValueError.
+    Dispatch helper: given an element type and its ID, return its corresponding edges.
 
-        Parameters
-        ----------
-        net : pp.pandapowerNet
-            The pandapower network object.
-        el_type : str
-            Type of the branch element ("line", "trafo", or "trafo3w").
-        el_id : int
-            Numeric ID of the element.
+    Unknown element types raise a ValueError.
 
-        Returns
-        -------
-        list[tuple[int, int]]
-            List of (from_bus, to_bus) edges for the given element.
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network object.
+    el_type : str
+        Type of the branch element ("line", "trafo", or "trafo3w").
+    el_id : int
+        Numeric ID of the element.
+
+    Returns
+    -------
+    list[tuple[int, int]]
+        List of (from_bus, to_bus) edges for the given element.
     """
-
     if el_type == "line":
         res = _get_line_edges(net, el_id)
     elif el_type == "trafo":
@@ -154,19 +153,19 @@ def _edges_for_branch_element(net: pp.pandapowerNet, el_type: str, el_id: int) -
 
 def collect_element_edges(net: pp.pandapowerNet, elements_ids: list[str]) -> list[tuple[int, int]]:
     """
-        Build a list of bus-to-bus edges touched by the given elements.
+    Build a list of bus-to-bus edges touched by the given elements.
 
-        Parameters
-        ----------
-        net : pp.pandapowerNet
-            The pandapower network object.
-        elements_ids : list[str]
-            List of element identifiers in the form "<id><SEPARATOR><type>"
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network object.
+    elements_ids : list[str]
+        List of element identifiers in the form "<id><SEPARATOR><type>"
 
-        Returns
-        -------
-        list[tuple[int, int]]
-            List of (from_bus, to_bus) edges corresponding to all given elements.
+    Returns
+    -------
+    list[tuple[int, int]]
+        List of (from_bus, to_bus) edges corresponding to all given elements.
     """
     branch_edges = list()
     bus_edges = set()

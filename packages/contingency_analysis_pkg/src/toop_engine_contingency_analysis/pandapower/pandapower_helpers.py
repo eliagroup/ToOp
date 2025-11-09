@@ -612,8 +612,9 @@ def get_node_to_switch_map(net: pandapowerNet, id_type: PANDAPOWER_SUPPORTED_ID_
         considered_nodes, net.switch, actual_busbars, switch_type="CB", id_type=id_type, max_jumps=4
     )
     grouped_by_bus = matched.groupby("original_node").agg(list)[["unique_id", "name"]].to_dict(orient="index")
-    node_to_switch_map = {outage: dict(zip(info["unique_id"], info["name"], strict=True))
-                          for outage, info in grouped_by_bus.items()}
+    node_to_switch_map = {
+        outage: dict(zip(info["unique_id"], info["name"], strict=True)) for outage, info in grouped_by_bus.items()
+    }
     return node_to_switch_map
 
 

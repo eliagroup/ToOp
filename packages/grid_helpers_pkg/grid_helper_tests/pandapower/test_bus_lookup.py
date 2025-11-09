@@ -18,7 +18,7 @@ def _mk_net(n_buses: int) -> pp.pandapowerNet:
 
 def _bus_switch(net, a, b, *, closed=True, z_ohm=0.0):
     """Create a bus-bus switch between bus a and bus b."""
-    idx = pp.create_switch(net, bus=a, element=b, et='b', closed=closed)
+    idx = pp.create_switch(net, bus=a, element=b, et="b", closed=closed)
     _add_z_ohm_column_if_missing(net)
     net.switch.loc[idx, "z_ohm"] = z_ohm
     return idx
@@ -97,12 +97,10 @@ def test_ignores_line_switches_and_element_types_other_than_bus():
     net = _mk_net(3)
     # Make a line so we can create a line switch (ignored by et != 'b')
     line = pp.create_line_from_parameters(
-        net, from_bus=0, to_bus=1, length_km=1.0,
-        r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0,
-        max_i_ka=0.2
+        net, from_bus=0, to_bus=1, length_km=1.0, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
     )
     # Line switch (should be ignored due to et='l')
-    idx_l = pp.create_switch(net, bus=0, element=line, et='l', closed=True)
+    idx_l = pp.create_switch(net, bus=0, element=line, et="l", closed=True)
     _add_z_ohm_column_if_missing(net)
     net.switch.loc[idx_l, "z_ohm"] = 0.0
 

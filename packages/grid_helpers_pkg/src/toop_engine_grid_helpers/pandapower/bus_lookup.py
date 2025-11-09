@@ -1,4 +1,5 @@
 """Build a bus lookup that merges buses connected through closed bus-bus switches."""
+
 import numpy as np
 import pandapower as pp
 
@@ -75,10 +76,12 @@ def create_bus_lookup_simple(net: pp.pandapowerNet) -> tuple[list[int], list[boo
     """
     # Start from the "no-fuse" mapping you already use
     bus_index = list(net.bus.index)
-    closed_bb_switch_mask = (net["switch"]["closed"].values &
-                             (net["switch"]["et"].values == "b") &
-                             np.isin(net["switch"]["bus"].values, bus_index) &
-                             np.isin(net["switch"]["element"].values, bus_index))
+    closed_bb_switch_mask = (
+        net["switch"]["closed"].values
+        & (net["switch"]["et"].values == "b")
+        & np.isin(net["switch"]["bus"].values, bus_index)
+        & np.isin(net["switch"]["element"].values, bus_index)
+    )
 
     if len(bus_index) == 0:
         return [], []

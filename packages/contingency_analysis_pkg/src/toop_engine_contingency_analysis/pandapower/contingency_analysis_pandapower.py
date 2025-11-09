@@ -40,13 +40,13 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
 @pa.check_types
 def run_single_outage(
-        net: pp.pandapowerNet,
-        contingency: PandapowerContingency,
-        monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
-        timestep: int,
-        job_id: str,
-        method: Literal["ac", "dc"],
-        runpp_kwargs: Optional[dict] = None,
+    net: pp.pandapowerNet,
+    contingency: PandapowerContingency,
+    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
+    timestep: int,
+    job_id: str,
+    method: Literal["ac", "dc"],
+    runpp_kwargs: Optional[dict] = None,
 ) -> LoadflowResults:
     """Compute a single outage for the given network
 
@@ -117,8 +117,7 @@ def run_single_outage(
     element_name_map = monitored_elements["name"].to_dict()
     for df in [branch_results_df, node_results_df, regulating_elements_df, va_diff_results]:
         no_name_yet = df["element_name"] == ""
-        df.loc[no_name_yet, "element_name"] = df.loc[no_name_yet].index.get_level_values("element").map(
-            element_name_map)
+        df.loc[no_name_yet, "element_name"] = df.loc[no_name_yet].index.get_level_values("element").map(element_name_map)
         df["contingency_name"] = contingency.name
     lf_result = LoadflowResults(
         job_id=job_id,
@@ -133,13 +132,13 @@ def run_single_outage(
 
 
 def run_contingency_analysis_sequential(
-        net: pp.pandapowerNet,
-        n_minus_1_definition: PandapowerNMinus1Definition,
-        job_id: str,
-        timestep: int,
-        slack_allocation_config:SlackAllocationConfig,
-        method: Literal["ac", "dc"] = "dc",
-        runpp_kwargs: Optional[dict] = None,
+    net: pp.pandapowerNet,
+    n_minus_1_definition: PandapowerNMinus1Definition,
+    job_id: str,
+    timestep: int,
+    slack_allocation_config: SlackAllocationConfig,
+    method: Literal["ac", "dc"] = "dc",
+    runpp_kwargs: Optional[dict] = None,
 ) -> list[LoadflowResults]:
     """Compute a full N-1 analysis for the given network, but a single timestep
 
@@ -195,15 +194,15 @@ def run_contingency_analysis_sequential(
 
 
 def run_contingency_analysis_parallel(
-        net: pp.pandapowerNet,
-        n_minus_1_definition: PandapowerNMinus1Definition,
-        job_id: str,
-        timestep: int,
-        slack_allocation_config: SlackAllocationConfig,
-        method: Literal["ac", "dc"] = "dc",
-        n_processes: int = 1,
-        batch_size: Optional[int] = None,
-        runpp_kwargs: Optional[dict] = None,
+    net: pp.pandapowerNet,
+    n_minus_1_definition: PandapowerNMinus1Definition,
+    job_id: str,
+    timestep: int,
+    slack_allocation_config: SlackAllocationConfig,
+    method: Literal["ac", "dc"] = "dc",
+    n_processes: int = 1,
+    batch_size: Optional[int] = None,
+    runpp_kwargs: Optional[dict] = None,
 ) -> list[LoadflowResults]:
     """Compute the N-1 AC/DC power flow for the network.
 
@@ -241,7 +240,7 @@ def run_contingency_analysis_parallel(
     n_outages = len(n_minus_1_definition.contingencies)
     if batch_size is None:
         batch_size = math.ceil(n_outages / n_processes)
-    work = [n_minus_1_definition[i: i + batch_size] for i in range(0, n_outages, batch_size)]
+    work = [n_minus_1_definition[i : i + batch_size] for i in range(0, n_outages, batch_size)]
 
     # Schedule work until the handle list is too long, then wait for the first result and continue
     handles = []
@@ -273,16 +272,16 @@ def run_contingency_analysis_parallel(
 
 
 def run_contingency_analysis_pandapower(
-        net: pp.pandapowerNet,
-        n_minus_1_definition: Nminus1Definition,
-        job_id: str,
-        timestep: int,
-        min_island_size: int = 11,
-        method: Literal["ac", "dc"] = "ac",
-        n_processes: int = 1,
-        batch_size: Optional[int] = None,
-        runpp_kwargs: Optional[dict] = None,
-        polars: bool = False,
+    net: pp.pandapowerNet,
+    n_minus_1_definition: Nminus1Definition,
+    job_id: str,
+    timestep: int,
+    min_island_size: int = 11,
+    method: Literal["ac", "dc"] = "ac",
+    n_processes: int = 1,
+    batch_size: Optional[int] = None,
+    runpp_kwargs: Optional[dict] = None,
+    polars: bool = False,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the N-1 AC/DC power flow for the network.
 

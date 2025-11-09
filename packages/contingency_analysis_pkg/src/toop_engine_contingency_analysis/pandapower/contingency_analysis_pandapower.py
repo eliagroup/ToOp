@@ -2,19 +2,18 @@
 
 import math
 from copy import deepcopy
-from beartype.typing import Union, Literal, Optional
 
 import pandapower as pp
 import pandapower.topology as top
 import pandera as pa
 import pandera.typing as pat
 import ray
-from networkx.classes import MultiGraph
-
+from beartype.typing import Literal, Optional, Union
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
     PandapowerMonitoredElementSchema,
     PandapowerNMinus1Definition,
+    SlackAllocationConfig,
     get_branch_results,
     get_convergence_df,
     get_failed_va_diff_results,
@@ -138,9 +137,7 @@ def run_contingency_analysis_sequential(
         n_minus_1_definition: PandapowerNMinus1Definition,
         job_id: str,
         timestep: int,
-        net_graph: MultiGraph,
-        bus_lookup: list,
-        min_island_size: int = 11,
+        slack_allocation_config:SlackAllocationConfig,
         method: Literal["ac", "dc"] = "dc",
         runpp_kwargs: Optional[dict] = None,
 ) -> list[LoadflowResults]:
@@ -156,12 +153,8 @@ def run_contingency_analysis_sequential(
         The job id of the current job
     timestep : int
         The timestep of the results
-    net_graph : MultiGraph
-        Precomputed graph representation of the network used to detect islands.
-    bus_lookup : list
-        Lookup table mapping graph nodes to pandapower bus indices.
-    min_island_size: int
-        The minimum island size to consider
+    slack_allocation_config : SlackAllocationConfig
+        Precomputed configuration for slack allocation per island.
     method : Literal["ac", "dc"], optional
         The method to use for the loadflow, by default "dc"
     runpp_kwargs : Optional[dict], optional
@@ -179,10 +172,10 @@ def run_contingency_analysis_sequential(
         elements_ids = [element.unique_id for element in contingency.elements]
         removed_edges = assign_slack_per_island(
             net=copy_net,
-            net_graph=net_graph,
-            bus_lookup=bus_lookup,
+            net_graph=slack_allocation_config.net_graph,
+            bus_lookup=slack_allocation_config.bus_lookup,
             elements_ids=elements_ids,
-            min_island_size=min_island_size,
+            min_island_size=slack_allocation_config.min_island_size,
         )
 
         single_res = run_single_outage(
@@ -196,7 +189,7 @@ def run_contingency_analysis_sequential(
         )
 
         results.append(single_res)
-        net_graph.add_edges_from(removed_edges)
+        slack_allocation_config.net_graph.add_edges_from(removed_edges)
 
     return results
 
@@ -206,9 +199,7 @@ def run_contingency_analysis_parallel(
         n_minus_1_definition: PandapowerNMinus1Definition,
         job_id: str,
         timestep: int,
-        net_graph: MultiGraph,
-        bus_lookup: list,
-        min_island_size: int = 11,
+        slack_allocation_config: SlackAllocationConfig,
         method: Literal["ac", "dc"] = "dc",
         n_processes: int = 1,
         batch_size: Optional[int] = None,
@@ -228,12 +219,8 @@ def run_contingency_analysis_parallel(
         The job id of the current job
     timestep : int
         The timestep of the results
-    net_graph : MultiGraph
-        Precomputed graph representation of the network used to detect islands.
-    bus_lookup : list
-        Lookup table mapping graph nodes to pandapower bus indices.
-    min_island_size: int
-        The minimum island size to consider
+    slack_allocation_config : SlackAllocationConfig
+        Precomputed configuration for slack allocation per island.
     method : Literal["ac", "dc"], optional
         The method to use for the loadflow, by default "dc"
     n_processes : int, optional
@@ -267,9 +254,7 @@ def run_contingency_analysis_parallel(
                 n_minus_1_definition=batch,
                 job_id=job_id,
                 timestep=timestep,
-                bus_lookup=bus_lookup,
-                net_graph=net_graph,
-                min_island_size=min_island_size,
+                slack_allocation_config=slack_allocation_config,
                 method=method,
                 runpp_kwargs=runpp_kwargs,
             )
@@ -336,6 +321,11 @@ def run_contingency_analysis_pandapower(
     pp_n1_definition = translate_nminus1_for_pandapower(n_minus_1_definition, net)
     net_graph = top.create_nxgraph(net)
     bus_lookup, _ = create_bus_lookup_simple(net)
+    slack_allocation_config = SlackAllocationConfig(
+        net_graph=net_graph,
+        bus_lookup=bus_lookup,
+        min_island_size=min_island_size,
+    )
 
     if n_processes == 1 and batch_size is None:
         results = run_contingency_analysis_sequential(
@@ -343,9 +333,7 @@ def run_contingency_analysis_pandapower(
             n_minus_1_definition=pp_n1_definition,
             job_id=job_id,
             timestep=timestep,
-            net_graph=net_graph,
-            bus_lookup=bus_lookup,
-            min_island_size=min_island_size,
+            slack_allocation_config=slack_allocation_config,
             method=method,
             runpp_kwargs=runpp_kwargs,
         )
@@ -355,9 +343,7 @@ def run_contingency_analysis_pandapower(
             n_minus_1_definition=pp_n1_definition,
             job_id=job_id,
             timestep=timestep,
-            net_graph=net_graph,
-            bus_lookup=bus_lookup,
-            min_island_size=min_island_size,
+            slack_allocation_config=slack_allocation_config,
             method=method,
             n_processes=n_processes,
             batch_size=batch_size,

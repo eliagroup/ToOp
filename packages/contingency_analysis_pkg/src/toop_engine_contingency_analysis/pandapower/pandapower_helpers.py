@@ -1,5 +1,5 @@
 """Module containing helper functions to translate Pandapower N-1 definitions and results."""
-
+import dataclasses
 from typing import Any, get_args
 
 import numpy as np
@@ -8,6 +8,7 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Literal
+from networkx.classes import MultiGraph
 from pandapower import pandapowerNet
 from pandapower.toolbox import res_power_columns
 from pandera.typing import Index, Series
@@ -41,6 +42,14 @@ BUS_COLUMN_MAP = {
     "trafo": ["hv_bus", "lv_bus"],
     "trafo3w": ["hv_bus", "lv_bus"],
 }
+
+@dataclasses.dataclass
+class SlackAllocationConfig:
+    """Carry configuration required for slack allocation per island."""
+
+    net_graph: MultiGraph
+    bus_lookup: list[int]
+    min_island_size: int = 11
 
 
 class VADiffInfo(BaseModel):

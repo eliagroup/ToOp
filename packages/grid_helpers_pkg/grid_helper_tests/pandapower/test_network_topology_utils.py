@@ -23,9 +23,7 @@ def _net_with_n_buses(n=4):
 def test_get_line_edges_returns_from_to_bus_pair():
     net = _net_with_n_buses(3)
     line_id = pp.create_line_from_parameters(
-        net, from_bus=0, to_bus=2, length_km=1.0,
-        r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0,
-        max_i_ka=0.2
+        net, from_bus=0, to_bus=2, length_km=1.0, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
     )
     edges = _get_line_edges(net, int(line_id))
     assert isinstance(edges, list) and len(edges) == 1
@@ -44,9 +42,7 @@ def test_get_switch_edges_bus_bus_returns_bus_pair():
 def test_get_switch_edges_line_switch_returns_bus_and_line_id():
     net = _net_with_n_buses(3)
     line_id = pp.create_line_from_parameters(
-        net, from_bus=0, to_bus=2, length_km=1.0,
-        r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0,
-        max_i_ka=0.2
+        net, from_bus=0, to_bus=2, length_km=1.0, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
     )
     sw_id = pp.create_switch(net, bus=0, element=int(line_id), et="l", closed=True)
     edges = _get_switch_edges(net, int(sw_id))
@@ -57,9 +53,17 @@ def test_get_switch_edges_line_switch_returns_bus_and_line_id():
 def test_get_trafo_edges_maps_hv_to_lv():
     net = _net_with_n_buses(3)
     trafo_id = pp.create_transformer_from_parameters(
-        net, hv_bus=0, lv_bus=2, sn_mva=40, vn_hv_kv=110, vn_lv_kv=10,
-        vkr_percent=0.5, vk_percent=10.0, pfe_kw=0.0, i0_percent=0.0,
-        shift_degree=0.0
+        net,
+        hv_bus=0,
+        lv_bus=2,
+        sn_mva=40,
+        vn_hv_kv=110,
+        vn_lv_kv=10,
+        vkr_percent=0.5,
+        vk_percent=10.0,
+        pfe_kw=0.0,
+        i0_percent=0.0,
+        shift_degree=0.0,
     )
     edges = _get_trafo_edges(net, int(trafo_id))
     assert edges == [(0, 2)]
@@ -70,12 +74,25 @@ def test_get_trafo3w_edges_connects_all_windings():
     net = _net_with_n_buses(5)
     t3_id = pp.create_transformer3w_from_parameters(
         net,
-        hv_bus=0, mv_bus=1, lv_bus=3,
-        sn_hv_mva=60, sn_mv_mva=30, sn_lv_mva=30,
-        vn_hv_kv=110, vn_mv_kv=20, vn_lv_kv=10,
-        vkr_hv_percent=0.5, vkr_mv_percent=0.6, vkr_lv_percent=0.7,
-        vk_hv_percent=10.0, vk_mv_percent=10.0, vk_lv_percent=10.0,
-        pfe_kw=0.0, i0_percent=0.0, shift_mv_degree=0.0, shift_lv_degree=0.0
+        hv_bus=0,
+        mv_bus=1,
+        lv_bus=3,
+        sn_hv_mva=60,
+        sn_mv_mva=30,
+        sn_lv_mva=30,
+        vn_hv_kv=110,
+        vn_mv_kv=20,
+        vn_lv_kv=10,
+        vkr_hv_percent=0.5,
+        vkr_mv_percent=0.6,
+        vkr_lv_percent=0.7,
+        vk_hv_percent=10.0,
+        vk_mv_percent=10.0,
+        vk_lv_percent=10.0,
+        pfe_kw=0.0,
+        i0_percent=0.0,
+        shift_mv_degree=0.0,
+        shift_lv_degree=0.0,
     )
     edges = _get_trafo3w_edges(net, int(t3_id))
     assert set(edges) == {(0, 3), (1, 3), (0, 1)}
@@ -90,8 +107,7 @@ def test_get_bus_edges_collects_all_closed_switch_edges_for_bus():
     pp.create_switch(net, bus=1, element=3, et="b", closed=False)
 
     line_id = pp.create_line_from_parameters(
-        net, from_bus=1, to_bus=4, length_km=1.0,
-        r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
+        net, from_bus=1, to_bus=4, length_km=1.0, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
     )
     pp.create_switch(net, bus=1, element=line_id, et="l", closed=True)
 
@@ -119,8 +135,7 @@ def test_get_bus_edges_empty_when_no_closed_switches_touch_bus():
 def test_edges_for_branch_element_line():
     net = _net_with_n_buses(3)
     line_id = pp.create_line_from_parameters(
-        net, from_bus=0, to_bus=2, length_km=1.0,
-        r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
+        net, from_bus=0, to_bus=2, length_km=1.0, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
     )
     edges = _edges_for_branch_element(net, "line", int(line_id))
     assert edges == [(0, 2)]
@@ -130,8 +145,17 @@ def test_edges_for_branch_element_line():
 def test_edges_for_branch_element_trafo():
     net = _net_with_n_buses(3)
     trafo_id = pp.create_transformer_from_parameters(
-        net, hv_bus=0, lv_bus=1, sn_mva=40, vn_hv_kv=110, vn_lv_kv=10,
-        vkr_percent=0.5, vk_percent=10.0, pfe_kw=0.0, i0_percent=0.0, shift_degree=0.0
+        net,
+        hv_bus=0,
+        lv_bus=1,
+        sn_mva=40,
+        vn_hv_kv=110,
+        vn_lv_kv=10,
+        vkr_percent=0.5,
+        vk_percent=10.0,
+        pfe_kw=0.0,
+        i0_percent=0.0,
+        shift_degree=0.0,
     )
     edges = _edges_for_branch_element(net, "trafo", int(trafo_id))
     assert edges == [(0, 1)]
@@ -141,12 +165,25 @@ def test_edges_for_branch_element_trafo3w():
     net = _net_with_n_buses(5)
     t3_id = pp.create_transformer3w_from_parameters(
         net,
-        hv_bus=0, mv_bus=2, lv_bus=4,
-        sn_hv_mva=60, sn_mv_mva=30, sn_lv_mva=30,
-        vn_hv_kv=110, vn_mv_kv=20, vn_lv_kv=10,
-        vkr_hv_percent=0.5, vkr_mv_percent=0.6, vkr_lv_percent=0.7,
-        vk_hv_percent=10.0, vk_mv_percent=10.0, vk_lv_percent=10.0,
-        pfe_kw=0.0, i0_percent=0.0, shift_mv_degree=0.0, shift_lv_degree=0.0
+        hv_bus=0,
+        mv_bus=2,
+        lv_bus=4,
+        sn_hv_mva=60,
+        sn_mv_mva=30,
+        sn_lv_mva=30,
+        vn_hv_kv=110,
+        vn_mv_kv=20,
+        vn_lv_kv=10,
+        vkr_hv_percent=0.5,
+        vkr_mv_percent=0.6,
+        vkr_lv_percent=0.7,
+        vk_hv_percent=10.0,
+        vk_mv_percent=10.0,
+        vk_lv_percent=10.0,
+        pfe_kw=0.0,
+        i0_percent=0.0,
+        shift_mv_degree=0.0,
+        shift_lv_degree=0.0,
     )
     edges = _edges_for_branch_element(net, "trafo3w", int(t3_id))
     assert set(edges) == {(0, 4), (2, 4), (0, 2)}  # (hv, lv), (mv, lv), (hv, mv)
@@ -175,28 +212,48 @@ def test_collect_element_edges_mixed_types_and_closed_bus_switches_only():
 
     # Also a line from bus 1 to 5 with a closed line switch at bus 1 (will appear as (1, line_id) in _get_bus_edges)
     line_id_for_switch = pp.create_line_from_parameters(
-        net, from_bus=1, to_bus=5, length_km=1.0,
-        r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
+        net, from_bus=1, to_bus=5, length_km=1.0, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
     )
     pp.create_switch(net, bus=1, element=line_id_for_switch, et="l", closed=True)  # -> (1, line_id_for_switch)
 
     # Branch elements to collect via dispatcher
     line_id = pp.create_line_from_parameters(
-        net, from_bus=0, to_bus=2, length_km=2.0,
-        r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
+        net, from_bus=0, to_bus=2, length_km=2.0, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=10.0, max_i_ka=0.2
     )
     trafo_id = pp.create_transformer_from_parameters(
-        net, hv_bus=6, lv_bus=7, sn_mva=25, vn_hv_kv=110, vn_lv_kv=20,
-        vkr_percent=0.5, vk_percent=10.0, pfe_kw=0.0, i0_percent=0.0, shift_degree=0.0
+        net,
+        hv_bus=6,
+        lv_bus=7,
+        sn_mva=25,
+        vn_hv_kv=110,
+        vn_lv_kv=20,
+        vkr_percent=0.5,
+        vk_percent=10.0,
+        pfe_kw=0.0,
+        i0_percent=0.0,
+        shift_degree=0.0,
     )
     t3_id = pp.create_transformer3w_from_parameters(
         net,
-        hv_bus=0, mv_bus=6, lv_bus=4,
-        sn_hv_mva=60, sn_mv_mva=30, sn_lv_mva=30,
-        vn_hv_kv=110, vn_mv_kv=20, vn_lv_kv=10,
-        vkr_hv_percent=0.5, vkr_mv_percent=0.6, vkr_lv_percent=0.7,
-        vk_hv_percent=10.0, vk_mv_percent=10.0, vk_lv_percent=10.0,
-        pfe_kw=0.0, i0_percent=0.0, shift_mv_degree=0.0, shift_lv_degree=0.0
+        hv_bus=0,
+        mv_bus=6,
+        lv_bus=4,
+        sn_hv_mva=60,
+        sn_mv_mva=30,
+        sn_lv_mva=30,
+        vn_hv_kv=110,
+        vn_mv_kv=20,
+        vn_lv_kv=10,
+        vkr_hv_percent=0.5,
+        vkr_mv_percent=0.6,
+        vkr_lv_percent=0.7,
+        vk_hv_percent=10.0,
+        vk_mv_percent=10.0,
+        vk_lv_percent=10.0,
+        pfe_kw=0.0,
+        i0_percent=0.0,
+        shift_mv_degree=0.0,
+        shift_lv_degree=0.0,
     )
 
     elements = [

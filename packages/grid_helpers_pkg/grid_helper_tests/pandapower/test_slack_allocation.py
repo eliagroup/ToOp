@@ -3,12 +3,11 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import pytest
-
-from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_gen_by_weight
 from toop_engine_grid_helpers.pandapower.slack_allocation import (
-    get_generating_units_with_load,
     _slack_allocation_tie_break,
+    assign_slack_gen_by_weight,
     get_buses_with_reference_sources,
+    get_generating_units_with_load,
 )
 
 IMPORT_PATH = "toop_engine_grid_helpers.pandapower.slack_allocation"

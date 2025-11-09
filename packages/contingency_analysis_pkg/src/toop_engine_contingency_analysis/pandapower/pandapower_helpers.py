@@ -612,7 +612,8 @@ def get_node_to_switch_map(net: pandapowerNet, id_type: PANDAPOWER_SUPPORTED_ID_
         considered_nodes, net.switch, actual_busbars, switch_type="CB", id_type=id_type, max_jumps=4
     )
     grouped_by_bus = matched.groupby("original_node").agg(list)[["unique_id", "name"]].to_dict(orient="index")
-    node_to_switch_map = {outage: dict(zip(info["unique_id"], info["name"])) for outage, info in grouped_by_bus.items()}
+    node_to_switch_map = {outage: dict(zip(info["unique_id"], info["name"], strict=True))
+                          for outage, info in grouped_by_bus.items()}
     return node_to_switch_map
 
 
@@ -705,7 +706,7 @@ def get_branch_results(
                 timestep=timestep, contingency=contingency.unique_id, side=side + 1, element=unique_ids
             )
             branch_df.set_index(["timestep", "contingency", "element", "side"], inplace=True)
-            branch_df.rename(columns=dict(zip(columns, ["p", "q", "i", "loading"])), inplace=True)
+            branch_df.rename(columns=dict(zip(columns, ["p", "q", "i", "loading"], strict=True)), inplace=True)
             # Fix kA -> A and % -> 1
             branch_df["i"] *= 1000
             branch_df["loading"] /= 100

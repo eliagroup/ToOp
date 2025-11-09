@@ -106,10 +106,10 @@ def _handle_replaced_sgen(net: pp.pandapowerNet, sgen: int, retain_sgen_elm: boo
 
 
 def replace_sgen_by_gen(
-        net: pp.pandapowerNet,
-        sgen: int,
-        cols_to_keep: Optional[list[str]] = None,
-        retain_sgen_elm: bool = True,
+    net: pp.pandapowerNet,
+    sgen: int,
+    cols_to_keep: Optional[list[str]] = None,
+    retain_sgen_elm: bool = True,
 ) -> int:
     """
     Replace an sgen with a gen element.
@@ -146,14 +146,29 @@ def replace_sgen_by_gen(
 
     # --- determine which columns should be kept while replacing
     if not cols_to_keep:
-        cols_to_keep = ["min_q_mvar", "max_q_mvar", "min_p_mw", "max_p_mw",
-                        "sn_mva", "id_q_capability_characteristic",
-                        "reactive_capability_curve", "curve_style", "scaling",
-                        "origin_id", "origin_class", "terminal", "description",
-                        "RegulatingControl.mode", "vn_kv", "rdss_ohm", "xdss_pu",
-                        "RegulatingControl.targetValue",
-                        "type", "referencePriority",
-                        "RegulatingControl.enabled"]
+        cols_to_keep = [
+            "min_q_mvar",
+            "max_q_mvar",
+            "min_p_mw",
+            "max_p_mw",
+            "sn_mva",
+            "id_q_capability_characteristic",
+            "reactive_capability_curve",
+            "curve_style",
+            "scaling",
+            "origin_id",
+            "origin_class",
+            "terminal",
+            "description",
+            "RegulatingControl.mode",
+            "vn_kv",
+            "rdss_ohm",
+            "xdss_pu",
+            "RegulatingControl.targetValue",
+            "type",
+            "referencePriority",
+            "RegulatingControl.enabled",
+        ]
     cols_to_keep = list(set(cols_to_keep) - {"bus", "vm_pu", "p_mw", "name", "in_service", "controllable"})
 
     existing_cols_to_keep = net.sgen.loc[[sgen]].dropna(axis=1).columns.intersection(cols_to_keep)
@@ -171,9 +186,16 @@ def replace_sgen_by_gen(
 
     controllable = False if "controllable" not in net.sgen.columns else sgen_row.controllable
 
-    new_idx = create_gen(net, bus, vm_pu=vm_pu, p_mw=sgen_row.p_mw, name=sgen_row["name"],
-                         # here sgen_row.name returns the sgen index
-                         in_service=sgen_row.in_service, controllable=controllable)
+    new_idx = create_gen(
+        net,
+        bus,
+        vm_pu=vm_pu,
+        p_mw=sgen_row.p_mw,
+        name=sgen_row["name"],
+        # here sgen_row.name returns the sgen index
+        in_service=sgen_row.in_service,
+        controllable=controllable,
+    )
 
     # copy selected existing columns from sgen to gen
     net.gen.loc[new_idx, existing_cols_to_keep] = net.sgen.loc[sgen, existing_cols_to_keep].values
@@ -202,8 +224,7 @@ def replace_sgen_by_gen(
     # --- adapt cost data
     for table in ["pwl_cost", "poly_cost"]:
         if net[table].shape[0]:
-            to_change = net[table].index[(net[table].et == "sgen") &
-                                         (net[table].element == sgen)]
+            to_change = net[table].index[(net[table].et == "sgen") & (net[table].element == sgen)]
             if len(to_change):
                 net[table].loc[to_change, "et"] = "gen"
                 net[table].loc[to_change, "element"] = new_idx
@@ -300,14 +321,8 @@ def assign_slack_gen_by_weight(net: pp.pandapowerNet, bus_idx_set: set[np.int64]
         - The element type: either `"gen"` or `"sgen"`.
     """
     # Filter gens/sgens by bus set and positive referencePriority
-    mask_gen = (
-            net.gen["bus"].isin(bus_idx_set)
-            & (net.gen["referencePriority"].fillna(0) > 0)
-    )
-    mask_sgen = (
-            net.sgen["bus"].isin(bus_idx_set)
-            & (net.sgen["referencePriority"].fillna(0) > 0)
-    )
+    mask_gen = net.gen["bus"].isin(bus_idx_set) & (net.gen["referencePriority"].fillna(0) > 0)
+    mask_sgen = net.sgen["bus"].isin(bus_idx_set) & (net.sgen["referencePriority"].fillna(0) > 0)
 
     candidates_gen = net.gen.loc[mask_gen, ["referencePriority", "sn_mva"]].copy()
     candidates_sgen = net.sgen.loc[mask_sgen, ["referencePriority", "sn_mva"]].copy()
@@ -317,9 +332,8 @@ def assign_slack_gen_by_weight(net: pp.pandapowerNet, bus_idx_set: set[np.int64]
     candidates_sgen["etype"] = "sgen"
 
     candidates = pd.concat(
-        [candidates_gen.assign(idx=candidates_gen.index),
-         candidates_sgen.assign(idx=candidates_sgen.index)],
-        ignore_index=False
+        [candidates_gen.assign(idx=candidates_gen.index), candidates_sgen.assign(idx=candidates_sgen.index)],
+        ignore_index=False,
     )
 
     # Find minimum referencePriority
@@ -333,11 +347,11 @@ def assign_slack_gen_by_weight(net: pp.pandapowerNet, bus_idx_set: set[np.int64]
 
 
 def assign_slack_per_island(
-        net: pp.pandapowerNet,
-        net_graph: Union[nx.Graph, nx.MultiGraph],
-        bus_lookup: list[int],
-        elements_ids: list[str],
-        min_island_size: int
+    net: pp.pandapowerNet,
+    net_graph: Union[nx.Graph, nx.MultiGraph],
+    bus_lookup: list[int],
+    elements_ids: list[str],
+    min_island_size: int,
 ) -> list[tuple[int, int]]:
     """
     Assign one slack generator per valid island in the network after isolating specific elements.
@@ -365,8 +379,9 @@ def assign_slack_per_island(
     list of tuple[int, int]
         List of edges (tuples of node indices) that were removed from the graph.
     """
-    if ((not net.sgen.empty and "referencePriority" not in net.sgen.columns)
-            or (not net.gen.empty and "referencePriority" not in net.gen.columns)):
+    if (not net.sgen.empty and "referencePriority" not in net.sgen.columns) or (
+        not net.gen.empty and "referencePriority" not in net.gen.columns
+    ):
         # This function requires 'referencePriority' columns in both sgen and gen tables.
         # Networks without these columns are not supported.
         return []
@@ -382,10 +397,11 @@ def assign_slack_per_island(
 
     # Filter components based on criteria
     valid_components = [
-        cc for cc in components
+        cc
+        for cc in components
         if len(set(bus_lookup[i] for i in cc)) > min_island_size
-           and not candidate_buses.isdisjoint(cc)
-           and len(generating_units_with_load.intersection(cc)) >= 2
+        and not candidate_buses.isdisjoint(cc)
+        and len(generating_units_with_load.intersection(cc)) >= 2
     ]
 
     for cc in valid_components:

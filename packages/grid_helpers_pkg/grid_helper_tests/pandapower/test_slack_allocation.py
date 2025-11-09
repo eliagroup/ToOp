@@ -330,8 +330,12 @@ def test_union_and_uniqueness_when_multiple_on_same_bus(net_with_refcol):
 
 
 def test_mixed_gens_and_sgens_across_buses(net_with_refcol):
-    b0, b1, b2, b4 = net_with_refcol.bus.index[0], net_with_refcol.bus.index[1], net_with_refcol.bus.index[2], \
-        net_with_refcol.bus.index[4]
+    b0, b1, b2, b4 = (
+        net_with_refcol.bus.index[0],
+        net_with_refcol.bus.index[1],
+        net_with_refcol.bus.index[2],
+        net_with_refcol.bus.index[4],
+    )
     g_pos = pp.create_gen(net_with_refcol, bus=b0, p_mw=1.0, vm_pu=1.0)
     net_with_refcol.gen.at[g_pos, "referencePriority"] = 0.1
     g_zero = pp.create_gen(net_with_refcol, bus=b1, p_mw=1.0, vm_pu=1.0)
@@ -454,9 +458,7 @@ def test_clears_existing_slacks_and_assigns_new_one(monkeypatch):
     monkeypatch.setattr(mod, "assign_slack_gen_by_weight", fake_assign_by_weight)
     monkeypatch.setattr(mod, "replace_sgen_by_gen", fake_replace_sgen)
 
-    removed = mod.assign_slack_per_island(
-        net4, G, bus_lookup, elements_ids=["dummy"], min_island_size=1
-    )
+    removed = mod.assign_slack_per_island(net4, G, bus_lookup, elements_ids=["dummy"], min_island_size=1)
 
     assert removed == [(1, 2)]
     assert not G.has_edge(1, 2)
@@ -554,9 +556,7 @@ def test_bus_vs_node_index_mismatch_exposes_filtering_bug(monkeypatch):
     monkeypatch.setattr(mod, "assign_slack_gen_by_weight", fake_assign)
     monkeypatch.setattr(mod, "replace_sgen_by_gen", lambda *a, **k: 0)
 
-    edges = mod.assign_slack_per_island(
-        net, G, bus_lookup, elements_ids=["irrelevant"], min_island_size=1
-    )
+    edges = mod.assign_slack_per_island(net, G, bus_lookup, elements_ids=["irrelevant"], min_island_size=1)
     assert edges == [(0, 1)]
     assert called["hit"] is False
 

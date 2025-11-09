@@ -1,4 +1,5 @@
 """Module containing helper functions to translate Pandapower N-1 definitions and results."""
+
 import dataclasses
 from typing import Any, get_args
 
@@ -42,6 +43,7 @@ BUS_COLUMN_MAP = {
     "trafo": ["hv_bus", "lv_bus"],
     "trafo3w": ["hv_bus", "lv_bus"],
 }
+
 
 @dataclasses.dataclass
 class SlackAllocationConfig:

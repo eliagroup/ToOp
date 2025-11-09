@@ -1,15 +1,14 @@
 import pandapower as pp
 import pytest
-
 from toop_engine_grid_helpers.pandapower.network_topology_utils import (
+    SEPARATOR,
+    _edges_for_branch_element,
+    _get_bus_edges,
     _get_line_edges,
     _get_switch_edges,
-    _get_trafo_edges,
     _get_trafo3w_edges,
-    _get_bus_edges,
-    _edges_for_branch_element,
+    _get_trafo_edges,
     collect_element_edges,
-    SEPARATOR,
 )
 
 

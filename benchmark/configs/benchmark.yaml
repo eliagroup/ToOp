@@ -1,6 +1,6 @@
 # configs for ToOp benchmark
 defaults:
-  - config_grid_node_breaker
+  - grid: config_grid_node_breaker
   - lf_config: lf_config
   - ga_config: ga_config
   - area_settings: area_settings
@@ -9,7 +9,7 @@ logging_level: INFO
 
 hydra: 
   run:
-    dir: ${output_dir}/hydra/
+    dir: ${grid.output_dir}/hydra/
   sweep:
-    dir: ${output_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${grid.output_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.num}

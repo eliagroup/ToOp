@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import statistics as stats
+import sys
 from pathlib import Path
 from typing import Any, Iterable, cast
 
@@ -30,7 +31,7 @@ import hydra
 import logbook
 from omegaconf import DictConfig, OmegaConf
 
-logger = logbook.Logger(__name__)
+logger = logbook.Logger("Benchmark Assessment")
 
 # Accept ints and floats (beartype strictness) and None values
 Numeric = float | int
@@ -113,7 +114,7 @@ def _load_overrides(run_root: Path) -> tuple[list[str], dict[str, Any]]:
                 if isinstance(container, dict):
                     overrides_resolved = cast(dict[str, Any], container)
             except Exception as exc:  # pragma: no cover - defensive logging
-                logger.info("Failed to parse overrides for %s: %s", overrides_file, exc)
+                logger.info(f"Failed to parse overrides for {overrides_file}: {exc}")
 
     return overrides_list, overrides_resolved
 
@@ -351,17 +352,19 @@ def main(cfg: DictConfig) -> dict:
     dict
         Assessment report dictionary.
     """
+    logbook.StreamHandler(sys.stdout, level=cfg.get("logging_level", "INFO")).push_application()
+
     root = Path(cfg.root)
     run_records, source_files = _collect_run_entries(root)
     if not run_records:
-        logger.info("No benchmark_summary.json files found under %s.", root)
+        logger.info(f"No benchmark_summary.json files found under {root}.")
         return {}
 
     report = _aggregate(run_records)
     report["source_files"] = source_files
 
     if cfg.get("print", True) or not cfg.get("save"):
-        logger.info("Aggregate assessment report:\n%s", json.dumps(report, indent=2))
+        logger.info(f"Aggregate assessment report:\n {json.dumps(report, indent=2)}")
 
     save_path = cfg.get("save")
     if save_path:
@@ -369,7 +372,7 @@ def main(cfg: DictConfig) -> dict:
         save_path.parent.mkdir(parents=True, exist_ok=True)
         with open(save_path, "w") as f:
             json.dump(report, f, indent=2)
-        logger.info("Saved aggregate report to %s", save_path)
+        logger.info(f"Saved aggregate report to {save_path}")
     return report
 
 

@@ -5,7 +5,11 @@ in the selected grid config group. Use Hydra's multirun (-m) to sweep multiple
 grid configurations or override parameters like GA runtime.
 
 Example:
-  uv run python -m benchmark.benchmark_toop -m grid=config_grid_node_breaker ga_config.runtime_seconds=60
+  uv run python -m benchmark.benchmark_toop --multirun \
+    grid=config_grid_node_breaker ga_config.runtime_seconds=10,20 ga_config.n_worst_contingencies=2,5
+
+This runs ToOp end-to-end on the specified node breaker grid for 4 combinations of,
+parameters.
 
 Outputs:
   benchmark_summary.json stored in ${hydra.run.dir} (current working directory).
@@ -218,7 +222,7 @@ def main(cfg: DictConfig) -> None:
 
     The grid config should be provided via group `grid=config_grid_node_breaker` or similar.
     """
-    logbook.StreamHandler(sys.stdout, level=cfg.get("logging_level", "WARNING")).push_application()
+    logbook.StreamHandler(sys.stdout, level=cfg.get("logging_level", "INFO")).push_application()
 
     grid_path = Path(cfg.grid.grid_file)
     hydra_output_dirname = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir

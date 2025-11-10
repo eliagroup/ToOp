@@ -1,4 +1,15 @@
-"""Benchmark ToOp end-to-end by running it on a directory of grid files."""
+"""Benchmark ToOp end-to-end for a single grid file (Hydra multirun friendly).
+
+Each Hydra run benchmarks exactly one grid defined by the `grid_file` field
+in the selected grid config group. Use Hydra's multirun (-m) to sweep multiple
+grid configurations or override parameters like GA runtime.
+
+Example:
+  uv run python -m benchmark.benchmark_toop -m grid=config_grid_node_breaker ga_config.runtime_seconds=60
+
+Outputs:
+  benchmark_summary.json stored in ${hydra.run.dir} (current working directory).
+"""
 
 from __future__ import annotations
 
@@ -23,11 +34,17 @@ from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     run_preprocessing,
 )
 
-logger = logbook.Logger(__name__)
+logger = logbook.Logger("ToOp Benchmark")
 
 
 class PhaseTimer:
-    """Utility class for timing different phases of the benchmarking process."""
+    """Utility for timing code phases.
+
+    Records multiple durations per phase name and summarizes count, total seconds,
+    and average seconds. Use as:
+        with timer.time("phase_name"):
+            ...
+    """
 
     def __init__(self) -> None:
         self.records = {}
@@ -109,167 +126,109 @@ def extract_dc_quality(res: dict) -> dict:
     }
 
 
-def benchmark_grids(
-    grids: list[Path],
-    output_dir: Path,
+def benchmark_single_grid(
+    grid: Path,
     dc_optimization_cfg: dict,
     preprocessing_parameters: PreprocessParameters,
     grid_type: str = "powsybl",
-) -> None:
-    """Benchmark ToOp end-to-end on a list of grid files.
+) -> dict:
+    """Run benchmark for a single grid file.
 
     Parameters
     ----------
-    grids : list[Path]
-        List of paths to grid files to benchmark.
-    output_dir : Path
-        Path to the output directory where results will be saved.
+    grid : Path
+        Path to the grid model file.
     dc_optimization_cfg : dict
-        Configuration dictionary for the DC optimization stage.
+        Dictionary of configuration values consumed by the DC optimization stage.
     preprocessing_parameters : PreprocessParameters
-        Parameters for the preprocessing stage.
+        Parameters controlling preprocessing behaviour.
     grid_type : str, optional
-        Type of the grid files, by default `powsybl`.
+        Grid type identifier (e.g. 'powsybl', 'pandapower').
 
     Returns
     -------
-    None
+    dict
+        Benchmark entry containing grid path, timings, and DC quality metrics.
     """
-    output_dir.mkdir(parents=True, exist_ok=True)
-    all_results = []
-    for grid in grids:
-        iteration_name = ""
+    iteration_name = ""
+    pipeline_cfg = PipelineConfig(
+        root_path=grid.parent, iteration_name=iteration_name, file_name=grid.name, grid_type=grid_type
+    )
+    _, file_path, data_folder, optimizer_snapshot_dir = get_paths(pipeline_cfg)
+    static_information_file = data_folder / pipeline_cfg.static_info_relpath
+    timer = PhaseTimer()
 
-        pipeline_cfg = PipelineConfig(
-            root_path=grid.parent, iteration_name=iteration_name, file_name=grid.name, grid_type=grid_type
+    with timer.time("pre_modify"):
+        modified_file_path = remove_unsupported_elements_and_save(
+            file_path=file_path,
+            data_folder=data_folder,
+            pandapower_net=True if pipeline_cfg.grid_type == "pandapower" else False,
         )
 
-        # Set up dc_optimisation_configs
-        _, file_path, data_folder, optimizer_snapshot_dir = get_paths(pipeline_cfg)
-        static_information_file = data_folder / pipeline_cfg.static_info_relpath
+    importer_parameters = prepare_importer_parameters(modified_file_path, data_folder)
+    importer_parameters.area_settings.cutoff_voltage = dc_optimization_cfg.get("area_settings", {}).get(
+        "cutoff_voltage", 380
+    )
+    copy_to_initial_topology(importer_parameters.grid_model_file, data_folder, pipeline_cfg.initial_topology_subpath)
 
-        timer = PhaseTimer()
-
-        with timer.time("pre_modify"):
-            modified_file_path = remove_unsupported_elements_and_save(
-                file_path=file_path,
-                data_folder=data_folder,
-                pandapower_net=True if pipeline_cfg.grid_type == "pandapower" else False,
-            )
-
-        importer_parameters = prepare_importer_parameters(
-            modified_file_path,
+    with timer.time("preprocess"):
+        run_preprocessing(
+            importer_parameters,
             data_folder,
+            preprocessing_parameters,
+            is_pandapower_net=True if pipeline_cfg.grid_type == "pandapower" else False,
         )
-        importer_parameters.area_settings.cutoff_voltage = dc_optimization_cfg.get("area_settings", {}).get(
-            "cutoff_voltage", 380
-        )  # in kV
-        # Ignore on timing
-        copy_to_initial_topology(importer_parameters.grid_model_file, data_folder, pipeline_cfg.initial_topology_subpath)
 
-        with timer.time("preprocess"):
-            run_preprocessing(
-                importer_parameters,
-                data_folder,
-                preprocessing_parameters,
-                is_pandapower_net=True if pipeline_cfg.grid_type == "pandapower" else False,
-            )
+    dc_cfg = dict(dc_optimization_cfg)
+    dc_cfg["fixed_files"] = [str(static_information_file)]
 
-        dc_optimization_cfg = dict(dc_optimization_cfg)
-        dc_optimization_cfg["fixed_files"] = [str(static_information_file)]
+    with timer.time("dc_optimization"):
+        run_dir = run_dc_optimization_stage(dc_cfg, optimizer_snapshot_dir)
 
-        with timer.time("dc_optimization"):
-            run_dir = run_dc_optimization_stage(
-                dc_optimization_cfg,
-                optimizer_snapshot_dir,
-            )
+    with timer.time("ac_validation"):
+        topology_paths = perform_ac_analysis(
+            data_folder,
+            run_dir,
+            k_best_topos=0,
+            pandapower_runner=(pipeline_cfg.grid_type == "pandapower"),
+        )
 
-        with timer.time("ac_validation"):
-            topology_paths = perform_ac_analysis(
-                data_folder,
-                run_dir,
-                k_best_topos=0,
-                pandapower_runner=(pipeline_cfg.grid_type == "pandapower"),
-            )
+    res_path = max(list((modified_file_path.parent / "optimizer_snapshot").glob("run_*/res.json")))
+    res = load_res(res_path)
+    dc_quality = extract_dc_quality(res)
 
-        res_json = max(list((modified_file_path.parent / "optimizer_snapshot").glob("run_*/res.json")))
-        res = load_res(res_json)
-        dc_quality = extract_dc_quality(res)
-
-        bench_entry = {
-            "grid": str(grid),
-            "topology_paths": str(topology_paths[0].parent) if topology_paths else None,
-            "timings": timer.summary(),
-            "gpu_samples": None,  # TODO: add gpu usage
-            "dc_quality": dc_quality,
-        }
-        all_results.append(bench_entry)
-
-    logger.info("Benchmark completed.")
-
-    with open(output_dir / "benchmark_summary.json", "w") as f:
-        json.dump(all_results, f, indent=2)
-
-
-def _single_file_or_dir(cfg: DictConfig) -> list[Path]:
-    """Get a list of grid file paths from a single file or directory.
-
-    Parameters
-    ----------
-    cfg : DictConfig
-        Configuration object containing either 'grid_file' or 'grid_dir'.
-
-    Returns
-    -------
-    list[Path]
-        List of paths to grid files.
-    """
-    grids = []
-    if cfg.get("grid_file") is not None:
-        grids.append(Path(cfg.grid_file))
-    elif cfg.get("grid_dir") is not None:
-        grid_dir = Path(cfg.grid_dir)
-        try:
-            file_name = cfg.get("file_name")
-        except AttributeError:
-            logger.info("No file_name specified in config, defaulting to 'grid.xiidm'")
-            file_name = "grid.xiidm"
-        # Search one level deep for files matching the specified file_name
-        ext = f"**/{file_name}"
-        grids.extend(sorted(grid_dir.glob(ext)))
-        if not grids:
-            raise FileNotFoundError(f"No grid files named '{file_name}' found in directory: {grid_dir}")
-    else:
-        raise ValueError("Either 'grid_file' or 'grid_dir' must be specified in the configuration.")
-    return grids
+    return {
+        "grid": str(grid),
+        "topology_paths": str(topology_paths[0].parent) if topology_paths else None,
+        "timings": timer.summary(),
+        "gpu_samples": None,
+        "dc_quality": dc_quality,
+    }
 
 
 @hydra.main(config_path="configs", config_name="benchmark.yaml", version_base="1.2")
 def main(cfg: DictConfig) -> None:
-    """Run the ToOp benchmark based on the provided configuration.
+    """Hydra entry point benchmarking a single grid.
 
-    Parameters
-    ----------
-    cfg : DictConfig
-        Configuration object containing benchmark settings and config groups:
-        - area_settings.cutoff_voltage
-        - ga_config.{runtime_seconds, split_subs, switching_distance, n_worst_contingencies, random_seed}
-        - lf_config.{max_num_splits, batch_size_bsdf}
-        - grid_file or grid_dir (+ optional file_name)
-        - output_dir
+    Configuration groups expected:
+      grid: provides grid_file (+ optional grid_type)
+      ga_config: genetic algorithm parameters
+      lf_config: lightflow / solver parameters
+      area_settings: voltage and area constraints
+
+    The grid config should be provided via group `grid=config_grid_node_breaker` or similar.
     """
-    logbook.StreamHandler(sys.stdout, level=cfg.get("logging_level", "INFO")).push_application()
+    logbook.StreamHandler(sys.stdout, level=cfg.get("logging_level", "WARNING")).push_application()
 
-    grids = _single_file_or_dir(cfg)
-    output_dir = Path(cfg.output_dir)
-
+    grid_path = Path(cfg.grid.grid_file)
+    hydra_output_dirname = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     preprocess_params = PreprocessParameters(action_set_clip=2**10, enable_bb_outage=True, bb_outage_as_nminus1=False)
 
-    dc_optmization_cfg = {
+    dc_optimization_cfg = {
         "task_name": "benchmark" + time.strftime("_%Y%m%d_%H%M%S"),
         "double_precision": None,
-        "tensorboard_dir": str(output_dir) + "/{task_name}",
-        "stats_dir": str(output_dir) + "/{task_name}",
+        "tensorboard_dir": hydra_output_dirname + "/{task_name}",
+        "stats_dir": hydra_output_dirname + "/{task_name}/stats",
         "summary_frequency": None,
         "checkpoint_frequency": None,
         "stdout": None,
@@ -295,7 +254,18 @@ def main(cfg: DictConfig) -> None:
         },
         "area_settings": cfg.area_settings,
     }
-    benchmark_grids(grids, output_dir, dc_optmization_cfg, preprocess_params)
+
+    entry = benchmark_single_grid(grid_path, dc_optimization_cfg, preprocess_params, cfg.grid.get("grid_type", "powsybl"))
+    summary_filepath = Path(hydra_output_dirname) / dc_optimization_cfg["task_name"] / "benchmark_summary.json"
+    with open(summary_filepath, "w") as f:
+        json.dump([entry], f, indent=2)
+    # Copy res.json to next to benchmark_summary.json
+    with open(summary_filepath.parent / "res.json", "w") as f:
+        summary_filepath = (
+            Path(dc_optimization_cfg["stats_dir"].replace("{task_name}", dc_optimization_cfg["task_name"])) / "res.json"
+        )
+        json.dump(load_res(summary_filepath), f, indent=2)
+    logger.info(f"Benchmark for {grid_path} completed. Summary in {summary_filepath}")
 
 
 if __name__ == "__main__":

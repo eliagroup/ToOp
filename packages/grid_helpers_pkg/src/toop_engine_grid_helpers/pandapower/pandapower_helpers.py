@@ -79,7 +79,9 @@ def get_phaseshift_mask(
     tap_max = np.array(net.trafo.tap_max)[controllable]
     tap_step = np.array(net.trafo.tap_step_degree)[controllable]
 
-    shift_taps = [np.arange(t_min, t_max + 1) * t_step for (t_min, t_max, t_step) in zip(tap_min, tap_max, tap_step)]
+    shift_taps = [
+        np.arange(t_min, t_max + 1) * t_step for (t_min, t_max, t_step) in zip(tap_min, tap_max, tap_step, strict=True)
+    ]
 
     ppci_start, ppci_end = net._pd2ppc_lookups["branch"]["trafo"]
     pst_indices = np.arange(ppci_start, ppci_end)[controllable]
@@ -433,7 +435,7 @@ def get_pandapower_loadflow_results_injection(
         sign = pandapower.toolbox.signing_system_value(table)
         return net[res_table].loc[elem_id, power_key] * sign
 
-    injection_power = np.array([get_from_net(t, i) for t, i in zip(types, ids)])
+    injection_power = np.array([get_from_net(t, i) for t, i in zip(types, ids, strict=True)])
     return injection_power
 
 
@@ -482,7 +484,9 @@ def get_pandapower_branch_loadflow_results_sequence(
     mapped_signs = (sign_mapper[t] for t in types) if adjust_signs else (1 for _ in types)
 
     # It might be more performant to group this in the future, i.e. to get all results at once
-    branch_loads = np.array([net[t][c].loc[i] * s for t, c, i, s in zip(mapped_types, mapped_columns, ids, mapped_signs)])
+    branch_loads = np.array(
+        [net[t][c].loc[i] * s for t, c, i, s in zip(mapped_types, mapped_columns, ids, mapped_signs, strict=True)]
+    )
 
     # Currents are saved in kA, we want A
     if measurement == "current":
@@ -563,7 +567,9 @@ def check_for_splits(
     mapped_types = (type_mapper[t] for t in monitored_branch_types)
     mapped_columns = (isnan_column_mapper[t] for t in monitored_branch_types)
 
-    isnan = any(np.isnan(net[t][c].loc[i]) for t, c, i in zip(mapped_types, mapped_columns, monitored_branch_ids))
+    isnan = any(
+        np.isnan(net[t][c].loc[i]) for t, c, i in zip(mapped_types, mapped_columns, monitored_branch_ids, strict=True)
+    )
     return isnan
 
 

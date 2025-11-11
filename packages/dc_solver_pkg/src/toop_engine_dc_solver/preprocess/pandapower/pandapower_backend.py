@@ -854,7 +854,7 @@ class PandaPowerBackend(BackendInterface):
         node_ids = self.get_node_ids_internal()
         node_types = self.get_node_types()
 
-        return [get_globally_unique_id(node_id, node_type) for node_id, node_type in zip(node_ids, node_types)]
+        return [get_globally_unique_id(node_id, node_type) for node_id, node_type in zip(node_ids, node_types, strict=True)]
 
     def get_branch_ids_internal(self) -> list[int]:
         """Get ids of the branches
@@ -888,7 +888,10 @@ class PandaPowerBackend(BackendInterface):
         branch_ids = self.get_branch_ids_internal()
         branch_types = self.get_branch_types()
 
-        return [get_globally_unique_id(branch_id, branch_type) for branch_id, branch_type in zip(branch_ids, branch_types)]
+        return [
+            get_globally_unique_id(branch_id, branch_type)
+            for branch_id, branch_type in zip(branch_ids, branch_types, strict=True)
+        ]
 
     def get_injection_ids_internal(self) -> list[int]:
         """Get ids of the injections
@@ -917,7 +920,7 @@ class PandaPowerBackend(BackendInterface):
 
         return [
             get_globally_unique_id(injection_id, injection_type)
-            for injection_id, injection_type in zip(injection_ids, injection_types)
+            for injection_id, injection_type in zip(injection_ids, injection_types, strict=True)
         ]
 
     def get_node_names(self) -> list[str]:
@@ -1068,7 +1071,7 @@ class PandaPowerBackend(BackendInterface):
 
         return [
             get_globally_unique_id(multi_outage_id, multi_outage_type)
-            for multi_outage_id, multi_outage_type in zip(multi_outage_ids, multi_outage_types)
+            for multi_outage_id, multi_outage_type in zip(multi_outage_ids, multi_outage_types, strict=True)
         ]
 
     def get_multi_outage_types(self) -> list[str]:

@@ -28,6 +28,8 @@ topology into the action set.
 from pathlib import Path
 
 import numpy as np
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.nminus1_definition import GridElement
@@ -89,6 +91,25 @@ class ActionSet(BaseModel):
     stations."""
 
 
+def load_action_set_fs(filesystem: AbstractFileSystem, filename: Path) -> ActionSet:
+    """Load an action set from a file system.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to use to load the action set.
+    filename : Path
+        The path to the file containing the action set in json format.
+
+    Returns
+    -------
+    ActionSet
+        The action set loaded from the file.
+    """
+    with filesystem.open(str(filename), "r") as f:
+        return ActionSet.model_validate_json(f.read())
+
+
 def load_action_set(filename: Path) -> ActionSet:
     """Load an action set from a file.
 
@@ -102,8 +123,7 @@ def load_action_set(filename: Path) -> ActionSet:
     ActionSet
         The action set loaded from the file.
     """
-    with open(filename, "r") as f:
-        return ActionSet.model_validate_json(f.read())
+    return load_action_set_fs(LocalFileSystem(), filename)
 
 
 def save_action_set(filename: Path, action_set: ActionSet) -> None:

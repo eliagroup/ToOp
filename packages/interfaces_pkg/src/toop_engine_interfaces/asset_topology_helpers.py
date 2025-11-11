@@ -6,6 +6,8 @@ from pathlib import Path
 import networkx as nx
 import numpy as np
 from beartype.typing import Literal, Optional, Union
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
@@ -866,6 +868,26 @@ def compare_stations(
     )
 
 
+def load_asset_topology_fs(filesystem: AbstractFileSystem, filename: Union[str, Path]) -> Topology:
+    """Load an asset topology from a file system
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to load the asset topology from
+    filename : Union[str, Path]
+        The filename to load the asset topology from
+
+    Returns
+    -------
+    Topology
+        The loaded asset topology
+    """
+    with filesystem.open(str(filename), "r", encoding="utf-8") as file:
+        asset_topology = Topology.model_validate_json(file.read())
+    return asset_topology
+
+
 def load_asset_topology(filename: Union[str, Path]) -> Topology:
     """Load an asset topology from a file
 
@@ -879,9 +901,23 @@ def load_asset_topology(filename: Union[str, Path]) -> Topology:
     Topology
         The loaded asset topology
     """
-    with open(filename, "r", encoding="utf-8") as file:
-        asset_topology = Topology.model_validate_json(file.read())
-    return asset_topology
+    return load_asset_topology_fs(LocalFileSystem(), filename)
+
+
+def save_asset_topology_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], asset_topology: Topology) -> None:
+    """Save an asset topology to a file system
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to save the asset topology to
+    filename : Union[str, Path]
+        The filename to save the asset topology to
+    asset_topology: Topology,
+        The asset topology to save
+    """
+    with filesystem.open(str(filename), "w", encoding="utf-8") as file:
+        file.write(asset_topology.model_dump_json(indent=2))
 
 
 def save_asset_topology(filename: Union[str, Path], asset_topology: Topology) -> None:
@@ -894,8 +930,7 @@ def save_asset_topology(filename: Union[str, Path], asset_topology: Topology) ->
     asset_topology: Topology,
         The asset topology to save
     """
-    with open(filename, "w", encoding="utf-8") as file:
-        file.write(asset_topology.model_dump_json(indent=2))
+    save_asset_topology_fs(LocalFileSystem(), filename, asset_topology)
 
 
 def get_connected_assets(station: Station, busbar_index: int) -> list[SwitchableAsset]:

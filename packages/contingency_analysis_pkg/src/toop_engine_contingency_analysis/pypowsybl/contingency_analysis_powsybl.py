@@ -140,7 +140,7 @@ def run_contingency_analysis_polars(
     post_contingency_results = ca_result.post_contingency_results
     pre_contingency_result = ca_result.pre_contingency_result
 
-    all_outage_ids = [contingency.id for contingency in pow_n1_definition.contingencies]
+    all_outage_ids = [contingency.id for contingency in pow_n1_definition.contingencies if not contingency.is_basecase()]
     convergence_df, failed_outages = get_convergence_result_df(
         post_contingency_results, pre_contingency_result, all_outage_ids, timestep, basecase_id
     )

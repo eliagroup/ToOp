@@ -1,5 +1,6 @@
 """Helper functions for the filter strategy."""
 
+from itertools import pairwise
 from typing import Any, TypeVar
 
 import networkx as nx
@@ -46,10 +47,8 @@ def set_asset_bay_edge_attr(
             # current behavior: if multiple assets are connected to the same bay,
             # the bay_id is set to the last asset in the path
             # set bay_id, bay_weight, coupler_weight
-            edge_update_dict.update(
-                {(from_id, to_id): {"bay_id": grid_model_id} for from_id, to_id in zip(path[:-1], path[1:])}
-            )
-            update_dict = {(s_id, t_id): content_dict for s_id, t_id in zip(path[:-1], path[1:])}
+            edge_update_dict.update({(from_id, to_id): {"bay_id": grid_model_id} for from_id, to_id in pairwise(path)})
+            update_dict = {(s_id, t_id): content_dict for s_id, t_id in pairwise(path)}
             nx.set_edge_attributes(graph, update_dict)
     update_edge_connection_info(graph=graph, update_edge_dict=edge_update_dict)
 

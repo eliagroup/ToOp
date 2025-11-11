@@ -573,9 +573,11 @@ def extract_branch_ids(network_data: NetworkData) -> tuple[list[str], list[str]]
         A list of outaged branch ids
     """
     monitored_branches = [
-        id for (id, monitored) in zip(network_data.branch_ids, network_data.monitored_branch_mask) if monitored
+        id for (id, monitored) in zip(network_data.branch_ids, network_data.monitored_branch_mask, strict=True) if monitored
     ]
-    outaged_branches = [id for (id, outaged) in zip(network_data.branch_ids, network_data.outaged_branch_mask) if outaged]
+    outaged_branches = [
+        id for (id, outaged) in zip(network_data.branch_ids, network_data.outaged_branch_mask, strict=True) if outaged
+    ]
     return monitored_branches, outaged_branches
 
 
@@ -678,7 +680,10 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert sum(len(mo) for mo in network_data.split_multi_outage_nodes) == n_multi_outage
 
     for branch_act, inj_act, sw_dist in zip(
-        network_data.branch_action_set, network_data.injection_action_set, network_data.branch_action_set_switching_distance
+        network_data.branch_action_set,
+        network_data.injection_action_set,
+        network_data.branch_action_set_switching_distance,
+        strict=True,
     ):
         assert len(branch_act) == len(inj_act) == len(sw_dist)
 
@@ -705,7 +710,9 @@ def get_relevant_stations(network_data: NetworkData) -> list[Station]:
     list[Station]
         A list of relevant stations.
     """
-    relevant_node_ids = [node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask) if mask]
+    relevant_node_ids = [
+        node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
+    ]
 
     def find_station(stations: list[Station], grid_model_id: str, fallback: Optional[Station] = None) -> Station:
         for station in stations:
@@ -777,6 +784,7 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             network_data.branch_types,
             network_data.branch_names,
             network_data.disconnectable_branch_mask,
+            strict=True,
         )
         if disconnectable
     ]
@@ -823,7 +831,11 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
     monitored_branches = [
         GridElement(id=branch_id, name=branch_name, type=branch_type, kind="branch")
         for (branch_id, branch_type, branch_name, monitored) in zip(
-            network_data.branch_ids, network_data.branch_types, network_data.branch_names, network_data.monitored_branch_mask
+            network_data.branch_ids,
+            network_data.branch_types,
+            network_data.branch_names,
+            network_data.monitored_branch_mask,
+            strict=True,
         )
         if monitored
     ]
@@ -852,7 +864,11 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
             name=branch_name,
         )
         for (branch_id, branch_type, branch_name, outage) in zip(
-            network_data.branch_ids, network_data.branch_types, network_data.branch_names, network_data.outaged_branch_mask
+            network_data.branch_ids,
+            network_data.branch_types,
+            network_data.branch_names,
+            network_data.outaged_branch_mask,
+            strict=True,
         )
         if outage
     ]
@@ -863,11 +879,12 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         network_data.multi_outage_node_mask,
         network_data.multi_outage_ids,
         network_data.multi_outage_names,
+        strict=True,
     ):
         elements = [
             GridElement(id=branch_id, type=branch_type, name=branch_name or "", kind="branch")
             for (branch_id, branch_type, branch_name, outage) in zip(
-                network_data.branch_ids, network_data.branch_types, network_data.branch_names, branch_mask
+                network_data.branch_ids, network_data.branch_types, network_data.branch_names, branch_mask, strict=True
             )
             if outage
         ]

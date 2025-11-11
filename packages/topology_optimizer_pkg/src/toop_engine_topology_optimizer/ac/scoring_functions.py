@@ -78,7 +78,7 @@ def update_runner_nminus1(
         Each element should be an index to the contingencies in the original N-1 definition.
     """
     case_indices_all_t = get_contingency_indices_from_ids(case_ids_all_t, n_minus1_definitions=nminus1_defs)
-    for runner, case_indices, n1_def in zip(runners, case_indices_all_t, nminus1_defs):
+    for runner, case_indices, n1_def in zip(runners, case_indices_all_t, nminus1_defs, strict=True):
         contingencies = np.array(n1_def.contingencies)[list(case_indices)]
         n1_def_copy = n1_def.model_copy()
         n1_def_copy.contingencies = contingencies.tolist()
@@ -204,7 +204,7 @@ def compute_loadflow_and_metrics_with_early_stopping(
 
     # Early stopping: check if overload_energy_n_1 exceed thresholds
     stop_early = False
-    for metric, overload_th in zip(metrics_critical, threshold_overload_all_t):
+    for metric, overload_th in zip(metrics_critical, threshold_overload_all_t, strict=True):
         overload = metric.extra_scores.get("overload_energy_n_1", 0)
         logger.info(f"Checking overload for N-1 analysis: overload = {overload}, (overload_worst_k_unsplit)={overload_th}")
 
@@ -231,7 +231,7 @@ def compute_loadflow_and_metrics_with_early_stopping(
         # Determine non-critical contingencies by excluding critical ones from all contingencies
         non_critical_contingencies_all_t = [
             set(all_ids) - set(critical_ids)
-            for all_ids, critical_ids in zip(contingency_ids_all_t, threshold_case_ids_all_t)
+            for all_ids, critical_ids in zip(contingency_ids_all_t, threshold_case_ids_all_t, strict=True)
         ]
 
         # Update the N-1 definitions in the runners to now include only the non-critical contingencies.
@@ -261,7 +261,7 @@ def compute_loadflow_and_metrics_with_early_stopping(
         metrics = metrics_critical
 
     # Restore the original N-1 definitions in the runners
-    for runner, original_n1_def in zip(runners, original_n_minus1_defs):
+    for runner, original_n1_def in zip(runners, original_n_minus1_defs, strict=True):
         runner.store_nminus1_definition(original_n1_def)
 
     return lfs, metrics

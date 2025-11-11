@@ -689,7 +689,9 @@ def convert_multi_outages(network_data: NetworkData) -> NetworkData:
             indices = indices[:, 1:]
         return indices
 
-    branch_res = [_zero_out_first_branch(out, is_trafo_bus) for out, is_trafo_bus in zip(branch_res, trafo_busbar_outage)]
+    branch_res = [
+        _zero_out_first_branch(out, is_trafo_bus) for out, is_trafo_bus in zip(branch_res, trafo_busbar_outage, strict=True)
+    ]
 
     return replace(
         network_data,

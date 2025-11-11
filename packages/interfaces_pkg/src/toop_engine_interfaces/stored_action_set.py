@@ -28,6 +28,7 @@ topology into the action set.
 from pathlib import Path
 
 import numpy as np
+from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel
@@ -91,14 +92,14 @@ class ActionSet(BaseModel):
     stations."""
 
 
-def load_action_set_fs(filesystem: AbstractFileSystem, filename: Path) -> ActionSet:
+def load_action_set_fs(filesystem: AbstractFileSystem, filename: Union[str, Path]) -> ActionSet:
     """Load an action set from a file system.
 
     Parameters
     ----------
     filesystem : AbstractFileSystem
         The file system to use to load the action set.
-    filename : Path
+    filename : Union[str, Path]
         The path to the file containing the action set in json format.
 
     Returns
@@ -110,12 +111,12 @@ def load_action_set_fs(filesystem: AbstractFileSystem, filename: Path) -> Action
         return ActionSet.model_validate_json(f.read())
 
 
-def load_action_set(filename: Path) -> ActionSet:
+def load_action_set(filename: Union[str, Path]) -> ActionSet:
     """Load an action set from a file.
 
     Parameters
     ----------
-    filename : Path
+    filename : Union[str, Path]
         The path to the file containing the action set in json format.
 
     Returns
@@ -126,19 +127,35 @@ def load_action_set(filename: Path) -> ActionSet:
     return load_action_set_fs(LocalFileSystem(), filename)
 
 
-def save_action_set(filename: Path, action_set: ActionSet) -> None:
-    """Save an action set to a file.
+def save_action_set_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], action_set: ActionSet) -> None:
+    """Save an action set to a file system.
 
     Parameters
     ----------
-    filename : Path
+    filesystem : AbstractFileSystem
+        The file system to use to save the action set.
+    filename : Union[str, Path]
         The path to the file to save the action set to in json format.
     action_set : ActionSet
         The action set to save.
 
     """
-    with open(filename, "w") as f:
+    with filesystem.open(str(filename), "w") as f:
         f.write(action_set.model_dump_json())
+
+
+def save_action_set(filename: Union[str, Path], action_set: ActionSet) -> None:
+    """Save an action set to a file.
+
+    Parameters
+    ----------
+    filename : Union[str, Path]
+        The path to the file to save the action set to in json format.
+    action_set : ActionSet
+        The action set to save.
+
+    """
+    save_action_set_fs(LocalFileSystem(), filename, action_set)
 
 
 def random_actions(action_set: ActionSet, rng: np.random.Generator, n_split_subs: int) -> list[int]:

@@ -23,22 +23,25 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 
 def test_create_current_limits_df():
     new_limit_series = pd.Series(data=[100, 200, 300], index=["line_1", "line_2", "line_3"])
+    group_names = pd.Series(data=["group_1", "group_2", "group_3"], index=["line_1", "line_2", "line_3"])
     new_limit_df = create_current_limits_df(
         new_limit_series,
         element_type="LINE",
         side="ONE",
         limit_name="new_limit",
         acceptable_duration=100,
+        group_names=group_names,
     )
     assert len(new_limit_df) == len(new_limit_series)
 
-    assert np.array_equal(new_limit_df.index, new_limit_series.index)
+    assert np.array_equal(new_limit_df.index.get_level_values("element_id"), new_limit_series.index)
     assert np.all(new_limit_df.element_type.values == "LINE")
-    assert np.all(new_limit_df.side.values == "ONE")
+    assert np.all(new_limit_df.index.get_level_values("side").values == "ONE")
     assert np.all(new_limit_df.name.values == "new_limit")
-    assert np.all(new_limit_df.acceptable_duration.values == 100)
+    assert np.all(new_limit_df.index.get_level_values("acceptable_duration").values == 100)
     assert np.array_equal(new_limit_series.values, new_limit_df.value.values)
-    assert new_limit_df.index.name == "element_id"
+    assert np.array_equal(group_names.values, new_limit_df.index.get_level_values("group_name").values)
+    assert list(new_limit_df.index.names) == ["element_id", "side", "type", "acceptable_duration", "group_name"]
 
 
 def test_get_branches_including_limits_and_dangling_lines():
@@ -53,9 +56,11 @@ def test_get_branches_including_limits_and_dangling_lines():
             "name": ["permanent_limit", "permanent_limit", "N-1", "N-1"],
             "side": ["ONE", "TWO", "ONE", "TWO"],
             "value": [1.0, 3.0, 4.0, 4.0],
+            "group_name": ["group1", "group2", "group3", "group4"],
         },
     )
     operational_limits_df.index.name = "element_id"
+    operational_limits_df.set_index(["side", "group_name"], append=True, inplace=True)
 
     tie_line_df = pd.DataFrame(
         index=shared_index[1:],
@@ -144,6 +149,10 @@ def test_get_loadflow_based_line_limits():
             "n0_i2_max": [100.0],
             "n1_i1_max": [100.0],
             "n1_i2_max": [100.0],
+            "n0_group_name_1": ["group_1"],
+            "n0_group_name_2": ["group_2"],
+            "n1_group_name_1": ["group_3"],
+            "n1_group_name_2": ["group_4"],
         },
     )
     limit_parameters = LimitAdjustmentParameters(
@@ -155,23 +164,27 @@ def test_get_loadflow_based_line_limits():
     assert type(line_limits) == list
     assert type(line_limits[0]) == pd.DataFrame
     assert len(line_limits) == 2
-    assert line_limits[0].side.values == np.array(["ONE"])
+    assert line_limits[0].index.get_level_values("side").values == np.array(["ONE"])
     assert line_limits[0].element_type.values == np.array(["LINE"])
     assert line_limits[0]["name"].values == np.array(["loadflow_based_n0"])
-    assert line_limits[1].side.values == np.array(["TWO"])
+    assert line_limits[0].index.get_level_values("group_name").values == np.array(["group_1"])
+    assert line_limits[1].index.get_level_values("side").values == np.array(["TWO"])
     assert line_limits[1].element_type.values == np.array(["LINE"])
     assert line_limits[1]["name"].values == np.array(["loadflow_based_n0"])
+    assert line_limits[1].index.get_level_values("group_name").values == np.array(["group_2"])
 
     line_limits = get_loadflow_based_line_limits(lines_df, limit_parameters, "n1")
 
     assert type(line_limits) == list
     assert type(line_limits[0]) == pd.DataFrame
     assert len(line_limits) == 2
-    assert line_limits[0].side.values == np.array(["ONE"])
+    assert line_limits[0].index.get_level_values("side").values == np.array(["ONE"])
 
     assert line_limits[0]["name"].values == np.array(["loadflow_based_n1"])
-    assert line_limits[1].side.values == np.array(["TWO"])
+    assert line_limits[1].index.get_level_values("side").values == np.array(["TWO"])
     assert line_limits[1]["name"].values == np.array(["loadflow_based_n1"])
+    assert line_limits[0].index.get_level_values("group_name").values == np.array(["group_3"])
+    assert line_limits[1].index.get_level_values("group_name").values == np.array(["group_4"])
 
     empty_limits = get_loadflow_based_line_limits(lines_df[:0], limit_parameters, "n0")
     assert empty_limits == []
@@ -189,6 +202,10 @@ def test_get_loadflow_based_tie_line_limits():
             "n1_i2_max": [100.0],
             "dangling_line1_id": ["d1"],
             "dangling_line2_id": ["d2"],
+            "n0_group_name_1": ["group_1"],
+            "n0_group_name_2": ["group_2"],
+            "n1_group_name_1": ["group_3"],
+            "n1_group_name_2": ["group_4"],
         },
     )
     limit_parameters = LimitAdjustmentParameters(
@@ -201,11 +218,13 @@ def test_get_loadflow_based_tie_line_limits():
     assert type(tie_line_limits[0]) == pd.DataFrame
     assert len(tie_line_limits) == 2
     assert tie_line_limits[0].element_type.values == np.array(["DANGLING_LINE"])
-    assert tie_line_limits[0].side.values == np.array(["NONE"])
+    assert tie_line_limits[0].index.get_level_values("side").values == np.array(["NONE"])
     assert tie_line_limits[0]["name"].values == np.array(["loadflow_based_n0"])
-    assert tie_line_limits[1].side.values == np.array(["NONE"])
+    assert tie_line_limits[1].index.get_level_values("side").values == np.array(["NONE"])
     assert tie_line_limits[1].element_type.values == np.array(["DANGLING_LINE"])
     assert tie_line_limits[1]["name"].values == np.array(["loadflow_based_n0"])
+    assert tie_line_limits[0].index.get_level_values("group_name").values == np.array(["group_1"])
+    assert tie_line_limits[1].index.get_level_values("group_name").values == np.array(["group_2"])
 
     tie_line_limits = get_loadflow_based_tie_line_limits(tie_lines_df, limit_parameters, "n1")
 
@@ -214,6 +233,9 @@ def test_get_loadflow_based_tie_line_limits():
     assert len(tie_line_limits) == 2
     assert tie_line_limits[0]["name"].values == np.array(["loadflow_based_n1"])
     assert tie_line_limits[1]["name"].values == np.array(["loadflow_based_n1"])
+    assert tie_line_limits[0].index.get_level_values("group_name").values == np.array(["group_3"])
+    assert tie_line_limits[1].index.get_level_values("group_name").values == np.array(["group_4"])
+
     empty_limits = get_loadflow_based_tie_line_limits(tie_lines_df[:0], limit_parameters, "n0")
     assert empty_limits == []
 
@@ -228,6 +250,10 @@ def test_get_loadflow_based_trafo_limits():
             "n0_i2_max": [100.0],
             "n1_i1_max": [100.0],
             "n1_i2_max": [100.0],
+            "n0_group_name_1": ["group_1"],
+            "n0_group_name_2": ["group_2"],
+            "n1_group_name_1": ["group_3"],
+            "n1_group_name_2": ["group_4"],
         },
     )
     limit_parameters = LimitAdjustmentParameters(
@@ -239,26 +265,30 @@ def test_get_loadflow_based_trafo_limits():
     assert type(trafo_limits) == list
     assert type(trafo_limits[0]) == pd.DataFrame
     assert len(trafo_limits) == 2, "For Trafos we create a new limit for each existing side limit"
-    assert np.array_equal(trafo_limits[0]["side"].values, np.array(["ONE"]))
+    assert np.array_equal(trafo_limits[0].index.get_level_values("side").values, np.array(["ONE"]))
     assert np.array_equal(trafo_limits[0]["element_type"].values, np.array(["TWO_WINDINGS_TRANSFORMER"]))
     assert np.array_equal(trafo_limits[0]["name"].values, np.array(["loadflow_based_n0"]))
+    assert np.array_equal(trafo_limits[0].index.get_level_values("group_name").values, np.array(["group_1"]))
 
-    assert np.array_equal(trafo_limits[1]["side"].values, np.array(["TWO"]))
+    assert np.array_equal(trafo_limits[1].index.get_level_values("side").values, np.array(["TWO"]))
     assert np.array_equal(trafo_limits[1]["element_type"].values, np.array(["TWO_WINDINGS_TRANSFORMER"]))
     assert np.array_equal(trafo_limits[1]["name"].values, np.array(["loadflow_based_n0"]))
+    assert np.array_equal(trafo_limits[1].index.get_level_values("group_name").values, np.array(["group_2"]))
 
     trafo_limits = get_loadflow_based_trafo_limits(trafos_df, limit_parameters, "n1")
 
     assert type(trafo_limits) == list
     assert type(trafo_limits[0]) == pd.DataFrame
     assert len(trafo_limits) == 2
-    assert np.array_equal(trafo_limits[0]["side"].values, np.array(["ONE"]))
+    assert np.array_equal(trafo_limits[0].index.get_level_values("side").values, np.array(["ONE"]))
     assert np.array_equal(trafo_limits[0]["element_type"].values, np.array(["TWO_WINDINGS_TRANSFORMER"]))
     assert np.array_equal(trafo_limits[0]["name"].values, np.array(["loadflow_based_n1"]))
 
-    assert np.array_equal(trafo_limits[1]["side"].values, np.array(["TWO"]))
+    assert np.array_equal(trafo_limits[1].index.get_level_values("side").values, np.array(["TWO"]))
     assert np.array_equal(trafo_limits[1]["element_type"].values, np.array(["TWO_WINDINGS_TRANSFORMER"]))
     assert np.array_equal(trafo_limits[1]["name"].values, np.array(["loadflow_based_n1"]))
+    assert np.array_equal(trafo_limits[0].index.get_level_values("group_name").values, np.array(["group_3"]))
+    assert np.array_equal(trafo_limits[1].index.get_level_values("group_name").values, np.array(["group_4"]))
     empty_limits = get_loadflow_based_trafo_limits(trafos_df[:0], limit_parameters, "n0")
     assert empty_limits == []
 
@@ -275,8 +305,19 @@ def test_get_all_border_line_limits(limit_update_input):
     assert np.array_equal(limit_df["element_type"].unique(), ["LINE", "DANGLING_LINE"])
     assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n0", "loadflow_based_n1"])
     assert np.array_equal(limit_df["value"].unique(), [20.0])
-    assert np.array_equal(limit_df[limit_df.element_type == "DANGLING_LINE"]["side"].unique(), ["NONE"])
-    assert np.array_equal(limit_df[limit_df.element_type == "LINE"]["side"].unique(), ["ONE", "TWO"])
+    assert np.array_equal(
+        limit_df[limit_df.element_type == "DANGLING_LINE"].index.get_level_values("side").unique(), ["NONE"]
+    )
+    assert np.array_equal(
+        limit_df[limit_df.element_type == "DANGLING_LINE"].index.get_level_values("group_name").unique(),
+        ["group_1", "group_2", "group_3", "group_4"],
+    )
+
+    assert np.array_equal(limit_df[limit_df.element_type == "LINE"].index.get_level_values("side").unique(), ["ONE", "TWO"])
+    assert np.array_equal(
+        limit_df[limit_df.element_type == "LINE"].index.get_level_values("group_name").unique(),
+        ["group_1", "group_2", "group_3", "group_4"],
+    )
 
 
 def test_get_all_border_line_limits_only_tie_lines(limit_update_input):
@@ -292,7 +333,10 @@ def test_get_all_border_line_limits_only_tie_lines(limit_update_input):
     assert np.array_equal(limit_df["element_type"].unique(), ["DANGLING_LINE"])
     assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n0", "loadflow_based_n1"])
     assert np.array_equal(limit_df["value"].unique(), [20.0])
-    assert np.array_equal(limit_df["side"].unique(), ["NONE"])
+    assert np.array_equal(limit_df.index.get_level_values("side").unique(), ["NONE"])
+    assert np.array_equal(
+        limit_df.index.get_level_values("group_name").unique(), ["group_1", "group_2", "group_3", "group_4"]
+    )
 
 
 def test_get_all_border_line_limits_only_lines(limit_update_input):
@@ -306,7 +350,10 @@ def test_get_all_border_line_limits_only_lines(limit_update_input):
     assert np.array_equal(limit_df["element_type"].unique(), ["LINE"])
     assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n0", "loadflow_based_n1"])
     assert np.array_equal(limit_df["value"].unique(), [20.0])
-    assert np.array_equal(limit_df["side"].unique(), ["ONE", "TWO"])
+    assert np.array_equal(limit_df.index.get_level_values("side").unique(), ["ONE", "TWO"])
+    assert np.array_equal(
+        limit_df.index.get_level_values("group_name").unique(), ["group_1", "group_2", "group_3", "group_4"]
+    )
 
 
 def test_get_all_border_line_limits_no_borders(limit_update_input):
@@ -325,23 +372,22 @@ def test_get_all_dso_trafo_limits(limit_update_input):
     assert np.array_equal(limit_df["element_type"].unique(), ["TWO_WINDINGS_TRANSFORMER"])
     assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n0", "loadflow_based_n1"])
     assert np.array_equal(limit_df["value"].unique(), [20.0])
-    assert np.array_equal(limit_df["side"].unique(), ["ONE", "TWO"])
+    assert np.array_equal(limit_df.index.get_level_values("side").unique(), ["ONE", "TWO"])
+    assert np.array_equal(
+        limit_df.index.get_level_values("group_name").unique(), ["group_1", "group_2", "group_3", "group_4"]
+    )
 
 
 def test_get_all_dso_trafo_limits_no_border(limit_update_input):
     branch_df, limit_parameters, network_masks = limit_update_input
-    no_border_mask = trafo_dso_border = np.array([False])
-    new_limits = get_all_border_line_limits(
-        branch_df, limit_parameters, network_masks.line_tso_border, network_masks.tie_line_tso_border
-    )
-
+    no_border_mask = np.array([False])
     new_limits = get_all_dso_trafo_limits(branch_df, limit_parameters, trafo_dso_border=no_border_mask)
     assert len(new_limits) == 0
 
 
 def test_create_new_border_limits_no_limits_set(ucte_file_with_border, ucte_importer_parameters):
     network = pypowsybl.network.load(ucte_file_with_border)
-    pypowsybl.loadflow.run_ac(network)
+    pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
     limits_before = network.get_operational_limits().copy()
 
     ucte_importer_parameters.area_settings.border_line_factors = None
@@ -443,13 +489,13 @@ def test_create_new_border_limits_3wtrf_conversion(test_pypowsybl_cgmes_with_3w_
     border_lines_with_lf = lines[network_masks.line_tso_border & ~lines["i2"].isna()]
     border_tie_lines_with_lf = tie_lines[network_masks.tie_line_tso_border & ~tie_lines["i2"].isna()]
 
-    side_2_limits = limits_before[limits_before.side == "TWO"]
-    side_1_limits = limits_before[limits_before.side == "ONE"]
+    side_2_limits = limits_before[limits_before.index.get_level_values("side") == "TWO"]
+    side_1_limits = limits_before[limits_before == "ONE"]
     n_new_limits = n_cases * (
         len(border_lines_with_lf) * 2
         + len(border_tie_lines_with_lf) * 4  # For each dangling line, there are 2 tie line limits. so 4
-        + border_trafos_with_lf.index.isin(side_2_limits.index).sum()
-        + border_trafos_with_lf.index.isin(side_1_limits.index).sum()
+        + border_trafos_with_lf.index.isin(side_2_limits.index.get_level_values("element_id")).sum()
+        + border_trafos_with_lf.index.isin(side_1_limits.index.get_level_values("element_id")).sum()
     )
     create_new_border_limits(network, network_masks, cgmes_importer_parameters)
     limits_after = network.get_operational_limits()

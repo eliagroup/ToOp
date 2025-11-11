@@ -80,11 +80,11 @@ def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     branches["from_voltage"] = voltage_levels.loc[branches["voltage_level1_id"].values, "nominal_v"].values
     branches["to_voltage"] = voltage_levels.loc[branches["voltage_level2_id"].values, "nominal_v"].values
 
-    cur_limits = net.get_operational_limits()
-    merged_branches = branches.merge(cur_limits, how="left", left_index=True, right_index=True)
+    cur_limits = net.get_operational_limits().reset_index()[["element_id", "name", "value"]]
+    merged_branches = branches.merge(cur_limits, how="left", left_index=True, right_on="element_id")
     merged_branches["p_limit"] = merged_branches["value"] * merged_branches["to_voltage"] * 1e-3 * math.sqrt(3)
     # For each limit type and branch, get the max limit
-    grouped_limits = merged_branches.groupby(["name", "id"]).p_limit.max().reset_index(0)
+    grouped_limits = merged_branches.groupby(["name", "element_id"]).p_limit.max().reset_index(0)
     # Get permanent n0-limit and whitelisted n1-limit
     branches["permanent_limit"] = grouped_limits[grouped_limits["name"] == "permanent_limit"]["p_limit"]
     branches["permanent_limit"] = branches["permanent_limit"].fillna(fillna)

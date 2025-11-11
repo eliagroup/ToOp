@@ -202,7 +202,7 @@ def test_compute_n_1_dc(data_folder: str) -> None:
     assert n_1.shape[1] == sum(network_data.monitored_branch_mask)
 
     original_in_service = backend.net._ppc["internal"]["branch_is"]
-    for i, (pp_type, pp_id) in enumerate(zip(outaged_branch_types, outaged_branch_ids)):
+    for i, (pp_type, pp_id) in enumerate(zip(outaged_branch_types, outaged_branch_ids, strict=True)):
         outage_net = deepcopy(backend.net)
         outage_net[pp_type].loc[int(pp_id), "in_service"] = False
         pp.rundcpp(outage_net)
@@ -221,7 +221,9 @@ def test_compute_n_1_dc(data_folder: str) -> None:
     offset = len(outaged_branch_types)
 
     # Test multi outages
-    for i, (pp_type, pp_id) in enumerate(zip(network_data.multi_outage_types, table_ids(network_data.multi_outage_ids))):
+    for i, (pp_type, pp_id) in enumerate(
+        zip(network_data.multi_outage_types, table_ids(network_data.multi_outage_ids), strict=True)
+    ):
         outage_net = deepcopy(backend.net)
         outage_net[pp_type].loc[int(pp_id), "in_service"] = False
         pp.rundcpp(outage_net)

@@ -184,7 +184,7 @@ def scoring_function(
         n_worst_contingencies=n_worst_contingencies,
     )
     # Sequentially compute each subsequent timestep
-    for dynamic_information, solver_config in zip(dynamic_informations[1:], solver_configs[1:]):
+    for dynamic_information, solver_config in zip(dynamic_informations[1:], solver_configs[1:], strict=True):
         metrics_local, success_local = compute_overloads(
             topologies,
             dynamic_information=dynamic_information,

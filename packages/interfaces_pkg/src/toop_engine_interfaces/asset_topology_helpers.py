@@ -44,7 +44,7 @@ def electrical_components(station: Station, min_num_assets: int = 1) -> list[lis
 
     graph = nx.Graph()
     graph.add_nodes_from(
-        [(busbar.int_id, {"degree": degree}) for busbar, degree in zip(station.busbars, n_connections_per_bus)]
+        [(busbar.int_id, {"degree": degree}) for busbar, degree in zip(station.busbars, n_connections_per_bus, strict=True)]
     )
     graph.add_edges_from(
         [(coupler.busbar_from_id, coupler.busbar_to_id) for coupler in station.couplers if not coupler.open]
@@ -430,8 +430,8 @@ def filter_assets_by_type(
     if all(asset_mask):
         return station, []
 
-    removed_assets = [asset for asset, mask in zip(station.assets, asset_mask) if not mask]
-    kept_assets = [asset for asset, mask in zip(station.assets, asset_mask) if mask]
+    removed_assets = [asset for asset, mask in zip(station.assets, asset_mask, strict=True) if not mask]
+    kept_assets = [asset for asset, mask in zip(station.assets, asset_mask, strict=True) if mask]
 
     new_station = station.model_copy(
         update={
@@ -1053,7 +1053,7 @@ def station_diff(
             )
 
     coupler_diff = []
-    for start_coupler, target_coupler in zip(start_station.couplers, target_station.couplers):
+    for start_coupler, target_coupler in zip(start_station.couplers, target_station.couplers, strict=True):
         if start_coupler.open != target_coupler.open:
             coupler_diff.append(target_coupler)
 
@@ -1086,7 +1086,7 @@ def topology_diff(
     """
     realized_stations = [
         station_diff(start_station, target_station)
-        for (start_station, target_station) in zip(start_topo.stations, target_topo.stations)
+        for (start_station, target_station) in zip(start_topo.stations, target_topo.stations, strict=True)
     ]
     coupler_diff, reassignment_diff, disconnection_diff = accumulate_diffs(realized_stations)
     return RealizedTopology(

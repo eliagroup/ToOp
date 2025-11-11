@@ -42,6 +42,7 @@ Solution:
 
 """
 
+from itertools import pairwise
 from typing import Literal, Union
 
 import logbook
@@ -276,7 +277,7 @@ def get_coupler_bay_edge_ids(
     for edge_id, shortest_path_to_busbar_dict in asset_bay_edge_id_update_dict.items():
         bay_list = []
         for path in shortest_path_to_busbar_dict.values():
-            bay_list += [(from_id, to_id) for from_id, to_id in zip(path[:-1], path[1:])]
+            bay_list += [(from_id, to_id) for from_id, to_id in pairwise(path)]
         bay_dict[edge_id] = bay_list
 
     return bay_dict

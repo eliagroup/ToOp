@@ -401,14 +401,14 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
     )
 
 
-def save_network_data_fs(filesystem: AbstractFileSystem, filename: str, network_data: NetworkData) -> None:
+def save_network_data_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], network_data: NetworkData) -> None:
     """Save the network data to a file system.
 
     Parameters
     ----------
     filesystem : AbstractFileSystem
         The file system to save the network data to
-    filename : str
+    filename : Union[str, Path]
         The filename to save the network data to
     network_data : NetworkData
         The network data to save

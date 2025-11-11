@@ -25,7 +25,7 @@ def zip_branch_lists(
     """
     return [
         np.concatenate([branches_from, branches_to])
-        for branches_from, branches_to in zip(branches_from_node_list, branches_to_node_list)
+        for branches_from, branches_to in zip(branches_from_node_list, branches_to_node_list, strict=True)
     ]
 
 
@@ -50,7 +50,7 @@ def get_branch_direction(
     """
     branch_direction = [
         np.isin(branches_at_node, branches_from_node)
-        for branches_at_node, branches_from_node in zip(branches_at_node_list, branches_from_node_list)
+        for branches_at_node, branches_from_node in zip(branches_at_node_list, branches_from_node_list, strict=True)
     ]
     return branch_direction
 

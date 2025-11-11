@@ -100,7 +100,7 @@ def update_max_mw_flows_according_to_double_limits(
         raise ValueError(f"Lower limit {lower_limit} must be smaller than upper limit {upper_limit}")
 
     updated_dynamic_informations = []
-    for dynamic_information, solver_config in zip(dynamic_informations, solver_configs):
+    for dynamic_information, solver_config in zip(dynamic_informations, solver_configs, strict=True):
         solver_config_local = replace(solver_config, batch_size_bsdf=1)
         lf_res, success = compute_symmetric_batch(
             topology_batch=default_topology(solver_config_local),
@@ -265,7 +265,7 @@ def update_static_information(
             dynamic_information=dynamic_information,
         )
         for static_information, solver_config, dynamic_information in zip(
-            static_informations, solver_configs, dynamic_informations
+            static_informations, solver_configs, dynamic_informations, strict=True
         )
     ]
 
@@ -579,7 +579,7 @@ def algo_setup(
         )
         static_informations = [
             replace(static_information, dynamic_information=dynamic_info)
-            for static_information, dynamic_info in zip(static_informations, dynamic_infos)
+            for static_information, dynamic_info in zip(static_informations, dynamic_infos, strict=True)
         ]
 
     algo, jax_data = initialize_genetic_algorithm(

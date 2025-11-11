@@ -203,7 +203,7 @@ def enumerate_spreaded_nodal_injections_for_rel_subs(
     rel_subs_busbar_a_mappings = network_data.busbar_a_mappings
 
     nodal_injection_combis = []
-    for sub, local_busbar_a_mappings in zip(rel_stations, rel_subs_busbar_a_mappings):
+    for sub, local_busbar_a_mappings in zip(rel_stations, rel_subs_busbar_a_mappings, strict=True):
         busbar_indices = set(index for index in range(len(sub.busbars)))
         local_injection_combis = []
         for busbar_a_mappings in local_busbar_a_mappings:

@@ -524,7 +524,7 @@ def unpad_branch_actions(
     """
     branch_actions = []
     index = 0
-    for n_actions, n_branches in zip(branch_set.n_actions_per_sub, branches_per_sub):
+    for n_actions, n_branches in zip(branch_set.n_actions_per_sub, branches_per_sub, strict=True):
         branch_actions.append(branch_set.branch_actions[index : index + n_actions, :n_branches])
         index += n_actions
 

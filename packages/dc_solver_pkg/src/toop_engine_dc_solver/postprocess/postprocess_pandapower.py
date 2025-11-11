@@ -271,7 +271,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
     def load_base_grid_fs(self, filesystem: AbstractFileSystem, grid_path: Path) -> None:
         """Load the base grid from a file system"""
         with filesystem.open(str(grid_path), "r") as f:
-            self.replace_grid(pp.from_json(f.read()))
+            self.replace_grid(pp.from_json(f))
 
     @overrides
     def load_base_grid(self, grid_path: Path) -> None:

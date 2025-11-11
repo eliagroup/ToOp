@@ -7,7 +7,7 @@ from pathlib import Path
 from beartype.typing import Literal, Optional, TypeAlias, Union
 from google.protobuf.timestamp_pb2 import Timestamp
 from pydantic import PositiveFloat, PositiveInt
-from toop_engine_interfaces.messages.preprocess.protobuf_schema.preprocess_commands_pb2 import (
+from toop_engine_interfaces.messages.protobuf_schema.preprocess.preprocess_commands_pb2 import (
     AreaSettings,
     BaseImporterParameters,
     Command,
@@ -120,7 +120,7 @@ RegionType: TypeAlias = Union[UCTERegionType, CGMESRegionType, AllCountriesRegio
 GridModelType: TypeAlias = Literal["ucte", "cgmes"]
 
 
-def get_limit_adjustment_parameters(
+def create_limit_adjustment_parameters(
     n_0_factor: float = 1.2, n_1_factor: float = 1.4, n_0_min_increase: float = 0.05, n_1_min_increase: float = 0.1
 ) -> LimitAdjustmentParameters:
     """
@@ -170,7 +170,7 @@ def get_limit_adjustment_parameters(
     return params
 
 
-def get_parameters_for_case(
+def create_parameters_for_case(
     params: LimitAdjustmentParameters,
     case: Literal["n0", "n1"],
 ) -> tuple[PositiveFloat, PositiveFloat]:
@@ -195,7 +195,7 @@ def get_parameters_for_case(
     raise ValueError(f"Case {case} not defined")
 
 
-def get_area_settings(
+def create_area_settings(
     control_area: list[RegionType],
     view_area: list[RegionType],
     nminus1_area: list[RegionType],
@@ -271,7 +271,7 @@ def get_area_settings(
     return area_settings
 
 
-def get_importer_params(
+def create_importer_params(
     area_settings: AreaSettings,
     data_folder: Path,
     grid_model_file: Path,
@@ -345,7 +345,7 @@ def get_importer_params(
     return params
 
 
-def get_default_importer_params(
+def create_default_importer_params(
     data_folder: Path, grid_model_file: Path, cgmes: bool = False, ucte: bool = False
 ) -> BaseImporterParameters:
     """
@@ -369,13 +369,13 @@ def get_default_importer_params(
 
     """
     if cgmes:
-        area_params = get_area_settings(
+        area_params = create_area_settings(
             control_area=["BE"],
             view_area=["BE", "LU", "D4", "D2", "NL", "FR"],
             nminus1_area=["BE"],
             cutoff_voltage=220,
         )
-        params = get_importer_params(
+        params = create_importer_params(
             area_settings=area_params,
             data_folder=data_folder,
             grid_model_file=grid_model_file,
@@ -383,10 +383,10 @@ def get_default_importer_params(
         )
 
     elif ucte:
-        area_params = get_area_settings(
+        area_params = create_area_settings(
             control_area=["D8"], view_area=["D2", "D4", "D7", "D8"], nminus1_area=["D2", "D4", "D7", "D8"]
         )
-        params = get_importer_params(
+        params = create_importer_params(
             area_settings=area_params,
             data_folder=data_folder,
             grid_model_file=grid_model_file,
@@ -397,7 +397,7 @@ def get_default_importer_params(
     return params
 
 
-def get_preprocess_parameters(  # noqa: PLR0913
+def create_preprocess_parameters(  # noqa: PLR0913
     filter_disconnectable_branches_processes: int = 1,
     action_set_filter_bridge_lookup: bool = True,
     action_set_filter_bsdf_lodf: bool = True,
@@ -498,7 +498,7 @@ def get_preprocess_parameters(  # noqa: PLR0913
     )
 
 
-def get_start_preprocessing_command(
+def create_start_preprocessing_command(
     importer_parameters: BaseImporterParameters,
     preprocess_parameters: PreprocessParameters,
     preprocess_id: str,
@@ -527,7 +527,7 @@ def get_start_preprocessing_command(
     return command
 
 
-def get_shutdown_command(exit_code: Optional[int] = 0) -> ShutdownCommand:
+def create_shutdown_command(exit_code: Optional[int] = 0) -> ShutdownCommand:
     """
     Create a ShutdownCommand to signal the shutdown of the preprocessing engine.
 
@@ -541,7 +541,7 @@ def get_shutdown_command(exit_code: Optional[int] = 0) -> ShutdownCommand:
     return command
 
 
-def get_command_wrapper(command: Union[StartPreprocessingCommand, ShutdownCommand]) -> Command:
+def create_command_wrapper(command: Union[StartPreprocessingCommand, ShutdownCommand]) -> Command:
     """
     Wrap a preprocessing command in a PreprocessCommandWrapper.
 

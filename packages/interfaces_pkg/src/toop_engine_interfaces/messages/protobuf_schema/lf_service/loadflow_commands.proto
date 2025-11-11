@@ -1,0 +1,181 @@
+syntax = "proto3";
+
+package messages.lf_service;
+
+// =====================================================
+// FILTER DEFINITIONS
+// =====================================================
+
+// Base class for filters
+message BaseFilter {
+  string filter_type = 1;
+}
+
+// Reduces branch results to only the worst N-1 contingency per branch/timestep
+message WorstContingencyBranchFilter {
+  bool return_basecase = 1; // Whether to return the basecase as well
+  string filter_type = 2; // Identifier: "worst_contingency"
+}
+
+// Reduces node results to only those outside a specified voltage band
+message VoltageBandFilter {
+  bool return_basecase = 1; // Whether to always return the basecase
+  double v_min = 2; // Minimum voltage (p.u.)
+  double v_max = 3; // Maximum voltage (p.u.)
+  string filter_type = 4; // Identifier: "voltage_band"
+}
+
+// Returns only branches above a loading threshold
+message PercentCutoffBranchFilter {
+  double loading_threshold = 1; // Loading threshold in percent
+  string filter_type = 2; // Identifier: "percent_cutoff"
+}
+
+// =====================================================
+// GRID DEFINITIONS
+// =====================================================
+
+// Base class for grids
+message BaseGrid {
+  string grid_type = 1; // Discriminator for grid subtype
+  string n_1_definition = 2; // Optional N-1 definition (serialized)
+}
+
+// CGMES grid
+message CGMESGrid {
+  repeated string grid_files = 1; // List of .tp/.ssh files
+  string n_1_definition = 2;
+  string grid_type = 3; // "cgmes"
+}
+
+// UCTE grid
+message UCTEGrid {
+  repeated string grid_files = 1; // List of .ucte files
+  string n_1_definition = 2;
+  string grid_type = 3; // "ucte"
+}
+
+// Powsybl grid
+message PowsyblGrid {
+  repeated string grid_files = 1; // List of .xiidm files
+  string n_1_definition = 2;
+  string grid_type = 3; // "powsybl"
+}
+
+// Pandapower grid
+message PandapowerGrid {
+  repeated string grid_files = 1; // List of pandapower .json files
+  string n_1_definition = 2;
+  string grid_type = 3; // "pandapower"
+}
+
+// =====================================================
+// JOB DEFINITIONS
+// =====================================================
+
+// A single addition of an injection at a node
+message InjectionAddition {
+  string node = 1; // Node where injection is added (GridElement reference)
+  double p_mw = 2; // Active power in MW
+  double q_mw = 3; // Reactive power in MW
+  repeated int32 timestep_subselection = 4; // Timesteps where addition applies
+}
+
+// Base job definition
+message Job {
+  string id = 1; // Unique job identifier
+  oneof branch_filter {
+    WorstContingencyBranchFilter worst_contingency = 2;
+    PercentCutoffBranchFilter percent_cutoff = 3;
+  }
+  VoltageBandFilter node_filter = 4; // Optional node results filter
+  string job_type = 5; // Job discriminator
+  repeated int32 timestep_subselection = 6; // Timesteps to compute
+}
+
+// Job with switching strategy
+message JobWithSwitchingStrategy {
+  Job base = 1; // Base job parameters
+  string strategy = 2; // Switching strategy (serialized)
+}
+
+// Job with CGMES changes
+message JobWithCGMESChanges {
+  Job base = 1; // Base job parameters
+  repeated string tp_files = 2; // Topology change files (.tp)
+  repeated string ssh_files = 3; // State/injection change files (.ssh)
+}
+
+// Job adding injections
+message JobWithInjectionAdditions {
+  Job base = 1; // Base job parameters
+  repeated InjectionAddition additions = 2; // Injections to apply
+}
+
+// =====================================================
+// COMMAND DEFINITIONS
+// =====================================================
+
+// Command to start a list of loadflow jobs
+message StartCalculationCommand {
+  string loadflow_id = 1; // Unique identifier for this loadflow run
+
+  oneof grid_data {
+    PowsyblGrid powsybl_grid = 2;
+    PandapowerGrid pandapower_grid = 3;
+    UCTEGrid ucte_grid = 4;
+    CGMESGrid cgmes_grid = 5;
+  }
+
+  string method = 6; // AC or DC loadflow method
+  repeated Job jobs = 7; // Jobs to execute
+}
+
+// Command to shut down the worker
+message ShutdownCommand {
+  int32 exit_code = 1; // Exit code (default: 0)
+}
+
+// Wrapper for service communication
+message LoadflowServiceCommand {
+  oneof command {
+    StartCalculationCommand start_calculation = 1;
+    ShutdownCommand shutdown = 2;
+  }
+  string timestamp = 3; // Timestamp of when the command was sent
+  string uuid = 4; // Unique message identifier
+}
+
+// =====================================================
+// SERVICE DEFINITION
+// =====================================================
+
+// Loadflow engine service
+service LoadflowEngine {
+  // Run a list of loadflow jobs on the engine
+  rpc RunJob (StartCalculationCommand) returns (LoadflowResultsList);
+
+  // Shutdown the engine gracefully
+  rpc Shutdown (ShutdownCommand) returns (ShutdownAck);
+}
+
+// =====================================================
+// RESPONSE DEFINITIONS
+// =====================================================
+
+// Placeholder for LoadflowResults
+message LoadflowResults {
+  string job_id = 1; // Reference to job.id
+  string results_data = 2; // Serialized results data
+}
+
+// List of loadflow resultsf
+message LoadflowResultsList {
+  repeated LoadflowResults results = 1;
+}
+
+// Acknowledgment for shutdown
+message ShutdownAck {
+  bool success = 1; // Whether shutdown was successful
+  int32 exit_code = 2; // Returned exit code
+}

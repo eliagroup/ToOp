@@ -5,7 +5,7 @@ from datetime import datetime
 
 import logbook
 from beartype.typing import Literal, Optional, TypeAlias
-from toop_engine_interfaces.messages.preprocess.protobuf_schema.preprocess_heartbeats_pb2 import (
+from toop_engine_interfaces.messages.protobuf_schema.preprocess.preprocess_heartbeats_pb2 import (
     PreprocessHeartbeat,
     PreprocessStatusInfo,
 )
@@ -82,7 +82,7 @@ PreprocessStage: TypeAlias = Literal[
 ]
 
 
-def get_preprocess_status_info(
+def create_preprocess_status_info(
     preprocess_id: str, runtime: float, stage: PreprocessStage, message: Optional[str] = None
 ) -> PreprocessStatusInfo:
     """
@@ -113,7 +113,7 @@ def get_preprocess_status_info(
     return status_info
 
 
-def get_preprocess_heartbeat(
+def create_preprocess_heartbeat(
     idle: bool, status_info: Optional[PreprocessStatusInfo] = None, instance_id: str = ""
 ) -> PreprocessHeartbeat:
     """

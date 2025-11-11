@@ -1,4 +1,4 @@
-"""Contains the result classes for the preprocessing process."""
+"""classes defined in preprocess_results.py"""
 
 import uuid
 from datetime import datetime

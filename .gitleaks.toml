@@ -1,4 +1,4 @@
 [allowlist]
 paths = [
-  "packages/interfaces_pkg/src/toop_engine_interfaces/messages/preprocess/protobuf_schema/.*",
+  "packages/interfaces_pkg/src/toop_engine_interfaces/messages/protobuf_schema/.*",
 ]

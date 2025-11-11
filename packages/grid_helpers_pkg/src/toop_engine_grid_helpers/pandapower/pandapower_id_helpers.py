@@ -56,12 +56,12 @@ def parse_globally_unique_id(globally_unique_id: str) -> tuple[int, str]:
     return int(elem_id), elem_type
 
 
-def get_globally_unique_id_from_index(element_idx: pd.Index, element_type: str) -> pd.Index:
+def get_globally_unique_id_from_index(element_idx: pd.Index | pd.Series, element_type: str) -> pd.Index | pd.Series:
     """Parse a series of globally unique ids into a dataframe
 
     Parameters
     ----------
-    element_idx : pd.Index
+    element_idx : pd.Index | pd.Series
         The index of the element table
     element_type : str
         The type of the element table (e.g. "bus", "line", etc.)

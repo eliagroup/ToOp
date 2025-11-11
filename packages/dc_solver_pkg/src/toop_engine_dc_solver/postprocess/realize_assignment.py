@@ -419,7 +419,7 @@ def realise_ba_to_physical_topo_per_station_jax(
                 ),
                 "couplers": [
                     coupler.model_copy(update={"open": bool(open)})
-                    for coupler, open in zip(station.couplers, action_coupler_states)
+                    for coupler, open in zip(station.couplers, action_coupler_states, strict=True)
                 ],
             }
         )

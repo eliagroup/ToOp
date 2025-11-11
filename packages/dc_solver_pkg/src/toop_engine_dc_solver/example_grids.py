@@ -165,6 +165,7 @@ def random_station_info_backend(
         backend.get_branch_types(),
         backend.get_branch_names(),
         backend.get_from_nodes(),
+        strict=True,
     ):
         if branch_node == node_idx:
             switchable_assets.append(
@@ -182,6 +183,7 @@ def random_station_info_backend(
         backend.get_branch_types(),
         backend.get_branch_names(),
         backend.get_to_nodes(),
+        strict=True,
     ):
         if branch_node == node_idx:
             switchable_assets.append(
@@ -199,6 +201,7 @@ def random_station_info_backend(
         backend.get_injection_types(),
         backend.get_injection_names(),
         backend.get_injection_nodes(),
+        strict=True,
     ):
         if injection_node == node_idx:
             switchable_assets.append(

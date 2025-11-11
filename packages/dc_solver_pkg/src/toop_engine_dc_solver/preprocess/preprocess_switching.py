@@ -247,7 +247,9 @@ def match_topology_to_network_data(
 
     # Order the assets in the stations according to the branch and injection ids
     new_stations = []
-    for station, branches_at_node, injections_at_node in zip(topology.stations, branches_at_nodes, injections_at_nodes):
+    for station, branches_at_node, injections_at_node in zip(
+        topology.stations, branches_at_nodes, injections_at_nodes, strict=True
+    ):
         branch_ids_local = [branch_ids[i] for i in branches_at_node] if keep_branches else []
         injection_ids_local = [injection_ids[i] for i in injections_at_node] if keep_injections else []
         new_station, not_found, _ignored = order_station_assets(station, branch_ids_local + injection_ids_local)

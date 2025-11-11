@@ -245,10 +245,7 @@ def validate_static_information(
 
     assert jnp.all(di.action_set.reassignment_distance >= 0)
     assert len(di.multi_outage_branches) == len(di.multi_outage_nodes)
-    for branch_arr, node_arr in zip(
-        di.multi_outage_branches,
-        di.multi_outage_nodes,
-    ):
+    for branch_arr, node_arr in zip(di.multi_outage_branches, di.multi_outage_nodes, strict=True):
         assert branch_arr.shape[0] == node_arr.shape[0]
         assert len(branch_arr.shape) == 2
         assert len(node_arr.shape) == 2
@@ -492,6 +489,7 @@ def _save_static_information(binaryio: BinaryIO, static_information: StaticInfor
             zip(
                 dynamic_information.multi_outage_branches,
                 dynamic_information.multi_outage_nodes,
+                strict=True,
             )
         ):
             file.create_dataset(

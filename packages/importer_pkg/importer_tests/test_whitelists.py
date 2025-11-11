@@ -89,33 +89,24 @@ def test_apply_white_list_to_operational_limits(ucte_file):
             },
         }
     )
-    expected = {
-        "element_id": {
-            0: "D8SU1_12 D8SU1_11 2",
-            1: "D8SU1_12 D8SU1_11 2",
-            2: "D8SU1_12 D8SU1_11 2",
-            3: "D8SU1_12 D8SU1_11 2",
-            4: "D8SU1_12 D7SU2_11 2",
-            5: "D8SU1_12 D7SU2_11 2",
-            6: "XB__F_11 B_SU1_11 1 + XB__F_11 D8SU1_11 1",
-            7: "XB__F_11 B_SU1_11 1 + XB__F_11 D8SU1_11 1",
-        },
-        "value": {
-            0: 5500.0,
-            1: 4500.0,
-            2: 5500.0,
-            3: 4500.0,
-            4: 80.0,
-            5: 80.0,
-            6: 5000.0,
-            7: 5000.0,
-        },
+
+    expected_limits = {
+        0: ("D8SU1_12 D8SU1_11 2", 5500.0),
+        1: ("D8SU1_12 D8SU1_11 2", 4500.0),
+        2: ("D8SU1_12 D8SU1_11 2", 5500.0),
+        3: ("D8SU1_12 D8SU1_11 2", 4500.0),
+        4: ("D8SU1_12 D7SU2_11 2", 80.0),
+        5: ("D8SU1_12 D7SU2_11 2", 80.0),
+        6: ("XB__F_11 B_SU1_11 1 + XB__F_11 D8SU1_11 1", 5000.0),
+        7: ("XB__F_11 B_SU1_11 1 + XB__F_11 D8SU1_11 1", 5000.0),
     }
     op_lim_org = network.get_operational_limits()
-    op_lim_org = op_lim_org[op_lim_org.index.isin(white_list_df["element_id"].to_list())]
+    op_lim_org = op_lim_org[op_lim_org.index.get_level_values("element_id").isin(white_list_df["element_id"].to_list())]
     assert len(op_lim_org) == 6
     dacf_whitelists.apply_white_list_to_operational_limits(network=network, white_list_df=white_list_df)
     op_lim_new = network.get_operational_limits()
-    op_lim_new = op_lim_new[op_lim_new.index.isin(white_list_df["element_id"].to_list())]
+    op_lim_new = op_lim_new[op_lim_new.index.get_level_values("element_id").isin(white_list_df["element_id"].to_list())]
     assert len(op_lim_new) == 8
-    assert op_lim_new["value"].reset_index().to_dict() == expected
+    for i, (key, value) in expected_limits.items():
+        assert op_lim_new.iloc[i]["value"] == value
+        assert op_lim_new.index.get_level_values("element_id")[i] == key

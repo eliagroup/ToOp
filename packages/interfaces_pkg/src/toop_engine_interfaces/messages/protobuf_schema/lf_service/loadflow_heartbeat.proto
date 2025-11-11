@@ -21,20 +21,3 @@ message LoadflowHeartbeat {
   string timestamp = 3; // When the heartbeat was sent.
   string uuid = 4; // Unique identifier for this heartbeat message, used to avoid duplicates.
 }
-
-// =====================================================
-// OPTIONAL SERVICE INTERFACE
-// =====================================================
-
-// A simple service definition for receiving heartbeat updates.
-// (Useful if you also want to expose it via gRPC rather than just Kafka.)
-service LoadflowHeartbeatService {
-  // Sends a heartbeat update from a worker.
-  rpc SendHeartbeat (LoadflowHeartbeat) returns (HeartbeatAck);
-}
-
-// Acknowledgment for a received heartbeat.
-message HeartbeatAck {
-  bool success = 1; // Whether the heartbeat was successfully received.
-  string message = 2; // Optional human-readable acknowledgment message.
-}

@@ -6,16 +6,16 @@ from toop_engine_interfaces.messages.preprocess_commands_factory import (
     create_command_wrapper,
     create_default_importer_params,
     create_importer_params,
+    create_limit_adjustment_parameters,
     create_parameters_for_case,
     create_preprocess_parameters,
     create_shutdown_command,
     create_start_preprocessing_command,
-    get_limit_adjustment_parameters,
 )
 
 
 def test_limit_adjustment_parameters():
-    params = get_limit_adjustment_parameters(
+    params = create_limit_adjustment_parameters(
         n_0_factor=1.2,
         n_1_factor=1.4,
         n_0_min_increase=0.05,
@@ -36,7 +36,7 @@ def test_limit_adjustment_parameters():
         create_parameters_for_case(params, "n2")
 
     with pytest.raises(ValueError):
-        get_limit_adjustment_parameters(
+        create_limit_adjustment_parameters(
             n_0_factor=-1.2,
             n_1_factor=1.4,
             n_0_min_increase=0.05,
@@ -67,8 +67,8 @@ def test_base_importer_parameters():
     assert params.area_settings.border_line_weight == 1.0
 
     # with pytest.raises(TypeError):
-    #     params = get_importer_params(
-    #         area_settings=get_area_settings(
+    #     params = create_importer_params(
+    #         area_settings=create_area_settings(
     #             control_area=["D1", "D2"],
     #             view_area=["D3", "D4"],
     #             nminus1_area=["D5", "D6"],
@@ -79,7 +79,7 @@ def test_base_importer_parameters():
     #         data_type="Not a valid type",
     #     )
 
-    limit_params = get_limit_adjustment_parameters(
+    limit_params = create_limit_adjustment_parameters(
         n_0_factor=1.2,
         n_1_factor=1.4,
         n_0_min_increase=0.05,

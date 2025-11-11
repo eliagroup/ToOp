@@ -6,74 +6,64 @@ from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf import reflection as _reflection
 from google.protobuf import symbol_database as _symbol_database
-
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
 
 
+
+
 DESCRIPTOR = _descriptor.FileDescriptor(
-    name="toop_engine_interfaces/messages/protobuf_schema/lf_service/stored_loadflow_reference.proto",
-    package="messages.lf_service",
-    syntax="proto3",
-    serialized_options=None,
-    create_key=_descriptor._internal_create_key,
-    serialized_pb=b'\nZtoop_engine_interfaces/messages/protobuf_schema/lf_service/stored_loadflow_reference.proto\x12\x13messages.lf_service"0\n\x17StoredLoadflowReference\x12\x15\n\rrelative_path\x18\x01 \x01(\tb\x06proto3',
+  name='toop_engine_interfaces/messages/protobuf_schema/lf_service/stored_loadflow_reference.proto',
+  package='messages.lf_service',
+  syntax='proto3',
+  serialized_options=None,
+  create_key=_descriptor._internal_create_key,
+  serialized_pb=b'\nZtoop_engine_interfaces/messages/protobuf_schema/lf_service/stored_loadflow_reference.proto\x12\x13messages.lf_service\"0\n\x17StoredLoadflowReference\x12\x15\n\rrelative_path\x18\x01 \x01(\tb\x06proto3'
 )
+
+
 
 
 _STOREDLOADFLOWREFERENCE = _descriptor.Descriptor(
-    name="StoredLoadflowReference",
-    full_name="messages.lf_service.StoredLoadflowReference",
-    filename=None,
-    file=DESCRIPTOR,
-    containing_type=None,
-    create_key=_descriptor._internal_create_key,
-    fields=[
-        _descriptor.FieldDescriptor(
-            name="relative_path",
-            full_name="messages.lf_service.StoredLoadflowReference.relative_path",
-            index=0,
-            number=1,
-            type=9,
-            cpp_type=9,
-            label=1,
-            has_default_value=False,
-            default_value=b"".decode("utf-8"),
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key,
-        ),
-    ],
-    extensions=[],
-    nested_types=[],
-    enum_types=[],
-    serialized_options=None,
-    is_extendable=False,
-    syntax="proto3",
-    extension_ranges=[],
-    oneofs=[],
-    serialized_start=115,
-    serialized_end=163,
+  name='StoredLoadflowReference',
+  full_name='messages.lf_service.StoredLoadflowReference',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='relative_path', full_name='messages.lf_service.StoredLoadflowReference.relative_path', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=115,
+  serialized_end=163,
 )
 
-DESCRIPTOR.message_types_by_name["StoredLoadflowReference"] = _STOREDLOADFLOWREFERENCE
+DESCRIPTOR.message_types_by_name['StoredLoadflowReference'] = _STOREDLOADFLOWREFERENCE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
-StoredLoadflowReference = _reflection.GeneratedProtocolMessageType(
-    "StoredLoadflowReference",
-    (_message.Message,),
-    {
-        "DESCRIPTOR": _STOREDLOADFLOWREFERENCE,
-        "__module__": "toop_engine_interfaces.messages.protobuf_schema.lf_service.stored_loadflow_reference_pb2",
-        # @@protoc_insertion_point(class_scope:messages.lf_service.StoredLoadflowReference)
-    },
-)
+StoredLoadflowReference = _reflection.GeneratedProtocolMessageType('StoredLoadflowReference', (_message.Message,), {
+  'DESCRIPTOR' : _STOREDLOADFLOWREFERENCE,
+  '__module__' : 'toop_engine_interfaces.messages.protobuf_schema.lf_service.stored_loadflow_reference_pb2'
+  # @@protoc_insertion_point(class_scope:messages.lf_service.StoredLoadflowReference)
+  })
 _sym_db.RegisterMessage(StoredLoadflowReference)
 
 

@@ -146,22 +146,6 @@ message LoadflowServiceCommand {
   string uuid = 4; // Unique message identifier
 }
 
-// =====================================================
-// SERVICE DEFINITION
-// =====================================================
-
-// Loadflow engine service
-service LoadflowEngine {
-  // Run a list of loadflow jobs on the engine
-  rpc RunJob (StartCalculationCommand) returns (LoadflowResultsList);
-
-  // Shutdown the engine gracefully
-  rpc Shutdown (ShutdownCommand) returns (ShutdownAck);
-}
-
-// =====================================================
-// RESPONSE DEFINITIONS
-// =====================================================
 
 // Placeholder for LoadflowResults
 message LoadflowResults {
@@ -172,10 +156,4 @@ message LoadflowResults {
 // List of loadflow resultsf
 message LoadflowResultsList {
   repeated LoadflowResults results = 1;
-}
-
-// Acknowledgment for shutdown
-message ShutdownAck {
-  bool success = 1; // Whether shutdown was successful
-  int32 exit_code = 2; // Returned exit code
 }

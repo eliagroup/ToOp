@@ -662,7 +662,7 @@ def test_get_convergence_df():
         timestep=timestep,
     )
 
-    assert len(failed_outages) > 0, "In the test case there should be some failed outages"
+    assert len(failed_outages) == 0, "In the test case all should converge"
     assert len(convergence_df) == len(outages) + 1, (
         "The convergence dataframe should have one row for each outage and one for the base case"
     )

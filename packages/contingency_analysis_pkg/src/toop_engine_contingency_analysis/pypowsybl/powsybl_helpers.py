@@ -63,6 +63,13 @@ class PowsyblContingency(BaseModel):
     elements: list[str]
     """The list of outaged element ids."""
 
+    def is_basecase(self) -> bool:
+        """Check if the contingency is a basecase.
+
+        A basecase contingency has no outaged elements.
+        """
+        return len(self.elements) == 0
+
 
 class PowsyblMonitoredElements(TypedDict):
     """A dictionary to hold the monitored element ids for the N-1 analysis.

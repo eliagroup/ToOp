@@ -223,7 +223,7 @@ def get_loadflow_based_tie_line_limits(
         return []
     border_dangling_limits = []
     tie_lines_df["update_i"] = tie_lines_df[["i1", "i2"]].max(axis=1)
-    for side_value, dangling_line_col in zip([1, 2], ["dangling_line1_id", "dangling_line2_id"]):
+    for side_value, dangling_line_col in zip([1, 2], ["dangling_line1_id", "dangling_line2_id"], strict=True):
         dangling_df = tie_lines_df.set_index(dangling_line_col)
         old_limit = dangling_df[[f"{case}_i1_max", f"{case}_i2_max"]].min(axis=1)
 

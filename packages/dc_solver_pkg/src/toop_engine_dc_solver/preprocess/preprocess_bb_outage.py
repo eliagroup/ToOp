@@ -672,7 +672,9 @@ def get_rel_non_rel_sub_bb_maps(
     """
     non_rel_station_busbars_map = {}
     rel_station_busbars_map = {}
-    relevent_node_ids = [node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask) if mask]
+    relevent_node_ids = [
+        node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
+    ]
     for station_id, busbars in outage_station_busbars_map.items():
         if station_id in relevent_node_ids:
             rel_station_busbars_map[station_id] = busbars

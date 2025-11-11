@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package messages.lf_service;
+
+// =====================================================
+// LOADFLOW HEARTBEAT DEFINITIONS
+// =====================================================
+
+// Provides status information about an ongoing Loadflow solving action.
+message LoadflowStatusInfo {
+  string loadflow_id = 1; // The id of the loadflow solving job.
+  double runtime = 2; // The amount of time since the start of the optimization (in seconds).
+  string message = 3; // An optional message.
+}
+
+// A message class for heartbeats from the loadflow worker.
+// When idle, this just sends a hello; when solving, it also conveys the current status.
+message LoadflowHeartbeat {
+  bool idle = 1; // Whether the worker is idle.
+  LoadflowStatusInfo status_info = 2; // If not idle, a status update.
+  string timestamp = 3; // When the heartbeat was sent.
+  string uuid = 4; // Unique identifier for this heartbeat message, used to avoid duplicates.
+}
+
+// =====================================================
+// OPTIONAL SERVICE INTERFACE
+// =====================================================
+
+// A simple service definition for receiving heartbeat updates.
+// (Useful if you also want to expose it via gRPC rather than just Kafka.)
+service LoadflowHeartbeatService {
+  // Sends a heartbeat update from a worker.
+  rpc SendHeartbeat (LoadflowHeartbeat) returns (HeartbeatAck);
+}
+
+// Acknowledgment for a received heartbeat.
+message HeartbeatAck {
+  bool success = 1; // Whether the heartbeat was successfully received.
+  string message = 2; // Optional human-readable acknowledgment message.
+}

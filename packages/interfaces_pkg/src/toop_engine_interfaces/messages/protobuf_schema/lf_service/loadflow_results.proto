@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package messages.lf_service;
+import "toop_engine_interfaces/messages/protobuf_schema/lf_service/stored_loadflow_reference.proto";
+
+
+// =====================================================
+// RESULT SUBTYPES
+// =====================================================
+
+// Results of a loadflow solving job, including the timesteps as they are solved.
+message LoadflowStreamResult {
+  messages.lf_service.StoredLoadflowReference loadflow_reference = 1; // Reference to the stored loadflow result.
+  repeated int32 solved_timesteps = 2; // List of solved timesteps.
+  repeated int32 remaining_timesteps = 3; // List of remaining timesteps. If none, a LoadflowSuccessResult is sent instead.
+  string result_type = 4; // Discriminator: "loadflow_stream".
+}
+
+// Results of a successfully completed loadflow solving run.
+message LoadflowSuccessResult {
+  messages.lf_service.StoredLoadflowReference loadflow_reference = 1; // Reference to the stored loadflow result.
+  string result_type = 2; // Discriminator: "loadflow_success".
+}
+
+// A message that is sent when the preprocessing process has started.
+message LoadflowStartedResult {
+  string result_type = 1; // Discriminator: "loadflow_started".
+}
+
+// A message that is sent if an error occurred.
+message ErrorResult {
+  string error = 1; // The error message.
+  string result_type = 2; // Discriminator: "error".
+}
+
+// =====================================================
+// BASE RESULT WRAPPER
+// =====================================================
+
+// A generic class for result, holding either a successful or an unsuccessful result.
+message LoadflowBaseResult {
+  string loadflow_id = 1; // The loadflow_id sent in the loadflow_command, used to identify the result.
+  string job_id = 2; // The job_id sent in the loadflow_command, used to identify the result.
+  string instance_id = 3; // The instance id of the importer worker that created this result.
+  double runtime = 4; // The runtime in seconds that the preprocessing took until the result.
+
+  // The actual result data in a discriminated union.
+  oneof result {
+    ErrorResult error_result = 5;
+    LoadflowSuccessResult success_result = 6;
+    LoadflowStreamResult stream_result = 7;
+    LoadflowStartedResult started_result = 8;
+  }
+
+  string uuid = 9; // Unique identifier for this result message, used to avoid duplicates.
+  string timestamp = 10; // When the result was sent.
+}
+
+
+// Acknowledgment message for a received result.
+message ResultAck {
+  bool success = 1; // Whether the result was successfully processed.
+  string message = 2; // Optional acknowledgment or error message.
+}

@@ -1,7 +1,8 @@
 syntax = "proto3";
 
-package preprocessing;
+package messages.preprocessing;
 import "google/protobuf/timestamp.proto";
+import "toop_engine_interfaces/messages/protobuf_schema/lf_service/stored_loadflow_reference.proto";
 
 /*
  * ==============================
@@ -79,18 +80,6 @@ message StaticInformationStats {
   uint32 max_reassignment_distance = 25;
 }
 
-/*
- * ==============================
- *  Loadflow Reference
- * ==============================
- *
- * Placeholder for StoredLoadflowReference.
- * Replace with its actual definition if known.
- */
-message StoredLoadflowReference {
-  string reference_id = 1;
-  string description = 2;
-}
 
 /*
  * ==============================
@@ -100,7 +89,7 @@ message StoredLoadflowReference {
 
 message PreprocessingSuccessResult {
   string data_folder = 1;
-  StoredLoadflowReference initial_loadflow = 2;
+  messages.lf_service.StoredLoadflowReference initial_loadflow = 2;
 
   // MetricType -> float mapping
   map<string, double> initial_metrics = 3;

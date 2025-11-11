@@ -1,0 +1,16 @@
+syntax = "proto3";
+package messages.lf_service;
+message StoredLoadflowReference {
+    // A reference to a stored loadflow result on disk or in an object store.
+
+    // Loadflow results are too large to be sent directly over kafka, so they need to be stored somewhere and referenced.
+    // They are stored and written using the functions in `loadflow_result_helpers_new.py`, which use the `fsspec` library
+    // to abstract away the filesystem. Hence, these can write to local disk, Azure bucket, ...
+
+    // The reference contains the filename relative to the base path or bucket defined in the filesystem, i.e. if a
+    // DirFileSystem is used with base_path="/path/to/base" and the filename is "loadflows" then the full path is
+    // "/path/to/base/loadflows/node_results.parquet", "/path/to/base/loadflows/branch_results.parquet", ...
+    string relative_path = 1;
+    // The folder of the loadflow result relative to the base path or bucket in the filesystem. This points to a directory
+    // under which the files "node_results.parquet", "branch_results.parquet", "metadata.json", ... are stored.
+}

@@ -4,7 +4,7 @@ default_install_hook_types:
   - commit-msg
   
 fail_fast: false
-exclude: ^packages/interfaces_pkg/src/toop_engine_interfaces/messages/preprocess/protobuf_schema/
+exclude: ^packages/interfaces_pkg/src/toop_engine_interfaces/messages/protobuf_schema/
 minimum_pre_commit_version: 4.1.0
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

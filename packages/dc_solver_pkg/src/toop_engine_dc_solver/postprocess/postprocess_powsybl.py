@@ -6,11 +6,14 @@ routines that help parsing a topology optimization result
 """
 
 from copy import deepcopy
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
 import pypowsybl
 from beartype.typing import Literal, Optional
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float
 from overrides import overrides
 from pypowsybl.network import Network
@@ -226,6 +229,21 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self.last_action_info: Optional[AdditionalActionInfo] = None
 
     @overrides
+    def load_base_grid_fs(self, filesystem: AbstractFileSystem, grid_path: Path) -> None:
+        """Load the base grid into the loadflow runner, loading from a file system.
+
+        Parameters
+        ----------
+        filesystem : AbstractFileSystem
+            The file system to use to load the grid.
+        grid_path : Path
+            The path to the grid file
+        """
+        with filesystem.open(str(grid_path), "rb") as f:
+            binary_buffer = BytesIO(f.read())
+            self.replace_grid(pypowsybl.network.load_from_binary_buffer(binary_buffer))
+
+    @overrides
     def load_base_grid(self, grid_path: Path) -> None:
         """Load the base grid into the loadflow runner.
 
@@ -234,7 +252,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         grid_path : Path
             The path to the grid file
         """
-        self.replace_grid(pypowsybl.network.load(grid_path))
+        return self.load_base_grid_fs(LocalFileSystem(), grid_path)
 
     def replace_grid(self, net: Network) -> None:
         """Apply a base grid to the runner, if you don't want to load it from a file

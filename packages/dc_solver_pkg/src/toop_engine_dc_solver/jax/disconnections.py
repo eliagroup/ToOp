@@ -286,7 +286,7 @@ def enumerate_disconnectable_branches(
         The disconnectable branches, i.e. the branches which can be disconnected
     """
     basecase = nx.Graph()
-    basecase.add_edges_from(zip(from_node.tolist(), to_node.tolist()))
+    basecase.add_edges_from(zip(from_node.tolist(), to_node.tolist(), strict=True))
     n_bridges_basecase = len(list(nx.bridges(basecase)))
     n_nodes_basecase = basecase.number_of_nodes()
 
@@ -296,7 +296,7 @@ def enumerate_disconnectable_branches(
         to_node_local = np.delete(to_node, branch)
 
         disc_graph = nx.Graph()
-        disc_graph.add_edges_from(zip(from_node_local.tolist(), to_node_local.tolist()))
+        disc_graph.add_edges_from(zip(from_node_local.tolist(), to_node_local.tolist(), strict=True))
 
         if disc_graph.number_of_nodes() == n_nodes_basecase and len(list(nx.bridges(disc_graph))) == n_bridges_basecase:
             disconnectable.append(branch)

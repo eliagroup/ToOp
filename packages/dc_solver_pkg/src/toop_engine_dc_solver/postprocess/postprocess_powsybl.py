@@ -5,15 +5,14 @@ busbars of lines, transformers, loads and generators (because it's not supported
 routines that help parsing a topology optimization result
 """
 
+import tempfile
 from copy import deepcopy
-from io import BytesIO
 from pathlib import Path
 
 import numpy as np
 import pypowsybl
 from beartype.typing import Literal, Optional
 from fsspec import AbstractFileSystem
-from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float
 from overrides import overrides
 from pypowsybl.network import Network
@@ -239,9 +238,14 @@ class PowsyblRunner(AbstractLoadflowRunner):
         grid_path : Path
             The path to the grid file
         """
-        with filesystem.open(str(grid_path), "rb") as f:
-            binary_buffer = BytesIO(f.read())
-            self.replace_grid(pypowsybl.network.load_from_binary_buffer(binary_buffer))
+        # Powsybl can only load from a file, so we need to create a temporary file and copy the contents there
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_file_path = Path(tmp_dir) / "temp_grid.xiidm"
+            with filesystem.open(str(grid_path), "rb") as f:
+                with open(tmp_file_path, "wb") as tmp_file:
+                    tmp_file.write(f.read())
+                    tmp_file.flush()
+            self.replace_grid(pypowsybl.network.load(tmp_file_path))
 
     @overrides
     def load_base_grid(self, grid_path: Path) -> None:
@@ -252,7 +256,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         grid_path : Path
             The path to the grid file
         """
-        return self.load_base_grid_fs(LocalFileSystem(), grid_path)
+        self.replace_grid(pypowsybl.network.load(grid_path))
 
     def replace_grid(self, net: Network) -> None:
         """Apply a base grid to the runner, if you don't want to load it from a file

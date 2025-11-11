@@ -821,17 +821,18 @@ def get_convergence_result_df(
         for contingency in outages
     ]
     converge_converted_df.status = converge_converted_df["status"].map(POWSYBL_CONVERGENCE_MAP)
+    failed_outages = [
+        outage
+        for outage, success in zip(outages, converge_converted_df.status.values == "CONVERGED", strict=True)
+        if not success
+    ]
 
     if basecase_name is not None:
         # Add the basecase to the convergence dataframe
         converge_converted_df.loc[(timestep, basecase_name), "status"] = POWSYBL_CONVERGENCE_MAP[
             pre_contingency_result.status.value
         ]
-    failed_outages = [
-        outage
-        for outage, success in zip(outages, converge_converted_df.status.values == "CONVERGED", strict=True)
-        if not success
-    ]
+
     converge_converted_df["iteration_count"] = np.nan
     converge_converted_df["warnings"] = ""
     converge_converted_df["contingency_name"] = ""

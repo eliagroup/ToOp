@@ -63,7 +63,6 @@ select = [
     "I", # Isort
     "N", # pep8-naming
     "D", # pydocstyle    doc
-    "D100",
     "D417", # Missing argument description in the docstring for {definition}: {name}
     "D418", # Function decorated with @overload shouldn't contain a docstring
     "YTT", # flake8-2020 TODO -> select all flake8 settings

@@ -913,7 +913,7 @@ def save_asset_topology_fs(filesystem: AbstractFileSystem, filename: Union[str, 
         The file system to save the asset topology to
     filename : Union[str, Path]
         The filename to save the asset topology to
-    asset_topology: Topology,
+    asset_topology: Topology
         The asset topology to save
     """
     with filesystem.open(str(filename), "w", encoding="utf-8") as file:
@@ -927,7 +927,7 @@ def save_asset_topology(filename: Union[str, Path], asset_topology: Topology) ->
     ----------
     filename : Union[str, Path]
         The filename to save the asset topology to
-    asset_topology: Topology,
+    asset_topology: Topology
         The asset topology to save
     """
     save_asset_topology_fs(LocalFileSystem(), filename, asset_topology)

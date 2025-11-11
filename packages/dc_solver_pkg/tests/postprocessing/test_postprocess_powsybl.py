@@ -12,6 +12,7 @@ import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
 import pytest
 import ray
+from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import load_static_information
@@ -217,6 +218,17 @@ def test_apply_disconnections_matches_loadflows(
 
         assert n_0_single.shape == n_0_ref.shape
         assert np.allclose(n_0_single, n_0_ref)
+
+
+def test_runner_load_from_fs(preprocessed_powsybl_data_folder: Path) -> None:
+    runner = PowsyblRunner()
+    runner.load_base_grid(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+
+    runner2 = PowsyblRunner()
+    runner2.load_base_grid_fs(
+        LocalFileSystem(), preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    )
+    assert runner.net.get_buses().equals(runner2.net.get_buses())
 
 
 def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:

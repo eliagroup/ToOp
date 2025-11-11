@@ -208,7 +208,7 @@ def get_branches_with_i_max(branches: pd.DataFrame, net: Network, limit_name: st
     """
     current_limits = net.get_operational_limits()
     current_limits = current_limits[current_limits["name"] == limit_name]
-
+    current_limits = current_limits.groupby(level=["element_id", "side"]).min().reset_index("side")
     current_limits1 = current_limits[current_limits["side"] == "ONE"]["value"].reindex(current_limits.index)
     current_limits2 = current_limits[current_limits["side"] == "TWO"]["value"].reindex(current_limits.index)
 

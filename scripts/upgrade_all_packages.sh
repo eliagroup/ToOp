@@ -9,7 +9,7 @@ uv lock --upgrade
 cd packages
 # Iterate and publish
 for item in "${ITEMS[@]}"; do
-    echo "Publishing: $item"
+    echo "Updating: $item"
     cd "$item"
     uv lock --upgrade
     cd ..

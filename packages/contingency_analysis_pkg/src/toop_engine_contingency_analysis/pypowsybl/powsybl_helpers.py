@@ -297,12 +297,12 @@ def prepare_branch_limits(branch_limits: pd.DataFrame, chosen_limit: str, monito
     branch_limits : pd.DataFrame
         The dataframe containing the branch limits for the N-1 analysis in the right format.
     """
-    chosen_limit_type = branch_limits["name"] == chosen_limit
-    limit_monitored = branch_limits.index.get_level_values("element_id").isin(monitored_branches)
-    branch_limits = branch_limits[chosen_limit_type & limit_monitored]
-    branch_limits["side"] = branch_limits.side.map({"ONE": 1, "TWO": 2, "THREE": 3})
-    branch_limits.set_index(["side"], append=True, inplace=True)
-    return branch_limits[["value"]]
+    translated_limits = branch_limits.reset_index()
+    chosen_limit_type = translated_limits["name"] == chosen_limit
+    limit_monitored = translated_limits["element_id"].isin(monitored_branches)
+    translated_limits = translated_limits[chosen_limit_type & limit_monitored]
+    translated_limits["side"] = translated_limits["side"].map({"ONE": 1, "TWO": 2, "THREE": 3})
+    return translated_limits.groupby(by=["element_id", "side"]).min()[["value"]]
 
 
 def get_blank_va_diff(

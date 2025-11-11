@@ -313,7 +313,7 @@ def initialize_optimization(
             )
 
     # Store the initial strategy in the database
-    for topo, metric in zip(initial_strategy, initial_metrics):
+    for topo, metric in zip(initial_strategy, initial_metrics, strict=True):
         topo.fitness = metric.fitness
         topo.metrics = metric.extra_scores
         topo.worst_k_contingency_cases = metric.worst_k_contingency_cases
@@ -393,7 +393,7 @@ def run_epoch(
 
     # Update the strategy with the new loadflow results
     message_topos = []
-    for topology, metric in zip(new_strategy, metrics):
+    for topology, metric in zip(new_strategy, metrics, strict=True):
         # TODO: FIXME: remove fitness_dc when "Topology" is refactored and accepts different stages like "dc", "dc+" and "ac"
         # topology should store a dict of metrics instead of a single fitness value
         if "fitness_dc" in topology.metrics:

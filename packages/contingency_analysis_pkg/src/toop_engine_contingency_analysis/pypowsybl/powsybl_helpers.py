@@ -828,7 +828,9 @@ def get_convergence_result_df(
             pre_contingency_result.status.value
         ]
     failed_outages = [
-        outage for outage, success in zip(outages, converge_converted_df.status.values == "CONVERGED") if not success
+        outage
+        for outage, success in zip(outages, converge_converted_df.status.values == "CONVERGED", strict=True)
+        if not success
     ]
     converge_converted_df["iteration_count"] = np.nan
     converge_converted_df["warnings"] = ""

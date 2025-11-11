@@ -147,7 +147,7 @@ def replace_bus_index(net: pp.pandapowerNet, new_index: list[Union[int, np.integ
     new_index : list[Union[int, np.integer]]
         The new bus index
     """
-    bus_idx_map = {new: old for old, new in zip(net.bus.index, new_index)}
+    bus_idx_map = {new: old for old, new in zip(net.bus.index, new_index, strict=True)}
     for table, key in pp.element_bus_tuples():
         if table in net and key in net[table] and len(net[table]) > 0:
             net[table][key] = net[table][key].map(bus_idx_map)

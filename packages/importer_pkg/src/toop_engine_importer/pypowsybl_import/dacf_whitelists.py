@@ -116,15 +116,11 @@ def apply_white_list_to_operational_limits(network: Network, white_list_df: pd.D
     white_list_df["Auslastungsgrenze_n_0"] = white_list_df["Auslastungsgrenze_n_0"] / 100
     white_list_df["Auslastungsgrenze_n_1"] = white_list_df["Auslastungsgrenze_n_1"] / 100
     # get the current operational limits
-    op_lim = network.get_operational_limits(
-        attributes=["element_type", "side", "name", "type", "value", "acceptable_duration", "fictitious"]
-    )
+    op_lim = network.get_operational_limits().reset_index()
     # filter the operational limits to the elements in the white list
-    op_lim = op_lim[op_lim.index.isin(white_list_df["element_id"].to_list())]
-    # get columns to drop white_list_df columns after merge
-    op_lim_columns = op_lim.columns.to_list()
+    op_lim = op_lim[op_lim["element_id"].isin(white_list_df["element_id"].to_list())]
     # merge the white list with the operational limits -> add the "Auslastungsgrenze_n_0" and "Auslastungsgrenze_n_1" columns
-    op_lim = op_lim.merge(white_list_df, how="left", left_index=True, right_on="element_id")
+    op_lim = op_lim.merge(white_list_df, how="left", left_on="element_id", right_on="element_id")
     op_lim.set_index("element_id", inplace=True)
     # remove tie lines, as they can't be set
     op_lim = op_lim[op_lim["element_type"] != "TIE_LINE"]
@@ -138,8 +134,7 @@ def apply_white_list_to_operational_limits(network: Network, white_list_df: pd.D
     # merge the operational limits with the N-1 limits
     op_lim = pd.concat([op_lim, n1_limits]).sort_index()
     # drop white list columns, to be able to create new operational limits
-    op_lim = op_lim[op_lim_columns]
+    op_lim = op_lim.set_index(["side", "type", "group_name"], append=True)[["acceptable_duration", "name", "value"]]
     # drop element_type column -> deprecated
-    op_lim.drop(columns=["element_type"], inplace=True)
     # create the new operational limits
     network.create_operational_limits(op_lim)

@@ -55,10 +55,3 @@ message LoadflowBaseResult {
   string uuid = 9; // Unique identifier for this result message, used to avoid duplicates.
   string timestamp = 10; // When the result was sent.
 }
-
-
-// Acknowledgment message for a received result.
-message ResultAck {
-  bool success = 1; // Whether the result was successfully processed.
-  string message = 2; // Optional acknowledgment or error message.
-}

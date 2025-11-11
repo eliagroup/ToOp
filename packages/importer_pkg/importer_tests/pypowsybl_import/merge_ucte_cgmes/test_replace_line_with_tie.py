@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pypowsybl
 import pytest
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_importer.pypowsybl_import.merge_ucte_cgmes.replace_line_with_tie import (
     DanglingGeneratorSchema,
     DanglingLineCreationSchema,
@@ -17,13 +18,13 @@ from toop_engine_importer.pypowsybl_import.merge_ucte_cgmes.replace_line_with_ti
 
 def test_replace_voltage_level_with_tie_line(ucte_file_with_border):
     network = pypowsybl.network.load(ucte_file_with_border)
-    lf = pypowsybl.loadflow.run_ac(network)
+    lf = pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
     assert lf[0].status_text == "Converged", "Test grid did not converge"
     br = network.get_branches()
     p1_test_grid_ac = br[~br["p1"].isna()]["p1"]
     p2_test_grid_ac = br[~br["p2"].isna()]["p2"]
     # get p values from test grid for DC
-    pypowsybl.loadflow.run_dc(network)
+    pypowsybl.loadflow.run_dc(network, DISTRIBUTED_SLACK)
     br = network.get_branches()
     p1_test_grid_dc = br[~br["p1"].isna()]["p1"]
     p2_test_grid_dc = br[~br["p2"].isna()]["p2"]
@@ -31,12 +32,14 @@ def test_replace_voltage_level_with_tie_line(ucte_file_with_border):
     # convert German dangling node to tie line
     dangling_voltage_level = "DXSU1_1"
     replace_voltage_level_with_tie_line(network=network, voltage_level_id=dangling_voltage_level)
-    lf = pypowsybl.loadflow.run_ac(network)
+    lf = pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
     assert lf[0].status_text == "Converged", "Tie line modificated grid did not converge"
     br = network.get_branches()
     p1_tie_grid_ac = br[~br["p1"].isna()]["p1"]
     p2_tie_grid_ac = br[~br["p2"].isna()]["p2"]
-    pypowsybl.loadflow.run_dc(network)
+    dc_lf = pypowsybl.loadflow.run_dc(network, DISTRIBUTED_SLACK)
+    assert dc_lf[0].status_text == "Converged", "Test grid did not converge"
+
     br = network.get_branches()
     p1_tie_grid_dc = br[~br["p1"].isna()]["p1"]
     p2_tie_grid_dc = br[~br["p2"].isna()]["p2"]

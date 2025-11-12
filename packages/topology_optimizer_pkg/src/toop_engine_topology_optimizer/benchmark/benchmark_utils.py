@@ -692,7 +692,7 @@ def save_slds_of_split_stations(
 
 def perform_ac_analysis(
     data_folder: Path, optimisation_run_path: Path, k_best_topos: int = 1, pandapower_runner: bool = False
-) -> Path:
+) -> list[Path] | None:
     """Perform AC loadflow and n-1 analysis on the best k topologies from the optimization results.
 
     Parameters
@@ -708,8 +708,9 @@ def perform_ac_analysis(
 
     Returns
     -------
-    Path
-        Path to the directory where the results for the specified topology are saved.
+    list[Path] | None
+        List of paths to the directories where the results for the specified topologies are saved.
+        Returns None if no topologies are found in the optimization results.
 
     Raises
     ------
@@ -736,12 +737,16 @@ def perform_ac_analysis(
         return None
 
     if k_best_topos > len(best_topos):
-        logger.warning(f"Only {len(best_topos)} topologies available, you requested top {k_best_topos} best.")
+        logger.warning(f"Only {len(best_topos)} topologies available, you requested top {k_best_topos}.")
+
+    n_assessed_topos = min(k_best_topos, len(best_topos))
+    logger.info(f"Performing AC analysis on the top {n_assessed_topos} topologies...")
 
     topology_paths = []
-    for topology_index in range(min(k_best_topos, len(best_topos))):
+    for topology_index in range(n_assessed_topos):
         topology_path = optimisation_run_path / f"topology_{topology_index}"
         topology_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Topology stored in: {topology_path}")
 
         actions = best_topos[topology_index].get("actions")
         disconnections = best_topos[topology_index].get("disconnections")
@@ -817,7 +822,7 @@ def run_pipeline(
     run_optimization_stage: bool = True,
     run_ac_validation_stage: bool = True,
     optimisation_run_dir: Optional[Path] = None,
-    k_best_topos: int = 1,
+    k_best_topos: int = 5,
 ) -> Path:
     """
     Run the end-to-end pipeline including topology copying, preprocessing, DC optimization, and AC validation.

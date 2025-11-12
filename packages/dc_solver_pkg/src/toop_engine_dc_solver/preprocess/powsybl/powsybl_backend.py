@@ -86,7 +86,6 @@ class PowsyblBackend(BackendInterface):
         assert not self.net.get_shunt_compensators()["p"].any(), "Shunt compensators are not supported yet"
         assert self.net.get_batteries().empty, "Batteries are not supported yet"
         assert self.net.get_3_windings_transformers().empty, "3 winding transformers are not supported yet"
-        assert self.net.get_static_var_compensators().empty, "Static var compensators are not supported yet"
         assert self.net.get_hvdc_lines().empty, "HVDC lines are not supported yet"
         assert self.net.get_lcc_converter_stations().empty, "LCC converter stations are not supported yet"
         assert self.net.get_vsc_converter_stations().empty, "VSC converter stations are not supported yet"

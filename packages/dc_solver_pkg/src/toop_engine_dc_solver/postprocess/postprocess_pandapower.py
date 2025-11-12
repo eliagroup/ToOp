@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandapower as pp
 from beartype.typing import Iterable, Literal, Optional
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float
 from overrides import overrides
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
@@ -266,6 +268,12 @@ class PandapowerRunner(AbstractLoadflowRunner):
         self.last_action_info: Optional[RealizedTopology] = None
 
     @overrides
+    def load_base_grid_fs(self, filesystem: AbstractFileSystem, grid_path: Path) -> None:
+        """Load the base grid from a file system"""
+        with filesystem.open(str(grid_path), "r") as f:
+            self.replace_grid(pp.from_json(f))
+
+    @overrides
     def load_base_grid(self, grid_path: Path) -> None:
         """Load the base grid from a file
 
@@ -274,7 +282,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
         grid_path : Path
             The path to the grid file
         """
-        self.replace_grid(pp.from_json(grid_path))
+        self.load_base_grid_fs(LocalFileSystem(), grid_path)
 
     def replace_grid(self, net: pp.pandapowerNet) -> None:
         """Replace the base grid with a new one

@@ -5,12 +5,14 @@ busbars of lines, transformers, loads and generators (because it's not supported
 routines that help parsing a topology optimization result
 """
 
+import tempfile
 from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
 import pypowsybl
 from beartype.typing import Literal, Optional
+from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float
 from overrides import overrides
 from pypowsybl.network import Network
@@ -224,6 +226,26 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self.action_set: Optional[ActionSet] = None
         self.nminus1_definition: Optional[Nminus1Definition] = None
         self.last_action_info: Optional[AdditionalActionInfo] = None
+
+    @overrides
+    def load_base_grid_fs(self, filesystem: AbstractFileSystem, grid_path: Path) -> None:
+        """Load the base grid into the loadflow runner, loading from a file system.
+
+        Parameters
+        ----------
+        filesystem : AbstractFileSystem
+            The file system to use to load the grid.
+        grid_path : Path
+            The path to the grid file
+        """
+        # Powsybl can only load from a file, so we need to create a temporary file and copy the contents there
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_file_path = Path(tmp_dir) / "temp_grid.xiidm"
+            with filesystem.open(str(grid_path), "rb") as f:
+                with open(tmp_file_path, "wb") as tmp_file:
+                    tmp_file.write(f.read())
+                    tmp_file.flush()
+            self.replace_grid(pypowsybl.network.load(tmp_file_path))
 
     @overrides
     def load_base_grid(self, grid_path: Path) -> None:

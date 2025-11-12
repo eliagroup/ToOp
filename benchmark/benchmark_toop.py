@@ -193,7 +193,7 @@ def benchmark_single_grid(
         topology_paths = perform_ac_analysis(
             data_folder,
             run_dir,
-            k_best_topos=0,
+            k_best_topos=5,
             pandapower_runner=(pipeline_cfg.grid_type == "pandapower"),
         )
 

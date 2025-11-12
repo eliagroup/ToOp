@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 from beartype.typing import NamedTuple, Optional, Sequence, Union
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.backend import BackendInterface
@@ -399,8 +401,27 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
     )
 
 
+def save_network_data_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], network_data: NetworkData) -> None:
+    """Save the network data to a file system.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to save the network data to
+    filename : Union[str, Path]
+        The filename to save the network data to
+    network_data : NetworkData
+        The network data to save
+
+    """
+    with filesystem.open(str(filename), "wb") as file:
+        pickle.dump(network_data, file)
+
+
 def save_network_data(filename: Union[str, Path], network_data: NetworkData) -> None:
     """Save the network data to a file.
+
+    Calls save_network_data_fs with a LocalFileSystem.
 
     Parameters
     ----------
@@ -410,8 +431,26 @@ def save_network_data(filename: Union[str, Path], network_data: NetworkData) -> 
         The network data to save
 
     """
-    with open(filename, "wb") as file:
-        pickle.dump(network_data, file)
+    save_network_data_fs(LocalFileSystem(), filename, network_data)
+
+
+def load_network_data_fs(filesystem: AbstractFileSystem, filename: Union[str, Path]) -> NetworkData:
+    """Load the network data from a file system.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to load the network data from
+    filename : Union[str, Path]
+        The filename to load the network data from
+
+    Returns
+    -------
+    NetworkData
+        The loaded network data
+    """
+    with filesystem.open(str(filename), "rb") as file:
+        return pickle.load(file)
 
 
 def load_network_data(filename: Union[str, Path]) -> NetworkData:
@@ -427,8 +466,7 @@ def load_network_data(filename: Union[str, Path]) -> NetworkData:
     NetworkData
         The loaded network data
     """
-    with open(filename, "rb") as file:
-        return pickle.load(file)
+    return load_network_data_fs(LocalFileSystem(), filename)
 
 
 def assert_network_data(network_data: NetworkData) -> None:

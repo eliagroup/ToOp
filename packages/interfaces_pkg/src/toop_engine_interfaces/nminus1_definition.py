@@ -11,6 +11,8 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 from pathlib import Path
 
 from beartype.typing import Literal, Optional
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel, Field
 
 # The type of the ids used in the N-1 definition. This changes how the elements are identified in the grid.
@@ -160,6 +162,25 @@ class Nminus1Definition(BaseModel):
         )
 
 
+def load_nminus1_definition_fs(filesystem: AbstractFileSystem, filename: Path) -> Nminus1Definition:
+    """Load an N-1 definition from a json file
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to use to load the N-1 definition.
+    filename : Path
+        The path to the json file containing the N-1 definition.
+
+    Returns
+    -------
+    Nminus1Definition
+        The loaded N-1 definition.
+    """
+    with filesystem.open(str(filename), "r") as f:
+        return Nminus1Definition.model_validate_json(f.read())
+
+
 def load_nminus1_definition(filename: Path) -> Nminus1Definition:
     """Load an N-1 definition from a json file
 
@@ -173,8 +194,25 @@ def load_nminus1_definition(filename: Path) -> Nminus1Definition:
     Nminus1Definition
         The loaded N-1 definition.
     """
-    with open(filename, "r") as f:
-        return Nminus1Definition.model_validate_json(f.read())
+    return load_nminus1_definition_fs(LocalFileSystem(), filename)
+
+
+def save_nminus1_definition_fs(
+    filesystem: AbstractFileSystem, filename: Path, nminus1_definition: Nminus1Definition
+) -> None:
+    """Save an N-1 definition to a json file
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to use to save the N-1 definition.
+    filename : Path
+        The path to the json file to save the N-1 definition to.
+    nminus1_definition : Nminus1Definition
+        The N-1 definition to save.
+    """
+    with filesystem.open(str(filename), "w") as f:
+        f.write(nminus1_definition.model_dump_json(indent=2))
 
 
 def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definition) -> None:
@@ -187,5 +225,4 @@ def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definitio
     nminus1_definition : Nminus1Definition
         The N-1 definition to save.
     """
-    with open(filename, "w") as f:
-        f.write(nminus1_definition.model_dump_json(indent=2))
+    save_nminus1_definition_fs(LocalFileSystem(), filename, nminus1_definition)

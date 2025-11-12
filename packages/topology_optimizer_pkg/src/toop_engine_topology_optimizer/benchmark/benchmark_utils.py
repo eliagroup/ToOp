@@ -86,28 +86,31 @@ logger = logbook.Logger(__name__)
 
 @dataclass
 class PipelineConfig:
-    """
-    Configuration class for the pipeline, specifying file paths and runtime parameters.
-
-    Attributes
-    ----------
-        root_path (Path): Root directory for data storage.
-        iteration_name (str): Name of the current iteration or experiment.
-        file_name (str): Name of the primary data file (e.g., a ZIP archive in the case of CGMES) or the xiddm file.
-        static_info_relpath (str): Relative path to the static information file, as defined in PREPROCESSING_PATHS.
-        initial_topology_subpath (str): Relative path to the initial topology file, as defined in PREPROCESSING_PATHS.
-        omp_num_threads (int): Number of OpenMP threads to use for parallel processing.
-        num_cuda_devices (int): Number of CUDA devices (GPUs) to utilize.
-    """
+    """Configuration class for the pipeline, specifying file paths and runtime parameters."""
 
     root_path: Path = Path.cwd() / "../data"
-    iteration_name: str = "50hz"
-    file_name: str = "20250220T0830.zip"
+    """Root directory for data storage."""
+
+    iteration_name: str = ""
+    """Name of the current iteration or experiment."""
+
+    file_name: str = "grid.xiidm"
+    """Name of the primary data file, a ZIP archive for CGMES or an xiidm file."""
+
     static_info_relpath: str = PREPROCESSING_PATHS["static_information_file_path"]
+    """Relative path to the static information file, as defined in PREPROCESSING_PATHS."""
+
     initial_topology_subpath: str = PREPROCESSING_PATHS["initial_topology_path"]
+    """Relative path to the initial topology file, as defined in PREPROCESSING_PATHS."""
+
     omp_num_threads: int = 1
+    """Number of OpenMP threads to use for parallel processing."""
+
     num_cuda_devices: int = 1
+    """Number of CUDA devices (GPUs) to utilize."""
+
     grid_type: Literal["powsybl", "pandapower"] = "powsybl"
+    """Type of grid model being used (power system analysis libraries)."""
 
 
 def set_environment_variables(cfg: DictConfig) -> None:

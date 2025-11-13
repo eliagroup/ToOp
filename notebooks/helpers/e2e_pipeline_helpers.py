@@ -191,12 +191,6 @@ def remove_unsupported_elements_and_save(file_path: Path, data_folder: Path, pan
     else:
         net = pypowsybl.network.load(file_path)
 
-        # Remove static var compensators (statcoms) if present
-        statcoms = list(net.get_static_var_compensators().index)
-        if statcoms:
-            logger.debug(f"Removing {len(statcoms)} static var compensators")
-            net.remove_elements(statcoms)
-
         mod_file = data_folder / f"modified_grid_{file_path.stem}.xiidm"
         logger.info(f"Saving modified grid to: {mod_file}")
         net.save(mod_file)

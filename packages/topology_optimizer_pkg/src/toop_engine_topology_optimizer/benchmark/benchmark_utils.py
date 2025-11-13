@@ -152,7 +152,8 @@ def run_task_process(cfg: DictConfig, conn: Optional[Connection] = None) -> Opti
 
     Returns
     -------
-        None
+    Optional[dict]
+        The result of the optimization process if no connection is provided; otherwise, None.
     """
     logger.info(f"************Experiment name: {cfg['task_name']}****************")
 
@@ -695,7 +696,7 @@ def save_slds_of_split_stations(
 
 def perform_ac_analysis(
     data_folder: Path, optimisation_run_path: Path, k_best_topos: int = 1, pandapower_runner: bool = False
-) -> list[Path] | None:
+) -> list[Path]:
     """Perform AC loadflow and n-1 analysis on the best k topologies from the optimization results.
 
     Parameters
@@ -711,9 +712,9 @@ def perform_ac_analysis(
 
     Returns
     -------
-    list[Path] | None
+    list[Path]
         List of paths to the directories where the results for the specified topologies are saved.
-        Returns None if no topologies are found in the optimization results.
+        If no paths are generated (e.g., no topologies found), returns an empty list.
 
     Raises
     ------
@@ -737,7 +738,7 @@ def perform_ac_analysis(
     logger.info("Starting AC validation stage...")
     if len(best_topos) == 0 or best_topos is None:
         logger.warning("No topologies found in DC optimization results. Skipping AC analysis.")
-        return None
+        return []
 
     if k_best_topos > len(best_topos):
         logger.warning(f"Only {len(best_topos)} topologies available, you requested top {k_best_topos}.")

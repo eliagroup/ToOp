@@ -6,7 +6,9 @@ from typing import Optional
 
 import logbook
 import pandapower as pp
+import pandas as pd
 import pypowsybl
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
@@ -15,11 +17,17 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, UcteImporterParameters
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    AreaSettings,
+    CgmesImporterParameters,
+    PreprocessParameters,
+    UcteImporterParameters,
+)
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
+    StaticInformationStats,
     UcteImportResult,
 )
 
@@ -161,6 +169,105 @@ def test_convert_file(ucte_file):
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, UcteImportResult)
+
+
+def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl: pypowsybl.network.Network):
+    with TemporaryDirectory() as temp_dir:
+        temp_dir = Path(temp_dir)
+
+        temp_grid_file = temp_dir / "node_breaker_network.xiidm"
+        # add SVC to network
+        svc = pd.DataFrame.from_records(
+            data=[
+                {
+                    "id": "SVC",
+                    "name": "SVC",
+                    "b_max": 0.01,
+                    "b_min": -0.01,
+                    "regulation_mode": "VOLTAGE",
+                    "regulating": True,
+                    "target_v": 220.0,
+                    "target_q": 0.0,
+                    "bus_or_busbar_section_id": "BBS5_1",
+                    "position_order": 10,
+                }
+            ]
+        ).set_index("id")
+
+        pypowsybl.network.create_static_var_compensator_bay(basic_node_breaker_network_powsybl, df=svc)
+        basic_node_breaker_network_powsybl.save(temp_grid_file)
+        # def parameters for function
+        logger = logbook.Logger(__name__)
+
+        def heartbeat_working(
+            stage: PreprocessStage,
+            message: Optional[str],
+            preprocess_id: str,
+            start_time: float,
+        ):
+            logger.info(
+                f"Preprocessing stage {stage} for job {preprocess_id} after {(time.time() - start_time):f}s: {message}"
+            )
+
+        start_time = time.time()
+        heartbeat_fn = partial(
+            heartbeat_working,
+            preprocess_id="test_id",
+            start_time=start_time,
+        )
+        importer_parameters = CgmesImporterParameters(
+            grid_model_file=temp_grid_file,
+            data_folder=temp_dir,
+            white_list_file=None,
+            black_list_file=None,
+            area_settings=AreaSettings(
+                cutoff_voltage=110,
+                control_area=[""],
+                view_area=[""],
+                nminus1_area=[""],
+            ),
+        )
+
+        import_result = preprocessing.convert_file(
+            importer_parameters=importer_parameters,
+            status_update_fn=heartbeat_fn,
+        )
+        importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
+        grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+        mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
+        assert importer_auxiliary_file.exists()
+        assert grid_file_path.exists()
+        for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
+            assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
+        assert isinstance(import_result, UcteImportResult)
+
+        # test without status_update_fn
+        temp_dir_test2 = temp_dir / "test2"
+        temp_dir_test2.mkdir(exist_ok=True)
+        importer_parameters.data_folder = temp_dir_test2
+        import_result = preprocessing.convert_file(
+            importer_parameters=importer_parameters,
+        )
+        importer_auxiliary_file = temp_dir_test2 / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
+        grid_file_path = temp_dir_test2 / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+        mask_dir = temp_dir_test2 / PREPROCESSING_PATHS["masks_path"]
+        assert importer_auxiliary_file.exists()
+        assert grid_file_path.exists()
+        for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
+            assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
+        assert isinstance(import_result, UcteImportResult)
+
+        net_loaded = pypowsybl.network.load(grid_file_path)
+        assert len(net_loaded.get_static_var_compensators()) == 1
+
+        # make sure the dc solver does not crash with the svc
+        info, _, _ = load_grid(
+            data_folder=import_result.data_folder,
+            pandapower=False,
+            parameters=PreprocessParameters(),
+            status_update_fn=heartbeat_fn,
+        )
+        assert isinstance(info, StaticInformationStats)
 
 
 def test_modify_constan_z_load():

@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package messages.optimizer;
+
+import "toop_engine_interfaces/messages/protobuf_schema/optimizer/ac_dc_commons.proto";
+
+// =====================================================
+// BATCHED MAP-ELITES (GENETIC ALGORITHM) PARAMETERS
+// =====================================================
+
+// Parameters for starting the batched genetic algorithm (Map-Elites) on the GPU.
+message BatchedMEParameters {
+  double substation_split_prob = 1;
+  // The probability to split an unsplit substation.
+  // If not split, a reconfiguration is applied.
+
+  double substation_unsplit_prob = 2;
+  // The probability to reset a split substation to the unsplit state.
+
+  double disconnect_prob = 3;
+  // The probability to disconnect a new branch.
+
+  double reconnect_prob = 4;
+  // The probability to reconnect a disconnected branch.
+  // This will overwrite a possible disconnect.
+
+  double n_subs_mutated_lambda = 5;
+  // The expected number (λ) of substations to mutate in a single iteration.
+  // Drawn from a Poisson distribution with this lambda.
+
+  double proportion_crossover = 6;
+  // The proportion of the first topology to take in the crossover.
+
+  double crossover_mutation_ratio = 7;
+  // The ratio of crossovers to mutations.
+
+  repeated TargetMetric target_metrics = 8;
+  // The list of metrics to optimize for with their weights.
+
+  repeated string observed_metrics = 9;
+  // The observed metrics — i.e. which metrics are computed for logging purposes.
+  // The target_metrics and me_descriptors must be included in the observed metrics.
+  // They will be added automatically if missing.
+
+  repeated messages.optimizer.DescriptorDef me_descriptors = 10;
+  // The descriptors to use for MAP-Elites.
+  // Each defines a metric determining the cell index and a number of cells.
+  // If a metric exceeds num_cells, it is clipped to the highest cell index.
+  // Must correspond to integer metrics.
+
+  double runtime_seconds = 11;
+  // The runtime in seconds for the optimization.
+
+  uint32 iterations_per_epoch = 12;
+  // The number of iterations per epoch.
+
+  int32 random_seed = 13;
+  // The random seed to use for reproducibility.
+
+  uint32 cell_depth = 14;
+  // When applicable, each cell contains cell_depth unique topologies.
+  // Use 1 to retain the original Map-Elites behavior.
+
+  bool plot = 15;
+  // Whether to plot the repertoire.
+
+  uint32 mutation_repetition = 16;
+  // Increases the chance of unique mutations by mutating multiple copies of the repertoire.
+
+  uint32 n_worst_contingencies = 17;
+  // The number of worst contingencies to consider in the scoring function.
+  // Used to determine the worst overload cases.
+}
+
+// A target metric and its weight in the optimization objective.
+message TargetMetric {
+  string metric = 1; // The metric name.
+  double weight = 2; // The weight assigned to this metric.
+}
+
+// =====================================================
+// LOADFLOW SOLVER PARAMETERS
+// =====================================================
+
+// Parameters for the DC loadflow solver.
+message LoadflowSolverParameters {
+  uint32 max_num_splits = 1;
+  // The maximum number of splits per topology.
+
+  uint32 max_num_disconnections = 2;
+  // The maximum number of disconnections to apply per topology.
+
+  uint32 batch_size = 3;
+  // The batch size for the genetic algorithm.
+
+  bool distributed = 4;
+  // Whether to run the genetic algorithm distributed over multiple devices.
+
+  bool cross_coupler_flow = 5;
+  // Whether to compute cross-coupler flows.
+}
+
+// =====================================================
+// DC OPTIMIZER PARAMETERS
+// =====================================================
+
+// The set of parameters that are used exclusively by the DC optimizer.
+message DCOptimizerParameters {
+  BatchedMEParameters ga_config = 1;
+  // The configuration options for the genetic algorithm.
+
+  LoadflowSolverParameters loadflow_solver_config = 2;
+  // The configuration options for the loadflow solver.
+
+  messages.optimizer.DoubleLimitsSetpoint double_limits = 3;
+  // The double limits for the optimization, if they should be updated.
+
+  uint32 summary_frequency = 4;
+  // The frequency to push back results, based on number of iterations.
+  // Default is after every 10 iterations.
+
+  uint32 check_command_frequency = 5;
+  // The frequency to check for new commands, based on number of iterations.
+  // Should be a multiple of summary_frequency.
+}

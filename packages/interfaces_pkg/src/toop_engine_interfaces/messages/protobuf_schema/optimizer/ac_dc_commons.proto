@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package messages.optimizer;
+
+
+// =====================================================
+// GRID FILE DEFINITION
+// =====================================================
+
+// Holds information about the grid files to load.
+//
+// This refers to a grid folder for a single timestep. 
+// For every timestep to be optimized, there is one GridFile object.
+// The coupling field defines how timesteps are related.
+message GridFile {
+  string string = 1;
+  // Which modelling software can read the grid file.
+
+  string grid_folder = 2;
+  // Path to the scenario grid folder (relative, not absolute).
+  // Should comply with the folder structure defined in `interfaces.folder_structure`.
+  // Workers prefix the full base path.
+
+  string timestep_correspondence = 3;
+  // The timestep correspondence to real-world time, if available (ISO 8601 datetime string).
+
+  string coupling = 4;
+  // How this timestep is coupled to the previous timestep.
+  //
+  // Possible values:
+  // - "loose": shared PTDF matrix, different topologies
+  // - "tight": shared PTDF matrix and topology
+  // - "none": independent PTDF and topology
+  //
+  // The first timestep is always uncoupled.
+  // TODO: not yet used.
+}
+
+// =====================================================
+// DESCRIPTOR DEFINITION
+// =====================================================
+
+// A descriptor definition for the MAP-Elites algorithm,
+// defining the dimension of the repertoire.
+message DescriptorDef {
+  string metric = 1;
+  // The metric to use for the descriptor. 
+  // Must correspond to an integer-type metric.
+
+  uint32 num_cells = 2;
+  // Number of cells to use for the descriptor.
+
+  repeated double range = 3;
+  // Range of the descriptor dimension defined by min and max values.
+  // If not given, 0..num_cells will be used.
+}
+
+// =====================================================
+// DOUBLE LIMITS SETPOINT
+// =====================================================
+
+// A setpoint for the double limits, consisting of a lower and upper limit.
+//
+// Will be passed to `update_max_mw_flows_according_to_double_limits`.
+message DoubleLimitsSetpoint {
+  double lower = 1;
+  // The new lower limit. 1.0 leaves it unchanged.
+
+  double upper = 2;
+  // The new upper limit. 1.0 leaves it unchanged.
+}
+
+// =====================================================
+// FILTER STRATEGY
+// =====================================================
+
+// A filter strategy to pull strategies from the DC repertoire.
+message FilterStrategy {
+  repeated string filter_dominator_metrics_target = 1;
+  // Whether to use the dominator filter for pulling strategies from the DC repertoire.
+  // A dominator is a metric entry with no other entry with a better fitness 
+  // relative to the distance to the original topology.
+  //
+  // The target metrics are discrete (e.g., split_subs, disconnected_branches).
+  // Example: ["switching_distance", "split_subs"]
+
+  repeated string filter_dominator_metrics_observed = 2;
+  // Whether to use the dominator filter for observed metrics.
+  // Observed metrics may include both discrete and continuous values.
+  // Example: ["switching_distance", "split_subs"]
+
+  map<string, FilterDistanceSet> filter_discriminator_metric_distances = 3;
+  // Distances for metrics used in the discriminator filter.
+  // The key is the metric name (or "fitness"), and the value is a set of distances.
+  //
+  // Example:
+  // {
+  //   "split_subs": {0.0, 0.0},
+  //   "switching_distance": {-0.9, 0.9},
+  //   "fitness": {-0.1, 0.1}
+  // }
+
+  map<string, double> filter_discriminator_metric_multiplier = 4;
+  // Multiplier dictionary for metric distances.
+  // Defines how strongly each metric contributes to distance-based filtering.
+  //
+  // Example:
+  // {"split_subs": 0.5}
+  //
+  // Formula:
+  // distance_multiplier = (
+  //   metric_multiplier[metric1] * discriminator_df[metric1] +
+  //   metric_multiplier[metric2] * discriminator_df[metric2] + ...
+  // )
+
+  repeated string filter_median_metric = 5;
+  // Whether to use the median filter for pulling strategies.
+  // Expects discrete target metrics (e.g., split_subs, disconnected_branches).
+  //
+  // Example:
+  // ["split_subs"]
+}
+
+// Represents a set of distances for a metric (since proto3 lacks a native "set" type).
+message FilterDistanceSet {
+  repeated double distances = 1; // Distances used for filtering.
+}

@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package messages.optimiser;
+
+// =====================================================
+// OPTIMIZATION HEARTBEAT MESSAGES
+// =====================================================
+
+// A message sent by the optimizer when it starts.
+message OptimizationStartedHeartbeat {
+  string message_type = 1;
+  // The message type (always "optimization_started"). Don't change this.
+
+  string optimization_id = 2;
+  // The ID of the optimization.
+}
+
+// =====================================================
+// OPTIMIZATION STATISTICS HEARTBEAT
+// =====================================================
+
+// Optimization statistics to track the progress of the optimizer.
+message OptimizationStatsHeartbeat {
+  string message_type = 1;
+  // The message type (always "optimization_stats"). Don't change this.
+
+  string optimization_id = 2;
+  // The ID of the optimization.
+
+  double wall_time = 3;
+  // The number of seconds since the start of the optimization.
+
+  uint64 iteration = 4;
+  // The current iteration number.
+
+  uint64 num_branch_topologies_tried = 5;
+  // The number of branch topologies tried so far.
+
+  uint64 num_injection_topologies_tried = 6;
+  // The number of injection topologies tried so far.
+}
+
+// =====================================================
+// IDLE HEARTBEAT
+// =====================================================
+
+// A heartbeat that is sent by the optimizer when idle.
+message IdleHeartbeat {
+  string message_type = 1;
+  // The message type (always "idle"). Don't change this.
+}
+
+// =====================================================
+// LOG MESSAGE
+// =====================================================
+
+// A log message that is sent by the optimizer to the master.
+message LogMessage {
+  string message_type = 1;
+  // The message type (always "log"). Don't change this.
+
+  string optimization_id = 2;
+  // The ID of the optimization this message belongs to.
+
+  string message = 3;
+  // The message content to log.
+
+  bool error = 4;
+  // Whether this log entry represents an error.
+}
+
+// =====================================================
+// HEARTBEAT WRAPPER (UNION TYPE)
+// =====================================================
+
+// The union of all possible heartbeat message types.
+// Used to distinguish message content by type.
+message HeartbeatUnion {
+  oneof message {
+    IdleHeartbeat idle = 1;
+    LogMessage log = 2;
+    OptimizationStatsHeartbeat optimization_stats = 3;
+    OptimizationStartedHeartbeat optimization_started = 4;
+  }
+}
+
+// =====================================================
+// HEARTBEAT MESSAGE ENVELOPE
+// =====================================================
+
+// The outer heartbeat message sent by an optimizer instance.
+message Heartbeat {
+  HeartbeatUnion message = 1;
+  // The actual heartbeat payload. Discriminated by message_type.
+
+  string optimizer_type = 2;
+  // Which optimizer has sent the heartbeat.
+
+  string instance_id = 3;
+  // The instance ID of the optimizer.
+
+  string timestamp = 4;
+  // When the heartbeat was sent (ISO 8601 format recommended).
+
+  string uuid = 5;
+  // A unique identifier for this heartbeat message.
+  // Used to avoid duplicates during processing.
+}
+
+// =====================================================
+// OPTIONAL SERVICE INTERFACE
+// =====================================================
+
+// A service definition for receiving optimizer heartbeat messages.
+service HeartbeatService {
+  // Receives a heartbeat message from an optimizer instance.
+  rpc SendHeartbeat (Heartbeat) returns (HeartbeatAck);
+}
+
+// Acknowledgment for a received heartbeat.
+message HeartbeatAck {
+  bool success = 1;
+  // Whether the heartbeat was successfully processed.
+
+  string message = 2;
+  // Optional status or error message.
+}

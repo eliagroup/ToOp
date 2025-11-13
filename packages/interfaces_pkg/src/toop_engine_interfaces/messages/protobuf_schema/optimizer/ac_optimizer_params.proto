@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package messages.optimizer;
+import "toop_engine_interfaces/messages/protobuf_schema/lf_service/stored_loadflow_reference.proto";
+import "toop_engine_interfaces/messages/protobuf_schema/optimizer/ac_dc_commons.proto";
+
+
+
+// =====================================================
+// AC GENETIC ALGORITHM PARAMETERS
+// =====================================================
+
+// Parameters for the AC genetic algorithm.
+message ACGAParameters {
+  uint32 runtime_seconds = 1; 
+  // The maximum runtime of the AC optimization in seconds.
+
+  double pull_prob = 2;
+  // The probability of pulling a strategy from the DC repertoire.
+
+  repeated messages.optimizer.DescriptorDef me_descriptors = 3;
+  // The descriptors for the aggregated map elites repertoire.
+
+  double reconnect_prob = 4;
+  // The probability of reconnecting a disconnected branch in a strategy.
+
+  double close_coupler_prob = 5;
+  // The probability of closing an opened coupler in a strategy.
+
+  uint32 n_worst_contingencies = 6;
+  // How many worst contingencies to consider for the initial metrics,
+  // i.e. the top k contingencies used to compute the initial metrics.
+
+  int32 seed = 7;
+  // The seed for the random number generator.
+
+  uint32 timestep_processes = 8;
+  // How many processes to spawn for computing timesteps in parallel.
+
+  uint32 runner_processes = 9;
+  // How many processes to spawn for computing N-1 cases per timestep in parallel.
+  // Note: This multiplies with timestep_processes and may exhaust memory if both are high.
+
+  uint32 runner_batchsize = 10;
+  // Whether to batch the N-1 definition into smaller chunks to conserve memory.
+
+  optional messages.optimizer.FilterStrategy filter_strategy = 11;
+  // The filter strategy to use for the optimization, used to filter out strategies
+  // based on the discriminator, median, or dominator filter.
+
+  bool enable_ac_rejection = 12;
+  // Whether to enable AC rejection — i.e., suppress result messages when not accepted.
+
+  double reject_convergence_threshold = 13;
+  // The rejection threshold for the convergence rate:
+  // the split case must have at most as many non-converging loadflows as the unsplit case.
+
+  double reject_overload_threshold = 14;
+  // The rejection threshold for overload energy improvement:
+  // the split case must have at least 5% lower overload energy than the unsplit case.
+
+  double reject_critical_branch_threshold = 15;
+  // The rejection threshold for the critical branches increase:
+  // the split case must have less than 10% more critical branches than the unsplit case.
+
+  bool early_stop_validation = 16;
+  // Whether to enable early stopping during the optimization process.
+
+  double early_stopping_non_convergence_percentage_threshold = 17;
+  // The threshold for early stopping:
+  // if the percentage of non-converging cases exceeds this value,
+  // the AC validation will be stopped early.
+}
+
+// =====================================================
+// AC OPTIMIZER PARAMETERS
+// =====================================================
+
+// The set of parameters used exclusively by the AC optimizer.
+message ACOptimizerParameters {
+  messages.lf_service.StoredLoadflowReference initial_loadflow = 1;
+  // If an initial AC loadflow was computed before the optimization run,
+  // this can be provided and used to compute double limits.
+  // It will be returned through the initial topology push.
+
+  ACGAParameters ga_config = 2;
+  // The genetic algorithm configuration.
+}

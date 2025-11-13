@@ -44,7 +44,7 @@ message ACGAParameters {
   uint32 runner_batchsize = 10;
   // Whether to batch the N-1 definition into smaller chunks to conserve memory.
 
-  optional messages.optimizer.FilterStrategy filter_strategy = 11;
+  messages.optimizer.FilterStrategy filter_strategy = 11;
   // The filter strategy to use for the optimization, used to filter out strategies
   // based on the discriminator, median, or dominator filter.
 

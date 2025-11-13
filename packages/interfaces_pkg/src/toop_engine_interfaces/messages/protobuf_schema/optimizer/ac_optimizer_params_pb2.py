@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\nStoop_engine_interfaces/messages/protobuf_schema/optimizer/ac_optimizer_params.proto\x12\x12messages.optimizer\x1aZtoop_engine_interfaces/messages/protobuf_schema/lf_service/stored_loadflow_reference.proto\x1aMtoop_engine_interfaces/messages/protobuf_schema/optimizer/ac_dc_commons.proto\"\xea\x04\n\x0e\x41\x43GAParameters\x12\x17\n\x0fruntime_seconds\x18\x01 \x01(\r\x12\x11\n\tpull_prob\x18\x02 \x01(\x01\x12\x39\n\x0eme_descriptors\x18\x03 \x03(\x0b\x32!.messages.optimizer.DescriptorDef\x12\x16\n\x0ereconnect_prob\x18\x04 \x01(\x01\x12\x1a\n\x12\x63lose_coupler_prob\x18\x05 \x01(\x01\x12\x1d\n\x15n_worst_contingencies\x18\x06 \x01(\r\x12\x0c\n\x04seed\x18\x07 \x01(\x05\x12\x1a\n\x12timestep_processes\x18\x08 \x01(\r\x12\x18\n\x10runner_processes\x18\t \x01(\r\x12\x18\n\x10runner_batchsize\x18\n \x01(\r\x12@\n\x0f\x66ilter_strategy\x18\x0b \x01(\x0b\x32\".messages.optimizer.FilterStrategyH\x00\x88\x01\x01\x12\x1b\n\x13\x65nable_ac_rejection\x18\x0c \x01(\x08\x12$\n\x1creject_convergence_threshold\x18\r \x01(\x01\x12!\n\x19reject_overload_threshold\x18\x0e \x01(\x01\x12(\n reject_critical_branch_threshold\x18\x0f \x01(\x01\x12\x1d\n\x15\x65\x61rly_stop_validation\x18\x10 \x01(\x08\x12;\n3early_stopping_non_convergence_percentage_threshold\x18\x11 \x01(\x01\x42\x12\n\x10_filter_strategy\"\x96\x01\n\x15\x41\x43OptimizerParameters\x12\x46\n\x10initial_loadflow\x18\x01 \x01(\x0b\x32,.messages.lf_service.StoredLoadflowReference\x12\x35\n\tga_config\x18\x02 \x01(\x0b\x32\".messages.optimizer.ACGAParametersb\x06proto3'
+  serialized_pb=b'\nStoop_engine_interfaces/messages/protobuf_schema/optimizer/ac_optimizer_params.proto\x12\x12messages.optimizer\x1aZtoop_engine_interfaces/messages/protobuf_schema/lf_service/stored_loadflow_reference.proto\x1aMtoop_engine_interfaces/messages/protobuf_schema/optimizer/ac_dc_commons.proto\"\xd1\x04\n\x0e\x41\x43GAParameters\x12\x17\n\x0fruntime_seconds\x18\x01 \x01(\r\x12\x11\n\tpull_prob\x18\x02 \x01(\x01\x12\x39\n\x0eme_descriptors\x18\x03 \x03(\x0b\x32!.messages.optimizer.DescriptorDef\x12\x16\n\x0ereconnect_prob\x18\x04 \x01(\x01\x12\x1a\n\x12\x63lose_coupler_prob\x18\x05 \x01(\x01\x12\x1d\n\x15n_worst_contingencies\x18\x06 \x01(\r\x12\x0c\n\x04seed\x18\x07 \x01(\x05\x12\x1a\n\x12timestep_processes\x18\x08 \x01(\r\x12\x18\n\x10runner_processes\x18\t \x01(\r\x12\x18\n\x10runner_batchsize\x18\n \x01(\r\x12;\n\x0f\x66ilter_strategy\x18\x0b \x01(\x0b\x32\".messages.optimizer.FilterStrategy\x12\x1b\n\x13\x65nable_ac_rejection\x18\x0c \x01(\x08\x12$\n\x1creject_convergence_threshold\x18\r \x01(\x01\x12!\n\x19reject_overload_threshold\x18\x0e \x01(\x01\x12(\n reject_critical_branch_threshold\x18\x0f \x01(\x01\x12\x1d\n\x15\x65\x61rly_stop_validation\x18\x10 \x01(\x08\x12;\n3early_stopping_non_convergence_percentage_threshold\x18\x11 \x01(\x01\"\x96\x01\n\x15\x41\x43OptimizerParameters\x12\x46\n\x10initial_loadflow\x18\x01 \x01(\x0b\x32,.messages.lf_service.StoredLoadflowReference\x12\x35\n\tga_config\x18\x02 \x01(\x0b\x32\".messages.optimizer.ACGAParametersb\x06proto3'
   ,
   dependencies=[toop__engine__interfaces_dot_messages_dot_protobuf__schema_dot_lf__service_dot_stored__loadflow__reference__pb2.DESCRIPTOR,toop__engine__interfaces_dot_messages_dot_protobuf__schema_dot_optimizer_dot_ac__dc__commons__pb2.DESCRIPTOR,])
 
@@ -166,14 +166,9 @@ _ACGAPARAMETERS = _descriptor.Descriptor(
   syntax='proto3',
   extension_ranges=[],
   oneofs=[
-    _descriptor.OneofDescriptor(
-      name='_filter_strategy', full_name='messages.optimizer.ACGAParameters._filter_strategy',
-      index=0, containing_type=None,
-      create_key=_descriptor._internal_create_key,
-    fields=[]),
   ],
   serialized_start=279,
-  serialized_end=897,
+  serialized_end=872,
 )
 
 
@@ -211,15 +206,12 @@ _ACOPTIMIZERPARAMETERS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=900,
-  serialized_end=1050,
+  serialized_start=875,
+  serialized_end=1025,
 )
 
 _ACGAPARAMETERS.fields_by_name['me_descriptors'].message_type = toop__engine__interfaces_dot_messages_dot_protobuf__schema_dot_optimizer_dot_ac__dc__commons__pb2._DESCRIPTORDEF
 _ACGAPARAMETERS.fields_by_name['filter_strategy'].message_type = toop__engine__interfaces_dot_messages_dot_protobuf__schema_dot_optimizer_dot_ac__dc__commons__pb2._FILTERSTRATEGY
-_ACGAPARAMETERS.oneofs_by_name['_filter_strategy'].fields.append(
-  _ACGAPARAMETERS.fields_by_name['filter_strategy'])
-_ACGAPARAMETERS.fields_by_name['filter_strategy'].containing_oneof = _ACGAPARAMETERS.oneofs_by_name['_filter_strategy']
 _ACOPTIMIZERPARAMETERS.fields_by_name['initial_loadflow'].message_type = toop__engine__interfaces_dot_messages_dot_protobuf__schema_dot_lf__service_dot_stored__loadflow__reference__pb2._STOREDLOADFLOWREFERENCE
 _ACOPTIMIZERPARAMETERS.fields_by_name['ga_config'].message_type = _ACGAPARAMETERS
 DESCRIPTOR.message_types_by_name['ACGAParameters'] = _ACGAPARAMETERS

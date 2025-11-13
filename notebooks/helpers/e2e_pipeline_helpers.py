@@ -144,63 +144,6 @@ def get_paths(cfg: PipelineConfig) -> Tuple[Path, Path, Path, Path]:
     return iteration_path, file_path, data_folder, optimizer_snapshot_dir
 
 
-def remove_unsupported_elements_and_save(file_path: Path, data_folder: Path, pandapower_net: bool = False) -> Path:
-    """
-    Remove unsupported elements (such as static var compensators) and save the modified grid.
-
-    Parameters
-    ----------
-    file_path : Path
-        Path to the original xiidm network file to be loaded and cleaned.
-    data_folder : Path
-        Directory where the modified xiidm file will be saved.
-    pandapower_net : bool, optional
-        Whether the grid is a pandapower grid. Default is False (powsybl grid).
-
-    Returns
-    -------
-    Path
-        Path to the saved, cleaned xiidm file.
-
-    Raises
-    ------
-    RuntimeError
-        If the modified grid file could not be saved.
-    """
-    logger.info(f"Loading network: {file_path}")
-
-    if pandapower_net:
-        # Handle pandapower grid
-        net = pandapower.from_json(file_path)
-
-        # Remove static var compensators (statcoms) if present
-        if "sgen" in net and "type" in net["sgen"]:
-            statcoms = net["sgen"][net["sgen"]["type"] == "statcom"].index.tolist()
-            if statcoms:
-                logger.debug(f"Removing {len(statcoms)} static var compensators from pandapower grid")
-                net["sgen"].drop(statcoms, inplace=True)
-
-        mod_file = data_folder / f"modified_grid_{file_path.stem}.json"
-        logger.info(f"Saving modified pandapower grid to: {mod_file}")
-        pandapower.to_json(net, mod_file)
-
-        if not mod_file.exists():
-            raise RuntimeError(f"Failed to save modified pandapower grid to: {mod_file}")
-
-    # Default: pypowsybl
-    else:
-        net = pypowsybl.network.load(file_path)
-
-        mod_file = data_folder / f"modified_grid_{file_path.stem}.xiidm"
-        logger.info(f"Saving modified grid to: {mod_file}")
-        net.save(mod_file)
-
-        if not mod_file.exists():
-            raise RuntimeError(f"Failed to save modified grid to: {mod_file}")
-
-    return mod_file
-
-
 def prepare_importer_parameters(
     file_path: Path, data_folder: Path, area_settings: Optional[AreaSettings] = None
 ) -> BaseImporterParameters:

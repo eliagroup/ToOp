@@ -1,5 +1,13 @@
-from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters
-from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, FilterStrategy
+from toop_engine_interfaces.messages.optimiser_ac_dc_commons_factory import (
+    create_descriptor_def as DescriptorDef,
+)
+from toop_engine_interfaces.messages.optimiser_ac_dc_commons_factory import (
+    create_filter_distance_set as FilterDistanceSet,
+)
+from toop_engine_interfaces.messages.optimiser_ac_dc_commons_factory import (
+    create_filter_strategy as FilterStrategy,
+)
+from toop_engine_interfaces.messages.optimiser_ac_params_factory import create_ac_ga_parameters as ACGAParameters
 
 
 def test_acga_parameters_default():
@@ -12,8 +20,8 @@ def test_acga_parameters_default():
     assert params.seed == 42
     assert params.timestep_processes == 1
     assert params.runner_processes == 1
-    assert params.runner_batchsize is None
-    assert params.filter_strategy is None
+    assert params.runner_batchsize == 0
+    assert not params.HasField("filter_strategy")
     assert params.enable_ac_rejection is True
     assert params.reject_convergence_threshold == 1.0
     assert params.reject_overload_threshold == 0.95
@@ -27,9 +35,9 @@ def test_acga_parameters_filter_strategy():
         filter_dominator_metrics_target=["switching_distance", "split_subs"],
         filter_dominator_metrics_observed=["switching_distance", "split_subs"],
         filter_discriminator_metric_distances={
-            "split_subs": {0.0},
-            "switching_distance": {-0.9, 0.9},
-            "fitness": {-60, 60},
+            "split_subs": FilterDistanceSet(distances=[0.0]),
+            "switching_distance": FilterDistanceSet(distances=[-0.9, 0.9]),
+            "fitness": FilterDistanceSet(distances=[-60.0, 60.0]),
         },
         filter_discriminator_metric_multiplier={"split_subs": 1.0},
         filter_median_metric=["split_subs"],
@@ -45,17 +53,13 @@ def test_acga_parameters_filter_strategy():
         reject_convergence_threshold=0.6,
         reject_overload_threshold=0.9,
         reject_critical_branch_threshold=0.8,
-        me_descriptors=(
-            DescriptorDef(metric="split_subs", num_cells=2, range=(0, 5)),
-            DescriptorDef(metric="switching_distance", num_cells=5, range=(0, 50)),
+        me_descriptors=[
+            DescriptorDef(metric="split_subs", num_cells=2, range=(0.0, 5.0)),
+            DescriptorDef(metric="switching_distance", num_cells=5, range=(0.0, 50.0)),
             DescriptorDef(metric="disconnected_branches", num_cells=2),
-        ),
+        ],
         filter_strategy=filter_strat,
     )
     assert params.pull_prob + params.reconnect_prob + params.close_coupler_prob == 1.0
     assert params.runtime_seconds == 60
     assert params.me_descriptors[0].metric == "split_subs"
-    model_dump = params.model_dump_json()
-
-    model_loaded = ACGAParameters.model_validate_json(model_dump)
-    assert model_loaded == params

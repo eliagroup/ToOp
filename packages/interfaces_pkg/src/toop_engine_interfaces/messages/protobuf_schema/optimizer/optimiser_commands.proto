@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package messages.optimizer;
+
+import "toop_engine_interfaces/messages/protobuf_schema/optimizer/ac_dc_commons.proto";
+import "toop_engine_interfaces/messages/protobuf_schema/optimizer/ac_optimizer_params.proto";
+import "toop_engine_interfaces/messages/protobuf_schema/optimizer/dc_optimizer_params.proto";
+
+// =====================================================
+// COMMAND MESSAGES FROM BACKEND TO OPTIMIZER
+// =====================================================
+
+// Command with parameters for starting an optimization run.
+message StartOptimizationCommand {
+  string message_type = 1;
+  // The command type for deserialization. Always "start_optimization".
+  // Do not change this value.
+
+  messages.optimizer.DCOptimizerParameters dc_params = 2;
+  // The parameters for the DC optimizer.
+
+  messages.optimizer.ACOptimizerParameters ac_params = 3;
+  // The parameters for the AC optimizer.
+
+  repeated messages.optimizer.GridFile grid_files = 4;
+  // The grid files to load, where each GridFile represents one timestep.
+  // The grid files also include coupling information for the timesteps.
+  // NOTE: The first GridFile must be uncoupled ("coupling" == "none").
+
+  string optimization_id = 5;
+  // The ID of the optimization run.
+  // Used to identify the optimization run in the results.
+  // Should remain constant throughout the entire optimization run and
+  // should be equal to the Kafka event key.
+}
+
+// =====================================================
+
+// Command to shut down the worker.
+message ShutdownCommand {
+  string message_type = 1;
+  // The command type for deserialization. Always "shutdown".
+  // Do not change this value.
+
+  int32 exit_code = 2;
+  // The exit code to terminate the worker with.
+}
+
+// =====================================================
+// WRAPPER COMMAND MESSAGE
+// =====================================================
+
+// Base class for all commands to the optimizer.
+//
+// This acts as a discriminated union (`message_type` field)
+// allowing different command variants to be sent through the same topic or RPC call.
+message Command {
+  oneof command {
+    StartOptimizationCommand start_optimization = 1;
+    ShutdownCommand shutdown = 2;
+  }
+
+  string uuid = 3;
+  // A unique identifier for the command message,
+  // used to avoid duplicate processing on the optimizer side.
+
+  string timestamp = 4;
+  // When the command was sent (ISO 8601 string).
+}

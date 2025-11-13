@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package messages.optimizer;
+
+// The optimizer will push results to a results topic.
+// Defines the schema for the messages sent to the results topic.
+
+import "google/protobuf/struct.proto";
+
+// Result message containing the metrics of the optimization.
+message Metrics {
+  // The current best fitness value, which is the optimized quantity
+  double fitness = 1;
+
+  // Additional metrics such as max_flow_n_0, etc.
+  map<string, double> extra_scores = 2;
+
+  // For contingency analysis, a list of strings (length k) represents the case ids
+  // of the k worst contingencies.
+  repeated string worst_k_contingency_cases = 3;
+}
+
+// A results class encapsulating a single topology for a single timestep in action index format.
+message Topology {
+  // The branch/injection reconfiguration actions as indices into the action set. This can only be parsed
+  // when combined with the action set. This includes only actions that are actually used, i.e. no int_max entries.
+  // Actions will be automatically sorted in ascending order, as the order does not matter and we want
+  // to avoid duplicates.
+  repeated uint32 actions = 1;
+
+  // The applied disconnections in this topology as an index into the disconnectable branches set in the action set.
+  // This includes only disconnections that are actually used, i.e. no int_max entries.
+  // Disconnections will be automatically sorted in ascending order, as the order does not matter and we want
+  // to avoid duplicates.
+  repeated uint32 disconnections = 2;
+
+  // The setpoints for the PSTs if they have been computed. This is an index into the range of pst taps, i.e. the
+  // smallest tap is 0 and the neutral tap somewhere in the middle of the range. The tap range is defined in the action set.
+  // The list always has the same length, i.e. the number of controllable PSTs in the system, and each entry corresponds to
+  // the PST at the same position in the action set.
+  // TODO currently this is just the angle converted to int, will be changed later to be the actual tap position.
+  repeated int32 pst_setpoints = 3;
+
+  // The metrics of this topology and timestep. While the optimizer might optimize for all
+  // timesteps, these metrics should be broken down on a per-timestep basis if possible as they will
+  // be summed up before processing.
+  Metrics metrics = 4;
+
+  // The loadflow results of this topology in this timestep, if they were computed. Mostly for AC
+  // results, as for DC we don't need to send full loadflow results every time.
+  // This is a reference to the loadflow results stored on disk as sending them every time would be too large.
+  google.protobuf.Struct loadflow_results = 5;
+}
+
+// A series of topologies over multiple timesteps. This is basically a list of topologies,
+// one for every timestep.
+message Strategy {
+  // The topologies for every timestep
+  repeated Topology timesteps = 1;
+}
+
+// A message that pushes new topology results. These must include the topo-vects
+// and disconnections and may include loadflow results.
+message TopologyPushResult {
+  // The result type, don't change this
+  string message_type = 1;
+
+  // The strategies to be pushed to the master. Each strategy contains a list of timestep-
+  // topologies, one for every timestep that was optimized (i.e. Strategy.timesteps have the
+  // same length for all strategies)
+  repeated Strategy strategies = 2;
+
+  // The epoch of the optimization run. Enables plotting the results over time on backend side.
+  int32 epoch = 3;
+}
+
+// A message that is sent if the optimization was successfully stopped.
+message OptimizationStoppedResult {
+  // The result type, don't change this
+  string message_type = 1;
+
+  // The reason why the optimization was stopped
+  //
+  // Possible values:
+  // - Error means an unexpected exception was raised/the optimizer crashed
+  // - Stopped means it was stopped through a command
+  // - Converged means it stopped after hitting the convergence criterium
+  // - ac-not-converged means the AC convergence in the base grid was too poor to run an AC optimization, this will
+  //   only be sent by the AC optimizer.
+  string reason = 2;
+
+  // A message that can be sent with the stop message, i.e. an error message
+  string message = 3;
+
+  // The epoch of the optimization run when it was stopped.
+  int32 epoch = 4;
+}
+
+// Result message for when an optimization run has just started.
+message OptimizationStartedResult {
+  // The result type, don't change this
+  string message_type = 1;
+
+  // The initial topology including the starting metrics of the optimization. This is the topology
+  // without any splits or disconnections
+  Strategy initial_topology = 2;
+
+  // The initial statistics of the optimization run, i.e. the number of disconnections, etc. This is only filled
+  // by the DC optimizer and will hold one entry for each timestep in the initial topology.
+  repeated google.protobuf.Struct initial_stats = 3;
+}
+
+// A generic result message sent back from the optimizer to the results topic.
+// Results can be read by either the backend or another optimizer in the waterfall.
+message Result {
+  // The actual result message
+  oneof result {
+    TopologyPushResult topology_push = 1;
+    OptimizationStoppedResult stopped = 2;
+    OptimizationStartedResult optimization_started = 3;
+  }
+
+  // The optimization id as sent in the commands
+  string optimization_id = 4;
+
+  // On which type of optimizer created this result
+  string optimizer_type = 5;
+
+  // The instance id of the optimizer that created this result
+  string instance_id = 6;
+
+  // A unique identifier for this result message, used to avoid duplicates during processing
+  string uuid = 7;
+
+  // When the result was sent
+  string timestamp = 8;
+}

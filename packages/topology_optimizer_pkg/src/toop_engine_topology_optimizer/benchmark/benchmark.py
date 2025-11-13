@@ -7,8 +7,6 @@ not defined inside `lf_config` and `ga_config`. Multiple parameter sweeps are no
 Functions
 ---------
 main(cfg: DictConfig) -> None
-
-run_task_process(conn: Connection, cfg: DictConfig) -> None
 """
 
 import json
@@ -28,7 +26,7 @@ logger = logbook.Logger(__name__)
 
 
 @hydra.main(config_path="configs", config_name="ms_benchmark.yaml", version_base="1.2")
-def main(cfg: DictConfig) -> None:
+def main(cfg: DictConfig) -> None:  # TODO: Refactor to remove subprocess use
     """Run benchmark tasks based on the provided configuration.
 
     Parameters
@@ -80,7 +78,7 @@ def main(cfg: DictConfig) -> None:
         # Run the benchmark in a clean process to avoid side-effects from previous benchmarks
         ctx = mp.get_context("spawn")
         parent_conn, child_conn = ctx.Pipe()
-        process = Process(target=run_task_process, args=(child_conn, benchmark))
+        process = Process(target=run_task_process, args=(benchmark, child_conn))
         process.start()
         res = parent_conn.recv()
         process.join()

@@ -1,0 +1,46 @@
+name: test notebooks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'notebooks/**'
+
+jobs:
+  test-example-notebooks:
+    permissions:
+          contents: read
+          pull-requests: read
+    runs-on:
+      labels: Runner-ToOp-Projects
+    timeout-minutes: 10
+    env:
+      UV_PROJECT: ./
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: "Set up Python"
+      uses: actions/setup-python@v5
+      with:
+        python-version-file: "pyproject.toml"
+
+    - name: Install dependencies
+      run: uv sync --all-groups --all-extras --frozen
+
+    - name: set PY
+      run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
+
+    - name: Verify jupyter installation
+      run: uv run jupyter --version
+
+    - name: Make script executable
+      run: chmod +x scripts/test_notebooks.sh
+
+    - name: Test example notebooks
+      run: uv run scripts/test_notebooks.sh notebooks "example*.ipynb"

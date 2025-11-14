@@ -128,6 +128,10 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
     This function merges the transformer data with the tap changers, which are returned by
     individual functions.
 
+    Transformer model:
+    https://powsybl.readthedocs.io/projects/powsybl-core/en/stable/grid_model/network_subnetwork.html
+    #two-winding-transformer
+
     Parameters
     ----------
     net : Network
@@ -145,7 +149,7 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
         return get_empty_dataframe_from_model(BranchModel)
     if net_pu is None:
         net_pu = get_network_as_pu(net)
-    trafos_pu = net_pu.get_2_windings_transformers()
+    trafos_pu = net_pu.get_2_windings_transformers(all_attributes=True)
 
     phase_tap_changers = pd.merge(
         left=net.get_phase_tap_changers(),
@@ -156,22 +160,10 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
     )
     phase_tap_changers.columns = [f"{col}_ptap" for col in phase_tap_changers.columns]
 
-    ratio_tap_changers = pd.merge(
-        left=net_pu.get_ratio_tap_changers(),
-        right=net.get_ratio_tap_changer_steps(),
-        left_on=["id", "tap"],
-        right_on=["id", "position"],
-        how="left",
-    )
-    ratio_tap_changers.columns = [f"{col}_rtap" for col in ratio_tap_changers.columns]
-
-    trafos = pd.merge(
-        left=trafos_pu,
-        right=trafos_nopu.add_suffix("_nopu"),
-        left_index=True,
-        right_index=True,
-        how="left",
-    )
+    trafos = net.get_2_windings_transformers(all_attributes=True)
+    trafos_pu = net_pu.get_2_windings_transformers(all_attributes=True)
+    trafos["x"] = trafos_pu["x_at_current_tap"]
+    trafos["r"] = trafos_pu["r_at_current_tap"]
     trafos = pd.merge(
         left=trafos,
         right=phase_tap_changers,
@@ -179,33 +171,10 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
         right_index=True,
         how="left",
     )
-    trafos = pd.merge(
-        left=trafos,
-        right=ratio_tap_changers,
-        left_index=True,
-        right_index=True,
-        how="left",
-    )
 
-    # From https://www.powsybl.org/pages/documentation/grid/model/#transformers
-    trafos["x"] = trafos["x"] * (1 + (trafos["x_rtap"].fillna(0) + trafos["x_ptap"].fillna(0)) / 100)
-    trafos["r"] = trafos["r"] * (1 + (trafos["r_rtap"].fillna(0) + trafos["r_ptap"].fillna(0)) / 100)
-    trafos["rho"] = (trafos["rated_u2"] / trafos["rated_u1"]) * trafos["rho_ptap"].fillna(1) * trafos["rho_rtap"].fillna(1)
-    trafos["x"] = trafos["x"] / trafos["rho"]
-    trafos["alpha"] = trafos["alpha_ptap"]
-    if net._source_format == "UCTE":
-        trafos["name"] = trafos.index + " " + trafos.name + " " + trafos.elementName_nopu
-    elif net._source_format == "CGMES":
-        trafos["name"] = trafos.name
-    else:
-        trafos["name"] = (
-            trafos["bus_breaker_bus1_id_nopu"]
-            + " ## "
-            + trafos["bus_breaker_bus2_id_nopu"]
-            + " ## "
-            + (trafos["elementName_nopu"] if "elementName_nopu" in trafos.keys() else trafos["name"])
-        )
-    # Merge the pst tap changer df to check if the transformer actually has a phase tap changer
+    # FIXME: this is random, why?
+    if net.get_voltage_levels(attributes=["topology_kind"])["topology_kind"].unique()[0] == "BUS_BREAKER":
+        trafos["x"] = trafos["x"] / trafos["rho"]
 
     trafos["has_pst_tap"] = ~trafos["low_tap_ptap"].isna() & (trafos["low_tap_ptap"] != trafos["high_tap_ptap"])
 

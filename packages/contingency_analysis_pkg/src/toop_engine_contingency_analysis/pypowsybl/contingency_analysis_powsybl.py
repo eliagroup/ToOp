@@ -89,9 +89,10 @@ def run_powsybl_analysis(
         # The security analysis in DC should always run with a single slack to avoid changing gen values for each N-1 case
         # This way it matches the current way our N-1 analysis in the GPU-solver is set up
         lf_params = SINGLE_SLACK
+    contingency_propagation = "true" if n_minus_1_definition.contingency_propagation else "false"
     security_params = pypowsybl.security.impl.parameters.Parameters(
         load_flow_parameters=lf_params,
-        provider_parameters={"threadCount": str(n_processes)},
+        provider_parameters={"threadCount": str(n_processes), "contingencyPropagation": contingency_propagation},
     )
 
     res = analysis.run_ac(net, security_params) if method == "ac" else analysis.run_dc(net, security_params)

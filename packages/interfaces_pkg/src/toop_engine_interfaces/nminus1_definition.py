@@ -105,6 +105,9 @@ class LoadflowParameters(BaseModel):
     distributed_slack: bool = False
     """Whether to distribute the slack across all injections in the grid. Only relevant for powsybl grids."""
 
+    contingency_propagation: bool = False
+    """Whether to enable powsybl's contingency propagation in the N-1 analysis."""
+
 
 class Nminus1Definition(BaseModel):
     """An N-1 definition holds monitored and outaged elements for a grid.

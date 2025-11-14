@@ -483,7 +483,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     representation of an actual power grid but rather a comprehensive test case. The Basecase should converge
     in about 10 iterations with a tolerance of 1e-6.
 
-    TODO: add operational limits, maybe some ratio/phase tap changers, etc.
+    TODO: add sensable operational limits, maybe some ratio/phase tap changers, etc.
     Ideally it should have some overloads that can be solved by ToOp
 
     Returns
@@ -854,10 +854,10 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         converter_station1_id="LCC1",
         converter_station2_id="LCC2",
         r=1.0,
-        nominal_v=350.0,
+        nominal_v=380.0,
         converters_mode="SIDE_1_RECTIFIER_SIDE_2_INVERTER",
         max_p=300.0,
-        target_p=0.0,
+        target_p=75.0,
     )
 
     # VSC converter stations (one on S_3W HV, one on HV_gen)
@@ -894,7 +894,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         converter_station1_id="VSC_A",
         converter_station2_id="VSC_B",
         r=1.0,
-        nominal_v=350.0,
+        nominal_v=380.0,
         converters_mode="SIDE_1_RECTIFIER_SIDE_2_INVERTER",
         max_p=300.0,
         target_p=50.0,  # small transfer to avoid stressing balance
@@ -919,10 +919,19 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
                 "position_order": 10,
                 "direction": "BOTTOM",
             },
-            # {"id": "GEN_MV", "name": "MV local generator", "energy_source": "THERMAL",
-            #  "min_p": 0.0, "max_p": 200.0, "target_p": 80.0,
-            #  "voltage_regulator_on": True, "target_v": 110.0,
-            #  "bus_or_busbar_section_id": "VL_MV_svc_1_1", "position_order": 10, "direction": "BOTTOM"},
+            {
+                "id": "GEN_MV",
+                "name": "MV local generator",
+                "energy_source": "THERMAL",
+                "min_p": 0.0,
+                "max_p": 80.0,
+                "target_p": 30.0,
+                "voltage_regulator_on": True,
+                "target_v": 110.0,
+                "bus_or_busbar_section_id": "VL_MV_svc_1_1",
+                "position_order": 10,
+                "direction": "BOTTOM",
+            },
         ]
     ).set_index("id")
     pypowsybl.network.create_generator_bay(n, df=gens_df)
@@ -1017,14 +1026,14 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
                 "bus_or_busbar_section_id": "VL_MV_1_1",
                 "position_order": 30,
                 "direction": "TOP",
-                "target_p": 30.0,
+                "target_p": -20.0,
                 "target_q": 0.0,
             },
             {
                 "id": "BAT_LV",
                 "name": "LV battery",
-                "min_p": -20.0,
-                "max_p": 20.0,
+                "min_p": -60.0,
+                "max_p": 60.0,
                 "bus_or_busbar_section_id": "VL_LV_load_1_1",
                 "position_order": 30,
                 "direction": "TOP",
@@ -1103,5 +1112,76 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         ]
     ).set_index("id")
     pypowsybl.network.create_static_var_compensator_bay(n, df=svc_df)
+
+    # line limits
+    limits = pd.DataFrame.from_records(
+        data=[
+            {
+                "element_id": "L14",
+                "value": 200,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "L15",
+                "value": 200,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "L16",
+                "value": 400,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "L7",
+                "value": 400,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+        ],
+        index="element_id",
+    )
+
+    # Set Slack bus
+    slack_voltage_id = "VL_HV_gen"
+    slack_bus_id = "VL_HV_gen_0"
+    dict_slack = {"voltage_level_id": slack_voltage_id, "bus_id": slack_bus_id}
+    pypowsybl.network.Network.create_extensions(n, extension_name="slackTerminal", **dict_slack)
+
+    pypowsybl.loadflow.run_ac(n)
+    i1 = abs(n.get_lines()["i1"])
+    i1_arr = np.asarray(i1, dtype=float)
+    rounded_i1 = (np.ceil(i1_arr / 100) * 100).astype(int)
+    limits = pd.Series(rounded_i1, index=i1.index, name="value").reset_index()
+    limits.rename(columns={"id": "element_id"}, inplace=True)
+    limits.set_index("element_id", inplace=True)
+    limits["side"] = "ONE"
+    limits["name"] = "permanent"
+    limits["type"] = "CURRENT"
+    limits["acceptable_duration"] = -1
+    n.create_operational_limits(limits)
+
+    # transformer limits
+    i1 = abs(n.get_2_windings_transformers()["i1"])
+    i1_arr = np.asarray(i1, dtype=float)
+    rounded_i1 = (np.ceil(i1_arr / 100) * 100).astype(int)
+    limits_tr = pd.Series(rounded_i1, index=n.get_2_windings_transformers().index, name="value").reset_index()
+    limits_tr.rename(columns={"id": "element_id"}, inplace=True)
+    limits_tr.set_index("element_id", inplace=True)
+    limits_tr["side"] = "ONE"
+    limits_tr["name"] = "permanent"
+    limits_tr["type"] = "CURRENT"
+    limits_tr["acceptable_duration"] = -1
+    n.create_operational_limits(limits_tr)
 
     return n

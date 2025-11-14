@@ -32,6 +32,7 @@ from toop_engine_dc_solver.example_grids import (
     case14_pandapower,
     case30_with_psts,
     case57_data_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
 )
@@ -1045,3 +1046,27 @@ def overlapping_monitored_and_disconnected_branch_data(
     best_actions = get_random_topology_results(static_information)
     check_branches_match_between_network_data_and_static_info(network_data, static_information)
     return network_data, static_information, best_actions
+
+
+@pytest.fixture(scope="session")
+def create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("complex_grid")
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    powsybl_data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_data_path
+    tmp_path = tmp_path_factory.mktemp("complex_grid", numbered=True)
+
+    # Copy over the grid file
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
+
+    return tmp_path

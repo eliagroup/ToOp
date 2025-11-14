@@ -84,11 +84,11 @@ class PowsyblBackend(BackendInterface):
 
         assert dc_results[0].status == pp.loadflow.ComponentStatus.CONVERGED, "DC loadflow did not converge"
         assert not self.net.get_shunt_compensators()["p"].any(), "Shunt compensators are not supported yet"
-        assert self.net.get_batteries().empty, "Batteries are not supported yet"
+        # assert self.net.get_batteries().empty, "Batteries are not supported yet"
         assert self.net.get_3_windings_transformers().empty, "3 winding transformers are not supported yet"
-        assert self.net.get_hvdc_lines().empty, "HVDC lines are not supported yet"
-        assert self.net.get_lcc_converter_stations().empty, "LCC converter stations are not supported yet"
-        assert self.net.get_vsc_converter_stations().empty, "VSC converter stations are not supported yet"
+        # assert self.net.get_hvdc_lines().empty, "HVDC lines are not supported yet"
+        # assert self.net.get_lcc_converter_stations().empty, "LCC converter stations are not supported yet"
+        # assert self.net.get_vsc_converter_stations().empty, "VSC converter stations are not supported yet"
 
     @functools.lru_cache
     def _get_nodes(self) -> pd.DataFrame:
@@ -142,7 +142,16 @@ class PowsyblBackend(BackendInterface):
     @functools.lru_cache
     def _get_injections(self) -> pd.DataFrame:
         """Merge information from generators, loads and dangling lines into the injections dataframe."""
-        injections = pd.concat([self._get_generators(), self._get_loads(), self._get_dangling_lines()])
+        injections = pd.concat(
+            [
+                self._get_generators(),
+                self._get_loads(),
+                self._get_dangling_lines(),
+                self._get_battery(),
+                self._get_hvdc_lcc(),
+                self._get_hvdc_vsc(),
+            ]
+        )
 
         return injections
 
@@ -245,6 +254,60 @@ class PowsyblBackend(BackendInterface):
         gens["type"] = "GENERATOR"
 
         return gens
+
+    @functools.lru_cache
+    def _get_battery(self) -> pd.DataFrame:
+        """Get all batteries that are connected to a node in _get_nodes()"""
+        nodes = self._get_nodes()
+
+        batteries = self.net.get_batteries()
+
+        # TODO: create battery mask
+        # batteries["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["battery_for_nminus1"], False, len(batteries))
+        batteries["for_nminus1"] = False
+
+        batteries = batteries[batteries["bus_id"].isin(nodes.index) & (batteries["bus_id"] != self.slack_id)]
+        batteries["bus_id_int"] = nodes.loc[batteries["bus_id"], "int_id"].values
+        batteries["type"] = "GENERATOR"
+        batteries.loc[batteries["p"] > 0, "type"] = "LOAD"
+
+        return batteries
+
+    @functools.lru_cache
+    def _get_hvdc_lcc(self) -> pd.DataFrame:
+        """Get all lcc converter stations that are connected to a node in _get_nodes()"""
+        nodes = self._get_nodes()
+
+        lcc = self.net.get_lcc_converter_stations()
+
+        # TODO: create lcc and vsc mask
+        # lcc["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["lcc_for_nminus1"], False, len(lcc))
+        lcc["for_nminus1"] = False
+
+        lcc = lcc[lcc["bus_id"].isin(nodes.index) & (lcc["bus_id"] != self.slack_id)]
+        lcc["bus_id_int"] = nodes.loc[lcc["bus_id"], "int_id"].values
+        lcc["type"] = "GENERATOR"
+        lcc.loc[lcc["p"] > 0, "type"] = "LOAD"
+
+        return lcc
+
+    @functools.lru_cache
+    def _get_hvdc_vsc(self) -> pd.DataFrame:
+        """Get all vsc converter stations that are connected to a node in _get_nodes()"""
+        nodes = self._get_nodes()
+
+        vsc = self.net.get_vsc_converter_stations()
+
+        # TODO: create vsc mask
+        # vsc["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["vsc_for_nminus1"], False, len(vsc))
+        vsc["for_nminus1"] = False
+
+        vsc = vsc[vsc["bus_id"].isin(nodes.index) & (vsc["bus_id"] != self.slack_id)]
+        vsc["bus_id_int"] = nodes.loc[vsc["bus_id"], "int_id"].values
+        vsc["type"] = "GENERATOR"
+        vsc.loc[vsc["p"] > 0, "type"] = "LOAD"
+
+        return vsc
 
     @functools.lru_cache
     def _get_loads(self) -> pd.DataFrame:

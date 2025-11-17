@@ -401,7 +401,7 @@ class PowsyblBackend(BackendInterface):
 
     def get_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of branches that can have a phase shift"""
-        return self._get_branches()["alpha"].notna().values
+        return self._get_branches()["has_pst_tap"].values
 
     def get_controllable_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of controllable psts"""

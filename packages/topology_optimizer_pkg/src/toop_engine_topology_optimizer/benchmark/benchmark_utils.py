@@ -289,36 +289,6 @@ def prepare_importer_parameters(
     return CgmesImporterParameters(**importer_parameter_dict)
 
 
-def copy_to_initial_topology(file_path: Path, data_folder: Path, initial_topology_subpath: str) -> Path:
-    """
-    Copy a grid file to the initial topology directory within the data folder.
-
-    Parameters
-    ----------
-    file_path : Path
-        The path to the grid file to be copied.
-    data_folder : Path
-        The root directory where the initial topology subdirectory will be created.
-    initial_topology_subpath : str
-        The subdirectory path under `data_folder` where the file will be copied.
-
-    Returns
-    -------
-    Path
-        The path to the copied file in the initial topology directory.
-
-    Notes
-    -----
-    If the target directory does not exist, it will be created along with any necessary parent directories.
-    """
-    target_dir = data_folder / initial_topology_subpath
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target_path = target_dir / file_path.name
-    shutil.copy(file_path, target_path)
-    logger.info(f"Copied initial topology to {target_path}")
-    return target_path
-
-
 def run_preprocessing(
     importer_parameters: BaseImporterParameters,
     data_folder: Path,
@@ -803,8 +773,6 @@ def run_pipeline(
 
     # Copy initial topology
     if run_preprocessing_stage:
-        copy_to_initial_topology(importer_parameters.grid_model_file, data_folder, pipeline_cfg.initial_topology_subpath)
-
         logger.info("Running preprocessing stage...")
         run_preprocessing(
             importer_parameters,

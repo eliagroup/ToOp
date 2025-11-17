@@ -29,7 +29,6 @@ from omegaconf import DictConfig
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     PipelineConfig,
-    copy_to_initial_topology,
     get_paths,
     perform_ac_analysis,
     prepare_importer_parameters,
@@ -165,7 +164,6 @@ def benchmark_single_grid(
     importer_parameters.area_settings.cutoff_voltage = dc_optimization_cfg.get("area_settings", {}).get(
         "cutoff_voltage", 380
     )
-    copy_to_initial_topology(importer_parameters.grid_model_file, data_folder, pipeline_cfg.initial_topology_subpath)
 
     with timer.time("preprocess"):
         run_preprocessing(

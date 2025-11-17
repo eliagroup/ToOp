@@ -189,7 +189,7 @@ def benchmark_single_grid(
             pandapower_runner=(pipeline_cfg.grid_type == "pandapower"),
         )
 
-    res_path = max(list((file_path.parent / "optimizer_snapshot").glob("run_*/res.json")))
+    res_path = run_dir / "res.json"
     res = load_res(res_path)
     dc_quality = extract_dc_quality(res)
 
@@ -257,10 +257,10 @@ def main(cfg: DictConfig) -> None:
         json.dump([entry], f, indent=2)
     # Copy res.json to next to benchmark_summary.json
     with open(summary_filepath.parent / "res.json", "w") as f:
-        summary_filepath = (
+        res_filepath = (
             Path(dc_optimization_cfg["stats_dir"].replace("{task_name}", dc_optimization_cfg["task_name"])) / "res.json"
         )
-        json.dump(load_res(summary_filepath), f, indent=2)
+        json.dump(load_res(res_filepath), f, indent=2)
     logger.info(f"Benchmark for {grid_path} completed. Summary in {summary_filepath}")
 
 

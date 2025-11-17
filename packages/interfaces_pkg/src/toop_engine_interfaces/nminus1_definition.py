@@ -106,7 +106,18 @@ class LoadflowParameters(BaseModel):
     """Whether to distribute the slack across all injections in the grid. Only relevant for powsybl grids."""
 
     contingency_propagation: bool = False
-    """Whether to enable powsybl's contingency propagation in the N-1 analysis."""
+    """Whether to enable powsybl's contingency propagation in the N-1 analysis.
+
+    Powsybl:
+    https://powsybl.readthedocs.io/projects/powsybl-open-loadflow/en/latest/security/parameters.html
+    Security Analysis will determine by topological search the switches with type circuit breakers
+    (i.e. capable of opening fault currents) that must be opened to isolate the fault. Depending on the network structure,
+    this could lead to more equipments to be simulated as tripped, because disconnectors and load break switches
+    (i.e., not capable of opening fault currents) are not considered.
+
+    Pandapower:
+    Currently not supported in pandapower.
+    """
 
 
 class Nminus1Definition(BaseModel):

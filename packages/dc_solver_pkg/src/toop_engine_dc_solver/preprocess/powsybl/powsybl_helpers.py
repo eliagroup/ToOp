@@ -172,10 +172,6 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
         how="left",
     )
 
-    # FIXME: this is random, why?
-    if net.get_voltage_levels(attributes=["topology_kind"])["topology_kind"].unique()[0] == "BUS_BREAKER":
-        trafos["x"] = trafos["x"] / trafos["rho"]
-
     if net._source_format == "UCTE":
         trafos["name"] = trafos.index + " " + trafos.name + " " + trafos.elementName
     elif net._source_format == "CGMES":

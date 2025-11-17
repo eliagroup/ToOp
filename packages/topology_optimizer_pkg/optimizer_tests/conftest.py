@@ -21,6 +21,7 @@ from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
+from toop_engine_topology_optimizer.benchmark.benchmark_utils import PipelineConfig
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_topo_data
 
@@ -274,6 +275,17 @@ def cfg(static_information_file: Path, tmp_path_factory: pytest.TempPathFactory)
             },
         }
     )
+
+
+@pytest.fixture(scope="session")
+def pipeline_cfg(tmp_path_factory: pytest.TempPathFactory) -> PipelineConfig:
+    """Configuration for the end-to-end pipeline tests"""
+    root_path = tmp_path_factory.mktemp("pipeline_cfg")
+    file_name = "grid.xiidm"
+    grid_file_path = root_path / file_name
+    grid_file_path.touch()
+    iteration_name = ""
+    return PipelineConfig(root_path=root_path, iteration_name=iteration_name, file_name=file_name, grid_type="powsybl")
 
 
 @pytest.fixture

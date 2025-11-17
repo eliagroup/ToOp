@@ -6,7 +6,7 @@ grid configurations or override parameters like GA runtime.
 
 Example:
   uv run python -m benchmark.benchmark_toop --multirun \
-    grid=config_grid_node_breaker ga_config.runtime_seconds=10,20 ga_config.n_worst_contingencies=2,5
+    grid=config_grid_node_breaker ga_config.runtime_seconds=10,20 ga_config.split_subs=2,5
 
 This runs ToOp end-to-end on the specified node breaker grid for 4 combinations of,
 parameters.
@@ -33,7 +33,6 @@ from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     get_paths,
     perform_ac_analysis,
     prepare_importer_parameters,
-    remove_unsupported_elements_and_save,
     run_dc_optimization_stage,
     run_preprocessing,
 )
@@ -162,14 +161,7 @@ def benchmark_single_grid(
     static_information_file = data_folder / pipeline_cfg.static_info_relpath
     timer = PhaseTimer()
 
-    with timer.time("pre_modify"):
-        modified_file_path = remove_unsupported_elements_and_save(
-            file_path=file_path,
-            data_folder=data_folder,
-            pandapower_net=True if pipeline_cfg.grid_type == "pandapower" else False,
-        )
-
-    importer_parameters = prepare_importer_parameters(modified_file_path, data_folder)
+    importer_parameters = prepare_importer_parameters(file_path, data_folder)
     importer_parameters.area_settings.cutoff_voltage = dc_optimization_cfg.get("area_settings", {}).get(
         "cutoff_voltage", 380
     )
@@ -197,7 +189,7 @@ def benchmark_single_grid(
             pandapower_runner=(pipeline_cfg.grid_type == "pandapower"),
         )
 
-    res_path = max(list((modified_file_path.parent / "optimizer_snapshot").glob("run_*/res.json")))
+    res_path = max(list((file_path.parent / "optimizer_snapshot").glob("run_*/res.json")))
     res = load_res(res_path)
     dc_quality = extract_dc_quality(res)
 

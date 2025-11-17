@@ -176,6 +176,19 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
     if net.get_voltage_levels(attributes=["topology_kind"])["topology_kind"].unique()[0] == "BUS_BREAKER":
         trafos["x"] = trafos["x"] / trafos["rho"]
 
+    if net._source_format == "UCTE":
+        trafos["name"] = trafos.index + " " + trafos.name + " " + trafos.elementName
+    elif net._source_format == "CGMES":
+        trafos["name"] = trafos.name
+    else:
+        trafos["name"] = (
+            trafos["bus_breaker_bus1_id"]
+            + " ## "
+            + trafos["bus_breaker_bus2_id"]
+            + " ## "
+            + (trafos["elementName"] if "elementName" in trafos.keys() else trafos["name"])
+        )
+
     trafos["has_pst_tap"] = ~trafos["low_tap_ptap"].isna() & (trafos["low_tap_ptap"] != trafos["high_tap_ptap"])
 
     return trafos[["x", "r", "rho", "alpha", "name", "has_pst_tap"]]

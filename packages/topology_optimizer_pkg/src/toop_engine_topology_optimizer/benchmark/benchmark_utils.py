@@ -380,9 +380,6 @@ def run_preprocessing(
     zip_path = data_folder / "static_information.zip"
     shutil.make_archive(str(zip_path).replace(".zip", ""), "zip", root_dir=file_to_zip.parent, base_dir=file_to_zip.name)
 
-    # # Also archive the full data folder (keeps behaviour from original notebook)
-    # full_zip_root = data_folder.parent
-    # shutil.make_archive(str(full_zip_root / data_folder.name), "zip", root_dir=full_zip_root, base_dir=data_folder.name)
     logger.info("Preprocessing completed.")
     return info, static_information
 

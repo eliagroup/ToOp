@@ -3,15 +3,15 @@ modified from https://github.com/powsybl/powsybl-core/blob/main/ucte/ucte-conver
 ##N
 ##ZBE
 B_SU1_11 Belgium Nod1 0 0        50.0000 0.00000 0.00000 0.00000                                                               W
-B_SU1_21 Belgium Nod2 0 2 225.00 0.00000 0.00000 100.000 0.00000                                                               W
-B_SU2_11 Belgium Nod2 0 2 400.00 0.00000 0.00000 150.000 0.00000                                                               W
+B_SU1_21 Belgium Nod2 0 2 225.00 0.00000 0.00000 -100.000 0.00000                                                               W
+B_SU2_11 Belgium Nod2 0 2 400.00 0.00000 0.00000 -150.000 0.00000                                                               W
 ##ZFR
-D8SU1_11 France Node1 1 0        50.0000 0.00000 0.00000 0.00000                                                               L
+D8SU1_11 France Node1 1 0        150.0000 0.00000 0.00000 0.00000                                                               L
 D8SU1_12 France Node3 1 0        0.00000 0.00000 0.00000 0.00000                                                               L
 D8SU1_21 France Node2 0 0        0.00000 0.00000 0.00000 0.00000                                                               L
-D2SU1_31 France Node4 0 0 225.00 25.0000 10.0000 5.00000 2.00000                                                               L
-D2SU2_31 France Node4 0 0 225.00 25.0000 10.0000 5.00000 2.00000                                                               L
-D7SU2_11 France ONode 0 3 400.00 0.00000 0.00000 50.0000 0.00000                                                               F
+D2SU1_31 France Node4 0 0 225.00 25.0000 10.0000 -5.00000 2.00000                                                               L
+D2SU2_31 France Node4 0 0 225.00 25.0000 10.0000 -5.00000 2.00000                                                               L
+D7SU2_11 France ONode 0 3 400.00 0.00000 0.00000 -50.0000 0.00000                                                               F
 ##ZHR
 HCCCCC1  namename11   0 0        123.000 18.4000 0.00000 0.00000                                                               L
 HDDDDD2  namename11   0 0        0.00000 0.00000 0.00000 0.00000                                                               L

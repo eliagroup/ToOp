@@ -33,6 +33,7 @@ from toop_engine_dc_solver.example_grids import (
     case30_with_psts,
     case57_data_powsybl,
     create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
+    create_ucte_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
 )
@@ -94,7 +95,9 @@ from toop_engine_interfaces.folder_structure import (
     POSTPROCESSING_PATHS,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    PreprocessParameters,
+)
 
 chex.set_n_cpu_devices(2)
 jax.config.update("jax_enable_x64", True)
@@ -681,6 +684,28 @@ def jax_inputs_oberrhein(network_data_preprocessed: NetworkData) -> tuple[Action
 def ucte_file() -> Path:
     ucte_file = Path(f"{os.path.dirname(__file__)}/files/test_ucte_powsybl_example.uct")
     return ucte_file
+
+
+@pytest.fixture(scope="session")
+def create_ucte_data_path(ucte_file: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("ucte_grid")
+    create_ucte_data_folder(tmp_path, ucte_file=ucte_file)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def basic_ucte_data_folder(create_ucte_data_path: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    powsybl_data_folder = create_ucte_data_path
+    tmp_path = tmp_path_factory.mktemp("ucte_grid", numbered=True)
+
+    # Copy over the grid file
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
+
+    return tmp_path
 
 
 @pytest.fixture(scope="session")

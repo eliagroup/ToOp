@@ -507,6 +507,8 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
             {"id": "S_2W_MV_HV", "name": "S_2W_MV_HV", "tso": "TSO", "country": "BE"},
             {"id": "S_HV_gen", "name": "S_2W_HV_gen", "tso": "TSO", "country": "BE"},
             {"id": "S_HV_vsc", "name": "S_HV_vsc", "tso": "TSO", "country": "BE"},
+            {"id": "S_DE_1", "name": "S_DE_1", "tso": "TSO", "country": "DE"},
+            {"id": "S_DE_2", "name": "S_DE_2", "tso": "TSO", "country": "DE"},
         ]
     ).set_index("id")
     n.create_substations(df=substations_df)
@@ -601,6 +603,20 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
                 "nominal_v": 380.0,
                 "topology_kind": "NODE_BREAKER",
             },
+            {
+                "id": "VL_DE_1",
+                "name": "VL_DE_1",
+                "substation_id": "S_DE_1",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_DE_2",
+                "name": "VL_DE_2",
+                "substation_id": "S_DE_2",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
         ]
     ).set_index("id")
     n.create_voltage_levels(df=vls_df)
@@ -613,7 +629,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     kwargs_two_busbar_layout = {"aligned_buses_or_busbar_count": 2, "section_count": 1, "switch_kinds": ""}
     kwargs_four_busbar_layout = {"aligned_buses_or_busbar_count": 2, "section_count": 2, "switch_kinds": "BREAKER"}
 
-    no_layout_list = ["VL_LV_load"]
+    no_layout_list = ["VL_LV_load", "VL_DE_1", "VL_DE_2"]
     basic_layout_list = ["VL_2W_MV_LV_LV", "VL_3W_LV"]
     two_busbar_layout_list = ["VL_3W_MV", "VL_2W_MV_LV_MV", "VL_MV_load", "VL_MV_svc", "VL_2W_MV_HV_MV", "VL_HV_gen"]
     four_busbar_layout_list = ["VL_MV", "VL_3W_HV", "VL_2W_MV_HV_HV", "VL_HV_vsc"]
@@ -901,7 +917,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     )
 
     # ---------------------------------------------------------------------
-    # 6) assets: battery, SVC, shunts/reactor, gens, loads
+    # 6) assets: battery, SVC, shunts/reactor, gens, loads, dangling line
     # ---------------------------------------------------------------------
     # Generators (set one big HV gen as main source)
     gens_df = pd.DataFrame(
@@ -1112,6 +1128,39 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         ]
     ).set_index("id")
     pypowsybl.network.create_static_var_compensator_bay(n, df=svc_df)
+
+    dangling_df = pd.DataFrame(
+        [
+            {
+                "id": "Dangling_inbound",
+                "name": "Dangling inbound",
+                "p0": -300,
+                "q0": -100,
+                "r": hv_long["r"],
+                "x": hv_long["x"],
+                "g": hv_long["g1"],
+                "b": hv_long["b1"],
+                "bus_or_busbar_section_id": "VL_2W_MV_HV_HV_1_1",
+                "position_order": 60,
+                "direction": "TOP",
+            },
+            {
+                "id": "Dangling_outbound",
+                "name": "Dangling outbound",
+                "p0": 300,
+                "q0": 100,
+                "r": hv_long["r"],
+                "x": hv_long["x"],
+                "g": hv_long["g1"],
+                "b": hv_long["b1"],
+                "bus_or_busbar_section_id": "VL_3W_HV_1_1",
+                "position_order": 60,
+                "direction": "TOP",
+            },
+        ]
+    ).set_index("id")
+
+    pypowsybl.network.create_dangling_line_bay(network=n, df=dangling_df)
 
     # line limits
     limits = pd.DataFrame.from_records(

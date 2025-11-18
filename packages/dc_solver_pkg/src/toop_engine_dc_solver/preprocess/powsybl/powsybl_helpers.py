@@ -164,6 +164,8 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
     trafos_pu = net_pu.get_2_windings_transformers(all_attributes=True)
     trafos["x"] = trafos_pu["x_at_current_tap"]
     trafos["r"] = trafos_pu["r_at_current_tap"]
+    trafos["rho"] = trafos_pu["rho"]
+    trafos["x"] = trafos["x"] / trafos["rho"]
     trafos = pd.merge(
         left=trafos,
         right=phase_tap_changers,

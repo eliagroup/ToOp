@@ -32,6 +32,8 @@ from toop_engine_dc_solver.example_grids import (
     case14_pandapower,
     case30_with_psts,
     case57_data_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
+    create_ucte_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
 )
@@ -93,7 +95,9 @@ from toop_engine_interfaces.folder_structure import (
     POSTPROCESSING_PATHS,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    PreprocessParameters,
+)
 
 chex.set_n_cpu_devices(2)
 jax.config.update("jax_enable_x64", True)
@@ -683,6 +687,28 @@ def ucte_file() -> Path:
 
 
 @pytest.fixture(scope="session")
+def create_ucte_data_path(ucte_file: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("ucte_grid")
+    create_ucte_data_folder(tmp_path, ucte_file=ucte_file)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def basic_ucte_data_folder(create_ucte_data_path: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    powsybl_data_folder = create_ucte_data_path
+    tmp_path = tmp_path_factory.mktemp("ucte_grid", numbered=True)
+
+    # Copy over the grid file
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
+
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
 def case14_data_with_asset_topo_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Fixture to create a temporary folder for the case14 test."""
     tmp_path = tmp_path_factory.mktemp("case14")
@@ -1045,3 +1071,27 @@ def overlapping_monitored_and_disconnected_branch_data(
     best_actions = get_random_topology_results(static_information)
     check_branches_match_between_network_data_and_static_info(network_data, static_information)
     return network_data, static_information, best_actions
+
+
+@pytest.fixture(scope="session")
+def create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("complex_grid")
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    powsybl_data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_data_path
+    tmp_path = tmp_path_factory.mktemp("complex_grid", numbered=True)
+
+    # Copy over the grid file
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
+
+    return tmp_path

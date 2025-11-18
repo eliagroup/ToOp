@@ -49,6 +49,6 @@ DISTRIBUTED_SLACK = pypowsybl.loadflow.Parameters(
     balance_type=pypowsybl.loadflow.BalanceType.PROPORTIONAL_TO_GENERATION_P,
     voltage_init_mode=pypowsybl.loadflow.VoltageInitMode.DC_VALUES,
     provider_parameters={"slackDistributionFailureBehavior": "LEAVE_ON_SLACK_BUS"},
-    dc_use_transformer_ratio=False,
+    dc_use_transformer_ratio=True,
 )
-SINGLE_SLACK = pypowsybl.loadflow.Parameters(distributed_slack=False, dc_use_transformer_ratio=False)
+SINGLE_SLACK = pypowsybl.loadflow.Parameters(distributed_slack=False, dc_use_transformer_ratio=True)

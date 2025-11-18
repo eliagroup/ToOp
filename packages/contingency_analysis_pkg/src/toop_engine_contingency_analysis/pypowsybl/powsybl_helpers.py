@@ -129,6 +129,16 @@ class PowsyblNMinus1Definition(BaseModel):
     distributed_slack: bool = True
     """Whether to distribute the slack across the generators in the grid. Only relevant for powsybl grids."""
 
+    contingency_propagation: bool = False
+    """Whether to enable powsybl's contingency propagation in the N-1 analysis.
+
+    https://powsybl.readthedocs.io/projects/powsybl-open-loadflow/en/latest/security/parameters.html
+    Security Analysis will determine by topological search the switches with type circuit breakers
+    (i.e. capable of opening fault currents) that must be opened to isolate the fault. Depending on the network structure,
+    this could lead to more equipments to be simulated as tripped, because disconnectors and load break switches
+    (i.e., not capable of opening fault currents) are not considered.
+    """
+
     def __getitem__(self, key: str | int | slice) -> "PowsyblNMinus1Definition":
         """Get a subset of the nminus1definition based on the contingencies.
 
@@ -581,6 +591,7 @@ def translate_nminus1_for_powsybl(n_minus_1_definition: Nminus1Definition, net: 
         distributed_slack=n_minus_1_definition.loadflow_parameters.distributed_slack,
         missing_elements=missing_elements,
         missing_contingencies=missing_contingencies,
+        contingency_propagation=n_minus_1_definition.loadflow_parameters.contingency_propagation,
     )
 
 
@@ -940,6 +951,11 @@ def set_target_values_to_lf_values_incl_distributed_slack(net: Network, method: 
     if method == "ac":
         gens["target_q"] = (-gens["q"]).fillna(gens["target_q"])
     net.update_generators(gens[["target_p", "target_q"]])
+    batteries = net.get_batteries()
+    batteries["target_p"] = (-batteries["p"]).fillna(batteries["target_p"])
+    if method == "ac":
+        batteries["target_q"] = (-batteries["q"]).fillna(batteries["target_q"])
+    net.update_batteries(batteries[["target_p", "target_q"]])
     return net
 
 

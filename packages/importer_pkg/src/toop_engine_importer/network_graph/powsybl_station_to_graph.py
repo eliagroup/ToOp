@@ -246,6 +246,7 @@ def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.DataFrame) -> NodeA
     node_assets_df.drop(columns=["foreign_id"], inplace=True)
     node_assets_df = node_assets_df.merge(all_names_df, how="left", left_on="grid_model_id", right_index=True)
     node_assets_df.rename(columns={"connectable_type": "asset_type", "name": "foreign_id"}, inplace=True)
+    node_assets_df.fillna({"foreign_id": ""}, inplace=True)
     node_assets_df = node_assets_df[["grid_model_id", "foreign_id", "node", "asset_type"]]
     # TODO: might need to be changed once there is more information about the in_service state
     node_assets_df["in_service"] = True

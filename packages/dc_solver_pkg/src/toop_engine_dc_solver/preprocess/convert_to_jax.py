@@ -5,13 +5,13 @@ Includes the high-level load_grid function which is performing the entire prepro
 
 from dataclasses import replace
 from functools import partial
-from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import logbook
 import numpy as np
 from beartype.typing import Callable, Literal, Optional
+from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric,
@@ -606,8 +606,9 @@ def convert_rel_bb_outage_data(  # noqa: C901
     )
 
 
+# TODO refactor
 def load_grid(
-    data_folder: Path,
+    data_folder_dirfs: AbstractFileSystem,
     chronics_id: Optional[int] = None,
     timesteps: Optional[slice] = None,
     pandapower: bool = False,
@@ -618,9 +619,9 @@ def load_grid(
 
     Parameters
     ----------
-    data_folder : Path
-        The path to the data folder containing the subfolders
-        as defined in toop_engine_dc_solver.interfaces.folder_structure
+    data_folder_dirfs : AbstractFileSystem
+        A filesystem which is assumed to be a dirfs pointing to the root for this import job. I.e. the folder structure
+        as defined in toop_engine_interfaces.folder_structure is expected to start at root in this filesystem.
     chronics_id : Optional[int], optional
         The chronics id to use, by default None. Note that powsybl does not support chronics yet
     timesteps : Optional[slice], optional

@@ -9,6 +9,7 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Literal
+from fsspec import AbstractFileSystem
 from networkx.classes import MultiGraph
 from pandapower import pandapowerNet
 from pandapower.toolbox import res_power_columns
@@ -1003,3 +1004,22 @@ def get_full_nminus1_definition_pandapower(net: pandapower.pandapowerNet) -> Nmi
         ),
     )
     return nminus1_definition
+
+
+def load_pp_from_fs(filesystem: AbstractFileSystem, path: str) -> pandapower.pandapowerNet:
+    """Load a pandapower network from a filesystem.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The filesystem to load the pandapower network from.
+    path : str
+        The path to the pandapower network file.
+
+    Returns
+    -------
+    pandapower.pandapowerNet
+        The loaded pandapower network.
+    """
+    with filesystem.open(path, "rb") as f:
+        return pandapower.from_json(f)

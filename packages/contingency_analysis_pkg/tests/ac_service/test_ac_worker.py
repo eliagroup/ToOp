@@ -23,8 +23,7 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
     LoadflowStartedResult,
     LoadflowSuccessResult,
 )
-from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message
-from toop_engine_interfaces.messages.protobuf_schema.message_wrapper_pb2 import MessageWrapper
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
 
 @pytest.mark.timeout(30)
@@ -42,7 +41,7 @@ def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> N
             "log_level": 2,
         }
     )
-    producer.produce(kafka_command_topic, value=MessageWrapper(message=data).SerializeToString())
+    producer.produce(kafka_command_topic, value=serialize_message(data))
     producer.flush()
 
     consumer = Consumer(
@@ -55,11 +54,9 @@ def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> N
     )
     consumer.subscribe([kafka_command_topic])
     recd_message = consumer.poll(timeout=10)
-    message_obj = MessageWrapper()
-    message_obj.ParseFromString(recd_message.value())
     assert recd_message is not None
-    assert message_obj.message == data
-    data_decoded = LoadflowServiceCommand.model_validate_json(message_obj.message)
+    assert deserialize_message(recd_message.value()) == data
+    data_decoded = LoadflowServiceCommand.model_validate_json(deserialize_message(recd_message.value()))
     assert data_decoded.command.loadflow_id == "test"
     consumer.close()
 
@@ -81,7 +78,7 @@ def test_idle_loop(
             loadflow_id="test", method="ac", grid_data=PowsyblGrid(grid_files=["grid.xiidm"]), jobs=[Job(id="test_job")]
         )
     )
-    producer.produce(kafka_command_topic, value=MessageWrapper(message=command.model_dump_json()).SerializeToString())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     consumer = LongRunningKafkaConsumer(
@@ -96,7 +93,7 @@ def test_idle_loop(
     consumer.commit()
 
     command = LoadflowServiceCommand(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=MessageWrapper(message=command.model_dump_json()).SerializeToString())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
 
     with pytest.raises(SystemExit):
         idle_loop(consumer, lambda: None, 100)
@@ -113,7 +110,7 @@ def test_main_simple(
         }
     )
     command = LoadflowServiceCommand(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=MessageWrapper(message=command.model_dump_json()).SerializeToString())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     with pytest.raises(SystemExit):
@@ -155,12 +152,12 @@ def test_main(
             jobs=[Job(id="test_job")],
         )
     )
-    producer.produce(kafka_command_topic, value=MessageWrapper(message=command.model_dump_json()).SerializeToString())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     # Shutdown the worker after successful preprocessing
     command = LoadflowServiceCommand(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=MessageWrapper(message=command.model_dump_json()).SerializeToString())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     with pytest.raises(SystemExit):

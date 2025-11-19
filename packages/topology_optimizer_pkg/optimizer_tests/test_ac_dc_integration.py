@@ -139,7 +139,7 @@ def test_ac_dc_integration(
         )
 
         producer = Producer({"bootstrap.servers": kafka_connection_str, "log_level": 2})
-        producer.produce(kafka_command_topic, value=serialize_message(start_command))
+        producer.produce(kafka_command_topic, value=serialize_message(start_command.model_dump_json()))
         producer.flush()
 
         # This is the runtime of the AC worker
@@ -193,7 +193,7 @@ def test_ac_dc_integration(
         assert ac_topo_push
 
         shutdown_command = Command(command=ShutdownCommand())
-        producer.produce(kafka_command_topic, value=serialize_message(shutdown_command))
+        producer.produce(kafka_command_topic, value=serialize_message(shutdown_command.model_dump_json()))
         producer.flush()
 
         # Give everyone a chance to shutdown

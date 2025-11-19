@@ -83,7 +83,7 @@ def test_pause_directly_after_subscribe(
         }
     )
     message = "Test message for pause directly after subscribe"
-    producer.produce(kafka_command_topic, value=message.encode())
+    producer.produce(kafka_command_topic, value=serialize_message(message))
     producer.flush()
 
     client = LongRunningKafkaConsumer(

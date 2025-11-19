@@ -19,6 +19,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     PreprocessingSuccessResult,
     Result,
 )
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
 
 @pytest.mark.timeout(100)
@@ -29,7 +30,7 @@ def test_kafka(kafka_command_topic: str, kafka_connection_str: str) -> None:
             "log_level": 2,
         }
     )
-    producer.produce(kafka_command_topic, value=b"Hello world")
+    producer.produce(kafka_command_topic, value=serialize_message("Hello world"))
     producer.flush()
 
     consumer = Consumer(
@@ -42,7 +43,7 @@ def test_kafka(kafka_command_topic: str, kafka_connection_str: str) -> None:
     )
     consumer.subscribe([kafka_command_topic])
     message = consumer.poll(timeout=30.0)
-    assert message.value() == b"Hello world"
+    assert deserialize_message(message.value()) == "Hello world"
 
 
 @pytest.mark.timeout(100)
@@ -63,7 +64,7 @@ def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> N
             "log_level": 2,
         }
     )
-    producer.produce(kafka_command_topic, value=data.encode())
+    producer.produce(kafka_command_topic, value=serialize_message(data))
     producer.flush()
 
     consumer = Consumer(
@@ -76,10 +77,9 @@ def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> N
     )
     consumer.subscribe([kafka_command_topic])
     message = consumer.poll(timeout=30.0)
-    assert message is not None
-    assert message.value().decode() == data
+    assert deserialize_message(message.value()) == data
 
-    data_decoded = Command.model_validate_json(message.value().decode())
+    data_decoded = Command.model_validate_json(deserialize_message(message.value()))
     assert data_decoded.command.preprocess_id == "test"
 
 
@@ -98,8 +98,7 @@ def test_idle_loop(
             ),
         )
     )
-
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     consumer = LongRunningKafkaConsumer(
@@ -114,7 +113,7 @@ def test_idle_loop(
     consumer.commit()
 
     command = Command(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     with pytest.raises(SystemExit):
@@ -130,7 +129,7 @@ def test_main_simple(
 ) -> None:
     producer = Producer({"bootstrap.servers": kafka_connection_str, "log_level": 2})
     command = Command(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     with pytest.raises(SystemExit):
@@ -164,11 +163,11 @@ def test_main(
             importer_parameters=UcteImporterParameters(grid_model_file=ucte_file.name, data_folder=Path("some_timestep")),
         )
     )
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
 
     # Shutdown the worker after successful preprocessing
     command = Command(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
     # Check that the messages are sent
     consumer = Consumer(
@@ -196,12 +195,12 @@ def test_main(
 
     message = consumer.poll(timeout=30.0)
     assert message is not None
-    result = Result.model_validate_json(message.value())
+    result = Result.model_validate_json(deserialize_message(message.value()))
     assert isinstance(result.result, PreprocessingStartedResult)
 
     message = consumer.poll(timeout=1.0)
     assert message is not None
-    result = Result.model_validate_json(message.value())
+    result = Result.model_validate_json(deserialize_message(message.value()))
     assert isinstance(result.result, PreprocessingSuccessResult)
 
     assert (output_path / "some_timestep" / PREPROCESSING_PATHS["static_information_file_path"]).exists()
@@ -242,7 +241,7 @@ def test_main_idle(
         consumer.subscribe([kafka_heartbeat_topic])
         message = consumer.poll(timeout=30.0)
         assert message is not None
-        heartbeat = PreprocessHeartbeat.model_validate_json(message.value().decode())
+        heartbeat = PreprocessHeartbeat.model_validate_json(deserialize_message(message.value()))
         assert heartbeat.idle
         assert heartbeat.status_info is None
 
@@ -254,7 +253,7 @@ def test_main_idle(
             }
         )
         command = Command(command=ShutdownCommand())
-        producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+        producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
         producer.flush()
         p.join(timeout=10)
     finally:

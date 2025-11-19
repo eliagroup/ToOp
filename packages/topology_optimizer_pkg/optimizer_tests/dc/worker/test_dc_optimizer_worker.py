@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 from confluent_kafka import Consumer, Producer
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.worker import Args, idle_loop, main, optimization_loop
 from toop_engine_topology_optimizer.interfaces.messages.commands import (
     Command,
@@ -51,7 +52,7 @@ def test_idle_loop(
         )
     )
 
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     consumer = LongRunningKafkaConsumer(
@@ -68,7 +69,7 @@ def test_idle_loop(
     consumer.commit()
 
     command = Command(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     with pytest.raises(SystemExit) as excinfo:
@@ -92,7 +93,7 @@ def test_main_simple(
         }
     )
     command = Command(command=ShutdownCommand(optimization_id="test"))
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     with pytest.raises(SystemExit):
@@ -141,11 +142,11 @@ def test_main(
 
     # order exactly one epoch
     command = Command(command=start_opt_command)
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode(), partition=0)
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()), partition=0)
     producer.flush()
 
     command = Command(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode(), partition=0)
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()), partition=0)
     producer.flush()
 
     # run the worker
@@ -173,14 +174,14 @@ def test_main(
 
     # first message should be the starting message
     message = consumer.poll(timeout=10.0)
-    result = Result.model_validate_json(message.value().decode())
+    result = Result.model_validate_json(deserialize_message(message.value()))
     assert isinstance(result.result, OptimizationStartedResult)
 
     topo_push_found = False
     split_topo_push_found = False
     stopped_found = False
     while message := consumer.poll(timeout=1.0):
-        result = Result.model_validate_json(message.value().decode())
+        result = Result.model_validate_json(deserialize_message(message.value()))
         if isinstance(result.result, TopologyPushResult):
             topo_push_found = True
             for strategy in result.result.strategies:

@@ -37,6 +37,10 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     PreprocessingStartedResult,
     Result,
 )
+from toop_engine_interfaces.messages.protobuf_message_factory import (
+    deserialize_message,
+    serialize_message,
+)
 
 logger = logbook.Logger(__name__)
 
@@ -161,7 +165,7 @@ def idle_loop(
             send_heartbeat_fn()
             continue
 
-        command = Command.model_validate_json(message.value().decode("utf-8"))
+        command = Command.model_validate_json(deserialize_message(message.value()))
 
         if isinstance(command.command, StartPreprocessingCommand):
             return command.command
@@ -201,13 +205,13 @@ def main(args: Args) -> None:
     def heartbeat_idle() -> None:
         producer.produce(
             args.importer_heartbeat_topic,
-            value=PreprocessHeartbeat(
-                idle=True,
-                status_info=None,
-                instance_id=instance_id,
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                PreprocessHeartbeat(
+                    idle=True,
+                    status_info=None,
+                    instance_id=instance_id,
+                ).model_dump_json()
+            ),
             key=instance_id.encode("utf-8"),
         )
         producer.flush()
@@ -221,18 +225,18 @@ def main(args: Args) -> None:
         logger.info(f"Preprocessing stage {stage} for job {preprocess_id} after {time.time() - start_time}s: {message}")
         producer.produce(
             args.importer_heartbeat_topic,
-            value=PreprocessHeartbeat(
-                idle=False,
-                status_info=PreprocessStatusInfo(
-                    preprocess_id=preprocess_id,
-                    runtime=time.time() - start_time,
-                    stage=stage,
-                    message=message,
-                ),
-                instance_id=instance_id,
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                PreprocessHeartbeat(
+                    idle=False,
+                    status_info=PreprocessStatusInfo(
+                        preprocess_id=preprocess_id,
+                        runtime=time.time() - start_time,
+                        stage=stage,
+                        message=message,
+                    ),
+                    instance_id=instance_id,
+                ).model_dump_json()
+            ),
             key=preprocess_id.encode("utf-8"),
         )
         producer.flush()
@@ -259,13 +263,13 @@ def main(args: Args) -> None:
         )
         producer.produce(
             args.importer_results_topic,
-            value=Result(
-                preprocess_id=command.preprocess_id,
-                runtime=0,
-                result=PreprocessingStartedResult(),
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                Result(
+                    preprocess_id=command.preprocess_id,
+                    runtime=0,
+                    result=PreprocessingStartedResult(),
+                ).model_dump_json()
+            ),
             key=command.preprocess_id.encode(),
         )
         producer.flush()
@@ -285,13 +289,13 @@ def main(args: Args) -> None:
 
             producer.produce(
                 topic=args.importer_results_topic,
-                value=Result(
-                    preprocess_id=command.preprocess_id,
-                    runtime=time.time() - start_time,
-                    result=result,
-                )
-                .model_dump_json()
-                .encode(),
+                value=serialize_message(
+                    Result(
+                        preprocess_id=command.preprocess_id,
+                        runtime=time.time() - start_time,
+                        result=result,
+                    ).model_dump_json()
+                ),
                 key=command.preprocess_id.encode(),
             )
         except Exception as e:
@@ -299,13 +303,13 @@ def main(args: Args) -> None:
             logger.error(f"Traceback: {traceback.format_exc()}")
             producer.produce(
                 topic=args.importer_results_topic,
-                value=Result(
-                    preprocess_id=command.preprocess_id,
-                    runtime=time.time() - start_time,
-                    result=ErrorResult(error=str(e)),
-                )
-                .model_dump_json()
-                .encode(),
+                value=serialize_message(
+                    Result(
+                        preprocess_id=command.preprocess_id,
+                        runtime=time.time() - start_time,
+                        result=ErrorResult(error=str(e)),
+                    ).model_dump_json()
+                ),
                 key=command.preprocess_id.encode(),
             )
         producer.flush()

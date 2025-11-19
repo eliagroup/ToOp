@@ -7,6 +7,7 @@ import logbook
 import pytest
 import ray
 from confluent_kafka import Consumer, Producer
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
 from toop_engine_topology_optimizer.ac.worker import main as ac_main
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
@@ -138,7 +139,7 @@ def test_ac_dc_integration(
         )
 
         producer = Producer({"bootstrap.servers": kafka_connection_str, "log_level": 2})
-        producer.produce(kafka_command_topic, value=start_command.model_dump_json().encode())
+        producer.produce(kafka_command_topic, value=serialize_message(start_command))
         producer.flush()
 
         # This is the runtime of the AC worker
@@ -162,7 +163,7 @@ def test_ac_dc_integration(
 
         result_history = []
         while message := consumer.poll(timeout=10.0):
-            result = Result.model_validate_json(message.value().decode("utf-8"))
+            result = Result.model_validate_json(deserialize_message(message.value()))
             result_history.append(result)
             if isinstance(result.result, OptimizationStoppedResult):
                 assert result.result.reason == "converged", f"{result}"
@@ -192,7 +193,7 @@ def test_ac_dc_integration(
         assert ac_topo_push
 
         shutdown_command = Command(command=ShutdownCommand())
-        producer.produce(kafka_command_topic, value=shutdown_command.model_dump_json().encode())
+        producer.produce(kafka_command_topic, value=serialize_message(shutdown_command))
         producer.flush()
 
         # Give everyone a chance to shutdown

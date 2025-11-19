@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import time
 from pathlib import Path
 from typing import Generator
@@ -16,12 +17,17 @@ from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Int
 from omegaconf import DictConfig
 from sqlmodel import Session, SQLModel, create_engine, select
-from toop_engine_dc_solver.example_grids import case14_pandapower, case57_data_powsybl, case57_non_converging, oberrhein_data
+from toop_engine_dc_solver.example_grids import (
+    case14_pandapower,
+    case57_data_powsybl,
+    case57_non_converging,
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
+    oberrhein_data,
+)
 from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
-from toop_engine_topology_optimizer.benchmark.benchmark_utils import PipelineConfig
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_topo_data
 
@@ -195,6 +201,11 @@ def grid_folder() -> Path:
         filesystem_dir = DirFileSystem(str(case57_path))
         load_grid(filesystem_dir, pandapower=False)
 
+    complex_grid_path = path / "complex_grid"
+    if not complex_grid_path.exists():
+        create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(complex_grid_path)
+        load_grid(complex_grid_path, pandapower=True)
+
     return path
 
 
@@ -215,14 +226,17 @@ def static_information_file(grid_folder: Path) -> Path:
 
 
 @pytest.fixture(scope="session")
-def cfg(static_information_file: Path, tmp_path_factory: pytest.TempPathFactory) -> DictConfig:
-    """Configuration to test the optimiser"""
-    base_path = str(tmp_path_factory.mktemp("base"))
+def static_information_file_complex(grid_folder: Path) -> Path:
+    return grid_folder / "complex_grid" / PREPROCESSING_PATHS["static_information_file_path"]
+
+
+def build_dc_cfg(base_path: str, static_info_file: Path) -> DictConfig:
+    """Builds a configuration dictionary for testing purposes."""
     return DictConfig(
         {
             "task_name": "test",
             "fixed_files": [
-                str(static_information_file),
+                str(static_info_file),
             ],
             "double_precision": None,
             "tensorboard_dir": base_path + "/results/{task_name}",
@@ -245,15 +259,48 @@ def cfg(static_information_file: Path, tmp_path_factory: pytest.TempPathFactory)
     )
 
 
+@pytest.fixture(scope="session", params=["oberrhein", "complex_grid"])
+def dc_config(
+    request, static_information_file: Path, static_information_file_complex: Path, tmp_path_factory: pytest.TempPathFactory
+) -> DictConfig:
+    """Configuration to test the optimiser"""
+    if request.param == "oberrhein":
+        static_info_file = static_information_file
+    else:
+        static_info_file = static_information_file_complex
+
+    base_path = str(tmp_path_factory.mktemp("base"))
+    return build_dc_cfg(base_path, static_info_file)
+
+
+def build_pipeline_cfg(complex_grid_dst: Path, iteration_name: str, file_name: str) -> DictConfig:
+    """Builds a pipeline configuration dictionary for testing purposes."""
+    return DictConfig(
+        {"root_path": complex_grid_dst, "iteration_name": iteration_name, "file_name": file_name, "grid_type": "powsybl"}
+    )
+
+
 @pytest.fixture(scope="session")
-def pipeline_cfg(tmp_path_factory: pytest.TempPathFactory) -> PipelineConfig:
+def pipeline_and_dc_cfg(tmp_path_factory: pytest.TempPathFactory, grid_folder: Path) -> tuple[DictConfig, DictConfig]:
     """Configuration for the end-to-end pipeline tests"""
-    root_path = tmp_path_factory.mktemp("pipeline_cfg")
+    tmp_grid_folder = tmp_path_factory.mktemp("pipeline_grid")
+    # Copy complex grid data to temporary folder
+    complex_grid_src = grid_folder / "complex_grid"
+    complex_grid_dst = tmp_grid_folder / "complex_grid"
+    os.makedirs(complex_grid_dst, exist_ok=True)
+    shutil.copytree(str(complex_grid_src), str(complex_grid_dst), dirs_exist_ok=True)
+
     file_name = "grid.xiidm"
-    grid_file_path = root_path / file_name
-    grid_file_path.touch()
     iteration_name = ""
-    return PipelineConfig(root_path=root_path, iteration_name=iteration_name, file_name=file_name, grid_type="powsybl")
+    pipeline_cfg = build_pipeline_cfg(complex_grid_dst, iteration_name, file_name)
+    dc_cfg = build_dc_cfg(str(tmp_grid_folder), complex_grid_dst / PREPROCESSING_PATHS["static_information_file_path"])
+    return pipeline_cfg, dc_cfg
+
+
+@pytest.fixture(scope="session")
+def preprocessing_parameters() -> DictConfig:
+    """Preprocessing parameters for the end-to-end pipeline tests"""
+    return DictConfig({"action_set_clip": 2**10, "enable_bb_outage": True, "bb_outage_as_nminus1": False})
 
 
 @pytest.fixture

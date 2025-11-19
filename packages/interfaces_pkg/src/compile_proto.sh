@@ -1,4 +1,4 @@
-protoc \
+uv run protoc \
   -I=. \
   --python_out=. \
   --mypy_out=. \

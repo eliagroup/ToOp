@@ -86,3 +86,6 @@ name = "MCCS"
 url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/simple/"
 publish-url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/upload/"
 explicit = true
+
+[tool.uv-secure.ignore_packages]
+protobuf = [] # Ignore issues with all versions of the protobuf package

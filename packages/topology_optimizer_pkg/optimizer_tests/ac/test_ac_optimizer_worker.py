@@ -114,7 +114,7 @@ def test_idle_loop_no_message() -> None:
     # Make poll() return None on the first call, then a ShutdownCommand message
     shutdown_command = Command(command=ShutdownCommand())
     shutdown_message = Mock()
-    shutdown_message.value.return_value = shutdown_command.model_dump_json().encode()
+    shutdown_message.value.return_value = serialize_message(shutdown_command.model_dump_json())
     worker_data.command_consumer.poll.side_effect = [None, shutdown_message]
     worker_data.result_consumer.consume.return_value = []
     heartbeats = []
@@ -148,7 +148,7 @@ def test_idle_loop_optimization_started() -> None:
         )
     )
     start_message = Mock()
-    start_message.value.return_value = start_command.model_dump_json().encode()
+    start_message.value.return_value = serialize_message(start_command.model_dump_json())
     worker_data.command_consumer.poll.return_value = start_message
     worker_data.result_consumer.consume.return_value = []
     heartbeats = []
@@ -192,7 +192,7 @@ def test_optimization_loop(
         producer=Mock(spec=Producer),
     )
     worker_data.result_consumer.consume = Mock(
-        return_value=[Mock(value=Mock(return_value=topopushresult.model_dump_json().encode()))]
+        return_value=[Mock(value=Mock(return_value=serialize_message(topopushresult.model_dump_json())))]
     )
     results = []
 

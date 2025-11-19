@@ -1,0 +1,3976 @@
+{
+  "monitored_elements": [
+    {
+      "id": "L1",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L2",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L3",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L4",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L5",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L6",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L7",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L8",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L9",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L10",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L11",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L12",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L13",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L14",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L15",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L16",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L17",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L18",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L19",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L20",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "L21",
+      "name": "",
+      "type": "LINE",
+      "kind": "branch"
+    },
+    {
+      "id": "2W_3W_MV_HV",
+      "name": "",
+      "type": "TWO_WINDINGS_TRANSFORMER",
+      "kind": "branch"
+    },
+    {
+      "id": "2W_MV_LV",
+      "name": "",
+      "type": "TWO_WINDINGS_TRANSFORMER",
+      "kind": "branch"
+    },
+    {
+      "id": "2W_MV_HV_1",
+      "name": "",
+      "type": "TWO_WINDINGS_TRANSFORMER",
+      "kind": "branch"
+    },
+    {
+      "id": "2W_MV_HV_2",
+      "name": "",
+      "type": "TWO_WINDINGS_TRANSFORMER",
+      "kind": "branch"
+    },
+    {
+      "id": "VL_3W_HV_0",
+      "name": "VL_3W_HV_0",
+      "type": "BUS_BREAKER_BUS",
+      "kind": "bus"
+    },
+    {
+      "id": "VL_3W_MV_0",
+      "name": "VL_3W_MV_0",
+      "type": "BUS_BREAKER_BUS",
+      "kind": "bus"
+    },
+    {
+      "id": "VL_2W_MV_LV_MV_0",
+      "name": "VL_2W_MV_LV_MV_0",
+      "type": "BUS_BREAKER_BUS",
+      "kind": "bus"
+    },
+    {
+      "id": "VL_MV_load_0",
+      "name": "VL_MV_load_0",
+      "type": "BUS_BREAKER_BUS",
+      "kind": "bus"
+    },
+    {
+      "id": "VL_MV_svc_0",
+      "name": "VL_MV_svc_0",
+      "type": "BUS_BREAKER_BUS",
+      "kind": "bus"
+    },
+    {
+      "id": "VL_MV_0",
+      "name": "VL_MV_0",
+      "type": "BUS_BREAKER_BUS",
+      "kind": "bus"
+    },
+    {
+      "id": "VL_2W_MV_HV_MV_0",
+      "name": "VL_2W_MV_HV_MV_0",
+      "type": "BUS_BREAKER_BUS",
+      "kind": "bus"
+    },
+    {
+      "id": "VL_2W_MV_HV_HV_0",
+      "name": "VL_2W_MV_HV_HV_0",
+      "type": "BUS_BREAKER_BUS",
+      "kind": "bus"
+    },
+    {
+      "id": "VL_HV_vsc_0",
+      "name": "VL_HV_vsc_0",
+      "type": "BUS_BREAKER_BUS",
+      "kind": "bus"
+    }
+  ],
+  "contingencies": [
+    {
+      "elements": [],
+      "id": "BASECASE",
+      "name": "BASECASE"
+    },
+    {
+      "elements": [
+        {
+          "id": "L1",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L2",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L3",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L3",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L4",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L4",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L5",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L5",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L6",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L6",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L7",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L7",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L8",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L8",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L9",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L9",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L10",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L10",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L11",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L11",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L12",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L12",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L13",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L13",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L14",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L14",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L15",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L15",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L16",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L16",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L17",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L17",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L18",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L18",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L19",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L19",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L20",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L20",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L21",
+          "name": "",
+          "type": "LINE",
+          "kind": "branch"
+        }
+      ],
+      "id": "L21",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_3W_MV_HV",
+          "name": "",
+          "type": "TWO_WINDINGS_TRANSFORMER",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_3W_MV_HV",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_LV",
+          "name": "",
+          "type": "TWO_WINDINGS_TRANSFORMER",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_LV",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_1",
+          "name": "",
+          "type": "TWO_WINDINGS_TRANSFORMER",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_2",
+          "name": "",
+          "type": "TWO_WINDINGS_TRANSFORMER",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "3W",
+          "name": "3W 380/110/63",
+          "type": "THREE_WINDINGS_TRANSFORMER",
+          "kind": "branch"
+        }
+      ],
+      "id": "3W",
+      "name": "3W 380/110/63"
+    },
+    {
+      "elements": [
+        {
+          "id": "Dangling_outbound",
+          "name": "Dangling outbound",
+          "type": "DANGLING_LINE",
+          "kind": "injection"
+        }
+      ],
+      "id": "Dangling_outbound",
+      "name": "Dangling outbound"
+    },
+    {
+      "elements": [
+        {
+          "id": "Dangling_inbound",
+          "name": "Dangling inbound",
+          "type": "DANGLING_LINE",
+          "kind": "injection"
+        }
+      ],
+      "id": "Dangling_inbound",
+      "name": "Dangling inbound"
+    },
+    {
+      "elements": [
+        {
+          "id": "GEN_MV",
+          "name": "MV local generator",
+          "type": "GENERATOR",
+          "kind": "injection"
+        }
+      ],
+      "id": "GEN_MV",
+      "name": "MV local generator"
+    },
+    {
+      "elements": [
+        {
+          "id": "GEN_HV",
+          "name": "HV main generator",
+          "type": "GENERATOR",
+          "kind": "injection"
+        }
+      ],
+      "id": "GEN_HV",
+      "name": "HV main generator"
+    },
+    {
+      "elements": [
+        {
+          "id": "load_3W_LV",
+          "name": "LV local load 2",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "id": "load_3W_LV",
+      "name": "LV local load 2"
+    },
+    {
+      "elements": [
+        {
+          "id": "load_2W_MV_LV_LV",
+          "name": "LV interconnection load",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "id": "load_2W_MV_LV_LV",
+      "name": "LV interconnection load"
+    },
+    {
+      "elements": [
+        {
+          "id": "load_LV_load",
+          "name": "LV local load 1",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "id": "load_LV_load",
+      "name": "LV local load 1"
+    },
+    {
+      "elements": [
+        {
+          "id": "load_MV_load",
+          "name": "MV local load",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "id": "load_MV_load",
+      "name": "MV local load"
+    },
+    {
+      "elements": [
+        {
+          "id": "load_VL_MV_svc",
+          "name": "LV local load 2",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "id": "load_VL_MV_svc",
+      "name": "LV local load 2"
+    },
+    {
+      "elements": [
+        {
+          "id": "load_MV",
+          "name": "MV interconnection load",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "id": "load_MV",
+      "name": "MV interconnection load"
+    },
+    {
+      "elements": [
+        {
+          "id": "load_HV_gen",
+          "name": "HV interconnection load",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "id": "load_HV_gen",
+      "name": "HV interconnection load"
+    },
+    {
+      "elements": [
+        {
+          "id": "load_HV_vsc",
+          "name": "HV local load",
+          "type": "LOAD",
+          "kind": "injection"
+        }
+      ],
+      "id": "load_HV_vsc",
+      "name": "HV local load"
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_HV_DISCONNECTOR_0_4",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_HV_DISCONNECTOR_0_4",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_HV_BREAKER_1_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_HV_BREAKER_1_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_HV_DISCONNECTOR_5_2",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_HV_DISCONNECTOR_5_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_HV_DISCONNECTOR_1_6",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_HV_DISCONNECTOR_1_6",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_HV_BREAKER_2_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_HV_BREAKER_2_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_HV_DISCONNECTOR_7_3",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_HV_DISCONNECTOR_7_3",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_HV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_HV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_HV_DISCONNECTOR_8_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_HV_DISCONNECTOR_8_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_HV_DISCONNECTOR_9_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_HV_DISCONNECTOR_9_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L141_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L141_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L141_DISCONNECTOR_11_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L141_DISCONNECTOR_11_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L141_DISCONNECTOR_11_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L141_DISCONNECTOR_11_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L151_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L151_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L151_DISCONNECTOR_13_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L151_DISCONNECTOR_13_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L151_DISCONNECTOR_13_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L151_DISCONNECTOR_13_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L181_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L181_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L181_DISCONNECTOR_15_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L181_DISCONNECTOR_15_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L181_DISCONNECTOR_15_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L181_DISCONNECTOR_15_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L191_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L191_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L191_DISCONNECTOR_17_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L191_DISCONNECTOR_17_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L191_DISCONNECTOR_17_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L191_DISCONNECTOR_17_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_3W_MV_HV1_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_3W_MV_HV1_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_3W_MV_HV1_DISCONNECTOR_19_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_3W_MV_HV1_DISCONNECTOR_19_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_3W_MV_HV1_DISCONNECTOR_19_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_3W_MV_HV1_DISCONNECTOR_19_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "BREAKER_3W_HV",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "BREAKER_3W_HV",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "DISCONNECTOR_3W_HV_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "DISCONNECTOR_3W_HV_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "DISCONNECTOR_3W_HV_2",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "DISCONNECTOR_3W_HV_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "LCC1_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "LCC1_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "LCC1_DISCONNECTOR_33_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "LCC1_DISCONNECTOR_33_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "LCC1_DISCONNECTOR_33_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "LCC1_DISCONNECTOR_33_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "Dangling_outbound_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "Dangling_outbound_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "Dangling_outbound_DISCONNECTOR_35_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "Dangling_outbound_DISCONNECTOR_35_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "Dangling_outbound_DISCONNECTOR_35_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "Dangling_outbound_DISCONNECTOR_35_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_MV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_MV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_MV_DISCONNECTOR_2_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_MV_DISCONNECTOR_2_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_MV_DISCONNECTOR_3_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_MV_DISCONNECTOR_3_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L32_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L32_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L32_DISCONNECTOR_5_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L32_DISCONNECTOR_5_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L32_DISCONNECTOR_5_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L32_DISCONNECTOR_5_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L52_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L52_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L52_DISCONNECTOR_7_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L52_DISCONNECTOR_7_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L52_DISCONNECTOR_7_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L52_DISCONNECTOR_7_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L92_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L92_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L92_DISCONNECTOR_9_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L92_DISCONNECTOR_9_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L92_DISCONNECTOR_9_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L92_DISCONNECTOR_9_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L102_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L102_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L102_DISCONNECTOR_11_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L102_DISCONNECTOR_11_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L102_DISCONNECTOR_11_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L102_DISCONNECTOR_11_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_3W_MV_HV2_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_3W_MV_HV2_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_3W_MV_HV2_DISCONNECTOR_13_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_3W_MV_HV2_DISCONNECTOR_13_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_3W_MV_HV2_DISCONNECTOR_13_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_3W_MV_HV2_DISCONNECTOR_13_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "BREAKER_3W_MV",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "BREAKER_3W_MV",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "DISCONNECTOR_3W_MV_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "DISCONNECTOR_3W_MV_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "DISCONNECTOR_3W_MV_2",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "DISCONNECTOR_3W_MV_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_LV_DISCONNECTOR_0_2",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_LV_DISCONNECTOR_0_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_LV_BREAKER_1_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_LV_BREAKER_1_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_3W_LV_DISCONNECTOR_3_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_3W_LV_DISCONNECTOR_3_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L11_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L11_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L11_DISCONNECTOR_5_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L11_DISCONNECTOR_5_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "BREAKER_3W_LV",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "BREAKER_3W_LV",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "DISCONNECTOR_3W_LV_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "DISCONNECTOR_3W_LV_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_3W_LV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_3W_LV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_3W_LV_DISCONNECTOR_33_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_3W_LV_DISCONNECTOR_33_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_LV_MV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_LV_MV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_LV_MV_DISCONNECTOR_2_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_LV_MV_DISCONNECTOR_2_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_LV_MV_DISCONNECTOR_3_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_LV_MV_DISCONNECTOR_3_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L51_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L51_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L51_DISCONNECTOR_5_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L51_DISCONNECTOR_5_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L51_DISCONNECTOR_5_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L51_DISCONNECTOR_5_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L82_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L82_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L82_DISCONNECTOR_7_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L82_DISCONNECTOR_7_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L82_DISCONNECTOR_7_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L82_DISCONNECTOR_7_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L112_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L112_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L112_DISCONNECTOR_9_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L112_DISCONNECTOR_9_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L112_DISCONNECTOR_9_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L112_DISCONNECTOR_9_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_LV1_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_LV1_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_LV1_DISCONNECTOR_11_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_LV1_DISCONNECTOR_11_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_LV1_DISCONNECTOR_11_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_LV1_DISCONNECTOR_11_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_LV_LV_DISCONNECTOR_0_2",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_LV_LV_DISCONNECTOR_0_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_LV_LV_BREAKER_1_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_LV_LV_BREAKER_1_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_LV_LV_DISCONNECTOR_3_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_LV_LV_DISCONNECTOR_3_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L21_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L21_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L21_DISCONNECTOR_5_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L21_DISCONNECTOR_5_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_LV2_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_LV2_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_LV2_DISCONNECTOR_7_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_LV2_DISCONNECTOR_7_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_2W_MV_LV_LV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_2W_MV_LV_LV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_2W_MV_LV_LV_DISCONNECTOR_9_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_2W_MV_LV_LV_DISCONNECTOR_9_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L12_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L12_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L12_DISCONNECTOR_2_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L12_DISCONNECTOR_2_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L22_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L22_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L22_DISCONNECTOR_4_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L22_DISCONNECTOR_4_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_LV_load_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_LV_load_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_LV_load_DISCONNECTOR_6_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_LV_load_DISCONNECTOR_6_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "BAT_LV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "BAT_LV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "BAT_LV_DISCONNECTOR_8_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "BAT_LV_DISCONNECTOR_8_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_load_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_load_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_load_DISCONNECTOR_2_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_load_DISCONNECTOR_2_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_load_DISCONNECTOR_3_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_load_DISCONNECTOR_3_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L61_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L61_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L61_DISCONNECTOR_5_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L61_DISCONNECTOR_5_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L61_DISCONNECTOR_5_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L61_DISCONNECTOR_5_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L81_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L81_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L81_DISCONNECTOR_7_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L81_DISCONNECTOR_7_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L81_DISCONNECTOR_7_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L81_DISCONNECTOR_7_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L131_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L131_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L131_DISCONNECTOR_9_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L131_DISCONNECTOR_9_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L131_DISCONNECTOR_9_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L131_DISCONNECTOR_9_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_MV_load_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_MV_load_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_MV_load_DISCONNECTOR_11_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_MV_load_DISCONNECTOR_11_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_MV_load_DISCONNECTOR_11_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_MV_load_DISCONNECTOR_11_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_svc_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_svc_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_svc_DISCONNECTOR_2_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_svc_DISCONNECTOR_2_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_svc_DISCONNECTOR_3_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_svc_DISCONNECTOR_3_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L31_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L31_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L31_DISCONNECTOR_5_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L31_DISCONNECTOR_5_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L31_DISCONNECTOR_5_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L31_DISCONNECTOR_5_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L41_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L41_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L41_DISCONNECTOR_7_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L41_DISCONNECTOR_7_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L41_DISCONNECTOR_7_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L41_DISCONNECTOR_7_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L111_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L111_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L111_DISCONNECTOR_9_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L111_DISCONNECTOR_9_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L111_DISCONNECTOR_9_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L111_DISCONNECTOR_9_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L121_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L121_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L121_DISCONNECTOR_11_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L121_DISCONNECTOR_11_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L121_DISCONNECTOR_11_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L121_DISCONNECTOR_11_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "GEN_MV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "GEN_MV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "GEN_MV_DISCONNECTOR_13_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "GEN_MV_DISCONNECTOR_13_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "GEN_MV_DISCONNECTOR_13_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "GEN_MV_DISCONNECTOR_13_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_VL_MV_svc_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_VL_MV_svc_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_VL_MV_svc_DISCONNECTOR_15_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_VL_MV_svc_DISCONNECTOR_15_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_VL_MV_svc_DISCONNECTOR_15_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_VL_MV_svc_DISCONNECTOR_15_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "SHUNT_MV_svc_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "SHUNT_MV_svc_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "SHUNT_MV_svc_DISCONNECTOR_17_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "SHUNT_MV_svc_DISCONNECTOR_17_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "SHUNT_MV_svc_DISCONNECTOR_17_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "SHUNT_MV_svc_DISCONNECTOR_17_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "STATCOM_HV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "STATCOM_HV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "STATCOM_HV_DISCONNECTOR_19_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "STATCOM_HV_DISCONNECTOR_19_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "STATCOM_HV_DISCONNECTOR_19_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "STATCOM_HV_DISCONNECTOR_19_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_DISCONNECTOR_0_4",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_DISCONNECTOR_0_4",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_BREAKER_1_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_BREAKER_1_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_DISCONNECTOR_5_2",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_DISCONNECTOR_5_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_DISCONNECTOR_1_6",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_DISCONNECTOR_1_6",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_BREAKER_2_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_BREAKER_2_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_DISCONNECTOR_7_3",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_DISCONNECTOR_7_3",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_DISCONNECTOR_8_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_DISCONNECTOR_8_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_MV_DISCONNECTOR_9_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_MV_DISCONNECTOR_9_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L62_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L62_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L62_DISCONNECTOR_11_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L62_DISCONNECTOR_11_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L62_DISCONNECTOR_11_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L62_DISCONNECTOR_11_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L72_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L72_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L72_DISCONNECTOR_13_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L72_DISCONNECTOR_13_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L72_DISCONNECTOR_13_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L72_DISCONNECTOR_13_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L91_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L91_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L91_DISCONNECTOR_15_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L91_DISCONNECTOR_15_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L91_DISCONNECTOR_15_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L91_DISCONNECTOR_15_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L101_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L101_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L101_DISCONNECTOR_17_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L101_DISCONNECTOR_17_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L101_DISCONNECTOR_17_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L101_DISCONNECTOR_17_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L122_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L122_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L122_DISCONNECTOR_19_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L122_DISCONNECTOR_19_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L122_DISCONNECTOR_19_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L122_DISCONNECTOR_19_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_MV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_MV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_MV_DISCONNECTOR_21_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_MV_DISCONNECTOR_21_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_MV_DISCONNECTOR_21_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_MV_DISCONNECTOR_21_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "BAT_MV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "BAT_MV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "BAT_MV_DISCONNECTOR_23_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "BAT_MV_DISCONNECTOR_23_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "BAT_MV_DISCONNECTOR_23_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "BAT_MV_DISCONNECTOR_23_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "SHUNT_MV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "SHUNT_MV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "SHUNT_MV_DISCONNECTOR_25_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "SHUNT_MV_DISCONNECTOR_25_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "SHUNT_MV_DISCONNECTOR_25_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "SHUNT_MV_DISCONNECTOR_25_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_MV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_MV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_MV_DISCONNECTOR_2_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_MV_DISCONNECTOR_2_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_MV_DISCONNECTOR_3_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_MV_DISCONNECTOR_3_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L42_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L42_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L42_DISCONNECTOR_5_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L42_DISCONNECTOR_5_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L42_DISCONNECTOR_5_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L42_DISCONNECTOR_5_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L71_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L71_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L71_DISCONNECTOR_7_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L71_DISCONNECTOR_7_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L71_DISCONNECTOR_7_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L71_DISCONNECTOR_7_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L132_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L132_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L132_DISCONNECTOR_9_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L132_DISCONNECTOR_9_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L132_DISCONNECTOR_9_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L132_DISCONNECTOR_9_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_12_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_12_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_12_DISCONNECTOR_11_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_12_DISCONNECTOR_11_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_12_DISCONNECTOR_11_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_12_DISCONNECTOR_11_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_22_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_22_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_22_DISCONNECTOR_13_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_22_DISCONNECTOR_13_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_22_DISCONNECTOR_13_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_22_DISCONNECTOR_13_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_HV_DISCONNECTOR_0_4",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_HV_DISCONNECTOR_0_4",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_HV_BREAKER_1_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_HV_BREAKER_1_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_HV_DISCONNECTOR_5_2",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_HV_DISCONNECTOR_5_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_HV_DISCONNECTOR_1_6",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_HV_DISCONNECTOR_1_6",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_HV_BREAKER_2_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_HV_BREAKER_2_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_HV_DISCONNECTOR_7_3",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_HV_DISCONNECTOR_7_3",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_HV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_HV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_HV_DISCONNECTOR_8_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_HV_DISCONNECTOR_8_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_2W_MV_HV_HV_DISCONNECTOR_9_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_2W_MV_HV_HV_DISCONNECTOR_9_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L161_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L161_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L161_DISCONNECTOR_11_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L161_DISCONNECTOR_11_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L161_DISCONNECTOR_11_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L161_DISCONNECTOR_11_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L171_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L171_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L171_DISCONNECTOR_13_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L171_DISCONNECTOR_13_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L171_DISCONNECTOR_13_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L171_DISCONNECTOR_13_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L201_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L201_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L201_DISCONNECTOR_15_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L201_DISCONNECTOR_15_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L201_DISCONNECTOR_15_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L201_DISCONNECTOR_15_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L211_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L211_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L211_DISCONNECTOR_17_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L211_DISCONNECTOR_17_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L211_DISCONNECTOR_17_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L211_DISCONNECTOR_17_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_11_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_11_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_11_DISCONNECTOR_19_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_11_DISCONNECTOR_19_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_11_DISCONNECTOR_19_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_11_DISCONNECTOR_19_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_21_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_21_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_21_DISCONNECTOR_21_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_21_DISCONNECTOR_21_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "2W_MV_HV_21_DISCONNECTOR_21_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "2W_MV_HV_21_DISCONNECTOR_21_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "LCC2_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "LCC2_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "LCC2_DISCONNECTOR_23_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "LCC2_DISCONNECTOR_23_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "LCC2_DISCONNECTOR_23_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "LCC2_DISCONNECTOR_23_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "Dangling_inbound_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "Dangling_inbound_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "Dangling_inbound_DISCONNECTOR_25_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "Dangling_inbound_DISCONNECTOR_25_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "Dangling_inbound_DISCONNECTOR_25_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "Dangling_inbound_DISCONNECTOR_25_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_gen_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_gen_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_gen_DISCONNECTOR_2_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_gen_DISCONNECTOR_2_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_gen_DISCONNECTOR_3_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_gen_DISCONNECTOR_3_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L162_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L162_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L162_DISCONNECTOR_5_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L162_DISCONNECTOR_5_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L162_DISCONNECTOR_5_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L162_DISCONNECTOR_5_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L172_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L172_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L172_DISCONNECTOR_7_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L172_DISCONNECTOR_7_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L172_DISCONNECTOR_7_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L172_DISCONNECTOR_7_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L182_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L182_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L182_DISCONNECTOR_9_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L182_DISCONNECTOR_9_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L182_DISCONNECTOR_9_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L182_DISCONNECTOR_9_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L192_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L192_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L192_DISCONNECTOR_11_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L192_DISCONNECTOR_11_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L192_DISCONNECTOR_11_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L192_DISCONNECTOR_11_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VSC_B_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VSC_B_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VSC_B_DISCONNECTOR_13_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VSC_B_DISCONNECTOR_13_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VSC_B_DISCONNECTOR_13_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VSC_B_DISCONNECTOR_13_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "GEN_HV_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "GEN_HV_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "GEN_HV_DISCONNECTOR_15_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "GEN_HV_DISCONNECTOR_15_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "GEN_HV_DISCONNECTOR_15_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "GEN_HV_DISCONNECTOR_15_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_HV_gen_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_HV_gen_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_HV_gen_DISCONNECTOR_17_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_HV_gen_DISCONNECTOR_17_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_HV_gen_DISCONNECTOR_17_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_HV_gen_DISCONNECTOR_17_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "SHUNT_HV_CAP_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "SHUNT_HV_CAP_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "SHUNT_HV_CAP_DISCONNECTOR_19_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "SHUNT_HV_CAP_DISCONNECTOR_19_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "SHUNT_HV_CAP_DISCONNECTOR_19_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "SHUNT_HV_CAP_DISCONNECTOR_19_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_vsc_DISCONNECTOR_0_4",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_vsc_DISCONNECTOR_0_4",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_vsc_BREAKER_1_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_vsc_BREAKER_1_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_vsc_DISCONNECTOR_5_2",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_vsc_DISCONNECTOR_5_2",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_vsc_DISCONNECTOR_1_6",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_vsc_DISCONNECTOR_1_6",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_vsc_BREAKER_2_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_vsc_BREAKER_2_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_vsc_DISCONNECTOR_7_3",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_vsc_DISCONNECTOR_7_3",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_vsc_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_vsc_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_vsc_DISCONNECTOR_8_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_vsc_DISCONNECTOR_8_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VL_HV_vsc_DISCONNECTOR_9_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VL_HV_vsc_DISCONNECTOR_9_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L142_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L142_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L142_DISCONNECTOR_11_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L142_DISCONNECTOR_11_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L142_DISCONNECTOR_11_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L142_DISCONNECTOR_11_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L152_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L152_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L152_DISCONNECTOR_13_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L152_DISCONNECTOR_13_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L152_DISCONNECTOR_13_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L152_DISCONNECTOR_13_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L202_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L202_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L202_DISCONNECTOR_15_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L202_DISCONNECTOR_15_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L202_DISCONNECTOR_15_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L202_DISCONNECTOR_15_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L212_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L212_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L212_DISCONNECTOR_17_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L212_DISCONNECTOR_17_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "L212_DISCONNECTOR_17_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "L212_DISCONNECTOR_17_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VSC_A_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VSC_A_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VSC_A_DISCONNECTOR_19_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VSC_A_DISCONNECTOR_19_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "VSC_A_DISCONNECTOR_19_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "VSC_A_DISCONNECTOR_19_1",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_HV_vsc_BREAKER",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_HV_vsc_BREAKER",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_HV_vsc_DISCONNECTOR_21_0",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_HV_vsc_DISCONNECTOR_21_0",
+      "name": ""
+    },
+    {
+      "elements": [
+        {
+          "id": "load_HV_vsc_DISCONNECTOR_21_1",
+          "name": "",
+          "type": "SWITCH",
+          "kind": "branch"
+        }
+      ],
+      "id": "load_HV_vsc_DISCONNECTOR_21_1",
+      "name": ""
+    }
+  ],
+  "loadflow_parameters": {
+    "distributed_slack": false,
+    "contingency_propagation": false
+  },
+  "id_type": null
+}

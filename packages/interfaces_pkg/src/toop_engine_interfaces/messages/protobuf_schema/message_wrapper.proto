@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package toop_engine_interfaces.messages.protobuf_schema;
+
+message MessageWrapper {
+  // Wrapper for different message types
+    string message = 1; // Type of the message
+}

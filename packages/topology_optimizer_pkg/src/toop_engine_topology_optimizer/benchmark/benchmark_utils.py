@@ -15,7 +15,7 @@ import warnings
 from dataclasses import dataclass
 from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal, Optional, Tuple
 
 import jax
 import logbook
@@ -54,7 +54,6 @@ from toop_engine_interfaces.folder_structure import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
-    BaseImporterParameters,
     CgmesImporterParameters,
     PreprocessParameters,
     UcteImporterParameters,
@@ -157,8 +156,17 @@ def run_task_process(cfg: DictConfig, conn: Optional[Connection] = None) -> Opti
     """
     logger.info(f"************Experiment name: {cfg['task_name']}****************")
 
-    ga_params = BatchedMEParameters(**{k: v for k, v in cfg.ga_config.items() if v is not None})
-    lf_params = LoadflowSolverParameters(**{k: v for k, v in cfg.lf_config.items() if v is not None})
+    try:
+        ga_params = BatchedMEParameters(**{k: v for k, v in cfg.ga_config.items() if v is not None})
+        lf_params = LoadflowSolverParameters(**{k: v for k, v in cfg.lf_config.items() if v is not None})
+    except (TypeError, ValueError) as e:
+        error_msg = f"Invalid configuration parameters: {e}"
+        logger.error(error_msg)
+        if conn:
+            conn.send({"error": error_msg})
+            conn.close()
+            return None
+        raise
 
     if "{task_name}" in cfg.tensorboard_dir:
         cfg.tensorboard_dir = cfg.tensorboard_dir.replace("{task_name}", cfg.task_name)
@@ -183,19 +191,30 @@ def run_task_process(cfg: DictConfig, conn: Optional[Connection] = None) -> Opti
     cli_args = {key: value for key, value in cli_args.items() if value is not None}
     cli_args = CLIArgs(**cli_args)
 
-    # If the connection is None, run the task without sending the result
-    if conn is None:
-        res = opt_main(cli_args)
-        return res
-
     try:
-        res = opt_main(cli_args)
-        conn.send(res)
-        del res
-    except Exception as exception:  # pylint: disable=broad-exception-caught
-        conn.send({"error": str(exception)})
-    conn.close()
-    return None
+        result = opt_main(cli_args)
+    except KeyboardInterrupt:
+        # Let it propagate
+        raise
+    except (RuntimeError, ValueError, OSError) as e:
+        # Only catch specific exceptions we know how to handle
+        error_msg = f"Optimization failed: {e}"
+        logger.error(error_msg)
+        if conn:
+            conn.send({"error": error_msg})
+            conn.close()
+            return None
+        raise
+
+    if conn:
+        try:
+            conn.send(result)
+        except (BrokenPipeError, ConnectionError) as e:
+            logger.warning(f"Failed to send result through connection: {e}")
+        finally:
+            conn.close()
+        return None
+    return result
 
 
 def get_paths(cfg: PipelineConfig) -> Tuple[Path, Path, Path, Path]:
@@ -243,7 +262,7 @@ def get_paths(cfg: PipelineConfig) -> Tuple[Path, Path, Path, Path]:
 
 def prepare_importer_parameters(
     file_path: Path, data_folder: Path, area_settings: Optional[AreaSettings] = None
-) -> BaseImporterParameters:
+) -> UcteImporterParameters | CgmesImporterParameters:
     """
     Build importer parameter objects depending on file suffix.
 
@@ -258,7 +277,7 @@ def prepare_importer_parameters(
 
     Returns
     -------
-    BaseImporterParameters
+    UcteImporterParameters | CgmesImporterParameters
         An instance of either `UcteImporterParameters` or `CgmesImporterParameters`, depending on the file suffix.
 
     Notes
@@ -290,7 +309,7 @@ def prepare_importer_parameters(
 
 
 def run_preprocessing(
-    importer_parameters: BaseImporterParameters,
+    importer_parameters: UcteImporterParameters | CgmesImporterParameters,
     data_folder: Path,
     preprocessing_parameters: PreprocessParameters,
     is_pandapower_net: bool = False,
@@ -300,7 +319,7 @@ def run_preprocessing(
 
     Parameters
     ----------
-    importer_parameters : BaseImporterParameters
+    importer_parameters : UcteImporterParameters | CgmesImporterParameters
         Parameters required by the importer for file conversion.
     data_folder : Path
         Path to the folder where data files are stored and processed.
@@ -723,7 +742,7 @@ def run_dc_optimization_stage(
 
 def run_pipeline(
     pipeline_cfg: PipelineConfig,
-    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    importer_parameters: UcteImporterParameters | CgmesImporterParameters,
     preprocessing_parameters: PreprocessParameters,
     dc_optim_config: dict,
     run_preprocessing_stage: bool = True,
@@ -731,7 +750,7 @@ def run_pipeline(
     run_ac_validation_stage: bool = True,
     optimisation_run_dir: Optional[Path] = None,
     k_best_topos: int = 5,
-) -> Path:
+) -> list[Path]:
     """
     Run the end-to-end pipeline including topology copying, preprocessing, DC optimization, and AC validation.
 
@@ -739,7 +758,7 @@ def run_pipeline(
     ----------
     pipeline_cfg : PipelineConfig
         Configuration object for the pipeline, containing paths and settings.
-    importer_parameters : Union[UcteImporterParameters, CgmesImporterParameters]
+    importer_parameters : UcteImporterParameters | CgmesImporterParameters
         Parameters for the grid model importer, specifying the source grid model file and related options.
     preprocessing_parameters : PreprocessParameters
         Parameters for the preprocessing stage, controlling data preparation and transformation.

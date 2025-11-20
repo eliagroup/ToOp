@@ -35,6 +35,7 @@ from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     run_dc_optimization_stage,
     run_preprocessing,
 )
+from toop_engine_topology_optimizer.benchmark.benchmark_utils import logger as utils_logger
 
 logger = logbook.Logger("ToOp Benchmark")
 
@@ -263,4 +264,5 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
+    utils_logger.level = logbook.WARNING
     main()

@@ -254,7 +254,7 @@ def test_main_idle(
             }
         )
         command = LoadflowServiceCommand(command=ShutdownCommand())
-        producer.produce(kafka_command_topic, value=MessageWrapper(message=command.model_dump_json()).SerializeToString())
+        producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
         producer.flush()
         consumer.close()
         p.join(timeout=10)

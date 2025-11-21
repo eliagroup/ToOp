@@ -101,7 +101,7 @@ repos:
       - id: gitleaks
         name: "Gitleaks: detect secrets"
         description: Scan repository for secrets.
-        args: ["--config=.gitleaks.toml"]
+        # args: ["--config=.gitleaks.toml"]
 
 
   - repo: https://github.com/PyCQA/bandit

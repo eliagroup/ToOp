@@ -40,8 +40,8 @@ dependencies = [
     "polars>=1.33.0",
     "pyarrow>=21.0.0",
     "fsspec>=2024.0.0",
-    "protobuf==3.20.2",
-    "mypy-protobuf==3.3.0"
+    "protobuf>=6.33",
+    "mypy-protobuf>=3.7.0"
 
 ]
 

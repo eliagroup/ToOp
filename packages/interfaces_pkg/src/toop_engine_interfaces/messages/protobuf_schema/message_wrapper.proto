@@ -1,3 +1,5 @@
+// This is a temporary wrapper message for different message types so that we continue with our dev migration. 
+// This will be refactored later to be replaced by specific message definitions in the future.
 syntax = "proto3";
 
 package toop_engine_interfaces.messages.protobuf_schema;

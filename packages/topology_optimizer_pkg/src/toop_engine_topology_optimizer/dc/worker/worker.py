@@ -14,6 +14,7 @@ import tyro
 from confluent_kafka import Producer
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
     extract_results,
@@ -113,7 +114,7 @@ def idle_loop(
             send_heartbeat_fn(IdleHeartbeat())
             continue
 
-        command = Command.model_validate_json(message.value().decode())
+        command = Command.model_validate_json(deserialize_message(message.value()))
 
         if isinstance(command.command, StartOptimizationCommand):
             # Prefix the gridfile folder to the static information files
@@ -261,7 +262,7 @@ def main(args: Args) -> None:
         )
         producer.produce(
             args.optimizer_heartbeat_topic,
-            value=heartbeat.model_dump_json().encode(),
+            value=serialize_message(heartbeat.model_dump_json()),
             key=heartbeat.instance_id.encode(),
         )
         producer.flush()
@@ -277,7 +278,7 @@ def main(args: Args) -> None:
         )
         producer.produce(
             args.optimizer_results_topic,
-            value=result.model_dump_json().encode(),
+            value=serialize_message(result.model_dump_json()),
             key=optimization_id.encode(),
         )
         producer.flush()

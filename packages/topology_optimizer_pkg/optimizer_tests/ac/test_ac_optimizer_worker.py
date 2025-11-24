@@ -8,6 +8,7 @@ from sqlmodel import select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_dc_solver.preprocess.network_data import load_network_data
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_interfaces.stored_action_set import load_action_set, random_actions
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.ac.worker import Args, WorkerData, idle_loop, main, optimization_loop
@@ -47,7 +48,7 @@ def test_main_simple(
         }
     )
     command = Command(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
     with pytest.raises(SystemExit):
         main(
@@ -113,7 +114,7 @@ def test_idle_loop_no_message() -> None:
     # Make poll() return None on the first call, then a ShutdownCommand message
     shutdown_command = Command(command=ShutdownCommand())
     shutdown_message = Mock()
-    shutdown_message.value.return_value = shutdown_command.model_dump_json().encode()
+    shutdown_message.value.return_value = serialize_message(shutdown_command.model_dump_json())
     worker_data.command_consumer.poll.side_effect = [None, shutdown_message]
     worker_data.result_consumer.consume.return_value = []
     heartbeats = []
@@ -147,7 +148,7 @@ def test_idle_loop_optimization_started() -> None:
         )
     )
     start_message = Mock()
-    start_message.value.return_value = start_command.model_dump_json().encode()
+    start_message.value.return_value = serialize_message(start_command.model_dump_json())
     worker_data.command_consumer.poll.return_value = start_message
     worker_data.result_consumer.consume.return_value = []
     heartbeats = []
@@ -191,7 +192,7 @@ def test_optimization_loop(
         producer=Mock(spec=Producer),
     )
     worker_data.result_consumer.consume = Mock(
-        return_value=[Mock(value=Mock(return_value=topopushresult.model_dump_json().encode()))]
+        return_value=[Mock(value=Mock(return_value=serialize_message(topopushresult.model_dump_json())))]
     )
     results = []
 
@@ -319,9 +320,9 @@ def test_main(
             "log_level": 2,
         }
     )
-    producer.produce(kafka_command_topic, value=start_command.model_dump_json().encode(), partition=0)
-    producer.produce(kafka_command_topic, value=shutdown_command.model_dump_json().encode(), partition=0)
-    producer.produce(kafka_results_topic, value=topopushresult.model_dump_json().encode(), partition=0)
+    producer.produce(kafka_command_topic, value=serialize_message(start_command.model_dump_json()), partition=0)
+    producer.produce(kafka_command_topic, value=serialize_message(shutdown_command.model_dump_json()), partition=0)
+    producer.produce(kafka_results_topic, value=serialize_message(topopushresult.model_dump_json()), partition=0)
     producer.flush()
 
     with pytest.raises(SystemExit):
@@ -350,7 +351,7 @@ def test_main(
     topo_push_found = False
     results_history = []
     while message := consumer.poll(timeout=30.0):
-        result = Result.model_validate_json(message.value().decode())
+        result = Result.model_validate_json(deserialize_message(message.value()))
         results_history.append(result)
         assert isinstance(result, Result)
         if isinstance(result.result, OptimizationStartedResult):

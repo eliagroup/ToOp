@@ -64,6 +64,7 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
     LoadflowStreamResult,
     LoadflowSuccessResult,
 )
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
 logger = getLogger(__name__)
 
@@ -142,7 +143,7 @@ def idle_loop(
             send_heartbeat_fn()
             continue
 
-        command = LoadflowServiceCommand.model_validate_json(message.value().decode("utf-8"))
+        command = LoadflowServiceCommand.model_validate_json(deserialize_message(message.value()))
 
         if isinstance(command.command, StartCalculationCommand):
             return command.command
@@ -204,15 +205,15 @@ def solver_loop(
         for job in command.jobs:
             producer.produce(
                 results_topic,
-                value=LoadflowBaseResult(
-                    job_id=job.id,
-                    instance_id=instance_id,
-                    loadflow_id=command.loadflow_id,
-                    runtime=0.0,
-                    result=LoadflowStartedResult(),
-                )
-                .model_dump_json()
-                .encode(),
+                value=serialize_message(
+                    LoadflowBaseResult(
+                        job_id=job.id,
+                        instance_id=instance_id,
+                        loadflow_id=command.loadflow_id,
+                        runtime=0.0,
+                        result=LoadflowStartedResult(),
+                    ).model_dump_json()
+                ),
                 key=command.loadflow_id.encode(),
             )
             job_loadflow_results_polars = LoadflowResultsPolars(job_id=job.id)
@@ -239,30 +240,30 @@ def solver_loop(
 
                 producer.produce(
                     topic=results_topic,
-                    value=LoadflowBaseResult(
-                        job_id=job.id,
-                        loadflow_id=command.loadflow_id,
-                        instance_id=instance_id,
-                        runtime=time.time() - start_time,
-                        result=result_msg,
-                    )
-                    .model_dump_json()
-                    .encode(),
+                    value=serialize_message(
+                        LoadflowBaseResult(
+                            job_id=job.id,
+                            loadflow_id=command.loadflow_id,
+                            instance_id=instance_id,
+                            runtime=time.time() - start_time,
+                            result=result_msg,
+                        ).model_dump_json()
+                    ),
                     key=command.loadflow_id.encode(),
                 )
     except Exception as e:
         logger.error(f"Error while processing {command.loadflow_id}: {e}")
         producer.produce(
             topic=results_topic,
-            value=LoadflowBaseResult(
-                job_id=command.loadflow_id,
-                instance_id=instance_id,
-                loadflow_id=command.loadflow_id,
-                runtime=time.time() - start_time,
-                result=ErrorResult(error=str(e)),
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                LoadflowBaseResult(
+                    job_id=command.loadflow_id,
+                    instance_id=instance_id,
+                    loadflow_id=command.loadflow_id,
+                    runtime=time.time() - start_time,
+                    result=ErrorResult(error=str(e)),
+                ).model_dump_json()
+            ),
             key=command.loadflow_id.encode(),
         )
 
@@ -318,12 +319,12 @@ def main(args: LoadflowWorkerArgs) -> None:
     def heartbeat_idle() -> None:
         producer.produce(
             args.loadflow_heartbeat_topic,
-            value=LoadflowHeartbeat(
-                idle=True,
-                status_info=None,
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                LoadflowHeartbeat(
+                    idle=True,
+                    status_info=None,
+                ).model_dump_json()
+            ),
             key=args.instance_id.encode("utf-8"),
         )
         producer.flush()
@@ -331,16 +332,16 @@ def main(args: LoadflowWorkerArgs) -> None:
     def heartbeat_fn(job_id: str, runtime: float, message: str = "") -> None:
         producer.produce(
             args.loadflow_heartbeat_topic,
-            value=LoadflowHeartbeat(
-                idle=False,
-                status_info=LoadflowStatusInfo(
-                    loadflow_id=job_id,
-                    runtime=runtime,
-                    message=message,
-                ),
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                LoadflowHeartbeat(
+                    idle=False,
+                    status_info=LoadflowStatusInfo(
+                        loadflow_id=job_id,
+                        runtime=runtime,
+                        message=message,
+                    ),
+                ).model_dump_json()
+            ),
             key=args.instance_id.encode("utf-8"),
         )
         producer.flush()

@@ -16,6 +16,7 @@ import tyro
 from confluent_kafka import Producer
 from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.optimizer import AcNotConvergedError, initialize_optimization, run_epoch
 from toop_engine_topology_optimizer.ac.storage import create_session
@@ -212,7 +213,7 @@ def idle_loop(
             )
             continue
 
-        command = Command.model_validate_json(message.value().decode())
+        command = Command.model_validate_json(deserialize_message(message.value()))
 
         if isinstance(command.command, StartOptimizationCommand):
             # Prefix the gridfile folder to the static information files
@@ -292,7 +293,7 @@ def main(args: Args) -> None:
         Heartbeat.model_validate(heartbeat)  # Validate the heartbeat message
         worker_data.producer.produce(
             args.optimizer_heartbeat_topic,
-            value=heartbeat.model_dump_json().encode(),
+            value=serialize_message(heartbeat.model_dump_json()),
             key=heartbeat.instance_id.encode(),
         )
         worker_data.producer.flush()
@@ -309,7 +310,7 @@ def main(args: Args) -> None:
         Result.model_validate(result)  # Validate the result message
         worker_data.producer.produce(
             args.optimizer_results_topic,
-            value=result.model_dump_json().encode(),
+            value=serialize_message(result.model_dump_json()),
             key=result.optimization_id.encode(),
         )
         worker_data.producer.flush()

@@ -1,5 +1,6 @@
 import pytest
 from confluent_kafka import Consumer, Producer
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.interfaces.messages.commands import Command, StartOptimizationCommand
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
 
@@ -51,7 +52,7 @@ def test_serialization(kafka_command_topic: str, kafka_connection_str: str, stat
             "log_level": 2,
         }
     )
-    producer.produce(kafka_command_topic, value=data.encode())
+    producer.produce(kafka_command_topic, value=serialize_message(data))
     producer.flush()
 
     consumer = Consumer(
@@ -64,8 +65,8 @@ def test_serialization(kafka_command_topic: str, kafka_connection_str: str, stat
     )
     consumer.subscribe([kafka_command_topic])
     message = consumer.poll(timeout=10.0)
-    assert message.value().decode() == data
+    assert deserialize_message(message.value()) == data
 
-    data_decoded = Command.model_validate_json(message.value().decode())
+    data_decoded = Command.model_validate_json(deserialize_message(message.value()))
     assert data_decoded.command.optimization_id == "test"
     consumer.close()

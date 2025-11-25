@@ -114,7 +114,8 @@ class PandaPowerBackend(BackendInterface):
         chronics_slice: Optional[slice]
              The chronics id to use, by default None
         """
-        super().__init__(data_folder_dirfs=data_folder_dirfs)
+        super().__init__()
+        self.data_folder_dirfs = data_folder_dirfs
         self.chronics_id = chronics_id
         self.chronics_slice = chronics_slice
         if chronics_id is not None:
@@ -129,14 +130,14 @@ class PandaPowerBackend(BackendInterface):
                 load_numpy_filesystem(
                     filesystem=self.data_folder_dirfs, file_path=str(chronics_path / CHRONICS_FILE_NAMES["sgen_p"])
                 )
-                if os.path.exists(chronics_path / CHRONICS_FILE_NAMES["sgen_p"])
+                if self.data_folder_dirfs.exists(str(chronics_path / CHRONICS_FILE_NAMES["sgen_p"]))
                 else None
             )
             self.dcline_p = (
                 load_numpy_filesystem(
                     filesystem=self.data_folder_dirfs, file_path=str(chronics_path / CHRONICS_FILE_NAMES["dcline_p"])
                 )
-                if os.path.exists(chronics_path / CHRONICS_FILE_NAMES["dcline_p"])
+                if self.data_folder_dirfs.exists(str(chronics_path / CHRONICS_FILE_NAMES["dcline_p"]))
                 else None
             )
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TypeVar
 
 import numpy as np
-from beartype.typing import Any, Union
+from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 
@@ -57,12 +57,12 @@ def load_pydantic_model_fs(filesystem: AbstractFileSystem, file_path: Path, mode
     return model_class.model_validate_json(data)
 
 
-# ruff: noqa: ANN401
-def load_numpy_filesystem(filesystem: AbstractFileSystem, file_path: Union[str, Path]) -> Any:
+def load_numpy_filesystem(filesystem: AbstractFileSystem, file_path: Union[str, Path]) -> np.ndarray:
     """Load a numpy file from a file system
 
     Loads a file from the file system used by the interface. The file_path is expected to be
     relative to the filesystem.
+    uses np.load(f)
 
     Parameter
     ---------
@@ -73,7 +73,7 @@ def load_numpy_filesystem(filesystem: AbstractFileSystem, file_path: Union[str, 
 
     Returns
     -------
-    Any
+    np.ndarray
         array, tuple, dict, etc.
         Data stored in the file. For ``.npz`` files, the returned instance
         of NpzFile class must be closed to avoid leaking file descriptors.
@@ -82,3 +82,29 @@ def load_numpy_filesystem(filesystem: AbstractFileSystem, file_path: Union[str, 
     """
     with filesystem.open(str(file_path), "rb") as f:
         return np.load(f)
+
+
+def save_numpy_filesystem(
+    filesystem: AbstractFileSystem, file_path: Union[str, Path], numpy_array: np.ndarray, make_dir: bool = True
+) -> None:
+    """Save a numpy array to a file in the filesystem
+
+    Saves a numpy array to a file to the file system used by the interface. The file_path is expected to be
+    relative to the filesystem.
+    uses np.save(f)
+
+    Parameter
+    ---------
+    filesystem: AbstractFileSystem
+        The filesystem to load the numpy file from.
+    file_pah: str
+        The path relative to the filesystem.
+    numpy_array:np.ndarray
+        The numpy array to save
+    make_dir: bool
+        Whether to create the directory if it does not exist.
+    """
+    if make_dir:
+        filesystem.makedirs(Path(file_path).parent.as_posix(), exist_ok=True)
+    with filesystem.open(str(file_path), "wb") as f:
+        np.save(f, numpy_array)

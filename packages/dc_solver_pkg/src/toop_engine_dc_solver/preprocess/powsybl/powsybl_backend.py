@@ -75,8 +75,8 @@ class PowsyblBackend(BackendInterface):
         distributed_slack: bool
             Use distributed_slack to initilize the backend.
         """
-        super().__init__(data_folder_dirfs=data_folder_dirfs)
-
+        super().__init__()
+        self.data_folder_dirfs = data_folder_dirfs
         net = load_powsybl_from_fs(
             filesystem=data_folder_dirfs,
             file_path=Path(PREPROCESSING_PATHS["grid_file_path_powsybl"]),

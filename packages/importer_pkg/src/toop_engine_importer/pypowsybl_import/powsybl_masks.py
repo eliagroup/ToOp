@@ -29,6 +29,7 @@ from toop_engine_importer.pypowsybl_import.cgmes.powsybl_masks_cgmes import get_
 from toop_engine_importer.pypowsybl_import.contingency_from_file.contingency_file_models import ContingencyImportSchema
 from toop_engine_importer.pypowsybl_import.contingency_from_file.helper_functions import get_all_element_names
 from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
+from toop_engine_interfaces.filesystem_helper import save_numpy_filesystem
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -894,8 +895,7 @@ def save_masks_to_filesystem(network_masks: NetworkMasks, data_folder: Path, fil
     masks_folder = data_folder / PREPROCESSING_PATHS["masks_path"]
     masks_folder.mkdir(exist_ok=True, parents=True)
     for mask_key, mask in asdict(network_masks).items():
-        with filesystem.open(masks_folder / NETWORK_MASK_NAMES[mask_key], "wb") as f:
-            np.save(f, mask)
+        save_numpy_filesystem(filesystem=filesystem, file_path=masks_folder / NETWORK_MASK_NAMES[mask_key], numpy_array=mask)
 
 
 def remove_slack_from_relevant_subs(

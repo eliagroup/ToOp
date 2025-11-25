@@ -608,7 +608,6 @@ def convert_rel_bb_outage_data(  # noqa: C901
     )
 
 
-# TODO refactor
 def load_grid(
     data_folder_dirfs: AbstractFileSystem,
     chronics_id: Optional[int] = None,

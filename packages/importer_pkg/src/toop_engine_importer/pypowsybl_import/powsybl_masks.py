@@ -13,6 +13,7 @@ import logbook
 import numpy as np
 import pandas as pd
 import pypowsybl
+from fsspec import AbstractFileSystem, filesystem
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     DISTRIBUTED_SLACK,
@@ -874,12 +875,27 @@ def save_masks_to_files(network_masks: NetworkMasks, data_folder: Path) -> None:
         The network masks to save.
     data_folder: Path
         The folder to save the masks to.
+    """
+    save_masks_to_filesystem(network_masks, data_folder, filesystem=filesystem("file"))
 
+
+def save_masks_to_filesystem(network_masks: NetworkMasks, data_folder: Path, filesystem: AbstractFileSystem) -> None:
+    """Save the network masks to a filesystem.
+
+    Parameters
+    ----------
+    network_masks: NetworkMasks
+        The network masks to save.
+    data_folder: Path
+        The folder to save the masks to.
+    filesystem: AbstractFileSystem
+        The filesystem to save the masks to.
     """
     masks_folder = data_folder / PREPROCESSING_PATHS["masks_path"]
     masks_folder.mkdir(exist_ok=True, parents=True)
     for mask_key, mask in asdict(network_masks).items():
-        np.save(masks_folder / NETWORK_MASK_NAMES[mask_key], mask)
+        with filesystem.open(masks_folder / NETWORK_MASK_NAMES[mask_key], "wb") as f:
+            np.save(f, mask)
 
 
 def remove_slack_from_relevant_subs(

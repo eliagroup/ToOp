@@ -197,8 +197,8 @@ def load_nminus1_definition(filename: Path) -> Nminus1Definition:
     return load_nminus1_definition_fs(LocalFileSystem(), filename)
 
 
-def save_nminus1_definition_fs(
-    filesystem: AbstractFileSystem, filename: Path, nminus1_definition: Nminus1Definition
+def save_pydantic_model_fs(
+    filesystem: AbstractFileSystem, filename: Path, pydantic_model: Nminus1Definition, indent: int = 2, make_dir: bool = True
 ) -> None:
     """Save an N-1 definition to a json file
 
@@ -208,11 +208,17 @@ def save_nminus1_definition_fs(
         The file system to use to save the N-1 definition.
     filename : Path
         The path to the json file to save the N-1 definition to.
-    nminus1_definition : Nminus1Definition
+    pydantic_model : Nminus1Definition
         The N-1 definition to save.
+    indent: int
+        The indent for the model dump
+    make_dir: bool
+        Whether to create the directory if it does not exist.
     """
+    if make_dir:
+        filesystem.makedirs(Path(filename).parent.as_posix(), exist_ok=True)
     with filesystem.open(str(filename), "w") as f:
-        f.write(nminus1_definition.model_dump_json(indent=2))
+        f.write(pydantic_model.model_dump_json(indent=indent))
 
 
 def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definition) -> None:
@@ -225,4 +231,4 @@ def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definitio
     nminus1_definition : Nminus1Definition
         The N-1 definition to save.
     """
-    save_nminus1_definition_fs(LocalFileSystem(), filename, nminus1_definition)
+    save_pydantic_model_fs(LocalFileSystem(), filename, nminus1_definition)

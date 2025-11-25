@@ -415,7 +415,7 @@ def get_topology(network: Network, network_masks: NetworkMasks, importer_paramet
     """
     relevant_voltage_level_with_region = get_relevant_voltage_levels(network=network, network_masks=network_masks)
     station_list = get_station_list(network=network, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
-    grid_model_file = str(importer_parameters.grid_model_file)
+    grid_model_file = str(importer_parameters.grid_model_file.name)
     topology_id = importer_parameters.grid_model_file.name
     timestamp = datetime.datetime.now()
 

@@ -67,9 +67,11 @@ def import_grid_model(
         Any exception raised will be caught by the worker and sent back
     """
     importer_parameters = start_command.importer_parameters
+    importer_parameters.filesystem_import_results = processed_gridfile_fs
     import_result = preprocessing.convert_file(
         importer_parameters=importer_parameters,
         status_update_fn=status_update_fn,
+        unprocessed_gridfile_fs=unprocessed_gridfile_fs,
     )
     return import_result
 
@@ -86,14 +88,14 @@ def run_initial_loadflow(
     ----------
     start_command: StartPreprocessingCommand
         The command that was sent to the worker
-    processed_gridfile_fs: AbstractFileSystem
+    processed_gridfile_dirfs: AbstractFileSystem
         A filesystem where the processed gridfiles are stored. This is assumed to be a dirfs pointing to the data folder for
         this import job, where the preprocessed gridfiles are stored
     status_update_fn: Callable[[PreprocessStage, Optional[str]], None]
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters
-    loadflow_result_folder: Path
-        A folder where the loadflow results are stored - this should be a NFS share together with the backend and
+    loadflow_result_fs: AbstractFileSystem
+        A filesystem where the loadflow results are stored - this should be a NFS share together with the backend and
         optimizer. The importer needs this to store the initial loadflows
 
     Returns
@@ -150,8 +152,9 @@ def preprocess(
         A filesystem where the loadflow results are stored. Loadflows will be stored here using the uuid generation process
         and passed as a StoredLoadflowReference which contains the subfolder in this filesystem.
     processed_gridfile_fs: AbstractFileSystem
-        The target filesystem for the preprocessing worker. This contains all processed grid files. During the import job,
-        a new folder import_results.data_folder was created which will be completed with the preprocess call to this function.
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
         Internally, only the data folder is passed around as a dirfs.
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.

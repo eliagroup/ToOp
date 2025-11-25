@@ -8,6 +8,7 @@ import logbook
 import pandapower as pp
 import pandas as pd
 import pypowsybl
+from fsspec import filesystem
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
@@ -59,8 +60,12 @@ def test_save_load_preprocessing_statistics():
     )
     with TemporaryDirectory() as temp_dir:
         json_test_file = Path(temp_dir) / "test_save_statistics.json"
-        preprocessing.save_preprocessing_statistics(statistics, json_test_file)
-        loaded_statistics = preprocessing.load_preprocessing_statistics(json_test_file)
+        preprocessing.save_preprocessing_statistics_filesystem(
+            statistics, file_path=json_test_file, filesystem=filesystem("file")
+        )
+        loaded_statistics = preprocessing.load_preprocessing_statistics_filesystem(
+            json_test_file, filesystem=filesystem("file")
+        )
         assert isinstance(loaded_statistics, PreProcessingStatistics)
         assert statistics == loaded_statistics
         assert loaded_statistics.id_lists == statistics.id_lists

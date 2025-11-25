@@ -262,8 +262,18 @@ def static_information_file_complex(grid_folder: Path) -> Path:
     return grid_folder / "complex_grid" / PREPROCESSING_PATHS["static_information_file_path"]
 
 
-def build_dc_cfg(base_path: str, static_info_file: Path) -> DictConfig:
-    """Builds a configuration dictionary for testing purposes."""
+def build_dc_config(base_path: str, static_info_file: Path) -> DictConfig:
+    """
+    Builds a configuration dictionary for testing purposes.
+
+    Args:
+        base_path (str): The base directory path where results and output files will be stored.
+        static_info_file (Path): Path to the static information file to include in the configuration.
+
+    Returns
+    -------
+        DictConfig: The configuration dictionary for testing.
+    """
     return DictConfig(
         {
             "task_name": "test",
@@ -295,14 +305,19 @@ def build_dc_cfg(base_path: str, static_info_file: Path) -> DictConfig:
 def dc_config(
     request, static_information_file: Path, static_information_file_complex: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> DictConfig:
-    """Configuration to test the optimiser"""
+    """ToOp configuration to test the optimiser."""
     if request.param == "oberrhein":
         static_info_file = static_information_file
     else:
         static_info_file = static_information_file_complex
 
     base_path = str(tmp_path_factory.mktemp("base"))
-    return build_dc_cfg(base_path, static_info_file)
+    return build_dc_config(base_path, static_info_file)
+
+
+def build_ac_config() -> DictConfig:
+    """AC validation configuration to test the optimiser."""
+    return DictConfig({"n_processes": 1, "k_best_topos": 5})
 
 
 def build_pipeline_cfg(complex_grid_dst: Path, iteration_name: str, file_name: str) -> DictConfig:
@@ -313,7 +328,9 @@ def build_pipeline_cfg(complex_grid_dst: Path, iteration_name: str, file_name: s
 
 
 @pytest.fixture(scope="session")
-def pipeline_and_dc_cfg(tmp_path_factory: pytest.TempPathFactory, grid_folder: Path) -> tuple[DictConfig, DictConfig]:
+def pipeline_and_configs(
+    tmp_path_factory: pytest.TempPathFactory, grid_folder: Path
+) -> tuple[DictConfig, DictConfig, DictConfig]:
     """Configuration for the end-to-end pipeline tests"""
     tmp_grid_folder = tmp_path_factory.mktemp("pipeline_grid")
     # Copy complex grid data to temporary folder
@@ -325,8 +342,9 @@ def pipeline_and_dc_cfg(tmp_path_factory: pytest.TempPathFactory, grid_folder: P
     file_name = "grid.xiidm"
     iteration_name = ""
     pipeline_cfg = build_pipeline_cfg(complex_grid_dst, iteration_name, file_name)
-    dc_cfg = build_dc_cfg(str(tmp_grid_folder), complex_grid_dst / PREPROCESSING_PATHS["static_information_file_path"])
-    return pipeline_cfg, dc_cfg
+    dc_cfg = build_dc_config(str(tmp_grid_folder), complex_grid_dst / PREPROCESSING_PATHS["static_information_file_path"])
+    ac_cfg = build_ac_config()
+    return pipeline_cfg, dc_cfg, ac_cfg
 
 
 @pytest.fixture(scope="session")

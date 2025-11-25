@@ -1255,6 +1255,10 @@ def create_complex_substation_layout_grid() -> Network:
     net.create_voltage_levels(id="VL3", substation_id="S1", nominal_v=220.0, topology_kind="NODE_BREAKER")
     net.create_busbar_sections(id="B8", voltage_level_id="VL3", name="Busbar 1", node=1)
 
+    net.create_substations(id="S3", name="Substation 3", country="DE")
+    net.create_voltage_levels(id="VL4", substation_id="S3", nominal_v=380.0, topology_kind="NODE_BREAKER")
+    net.create_busbar_sections(id="B9", voltage_level_id="VL4", name="Busbar 1", node=1)
+
     net.create_switches(
         id="SW1", voltage_level_id="VL1", name="Switch 1-4", node1=1, node2=4, open=False, kind="DISCONNECTOR"
     )
@@ -1407,8 +1411,8 @@ def create_complex_substation_layout_grid() -> Network:
         voltage_level1_id="VL1",
         name="Line 3",
         node1=19,
-        voltage_level2_id="VL2",
-        node2=4,
+        voltage_level2_id="VL4",
+        node2=2,
         r=0.2,
         x=0.3,
         g1=0.0,
@@ -1438,7 +1442,7 @@ def create_complex_substation_layout_grid() -> Network:
         id="SW33", voltage_level_id="VL1", name="Line 1-3 - BB 3.1", node1=3, node2=21, open=False, kind="DISCONNECTOR"
     )
     net.create_switches(
-        id="SWL3", voltage_level_id="VL2", name="Line 1-3 - BB 3", node1=1, node2=4, open=False, kind="DISCONNECTOR"
+        id="SWL3", voltage_level_id="VL4", name="Line 1-3 - BB 3", node1=1, node2=2, open=False, kind="DISCONNECTOR"
     )
 
     net.create_lines(
@@ -1446,8 +1450,8 @@ def create_complex_substation_layout_grid() -> Network:
         voltage_level1_id="VL1",
         name="Line 4",
         node1=22,
-        voltage_level2_id="VL2",
-        node2=5,
+        voltage_level2_id="VL4",
+        node2=3,
         r=0.25,
         x=0.35,
         g1=0.0,
@@ -1477,7 +1481,7 @@ def create_complex_substation_layout_grid() -> Network:
         id="SW37", voltage_level_id="VL1", name="Line 1-4 - BB 3.2", node1=6, node2=24, open=False, kind="DISCONNECTOR"
     )
     net.create_switches(
-        id="SWL4", voltage_level_id="VL2", name="Line 1-4 - BB 4", node1=1, node2=5, open=False, kind="DISCONNECTOR"
+        id="SWL4", voltage_level_id="VL4", name="Line 1-4 - BB 4", node1=1, node2=3, open=False, kind="DISCONNECTOR"
     )
 
     net.create_2_windings_transformers(
@@ -1592,25 +1596,29 @@ def create_complex_substation_layout_grid() -> Network:
         id="SWT2", voltage_level_id="VL3", name="Transformer T-2 - BB 2", node1=1, node2=3, open=False, kind="DISCONNECTOR"
     )
 
-    net.create_loads(id="Load1", voltage_level_id="VL3", name="Load 1", node=4, p0=500.0, q0=30.0)
+    net.create_loads(id="Load1", voltage_level_id="VL2", name="Load 1", node=4, p0=250.0, q0=30.0)
+    net.create_loads(id="Load2", voltage_level_id="VL4", name="Load 2", node=4, p0=250.0, q0=20.0)
     net.create_switches(
-        id="SW46", voltage_level_id="VL3", name="Load 1 - Disconnector", node1=1, node2=4, open=False, kind="DISCONNECTOR"
+        id="SW46", voltage_level_id="VL2", name="Load 1 - Disconnector", node1=1, node2=4, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW48", voltage_level_id="VL4", name="Load 2 - Disconnector", node1=1, node2=4, open=False, kind="DISCONNECTOR"
     )
 
     net.create_generators(
         id="Gen1",
-        voltage_level_id="VL2",
+        voltage_level_id="VL3",
         name="Generator 1",
         node=6,
         min_p=0,
         max_p=1000,
         target_p=500.0,
-        target_v=390,
+        target_v=230,
         voltage_regulator_on=True,
     )
     net.create_switches(
         id="SW47",
-        voltage_level_id="VL2",
+        voltage_level_id="VL3",
         name="Generator 1 - Disconnector",
         node1=1,
         node2=6,

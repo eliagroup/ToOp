@@ -11,9 +11,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pypowsybl
-from beartype.typing import Literal, Optional
+from beartype.typing import Dict, List, Literal, Optional
 from fsspec import AbstractFileSystem
 from pypowsybl.network import Network
+from pypowsybl.report import ReportNode
 
 
 def extract_single_injection_loadflow_result(injections: pd.DataFrame, injection_id: str) -> tuple[float, float]:
@@ -272,7 +273,14 @@ def change_dangling_to_tie(dangling_lines: pd.DataFrame, station_elements: pd.Da
     return station_elements
 
 
-def load_powsybl_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> pypowsybl.network.Network:
+def load_powsybl_from_fs(
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    parameters: Optional[Dict[str, str]] = None,
+    post_processors: Optional[List[str]] = None,
+    report_node: Optional[ReportNode] = None,
+    allow_variant_multi_thread_access: bool = False,
+) -> pypowsybl.network.Network:
     """Load any supported Powsybl network format from a filesystem.
 
     Supported standard Powsybl formats like CGMES (.zip), powsybl nativa (.xiddm), UCTE (.uct), Matpower (.mat).
@@ -285,6 +293,14 @@ def load_powsybl_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> pyp
         The filesystem to load the Powsybl network from.
     file_path : Path
         The path to the Powsybl network in the filesystem.
+    parameters : Optional[Dict[str, str]], optional
+        Additional parameters to pass to the pypowsybl.network.load function, by default None
+    post_processors : Optional[List[str]], optional
+        a list of import post processors (will be added to the ones defined by the platform config), by default None
+    report_node : Optional[ReportNode], optional
+        the reporter to be used to create an execution report
+    allow_variant_multi_thread_access : bool, optional
+        allow multi-thread access to variant, by default False
 
     Returns
     -------
@@ -297,7 +313,13 @@ def load_powsybl_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> pyp
             str(file_path),
             str(tmp_grid_path),
         )
-        return pypowsybl.network.load(str(tmp_grid_path))
+        return pypowsybl.network.load(
+            file=str(tmp_grid_path),
+            parameters=parameters,
+            post_processors=post_processors,
+            report_node=report_node,
+            allow_variant_multi_thread_access=allow_variant_multi_thread_access,
+        )
 
 
 def save_powsybl_to_fs(
@@ -305,6 +327,7 @@ def save_powsybl_to_fs(
     filesystem: AbstractFileSystem,
     file_path: Path,
     format: Optional[Literal["CGMES", "XIIDM", "UCTE", "MATPOWER"]] = "XIIDM",
+    make_dir: bool = True,
 ) -> None:
     """Save any supported Powsybl network format to a filesystem.
 
@@ -322,7 +345,11 @@ def save_powsybl_to_fs(
         The path to save the Powsybl network in the filesystem.
     format : Optional[Literal["CGMES", "XIIDM", "UCTE", "MATPOWER"]], optional
         The format to save the Powsybl network in, by default "CGMES".
+    make_dir: bool
+        create parent folder if not exists.
     """
+    if make_dir:
+        filesystem.makedirs(Path(file_path).parent.as_posix(), exist_ok=True)
     with tempfile.TemporaryDirectory() as temp_dir:
         tmp_grid_path = Path(temp_dir) / file_path.name
         net.save(str(tmp_grid_path), format=format)

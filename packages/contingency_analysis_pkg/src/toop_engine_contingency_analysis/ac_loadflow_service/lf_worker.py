@@ -47,7 +47,7 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pp_from_fs
+from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pandapower_from_fs
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
@@ -277,7 +277,7 @@ def load_base_grid_fs(
 ) -> pandapower.pandapowerNet | Network:
     """Load a grid from a filesystem."""
     if grid_type == "pandapower":
-        return load_pp_from_fs(filesystem, str(grid_path))
+        return load_pandapower_from_fs(filesystem, str(grid_path))
     if grid_type in ["powsybl", "ucte", "cgmes"]:
         return load_powsybl_from_fs(filesystem, str(grid_path))
     raise ValueError(f"Unknown grid type: {grid_type}")

@@ -13,6 +13,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     get_injections_with_i,
     get_voltage_level_with_region,
     load_powsybl_from_fs,
+    save_powsybl_to_fs,
 )
 
 
@@ -164,3 +165,56 @@ def test_load_powsybl_from_fs_xiidm(basic_node_breaker_grid_xiidm):
 
     pp_net = load_powsybl_from_fs(file_system, basic_node_breaker_grid_xiidm)
     assert isinstance(pp_net, pypowsybl.network.Network)
+
+
+def test_save_powsybl_to_fs_xiidm_mat(tmp_path_factory: pytest.TempPathFactory) -> None:
+    tmp_path = tmp_path_factory.mktemp("powsybl_save_load")
+    net_original = basic_node_breaker_network_powsybl()
+    file_system = fsspec.filesystem("file")
+
+    save_powsybl_to_fs(net=net_original, filesystem=file_system, file_path=tmp_path / "grid.xiidm")
+    net_loaded = load_powsybl_from_fs(file_system, tmp_path / "grid.xiidm")
+
+    assert net_original.get_buses().equals(net_loaded.get_buses())
+    assert net_original.get_branches().equals(net_loaded.get_branches())
+    assert net_original.get_injections().equals(net_loaded.get_injections())
+
+    save_powsybl_to_fs(net=net_original, filesystem=file_system, file_path=tmp_path / "grid.xiidm", format="XIIDM")
+    net_loaded = load_powsybl_from_fs(file_system, tmp_path / "grid.xiidm")
+
+    assert net_original.get_buses().equals(net_loaded.get_buses())
+    assert net_original.get_branches().equals(net_loaded.get_branches())
+    assert net_original.get_injections().equals(net_loaded.get_injections())
+
+    save_powsybl_to_fs(net=net_original, filesystem=file_system, file_path=tmp_path / "grid.mat", format="MATPOWER")
+    net_loaded = load_powsybl_from_fs(file_system, tmp_path / "grid.mat")
+
+    assert len(net_original.get_buses()) == len(net_loaded.get_buses())
+    assert len(net_original.get_branches()) == len(net_loaded.get_branches())
+    injection = net_original.get_injections()
+    injection = injection[injection["type"] != "BUSBAR_SECTION"]
+    assert len(injection) == len(net_loaded.get_injections())
+
+
+def test_save_powsybl_to_fs_ucte(tmp_path_factory: pytest.TempPathFactory, ucte_file) -> None:
+    tmp_path = tmp_path_factory.mktemp("powsybl_save_load")
+    net_original = pypowsybl.network.load(ucte_file)
+    file_system = fsspec.filesystem("file")
+    save_powsybl_to_fs(net=net_original, filesystem=file_system, file_path=tmp_path / "grid.uct", format="UCTE")
+    net_loaded = load_powsybl_from_fs(file_system, tmp_path / "grid.uct")
+
+    assert len(net_original.get_buses()) == len(net_loaded.get_buses())
+    assert len(net_original.get_branches()) == len(net_loaded.get_branches())
+    assert len(net_original.get_injections()) == len(net_loaded.get_injections())
+
+
+def test_save_powsybl_to_fs_cgmes(tmp_path_factory: pytest.TempPathFactory, eurostag_tutorial_example1_cgmes) -> None:
+    tmp_path = tmp_path_factory.mktemp("powsybl_save_load")
+    net_original = pypowsybl.network.load(eurostag_tutorial_example1_cgmes)
+    file_system = fsspec.filesystem("file")
+    save_powsybl_to_fs(net=net_original, filesystem=file_system, file_path=tmp_path / "grid.zip", format="CGMES")
+    net_loaded = load_powsybl_from_fs(file_system, tmp_path / "grid.zip")
+
+    assert net_original.get_buses().equals(net_loaded.get_buses())
+    assert net_original.get_branches().equals(net_loaded.get_branches())
+    assert net_original.get_injections().equals(net_loaded.get_injections())

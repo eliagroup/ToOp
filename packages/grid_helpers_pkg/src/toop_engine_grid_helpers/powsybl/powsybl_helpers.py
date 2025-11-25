@@ -298,3 +298,35 @@ def load_powsybl_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> pyp
             str(tmp_grid_path),
         )
         return pypowsybl.network.load(str(tmp_grid_path))
+
+
+def save_powsybl_to_fs(
+    net: pypowsybl.network.Network,
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    format: Optional[Literal["CGMES", "XIIDM", "UCTE", "MATPOWER"]] = "XIIDM",
+) -> None:
+    """Save any supported Powsybl network format to a filesystem.
+
+    Supported standard Powsybl formats like CGMES (.zip), powsybl nativa (.xiddm), UCTE (.uct), Matpower (.mat).
+    For all supported formats, see pypowsybl documentation for `pypowsybl.network.save`:
+    https://powsybl.readthedocs.io/projects/powsybl-core/en/stable/grid_exchange_formats/index.html
+
+    Parameters
+    ----------
+    net : pypowsybl.network.Network
+        The Powsybl network to save.
+    filesystem : AbstractFileSystem
+        The filesystem to save the Powsybl network to.
+    file_path : Path
+        The path to save the Powsybl network in the filesystem.
+    format : Optional[Literal["CGMES", "XIIDM", "UCTE", "MATPOWER"]], optional
+        The format to save the Powsybl network in, by default "CGMES".
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        net.save(str(tmp_grid_path), format=format)
+        filesystem.upload(
+            str(tmp_grid_path),
+            str(file_path),
+        )

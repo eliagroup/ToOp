@@ -11,7 +11,7 @@ import pandas as pd
 from beartype.typing import Iterable, Literal, Optional, Sequence
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Integer
-from pandapower.converter import from_mpc
+from pandapower.converter import from_mpc, to_mpc
 from pandapower.converter.cim.cim2pp.from_cim import from_cim
 from pandapower.converter.ucte.from_ucte import from_ucte
 from pandapower.pypower.idx_brch import SHIFT
@@ -705,7 +705,7 @@ def get_remotely_connected_buses(
     return {int(node_id) for node_id in working_set}
 
 
-def load_pp_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> pandapower.pandapowerNet:
+def load_pandapower_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> pandapower.pandapowerNet:
     """Load any pandapower network from a filesystem.
 
     Supported formats are pandapower native (.json), Matpower (.mat), CGMES (.zip) and UCTE (.uct).
@@ -742,3 +742,39 @@ def load_pp_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> pandapow
             raise ValueError(f"Unsupported file format for pandapower network: {file_path}")
 
     return net
+
+
+def save_pandapower_to_fs(
+    net: pandapower.pandapowerNet,
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    format: Literal["JSON", "MATPOWER"] = "JSON",
+) -> None:
+    """Save pandapower network to a filesystem in pandapower native format (.json) or Matpower (.mat).
+
+    Parameters
+    ----------
+    net : pandapower.pandapowerNet
+        The pandapower network to save.
+    filesystem : AbstractFileSystem
+        The filesystem to save the pandapower network to.
+    file_path : Path
+        The path to save the pandapower network file to.
+    format : Literal["JSON", "MATPOWER"]
+        The format to save the pandapower network in. Can be "JSON" or "MATPOWER". Defaults to "JSON".
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        tmp_grid_path_str = str(tmp_grid_path)
+
+        if format == "JSON":
+            pandapower.to_json(net, tmp_grid_path_str)
+        elif format == "MATPOWER":
+            to_mpc(net, tmp_grid_path_str)
+        else:
+            raise ValueError(f"Unsupported file format for saving pandapower network: {format}")
+
+        filesystem.upload(
+            tmp_grid_path_str,
+            str(file_path),
+        )

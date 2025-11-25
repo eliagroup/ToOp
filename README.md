@@ -23,8 +23,8 @@ List any software, libraries, or tools required before installation.
 
 ```bash
 # Example
-node -v
-python3 --version
+uv --version
+code --version
 ```
 
 ### Installation
@@ -39,18 +39,18 @@ Step-by-step guide to install and configure the project locally.
 
 ## Usage
 
-Provide examples of how to run or use the project.  
+Provide examples of how to run or use the project.
 Include CLI commands, screenshots, or links to live demos if relevant.
 
 ```bash
-npm start
+uv run python <>
 ```
 
 ---
 
 ## Roadmap
 
-Outline planned features, improvements, or milestones.  
+Outline planned features, improvements, or milestones.
 Use checkboxes for clarity:
 
 - [x] MVP
@@ -67,7 +67,7 @@ Refer to the mandatory [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
 
-Specify the license under which the project is distributed.  
+Specify the license under which the project is distributed.
 Example: Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Citation

@@ -1586,7 +1586,7 @@ def create_complex_substation_layout_grid() -> Network:
     net.create_switches(
         id="SW45",
         voltage_level_id="VL1",
-        name="Transformer T-2 - BB 3.3",
+        name="Transformer T-2 - BB 3.2",
         node1=6,
         node2=30,
         open=False,

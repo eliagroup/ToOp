@@ -516,7 +516,7 @@ def calculate_and_save_loadflow_results(
 
 
 def create_loadflow_runner(
-    data_folder: Path, grid_file_path: Path, pandaflow_runner: bool = False
+    data_folder: Path, grid_file_path: Path, n_processes: int = 1, pandaflow_runner: bool = False
 ) -> AbstractLoadflowRunner:
     """
     Create and configure a PowsyblRunner instance for loadflow analysis.
@@ -531,6 +531,8 @@ def create_loadflow_runner(
         The directory containing the n-1 definition and action set files.
     grid_file_path : Path
         The path to the base grid file to be loaded.
+    n_processes : int, optional
+        The number of processes to use for the loadflow runner. Default is 1.
     pandaflow_runner : bool, optional
         Whether to use a PandapowerRunner instead of PowsyblRunner. Default is False.
 
@@ -544,7 +546,7 @@ def create_loadflow_runner(
     FileNotFoundError
         If the n-1 definition file or action set file is not found in the specified `data_folder`.
     """
-    runner = PowsyblRunner(n_processes=1) if not pandaflow_runner else PandapowerRunner(n_processes=1)
+    runner = PowsyblRunner(n_processes=n_processes) if not pandaflow_runner else PandapowerRunner(n_processes=n_processes)
     n_minus1_def_path = data_folder / "nminus1_definition.json"
     if n_minus1_def_path.exists():
         logger.info(f"Loading n-1 definition from: {n_minus1_def_path}")
@@ -619,7 +621,7 @@ def save_slds_of_split_stations(
 
 
 def perform_ac_analysis(
-    data_folder: Path, optimisation_run_path: Path, k_best_topos: int = 1, pandapower_runner: bool = False
+    data_folder: Path, optimisation_run_path: Path, ac_validation_cfg: DictConfig, pandapower_runner: bool = False
 ) -> list[Path]:
     """Perform AC loadflow and n-1 analysis on the best k topologies from the optimization results.
 
@@ -629,8 +631,10 @@ def perform_ac_analysis(
         Path to the folder containing the input grid data (e.g., 'grid.xiidm').
     optimisation_run_path : Path
         Path to the optimizer snapshot directory containing 'res.json' and where results will be saved.
-    k_best_topos : int, optional
-        K best topologies in 'best_topos' to analyze. Default is 1 (the best one).
+    ac_validation_cfg : DictConfig
+        Configuration dictionary for AC validation, including:
+        - 'n_processes': int, number of processes to use for loadflow analysis.
+        - 'k_best_topos': int, number of best topologies to validate.
     pandapower_runner : bool, optional
         Whether to use a PandapowerRunner for loadflow analysis. Default is False (PowsyblRunner).
 
@@ -664,10 +668,12 @@ def perform_ac_analysis(
         logger.warning("No topologies found in DC optimization results. Skipping AC analysis.")
         return []
 
-    if k_best_topos > len(best_topos):
-        logger.warning(f"Only {len(best_topos)} topologies available, you requested top {k_best_topos}.")
+    if ac_validation_cfg.get("k_best_topos", 1) > len(best_topos):
+        logger.warning(
+            f"Only {len(best_topos)} topologies available, you requested top {ac_validation_cfg.get('k_best_topos', 1)}."
+        )
 
-    n_assessed_topos = min(k_best_topos, len(best_topos))
+    n_assessed_topos = min(ac_validation_cfg.get("k_best_topos", 1), len(best_topos))
     logger.notice(f"Performing AC analysis on the top {n_assessed_topos} topologies...")
 
     topology_paths = []
@@ -681,7 +687,9 @@ def perform_ac_analysis(
 
         out_modified = topology_path / "modified_network.xiidm"
 
-        loadflow_runner = create_loadflow_runner(data_folder, grid_path, pandaflow_runner=pandapower_runner)
+        loadflow_runner = create_loadflow_runner(
+            data_folder, grid_path, n_processes=ac_validation_cfg.get("n_processes", 1), pandaflow_runner=pandapower_runner
+        )
         action_set = loadflow_runner.action_set
 
         logger.info("Applying topology and saving modified network...")
@@ -745,12 +753,12 @@ def run_pipeline(
     pipeline_cfg: PipelineConfig,
     importer_parameters: UcteImporterParameters | CgmesImporterParameters,
     preprocessing_parameters: PreprocessParameters,
-    dc_optim_config: dict,
+    dc_optim_config: DictConfig,
+    ac_validation_cfg: DictConfig,
     run_preprocessing_stage: bool = True,
     run_optimization_stage: bool = True,
     run_ac_validation_stage: bool = True,
     optimisation_run_dir: Optional[Path] = None,
-    k_best_topos: int = 5,
 ) -> list[Path]:
     """
     Run the end-to-end pipeline including topology copying, preprocessing, DC optimization, and AC validation.
@@ -763,8 +771,12 @@ def run_pipeline(
         Parameters for the grid model importer, specifying the source grid model file and related options.
     preprocessing_parameters : PreprocessParameters
         Parameters for the preprocessing stage, controlling data preparation and transformation.
-    dc_optim_config : dict
+    dc_optim_config : DictConfig
         Configuration dictionary for the DC optimization stage.
+    ac_validation_cfg: DictConfig,
+        Configuration dictionary for the AC validation stage, including:
+        - 'n_processes': int, number of processes to use for loadflow analysis.
+        - 'k_best_topos': int, number of best topologies to validate.
     run_preprocessing_stage : bool, optional
         Whether to run the preprocessing stage. Default is True.
     run_optimization_stage : bool, optional
@@ -773,8 +785,6 @@ def run_pipeline(
         Whether to run the AC validation stage. Default is True.
     optimisation_run_dir : Optional[Path], optional
         If provided, this directory will be used for AC validation instead of running optimization.
-    k_best_topos : int, optional
-        K best topologies to validate in the AC validation stage. Default is 1.
 
     Returns
     -------
@@ -826,7 +836,7 @@ def run_pipeline(
         topology_paths = perform_ac_analysis(
             data_folder,
             run_dir,
-            k_best_topos=k_best_topos,
+            ac_validation_cfg=ac_validation_cfg,
             pandapower_runner=True if pipeline_cfg.grid_type == "pandapower" else False,
         )
     else:

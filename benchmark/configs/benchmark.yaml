@@ -4,10 +4,11 @@ defaults:
   - lf_config: lf_config
   - ga_config: ga_config
   - area_settings: area_settings
+  - ac_validation: ac_validation
 
 logging_level: INFO
 
-hydra: 
+hydra:
   run:
     dir: ${grid.output_dir}/hydra/
   sweep:

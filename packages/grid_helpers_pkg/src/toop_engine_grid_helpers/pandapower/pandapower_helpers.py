@@ -748,7 +748,7 @@ def save_pandapower_to_fs(
     net: pandapower.pandapowerNet,
     filesystem: AbstractFileSystem,
     file_path: Path,
-    format: Literal["JSON", "MATPOWER"] = "JSON",
+    format: Optional[Literal["JSON", "MATPOWER"]] = "JSON",
 ) -> None:
     """Save pandapower network to a filesystem in pandapower native format (.json) or Matpower (.mat).
 
@@ -760,7 +760,7 @@ def save_pandapower_to_fs(
         The filesystem to save the pandapower network to.
     file_path : Path
         The path to save the pandapower network file to.
-    format : Literal["JSON", "MATPOWER"]
+    format : Optional[Literal["JSON", "MATPOWER"]]
         The format to save the pandapower network in. Can be "JSON" or "MATPOWER". Defaults to "JSON".
     """
     with tempfile.TemporaryDirectory() as temp_dir:

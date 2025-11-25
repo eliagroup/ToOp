@@ -64,56 +64,6 @@ def extract_single_branch_loadflow_result(
     return p, q
 
 
-def monitored_buses_to_monitored_voltage_levels(
-    net: Network, monitored_buses: list[str], bus_breaker_view: bool = False
-) -> list[str]:
-    """Convert a list of monitored buses to the corresponding voltage levels
-
-    Parameters
-    ----------
-    net : Network
-        The powsybl network
-    monitored_buses : list[str]
-        The list of bus ids to convert
-    bus_breaker_view : bool, optional
-        If True, the bus breaker view is used, by default False
-
-    Returns
-    -------
-    list[str]
-        The corresponding voltage levels
-    """
-    buses = net.get_bus_breaker_view_buses() if bus_breaker_view else net.get_buses()
-    return buses.loc[monitored_buses, "voltage_level_id"].unique().tolist()
-
-
-def buses_to_bus_breaker_view_bus(
-    net: Network,
-    buses: list[str],
-) -> list[str]:
-    """Find a corresponding bus breaker view bus id.
-
-    (referring to net.get_bus_breaker_view_buses().index
-    for a list of electrical buses (referring tonet.get_buses().index)
-
-    Parameters
-    ----------
-    net : Network
-        The powsybl network
-    buses : list[str]
-        The list of bus ids into net.get_buses().index
-
-    Returns
-    -------
-    list[str]
-        The corresponding bus breaker view bus ids, indexing into net.get_bus_breaker_view_buses().index
-    """
-    bus_breaker_buses = net.get_bus_breaker_view_buses()[["bus_id"]]
-    bus_breaker_buses = bus_breaker_buses.reset_index().sort_values(by="id")
-    first_breaker_bus_per_bus = bus_breaker_buses.groupby("bus_id").first()
-    return first_breaker_bus_per_bus.loc[buses].id.values.tolist()
-
-
 def get_branches_with_i(branches: pd.DataFrame, net: Network) -> pd.DataFrame:
     """Get the get_branches results with the i values filled
 

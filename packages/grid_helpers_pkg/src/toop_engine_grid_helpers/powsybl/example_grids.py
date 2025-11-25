@@ -1234,3 +1234,387 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     n.create_operational_limits(limits_tr)
 
     return n
+
+
+def create_complex_substation_layout_grid() -> Network:
+    """Creates a network with a complex substation layout including 3 couplers."""
+    net = pypowsybl.network.create_empty()
+    net.create_substations(id="S1", name="Substation 1", country="DE")
+    net.create_voltage_levels(id="VL1", substation_id="S1", nominal_v=380.0, topology_kind="NODE_BREAKER")
+    net.create_busbar_sections(id="B1", voltage_level_id="VL1", name="Busbar 1.1", node=1)
+    net.create_busbar_sections(id="B2", voltage_level_id="VL1", name="Busbar 2.1", node=2)
+    net.create_busbar_sections(id="B3", voltage_level_id="VL1", name="Busbar 3.1", node=3)
+    net.create_busbar_sections(id="B4", voltage_level_id="VL1", name="Busbar 1.2", node=4)
+    net.create_busbar_sections(id="B5", voltage_level_id="VL1", name="Busbar 2.2", node=5)
+    net.create_busbar_sections(id="B6", voltage_level_id="VL1", name="Busbar 3.2", node=6)
+
+    net.create_substations(id="S2", name="Substation 2", country="DE")
+    net.create_voltage_levels(id="VL2", substation_id="S2", nominal_v=380.0, topology_kind="NODE_BREAKER")
+    net.create_busbar_sections(id="B7", voltage_level_id="VL2", name="Busbar 1", node=1)
+
+    net.create_voltage_levels(id="VL3", substation_id="S1", nominal_v=220.0, topology_kind="NODE_BREAKER")
+    net.create_busbar_sections(id="B8", voltage_level_id="VL3", name="Busbar 1", node=1)
+
+    net.create_switches(
+        id="SW1", voltage_level_id="VL1", name="Switch 1-4", node1=1, node2=4, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW2", voltage_level_id="VL1", name="Switch 2-5", node1=2, node2=5, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW3", voltage_level_id="VL1", name="Switch 3-6", node1=3, node2=6, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(id="C1", voltage_level_id="VL1", name="Coupler 1", node1=7, node2=8, open=False, kind="BREAKER")
+    net.create_switches(
+        id="SW4", voltage_level_id="VL1", name="Coupler 1 - BB 1.1", node1=1, node2=7, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW5", voltage_level_id="VL1", name="Coupler 1 - BB 2.1", node1=2, node2=7, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW6", voltage_level_id="VL1", name="Coupler 1 - BB 3.1", node1=3, node2=7, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW7", voltage_level_id="VL1", name="Coupler 1 - BB 1.2", node1=4, node2=8, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW8", voltage_level_id="VL1", name="Coupler 1 - BB 2.2", node1=5, node2=8, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW9", voltage_level_id="VL1", name="Coupler 1 - BB 3.2", node1=6, node2=8, open=False, kind="DISCONNECTOR"
+    )
+
+    net.create_switches(id="C2", voltage_level_id="VL1", name="Coupler 2", node1=9, node2=10, open=False, kind="BREAKER")
+    net.create_switches(
+        id="SW10", voltage_level_id="VL1", name="Coupler 2 - BB 1.1l", node1=1, node2=9, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW11", voltage_level_id="VL1", name="Coupler 2 - BB 2.1l", node1=2, node2=9, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW12", voltage_level_id="VL1", name="Coupler 2 - BB 3.1l", node1=3, node2=9, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW13", voltage_level_id="VL1", name="Coupler 2 - BB 1.1r", node1=1, node2=10, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW14", voltage_level_id="VL1", name="Coupler 2 - BB 2.1r", node1=2, node2=10, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW15", voltage_level_id="VL1", name="Coupler 2 - BB 3.1r", node1=3, node2=10, open=False, kind="DISCONNECTOR"
+    )
+
+    net.create_switches(id="C3", voltage_level_id="VL1", name="Coupler 3", node1=11, node2=12, open=False, kind="BREAKER")
+    net.create_switches(
+        id="SW16", voltage_level_id="VL1", name="Coupler 3 - BB 1.2l", node1=4, node2=11, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW17", voltage_level_id="VL1", name="Coupler 3 - BB 2.2l", node1=5, node2=11, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW18", voltage_level_id="VL1", name="Coupler 3 - BB 3.2l", node1=6, node2=11, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW19", voltage_level_id="VL1", name="Coupler 3 - BB 1.2r", node1=4, node2=12, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW20", voltage_level_id="VL1", name="Coupler 3 - BB 2.2r", node1=5, node2=12, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW21", voltage_level_id="VL1", name="Coupler 3 - BB 3.2r", node1=6, node2=12, open=False, kind="DISCONNECTOR"
+    )
+
+    net.create_lines(
+        id="L1",
+        voltage_level1_id="VL1",
+        name="Line 1",
+        node1=13,
+        voltage_level2_id="VL2",
+        node2=2,
+        r=0.1,
+        x=0.2,
+        g1=0.0,
+        b1=0.0,
+        g2=0.0,
+        b2=0.0,
+    )
+    net.create_switches(
+        id="SW22",
+        voltage_level_id="VL1",
+        name="Line 1-1 - Disconnector",
+        node1=14,
+        node2=13,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="BR1", voltage_level_id="VL1", name="Line 1-1 - Breaker", node1=15, node2=14, open=False, kind="BREAKER"
+    )
+    net.create_switches(
+        id="SW23", voltage_level_id="VL1", name="Line 1-1 - BB 1.1", node1=1, node2=15, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW24", voltage_level_id="VL1", name="Line 1-1 - BB 2.1", node1=2, node2=15, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW25", voltage_level_id="VL1", name="Line 1-1 - BB 3.1", node1=3, node2=15, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SWL1", voltage_level_id="VL2", name="Line 1-1 - BB 1", node1=1, node2=2, open=False, kind="DISCONNECTOR"
+    )
+
+    net.create_lines(
+        id="L2",
+        voltage_level1_id="VL1",
+        name="Line 2",
+        node1=16,
+        voltage_level2_id="VL2",
+        node2=3,
+        r=0.15,
+        x=0.25,
+        g1=0.0,
+        b1=0.0,
+        g2=0.0,
+        b2=0.0,
+    )
+    net.create_switches(
+        id="SW26",
+        voltage_level_id="VL1",
+        name="Line 1-2 - Disconnector",
+        node1=17,
+        node2=16,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="BR2", voltage_level_id="VL1", name="Line 1-2 - Breaker", node1=18, node2=17, open=False, kind="BREAKER"
+    )
+    net.create_switches(
+        id="SW27", voltage_level_id="VL1", name="Line 1-2 - BB 1.2", node1=4, node2=18, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW28", voltage_level_id="VL1", name="Line 1-2 - BB 2.2", node1=5, node2=18, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW29", voltage_level_id="VL1", name="Line 1-2 - BB 3.2", node1=6, node2=18, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SWL2", voltage_level_id="VL2", name="Line 1-2 - BB 2", node1=1, node2=3, open=False, kind="DISCONNECTOR"
+    )
+
+    net.create_lines(
+        id="L3",
+        voltage_level1_id="VL1",
+        name="Line 3",
+        node1=19,
+        voltage_level2_id="VL2",
+        node2=4,
+        r=0.2,
+        x=0.3,
+        g1=0.0,
+        b1=0.0,
+        g2=0.0,
+        b2=0.0,
+    )
+    net.create_switches(
+        id="SW30",
+        voltage_level_id="VL1",
+        name="Line 1-3 - Disconnector",
+        node1=20,
+        node2=19,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="BR3", voltage_level_id="VL1", name="Line 1-3 - Breaker", node1=21, node2=20, open=False, kind="BREAKER"
+    )
+    net.create_switches(
+        id="SW31", voltage_level_id="VL1", name="Line 1-3 - BB 1.1", node1=1, node2=21, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW32", voltage_level_id="VL1", name="Line 1-3 - BB 2.1", node1=2, node2=21, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW33", voltage_level_id="VL1", name="Line 1-3 - BB 3.1", node1=3, node2=21, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SWL3", voltage_level_id="VL2", name="Line 1-3 - BB 3", node1=1, node2=4, open=False, kind="DISCONNECTOR"
+    )
+
+    net.create_lines(
+        id="L4",
+        voltage_level1_id="VL1",
+        name="Line 4",
+        node1=22,
+        voltage_level2_id="VL2",
+        node2=5,
+        r=0.25,
+        x=0.35,
+        g1=0.0,
+        b1=0.0,
+        g2=0.0,
+        b2=0.0,
+    )
+    net.create_switches(
+        id="SW34",
+        voltage_level_id="VL1",
+        name="Line 1-4 - Disconnector",
+        node1=23,
+        node2=22,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="BR4", voltage_level_id="VL1", name="Line 1-4 - Breaker", node1=24, node2=23, open=False, kind="BREAKER"
+    )
+    net.create_switches(
+        id="SW35", voltage_level_id="VL1", name="Line 1-4 - BB 1.2", node1=4, node2=24, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW36", voltage_level_id="VL1", name="Line 1-4 - BB 2.2", node1=5, node2=24, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SW37", voltage_level_id="VL1", name="Line 1-4 - BB 3.2", node1=6, node2=24, open=False, kind="DISCONNECTOR"
+    )
+    net.create_switches(
+        id="SWL4", voltage_level_id="VL2", name="Line 1-4 - BB 4", node1=1, node2=5, open=False, kind="DISCONNECTOR"
+    )
+
+    net.create_2_windings_transformers(
+        id="T-1",
+        voltage_level1_id="VL1",
+        node1=25,
+        voltage_level2_id="VL3",
+        node2=2,
+        b=1e-6,
+        g=1e-6,
+        r=0.5,
+        x=10,
+        rated_u1=400,
+        rated_u2=225,
+    )
+    net.create_switches(
+        id="SW38",
+        voltage_level_id="VL1",
+        name="Transformer T-1 - Disconnector HV",
+        node1=26,
+        node2=25,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="BR5", voltage_level_id="VL1", name="Transformer T-1 - Breaker HV", node1=27, node2=26, open=False, kind="BREAKER"
+    )
+    net.create_switches(
+        id="SW39",
+        voltage_level_id="VL1",
+        name="Transformer T-1 - BB 1.1",
+        node1=1,
+        node2=27,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="SW40",
+        voltage_level_id="VL1",
+        name="Transformer T-1 - BB 2.1",
+        node1=2,
+        node2=27,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="SW41",
+        voltage_level_id="VL1",
+        name="Transformer T-1 - BB 3.1",
+        node1=3,
+        node2=27,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="SWT1", voltage_level_id="VL3", name="Transformer T-1 - BB 1", node1=1, node2=2, open=False, kind="DISCONNECTOR"
+    )
+
+    net.create_2_windings_transformers(
+        id="T-2",
+        voltage_level1_id="VL1",
+        node1=28,
+        voltage_level2_id="VL3",
+        node2=3,
+        b=1e-6,
+        g=1e-6,
+        r=0.6,
+        x=12,
+        rated_u1=400,
+        rated_u2=225,
+    )
+    net.create_switches(
+        id="SW42",
+        voltage_level_id="VL1",
+        name="Transformer T-2 - Disconnector HV",
+        node1=29,
+        node2=28,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="BR6", voltage_level_id="VL1", name="Transformer T-2 - Breaker HV", node1=30, node2=29, open=False, kind="BREAKER"
+    )
+    net.create_switches(
+        id="SW43",
+        voltage_level_id="VL1",
+        name="Transformer T-2 - BB 1.2",
+        node1=4,
+        node2=30,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="SW44",
+        voltage_level_id="VL1",
+        name="Transformer T-2 - BB 2.2",
+        node1=5,
+        node2=30,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="SW45",
+        voltage_level_id="VL1",
+        name="Transformer T-2 - BB 3.3",
+        node1=6,
+        node2=30,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    net.create_switches(
+        id="SWT2", voltage_level_id="VL3", name="Transformer T-2 - BB 2", node1=1, node2=3, open=False, kind="DISCONNECTOR"
+    )
+
+    net.create_loads(id="Load1", voltage_level_id="VL3", name="Load 1", node=4, p0=500.0, q0=30.0)
+    net.create_switches(
+        id="SW46", voltage_level_id="VL3", name="Load 1 - Disconnector", node1=1, node2=4, open=False, kind="DISCONNECTOR"
+    )
+
+    net.create_generators(
+        id="Gen1",
+        voltage_level_id="VL2",
+        name="Generator 1",
+        node=6,
+        min_p=0,
+        max_p=1000,
+        target_p=500.0,
+        target_v=390,
+        voltage_regulator_on=True,
+    )
+    net.create_switches(
+        id="SW47",
+        voltage_level_id="VL2",
+        name="Generator 1 - Disconnector",
+        node1=1,
+        node2=6,
+        open=False,
+        kind="DISCONNECTOR",
+    )
+    return net

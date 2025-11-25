@@ -131,7 +131,8 @@ def extract_dc_quality(res: dict) -> dict:
 
 def benchmark_single_grid(
     grid: Path,
-    dc_optimization_cfg: dict,
+    dc_optimization_cfg: DictConfig,
+    ac_validation_cfg: DictConfig,
     preprocessing_parameters: PreprocessParameters,
     grid_type: str = "powsybl",
 ) -> dict:
@@ -141,8 +142,10 @@ def benchmark_single_grid(
     ----------
     grid : Path
         Path to the grid model file.
-    dc_optimization_cfg : dict
+    dc_optimization_cfg : DictConfig
         Dictionary of configuration values consumed by the DC optimization stage.
+    ac_validation_cfg : DictConfig
+        Dictionary of configuration values consumed by the AC validation stage.
     preprocessing_parameters : PreprocessParameters
         Parameters controlling preprocessing behaviour.
     grid_type : str, optional
@@ -184,7 +187,7 @@ def benchmark_single_grid(
         topology_paths = perform_ac_analysis(
             data_folder,
             run_dir,
-            k_best_topos=5,
+            ac_validation_cfg=ac_validation_cfg,
             pandapower_runner=(pipeline_cfg.grid_type == "pandapower"),
         )
 
@@ -219,38 +222,51 @@ def main(cfg: DictConfig) -> None:
     hydra_output_dirname = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     preprocess_params = PreprocessParameters(action_set_clip=2**10, enable_bb_outage=True, bb_outage_as_nminus1=False)
 
-    dc_optimization_cfg = {
-        "task_name": "benchmark" + time.strftime("_%Y%m%d_%H%M%S"),
-        "double_precision": None,
-        "tensorboard_dir": hydra_output_dirname + "/{task_name}",
-        "stats_dir": hydra_output_dirname + "/{task_name}/stats",
-        "summary_frequency": None,
-        "checkpoint_frequency": None,
-        "stdout": None,
-        "double_limits": None,
-        "num_cuda_devices": 1,
-        "omp_num_threads": 1,
-        "xla_force_host_platform_device_count": None,
-        "output_json": "output_test.json",
-        "lf_config": {
-            "max_num_splits": cfg.lf_config.max_num_splits,
-            "max_num_disconnections": cfg.lf_config.max_num_disconnections,
-            "batch_size": cfg.lf_config.batch_size,
-        },
-        "ga_config": {
-            "runtime_seconds": cfg.ga_config.runtime_seconds,
-            "me_descriptors": [
-                {"metric": "switching_distance", "num_cells": cfg.ga_config.switching_distance},
-                {"metric": "split_subs", "num_cells": cfg.ga_config.split_subs},
-            ],
-            "n_worst_contingencies": cfg.ga_config.n_worst_contingencies,
-            "random_seed": cfg.ga_config.random_seed,
-            "target_metrics": [["overload_energy_n_1", 1.0], ["split_subs", 1.0]],
-        },
-        "area_settings": cfg.area_settings,
-    }
-
-    entry = benchmark_single_grid(grid_path, dc_optimization_cfg, preprocess_params, cfg.grid.get("grid_type", "powsybl"))
+    dc_optimization_cfg = DictConfig(
+        {
+            "task_name": "benchmark" + time.strftime("_%Y%m%d_%H%M%S"),
+            "double_precision": None,
+            "tensorboard_dir": hydra_output_dirname + "/{task_name}",
+            "stats_dir": hydra_output_dirname + "/{task_name}/stats",
+            "summary_frequency": None,
+            "checkpoint_frequency": None,
+            "stdout": None,
+            "double_limits": None,
+            "num_cuda_devices": 1,
+            "omp_num_threads": 1,
+            "xla_force_host_platform_device_count": None,
+            "output_json": "output_test.json",
+            "lf_config": {
+                "max_num_splits": cfg.lf_config.max_num_splits,
+                "max_num_disconnections": cfg.lf_config.max_num_disconnections,
+                "batch_size": cfg.lf_config.batch_size,
+            },
+            "ga_config": {
+                "runtime_seconds": cfg.ga_config.runtime_seconds,
+                "me_descriptors": [
+                    {"metric": "switching_distance", "num_cells": cfg.ga_config.switching_distance},
+                    {"metric": "split_subs", "num_cells": cfg.ga_config.split_subs},
+                ],
+                "n_worst_contingencies": cfg.ga_config.n_worst_contingencies,
+                "random_seed": cfg.ga_config.random_seed,
+                "target_metrics": [["overload_energy_n_1", 1.0], ["split_subs", 1.0]],
+            },
+            "area_settings": cfg.area_settings,
+        }
+    )
+    ac_validation_cfg = DictConfig(
+        {
+            "n_processes": cfg.ac_validation.n_processes,
+            "k_best_topos": cfg.ac_validation.k_best_topos,
+        }
+    )
+    entry = benchmark_single_grid(
+        grid=grid_path,
+        dc_optimization_cfg=dc_optimization_cfg,
+        ac_validation_cfg=ac_validation_cfg,
+        preprocessing_parameters=preprocess_params,
+        grid_type=cfg.grid.get("grid_type", "powsybl"),
+    )
     summary_filepath = Path(hydra_output_dirname) / dc_optimization_cfg["task_name"] / "benchmark_summary.json"
     with open(summary_filepath, "w") as f:
         json.dump([entry], f, indent=2)

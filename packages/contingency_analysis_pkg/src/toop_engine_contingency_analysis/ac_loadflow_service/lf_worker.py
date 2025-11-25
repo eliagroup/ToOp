@@ -47,8 +47,8 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers import load_pp_from_fs
-from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import load_powsybl_from_fs
+from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pp_from_fs
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
     save_loadflow_results_polars,

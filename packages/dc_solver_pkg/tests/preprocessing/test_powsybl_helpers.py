@@ -1,10 +1,13 @@
 import math
+import shutil
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
 import pypowsybl
 import pytest
+from fsspec import AbstractFileSystem
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_lines,
     get_network_as_pu,
@@ -21,6 +24,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     get_branches_with_i_max,
     get_injections_with_i,
     get_voltage_level_with_region,
+    load_powsybl_from_fs,
 )
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
@@ -267,3 +271,32 @@ def test_get_tie_lines_empty():
     net = pypowsybl.network.create_ieee57()
     tie_lines = get_tie_lines(net)
     assert tie_lines.empty, "Expected no tie lines in IEEE 57 network"
+
+
+def test_load_powsybl_from_fs_success(powsybl_data_folder: Path) -> None:
+    """Test successful loading of a Powsybl network from filesystem."""
+    # Create a mock filesystem
+    mock_fs = MagicMock(spec=AbstractFileSystem)
+
+    # Get an actual network file for testing
+    grid_file = powsybl_data_folder / "test_grid.xiidm"
+    file_path = Path("remote/path/test_grid.xiidm")
+
+    # Mock the download method to copy the actual file
+    def mock_download(remote_path, local_path):
+        shutil.copy2(grid_file, local_path)
+
+    mock_fs.download.side_effect = mock_download
+
+    # Test the function
+    network = load_powsybl_from_fs(mock_fs, file_path)
+
+    # Verify the filesystem download was called correctly
+    mock_fs.download.assert_called_once()
+    args = mock_fs.download.call_args[0]
+    assert args[0] == str(file_path)
+    assert Path(args[1]).name == file_path.name
+
+    # Verify network was loaded successfully
+    assert network is not None
+    assert hasattr(network, "get_buses")

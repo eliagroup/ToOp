@@ -4,9 +4,7 @@ This includes translating contingencies, monitored elements and collecting
 the necessary data from the network, so this only has to happen once.
 """
 
-import tempfile
 from copy import deepcopy
-from pathlib import Path
 from typing import get_args
 
 import numpy as np
@@ -15,7 +13,6 @@ import pandera as pa
 import pandera.typing as pat
 import pypowsybl
 from beartype.typing import Literal, Optional
-from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from pypowsybl._pypowsybl import PostContingencyResult, PreContingencyResult
 from pypowsybl.network import Network
@@ -1015,28 +1012,3 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
         ),
     )
     return nminus1_definition
-
-
-def load_powsybl_from_fs(filesystem: AbstractFileSystem, path: str) -> pypowsybl.network.Network:
-    """Load a Powsybl network from a filesystem.
-
-    Parameters
-    ----------
-    filesystem : AbstractFileSystem
-        The filesystem to load the Powsybl network from.
-    path : str
-        The path to the Powsybl network in the filesystem.
-
-    Returns
-    -------
-    pypowsybl.network.Network
-        The loaded Powsybl network.
-    """
-    # TODO check if this can be loaded to memory directly without tempfile
-    with tempfile.TemporaryDirectory() as temp_dir:
-        tmp_grid_path = Path(temp_dir) / "grid.xiidm"
-        filesystem.download(
-            str(path),
-            str(tmp_grid_path),
-        )
-        return pypowsybl.network.load(str(tmp_grid_path))

@@ -1,3 +1,4 @@
+import fsspec
 import numpy as np
 import pandapower as pp
 import pandas as pd
@@ -19,6 +20,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_power_key,
     get_remotely_connected_buses,
     get_shunt_real_power,
+    load_pp_from_fs,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import parse_globally_unique_id_series
 
@@ -848,3 +850,31 @@ def test_get_remotely_connected_buses_respects_switches():
     # Should hop over if respect_switches is False
     result2 = get_remotely_connected_buses(net, buses=[b1], respect_switches=False)
     assert set(result2) == {b1, b2}
+
+
+def test_load_pp_from_fs_json(ieee14_json):
+    file_system = fsspec.filesystem("file")
+
+    pp_net = load_pp_from_fs(file_system, ieee14_json)
+    assert isinstance(pp_net, pp.pandapowerNet)
+
+
+def test_load_pp_from_fs_mat(ieee14_mat):
+    file_system = fsspec.filesystem("file")
+
+    pp_net = load_pp_from_fs(file_system, ieee14_mat)
+    assert isinstance(pp_net, pp.pandapowerNet)
+
+
+def test_load_pp_from_fs_uct(ucte_file):
+    file_system = fsspec.filesystem("file")
+
+    pp_net = load_pp_from_fs(file_system, ucte_file)
+    assert isinstance(pp_net, pp.pandapowerNet)
+
+
+def test_load_pp_from_fs_cgmes(eurostag_tutorial_example1_cgmes):
+    file_system = fsspec.filesystem("file")
+
+    pp_net = load_pp_from_fs(file_system, eurostag_tutorial_example1_cgmes)
+    assert isinstance(pp_net, pp.pandapowerNet)

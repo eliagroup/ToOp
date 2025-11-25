@@ -5,10 +5,14 @@ such as loadflow results, branch limits, and monitored elements.
 """
 
 import math
+import tempfile
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pypowsybl
 from beartype.typing import Literal, Optional
+from fsspec import AbstractFileSystem
 from pypowsybl.network import Network
 
 
@@ -316,3 +320,31 @@ def change_dangling_to_tie(dangling_lines: pd.DataFrame, station_elements: pd.Da
         station_elements = pd.concat([station_elements, dangling])
 
     return station_elements
+
+
+def load_powsybl_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> pypowsybl.network.Network:
+    """Load any supported Powsybl network format from a filesystem.
+
+    Supported standard Powsybl formats like CGMES (.zip), powsybl nativa (.xiddm), UCTE (.uct), Matpower (.mat).
+    For all supported formats, see pypowsybl documentation for `pypowsybl.network.load`:
+    https://powsybl.readthedocs.io/projects/powsybl-core/en/stable/grid_exchange_formats/index.html
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The filesystem to load the Powsybl network from.
+    file_path : Path
+        The path to the Powsybl network in the filesystem.
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The loaded Powsybl network.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        filesystem.download(
+            str(file_path),
+            str(tmp_grid_path),
+        )
+        return pypowsybl.network.load(str(tmp_grid_path))

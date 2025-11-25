@@ -9,6 +9,7 @@ import pandas as pd
 import pandera.typing as pat
 import pypowsybl as pp
 from beartype.typing import Optional, Sequence, Union
+from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     BranchModel,
@@ -19,9 +20,10 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_trafos,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.asset_topology import Topology
-from toop_engine_interfaces.asset_topology_helpers import load_asset_topology
 from toop_engine_interfaces.backend import BackendInterface
+from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -62,10 +64,23 @@ class PowsyblBackend(BackendInterface):
     Currently, the backend doesn't accept chronics, i.e. only a single timestep.
     """
 
-    def __init__(self, data_folder: Union[str, Path], distributed_slack: bool = True) -> None:
-        self.data_folder = Path(data_folder)
-        grid_path = self.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-        net = pp.network.load(grid_path)
+    def __init__(self, data_folder_dirfs: AbstractFileSystem, distributed_slack: bool = True) -> None:
+        """Initiate the powsybl model by a given AbstractFileSystem.
+
+        Parameters
+        ----------
+        data_folder_dirfs : AbstractFileSystem
+            A filesystem which is assumed to be a dirfs pointing to the root for this import job. I.e. the folder structure
+            as defined in toop_engine_interfaces.folder_structure is expected to start at root in this filesystem.
+        distributed_slack: bool
+            Use distributed_slack to initilize the backend.
+        """
+        super().__init__(data_folder_dirfs=data_folder_dirfs)
+
+        net = load_powsybl_from_fs(
+            filesystem=data_folder_dirfs,
+            file_path=Path(PREPROCESSING_PATHS["grid_file_path_powsybl"]),
+        )
 
         self.distributed_slack = distributed_slack
         lf_params = DISTRIBUTED_SLACK if distributed_slack else SINGLE_SLACK
@@ -166,7 +181,9 @@ class PowsyblBackend(BackendInterface):
             A mask for the chosen element either with the values in the file or the default value
         """
         try:
-            return np.load(self._get_masks_path() / mask_filename)
+            return load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs, file_path=str(self._get_masks_path() / mask_filename)
+            )
         except FileNotFoundError:
             return np.full(default_shape, default_value)
 
@@ -282,10 +299,10 @@ class PowsyblBackend(BackendInterface):
         return dangling
 
     def _get_masks_path(self) -> Path:
-        return self.data_folder / PREPROCESSING_PATHS["masks_path"]
+        return Path(PREPROCESSING_PATHS["masks_path"])
 
     def _get_logs_path(self) -> Path:
-        return self.data_folder / PREPROCESSING_PATHS["logs_path"]
+        return Path(PREPROCESSING_PATHS["logs_path"])
 
     def get_slack(self) -> int:
         """Get the index of the slack node"""
@@ -461,14 +478,17 @@ class PowsyblBackend(BackendInterface):
 
     def get_asset_topology(self) -> Optional[Topology]:
         """Get the asset topology if it exists"""
-        if (self.data_folder / PREPROCESSING_PATHS["asset_topology_file_path"]).exists():
-            return load_asset_topology(self.data_folder / PREPROCESSING_PATHS["asset_topology_file_path"])
+        if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_file_path"]):
+            return load_pydantic_model_fs(
+                filesystem=self.data_folder_dirfs,
+                file_path=PREPROCESSING_PATHS["asset_topology_file_path"],
+                model_class=Topology,
+            )
         return None
 
     def get_metadata(self) -> dict:
         """Get the path to the data_folder, masks_folder and the start datetime of the case"""
         return {
-            "data_folder": self.data_folder,
             "masks_folder": self._get_masks_path(),
             "start_datetime": str(self.net.case_date),
             "distributed_slack": self.distributed_slack,

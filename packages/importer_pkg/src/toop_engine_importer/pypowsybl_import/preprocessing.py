@@ -32,6 +32,7 @@ from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import 
 )
 from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks, make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
@@ -44,7 +45,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     UcteImportResult,
 )
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition, save_pydantic_model_fs
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 
 logger = logbook.Logger(__name__)
 
@@ -351,7 +352,7 @@ def convert_file(
     nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,
-        filename=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
         pydantic_model=nminus1_definition,
     )
 
@@ -382,7 +383,7 @@ def convert_file(
 
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,
-        filename=importer_parameters.data_folder / PREPROCESSING_PATHS["asset_topology_file_path"],
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["asset_topology_file_path"],
         pydantic_model=topology_model,
         indent=4,
     )

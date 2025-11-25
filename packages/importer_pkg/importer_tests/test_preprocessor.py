@@ -4,6 +4,7 @@ from functools import partial
 from typing import Optional, get_args
 
 import logbook
+from fsspec import filesystem
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_importer.pypowsybl_import import powsybl_masks
@@ -65,24 +66,26 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
         preprocess_parameters=PreprocessParameters(),
         preprocess_id="test_ID",
     )
+    filesystem_dir = DirFileSystem(str(import_result.data_folder))
     info, _, _ = load_grid(
-        data_folder=import_result.data_folder,
+        data_folder_dirfs=filesystem_dir,
         pandapower=False,
         parameters=PreprocessParameters(),
         status_update_fn=heartbeat_fn,
     )
 
     logged_messages = []
+    loadflow_result_dirfs = DirFileSystem(str(tmp_path))
     initial_loadflow, metrics = run_initial_loadflow(
         start_command=start_command,
-        data_folder=import_result.data_folder,
+        processed_gridfile_dirfs=filesystem_dir,
         status_update_fn=heartbeat_fn,
-        loadflow_result_folder=tmp_path,
+        loadflow_result_fs=loadflow_result_dirfs,
     )
 
     assert initial_loadflow is not None
-    dirfs = DirFileSystem(str(tmp_path))
-    lf_res = load_loadflow_results_polars(dirfs, reference=initial_loadflow)
+
+    lf_res = load_loadflow_results_polars(loadflow_result_dirfs, reference=initial_loadflow)
     assert lf_res is not None
     assert len(lf_res.branch_results.collect())
     assert "max_flow_n_1" in metrics
@@ -125,6 +128,8 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
         import_result = preprocessor.import_grid_model(
             start_command=start_command,
             status_update_fn=heartbeat_fn,
+            unprocessed_gridfile_fs=filesystem("file"),
+            processed_gridfile_fs=filesystem("file"),
         )
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
@@ -186,12 +191,15 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
         preprocess_id="test_ID",
     )
 
+    processed_gridfile_fs = filesystem("file")
+    loadflow_result_fs = filesystem("file")
     with logbook.handlers.TestHandler() as caplog:
         preprocess_result = preprocessor.preprocess(
             start_command=start_command,
             import_results=import_result,
             status_update_fn=heartbeat_fn,
-            loadflow_result_folder=tmp_path,
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
 
         static_info_path = ucte_importer_parameters.data_folder / PREPROCESSING_PATHS["static_information_file_path"]

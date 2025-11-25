@@ -277,9 +277,9 @@ def load_base_grid_fs(
 ) -> pandapower.pandapowerNet | Network:
     """Load a grid from a filesystem."""
     if grid_type == "pandapower":
-        return load_pandapower_from_fs(filesystem, str(grid_path))
+        return load_pandapower_from_fs(filesystem, grid_path)
     if grid_type in ["powsybl", "ucte", "cgmes"]:
-        return load_powsybl_from_fs(filesystem, str(grid_path))
+        return load_powsybl_from_fs(filesystem, grid_path)
     raise ValueError(f"Unknown grid type: {grid_type}")
 
 

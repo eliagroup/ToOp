@@ -5,6 +5,7 @@ Author:  Nico Westerbeck
 Created: 2024
 """
 
+from pathlib import Path
 from typing import Callable, Optional, Union
 
 from fsspec import AbstractFileSystem
@@ -14,6 +15,7 @@ from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import
 from toop_engine_contingency_analysis.ac_loadflow_service.lf_worker import load_base_grid_fs
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_importer.pypowsybl_import import preprocessing
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_results_polars
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
@@ -28,7 +30,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     PreprocessingSuccessResult,
     UcteImportResult,
 )
-from toop_engine_interfaces.nminus1_definition import load_nminus1_definition_fs
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.types import MetricType
 
 
@@ -67,11 +69,11 @@ def import_grid_model(
         Any exception raised will be caught by the worker and sent back
     """
     importer_parameters = start_command.importer_parameters
-    importer_parameters.filesystem_import_results = processed_gridfile_fs
     import_result = preprocessing.convert_file(
         importer_parameters=importer_parameters,
         status_update_fn=status_update_fn,
         unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
     )
     return import_result
 
@@ -106,10 +108,12 @@ def run_initial_loadflow(
         A dictionary containing the computed metrics
     """
     status_update_fn("prepare_contingency_analysis", "Preparing initial loadflow contingency analysis")
-    n_minus_1_definition = load_nminus1_definition_fs(
-        processed_gridfile_dirfs, PREPROCESSING_PATHS["nminus1_definition_file_path"]
+    n_minus_1_definition = load_pydantic_model_fs(
+        filesystem=processed_gridfile_dirfs,
+        file_path=Path(PREPROCESSING_PATHS["nminus1_definition_file_path"]),
+        model_class=Nminus1Definition,
     )
-    net = load_base_grid_fs(processed_gridfile_dirfs, PREPROCESSING_PATHS["grid_file_path_powsybl"], "powsybl")
+    net = load_base_grid_fs(processed_gridfile_dirfs, Path(PREPROCESSING_PATHS["grid_file_path_powsybl"]), "powsybl")
     status_update_fn("run_contingency_analysis", "Running initial loadflow contingency analysis")
     timestep_result_polars = get_ac_loadflow_results(
         net=net,

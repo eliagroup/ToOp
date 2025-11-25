@@ -9,6 +9,7 @@ import pandapower as pp
 import pandas as pd
 import pypowsybl
 from fsspec import filesystem
+from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
@@ -266,8 +267,9 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl: 
         assert len(net_loaded.get_static_var_compensators()) == 1
 
         # make sure the dc solver does not crash with the svc
+        filesystem_dir = DirFileSystem(str(import_result.data_folder))
         info, _, _ = load_grid(
-            data_folder=import_result.data_folder,
+            data_folder_dirfs=filesystem_dir,
             pandapower=False,
             parameters=PreprocessParameters(),
             status_update_fn=heartbeat_fn,

@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 from beartype.typing import Optional, Sequence, Union
+from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_interfaces.asset_topology import Topology
 
@@ -19,6 +20,20 @@ class BackendInterface(ABC):
     This assume a node-branch model, hence busbars would be nodes and lines, trafos, etc would be
     branches. Injections inject onto a node and represent both generators, loads, sgens, ...
     """
+
+    def __init__(
+        self,
+        data_folder_dirfs: AbstractFileSystem,
+    ) -> None:
+        """Initiate the Backend interface.
+
+        Parameters
+        ----------
+        data_folder_dirfs : AbstractFileSystem
+            A filesystem which is assumed to be a dirfs pointing to the root for this import job. I.e. the folder structure
+            as defined in toop_engine_interfaces.folder_structure is expected to start at root in this filesystem.
+        """
+        self.data_folder_dirfs = data_folder_dirfs
 
     def get_ptdf(self) -> Optional[Float[np.ndarray, " n_branch n_node"]]:
         """Get the PTDF matrix, if it was computed already

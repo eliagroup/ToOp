@@ -5,6 +5,7 @@ import pypowsybl
 import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.example_grids import case30_with_psts_powsybl
 from toop_engine_dc_solver.jax.injections import get_all_injection_outage_deltap
 from toop_engine_dc_solver.jax.inputs import load_static_information
@@ -35,7 +36,8 @@ from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 
 
 def test_get_branches(powsybl_data_folder: Path) -> None:
-    backend = PowsyblBackend(powsybl_data_folder)
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
     n_branches = len(backend.get_branch_ids())
     n_timesteps = 1
 
@@ -71,7 +73,8 @@ def test_get_branches(powsybl_data_folder: Path) -> None:
 
 
 def test_get_nodes(powsybl_data_folder: Path) -> None:
-    backend = PowsyblBackend(powsybl_data_folder)
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
     busses = backend.net.get_buses()
     n_connected_nodes = sum(busses.connected_component == 0)
 
@@ -86,7 +89,8 @@ def test_get_nodes(powsybl_data_folder: Path) -> None:
 
 
 def test_get_injections(powsybl_data_folder: Path) -> None:
-    backend = PowsyblBackend(powsybl_data_folder)
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
     n_injections = len(backend.get_injection_ids())
     n_timesteps = 1
 
@@ -99,7 +103,8 @@ def test_get_injections(powsybl_data_folder: Path) -> None:
 
 
 def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
-    backend = PowsyblBackend(powsybl_data_folder)
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
     net = backend.net
     loadflow_ref = -net.get_branches()["p1"].loc[backend.get_branch_ids()].values
 
@@ -139,7 +144,8 @@ def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
 
 
 def test_extract_network_data(powsybl_data_folder: Path) -> None:
-    backend = PowsyblBackend(powsybl_data_folder)
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
     network_data = preprocess(backend)
     assert network_data.ptdf.size > 0
     assert network_data.nodal_injection.size > 0
@@ -281,7 +287,8 @@ def test_loadflows_match(preprocessed_powsybl_data_folder: Path) -> None:
 
 
 def test_globally_unique_ids(powsybl_data_folder: Path) -> None:
-    backend = PowsyblBackend(powsybl_data_folder)
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
 
     assert len(backend.get_branch_ids()) == len(set(backend.get_branch_ids()))
     assert len(backend.get_node_ids()) == len(set(backend.get_node_ids()))
@@ -292,7 +299,8 @@ def test_globally_unique_ids(powsybl_data_folder: Path) -> None:
 def test_psts(tmp_path_factory: pytest.TempPathFactory) -> None:
     tmp_dir = tmp_path_factory.mktemp("psts")
     case30_with_psts_powsybl(tmp_dir)
-    backend = PowsyblBackend(tmp_dir)
+    filesystem_dir_powsybl = DirFileSystem(str(tmp_dir))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
 
     assert backend.get_controllable_phase_shift_mask().sum() == 2
     assert len(backend.get_phase_shift_taps()) == 2

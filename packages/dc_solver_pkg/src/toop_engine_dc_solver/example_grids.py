@@ -15,6 +15,7 @@ import pandapower as pp
 import pandas as pd
 import pypowsybl
 from beartype.typing import Literal, Optional
+from fsspec.implementations.dirfs import DirFileSystem
 from networkx.algorithms.community import kernighan_lin_bisection
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
@@ -303,14 +304,15 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
     pandapower : bool
         Whether to use the pandapower backend (true) or the powsybl backend (false)
     """
+    filesystem_dir = DirFileSystem(folder)
     if pandapower:
-        backend = PandaPowerBackend(folder)
+        backend = PandaPowerBackend(filesystem_dir)
         pp_counters = PandapowerCounters(
             highest_switch_id=int(backend.net.switch.index.max()) if len(backend.net.switch) else 0,
             highest_bus_id=int(backend.net.bus.index.max()),
         )
     else:
-        backend = PowsyblBackend(folder)
+        backend = PowsyblBackend(filesystem_dir)
         pp_counters = None
     topo_info = random_topology_info_backend(backend, pp_counters)
 

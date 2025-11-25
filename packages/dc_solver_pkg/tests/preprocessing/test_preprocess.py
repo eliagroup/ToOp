@@ -7,6 +7,7 @@ import numpy as np
 import pandapower as pp
 import pytest
 from beartype.typing import Optional, get_args
+from fsspec.implementations.dirfs import DirFileSystem
 from pandapower.pypower.makePTDF import makePTDF
 from toop_engine_dc_solver.jax.inputs import (
     load_static_information,
@@ -846,7 +847,8 @@ def test_reduce_node_dimension(network_data_filled):
 
 
 def test_preprocess(data_folder: str, tmp_path: str) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     network_data = preprocess(backend)
     validate_network_data(network_data)
 
@@ -870,7 +872,8 @@ def test_preprocess(data_folder: str, tmp_path: str) -> None:
 
 
 def test_loadflows_match(data_folder: str) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     network_data = preprocess(backend)
 
     lf = network_data.ptdf @ network_data.nodal_injection[0]
@@ -893,7 +896,8 @@ def test_loadflows_match(data_folder: str) -> None:
 
 
 def test_preprocess_case30(case30_data_folder: str) -> None:
-    backend = PandaPowerBackend(case30_data_folder)
+    filesystem_dir = DirFileSystem(str(case30_data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     network_data = preprocess(backend)
     n_nodes = len(network_data.node_ids)
     n_branch = len(network_data.branch_ids)
@@ -908,7 +912,8 @@ def test_preprocess_case30(case30_data_folder: str) -> None:
 
 
 def test_preprocess_logging(data_folder: str) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
 
     logs = []
 

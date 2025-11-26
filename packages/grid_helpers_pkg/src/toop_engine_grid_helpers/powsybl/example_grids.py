@@ -1255,7 +1255,7 @@ def create_complex_substation_layout_grid() -> Network:
     # VL1: complex node-breaker with 2 aligned busbars and 3 sections each (replicates B1..B6)
     net.create_voltage_levels(
         id=["VL1", "VL2", "VL3", "VL4", "VL5"],
-        substation_id=["S1", "S1", "S1", "S1", "S1"],
+        substation_id=["S1", "S2", "S1", "S3", "S2"],
         nominal_v=[380.0, 380.0, 220.0, 380.0, 220.0],
         topology_kind=["NODE_BREAKER"] * 5,
         name=["VL1", "VL2", "VL3", "VL4", "VL5"],

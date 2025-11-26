@@ -1,8 +1,12 @@
+import logging
+import sys
 from logging import getLogger
 from multiprocessing import Process, set_start_method
 from pathlib import Path
+from typing import Literal, Union
 from uuid import uuid4
 
+import logbook
 import pytest
 from confluent_kafka import Consumer, Producer
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
@@ -22,6 +26,46 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     Result,
 )
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
+
+logger = logbook.Logger(__name__)
+logbook.StreamHandler(sys.stdout, level=logging.INFO).push_application()
+
+
+def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> Producer:
+    producer = Producer(
+        {
+            "bootstrap.servers": kafka_broker,
+            "client.id": instance_id,
+            "log_level": log_level,
+        },
+        logger=getLogger(f"ac_worker_producer_{instance_id}"),
+    )
+    return producer
+
+
+def create_consumer(
+    type: Literal["LongRunningKafkaConsumer", "Consumer"], topic: str, group_id: str, bootstrap_servers: str, client_id: str
+) -> Union[LongRunningKafkaConsumer, Consumer]:
+    if type == "LongRunningKafkaConsumer":
+        consumer = LongRunningKafkaConsumer(
+            topic=topic,
+            group_id=group_id,
+            bootstrap_servers=bootstrap_servers,
+            client_id=client_id,
+        )
+    elif type == "Consumer":
+        consumer = Consumer(
+            {
+                "bootstrap.servers": bootstrap_servers,
+                "group.id": group_id,
+                "auto.offset.reset": "earliest",
+                "enable.auto.commit": True,
+                "client.id": client_id,
+            }
+        )
+    else:
+        raise ValueError(f"Unknown consumer type: {type}")
+    return consumer
 
 
 @pytest.mark.timeout(100)
@@ -142,21 +186,21 @@ def test_main_simple(
                 importer_heartbeat_topic=kafka_heartbeat_topic,
                 importer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
-                producer=Producer(
-                    {
-                        "bootstrap.servers": kafka_connection_str,
-                        "client.id": instance_id,
-                        "log_level": 2,
-                    },
-                    logger=getLogger(f"ac_worker_producer_{instance_id}"),
-                ),
-                consumer=LongRunningKafkaConsumer(
-                    topic=kafka_command_topic,
-                    group_id="importer_worker",
-                    bootstrap_servers=kafka_connection_str,
-                    client_id=instance_id,
-                ),
-            )  # type: ignore
+            ),
+            lambda: Producer(
+                {
+                    "bootstrap.servers": kafka_connection_str,
+                    "client.id": instance_id,
+                    "log_level": 2,
+                },
+                logger=getLogger(f"ac_worker_producer_{instance_id}"),
+            ),
+            lambda: LongRunningKafkaConsumer(
+                topic=kafka_command_topic,
+                group_id="importer_worker",
+                bootstrap_servers=kafka_connection_str,
+                client_id=instance_id,
+            ),
         )
 
 
@@ -208,21 +252,15 @@ def test_main(
                 unprocessed_gridfile_folder=ucte_file.parent,
                 processed_gridfile_folder=output_path,
                 loadflow_result_folder=loadflow_path,
-                producer=Producer(
-                    {
-                        "bootstrap.servers": kafka_connection_str,
-                        "client.id": instance_id,
-                        "log_level": 2,
-                    },
-                    logger=getLogger(f"ac_worker_producer_{instance_id}"),
-                ),
-                consumer=LongRunningKafkaConsumer(
-                    topic=kafka_command_topic,
-                    group_id="importer_worker",
-                    bootstrap_servers=kafka_connection_str,
-                    client_id=instance_id,
-                ),
-            )  # type: ignore
+            ),
+            lambda: create_producer(kafka_connection_str, instance_id),
+            lambda: create_consumer(
+                "LongRunningKafkaConsumer",
+                kafka_command_topic,
+                "importer_worker",
+                kafka_connection_str,
+                instance_id,
+            ),
         )
 
     message = consumer.poll(timeout=30.0)
@@ -244,7 +282,7 @@ def test_main_idle(
     kafka_results_topic: str,
     kafka_connection_str: str,
 ) -> None:
-    set_start_method("spawn")
+    set_start_method("fork")
     # Create an idling main process
     p = Process(
         target=main,
@@ -255,6 +293,14 @@ def test_main_idle(
                 importer_results_topic=kafka_results_topic,
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
+            ),
+            lambda: create_producer(kafka_connection_str, str(uuid4())),
+            lambda: create_consumer(
+                "LongRunningKafkaConsumer",
+                kafka_command_topic,
+                "importer_worker",
+                kafka_connection_str,
+                str(uuid4()),
             ),
         ),
     )

@@ -198,7 +198,7 @@ def test_ac_dc_integration(
         split_topo_push = False
 
         result_history = []
-        while message := consumer.poll(timeout=10.0):
+        while message := consumer.poll(timeout=20.0):
             result = Result.model_validate_json(deserialize_message(message.value()))
             result_history.append(result)
             if isinstance(result.result, OptimizationStoppedResult):

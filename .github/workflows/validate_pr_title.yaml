@@ -20,5 +20,7 @@ jobs:
           pipx install commitizen
 
       - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          cz check --message "${{ github.event.pull_request.title }}"
+          cz check --message "$PR_TITLE"

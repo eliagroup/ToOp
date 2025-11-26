@@ -100,8 +100,7 @@ class PowsyblBackend(BackendInterface):
         nodes["coupler_limit"] = self._get_mask(NETWORK_MASK_NAMES["cross_coupler_limits"], 0.0, n_nodes)
 
         # Filter to only the first connected component
-        nodes = nodes[nodes["connected_component"] == 0]
-        nodes = nodes[nodes["synchronous_component"] == 0]
+        nodes = nodes[(nodes["connected_component"] == 0) & (nodes["synchronous_component"] == 0)]
 
         nodes["int_id"] = np.arange(len(nodes))
         return nodes

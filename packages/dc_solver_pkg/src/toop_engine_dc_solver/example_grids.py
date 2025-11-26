@@ -1036,9 +1036,9 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> N
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, enable_bb_outage=False, bb_outage_as_nminus1=False)
 
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
-
+    filesystem_dir = DirFileSystem(str(folder))
     _info, _static_information, _ = load_grid(
-        data_folder=folder,
+        data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,
@@ -1081,8 +1081,9 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
 
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
 
+    filesystem_dir = DirFileSystem(str(folder))
     _info, _static_information, _ = load_grid(
-        data_folder=folder,
+        data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,

@@ -20,6 +20,8 @@ from toop_engine_dc_solver.example_grids import (
     case300_powsybl,
     case9241_pandapower,
     case9241_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
+    create_ucte_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
     random_topology_info_backend,
@@ -294,7 +296,7 @@ def test_case300() -> None:
         case300_pandapower(tmp)
 
         filesystem_dir_powsybl = DirFileSystem(str(tmp))
-        powsybl_backend = PowsyblBackend(filesystem_dir_powsybl)
+        pp_backend = PandaPowerBackend(filesystem_dir_powsybl)
 
         assert len(pp_backend.net.bus) == 300
 
@@ -517,6 +519,30 @@ def test_node_breaker_folder_powsybl() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir = Path(tmp_dir)
         node_breaker_folder_powsybl(tmp_dir)
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        backend = PowsyblBackend(filesystem_dir)
+        assert sum(backend.get_relevant_node_mask())
+        network_data = preprocess(backend)
+        assert sum(network_data.relevant_node_mask) > 0
+        assert len(network_data.branch_action_set)
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir)
+        create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_dir)
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        backend = PowsyblBackend(filesystem_dir)
+        assert sum(backend.get_relevant_node_mask())
+        network_data = preprocess(backend)
+        assert sum(network_data.relevant_node_mask) > 0
+        assert len(network_data.branch_action_set)
+
+
+def test_create_ucte_data_folder(ucte_file) -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir)
+        create_ucte_data_folder(tmp_dir, ucte_file=ucte_file)
         filesystem_dir = DirFileSystem(str(tmp_dir))
         backend = PowsyblBackend(filesystem_dir)
         assert sum(backend.get_relevant_node_mask())

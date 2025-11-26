@@ -662,17 +662,18 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         bus_or_busbar_section_id_1=["VL_2W_MV_HV_HV_1_2"],
         bus_or_busbar_section_id_2=["VL_2W_MV_HV_HV_2_2"],
     )
-    pypowsybl.network.create_coupling_device(
-        n,
-        bus_or_busbar_section_id_1=["VL_MV_1_2"],
-        bus_or_busbar_section_id_2=["VL_MV_2_2"],
-    )
-    pypowsybl.network.create_coupling_device(
-        n,
-        bus_or_busbar_section_id_1=["VL_MV_1_1"],
-        bus_or_busbar_section_id_2=["VL_MV_1_2"],
-    )
-    n.open_switch("VL_MV_DISCONNECTOR_0_2")
+    # FIX ME: currently not working due to an importing issue in the simplyfied station function
+    # pypowsybl.network.create_coupling_device(
+    #     n,
+    #     bus_or_busbar_section_id_1=["VL_MV_1_2"],
+    #     bus_or_busbar_section_id_2=["VL_MV_2_2"],
+    # )
+    # pypowsybl.network.create_coupling_device(
+    #     n,
+    #     bus_or_busbar_section_id_1=["VL_MV_1_1"],
+    #     bus_or_busbar_section_id_2=["VL_MV_1_2"],
+    # )
+    # n.open_switch("VL_MV_DISCONNECTOR_0_2")
 
     # ---------------------------------------------------------------------
     # 3) AC lines

@@ -73,7 +73,7 @@ class PowsyblBackend(BackendInterface):
             A filesystem which is assumed to be a dirfs pointing to the root for this import job. I.e. the folder structure
             as defined in toop_engine_interfaces.folder_structure is expected to start at root in this filesystem.
         distributed_slack: bool
-            Use distributed_slack to initilize the backend.
+            Use distributed_slack to initialize the backend.
         """
         super().__init__()
         self.data_folder_dirfs = data_folder_dirfs

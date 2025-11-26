@@ -12,15 +12,19 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def save_pydantic_model_fs(
-    filesystem: AbstractFileSystem, file_path: Path, pydantic_model: BaseModel, indent: int = 2, make_dir: bool = True
+    filesystem: AbstractFileSystem,
+    file_path: Union[str, Path],
+    pydantic_model: BaseModel,
+    indent: int = 2,
+    make_dir: bool = True,
 ) -> None:
-    """Save an N-1 definition to a json file
+    """Save a Pydantic model to a JSON file.
 
     Parameters
     ----------
     filesystem : AbstractFileSystem
         The file system to use to save the N-1 definition.
-    file_path : Path
+    file_path : Union[str, Path]
         The path to the json file to save the N-1 definition to.
     pydantic_model : Nminus1Definition
         The N-1 definition to save.
@@ -35,14 +39,14 @@ def save_pydantic_model_fs(
         f.write(pydantic_model.model_dump_json(indent=indent))
 
 
-def load_pydantic_model_fs(filesystem: AbstractFileSystem, file_path: Path, model_class: type[T]) -> T:
+def load_pydantic_model_fs(filesystem: AbstractFileSystem, file_path: Union[str, Path], model_class: type[T]) -> T:
     """Load a pydantic model from a json file
 
     Parameters
     ----------
     filesystem : AbstractFileSystem
         The file system to use to load the model.
-    file_path : Path
+    file_path : Union[str, Path]
         The path to the json file to load the model from.
     model_class : type[T]
         The pydantic model class to load.
@@ -68,7 +72,7 @@ def load_numpy_filesystem(filesystem: AbstractFileSystem, file_path: Union[str, 
     ---------
     filesystem: AbstractFileSystem
         The filesystem to load the numpy file from.
-    file_pah: str
+    file_path: Union[str, Path]
         The path relative to the filesystem.
 
     Returns
@@ -97,7 +101,7 @@ def save_numpy_filesystem(
     ---------
     filesystem: AbstractFileSystem
         The filesystem to load the numpy file from.
-    file_pah: str
+    file_path: Union[str, Path]
         The path relative to the filesystem.
     numpy_array:np.ndarray
         The numpy array to save

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_interfaces.asset_topology import Busbar
@@ -18,12 +20,24 @@ def test_save_load_pydantic_model_fs(tmp_path):
     loaded_model = load_pydantic_model_fs(filesystem=fs, file_path=file_path, model_class=Busbar)
     assert loaded_model == pydantic_model
 
+    # test Path
+    file_path = Path("pydantic/test_pydantic_class.json")
+    save_pydantic_model_fs(filesystem=fs, file_path=file_path, pydantic_model=pydantic_model)
+    loaded_model = load_pydantic_model_fs(filesystem=fs, file_path=file_path, model_class=Busbar)
+    assert loaded_model == pydantic_model
+
 
 def test_save_load_numpy_filesystem(tmp_path):
     fs = DirFileSystem(tmp_path)
     numpy_array = np.random.rand(5)
 
     file_path = "numpy/test_numpy_array.npy"
+    save_numpy_filesystem(filesystem=fs, file_path=file_path, numpy_array=numpy_array)
+    loaded_numpy_array = load_numpy_filesystem(filesystem=fs, file_path=file_path)
+    assert np.array_equal(loaded_numpy_array, numpy_array)
+
+    # test Path
+    file_path = Path("numpy/test_numpy_array.npy")
     save_numpy_filesystem(filesystem=fs, file_path=file_path, numpy_array=numpy_array)
     loaded_numpy_array = load_numpy_filesystem(filesystem=fs, file_path=file_path)
     assert np.array_equal(loaded_numpy_array, numpy_array)

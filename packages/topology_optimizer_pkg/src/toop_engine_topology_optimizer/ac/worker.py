@@ -1,18 +1,14 @@
 """The AC worker that listens to the kafka topics, organizes optimization runs, etc."""
 
-import os
-import sys
 import time
 import traceback
 from dataclasses import dataclass
 from functools import partial
-from logging import getLogger
 from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
 import logbook
-import tyro
 from confluent_kafka import Producer
 from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
@@ -51,6 +47,9 @@ class Args(DCArgs):
     """The parent folder where all loadflow results are stored. In production this is a shared network
     filesystem between the backend and all workers. Loadflow results are too large to be sent directly
     over kafka. Only needed for AC"""
+
+    result_consumer: LongRunningKafkaConsumer
+    """The Kafka consumer to consume results."""
 
 
 @dataclass
@@ -259,28 +258,11 @@ def main(args: Args) -> None:
     # We create two separate consumers for the command and result topics as we don't want to
     # catch results during the idle loop.
     worker_data = WorkerData(
-        command_consumer=LongRunningKafkaConsumer(
-            topic=args.optimizer_command_topic,
-            group_id="ac_optimizer",
-            bootstrap_servers=args.kafka_broker,
-            client_id=instance_id,
-        ),
+        command_consumer=args.command_consumer,
         # Create a results consumer that will listen to results from any DC optimizers
         # Make sure to use a unique group.id for each instance to avoid conflicts
-        result_consumer=LongRunningKafkaConsumer(
-            topic=args.optimizer_results_topic,
-            group_id=f"ac_listener_{instance_id}_{uuid4()}",
-            bootstrap_servers=args.kafka_broker,
-            client_id=instance_id,
-        ),
-        producer=Producer(
-            {
-                "bootstrap.servers": args.kafka_broker,
-                "client.id": instance_id,
-                "log_level": 2,
-            },
-            logger=getLogger(f"ac_worker_producer_{instance_id}"),
-        ),
+        result_consumer=args.result_consumer,
+        producer=args.producer,
         db=create_session(),
     )
 
@@ -336,14 +318,3 @@ def main(args: Args) -> None:
             loadflow_result_folder=args.loadflow_result_folder,
         )
         worker_data.command_consumer.stop_processing()
-
-
-if __name__ == "__main__":
-    logbook.StreamHandler(sys.stdout, level=logbook.INFO).push_application()
-    logbook.compat.redirect_logging()
-    if "AC_OPTIMIZER_CONFIG_FILE" in os.environ:
-        with open(os.environ["AC_OPTIMIZER_CONFIG_FILE"], "r") as f:
-            args = Args.model_validate_json(f.read())
-    else:
-        args = tyro.cli(Args)
-    main(args)

@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
@@ -105,6 +106,20 @@ def test_main_simple(
                 heartbeat_interval_ms=1000,
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=processed_gridfile_folder,
+                producer=Producer(
+                    {
+                        "bootstrap.servers": kafka_connection_str,
+                        "client.id": "dc_worker",
+                        "log_level": 2,
+                    },
+                    logger=logging.getLogger("dc_worker_producer"),
+                ),
+                command_consumer=LongRunningKafkaConsumer(
+                    topic=kafka_command_topic,
+                    group_id="dc_optimizer",
+                    bootstrap_servers=kafka_connection_str,
+                    client_id="dc_worker",
+                ),
             )
         )
 
@@ -158,6 +173,20 @@ def test_main(
                 optimizer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=grid_folder,
+                producer=Producer(
+                    {
+                        "bootstrap.servers": kafka_connection_str,
+                        "client.id": "dc_worker",
+                        "log_level": 2,
+                    },
+                    logger=logging.getLogger("dc_worker_producer"),
+                ),
+                command_consumer=LongRunningKafkaConsumer(
+                    topic=kafka_command_topic,
+                    group_id="dc_optimizer",
+                    bootstrap_servers=kafka_connection_str,
+                    client_id="dc_worker",
+                ),
             )
         )
 

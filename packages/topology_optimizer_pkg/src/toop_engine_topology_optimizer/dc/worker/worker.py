@@ -1,7 +1,5 @@
 """Kafka worker for the genetic algorithm optimization."""
 
-import os
-import sys
 import time
 from functools import partial
 from pathlib import Path
@@ -10,9 +8,8 @@ from uuid import uuid4
 
 import jax
 import logbook
-import tyro
 from confluent_kafka import Producer
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
@@ -67,6 +64,16 @@ class Args(BaseModel):
     """The parent folder where all the grid files are stored. In production this is a shared network
     filesystem between the backend and all workers. When a command is received, this will be pre-
     fixed to the static information file"""
+
+    producer: Producer
+    """The Kafka producer to push results and heartbeats to."""
+
+    command_consumer: LongRunningKafkaConsumer
+    """The Kafka consumer to consume commands."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    """Pydantic configuration. Allows arbitrary types for Kafka producer. Without this, pydantic would try to
+    validate these types, which is not possible."""
 
 
 def idle_loop(
@@ -245,14 +252,8 @@ def main(args: Args) -> None:
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
 
-    consumer = LongRunningKafkaConsumer(
-        topic=args.optimizer_command_topic,
-        bootstrap_servers=args.kafka_broker,
-        group_id="dc-worker",
-        client_id=instance_id,
-    )
-
-    producer = Producer({"bootstrap.servers": args.kafka_broker, "client.id": instance_id, "log_level": 2}, logger=logger)
+    consumer = args.command_consumer
+    producer = args.producer
 
     def send_heartbeat(message: HeartbeatUnion, ping_consumer: bool) -> None:
         heartbeat = Heartbeat(
@@ -299,14 +300,3 @@ def main(args: Args) -> None:
             optimization_id=command.optimization_id,
         )
         consumer.stop_processing()
-
-
-if __name__ == "__main__":
-    logbook.StreamHandler(sys.stdout, level=logbook.INFO).push_application()
-    logbook.compat.redirect_logging()
-    if "DC_OPTIMIZER_CONFIG_FILE" in os.environ:
-        with open(os.environ["DC_OPTIMIZER_CONFIG_FILE"], "r") as f:
-            args = Args.model_validate_json(f.read())
-    else:
-        args = tyro.cli(Args)
-    main(args)

@@ -10,8 +10,6 @@ on:
       - opened
       - edited # Trigger on title edits
       - reopened
-      - synchronize
-
 jobs:
   validate-pr-title:
     runs-on: ubuntu-latest

@@ -1,0 +1,22 @@
+name: Validate PR title
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+
+jobs:
+  fetch-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show PR title
+        run: |
+          echo "Pull request title:"
+          echo "${{ github.event.pull_request.title }}"

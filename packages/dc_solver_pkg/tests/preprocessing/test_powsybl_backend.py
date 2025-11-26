@@ -286,6 +286,96 @@ def test_loadflows_match(preprocessed_powsybl_data_folder: Path) -> None:
     assert np.allclose(n_1, n_1_ref)
 
 
+def test_loadflows_match_bat_hvdc_shunt_svc(complex_grid_battery_hvdc_svc_3w_trafo_data_folder: Path) -> None:
+    preprocessed_powsybl_data_folder = complex_grid_battery_hvdc_svc_3w_trafo_data_folder
+    net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    static_information = load_static_information(
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
+    )
+
+    (n_0, n_1), success = run_solver_symmetric(
+        topologies=default_topology(static_information.solver_config),
+        disconnections=None,
+        injections=None,
+        dynamic_information=static_information.dynamic_information,
+        solver_config=static_information.solver_config,
+        aggregate_output_fn=lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+    )
+
+    n_0 = np.abs(n_0[0, 0])
+    n_1 = np.abs(n_1[0, 0])
+    assert np.all(success)
+
+    runner = PowsyblRunner()
+    runner.replace_grid(net)
+    runner.store_action_set(extract_action_set(network_data))
+    nminus1_def = extract_nminus1_definition(network_data)
+    nminus1_def.loadflow_parameters.contingency_propagation = False
+    runner.store_nminus1_definition(nminus1_def)
+
+    res_ref = runner.run_dc_loadflow([], [])
+    n_0_ref, n_1_ref, success_ref = extract_solver_matrices_polars(
+        loadflow_results=res_ref,
+        nminus1_definition=runner.nminus1_definition,
+        timestep=0,
+    )
+
+    assert np.all(success)
+    n_0_ref = np.abs(n_0_ref)
+    n_1_ref = np.abs(n_1_ref)
+
+    assert n_0.shape == n_0_ref.shape
+    assert np.allclose(n_0, n_0_ref)
+    assert n_1.shape == n_1_ref.shape
+    assert np.allclose(n_1, n_1_ref)
+
+
+def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
+    preprocessed_powsybl_data_folder = basic_ucte_data_folder
+    net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    static_information = load_static_information(
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
+    )
+
+    (n_0, n_1), success = run_solver_symmetric(
+        topologies=default_topology(static_information.solver_config),
+        disconnections=None,
+        injections=None,
+        dynamic_information=static_information.dynamic_information,
+        solver_config=static_information.solver_config,
+        aggregate_output_fn=lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+    )
+
+    n_0 = np.abs(n_0[0, 0])
+    n_1 = np.abs(n_1[0, 0])
+    assert np.all(success)
+
+    runner = PowsyblRunner()
+    runner.replace_grid(net)
+    runner.store_action_set(extract_action_set(network_data))
+    nminus1_def = extract_nminus1_definition(network_data)
+    nminus1_def.loadflow_parameters.contingency_propagation = False
+    runner.store_nminus1_definition(nminus1_def)
+
+    res_ref = runner.run_dc_loadflow([], [])
+    n_0_ref, n_1_ref, success_ref = extract_solver_matrices_polars(
+        loadflow_results=res_ref,
+        nminus1_definition=runner.nminus1_definition,
+        timestep=0,
+    )
+
+    assert np.all(success)
+    n_0_ref = np.abs(n_0_ref)
+    n_1_ref = np.abs(n_1_ref)
+
+    assert n_0.shape == n_0_ref.shape
+    assert np.allclose(n_0, n_0_ref)
+    assert n_1.shape == n_1_ref.shape
+    assert np.allclose(n_1, n_1_ref)
+
+
 def test_globally_unique_ids(powsybl_data_folder: Path) -> None:
     filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
     backend = PowsyblBackend(filesystem_dir_powsybl)

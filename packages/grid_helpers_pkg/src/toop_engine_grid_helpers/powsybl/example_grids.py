@@ -1237,499 +1237,166 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
 
 
 def create_complex_substation_layout_grid() -> Network:
-    """Creates a network with a complex substation layout including 3 couplers."""
-    net = pypowsybl.network.create_empty()
-    net.create_substations(id="S1", name="Substation 1", country="DE")
-    net.create_voltage_levels(id="VL1", substation_id="S1", nominal_v=380.0, topology_kind="NODE_BREAKER")
-    net.create_busbar_sections(id="B1", voltage_level_id="VL1", name="Busbar 1.1", node=1)
-    net.create_busbar_sections(id="B2", voltage_level_id="VL1", name="Busbar 2.1", node=2)
-    net.create_busbar_sections(id="B3", voltage_level_id="VL1", name="Busbar 3.1", node=3)
-    net.create_busbar_sections(id="B4", voltage_level_id="VL1", name="Busbar 1.2", node=4)
-    net.create_busbar_sections(id="B5", voltage_level_id="VL1", name="Busbar 2.2", node=5)
-    net.create_busbar_sections(id="B6", voltage_level_id="VL1", name="Busbar 3.2", node=6)
+    """Create a simplified complex substation-layout network using bay helpers.
 
-    net.create_substations(id="S2", name="Substation 2", country="DE")
-    net.create_voltage_levels(id="VL2", substation_id="S2", nominal_v=380.0, topology_kind="NODE_BREAKER")
-    net.create_busbar_sections(id="B7", voltage_level_id="VL2", name="Busbar 1", node=1)
-    net.create_busbar_sections(id="B8", voltage_level_id="VL2", name="Busbar 2", node=2)
-    net.create_voltage_levels(id="VL5", substation_id="S2", nominal_v=220.0, topology_kind="NODE_BREAKER")
-    net.create_busbar_sections(id="B11", voltage_level_id="VL5", name="Busbar 1", node=1)
+    This version uses `create_voltage_level_topology`, `create_line_bays`,
+    `create_2_windings_transformer_bays` and `create_coupling_device` to build
+    the same conceptual layout (two aligned busbars with three sections and
+    three couplers) in a lot fewer lines of code.
+    """
+    net = pypowsybl.network.create_empty("TEST_COMPLEX_SUBSTATION_LAYOUT_V2")
 
-    net.create_voltage_levels(id="VL3", substation_id="S1", nominal_v=220.0, topology_kind="NODE_BREAKER")
-    net.create_busbar_sections(id="B9", voltage_level_id="VL3", name="Busbar 1", node=1)
-
-    net.create_substations(id="S3", name="Substation 3", country="DE")
-    net.create_voltage_levels(id="VL4", substation_id="S3", nominal_v=380.0, topology_kind="NODE_BREAKER")
-    net.create_busbar_sections(id="B10", voltage_level_id="VL4", name="Busbar 1", node=1)
-
-    net.create_switches(
-        id="SW1", voltage_level_id="VL1", name="Switch 1-4", node1=1, node2=4, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW2", voltage_level_id="VL1", name="Switch 2-5", node1=2, node2=5, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW3", voltage_level_id="VL1", name="Switch 3-6", node1=3, node2=6, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(id="C1", voltage_level_id="VL1", name="Coupler 1", node1=7, node2=8, open=False, kind="BREAKER")
-    net.create_switches(
-        id="SW4", voltage_level_id="VL1", name="Coupler 1 - BB 1.1", node1=1, node2=7, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW5", voltage_level_id="VL1", name="Coupler 1 - BB 2.1", node1=2, node2=7, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW6", voltage_level_id="VL1", name="Coupler 1 - BB 3.1", node1=3, node2=7, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW7", voltage_level_id="VL1", name="Coupler 1 - BB 1.2", node1=4, node2=8, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW8", voltage_level_id="VL1", name="Coupler 1 - BB 2.2", node1=5, node2=8, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW9", voltage_level_id="VL1", name="Coupler 1 - BB 3.2", node1=6, node2=8, open=False, kind="DISCONNECTOR"
+    # Substations
+    net.create_substations(
+        id=["S1", "S2", "S3"], name=["Substation 1", "Substation 2", "Substation 3"], country=["DE", "DE", "DE"]
     )
 
-    net.create_switches(id="C2", voltage_level_id="VL1", name="Coupler 2", node1=9, node2=10, open=False, kind="BREAKER")
-    net.create_switches(
-        id="SW10", voltage_level_id="VL1", name="Coupler 2 - BB 1.1l", node1=1, node2=9, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW11", voltage_level_id="VL1", name="Coupler 2 - BB 2.1l", node1=2, node2=9, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW12", voltage_level_id="VL1", name="Coupler 2 - BB 3.1l", node1=3, node2=9, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW13", voltage_level_id="VL1", name="Coupler 2 - BB 1.1r", node1=1, node2=10, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW14", voltage_level_id="VL1", name="Coupler 2 - BB 2.1r", node1=2, node2=10, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW15", voltage_level_id="VL1", name="Coupler 2 - BB 3.1r", node1=3, node2=10, open=False, kind="DISCONNECTOR"
+    # Voltage levels
+    # VL1: complex node-breaker with 2 aligned busbars and 3 sections each (replicates B1..B6)
+    net.create_voltage_levels(
+        id=["VL1", "VL2", "VL3", "VL4", "VL5"],
+        substation_id=["S1", "S1", "S1", "S1", "S1"],
+        nominal_v=[380.0, 380.0, 220.0, 380.0, 220.0],
+        topology_kind=["NODE_BREAKER"] * 5,
+        name=["VL1", "VL2", "VL3", "VL4", "VL5"],
     )
 
-    net.create_switches(id="C3", voltage_level_id="VL1", name="Coupler 3", node1=11, node2=12, open=False, kind="BREAKER")
-    net.create_switches(
-        id="SW16", voltage_level_id="VL1", name="Coupler 3 - BB 1.2l", node1=4, node2=11, open=False, kind="DISCONNECTOR"
+    # Create topology layouts for the voltage levels. For VL1 we want two aligned
+    # busbars with three sections each (3 sections x 2 aligned -> 6 busbar sections)
+    pypowsybl.network.create_voltage_level_topology(
+        network=net, id="VL1", aligned_buses_or_busbar_count=3, section_count=2, switch_kinds="DISCONNECTOR"
     )
-    net.create_switches(
-        id="SW17", voltage_level_id="VL1", name="Coupler 3 - BB 2.2l", node1=5, node2=11, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW18", voltage_level_id="VL1", name="Coupler 3 - BB 3.2l", node1=6, node2=11, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW19", voltage_level_id="VL1", name="Coupler 3 - BB 1.2r", node1=4, node2=12, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW20", voltage_level_id="VL1", name="Coupler 3 - BB 2.2r", node1=5, node2=12, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW21", voltage_level_id="VL1", name="Coupler 3 - BB 3.2r", node1=6, node2=12, open=False, kind="DISCONNECTOR"
+    pypowsybl.network.create_voltage_level_topology(
+        network=net, id="VL2", aligned_buses_or_busbar_count=2, section_count=1, switch_kinds=""
     )
 
-    net.create_lines(
-        id="L1",
-        voltage_level1_id="VL1",
-        name="Line 1",
-        node1=13,
-        voltage_level2_id="VL2",
-        node2=3,
-        r=0.1,
-        x=0.2,
-        g1=0.0,
-        b1=0.0,
-        g2=0.0,
-        b2=0.0,
+    # For the other voltage levels use simple single-busbar layouts
+    for vl in ["VL3", "VL4", "VL5"]:
+        pypowsybl.network.create_voltage_level_topology(
+            network=net, id=vl, aligned_buses_or_busbar_count=1, section_count=1, switch_kinds=""
+        )
+
+    # Create three coupling devices (couplers) between corresponding sections of the
+    # two aligned busbars in VL1. This models the three couplers in the original function.
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL1_1_1"], bus_or_busbar_section_id_2=["VL1_2_1"]
     )
-    net.create_switches(
-        id="SW22",
-        voltage_level_id="VL1",
-        name="Line 1-1 - Disconnector",
-        node1=14,
-        node2=13,
-        open=False,
-        kind="DISCONNECTOR",
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL1_1_2"], bus_or_busbar_section_id_2=["VL1_3_2"]
     )
-    net.create_switches(
-        id="BR1", voltage_level_id="VL1", name="Line 1-1 - Breaker", node1=15, node2=14, open=False, kind="BREAKER"
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL1_1_2"], bus_or_busbar_section_id_2=["VL1_2_1"]
     )
-    net.create_switches(
-        id="SW23", voltage_level_id="VL1", name="Line 1-1 - BB 1.1", node1=1, node2=15, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW24", voltage_level_id="VL1", name="Line 1-1 - BB 2.1", node1=2, node2=15, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW25", voltage_level_id="VL1", name="Line 1-1 - BB 3.1", node1=3, node2=15, open=False, kind="DISCONNECTOR"
+    # VL2
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL2_1_1"], bus_or_busbar_section_id_2=["VL2_2_1"]
     )
 
-    net.create_lines(
-        id="L2",
-        voltage_level1_id="VL1",
-        name="Line 2",
-        node1=16,
-        voltage_level2_id="VL2",
-        node2=4,
-        r=0.15,
-        x=0.25,
-        g1=0.0,
-        b1=0.0,
-        g2=0.0,
-        b2=0.0,
+    # Lines: create a small set of line bays connecting VL1 sections to other VLs.
+    lines = pd.DataFrame(
+        [
+            {"bus_or_busbar_section_id_1": "VL1_2_1", "bus_or_busbar_section_id_2": "VL2_1_1", "r": 0.1, "x": 0.2},
+            {"bus_or_busbar_section_id_1": "VL1_1_2", "bus_or_busbar_section_id_2": "VL2_1_1", "r": 0.15, "x": 0.25},
+            {"bus_or_busbar_section_id_1": "VL1_3_1", "bus_or_busbar_section_id_2": "VL4_1_1", "r": 0.2, "x": 0.3},
+            {"bus_or_busbar_section_id_1": "VL1_3_2", "bus_or_busbar_section_id_2": "VL4_1_1", "r": 0.25, "x": 0.35},
+        ]
     )
-    net.create_switches(
-        id="SW26",
-        voltage_level_id="VL1",
-        name="Line 1-2 - Disconnector",
-        node1=17,
-        node2=16,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="BR2", voltage_level_id="VL1", name="Line 1-2 - Breaker", node1=18, node2=17, open=False, kind="BREAKER"
-    )
-    net.create_switches(
-        id="SW27", voltage_level_id="VL1", name="Line 1-2 - BB 1.1", node1=1, node2=18, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW28", voltage_level_id="VL1", name="Line 1-2 - BB 2.1", node1=2, node2=18, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW29", voltage_level_id="VL1", name="Line 1-2 - BB 3.1", node1=3, node2=18, open=False, kind="DISCONNECTOR"
-    )
+    lines["g1"] = 0.0
+    lines["b1"] = 0.0
+    lines["g2"] = 0.0
+    lines["b2"] = 0.0
+    lines["position_order_1"] = 1
+    lines["position_order_2"] = 1
+    lines["direction_1"] = "TOP"
+    lines["direction_2"] = "TOP"
+    lines["id"] = [f"L{i + 1}" for i in range(len(lines))]
+    lines = lines.set_index("id")
+    pypowsybl.network.create_line_bays(net, df=lines)
 
-    net.create_lines(
-        id="L3",
-        voltage_level1_id="VL1",
-        name="Line 3",
-        node1=19,
-        voltage_level2_id="VL4",
-        node2=2,
-        r=0.2,
-        x=0.3,
-        g1=0.0,
-        b1=0.0,
-        g2=0.0,
-        b2=0.0,
-    )
-    net.create_switches(
-        id="SW30",
-        voltage_level_id="VL1",
-        name="Line 1-3 - Disconnector",
-        node1=20,
-        node2=19,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="BR3", voltage_level_id="VL1", name="Line 1-3 - Breaker", node1=21, node2=20, open=False, kind="BREAKER"
-    )
-    net.create_switches(
-        id="SW31", voltage_level_id="VL1", name="Line 1-3 - BB 1.2", node1=4, node2=21, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW32", voltage_level_id="VL1", name="Line 1-3 - BB 2.2", node1=5, node2=21, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW33", voltage_level_id="VL1", name="Line 1-3 - BB 3.2", node1=6, node2=21, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SWL3", voltage_level_id="VL4", name="Line 1-3 - BB 3", node1=1, node2=2, open=False, kind="DISCONNECTOR"
-    )
-
-    net.create_lines(
-        id="L4",
-        voltage_level1_id="VL1",
-        name="Line 4",
-        node1=22,
-        voltage_level2_id="VL4",
-        node2=3,
-        r=0.25,
-        x=0.35,
-        g1=0.0,
-        b1=0.0,
-        g2=0.0,
-        b2=0.0,
-    )
-    net.create_switches(
-        id="SW34",
-        voltage_level_id="VL1",
-        name="Line 1-4 - Disconnector",
-        node1=23,
-        node2=22,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="BR4", voltage_level_id="VL1", name="Line 1-4 - Breaker", node1=24, node2=23, open=False, kind="BREAKER"
-    )
-    net.create_switches(
-        id="SW35", voltage_level_id="VL1", name="Line 1-4 - BB 1.2", node1=4, node2=24, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW36", voltage_level_id="VL1", name="Line 1-4 - BB 2.2", node1=5, node2=24, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW37", voltage_level_id="VL1", name="Line 1-4 - BB 3.2", node1=6, node2=24, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SWL4", voltage_level_id="VL4", name="Line 1-4 - BB 4", node1=1, node2=3, open=False, kind="DISCONNECTOR"
-    )
-
-    net.create_2_windings_transformers(
-        id="T-1",
-        voltage_level1_id="VL1",
-        node1=25,
-        voltage_level2_id="VL3",
-        node2=2,
+    # Transformers (use bay helper to create simpler transformer representation)
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T1",
         b=1e-6,
         g=1e-6,
         r=0.5,
-        x=10,
-        rated_u1=380,
-        rated_u2=220,
+        x=10.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL1_2_2",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL3_1_1",
+        position_order_2=5,
+        direction_2="TOP",
     )
-    net.create_switches(
-        id="SW38",
-        voltage_level_id="VL1",
-        name="Transformer T-1 - Disconnector HV",
-        node1=26,
-        node2=25,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="BR5", voltage_level_id="VL1", name="Transformer T-1 - Breaker HV", node1=27, node2=26, open=False, kind="BREAKER"
-    )
-    net.create_switches(
-        id="SW39",
-        voltage_level_id="VL1",
-        name="Transformer T-1 - BB 1.1",
-        node1=1,
-        node2=27,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="SW40",
-        voltage_level_id="VL1",
-        name="Transformer T-1 - BB 2.1",
-        node1=2,
-        node2=27,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="SW41",
-        voltage_level_id="VL1",
-        name="Transformer T-1 - BB 3.1",
-        node1=3,
-        node2=27,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="SWT1", voltage_level_id="VL3", name="Transformer T-1 - BB 1", node1=1, node2=2, open=False, kind="DISCONNECTOR"
-    )
-
-    net.create_2_windings_transformers(
-        id="T-2",
-        voltage_level1_id="VL1",
-        node1=28,
-        voltage_level2_id="VL3",
-        node2=3,
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T2",
         b=1e-6,
         g=1e-6,
         r=0.6,
-        x=12,
-        rated_u1=380,
-        rated_u2=220,
+        x=12.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL1_1_1",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL3_1_1",
+        position_order_2=5,
+        direction_2="TOP",
     )
-    net.create_switches(
-        id="SW42",
-        voltage_level_id="VL1",
-        name="Transformer T-2 - Disconnector HV",
-        node1=29,
-        node2=28,
-        open=False,
-        kind="DISCONNECTOR",
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T3",
+        b=1e-6,
+        g=1e-6,
+        r=0.5,
+        x=10.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL2_1_1",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL5_1_1",
+        position_order_2=5,
+        direction_2="TOP",
     )
-    net.create_switches(
-        id="BR6", voltage_level_id="VL1", name="Transformer T-2 - Breaker HV", node1=30, node2=29, open=False, kind="BREAKER"
-    )
-    net.create_switches(
-        id="SW43",
-        voltage_level_id="VL1",
-        name="Transformer T-2 - BB 1.2",
-        node1=4,
-        node2=30,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="SW44",
-        voltage_level_id="VL1",
-        name="Transformer T-2 - BB 2.2",
-        node1=5,
-        node2=30,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="SW45",
-        voltage_level_id="VL1",
-        name="Transformer T-2 - BB 3.3",
-        node1=6,
-        node2=30,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="SWT2", voltage_level_id="VL3", name="Transformer T-2 - BB 2", node1=1, node2=3, open=False, kind="DISCONNECTOR"
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T4",
+        b=1e-6,
+        g=1e-6,
+        r=0.6,
+        x=12.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL2_1_1",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL5_1_1",
+        position_order_2=5,
+        direction_2="TOP",
     )
 
-    net.create_loads(id="Load1", voltage_level_id="VL5", name="Load 1", node=2, p0=250.0, q0=30.0)
-    net.create_switches(
-        id="SW46", voltage_level_id="VL5", name="Load 1 - Disconnector", node1=1, node2=2, open=False, kind="DISCONNECTOR"
-    )
-    net.create_loads(id="Load2", voltage_level_id="VL4", name="Load 2", node=4, p0=250.0, q0=20.0)
-    net.create_switches(
-        id="SW48", voltage_level_id="VL4", name="Load 2 - Disconnector", node1=1, node2=4, open=False, kind="DISCONNECTOR"
-    )
-
-    net.create_generators(
+    # # A couple of generators/loads to make the network usable in tests
+    pypowsybl.network.create_generator_bay(
+        net,
         id="Gen1",
-        voltage_level_id="VL3",
-        name="Generator 1",
-        node=6,
-        min_p=0,
-        max_p=1000,
+        max_p=1000.0,
+        min_p=0.0,
         target_p=500.0,
-        target_v=230,
         voltage_regulator_on=True,
+        target_v=230.0,
+        bus_or_busbar_section_id="VL3_1_1",
+        position_order=1,
+        direction="TOP",
     )
-    net.create_switches(
-        id="SW49",
-        voltage_level_id="VL3",
-        name="Generator 1 - Disconnector",
-        node1=1,
-        node2=6,
-        open=False,
-        kind="DISCONNECTOR",
+    pypowsybl.network.create_load_bay(
+        net, id="Load1", bus_or_busbar_section_id="VL5_1_1", p0=200.0, q0=30.0, position_order=1, direction="TOP"
     )
-
-    net.create_switches(
-        id="SW50", voltage_level_id="VL2", name="Line 1 - Disconnector", node1=3, node2=5, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="BR7", voltage_level_id="VL2", name="Line 1 - Breaker", node1=5, node2=6, open=False, kind="BREAKER"
-    )
-    net.create_switches(
-        id="SW51", voltage_level_id="VL2", name="Line 1 - BB 1", node1=1, node2=6, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW52", voltage_level_id="VL2", name="Line 1 - BB 2", node1=2, node2=6, open=False, kind="DISCONNECTOR"
+    pypowsybl.network.create_load_bay(
+        net, id="Load2", bus_or_busbar_section_id="VL4_1_1", p0=250.0, q0=20.0, position_order=1, direction="TOP"
     )
 
-    net.create_switches(
-        id="SW53", voltage_level_id="VL2", name="Line 2 - Disconnector", node1=4, node2=7, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="BR8", voltage_level_id="VL2", name="Line 2 - Breaker", node1=7, node2=8, open=False, kind="BREAKER"
-    )
-    net.create_switches(
-        id="SW54", voltage_level_id="VL2", name="Line 2 - BB 1", node1=1, node2=8, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW55", voltage_level_id="VL2", name="Line 2 - BB 2", node1=2, node2=8, open=False, kind="DISCONNECTOR"
-    )
-
-    net.create_2_windings_transformers(
-        id="T-3",
-        voltage_level1_id="VL2",
-        node1=10,
-        voltage_level2_id="VL5",
-        node2=4,
-        b=1e-6,
-        g=1e-6,
-        r=0.5,
-        x=10,
-        rated_u1=380,
-        rated_u2=220,
-    )
-    net.create_switches(
-        id="SW56",
-        voltage_level_id="VL2",
-        name="Transformer 3 - Disconnector",
-        node1=11,
-        node2=10,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="BR9", voltage_level_id="VL2", name="Transformer 3 - Breaker", node1=12, node2=11, open=False, kind="BREAKER"
-    )
-    net.create_switches(
-        id="SW57", voltage_level_id="VL2", name="Transformer 3 - BB 1", node1=1, node2=12, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW58", voltage_level_id="VL2", name="Transformer 3 - BB 2", node1=2, node2=12, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SWT3", voltage_level_id="VL5", name="Transformer 3 - BB 1", node1=1, node2=4, open=False, kind="DISCONNECTOR"
-    )
-
-    net.create_2_windings_transformers(
-        id="T-4",
-        voltage_level1_id="VL2",
-        node1=13,
-        voltage_level2_id="VL5",
-        node2=5,
-        b=1e-6,
-        g=1e-6,
-        r=0.6,
-        x=12,
-        rated_u1=380,
-        rated_u2=220,
-    )
-    net.create_switches(
-        id="SW59",
-        voltage_level_id="VL2",
-        name="Transformer 4 - Disconnector",
-        node1=14,
-        node2=13,
-        open=False,
-        kind="DISCONNECTOR",
-    )
-    net.create_switches(
-        id="BR10", voltage_level_id="VL2", name="Transformer 4 - Breaker", node1=15, node2=14, open=False, kind="BREAKER"
-    )
-    net.create_switches(
-        id="SW60", voltage_level_id="VL2", name="Transformer 4 - BB 1", node1=1, node2=15, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW61", voltage_level_id="VL2", name="Transformer 4 - BB 2", node1=2, node2=15, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SWT4", voltage_level_id="VL5", name="Transformer 4 - BB 1", node1=1, node2=5, open=False, kind="DISCONNECTOR"
-    )
-
-    net.create_switches(id="C4", voltage_level_id="VL2", name="Coupler 4", node1=16, node2=17, open=False, kind="BREAKER")
-    net.create_switches(
-        id="SW62", voltage_level_id="VL2", name="Coupler 4 - BB 1", node1=1, node2=16, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW63", voltage_level_id="VL2", name="Coupler 4 - BB 2", node1=2, node2=16, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW64", voltage_level_id="VL2", name="Coupler 4 - BB 1", node1=1, node2=17, open=False, kind="DISCONNECTOR"
-    )
-    net.create_switches(
-        id="SW65", voltage_level_id="VL2", name="Coupler 4 - BB 2", node1=2, node2=17, open=False, kind="DISCONNECTOR"
-    )
     return net

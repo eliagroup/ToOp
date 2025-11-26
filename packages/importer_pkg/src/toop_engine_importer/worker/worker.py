@@ -5,21 +5,17 @@ Author:  Nico Westerbeck
 Created: 2024
 """
 
-import os
-import sys
 import time
 import traceback
 from functools import partial
-from logging import getLogger
 from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
 
 import jax
 import logbook
-import tyro
 from confluent_kafka import Producer
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_importer.worker.preprocessor import import_grid_model, preprocess
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
@@ -51,6 +47,12 @@ class Args(BaseModel):
     Contains arguments that static for each preprocessing run.
     """
 
+    producer: Producer
+    """The Kafka producer to push results and heartbeats to."""
+
+    consumer: LongRunningKafkaConsumer
+    """The Kafka consumer to listen for commands on."""
+
     kafka_broker: str = "localhost:9092"
     """The Kafka broker to connect to."""
 
@@ -76,6 +78,10 @@ class Args(BaseModel):
     loadflow_result_folder: Path = Path("loadflow_results")
     """A folder where the loadflow results are stored - this should be a NFS share together with the backend and
     optimizer. The importer needs this to store the initial loadflows"""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    """Pydantic configuration. Allows arbitrary types for Kafka producer. Without this, pydantic would try to
+    validate these types, which is not possible."""
 
 
 def adjust_folders(
@@ -186,24 +192,8 @@ def main(args: Args) -> None:
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
 
-    consumer = LongRunningKafkaConsumer(
-        topic=args.importer_command_topic,
-        bootstrap_servers=args.kafka_broker,
-        group_id="importer-worker",
-        client_id=instance_id,
-    )
-
-    producer = Producer(
-        {
-            "bootstrap.servers": args.kafka_broker,
-            "client.id": instance_id,
-            "log_level": 2,
-        },
-        logger=getLogger("confluent_kafka.producer"),
-    )
-
     def heartbeat_idle() -> None:
-        producer.produce(
+        args.producer.produce(
             args.importer_heartbeat_topic,
             value=serialize_message(
                 PreprocessHeartbeat(
@@ -214,7 +204,7 @@ def main(args: Args) -> None:
             ),
             key=instance_id.encode("utf-8"),
         )
-        producer.flush()
+        args.producer.flush()
 
     def heartbeat_working(
         stage: PreprocessStage,
@@ -223,7 +213,7 @@ def main(args: Args) -> None:
         start_time: float,
     ) -> None:
         logger.info(f"Preprocessing stage {stage} for job {preprocess_id} after {time.time() - start_time}s: {message}")
-        producer.produce(
+        args.producer.produce(
             args.importer_heartbeat_topic,
             value=serialize_message(
                 PreprocessHeartbeat(
@@ -239,17 +229,17 @@ def main(args: Args) -> None:
             ),
             key=preprocess_id.encode("utf-8"),
         )
-        producer.flush()
+        args.producer.flush()
         # Ping the command consumer to show we are still alive
-        consumer.heartbeat()
+        args.consumer.heartbeat()
 
     while True:
         command = idle_loop(
-            consumer=consumer,
+            consumer=args.consumer,
             send_heartbeat_fn=heartbeat_idle,
             heartbeat_interval_ms=args.heartbeat_interval_ms,
         )
-        consumer.start_processing()
+        args.consumer.start_processing()
         command = adjust_folders(
             command,
             args.unprocessed_gridfile_folder,
@@ -261,7 +251,7 @@ def main(args: Args) -> None:
             preprocess_id=command.preprocess_id,
             start_time=start_time,
         )
-        producer.produce(
+        args.producer.produce(
             args.importer_results_topic,
             value=serialize_message(
                 Result(
@@ -272,7 +262,7 @@ def main(args: Args) -> None:
             ),
             key=command.preprocess_id.encode(),
         )
-        producer.flush()
+        args.producer.flush()
         heartbeat_fn("start", "Preprocessing run started")
 
         try:
@@ -287,7 +277,7 @@ def main(args: Args) -> None:
 
             heartbeat_fn("end", "Preprocessing run done")
 
-            producer.produce(
+            args.producer.produce(
                 topic=args.importer_results_topic,
                 value=serialize_message(
                     Result(
@@ -301,7 +291,7 @@ def main(args: Args) -> None:
         except Exception as e:
             logger.error(f"Error while processing {command.preprocess_id}", e)
             logger.error(f"Traceback: {traceback.format_exc()}")
-            producer.produce(
+            args.producer.produce(
                 topic=args.importer_results_topic,
                 value=serialize_message(
                     Result(
@@ -312,16 +302,5 @@ def main(args: Args) -> None:
                 ),
                 key=command.preprocess_id.encode(),
             )
-        producer.flush()
-        consumer.stop_processing()
-
-
-if __name__ == "__main__":
-    logbook.StreamHandler(sys.stdout, level=logbook.INFO).push_application()
-    logbook.compat.redirect_logging()
-    if "IMPORTER_CONFIG_FILE" in os.environ:
-        with open(os.environ["IMPORTER_CONFIG_FILE"], "r") as f:
-            args = Args.model_validate_json(f.read())
-    else:
-        args = tyro.cli(Args)
-    main(args)
+        args.producer.flush()
+        args.consumer.stop_processing()

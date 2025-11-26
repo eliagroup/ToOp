@@ -2,11 +2,13 @@ import logging
 import sys
 import time
 from pathlib import Path
+from uuid import uuid4
 
 import logbook
 import pytest
 import ray
 from confluent_kafka import Consumer, Producer
+from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
 from toop_engine_topology_optimizer.ac.worker import main as ac_main
@@ -35,6 +37,7 @@ def launch_dc_worker(
     grid_folder: Path,
 ):
     logging.basicConfig(level=logging.INFO)
+    instance_id = str(uuid4())
     try:
         dc_main(
             DCArgs(
@@ -44,7 +47,20 @@ def launch_dc_worker(
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=grid_folder,
-                instance_id="dc_worker",
+                producer=Producer(
+                    {
+                        "bootstrap.servers": kafka_connection_str,
+                        "client.id": instance_id,
+                        "log_level": 2,
+                    },
+                    logger=logging.getLogger(f"dc_worker_producer_{instance_id}"),
+                ),
+                command_consumer=LongRunningKafkaConsumer(
+                    topic=kafka_command_topic,
+                    group_id="dc-worker",
+                    bootstrap_servers=kafka_connection_str,
+                    client_id=instance_id,
+                ),
             )
         )
     except SystemExit:
@@ -64,6 +80,7 @@ def launch_ac_worker(
 ):
     logging.basicConfig(level=logging.INFO)
     print("Starting AC worker")
+    instance_id = str(uuid4())
     try:
         ac_main(
             ACArgs(
@@ -73,8 +90,27 @@ def launch_ac_worker(
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=grid_folder,
-                instance_id="ac_worker",
                 loadflow_result_folder=loadflow_result_folder,
+                producer=Producer(
+                    {
+                        "bootstrap.servers": kafka_connection_str,
+                        "client.id": instance_id,
+                        "log_level": 2,
+                    },
+                    logger=logging.getLogger(f"ac_worker_producer_{instance_id}"),
+                ),
+                command_consumer=LongRunningKafkaConsumer(
+                    topic=kafka_command_topic,
+                    group_id="ac_optimizer",
+                    bootstrap_servers=kafka_connection_str,
+                    client_id=instance_id,
+                ),
+                result_consumer=LongRunningKafkaConsumer(
+                    topic=kafka_results_topic,
+                    group_id=f"ac_listener_{instance_id}_{uuid4()}",
+                    bootstrap_servers=kafka_connection_str,
+                    client_id=instance_id,
+                ),
             )
         )
     except SystemExit:

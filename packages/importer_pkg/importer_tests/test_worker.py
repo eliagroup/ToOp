@@ -1,5 +1,7 @@
+from logging import getLogger
 from multiprocessing import Process, set_start_method
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from confluent_kafka import Consumer, Producer
@@ -133,12 +135,27 @@ def test_main_simple(
     producer.flush()
 
     with pytest.raises(SystemExit):
+        instance_id = str(uuid4())
         main(
             Args(
                 importer_command_topic=kafka_command_topic,
                 importer_heartbeat_topic=kafka_heartbeat_topic,
                 importer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
+                producer=Producer(
+                    {
+                        "bootstrap.servers": kafka_connection_str,
+                        "client.id": instance_id,
+                        "log_level": 2,
+                    },
+                    logger=getLogger(f"ac_worker_producer_{instance_id}"),
+                ),
+                consumer=LongRunningKafkaConsumer(
+                    topic=kafka_command_topic,
+                    group_id="importer_worker",
+                    bootstrap_servers=kafka_connection_str,
+                    client_id=instance_id,
+                ),
             )  # type: ignore
         )
 
@@ -181,6 +198,7 @@ def test_main(
     consumer.subscribe([kafka_results_topic])
 
     with pytest.raises(SystemExit):
+        instance_id = str(uuid4())
         main(
             Args(
                 importer_command_topic=kafka_command_topic,
@@ -190,6 +208,20 @@ def test_main(
                 unprocessed_gridfile_folder=ucte_file.parent,
                 processed_gridfile_folder=output_path,
                 loadflow_result_folder=loadflow_path,
+                producer=Producer(
+                    {
+                        "bootstrap.servers": kafka_connection_str,
+                        "client.id": instance_id,
+                        "log_level": 2,
+                    },
+                    logger=getLogger(f"ac_worker_producer_{instance_id}"),
+                ),
+                consumer=LongRunningKafkaConsumer(
+                    topic=kafka_command_topic,
+                    group_id="importer_worker",
+                    bootstrap_servers=kafka_connection_str,
+                    client_id=instance_id,
+                ),
             )  # type: ignore
         )
 

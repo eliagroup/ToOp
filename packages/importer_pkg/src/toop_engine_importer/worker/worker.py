@@ -47,12 +47,6 @@ class Args(BaseModel):
     Contains arguments that static for each preprocessing run.
     """
 
-    producer: Producer
-    """The Kafka producer to push results and heartbeats to."""
-
-    consumer: LongRunningKafkaConsumer
-    """The Kafka consumer to listen for commands on."""
-
     kafka_broker: str = "localhost:9092"
     """The Kafka broker to connect to."""
 
@@ -185,15 +179,19 @@ def idle_loop(
         logger.warning(f"Received unknown command, dropping: {command}")
 
 
-def main(args: Args) -> None:
+def main(
+    args: Args, producer_factory: Callable[[], Producer], consumer_factory: Callable[[], LongRunningKafkaConsumer]
+) -> None:
     """Start main function of the worker."""
     instance_id = str(uuid4())
     logger.info(f"Starting importer instance {instance_id} with arguments {args}")
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
+    producer = producer_factory()
+    consumer = consumer_factory()
 
     def heartbeat_idle() -> None:
-        args.producer.produce(
+        producer.produce(
             args.importer_heartbeat_topic,
             value=serialize_message(
                 PreprocessHeartbeat(
@@ -204,7 +202,7 @@ def main(args: Args) -> None:
             ),
             key=instance_id.encode("utf-8"),
         )
-        args.producer.flush()
+        producer.flush()
 
     def heartbeat_working(
         stage: PreprocessStage,
@@ -213,7 +211,7 @@ def main(args: Args) -> None:
         start_time: float,
     ) -> None:
         logger.info(f"Preprocessing stage {stage} for job {preprocess_id} after {time.time() - start_time}s: {message}")
-        args.producer.produce(
+        producer.produce(
             args.importer_heartbeat_topic,
             value=serialize_message(
                 PreprocessHeartbeat(
@@ -229,17 +227,17 @@ def main(args: Args) -> None:
             ),
             key=preprocess_id.encode("utf-8"),
         )
-        args.producer.flush()
+        producer.flush()
         # Ping the command consumer to show we are still alive
-        args.consumer.heartbeat()
+        consumer.heartbeat()
 
     while True:
         command = idle_loop(
-            consumer=args.consumer,
+            consumer=consumer,
             send_heartbeat_fn=heartbeat_idle,
             heartbeat_interval_ms=args.heartbeat_interval_ms,
         )
-        args.consumer.start_processing()
+        consumer.start_processing()
         command = adjust_folders(
             command,
             args.unprocessed_gridfile_folder,
@@ -251,7 +249,7 @@ def main(args: Args) -> None:
             preprocess_id=command.preprocess_id,
             start_time=start_time,
         )
-        args.producer.produce(
+        producer.produce(
             args.importer_results_topic,
             value=serialize_message(
                 Result(
@@ -262,7 +260,7 @@ def main(args: Args) -> None:
             ),
             key=command.preprocess_id.encode(),
         )
-        args.producer.flush()
+        producer.flush()
         heartbeat_fn("start", "Preprocessing run started")
 
         try:
@@ -277,7 +275,7 @@ def main(args: Args) -> None:
 
             heartbeat_fn("end", "Preprocessing run done")
 
-            args.producer.produce(
+            producer.produce(
                 topic=args.importer_results_topic,
                 value=serialize_message(
                     Result(
@@ -291,7 +289,7 @@ def main(args: Args) -> None:
         except Exception as e:
             logger.error(f"Error while processing {command.preprocess_id}", e)
             logger.error(f"Traceback: {traceback.format_exc()}")
-            args.producer.produce(
+            producer.produce(
                 topic=args.importer_results_topic,
                 value=serialize_message(
                     Result(
@@ -302,5 +300,5 @@ def main(args: Args) -> None:
                 ),
                 key=command.preprocess_id.encode(),
             )
-        args.producer.flush()
-        args.consumer.stop_processing()
+        producer.flush()
+        consumer.stop_processing()

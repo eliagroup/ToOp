@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Literal, Union
 from unittest.mock import patch
 
 import pytest
@@ -23,6 +24,43 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     ResultUnion,
     TopologyPushResult,
 )
+
+
+def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> Producer:
+    producer = Producer(
+        {
+            "bootstrap.servers": kafka_broker,
+            "client.id": instance_id,
+            "log_level": log_level,
+        },
+        logger=logging.getLogger(f"ac_worker_producer_{instance_id}"),
+    )
+    return producer
+
+
+def create_consumer(
+    type: Literal["LongRunningKafkaConsumer", "Consumer"], topic: str, group_id: str, bootstrap_servers: str, client_id: str
+) -> Union[LongRunningKafkaConsumer, Consumer]:
+    if type == "LongRunningKafkaConsumer":
+        consumer = LongRunningKafkaConsumer(
+            topic=topic,
+            group_id=group_id,
+            bootstrap_servers=bootstrap_servers,
+            client_id=client_id,
+        )
+    elif type == "Consumer":
+        consumer = Consumer(
+            {
+                "bootstrap.servers": bootstrap_servers,
+                "group.id": group_id,
+                "auto.offset.reset": "earliest",
+                "enable.auto.commit": True,
+                "client.id": client_id,
+            }
+        )
+    else:
+        raise ValueError(f"Unknown consumer type: {type}")
+    return consumer
 
 
 @pytest.mark.timeout(60)
@@ -106,21 +144,15 @@ def test_main_simple(
                 heartbeat_interval_ms=1000,
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=processed_gridfile_folder,
-                producer=Producer(
-                    {
-                        "bootstrap.servers": kafka_connection_str,
-                        "client.id": "dc_worker",
-                        "log_level": 2,
-                    },
-                    logger=logging.getLogger("dc_worker_producer"),
-                ),
-                command_consumer=LongRunningKafkaConsumer(
-                    topic=kafka_command_topic,
-                    group_id="dc_optimizer",
-                    bootstrap_servers=kafka_connection_str,
-                    client_id="dc_worker",
-                ),
-            )
+            ),
+            lambda: create_producer(kafka_connection_str, "dc_worker"),
+            lambda: create_consumer(
+                "LongRunningKafkaConsumer",
+                kafka_command_topic,
+                "dc_optimizer",
+                kafka_connection_str,
+                "dc_worker",
+            ),
         )
 
 
@@ -173,21 +205,15 @@ def test_main(
                 optimizer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=grid_folder,
-                producer=Producer(
-                    {
-                        "bootstrap.servers": kafka_connection_str,
-                        "client.id": "dc_worker",
-                        "log_level": 2,
-                    },
-                    logger=logging.getLogger("dc_worker_producer"),
-                ),
-                command_consumer=LongRunningKafkaConsumer(
-                    topic=kafka_command_topic,
-                    group_id="dc_optimizer",
-                    bootstrap_servers=kafka_connection_str,
-                    client_id="dc_worker",
-                ),
-            )
+            ),
+            lambda: create_producer(kafka_connection_str, "dc_worker"),
+            lambda: create_consumer(
+                "LongRunningKafkaConsumer",
+                kafka_command_topic,
+                "dc_optimizer",
+                kafka_connection_str,
+                "dc_worker",
+            ),
         )
 
     # subscribe to the results topic

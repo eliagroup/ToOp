@@ -9,7 +9,7 @@ from uuid import uuid4
 import jax
 import logbook
 from confluent_kafka import Producer
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
@@ -64,16 +64,6 @@ class Args(BaseModel):
     """The parent folder where all the grid files are stored. In production this is a shared network
     filesystem between the backend and all workers. When a command is received, this will be pre-
     fixed to the static information file"""
-
-    producer: Producer
-    """The Kafka producer to push results and heartbeats to."""
-
-    command_consumer: LongRunningKafkaConsumer
-    """The Kafka consumer to consume commands."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    """Pydantic configuration. Allows arbitrary types for Kafka producer. Without this, pydantic would try to
-    validate these types, which is not possible."""
 
 
 def idle_loop(
@@ -243,7 +233,9 @@ def optimization_loop(
         )
 
 
-def main(args: Args) -> None:
+def main(
+    args: Args, producer_factory: Callable[[], Producer], command_consumer_factory: Callable[[], LongRunningKafkaConsumer]
+) -> None:
     """Start the worker and run the optimization loop."""
     instance_id = str(uuid4())
     logger.info(f"Starting DC worker {instance_id} with config {args}")
@@ -252,8 +244,8 @@ def main(args: Args) -> None:
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
 
-    consumer = args.command_consumer
-    producer = args.producer
+    consumer = command_consumer_factory()
+    producer = producer_factory()
 
     def send_heartbeat(message: HeartbeatUnion, ping_consumer: bool) -> None:
         heartbeat = Heartbeat(

@@ -16,6 +16,11 @@ jobs:
   fetch-title:
     runs-on: ubuntu-latest
     steps:
+
+      - name: Install commitizen
+        run: |
+          pipx install commitizen
+
       - name: Show PR title
         run: |
           echo "Pull request title:"

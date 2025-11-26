@@ -784,7 +784,7 @@ pyzmq==27.1.0
     #   jupyter-server
 qdax==0.4.1
     # via toop-engine-topology-optimizer
-ray==2.49.2
+ray==2.52.0
     # via
     #   toop-engine-contingency-analysis
     #   toop-engine-dc-solver

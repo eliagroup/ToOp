@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -42,6 +41,8 @@ def test_main_simple(
     kafka_connection_str: str,
     processed_gridfile_folder: Path,
     loadflow_result_folder: Path,
+    create_consumer: callable,
+    create_producer: callable,
 ) -> None:
     producer = Producer(
         {
@@ -63,27 +64,22 @@ def test_main_simple(
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=processed_gridfile_folder,
                 loadflow_result_folder=loadflow_result_folder,
-                producer=Producer(
-                    {
-                        "bootstrap.servers": kafka_connection_str,
-                        "client.id": instance_id,
-                        "log_level": 2,
-                    },
-                    logger=logging.getLogger(f"ac_worker_producer_{instance_id}"),
-                ),
-                command_consumer=LongRunningKafkaConsumer(
-                    topic=kafka_command_topic,
-                    group_id="ac_optimizer",
-                    bootstrap_servers=kafka_connection_str,
-                    client_id=instance_id,
-                ),
-                result_consumer=LongRunningKafkaConsumer(
-                    topic=kafka_results_topic,
-                    group_id=f"ac_listener_{instance_id}_{uuid4()}",
-                    bootstrap_servers=kafka_connection_str,
-                    client_id=instance_id,
-                ),
-            )
+            ),
+            lambda: create_producer(kafka_connection_str, instance_id, log_level=2),
+            lambda: create_consumer(
+                "LongRunningKafkaConsumer",
+                topic=kafka_command_topic,
+                group_id="ac_optimizer",
+                bootstrap_servers=kafka_connection_str,
+                client_id=instance_id,
+            ),
+            lambda: create_consumer(
+                "LongRunningKafkaConsumer",
+                topic=kafka_results_topic,
+                group_id=f"ac_listener_{instance_id}_{uuid4()}",
+                bootstrap_servers=kafka_connection_str,
+                client_id=instance_id,
+            ),
         )
 
 
@@ -320,6 +316,8 @@ def test_main(
     topopushresult: Result,
     processed_gridfile_folder: Path,
     loadflow_result_folder: Path,
+    create_consumer: callable,
+    create_producer: callable,
 ) -> None:
     grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder=str(grid_folder / "case57"))]
     parameters = ACOptimizerParameters(
@@ -354,30 +352,26 @@ def test_main(
                 optimizer_command_topic=kafka_command_topic,
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
                 optimizer_results_topic=kafka_results_topic,
+                heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=processed_gridfile_folder,
                 loadflow_result_folder=loadflow_result_folder,
-                producer=Producer(
-                    {
-                        "bootstrap.servers": kafka_connection_str,
-                        "client.id": instance_id,
-                        "log_level": 2,
-                    },
-                    logger=logging.getLogger(f"ac_worker_producer_{instance_id}"),
-                ),
-                command_consumer=LongRunningKafkaConsumer(
-                    topic=kafka_command_topic,
-                    group_id="ac_optimizer",
-                    bootstrap_servers=kafka_connection_str,
-                    client_id=instance_id,
-                ),
-                result_consumer=LongRunningKafkaConsumer(
-                    topic=kafka_results_topic,
-                    group_id=f"ac_listener_{instance_id}_{uuid4()}",
-                    bootstrap_servers=kafka_connection_str,
-                    client_id=instance_id,
-                ),
-            )
+            ),
+            lambda: create_producer(kafka_connection_str, instance_id, log_level=2),
+            lambda: create_consumer(
+                "LongRunningKafkaConsumer",
+                topic=kafka_command_topic,
+                group_id="ac_optimizer",
+                bootstrap_servers=kafka_connection_str,
+                client_id=instance_id,
+            ),
+            lambda: create_consumer(
+                "LongRunningKafkaConsumer",
+                topic=kafka_results_topic,
+                group_id=f"ac_listener_{instance_id}_{uuid4()}",
+                bootstrap_servers=kafka_connection_str,
+                client_id=instance_id,
+            ),
         )
     consumer = Consumer(
         {

@@ -48,9 +48,6 @@ class Args(DCArgs):
     filesystem between the backend and all workers. Loadflow results are too large to be sent directly
     over kafka. Only needed for AC"""
 
-    result_consumer: LongRunningKafkaConsumer
-    """The Kafka consumer to consume results."""
-
 
 @dataclass
 class WorkerData:
@@ -233,7 +230,12 @@ def idle_loop(
         worker_data.command_consumer.commit()
 
 
-def main(args: Args) -> None:
+def main(
+    args: Args,
+    producer_factory: Callable[[], Producer],
+    command_consumer_factory: Callable[[], LongRunningKafkaConsumer],
+    result_consumer_factory: Callable[[], LongRunningKafkaConsumer],
+) -> None:
     """Run the main AC worker loop.
 
     Which for some reason has the same command line arguments as the DC worker :D
@@ -242,6 +244,12 @@ def main(args: Args) -> None:
     ----------
     args : Args
         The command line arguments
+    producer_factory : Callable[[], Producer]
+        A factory function to create a Kafka producer
+    command_consumer_factory : Callable[[], LongRunningKafkaConsumer]
+        A factory function to create a Kafka consumer for commands
+    result_consumer_factory : Callable[[], LongRunningKafkaConsumer]
+        A factory function to create a Kafka consumer for results
 
     Raises
     ------
@@ -258,11 +266,11 @@ def main(args: Args) -> None:
     # We create two separate consumers for the command and result topics as we don't want to
     # catch results during the idle loop.
     worker_data = WorkerData(
-        command_consumer=args.command_consumer,
+        command_consumer=command_consumer_factory(),
         # Create a results consumer that will listen to results from any DC optimizers
         # Make sure to use a unique group.id for each instance to avoid conflicts
-        result_consumer=args.result_consumer,
-        producer=args.producer,
+        result_consumer=result_consumer_factory(),
+        producer=producer_factory(),
         db=create_session(),
     )
 

@@ -2,7 +2,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Literal, Union
 
 import chex
 import docker
@@ -10,11 +10,13 @@ import jax
 import numpy as np
 import pandera
 import pytest
+from confluent_kafka import Consumer, Producer
 from docker import DockerClient
 from docker.models.containers import Container
 from jaxtyping import Int
 from omegaconf import DictConfig
 from sqlmodel import Session, SQLModel, create_engine, select
+from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_dc_solver.example_grids import case14_pandapower, case57_data_powsybl, case57_non_converging, oberrhein_data
 from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -391,3 +393,51 @@ def processed_gridfile_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def loadflow_result_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Temporary folder for loadflow results"""
     return tmp_path_factory.mktemp("loadflow_results")
+
+
+@pytest.fixture
+def create_producer():
+    def _create(kafka_broker: str, instance_id: str, log_level: int = 2) -> Producer:
+        return Producer(
+            {
+                "bootstrap.servers": kafka_broker,
+                "client.id": instance_id,
+                "log_level": log_level,
+            },
+            logger=logging.getLogger(f"ac_worker_producer_{instance_id}"),
+        )
+
+    return _create
+
+
+@pytest.fixture
+def create_consumer():
+    def _create(
+        type: Literal["LongRunningKafkaConsumer", "Consumer"],
+        topic: str,
+        group_id: str,
+        bootstrap_servers: str,
+        client_id: str,
+    ) -> Union[LongRunningKafkaConsumer, Consumer]:
+        if type == "LongRunningKafkaConsumer":
+            consumer = LongRunningKafkaConsumer(
+                topic=topic,
+                group_id=group_id,
+                bootstrap_servers=bootstrap_servers,
+                client_id=client_id,
+            )
+        elif type == "Consumer":
+            consumer = Consumer(
+                {
+                    "bootstrap.servers": bootstrap_servers,
+                    "group.id": group_id,
+                    "auto.offset.reset": "earliest",
+                    "enable.auto.commit": True,
+                    "client.id": client_id,
+                }
+            )
+        else:
+            raise ValueError(f"Unknown consumer type: {type}")
+        return consumer
+
+    return _create

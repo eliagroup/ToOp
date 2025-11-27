@@ -49,7 +49,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-topology_optimizer/optimizer_tests/data/*
+packages/topology_optimizer_pkg/optimizer_tests/data/*
 tensorboard/
 
 # Translations

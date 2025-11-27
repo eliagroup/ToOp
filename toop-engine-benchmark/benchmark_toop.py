@@ -121,13 +121,27 @@ def extract_dc_quality(res: dict) -> dict:
     best = res.get("best_topos", [])
     fitnesses = [t.get("metrics").get("fitness") for t in best if t.get("metrics")]
     splits = [t.get("metrics").get("extra_scores", {}).get("split_subs", {}) for t in best if t.get("metrics")]
+    runtime_seconds = res["args"]["ga_config"].get("runtime_seconds", None)
+    total_branch_combis = res.get("total_branch_combis")
+    total_inj_combis = res.get("total_inj_combis")
+    n_iterations = res.get("iteration")
+    branch_combis_per_s = None
+    try:
+        if runtime_seconds not in (None, 0) and total_branch_combis is not None:
+            branch_combis_per_s = float(total_branch_combis) / float(runtime_seconds)
+    except (TypeError, ValueError, ZeroDivisionError):
+        branch_combis_per_s = None
     return {
         "n_best": len(best),
         "fitness_max": max(fitnesses) if fitnesses else None,
         "fitness_mean": mean(fitnesses) if fitnesses else None,
         "split_subs_mean": mean([s for s in splits if s is not None]) if splits else None,
         "descriptor_coverage_percent": res.get("descriptor_coverage_percent"),  # add via optimizer extension
-        "iterations": res.get("n_iterations"),
+        "n_iterations": n_iterations,
+        "runtime_seconds": runtime_seconds,
+        "total_branch_combis": total_branch_combis,
+        "total_inj_combis": total_inj_combis,
+        "branch_combis_per_s": branch_combis_per_s,
     }
 
 
@@ -196,11 +210,22 @@ def benchmark_single_grid(
     res_path = run_dir / "res.json"
     res = load_res(res_path)
     dc_quality = extract_dc_quality(res)
+    timings = timer.summary()
+
+    runtime_seconds = dc_quality.get("runtime_seconds")
+    dc_timings = timings.get("dc_optimization")
+    if dc_timings and runtime_seconds is not None:
+        try:
+            runtime_overhead = float(dc_timings.get("total_s", 0.0)) - float(runtime_seconds)
+        except (TypeError, ValueError):
+            runtime_overhead = None
+        if runtime_overhead is not None:
+            dc_timings["runtime_overhead_s"] = runtime_overhead
 
     return {
         "grid": str(grid),
         "topology_paths": str(topology_paths[0].parent) if topology_paths else None,
-        "timings": timer.summary(),
+        "timings": timings,
         "gpu_samples": None,
         "dc_quality": dc_quality,
     }

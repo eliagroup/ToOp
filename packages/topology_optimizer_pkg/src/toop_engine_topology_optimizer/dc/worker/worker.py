@@ -2,7 +2,6 @@
 
 import time
 from functools import partial
-from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
@@ -60,11 +59,6 @@ class Args(BaseModel):
 
     heartbeat_interval_ms: int = 1000
     """The interval in milliseconds to send heartbeats."""
-
-    processed_gridfile_folder: Path = Path("gridfiles")
-    """The parent folder where all the grid files are stored. In production this is a shared network
-    filesystem between the backend and all workers. When a command is received, this will be pre-
-    fixed to the static information file"""
 
 
 def idle_loop(

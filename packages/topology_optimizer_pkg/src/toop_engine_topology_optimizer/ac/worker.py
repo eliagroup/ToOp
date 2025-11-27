@@ -5,7 +5,6 @@ import traceback
 from dataclasses import dataclass
 from functools import partial
 from logging import getLogger
-from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
@@ -44,11 +43,6 @@ class Args(DCArgs):
 
     Mostly the same as the DC worker except for an additional loadflow results folder
     """
-
-    loadflow_result_folder: Path = Path("loadflow_results")
-    """The parent folder where all loadflow results are stored. In production this is a shared network
-    filesystem between the backend and all workers. Loadflow results are too large to be sent directly
-    over kafka. Only needed for AC"""
 
 
 @dataclass

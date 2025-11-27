@@ -864,8 +864,6 @@ def get_va_diff_results(
     contingency : Contingency
         The contingency to compute the voltage angle difference results for.
         Will also calculate the va_diff of the outaged elements if they are lines or transformers
-    node_to_switch_map: dict[int, list[int]]
-        A mapping from nodes at branches and their closest Circuit breaker switches
 
     Returns
     -------

@@ -1,6 +1,6 @@
 # Assessment config for benchmark.assess_benchmarks
 # Default paths; override on CLI: root=..., save=..., print=false
-root: /workspaces/ToOp/data
+root: ${oc.env:PWD}/data
 save: null  # e.g. /workspaces/ToOp/data/aggregate_report.json
 print: true
 

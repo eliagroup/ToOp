@@ -26,7 +26,7 @@ logger = logbook.Logger(__name__)
 
 
 @hydra.main(config_path="configs", config_name="ms_benchmark.yaml", version_base="1.2")
-def main(cfg: DictConfig) -> None:  # TODO: Refactor to remove subprocess use
+def main(cfg: DictConfig) -> None:  # FIXME: Does not work for ToOp engine
     """Run benchmark tasks based on the provided configuration.
 
     Parameters

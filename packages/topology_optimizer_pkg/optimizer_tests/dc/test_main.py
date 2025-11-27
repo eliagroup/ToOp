@@ -3,6 +3,7 @@ import os
 
 import numpy as np
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from jax import numpy as jnp
 from toop_engine_dc_solver.jax.topology_computations import extract_sub_ids
 from toop_engine_dc_solver.jax.types import ActionSet, int_max
@@ -59,13 +60,13 @@ def test_main(tmp_path: str, static_information_file: str) -> None:
             runtime_seconds=10,
             iterations_per_epoch=2,
         ),
-        stats_dir=str(tmp_path),
+        stats_dir=str("res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
     )
 
-    stats_file = os.path.join(tmp_path, "res.json")
-
-    main(args)
+    stats_file = os.path.join(tmp_path, "res_dir", "res.json")
+    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+    main(args, processed_gridfile_fs=processed_gridfile_fs)
     assert os.path.exists(stats_file)
 
     with open(stats_file, "r") as f:
@@ -86,13 +87,13 @@ def test_main_dist(tmp_path: str, static_information_file: str) -> None:
         lf_config=LoadflowSolverParameters(
             distributed=True,
         ),
-        stats_dir=str(tmp_path),
+        stats_dir=str("res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
     )
 
-    stats_file = os.path.join(tmp_path, "res.json")
-
-    main(args)
+    stats_file = os.path.join(tmp_path, "res_dir", "res.json")
+    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+    main(args, processed_gridfile_fs=processed_gridfile_fs)
     assert os.path.exists(stats_file)
 
     with open(stats_file, "r") as f:
@@ -110,12 +111,13 @@ def test_main_double_limits(tmp_path: str, static_information_file: str) -> None
             runtime_seconds=10,
             iterations_per_epoch=2,
         ),
-        stats_dir=str(tmp_path),
+        stats_dir=str("res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
         double_limits=(0.9, 0.95),
     )
 
-    main(args)
+    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+    main(args, processed_gridfile_fs=processed_gridfile_fs)
 
     # Make sure there are no errors
     invalid_args = CLIArgs(
@@ -128,7 +130,7 @@ def test_main_double_limits(tmp_path: str, static_information_file: str) -> None
         double_limits=(1.0, 0.95),
     )
     with pytest.raises(ValueError):
-        main(invalid_args)
+        main(invalid_args, processed_gridfile_fs=processed_gridfile_fs)
 
 
 @pytest.mark.timeout(120)
@@ -139,13 +141,13 @@ def test_main_weight_zero(tmp_path: str, static_information_file: str) -> None:
             target_metrics=(("overload_energy_n_1", 0.0),),
             iterations_per_epoch=2,
         ),
-        stats_dir=str(tmp_path),
+        stats_dir=str("res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
         double_limits=(0.9, 0.95),
     )
-    stats_file = os.path.join(tmp_path, "res.json")
-
-    main(args)
+    stats_file = os.path.join(tmp_path, "res_dir", "res.json")
+    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+    main(args, processed_gridfile_fs=processed_gridfile_fs)
     assert os.path.exists(stats_file)
 
     with open(stats_file, "r") as f:
@@ -168,14 +170,15 @@ def test_main_multi_objective(tmp_path: str, static_information_file: str) -> No
             ),
             iterations_per_epoch=2,
         ),
-        stats_dir=str(tmp_path),
+        stats_dir=str("res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
         double_limits=(0.9, 0.95),
     )
 
-    stats_file = os.path.join(tmp_path, "res.json")
+    stats_file = os.path.join(tmp_path, "res_dir", "res.json")
 
-    main(args)
+    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+    main(args, processed_gridfile_fs=processed_gridfile_fs)
     assert os.path.exists(stats_file)
 
     with open(stats_file, "r") as f:
@@ -197,7 +200,7 @@ def test_main_multi_objective(tmp_path: str, static_information_file: str) -> No
 def test_main_mapelites(tmp_path: str, static_information_file: str) -> None:
     batch_size = 16
     args = CLIArgs(
-        stats_dir=str(tmp_path),
+        stats_dir=str("res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
         ga_config=BatchedMEParameters(
             observed_metrics=(
@@ -214,9 +217,10 @@ def test_main_mapelites(tmp_path: str, static_information_file: str) -> None:
         lf_config=LoadflowSolverParameters(batch_size=batch_size),
     )
 
-    stats_file = os.path.join(tmp_path, "res.json")
+    stats_file = os.path.join(tmp_path, "res_dir", "res.json")
 
-    main(args)
+    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+    main(args, processed_gridfile_fs=processed_gridfile_fs)
     assert os.path.exists(stats_file)
 
     with open(stats_file, "r") as f:
@@ -238,7 +242,7 @@ def test_main_mapelites(tmp_path: str, static_information_file: str) -> None:
 def test_main_mapelites_2D(tmp_path: str, static_information_file: str) -> None:
     batch_size = 16
     args = CLIArgs(
-        stats_dir=str(tmp_path),
+        stats_dir=str("res_dir"),
         fixed_files=(str(static_information_file), str(static_information_file)),
         ga_config=BatchedMEParameters(
             observed_metrics=(
@@ -260,9 +264,10 @@ def test_main_mapelites_2D(tmp_path: str, static_information_file: str) -> None:
         lf_config=LoadflowSolverParameters(batch_size=batch_size),
     )
 
-    stats_file = os.path.join(tmp_path, "res.json")
+    stats_file = os.path.join(tmp_path, "res_dir", "res.json")
 
-    main(args)
+    processed_gridfile_fs = DirFileSystem(str(tmp_path))
+    main(args, processed_gridfile_fs=processed_gridfile_fs)
     assert os.path.exists(stats_file)
 
     with open(stats_file, "r") as f:

@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 from confluent_kafka import Consumer, Producer
+from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_dc_solver.preprocess.network_data import load_network_data
@@ -50,17 +51,19 @@ def test_main_simple(
     command = Command(command=ShutdownCommand())
     producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(processed_gridfile_folder))
     with pytest.raises(SystemExit):
         main(
-            Args(
+            args=Args(
                 optimizer_command_topic=kafka_command_topic,
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
                 optimizer_results_topic=kafka_results_topic,
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
-                processed_gridfile_folder=processed_gridfile_folder,
-                loadflow_result_folder=loadflow_result_folder,
-            )
+            ),
+            processed_gridfile_fs=processed_gridfile_fs,
+            loadflow_result_fs=loadflow_result_fs,
         )
 
 
@@ -123,7 +126,6 @@ def test_idle_loop_no_message() -> None:
             worker_data=worker_data,
             send_heartbeat_fn=lambda hb: heartbeats.append(hb),
             heartbeat_interval_ms=100,
-            parent_grid_folder=Path("this/path/does/not/exist"),
         )
     assert len(heartbeats) == 2
     assert worker_data.command_consumer.poll.call_count == 2
@@ -156,9 +158,8 @@ def test_idle_loop_optimization_started() -> None:
         worker_data=worker_data,
         send_heartbeat_fn=lambda hb: heartbeats.append(hb),
         heartbeat_interval_ms=100,
-        parent_grid_folder=Path("this/path/does/"),
     )
-    assert parsed_start_command.grid_files[0].grid_folder == "this/path/does/not/exist"
+    assert parsed_start_command.grid_files[0].grid_folder == "not/exist"
 
     assert len(heartbeats) == 1
     assert worker_data.command_consumer.poll.call_count == 1
@@ -172,7 +173,7 @@ def test_optimization_loop(
     topopushresult: Result,
     loadflow_result_folder: Path,
 ) -> None:
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder=str(grid_folder / "case57"))]
+    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
     parameters = ACOptimizerParameters(
         ga_config=ACGAParameters(
             runtime_seconds=1,
@@ -204,6 +205,8 @@ def test_optimization_loop(
     def send_heartbeat_fn(heartbeat: HeartbeatUnion) -> None:
         heartbeats.append(heartbeat)
 
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
     optimization_loop(
         ac_params=parameters,
         grid_files=grid_files,
@@ -211,7 +214,8 @@ def test_optimization_loop(
         send_result_fn=send_result_fn,
         send_heartbeat_fn=send_heartbeat_fn,
         optimization_id="test",
-        loadflow_result_folder=loadflow_result_folder,
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
     )
 
     assert len(results) >= 3
@@ -228,7 +232,7 @@ def test_optimization_loop_error_handling(
     grid_folder: Path,
     loadflow_result_folder: Path,
 ) -> None:
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder=str(grid_folder / "case57"))]
+    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
     parameters = ACOptimizerParameters()
 
     # Mock the entire kafka ecosystem
@@ -251,6 +255,8 @@ def test_optimization_loop_error_handling(
     def send_heartbeat_fn(heartbeat: HeartbeatUnion) -> None:
         heartbeats.append(heartbeat)
 
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
     with patch("toop_engine_topology_optimizer.ac.worker.initialize_optimization") as init_mock:
         init_mock.side_effect = Exception("Test error")
         optimization_loop(
@@ -260,7 +266,8 @@ def test_optimization_loop_error_handling(
             send_result_fn=send_result_fn,
             send_heartbeat_fn=send_heartbeat_fn,
             optimization_id="test",
-            loadflow_result_folder=loadflow_result_folder,
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
 
     assert len(results) == 1
@@ -269,6 +276,7 @@ def test_optimization_loop_error_handling(
 
     results = []
     heartbeats = []
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     with patch("toop_engine_topology_optimizer.ac.worker.run_epoch") as run_mock:
         run_mock.side_effect = Exception("Test error")
         optimization_loop(
@@ -278,7 +286,8 @@ def test_optimization_loop_error_handling(
             send_result_fn=send_result_fn,
             send_heartbeat_fn=send_heartbeat_fn,
             optimization_id="test",
-            loadflow_result_folder=loadflow_result_folder,
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
 
     assert len(results) == 2
@@ -298,7 +307,7 @@ def test_main(
     processed_gridfile_folder: Path,
     loadflow_result_folder: Path,
 ) -> None:
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder=str(grid_folder / "case57"))]
+    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
     parameters = ACOptimizerParameters(
         ga_config=ACGAParameters(
             runtime_seconds=1, pull_prob=1.0, reconnect_prob=0.0, close_coupler_prob=0.0, seed=42, runner_processes=8
@@ -325,6 +334,8 @@ def test_main(
     producer.produce(kafka_results_topic, value=serialize_message(topopushresult.model_dump_json()), partition=0)
     producer.flush()
 
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
     with pytest.raises(SystemExit):
         main(
             Args(
@@ -332,9 +343,9 @@ def test_main(
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
                 optimizer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
-                processed_gridfile_folder=processed_gridfile_folder,
-                loadflow_result_folder=loadflow_result_folder,
-            )
+            ),
+            processed_gridfile_fs=processed_gridfile_fs,
+            loadflow_result_fs=loadflow_result_fs,
         )
 
     consumer = Consumer(

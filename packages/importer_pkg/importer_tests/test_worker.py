@@ -224,6 +224,9 @@ def test_main_idle(
 ) -> None:
     set_start_method("spawn")
     # Create an idling main process
+    unprocessed_gridfile_fs = LocalFileSystem()
+    processed_gridfile_fs = LocalFileSystem()
+    loadflow_result_fs = LocalFileSystem()
     p = Process(
         target=main,
         args=(
@@ -234,6 +237,9 @@ def test_main_idle(
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
             ),
+            unprocessed_gridfile_fs,
+            processed_gridfile_fs,
+            loadflow_result_fs,
         ),
     )
     p.start()

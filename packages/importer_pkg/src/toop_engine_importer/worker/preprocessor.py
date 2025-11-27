@@ -53,7 +53,12 @@ def import_grid_model(
         A filesystem where the unprocessed gridfiles are stored. The concrete folder to use is determined by the start
         command, which contains an import location relative to the root of the unprocessed_gridfile_fs.
     processed_gridfile_fs: AbstractFileSystem
-        A filesystem where the processed gridfiles are stored. A new folder is created here for each import job.
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
     status_update_fn: Callable[[PreprocessStage, Optional[str]], None]
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters

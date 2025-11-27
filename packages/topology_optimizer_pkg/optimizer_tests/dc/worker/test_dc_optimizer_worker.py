@@ -145,8 +145,8 @@ def test_main_simple(
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=processed_gridfile_folder,
             ),
-            lambda: create_producer(kafka_connection_str, "dc_worker"),
-            lambda: create_consumer(
+            create_producer(kafka_connection_str, "dc_worker"),
+            create_consumer(
                 "LongRunningKafkaConsumer",
                 kafka_command_topic,
                 "dc_optimizer",
@@ -206,8 +206,8 @@ def test_main(
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=grid_folder,
             ),
-            lambda: create_producer(kafka_connection_str, "dc_worker"),
-            lambda: create_consumer(
+            create_producer(kafka_connection_str, "dc_worker"),
+            create_consumer(
                 "LongRunningKafkaConsumer",
                 kafka_command_topic,
                 "dc_optimizer",

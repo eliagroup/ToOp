@@ -65,15 +65,15 @@ def test_main_simple(
                 processed_gridfile_folder=processed_gridfile_folder,
                 loadflow_result_folder=loadflow_result_folder,
             ),
-            lambda: create_producer(kafka_connection_str, instance_id, log_level=2),
-            lambda: create_consumer(
+            create_producer(kafka_connection_str, instance_id, log_level=2),
+            create_consumer(
                 "LongRunningKafkaConsumer",
                 topic=kafka_command_topic,
                 group_id="ac_optimizer",
                 bootstrap_servers=kafka_connection_str,
                 client_id=instance_id,
             ),
-            lambda: create_consumer(
+            create_consumer(
                 "LongRunningKafkaConsumer",
                 topic=kafka_results_topic,
                 group_id=f"ac_listener_{instance_id}_{uuid4()}",
@@ -357,15 +357,15 @@ def test_main(
                 processed_gridfile_folder=processed_gridfile_folder,
                 loadflow_result_folder=loadflow_result_folder,
             ),
-            lambda: create_producer(kafka_connection_str, instance_id, log_level=2),
-            lambda: create_consumer(
+            create_producer(kafka_connection_str, instance_id, log_level=2),
+            create_consumer(
                 "LongRunningKafkaConsumer",
                 topic=kafka_command_topic,
                 group_id="ac_optimizer",
                 bootstrap_servers=kafka_connection_str,
                 client_id=instance_id,
             ),
-            lambda: create_consumer(
+            create_consumer(
                 "LongRunningKafkaConsumer",
                 topic=kafka_results_topic,
                 group_id=f"ac_listener_{instance_id}_{uuid4()}",

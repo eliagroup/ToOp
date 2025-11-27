@@ -187,7 +187,7 @@ def test_main_simple(
                 importer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
             ),
-            lambda: Producer(
+            Producer(
                 {
                     "bootstrap.servers": kafka_connection_str,
                     "client.id": instance_id,
@@ -195,7 +195,7 @@ def test_main_simple(
                 },
                 logger=getLogger(f"ac_worker_producer_{instance_id}"),
             ),
-            lambda: LongRunningKafkaConsumer(
+            LongRunningKafkaConsumer(
                 topic=kafka_command_topic,
                 group_id="importer_worker",
                 bootstrap_servers=kafka_connection_str,
@@ -253,8 +253,8 @@ def test_main(
                 processed_gridfile_folder=output_path,
                 loadflow_result_folder=loadflow_path,
             ),
-            lambda: create_producer(kafka_connection_str, instance_id),
-            lambda: create_consumer(
+            create_producer(kafka_connection_str, instance_id),
+            create_consumer(
                 "LongRunningKafkaConsumer",
                 kafka_command_topic,
                 "importer_worker",
@@ -282,7 +282,7 @@ def test_main_idle(
     kafka_results_topic: str,
     kafka_connection_str: str,
 ) -> None:
-    set_start_method("fork")
+    set_start_method("spawn")
     # Create an idling main process
     p = Process(
         target=main,
@@ -293,14 +293,6 @@ def test_main_idle(
                 importer_results_topic=kafka_results_topic,
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
-            ),
-            lambda: create_producer(kafka_connection_str, str(uuid4())),
-            lambda: create_consumer(
-                "LongRunningKafkaConsumer",
-                kafka_command_topic,
-                "importer_worker",
-                kafka_connection_str,
-                str(uuid4()),
             ),
         ),
     )

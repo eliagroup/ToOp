@@ -8,6 +8,7 @@ Created: 2024
 import time
 import traceback
 from functools import partial
+from logging import getLogger
 from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
@@ -179,16 +180,29 @@ def idle_loop(
         logger.warning(f"Received unknown command, dropping: {command}")
 
 
-def main(
-    args: Args, producer_factory: Callable[[], Producer], consumer_factory: Callable[[], LongRunningKafkaConsumer]
-) -> None:
+def main(args: Args, producer: Producer | None = None, consumer: LongRunningKafkaConsumer | None = None) -> None:
     """Start main function of the worker."""
     instance_id = str(uuid4())
     logger.info(f"Starting importer instance {instance_id} with arguments {args}")
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
-    producer = producer_factory()
-    consumer = consumer_factory()
+
+    if consumer is None:
+        consumer = LongRunningKafkaConsumer(
+            topic=args.importer_command_topic,
+            bootstrap_servers=args.kafka_broker,
+            group_id="importer-worker",
+            client_id=instance_id,
+        )
+    if producer is None:
+        producer = Producer(
+            {
+                "bootstrap.servers": args.kafka_broker,
+                "client.id": instance_id,
+                "log_level": 2,
+            },
+            logger=getLogger("confluent_kafka.producer"),
+        )
 
     def heartbeat_idle() -> None:
         producer.produce(

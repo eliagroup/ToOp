@@ -33,8 +33,6 @@ def launch_dc_worker(
     kafka_results_topic: str,
     kafka_connection_str: str,
     grid_folder: Path,
-    create_producer: callable,
-    create_consumer: callable,
 ):
     logging.basicConfig(level=logging.INFO)
     instance_id = str(uuid4())
@@ -47,14 +45,6 @@ def launch_dc_worker(
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=grid_folder,
-            ),
-            producer_factory=lambda: create_producer(kafka_connection_str, instance_id, log_level=2),
-            command_consumer_factory=lambda: create_consumer(
-                type="LongRunningKafkaConsumer",
-                topic=kafka_command_topic,
-                group_id="dc-worker",
-                bootstrap_servers=kafka_connection_str,
-                client_id=instance_id,
             ),
         )
     except SystemExit:
@@ -70,15 +60,13 @@ def launch_ac_worker(
     kafka_connection_str: str,
     grid_folder: Path,
     loadflow_result_folder: Path,
-    create_producer: callable,
-    create_consumer: callable,
 ):
     logging.basicConfig(level=logging.INFO)
     print("Starting AC worker")
     instance_id = str(uuid4())
     try:
         ac_main(
-            args=ACArgs(
+            ACArgs(
                 optimizer_command_topic=kafka_command_topic,
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
                 optimizer_results_topic=kafka_results_topic,
@@ -86,21 +74,6 @@ def launch_ac_worker(
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=grid_folder,
                 loadflow_result_folder=loadflow_result_folder,
-            ),
-            producer_factory=lambda: create_producer(kafka_connection_str, instance_id, log_level=2),
-            command_consumer_factory=lambda: create_consumer(
-                type="LongRunningKafkaConsumer",
-                topic=kafka_command_topic,
-                group_id="ac_optimizer",
-                bootstrap_servers=kafka_connection_str,
-                client_id=instance_id,
-            ),
-            result_consumer_factory=lambda: create_consumer(
-                type="LongRunningKafkaConsumer",
-                topic=kafka_results_topic,
-                group_id=f"ac_listener_{instance_id}_{uuid4()}",
-                bootstrap_servers=kafka_connection_str,
-                client_id=instance_id,
             ),
         )
     except SystemExit:
@@ -117,13 +90,11 @@ def test_ac_dc_integration(
     kafka_connection_str: str,
     grid_folder: Path,
     loadflow_result_folder: Path,
-    create_producer: callable,
-    create_consumer: callable,
 ) -> None:
     # Sticking with fork rather than spawn to avoid issues with ray and multiprocessing as
     # ray spawns a new process and as a result of which pickles the objects.
     # Producer and Consumer are not picklable.
-    set_start_method("fork")
+    set_start_method("spawn")
     dc_worker_process = Process(
         target=launch_dc_worker,
         args=(
@@ -132,8 +103,6 @@ def test_ac_dc_integration(
             kafka_results_topic,
             kafka_connection_str,
             grid_folder,
-            create_producer,
-            create_consumer,
         ),
     )
     dc_worker_process.start()
@@ -148,12 +117,9 @@ def test_ac_dc_integration(
             kafka_connection_str,
             grid_folder,
             loadflow_result_folder,
-            create_producer,
-            create_consumer,
         ),
     )
     ac_worker_process.start()
-    time.sleep(5)  # Give AC worker time to start
 
     try:
         grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
@@ -187,7 +153,7 @@ def test_ac_dc_integration(
         producer.flush()
 
         # This is the runtime of the AC worker
-        time.sleep(1000)
+        time.sleep(50)
 
         consumer = Consumer(
             {
@@ -240,10 +206,10 @@ def test_ac_dc_integration(
         producer.produce(kafka_command_topic, value=serialize_message(shutdown_command.model_dump_json()))
         producer.flush()
 
-        # ac_worker_process.join()
+        ac_worker_process.join()
         dc_worker_process.join()
     finally:
-        # if ac_worker_process.is_alive():
-        #     ac_worker_process.terminate()
+        if ac_worker_process.is_alive():
+            ac_worker_process.terminate()
         if dc_worker_process.is_alive():
             dc_worker_process.terminate()

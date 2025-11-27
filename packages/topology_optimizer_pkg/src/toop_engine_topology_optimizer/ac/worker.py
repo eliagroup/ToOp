@@ -232,9 +232,9 @@ def idle_loop(
 
 def main(
     args: Args,
-    producer_factory: Callable[[], Producer],
-    command_consumer_factory: Callable[[], LongRunningKafkaConsumer],
-    result_consumer_factory: Callable[[], LongRunningKafkaConsumer],
+    producer_factory: Callable[[], Producer] | None = None,
+    command_consumer_factory: Callable[[], LongRunningKafkaConsumer] | None = None,
+    result_consumer_factory: Callable[[], LongRunningKafkaConsumer] | None = None,
 ) -> None:
     """Run the main AC worker loop.
 
@@ -265,12 +265,37 @@ def main(
 
     # We create two separate consumers for the command and result topics as we don't want to
     # catch results during the idle loop.
+    if command_consumer_factory is None:
+        command_consumer = LongRunningKafkaConsumer(
+            topic=args.optimizer_command_topic,
+            group_id="ac_optimizer",
+            bootstrap_servers=args.kafka_broker,
+            client_id=instance_id,
+        )
+    else:
+        command_consumer = command_consumer_factory()
+
+    if result_consumer_factory is None:
+        result_consumer = LongRunningKafkaConsumer(
+            topic=args.optimizer_results_topic,
+            group_id=f"ac_listener_{instance_id}_{uuid4()}",
+            bootstrap_servers=args.kafka_broker,
+            client_id=instance_id,
+        )
+    else:
+        result_consumer = result_consumer_factory()
+
+    if producer_factory is None:
+        producer = Producer({"bootstrap.servers": args.kafka_broker, "client.id": instance_id})
+    else:
+        producer = producer_factory()
+
     worker_data = WorkerData(
-        command_consumer=command_consumer_factory(),
+        command_consumer=command_consumer,
         # Create a results consumer that will listen to results from any DC optimizers
         # Make sure to use a unique group.id for each instance to avoid conflicts
-        result_consumer=result_consumer_factory(),
-        producer=producer_factory(),
+        result_consumer=result_consumer,
+        producer=producer,
         db=create_session(),
     )
 

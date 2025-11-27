@@ -234,7 +234,9 @@ def optimization_loop(
 
 
 def main(
-    args: Args, producer_factory: Callable[[], Producer], command_consumer_factory: Callable[[], LongRunningKafkaConsumer]
+    args: Args,
+    producer_factory: Callable[[], Producer] | None = None,
+    command_consumer_factory: Callable[[], LongRunningKafkaConsumer] | None = None,
 ) -> None:
     """Start the worker and run the optimization loop."""
     instance_id = str(uuid4())
@@ -244,8 +246,26 @@ def main(
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
 
-    consumer = command_consumer_factory()
-    producer = producer_factory()
+    if command_consumer_factory is None:
+        consumer = LongRunningKafkaConsumer(
+            topic=args.optimizer_command_topic,
+            group_id="dc_optimizer",
+            bootstrap_servers=args.kafka_broker,
+            client_id=instance_id,
+        )
+    else:
+        consumer = command_consumer_factory()
+
+    if producer_factory is None:
+        producer = Producer(
+            {
+                "bootstrap.servers": args.kafka_broker,
+                "client.id": instance_id,
+                "log_level": 2,
+            }
+        )
+    else:
+        producer = producer_factory()
 
     def send_heartbeat(message: HeartbeatUnion, ping_consumer: bool) -> None:
         heartbeat = Heartbeat(

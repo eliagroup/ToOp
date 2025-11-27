@@ -1,8 +1,8 @@
-import fsspec
 import numpy as np
 import pandas as pd
 import pypowsybl
 import pytest
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     change_dangling_to_tie,
@@ -140,28 +140,28 @@ def test_change_dangling_to_tie_no_tie():
 
 
 def test_load_powsybl_from_fs_mat(ieee14_mat):
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
 
     pp_net = load_powsybl_from_fs(file_system, ieee14_mat)
     assert isinstance(pp_net, pypowsybl.network.Network)
 
 
 def test_load_powsybl_from_fs_uct(ucte_file):
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
 
     pp_net = load_powsybl_from_fs(file_system, ucte_file)
     assert isinstance(pp_net, pypowsybl.network.Network)
 
 
 def test_load_powsybl_from_fs_cgmes(eurostag_tutorial_example1_cgmes):
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
 
     pp_net = load_powsybl_from_fs(file_system, eurostag_tutorial_example1_cgmes)
     assert isinstance(pp_net, pypowsybl.network.Network)
 
 
 def test_load_powsybl_from_fs_xiidm(basic_node_breaker_grid_xiidm):
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
 
     pp_net = load_powsybl_from_fs(file_system, basic_node_breaker_grid_xiidm)
     assert isinstance(pp_net, pypowsybl.network.Network)
@@ -170,7 +170,7 @@ def test_load_powsybl_from_fs_xiidm(basic_node_breaker_grid_xiidm):
 def test_save_powsybl_to_fs_xiidm_mat(tmp_path_factory: pytest.TempPathFactory) -> None:
     tmp_path = tmp_path_factory.mktemp("powsybl_save_load")
     net_original = basic_node_breaker_network_powsybl()
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
 
     save_powsybl_to_fs(net=net_original, filesystem=file_system, file_path=tmp_path / "grid.xiidm")
     net_loaded = load_powsybl_from_fs(file_system, tmp_path / "grid.xiidm")
@@ -199,7 +199,7 @@ def test_save_powsybl_to_fs_xiidm_mat(tmp_path_factory: pytest.TempPathFactory) 
 def test_save_powsybl_to_fs_ucte(tmp_path_factory: pytest.TempPathFactory, ucte_file) -> None:
     tmp_path = tmp_path_factory.mktemp("powsybl_save_load")
     net_original = pypowsybl.network.load(ucte_file)
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
     save_powsybl_to_fs(net=net_original, filesystem=file_system, file_path=tmp_path / "grid.uct", format="UCTE")
     net_loaded = load_powsybl_from_fs(file_system, tmp_path / "grid.uct")
 
@@ -211,7 +211,7 @@ def test_save_powsybl_to_fs_ucte(tmp_path_factory: pytest.TempPathFactory, ucte_
 def test_save_powsybl_to_fs_cgmes(tmp_path_factory: pytest.TempPathFactory, eurostag_tutorial_example1_cgmes) -> None:
     tmp_path = tmp_path_factory.mktemp("powsybl_save_load")
     net_original = pypowsybl.network.load(eurostag_tutorial_example1_cgmes)
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
     save_powsybl_to_fs(net=net_original, filesystem=file_system, file_path=tmp_path / "grid.zip", format="CGMES")
     net_loaded = load_powsybl_from_fs(file_system, tmp_path / "grid.zip")
 

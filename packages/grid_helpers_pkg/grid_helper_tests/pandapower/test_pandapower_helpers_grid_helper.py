@@ -1,8 +1,8 @@
-import fsspec
 import numpy as np
 import pandapower as pp
 import pandas as pd
 import pytest
+from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
 from toop_engine_grid_helpers.pandapower.example_grids import pandapower_case30_with_psts
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
@@ -854,35 +854,35 @@ def test_get_remotely_connected_buses_respects_switches():
 
 
 def test_load_pp_from_fs_json(ieee14_json):
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
 
     pp_net = load_pandapower_from_fs(file_system, ieee14_json)
     assert isinstance(pp_net, pp.pandapowerNet)
 
 
 def test_load_pp_from_fs_mat(ieee14_mat):
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
 
     pp_net = load_pandapower_from_fs(file_system, ieee14_mat)
     assert isinstance(pp_net, pp.pandapowerNet)
 
 
 def test_load_pp_from_fs_uct(ucte_file):
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
 
     pp_net = load_pandapower_from_fs(file_system, ucte_file)
     assert isinstance(pp_net, pp.pandapowerNet)
 
 
 def test_load_pp_from_fs_cgmes(eurostag_tutorial_example1_cgmes):
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
 
     pp_net = load_pandapower_from_fs(file_system, eurostag_tutorial_example1_cgmes)
     assert isinstance(pp_net, pp.pandapowerNet)
 
 
 def test_save_load_pandapower_to_from_fs(tmp_path):
-    file_system = fsspec.filesystem("file")
+    file_system = LocalFileSystem()
     file_path = tmp_path / "test_net.json"
 
     net = pp.networks.case14()

@@ -13,7 +13,8 @@ import logbook
 import numpy as np
 import pandas as pd
 import pypowsybl
-from fsspec import AbstractFileSystem, filesystem
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     DISTRIBUTED_SLACK,
@@ -877,7 +878,7 @@ def save_masks_to_files(network_masks: NetworkMasks, data_folder: Path) -> None:
     data_folder: Path
         The folder to save the masks to.
     """
-    save_masks_to_filesystem(network_masks, data_folder, filesystem=filesystem("file"))
+    save_masks_to_filesystem(network_masks, data_folder, filesystem=LocalFileSystem())
 
 
 def save_masks_to_filesystem(network_masks: NetworkMasks, data_folder: Path, filesystem: AbstractFileSystem) -> None:

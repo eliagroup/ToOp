@@ -4,8 +4,8 @@ from functools import partial
 from typing import Optional, get_args
 
 import logbook
-from fsspec import filesystem
 from fsspec.implementations.dirfs import DirFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.worker import preprocessor
@@ -128,8 +128,8 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
         import_result = preprocessor.import_grid_model(
             start_command=start_command,
             status_update_fn=heartbeat_fn,
-            unprocessed_gridfile_fs=filesystem("file"),
-            processed_gridfile_fs=filesystem("file"),
+            unprocessed_gridfile_fs=LocalFileSystem(),
+            processed_gridfile_fs=LocalFileSystem(),
         )
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
@@ -191,8 +191,8 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
         preprocess_id="test_ID",
     )
 
-    processed_gridfile_fs = filesystem("file")
-    loadflow_result_fs = filesystem("file")
+    processed_gridfile_fs = LocalFileSystem()
+    loadflow_result_fs = LocalFileSystem()
     with logbook.handlers.TestHandler() as caplog:
         preprocess_result = preprocessor.preprocess(
             start_command=start_command,

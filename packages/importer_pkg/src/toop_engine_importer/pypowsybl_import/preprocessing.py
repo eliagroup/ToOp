@@ -17,7 +17,8 @@ from typing import (
 
 import logbook
 import pypowsybl
-from fsspec import AbstractFileSystem, filesystem
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     DISTRIBUTED_SLACK,
@@ -268,9 +269,9 @@ def convert_file(
 
     """
     if unprocessed_gridfile_fs is None:
-        unprocessed_gridfile_fs = filesystem("file")
+        unprocessed_gridfile_fs = LocalFileSystem()
     if processed_gridfile_fs is None:
-        processed_gridfile_fs = filesystem("file")
+        processed_gridfile_fs = LocalFileSystem()
     # Copy original grid file
     copy_file(
         src_fs=unprocessed_gridfile_fs,

@@ -221,7 +221,7 @@ def test_optimization_loop(
             ),
             loadflow_solver_config=LoadflowSolverParameters(distributed=distributed),
         ),
-        grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder=str(grid_folder / "oberrhein"))],
+        grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder="oberrhein")],
         optimization_id="test",
     )
 
@@ -267,7 +267,7 @@ def test_optimization_loop_error_handling(
                 runtime_seconds=5,
             ),
         ),
-        grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder=str(grid_folder / "oberrhein"))],
+        grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder="oberrhein")],
         optimization_id="test",
     )
 

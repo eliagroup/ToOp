@@ -5,14 +5,16 @@ in the selected grid config group. Use Hydra's multirun (-m) to sweep multiple
 grid configurations or override parameters like GA runtime.
 
 Example:
-  uv run python -m benchmark.benchmark_toop --multirun \
+  uv run python -m toop-engine-benchmark.benchmark_toop --multirun \
     grid=config_grid_node_breaker ga_config.runtime_seconds=10,20 ga_config.split_subs=2,5
 
 This runs ToOp end-to-end on the specified node breaker grid for 4 combinations of,
 parameters.
 
+Hydra config file: toop-engine-benchmark/configs/benchmark.yaml
+
 Outputs:
-  benchmark_summary.json stored in ${hydra.run.dir} (current working directory).
+  benchmark_summary.json stored in ${hydra.run.dir}.
 """
 
 from __future__ import annotations
@@ -250,6 +252,7 @@ def main(cfg: DictConfig) -> None:
                 "n_worst_contingencies": cfg.ga_config.n_worst_contingencies,
                 "random_seed": cfg.ga_config.random_seed,
                 "target_metrics": [["overload_energy_n_1", 1.0], ["split_subs", 1.0]],
+                "plot": cfg.ga_config.get("plot", False),
             },
             "area_settings": cfg.area_settings,
         }

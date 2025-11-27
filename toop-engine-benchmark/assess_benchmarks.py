@@ -220,7 +220,7 @@ def _collect_run_entries(root: Path) -> tuple[list[dict[str, Any]], list[str]]:
     return run_records, sorted(source_files)
 
 
-def _aggregate(run_records: list[dict[str, Any]]) -> dict[str, Any]:
+def _aggregate(run_records: list[dict[str, Any]]) -> dict[str, Any]:  # noqa: C901, PLR0915
     """Aggregate benchmark metrics across collected run records."""
     if not run_records:
         return {}
@@ -230,10 +230,15 @@ def _aggregate(run_records: list[dict[str, Any]]) -> dict[str, Any]:
     split_subs_mean_all: list[float | None] = []
     n_best_summary_all: list[float | None] = []
     iterations_all: list[float | None] = []
+    runtime_seconds_all: list[float | None] = []
+    total_branch_combis_all: list[float | None] = []
+    total_inj_combis_all: list[float | None] = []
+    branch_combis_per_s_all: list[float | None] = []
     n_best_topology_counts: list[int] = []
 
     timing_totals: dict[str, list[float]] = {}
     timing_avgs: dict[str, list[float]] = {}
+    timing_overheads: dict[str, list[float]] = {}
 
     best_run: dict[str, Any] | None = None
     best_fitness_value: float | None = None
@@ -245,13 +250,21 @@ def _aggregate(run_records: list[dict[str, Any]]) -> dict[str, Any]:
         fitness_mean = dc_quality.get("fitness_mean")
         split_subs_mean = dc_quality.get("split_subs_mean")
         n_best_summary = dc_quality.get("n_best")
-        iterations = dc_quality.get("iterations")
+        n_iterations = dc_quality.get("n_iterations")
+        runtime_seconds = dc_quality.get("runtime_seconds")
+        total_branch_combis = dc_quality.get("total_branch_combis")
+        total_inj_combis = dc_quality.get("total_inj_combis")
+        branch_combis_per_s = dc_quality.get("branch_combis_per_s")
 
         fitness_max_all.append(fitness_max)
         fitness_mean_all.append(fitness_mean)
         split_subs_mean_all.append(split_subs_mean)
         n_best_summary_all.append(n_best_summary)
-        iterations_all.append(iterations)
+        iterations_all.append(n_iterations)
+        runtime_seconds_all.append(runtime_seconds)
+        total_branch_combis_all.append(total_branch_combis)
+        total_inj_combis_all.append(total_inj_combis)
+        branch_combis_per_s_all.append(branch_combis_per_s)
 
         n_best_count = record.get("n_best_topologies")
         if isinstance(n_best_count, int):
@@ -268,20 +281,25 @@ def _aggregate(run_records: list[dict[str, Any]]) -> dict[str, Any]:
             assert isinstance(phase_stats, dict), "Invalid phase stats format"
             total_val = phase_stats.get("total_s")
             avg_val = phase_stats.get("avg_s")
+            overhead_val = phase_stats.get("runtime_overhead_s")
             if total_val is not None:
                 timing_totals.setdefault(phase, []).append(float(total_val))
             if avg_val is not None:
                 timing_avgs.setdefault(phase, []).append(float(avg_val))
+            if overhead_val is not None:
+                timing_overheads.setdefault(phase, []).append(float(overhead_val))
 
-    phases = sorted(set(timing_totals) | set(timing_avgs))
-    timings_report = {
-        phase: {
+    phases = sorted(set(timing_totals) | set(timing_avgs) | set(timing_overheads))
+    timings_report = {}
+    for phase in phases:
+        phase_report: dict[str, Any] = {
             "total_s": _compute_stats(timing_totals.get(phase, [])),
             "avg_s": _compute_stats(timing_avgs.get(phase, [])),
             "cv": _coeff_var(timing_totals.get(phase, [])),
         }
-        for phase in phases
-    }
+        if timing_overheads.get(phase):
+            phase_report["runtime_overhead_s"] = _compute_stats(timing_overheads.get(phase, []))
+        timings_report[phase] = phase_report
 
     report: dict[str, Any] = {
         "n_runs": len(run_records),
@@ -311,15 +329,22 @@ def _aggregate(run_records: list[dict[str, Any]]) -> dict[str, Any]:
             "max": _safe_max(n_best_summary_all),
         },
         "n_best_topologies": _compute_stats(n_best_topology_counts),
-        "iterations": {
+        "n_iterations": {
             "mean": _safe_mean(iterations_all),
             "median": _safe_median(iterations_all),
             "stdev": _safe_stdev(iterations_all),
         },
+        "runtime_seconds": _compute_stats(runtime_seconds_all),
+        "total_branch_combis": _compute_stats(total_branch_combis_all),
+        "total_inj_combis": _compute_stats(total_inj_combis_all),
+        "branch_combis_per_s": _compute_stats(branch_combis_per_s_all),
         "timings": timings_report,
     }
 
     if best_run:
+        best_timings = best_run["summary_entry"].get("timings") or {}
+        dc_timing = best_timings.get("dc_optimization") if isinstance(best_timings, dict) else None
+        best_dc_quality = best_run["summary_entry"].get("dc_quality") or {}
         report["best_run"] = {
             "run_id": best_run["run_id"],
             "summary_path": str(best_run["summary_path"]),
@@ -328,8 +353,14 @@ def _aggregate(run_records: list[dict[str, Any]]) -> dict[str, Any]:
             "overrides": best_run.get("overrides"),
             "overrides_resolved": best_run.get("overrides_resolved"),
             "n_best_topologies": best_run.get("n_best_topologies"),
-            "timings": best_run["summary_entry"].get("timings"),
-            "dc_quality": best_run["summary_entry"].get("dc_quality"),
+            "n_iterations": best_dc_quality.get("n_iterations"),
+            "runtime_seconds": best_dc_quality.get("runtime_seconds"),
+            "runtime_overhead_s": dc_timing.get("runtime_overhead_s") if isinstance(dc_timing, dict) else None,
+            "total_branch_combis": best_dc_quality.get("total_branch_combis"),
+            "total_inj_combis": best_dc_quality.get("total_inj_combis"),
+            "branch_combis_per_s": best_dc_quality.get("branch_combis_per_s"),
+            "timings": best_timings,
+            "dc_quality": best_dc_quality,
         }
 
     return report

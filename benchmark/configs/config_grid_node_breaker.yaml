@@ -1,5 +1,0 @@
-# configs for ToOp benchmark
-name: config_grid_node_breaker
-
-output_dir: /workspaces/data/grid_node_breaker/results/
-grid_file: /workspaces/data/grid_node_breaker/grid.xiidm

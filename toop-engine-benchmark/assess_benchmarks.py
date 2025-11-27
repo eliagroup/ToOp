@@ -4,13 +4,10 @@ Supports Hydra multirun output directories by aggregating run overrides,
 fitness metrics, topology counts, and stage timings.
 
 Usage (Hydra from repo root):
-  uv run python -m benchmark.assess_benchmarks root=/workspaces/ToOp/data/multirun \
-      save=/workspaces/ToOp/data/aggregate_report.json print=true
+  uv run python -m toop-engine-benchmark.assess_benchmarks root=/workspaces/ToOp/data/grid_node_breaker/results/multirun \
+      save=/workspaces/ToOp/data/grid_node_breaker/results/aggregate_report.json print=true
 
-Or inside package directory:
-  uv run python benchmark/assess_benchmarks.py root=/workspaces/ToOp/data/multirun
-
-Hydra config file: benchmark/configs/assess.yaml
+Hydra config file: toop-engine-benchmark/configs/assess.yaml
 """
 
 from __future__ import annotations

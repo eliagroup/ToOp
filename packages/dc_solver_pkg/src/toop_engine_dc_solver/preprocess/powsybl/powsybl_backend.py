@@ -94,13 +94,13 @@ class PowsyblBackend(BackendInterface):
 
         TODO add x-nodes for trafo3ws
         """
-        nodes = self.net.get_buses(attributes=["name", "connected_component"])
+        nodes = self.net.get_buses(attributes=["name", "connected_component", "synchronous_component"])
         n_nodes = len(nodes)
         nodes["relevant"] = self._get_mask(NETWORK_MASK_NAMES["relevant_subs"], False, n_nodes)
         nodes["coupler_limit"] = self._get_mask(NETWORK_MASK_NAMES["cross_coupler_limits"], 0.0, n_nodes)
 
         # Filter to only the first connected component
-        nodes = nodes[nodes["connected_component"] == 0]
+        nodes = nodes[(nodes["connected_component"] == 0) & (nodes["synchronous_component"] == 0)]
 
         nodes["int_id"] = np.arange(len(nodes))
         return nodes
@@ -411,7 +411,7 @@ class PowsyblBackend(BackendInterface):
         """Get a list of taps for each pst"""
         shift_taps = []
         steps = self.net.get_phase_tap_changer_steps(attributes=["alpha"])
-        for pst_id in self._get_branches().index[self._get_branches()["pst_controllable"]]:
+        for pst_id in self._get_branches()[self._get_branches()["pst_controllable"]].index:
             taps = np.squeeze(steps.loc[pst_id].values)
             shift_taps.append(np.sort(taps))
         return shift_taps

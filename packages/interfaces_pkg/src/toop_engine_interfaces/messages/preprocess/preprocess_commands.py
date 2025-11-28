@@ -118,6 +118,24 @@ class AreaSettings(BaseModel):
     """ A weight that is used for lines that leave the n-1 area, to neighbouring TSOs"""
 
 
+class RelevantStationRules(BaseModel):
+    """Rules to determine whether a substation is relevant or not."""
+
+    min_busbars: PositiveInt = 2
+    """The minimum number of busbars a substation must have to be considered relevant."""
+
+    min_connected_branches: PositiveInt = 4
+    """The minimum number of connected branches a substation must have to be considered relevant.
+    This only counts branches (lines, transformers, tie-lines), not injections (generators, loads, shunts, etc.)."""
+
+    min_connected_elements: PositiveInt = 4
+    """The minimum number of connected elements a substation must have to be considered relevant.
+    This includes branches and injections (generators, loads, shunts, etc.)."""
+
+    allow_pst: bool = False
+    """Whether phase shifting transformers are allowed in relevant substations."""
+
+
 class BaseImporterParameters(BaseModel):
     """Parameters that are required to import any data format."""
 
@@ -183,6 +201,9 @@ class BaseImporterParameters(BaseModel):
     - importer/contingency_from_power_factory/PF_data_class.py
     - importer/pypowsybl_import/contingency_from_file/contingency_file_models.py
     """
+
+    relevant_station_rules: RelevantStationRules = RelevantStationRules()
+    """Rules to determine whether a substation is relevant or not."""
 
 
 class UcteImporterParameters(BaseImporterParameters):

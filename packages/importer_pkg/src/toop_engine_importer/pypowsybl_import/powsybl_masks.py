@@ -524,6 +524,11 @@ def update_trafo_masks(
     # Exlude DSO border trafos from the blacklist because we need to consider the effect of our switching actions on the DSOs
     blacklisted_trafos = trafos_df.index.isin(blacklisted_ids)
     backlist_excl_dso = blacklisted_trafos & ~trafo_dso_border
+
+    # TODO: Fix me
+    logger.warning("PST controllable mask is currently deactivated for all trafos.")
+    pst_controllable_mask = np.zeros(len(trafos_df), dtype=bool)
+
     return replace(
         network_masks,
         trafo_for_nminus1=outage_mask,

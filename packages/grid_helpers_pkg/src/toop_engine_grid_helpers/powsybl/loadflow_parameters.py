@@ -1,4 +1,4 @@
-"""A collection of Powsybl parameters used in the Loadflow Solver."""
+"""A collection of Powsybl parameters used in the powsybl internal loadflow solver."""
 
 import pypowsybl
 from pypowsybl.loadflow import BalanceType, ConnectedComponentMode, Parameters, VoltageInitMode

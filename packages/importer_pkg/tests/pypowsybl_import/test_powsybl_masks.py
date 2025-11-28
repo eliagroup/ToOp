@@ -331,11 +331,10 @@ def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: Uct
         network_masks.trafo_dso_border,
         np.array([False, False, False, False, False, False]),
     )
-    # FIXME: currently not implemented
-    # assert np.array_equal(
-    #     network_masks.trafo_pst_controllable,
-    #     np.array([False, False, True, False, False, False]),
-    # )
+    assert np.array_equal(
+        network_masks.trafo_pst_controllable,
+        np.array([False, False, True, False, False, False]),
+    )
 
     ucte_importer_parameters.area_settings.nminus1_area = ["D8"]
 

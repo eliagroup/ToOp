@@ -528,10 +528,6 @@ def update_trafo_masks(
     blacklisted_trafos = trafos_df.index.isin(blacklisted_ids)
     backlist_excl_dso = blacklisted_trafos & ~trafo_dso_border
 
-    # TODO: Fix me
-    logger.warning("PST controllable mask is currently deactivated for all trafos.")
-    pst_controllable_mask = np.zeros(len(trafos_df), dtype=bool)
-
     return replace(
         network_masks,
         trafo_for_nminus1=outage_mask,
@@ -579,10 +575,11 @@ def update_bus_masks(
     elif importer_parameters.data_type == "cgmes":
         relevant_subs = buses.index.isin(
             get_switchable_buses_cgmes(
-                network,
-                importer_parameters.area_settings.control_area,
-                importer_parameters.area_settings.cutoff_voltage,
-                importer_parameters.select_by_voltage_level_id_list,
+                net=network,
+                area_codes=importer_parameters.area_settings.control_area,
+                cutoff_voltage=importer_parameters.area_settings.cutoff_voltage,
+                select_by_voltage_level_id_list=importer_parameters.select_by_voltage_level_id_list,
+                relevant_station_rules=importer_parameters.relevant_station_rules,
             )
         )
         substation_ids = buses["name"].str[:-2].values

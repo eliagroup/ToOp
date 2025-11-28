@@ -56,6 +56,7 @@ AssetInjectionTypePowsybl: TypeAlias = Literal[
     "HVDC_CONVERTER_STATION",
     "STATIC_VAR_COMPENSATOR",
     "SHUNT_COMPENSATOR",
+    "BATTERY",
 ]
 AssetInjectionType: TypeAlias = Literal[AssetInjectionTypePandapower, AssetInjectionTypePowsybl]
 AssetType: TypeAlias = Literal[AssetBranchType, AssetInjectionType]

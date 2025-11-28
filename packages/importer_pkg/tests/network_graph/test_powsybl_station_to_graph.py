@@ -3,7 +3,9 @@ from pathlib import Path
 
 import networkx as nx
 import pandas as pd
+import pypowsybl
 import pytest
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 from toop_engine_importer.network_graph.data_classes import (
     HelperBranchSchema,
     NetworkGraphData,
@@ -28,7 +30,11 @@ from toop_engine_importer.network_graph.powsybl_station_to_graph import (
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_busbar_sections_with_in_service
 from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, Topology
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    AreaSettings,
+    CgmesImporterParameters,
+    RelevantStationRules,
+)
 
 
 def test_node_breaker_topology_to_graph(basic_node_breaker_network_powsyblV2):
@@ -647,3 +653,49 @@ def test_add_suffix_to_duplicated_grid_model_id():
     df = make_node_assets_df(rows)
     with pytest.raises(AssertionError):
         add_suffix_to_duplicated_grid_model_id(df)
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(net)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=Path("cgmes_file.zip"),
+        data_folder="data_folder",
+        area_settings=AreaSettings(cutoff_voltage=1, control_area=[""], view_area=[""], nminus1_area=[""]),
+        relevant_station_rules=RelevantStationRules(
+            min_busbars=2,
+            min_connected_branches=4,
+            min_connected_elements=4,
+            allow_pst=True,
+        ),
+    )
+
+    network_masks = powsybl_masks.make_masks(
+        network=net,
+        importer_parameters=importer_parameters,
+        blacklisted_ids=[],
+    )
+    relevant_voltage_level_with_region = get_relevant_voltage_levels(network=net, network_masks=network_masks)
+    expected = [
+        "VL_3W_HV",
+        "VL_3W_MV",
+        "VL_2W_MV_LV_MV",
+        "VL_MV_svc",
+        "VL_MV",
+        "VL_2W_MV_HV_MV",
+        "VL_2W_MV_HV_HV",
+        "VL_HV_vsc",
+    ]
+    # 'VL_HV_gen' not included as it is the slack
+
+    for vl in expected:
+        assert vl in relevant_voltage_level_with_region["voltage_level_id"].values, f"Expected voltage level {vl} not found"
+
+    res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
+    assert len(res) >= len(expected)
+    assert all([isinstance(station, Station) for station in res])
+
+    res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
+    assert isinstance(res, Topology)
+    assert len(res.stations) == len(expected)

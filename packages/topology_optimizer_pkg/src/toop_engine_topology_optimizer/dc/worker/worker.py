@@ -247,7 +247,7 @@ def main(
     jax.config.update("jax_logging_level", "INFO")
 
     if command_consumer is None:
-        consumer = LongRunningKafkaConsumer(
+        command_consumer = LongRunningKafkaConsumer(
             topic=args.optimizer_command_topic,
             group_id="dc_optimizer",
             bootstrap_servers=args.kafka_broker,
@@ -276,7 +276,7 @@ def main(
         )
         producer.flush()
         if ping_consumer:
-            consumer.heartbeat()
+            command_consumer.heartbeat()
 
     def send_result(message: ResultUnion, optimization_id: str) -> None:
         result = Result(
@@ -294,12 +294,12 @@ def main(
 
     while True:
         command = idle_loop(
-            consumer=consumer,
+            consumer=command_consumer,
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=False),
             heartbeat_interval_ms=args.heartbeat_interval_ms,
             parent_grid_folder=args.processed_gridfile_folder,
         )
-        consumer.start_processing()
+        command_consumer.start_processing()
         optimization_loop(
             dc_params=command.dc_params,
             grid_files=command.grid_files,
@@ -307,4 +307,4 @@ def main(
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=True),
             optimization_id=command.optimization_id,
         )
-        consumer.stop_processing()
+        command_consumer.stop_processing()

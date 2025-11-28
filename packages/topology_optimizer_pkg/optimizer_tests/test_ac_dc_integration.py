@@ -1,12 +1,11 @@
 import logging
 import sys
 import time
-from multiprocessing import Process, set_start_method
 from pathlib import Path
-from uuid import uuid4
 
 import logbook
 import pytest
+import ray
 from confluent_kafka import Consumer, Producer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
@@ -27,6 +26,7 @@ logger = logbook.Logger(__name__)
 logbook.StreamHandler(sys.stdout, level=logging.INFO).push_application()
 
 
+@ray.remote
 def launch_dc_worker(
     kafka_command_topic: str,
     kafka_heartbeat_topic: str,
@@ -35,17 +35,17 @@ def launch_dc_worker(
     grid_folder: Path,
 ):
     logging.basicConfig(level=logging.INFO)
-    instance_id = str(uuid4())
     try:
         dc_main(
-            args=DCArgs(
+            DCArgs(
                 optimizer_command_topic=kafka_command_topic,
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
                 optimizer_results_topic=kafka_results_topic,
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=grid_folder,
-            ),
+                instance_id="dc_worker",
+            )
         )
     except SystemExit:
         # This is expected when the worker receives a shutdown command
@@ -53,6 +53,7 @@ def launch_dc_worker(
         pass
 
 
+@ray.remote
 def launch_ac_worker(
     kafka_command_topic: str,
     kafka_heartbeat_topic: str,
@@ -63,7 +64,6 @@ def launch_ac_worker(
 ):
     logging.basicConfig(level=logging.INFO)
     print("Starting AC worker")
-    instance_id = str(uuid4())
     try:
         ac_main(
             ACArgs(
@@ -73,8 +73,9 @@ def launch_ac_worker(
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
                 processed_gridfile_folder=grid_folder,
+                instance_id="ac_worker",
                 loadflow_result_folder=loadflow_result_folder,
-            ),
+            )
         )
     except SystemExit:
         # This is expected when the worker receives a shutdown command
@@ -91,37 +92,26 @@ def test_ac_dc_integration(
     grid_folder: Path,
     loadflow_result_folder: Path,
 ) -> None:
-    # Sticking with fork rather than spawn to avoid issues with ray and multiprocessing as
-    # ray spawns a new process and as a result of which pickles the objects.
-    # Producer and Consumer are not picklable.
-    set_start_method("spawn")
-    dc_worker_process = Process(
-        target=launch_dc_worker,
-        args=(
-            kafka_command_topic,
-            kafka_heartbeat_topic,
-            kafka_results_topic,
-            kafka_connection_str,
-            grid_folder,
-        ),
-    )
-    dc_worker_process.start()
-    # # time.sleep(5) # Give DC worker time to start
-
-    ac_worker_process = Process(
-        target=launch_ac_worker,
-        args=(
-            kafka_command_topic,
-            kafka_heartbeat_topic,
-            kafka_results_topic,
-            kafka_connection_str,
-            grid_folder,
-            loadflow_result_folder,
-        ),
-    )
-    ac_worker_process.start()
+    # Start the ray runtime
+    ray.init(num_cpus=4)
 
     try:
+        ac_future = launch_ac_worker.remote(
+            kafka_command_topic=kafka_command_topic,
+            kafka_heartbeat_topic=kafka_heartbeat_topic,
+            kafka_results_topic=kafka_results_topic,
+            kafka_connection_str=kafka_connection_str,
+            grid_folder=grid_folder,
+            loadflow_result_folder=loadflow_result_folder,
+        )
+        dc_future = launch_dc_worker.remote(
+            kafka_command_topic=kafka_command_topic,
+            kafka_heartbeat_topic=kafka_heartbeat_topic,
+            kafka_results_topic=kafka_results_topic,
+            kafka_connection_str=kafka_connection_str,
+            grid_folder=grid_folder,
+        )
+
         grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
         ac_parameters = ACOptimizerParameters(
             ga_config=ACGAParameters(
@@ -172,7 +162,7 @@ def test_ac_dc_integration(
         split_topo_push = False
 
         result_history = []
-        while message := consumer.poll(timeout=20.0):
+        while message := consumer.poll(timeout=10.0):
             result = Result.model_validate_json(deserialize_message(message.value()))
             result_history.append(result)
             if isinstance(result.result, OptimizationStoppedResult):
@@ -206,10 +196,9 @@ def test_ac_dc_integration(
         producer.produce(kafka_command_topic, value=serialize_message(shutdown_command.model_dump_json()))
         producer.flush()
 
-        ac_worker_process.join()
-        dc_worker_process.join()
+        # Give everyone a chance to shutdown
+        ray.get(ac_future)
+        ray.get(dc_future)
+
     finally:
-        if ac_worker_process.is_alive():
-            ac_worker_process.terminate()
-        if dc_worker_process.is_alive():
-            dc_worker_process.terminate()
+        ray.shutdown()

@@ -372,8 +372,8 @@ def enumerate_branch_actions_for_sub(
     randomly_select = None
     if 2**effective_degree > clip_to_n_actions:
         logger.warning(
-            f"Substation {network_data.node_ids[network_data.relevant_nodes[sub_id]]} has ",
-            f"{sub_degree} branches. Resorting to random action enumeration.",
+            f"Substation {network_data.node_ids[network_data.relevant_nodes[sub_id]]} has "
+            f"{sub_degree} branches. Resorting to random action enumeration."
         )
         randomly_select = clip_to_n_actions
 

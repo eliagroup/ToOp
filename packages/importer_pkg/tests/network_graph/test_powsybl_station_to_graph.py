@@ -686,6 +686,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_2W_MV_HV_MV",
         "VL_2W_MV_HV_HV",
         "VL_HV_vsc",
+        "VL_MV_load",
     ]
     # 'VL_HV_gen' not included as it is the slack
 

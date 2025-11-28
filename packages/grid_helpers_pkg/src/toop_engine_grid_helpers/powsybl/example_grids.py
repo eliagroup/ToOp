@@ -638,10 +638,13 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
 
     no_layout_list = ["VL_LV_load", "VL_DE_1", "VL_DE_2"]
     basic_layout_list = ["VL_2W_MV_LV_LV", "VL_3W_LV"]
-    two_busbar_layout_list = ["VL_3W_MV", "VL_2W_MV_LV_MV", "VL_MV_load", "VL_MV_svc", "VL_HV_gen"]
+    two_busbar_layout_list = ["VL_3W_MV", "VL_2W_MV_LV_MV", "VL_MV_svc", "VL_HV_gen"]
     three_busbar_layout_list = ["VL_2W_MV_HV_MV"]
     four_busbar_layout_list = ["VL_3W_HV", "VL_2W_MV_HV_HV", "VL_HV_vsc"]
-    four_busbar_disconnector_layout_list = ["VL_MV"]
+    four_busbar_disconnector_layout_list = [
+        "VL_MV",
+        "VL_MV_load",
+    ]
 
     def _create_busbars(voltage_list: list, kwargs: dict) -> None:
         for vl in voltage_list:
@@ -666,6 +669,14 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         bus_or_busbar_section_id_1=["VL_2W_MV_HV_HV_1_2"],
         bus_or_busbar_section_id_2=["VL_2W_MV_HV_HV_2_2"],
     )
+
+    pypowsybl.network.create_coupling_device(
+        n,
+        bus_or_busbar_section_id_1=["VL_MV_load_1_2"],
+        bus_or_busbar_section_id_2=["VL_MV_load_1_1"],
+    )
+    n.remove_elements("VL_MV_load_DISCONNECTOR_0_2")
+    n.remove_elements("VL_MV_load_DISCONNECTOR_1_3")
     # FIX ME: currently not working due to an importing issue in the simplyfied station function
     # pypowsybl.network.create_coupling_device(
     #     n,
@@ -711,7 +722,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
             {"bus_or_busbar_section_id_1": "VL_MV_svc_1_1", "bus_or_busbar_section_id_2": "VL_2W_MV_HV_MV_1_1", **mv_short},
             {"bus_or_busbar_section_id_1": "VL_2W_MV_LV_MV_1_1", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_short},
             {"bus_or_busbar_section_id_1": "VL_MV_load_1_1", "bus_or_busbar_section_id_2": "VL_MV_2_2", **mv_short},
-            {"bus_or_busbar_section_id_1": "VL_2W_MV_HV_MV_2_1", "bus_or_busbar_section_id_2": "VL_MV_2_1", **mv_short},
+            {"bus_or_busbar_section_id_1": "VL_2W_MV_HV_MV_3_1", "bus_or_busbar_section_id_2": "VL_MV_2_1", **mv_short},
             {"bus_or_busbar_section_id_1": "VL_MV_load_1_1", "bus_or_busbar_section_id_2": "VL_2W_MV_LV_MV_1_1", **mv_long},
             {"bus_or_busbar_section_id_1": "VL_MV_1_1", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_long},
             {"bus_or_busbar_section_id_1": "VL_MV_1_2", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_long},
@@ -744,6 +755,32 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     lines = lines.set_index("id")
     pypowsybl.network.create_line_bays(n, df=lines)
 
+    n.create_lines(
+        id="LINE_out_of_service",
+        voltage_level1_id="VL_MV_load",
+        node1=50,
+        voltage_level2_id="VL_2W_MV_HV_MV",
+        node2=50,
+        **mv_long,
+    )
+    n.create_switches(
+        id="LINE_out_of_service_BREAKER1",
+        name="LINE_out_of_service_BREAKER",
+        voltage_level_id="VL_MV_load",
+        node1=3,
+        node2=50,
+        kind="BREAKER",
+        open=True,
+    )
+    n.create_switches(
+        id="LINE_out_of_service_BREAKER2",
+        name="LINE_out_of_service_BREAKER",
+        voltage_level_id="VL_2W_MV_HV_MV",
+        node1=1,
+        node2=50,
+        kind="BREAKER",
+        open=True,
+    )
     # ---------------------------------------------------------------------
     # 4) Transformers
     # ---------------------------------------------------------------------
@@ -907,6 +944,47 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
 
     rows = [
         ("2W_MV_HV_PST", b_val, g_val, r_val, x_val, rho_val, alpha)
+        for r_val, x_val, alpha in zip(r_vals, x_vals, alphas, strict=True)
+    ]
+
+    steps_df = pd.DataFrame.from_records(data=rows, index="id", columns=["id", "b", "g", "r", "x", "rho", "alpha"])
+
+    n.create_phase_tap_changers(ptc_df, steps_df)
+    pypowsybl.network.create_2_windings_transformer_bays(
+        n,
+        id="MV_load_PST_no_limit",
+        b=1e-6,
+        g=5e-7,
+        r=0.1,
+        x=12.0,
+        rated_u1=110.0,
+        rated_u2=110.0,
+        bus_or_busbar_section_id_1="VL_MV_load_1_2",
+        position_order_1=50,
+        direction_1="BOTTOM",
+        bus_or_busbar_section_id_2="VL_MV_load_2_2",
+        position_order_2=50,
+        direction_2="BOTTOM",
+    )
+    ptc_df = pd.DataFrame.from_records(
+        index="id",
+        columns=["id", "target_deadband", "regulation_mode", "low_tap", "tap"],
+        data=[("MV_load_PST_no_limit", 2, "CURRENT_LIMITER", -30, -20)],
+    )
+    taps = np.arange(-30, 31)  # -30 .. 30 inclusive
+
+    # base/min/max values (keep b,g,r,x constant as before, interpolate rho and alpha)
+    b_val, g_val, rho_val = 0, 0, 1
+    alpha_min, alpha_max = -21.0, 21.0
+    x_min, x_max = -30.0, 30.0
+    r_min, r_max = -120.0, 120.0
+
+    alphas = np.linspace(alpha_min, alpha_max, len(taps))
+    x_vals = np.linspace(x_min, x_max, len(taps))
+    r_vals = np.linspace(r_min, r_max, len(taps))
+
+    rows = [
+        ("MV_load_PST_no_limit", b_val, g_val, r_val, x_val, rho_val, alpha)
         for r_val, x_val, alpha in zip(r_vals, x_vals, alphas, strict=True)
     ]
 
@@ -1291,6 +1369,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     limits["name"] = "permanent"
     limits["type"] = "CURRENT"
     limits["acceptable_duration"] = -1
+    limits.loc[limits["value"] < 0, "value"] = 1000
     n.create_operational_limits(limits)
 
     # transformer limits
@@ -1304,6 +1383,10 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     limits_tr["name"] = "permanent"
     limits_tr["type"] = "CURRENT"
     limits_tr["acceptable_duration"] = -1
+    limits_tr.loc[limits_tr["value"] < 0, "value"] = 1000
+    # delete no limit trfs
+    t_ids = ["MV_load_PST_no_limit"]
+    limits_tr = limits_tr.drop(t_ids)
     n.create_operational_limits(limits_tr)
 
     return n

@@ -127,7 +127,7 @@ class BaseImporterParameters(BaseModel):
     data_folder: Path
     """The path where the entry point where the timestep data folder structure starts.
 
-    The folder structure is defined in dc_solver.interfaces.folder_structure. This folder is relative to the
+    The folder structure is defined in interfaces.folder_structure. This folder is relative to the
     processed_grid_folder that is configured in the backend/importer. A typical default would be grid_model_file.stem"""
 
     grid_model_file: Path

@@ -21,6 +21,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_element_table,
     get_pandapower_branch_loadflow_results_sequence,
     get_pandapower_loadflow_results_injection,
+    load_pandapower_from_fs,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     parse_globally_unique_id,
@@ -270,8 +271,12 @@ class PandapowerRunner(AbstractLoadflowRunner):
     @overrides
     def load_base_grid_fs(self, filesystem: AbstractFileSystem, grid_path: Path) -> None:
         """Load the base grid from a file system"""
-        with filesystem.open(str(grid_path), "r") as f:
-            self.replace_grid(pp.from_json(f))
+        self.replace_grid(
+            load_pandapower_from_fs(
+                filesystem=filesystem,
+                file_path=grid_path,
+            )
+        )
 
     @overrides
     def load_base_grid(self, grid_path: Path) -> None:

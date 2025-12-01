@@ -3,11 +3,12 @@ from pathlib import Path
 
 import pytest
 from confluent_kafka import Consumer, Producer
+from fsspec.implementations.dirfs import DirFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_importer.worker.worker import Args, adjust_folders, idle_loop, main
+from toop_engine_importer.worker.worker import Args, idle_loop, main
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
-    CgmesImporterParameters,
     Command,
     ShutdownCommand,
     StartPreprocessingCommand,
@@ -132,6 +133,9 @@ def test_main_simple(
     producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
+    unprocessed_gridfile_fs = LocalFileSystem()
+    processed_gridfile_fs = LocalFileSystem()
+    loadflow_result_fs = LocalFileSystem()
     with pytest.raises(SystemExit):
         main(
             Args(
@@ -139,7 +143,10 @@ def test_main_simple(
                 importer_heartbeat_topic=kafka_heartbeat_topic,
                 importer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
-            )  # type: ignore
+            ),  # type: ignore
+            unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
+            loadflow_result_fs=loadflow_result_fs,
         )
 
 
@@ -179,6 +186,9 @@ def test_main(
     # Subscribe to the results topic
     consumer.unsubscribe()
     consumer.subscribe([kafka_results_topic])
+    unprocessed_gridfile_fs = DirFileSystem(ucte_file.parent)
+    processed_gridfile_fs = DirFileSystem(output_path)
+    loadflow_result_fs = DirFileSystem(loadflow_path)
 
     with pytest.raises(SystemExit):
         main(
@@ -187,10 +197,10 @@ def test_main(
                 importer_heartbeat_topic=kafka_heartbeat_topic,
                 importer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
-                unprocessed_gridfile_folder=ucte_file.parent,
-                processed_gridfile_folder=output_path,
-                loadflow_result_folder=loadflow_path,
-            )  # type: ignore
+            ),  # type: ignore
+            unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
+            loadflow_result_fs=loadflow_result_fs,
         )
 
     message = consumer.poll(timeout=30.0)
@@ -214,6 +224,9 @@ def test_main_idle(
 ) -> None:
     set_start_method("spawn")
     # Create an idling main process
+    unprocessed_gridfile_fs = LocalFileSystem()
+    processed_gridfile_fs = LocalFileSystem()
+    loadflow_result_fs = LocalFileSystem()
     p = Process(
         target=main,
         args=(
@@ -224,6 +237,9 @@ def test_main_idle(
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
             ),
+            unprocessed_gridfile_fs,
+            processed_gridfile_fs,
+            loadflow_result_fs,
         ),
     )
     p.start()
@@ -260,62 +276,3 @@ def test_main_idle(
         # Ensure the process is terminated
         p.terminate()
         p.join()
-
-
-def test_adjust_folders_with_ucte_parameters():
-    preprocessing_command = StartPreprocessingCommand(
-        preprocess_id="test",
-        importer_parameters=UcteImporterParameters(
-            grid_model_file=Path("grid_model.uct"),
-            white_list_file="white_list.txt",
-            black_list_file="black_list.txt",
-            data_folder=Path("output"),
-        ),
-    )
-    unprocessed_folder = "unprocessed"
-    processed_folder = "processed"
-
-    adjusted_command = adjust_folders(preprocessing_command, unprocessed_folder, processed_folder)
-
-    assert adjusted_command.importer_parameters.grid_model_file == Path(unprocessed_folder) / "grid_model.uct"
-    assert adjusted_command.importer_parameters.white_list_file == Path(unprocessed_folder) / "white_list.txt"
-    assert adjusted_command.importer_parameters.black_list_file == Path(unprocessed_folder) / "black_list.txt"
-    assert adjusted_command.importer_parameters.data_folder == Path(processed_folder) / "output"
-
-
-def test_adjust_folders_with_ucte_parameters_no_whitelist_blacklist():
-    preprocessing_command = StartPreprocessingCommand(
-        preprocess_id="test",
-        importer_parameters=UcteImporterParameters(
-            grid_model_file=Path("grid_model.uct"),
-            white_list_file=None,
-            black_list_file=None,
-            data_folder=Path("output"),
-        ),
-    )
-    unprocessed_folder = "unprocessed"
-    processed_folder = "processed"
-
-    adjusted_command = adjust_folders(preprocessing_command, unprocessed_folder, processed_folder)
-
-    assert adjusted_command.importer_parameters.grid_model_file == Path(unprocessed_folder) / "grid_model.uct"
-    assert adjusted_command.importer_parameters.white_list_file is None
-    assert adjusted_command.importer_parameters.black_list_file is None
-    assert adjusted_command.importer_parameters.data_folder == Path(processed_folder) / "output"
-
-
-def test_adjust_folders_with_cgmes_parameters():
-    preprocessing_command = StartPreprocessingCommand(
-        preprocess_id="test",
-        importer_parameters=CgmesImporterParameters(
-            grid_model_file=Path("grid_model.cgmes"),
-            data_folder=Path("output"),
-        ),
-    )
-    unprocessed_folder = "unprocessed"
-    processed_folder = "processed"
-
-    adjusted_command = adjust_folders(preprocessing_command, unprocessed_folder, processed_folder)
-
-    assert adjusted_command.importer_parameters.grid_model_file == Path(unprocessed_folder) / "grid_model.cgmes"
-    assert adjusted_command.importer_parameters.data_folder == Path(processed_folder) / "output"

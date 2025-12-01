@@ -276,6 +276,29 @@ def test_main(
     assert (output_path / "some_timestep" / PREPROCESSING_PATHS["static_information_file_path"]).exists()
 
 
+def main_wrapper(
+    args: Args,
+) -> None:
+    instance_id = str(uuid4())
+
+    consumer = LongRunningKafkaConsumer(
+        topic=args.importer_command_topic,
+        bootstrap_servers=args.kafka_broker,
+        group_id="importer-worker",
+        client_id=instance_id,
+    )
+    producer = Producer(
+        {
+            "bootstrap.servers": args.kafka_broker,
+            "client.id": instance_id,
+            "log_level": 2,
+        },
+        logger=getLogger("confluent_kafka.producer"),
+    )
+
+    main(args, producer, consumer)
+
+
 def test_main_idle(
     kafka_command_topic: str,
     kafka_heartbeat_topic: str,
@@ -285,7 +308,7 @@ def test_main_idle(
     set_start_method("spawn")
     # Create an idling main process
     p = Process(
-        target=main,
+        target=main_wrapper,
         args=(
             Args(
                 importer_command_topic=kafka_command_topic,

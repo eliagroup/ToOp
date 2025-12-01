@@ -213,7 +213,7 @@ flax==0.10.6
     # via
     #   brax
     #   qdax
-fonttools==4.60.1
+fonttools==4.61.0
     # via matplotlib
 fqdn==1.5.1
     # via jsonschema

@@ -6,7 +6,6 @@ Created: 2024-09-04
 """
 
 import json
-import shutil
 from pathlib import Path
 from typing import (
     Any,  # noqa: F401
@@ -17,18 +16,23 @@ from typing import (
 
 import logbook
 import pypowsybl
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     DISTRIBUTED_SLACK,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_topology
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, save_powsybl_to_fs
 from toop_engine_importer.network_graph import powsybl_station_to_graph
-from toop_engine_importer.pypowsybl_import import network_analysis, powsybl_masks
+from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (
     create_new_border_limits,
 )
-from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
+from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks, make_masks, save_masks_to_filesystem
+from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
@@ -41,42 +45,46 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     UcteImportResult,
 )
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition, save_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 
 logger = logbook.Logger(__name__)
 
 
-def save_preprocessing_statistics(statistics: PreProcessingStatistics, output_file: Path) -> None:
-    """Save the preprocessing statistics to the output folder.
+def save_preprocessing_statistics_filesystem(
+    statistics: PreProcessingStatistics, filesystem: AbstractFileSystem, file_path: Union[str, Path]
+) -> None:
+    """Save the preprocessing statistics to the filesystem.
 
     Parameters
     ----------
-    statistics: PreprocessingStatistics
+    statistics: PreProcessingStatistics
         The statistics to save.
-    output_file: Path
+    file_path: Path
         The file to save the preprocessing statistics to.
-
-
+    filesystem: AbstractFileSystem
+        The filesystem to save the file to.
     """
-    with open(output_file, "w") as f:
+    with filesystem.open(str(file_path), "w") as f:
         f.write(statistics.model_dump_json(indent=4))
 
 
-def load_preprocessing_statistics(file: Path) -> PreProcessingStatistics:
+def load_preprocessing_statistics_filesystem(file_path: Path, filesystem: AbstractFileSystem) -> PreProcessingStatistics:
     """Load the preprocessing statistics from the file.
 
     Parameters
     ----------
-    file: Path
+    file_path: Path
         The file to load the preprocessing statistics from.
+    filesystem: AbstractFileSystem
+        The filesystem to load the file from.
 
     Returns
     -------
-    statistics: PreprocessingStatistics
+    statistics: PreProcessingStatistics
         The loaded statistics.
 
     """
-    with open(file, "r") as f:
+    with filesystem.open(file_path, "r") as f:
         statistics = json.load(f)
     import_result = PreProcessingStatistics(**statistics)
     return import_result
@@ -233,6 +241,8 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 def convert_file(
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
     status_update_fn: Callable[[PreprocessStage, Optional[str]], None] = empty_status_update_fn,
+    processed_gridfile_fs: Optional[AbstractFileSystem] = None,
+    unprocessed_gridfile_fs: Optional[AbstractFileSystem] = None,
 ) -> UcteImportResult:
     """Convert the UCTE file to a format that can be used by the RL agent.
 
@@ -246,6 +256,10 @@ def convert_file(
     status_update_fn: Callable[[PreprocessStage, Optional[str]]
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters
+    processed_gridfile_fs: Optional[AbstractFileSystem]
+        A filesystem where the processed gridfiles are stored. If None, the local filesystem is used
+    unprocessed_gridfile_fs: Optional[AbstractFileSystem]
+        A filesystem where the unprocessed gridfiles are stored. If None, the local filesystem is used.
 
     Returns
     -------
@@ -253,19 +267,29 @@ def convert_file(
         The result of the import process.
 
     """
+    if unprocessed_gridfile_fs is None:
+        unprocessed_gridfile_fs = LocalFileSystem()
+    if processed_gridfile_fs is None:
+        processed_gridfile_fs = LocalFileSystem()
     # Copy original grid file
-    (importer_parameters.data_folder / PREPROCESSING_PATHS["original_gridfile_path"]).mkdir(exist_ok=True, parents=True)
-    original_gridfile_path = importer_parameters.data_folder / PREPROCESSING_PATHS["original_gridfile_path"]
-    # Copy original grid file
-    shutil.copy(importer_parameters.grid_model_file, original_gridfile_path / importer_parameters.grid_model_file.name)
+    copy_file_fs(
+        src_fs=unprocessed_gridfile_fs,
+        src_path=importer_parameters.grid_model_file.as_posix(),
+        dest_fs=processed_gridfile_fs,
+        dest_path=(
+            importer_parameters.data_folder
+            / PREPROCESSING_PATHS["original_gridfile_path"]
+            / importer_parameters.grid_model_file.name
+        ).as_posix(),
+    )
 
     # load network
     status_update_fn("load_ucte", "start loading grid file")
-    network = pypowsybl.network.load(
-        importer_parameters.grid_model_file, {"iidm.import.cgmes.post-processors": "cgmesGLImport"}
+    network = load_powsybl_from_fs(
+        filesystem=unprocessed_gridfile_fs,
+        file_path=importer_parameters.grid_model_file,
+        parameters={"iidm.import.cgmes.post-processors": "cgmesGLImport"},
     )
-    # Save original grid file as powsybl grid file
-    network.save(original_gridfile_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     network_analysis.remove_branches_with_same_bus(network)
     status_update_fn("load_ucte", "done loading grid file")
@@ -279,6 +303,7 @@ def convert_file(
         )
         trafo3w_lims.index.name = "id"
         network.update_2_windings_transformers(trafo3w_lims)
+
     statistics = PreProcessingStatistics(
         import_result=UcteImportResult(data_folder=importer_parameters.data_folder),
         import_parameter=importer_parameters,
@@ -302,16 +327,35 @@ def convert_file(
         statistics.id_lists["white_list"] = []
         statistics.id_lists["black_list"] = []
         logger.warning("CGMES of white_list and black_list not yet implemented")
+
+    # Save and reload Network due to powsybl changing order during save
     grid_file_path = importer_parameters.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-    grid_file_path.parent.mkdir(exist_ok=True, parents=True)
-    network.save(grid_file_path)
+    save_powsybl_to_fs(
+        network,
+        filesystem=processed_gridfile_fs,
+        file_path=grid_file_path,
+    )
     # Reload Network because powsybl likes to change order during save
-    network = pypowsybl.network.load(grid_file_path)
+    network = load_powsybl_from_fs(
+        filesystem=processed_gridfile_fs,
+        file_path=grid_file_path,
+    )
+
     # get N-1 masks
     status_update_fn("get_masks", "Creating Network Masks")
-    network_masks = create_network_masks(network, importer_parameters, statistics)
+    network_masks = get_network_masks(network, importer_parameters, statistics)
+    save_masks_to_filesystem(
+        data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
+    )
+
+    # get nminus1 definition
     nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
-    save_nminus1_definition(original_gridfile_path / PREPROCESSING_PATHS["nminus1_definition_file_path"], nminus1_definition)
+    save_pydantic_model_fs(
+        filesystem=processed_gridfile_fs,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        pydantic_model=nminus1_definition,
+    )
+
     if (
         importer_parameters.area_settings.dso_trafo_factors is not None
         or importer_parameters.area_settings.border_line_factors is not None
@@ -321,19 +365,33 @@ def convert_file(
         if lf_result[0].status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
             pypowsybl.loadflow.run_dc(network, parameters=DISTRIBUTED_SLACK)
         create_new_border_limits(network, network_masks, importer_parameters)
+        # save new border limits
+        save_powsybl_to_fs(
+            network,
+            filesystem=processed_gridfile_fs,
+            file_path=grid_file_path,
+        )
 
-    save_preprocessing_statistics(
-        statistics,
-        importer_parameters.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"],
+    save_preprocessing_statistics_filesystem(
+        statistics=statistics,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"],
+        filesystem=processed_gridfile_fs,
     )
 
     status_update_fn("get_topology_model", "Creating Pydantic Topology Model")
-    create_topology_model(network, network_masks, importer_parameters)
+    topology_model = get_topology_model(network, network_masks, importer_parameters)
+
+    save_pydantic_model_fs(
+        filesystem=processed_gridfile_fs,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["asset_topology_file_path"],
+        pydantic_model=topology_model,
+        indent=4,
+    )
 
     return statistics.import_result
 
 
-def create_network_masks(
+def get_network_masks(
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
     statistics: PreProcessingStatistics,
@@ -354,22 +412,21 @@ def create_network_masks(
     NetworkMasks
         The created network masks
     """
-    network_masks = powsybl_masks.make_masks(
+    network_masks = make_masks(
         network=network,
         importer_parameters=importer_parameters,
         blacklisted_ids=statistics.id_lists["black_list"],
     )
     fill_statistics_for_network_masks(network=network, statistics=statistics, network_masks=network_masks)
-    powsybl_masks.save_masks_to_files(data_folder=importer_parameters.data_folder, network_masks=network_masks)
     return network_masks
 
 
-def create_topology_model(
+def get_topology_model(
     network: Network,
     network_masks: NetworkMasks,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
-) -> None:
-    """Create the initial asset topology.
+) -> Topology:
+    """Get the initial asset topology.
 
     Parameters
     ----------
@@ -393,10 +450,8 @@ def create_topology_model(
         )
     elif importer_parameters.data_type == "cgmes":
         topology_model = powsybl_station_to_graph.get_topology(network, network_masks, importer_parameters)
-    topology_path = importer_parameters.data_folder / PREPROCESSING_PATHS["asset_topology_file_path"]
-    topology_path.parent.mkdir(exist_ok=True, parents=True)
-    with open(topology_path, "w") as f:
-        f.write(topology_model.model_dump_json(indent=4))
+
+    return topology_model
 
 
 def apply_preprocessing_changes_to_network(

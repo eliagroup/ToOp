@@ -12,6 +12,7 @@ import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
 import pytest
 import ray
+from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.injections import default_injection
@@ -279,7 +280,8 @@ def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
 
 
 def test_compute_cross_coupler_flows(preprocessed_powsybl_data_folder: Path) -> None:
-    backend = PowsyblBackend(preprocessed_powsybl_data_folder)
+    fs_dir = DirFileSystem(str(preprocessed_powsybl_data_folder))
+    backend = PowsyblBackend(fs_dir)
     net = backend.net
     network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
     action_set = extract_action_set(network_data)

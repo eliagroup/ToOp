@@ -2,6 +2,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import pytest
+from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
 from toop_engine_grid_helpers.pandapower.example_grids import pandapower_case30_with_psts
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
@@ -19,6 +20,8 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_power_key,
     get_remotely_connected_buses,
     get_shunt_real_power,
+    load_pandapower_from_fs,
+    save_pandapower_to_fs,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import parse_globally_unique_id_series
 
@@ -848,3 +851,74 @@ def test_get_remotely_connected_buses_respects_switches():
     # Should hop over if respect_switches is False
     result2 = get_remotely_connected_buses(net, buses=[b1], respect_switches=False)
     assert set(result2) == {b1, b2}
+
+
+def test_load_pp_from_fs_json(ieee14_json):
+    file_system = LocalFileSystem()
+
+    pp_net = load_pandapower_from_fs(file_system, ieee14_json)
+    assert isinstance(pp_net, pp.pandapowerNet)
+
+
+def test_load_pp_from_fs_mat(ieee14_mat):
+    file_system = LocalFileSystem()
+
+    pp_net = load_pandapower_from_fs(file_system, ieee14_mat)
+    assert isinstance(pp_net, pp.pandapowerNet)
+
+
+def test_load_pp_from_fs_uct(ucte_file):
+    file_system = LocalFileSystem()
+
+    pp_net = load_pandapower_from_fs(file_system, ucte_file)
+    assert isinstance(pp_net, pp.pandapowerNet)
+
+
+def test_load_pp_from_fs_cgmes(eurostag_tutorial_example1_cgmes):
+    file_system = LocalFileSystem()
+
+    pp_net = load_pandapower_from_fs(file_system, eurostag_tutorial_example1_cgmes)
+    assert isinstance(pp_net, pp.pandapowerNet)
+
+
+def test_save_load_pandapower_to_from_fs(tmp_path):
+    file_system = LocalFileSystem()
+    file_path = tmp_path / "test_net.json"
+
+    net = pp.networks.case14()
+    pp.runpp(net)
+    # Save the network to the filesystem
+    save_pandapower_to_fs(net=net, filesystem=file_system, file_path=file_path)
+
+    # Load the network back from the filesystem
+    loaded_net = load_pandapower_from_fs(file_system, file_path)
+
+    assert isinstance(loaded_net, pp.pandapowerNet)
+    assert loaded_net.bus.equals(net.bus)
+    assert loaded_net.line.equals(net.line)
+    assert loaded_net.gen.equals(net.gen)
+
+    save_pandapower_to_fs(net=net, filesystem=file_system, file_path=file_path, format="JSON")
+
+    # Load the network back from the filesystem
+    loaded_net = load_pandapower_from_fs(file_system, file_path)
+
+    assert isinstance(loaded_net, pp.pandapowerNet)
+    assert loaded_net.bus.equals(net.bus)
+    assert loaded_net.line.equals(net.line)
+    assert loaded_net.gen.equals(net.gen)
+
+    file_path = tmp_path / "test_net.mat"
+    save_pandapower_to_fs(net=net, filesystem=file_system, file_path=file_path, format="MATPOWER")
+
+    # Load the network back from the filesystem
+    loaded_net = load_pandapower_from_fs(file_system, file_path)
+
+    assert isinstance(loaded_net, pp.pandapowerNet)
+    assert len(loaded_net.bus) == len(net.bus)
+    assert len(loaded_net.line) == len(net.line)
+    assert len(loaded_net.gen) == len(net.gen)
+
+    # test value error, if beartype is active it raises Exception instead of ValueError
+    with pytest.raises((ValueError, Exception)):
+        save_pandapower_to_fs(net=net, filesystem=file_system, file_path=file_path, format="WRONG_FORMAT")

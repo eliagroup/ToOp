@@ -18,6 +18,8 @@ from pathlib import Path
 import h5py
 import numpy as np
 from beartype.typing import BinaryIO, Iterator, Optional
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
 from jaxtyping import Array, Bool, Int
 from toop_engine_dc_solver.jax.types import (
@@ -289,6 +291,22 @@ def validate_static_information(
     # assert jnp.all(di.shift_degree_min < di.shift_degree_max) # not used for now, needs a preprocessing step
 
 
+def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:
+    """Save the static information to a hdf5 file.
+
+    Parameters
+    ----------
+    filename : str
+        The filename to save to
+    static_information : StaticInformation
+        The static information to save
+    filesystem: AbstractFileSystem
+        The filesystem to save the StaticInformation to.
+    """
+    with filesystem.open(filename, "wb") as file:
+        _save_static_information(file, static_information)
+
+
 def save_static_information(filename: str | Path, static_information: StaticInformation) -> None:
     """Save the static information to a hdf5 file.
 
@@ -299,8 +317,7 @@ def save_static_information(filename: str | Path, static_information: StaticInfo
     static_information : StaticInformation
         The static information to save
     """
-    with open(filename, "wb") as file:
-        _save_static_information(file, static_information)
+    save_static_information_fs(filename=str(filename), static_information=static_information, filesystem=LocalFileSystem())
 
 
 # ruff: noqa: PLR0915, PLR0912, C901
@@ -559,6 +576,25 @@ def _save_static_information(binaryio: BinaryIO, static_information: StaticInfor
             )
 
 
+def load_static_information_fs(filesystem: AbstractFileSystem, filename: str) -> StaticInformation:
+    """Load the static information from a hdf5 file in jax format
+
+    Parameters
+    ----------
+    filename : str
+        The filename to load from
+    filesystem: AbstractFileSystem
+        The filesystem to load the StaticInformation from.
+
+    Returns
+    -------
+    StaticInformation
+        The loaded static information
+    """
+    with filesystem.open(filename, "rb") as file:
+        return _load_static_information(file)
+
+
 def load_static_information(filename: str | Path) -> StaticInformation:
     """Load the static information from a hdf5 file in jax format
 
@@ -572,8 +608,7 @@ def load_static_information(filename: str | Path) -> StaticInformation:
     StaticInformation
         The loaded static information
     """
-    with open(filename, "rb") as file:
-        return _load_static_information(file)
+    return load_static_information_fs(filesystem=LocalFileSystem(), filename=str(filename))
 
 
 def _load_static_information(binaryio: BinaryIO) -> StaticInformation:

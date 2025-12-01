@@ -1,7 +1,11 @@
 import os
 from pathlib import Path
 
+import pandapower
+import pypowsybl
 import pytest
+from pandapower import pp_dir
+from pandapower.converter import to_mpc
 from toop_engine_grid_helpers.powsybl.example_grids import case14_matching_asset_topo_powsybl
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -11,6 +15,36 @@ from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 def ucte_file() -> Path:
     ucte_file = Path(f"{os.path.dirname(__file__)}/files/test_ucte_powsybl_example.uct")
     return ucte_file
+
+
+@pytest.fixture(scope="session")
+def ieee14_mat(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("case14_mat")
+    net = pandapower.networks.case14()
+    pandapower.rundcpp(net)
+    to_mpc(net, tmp_path / "case14_matpower.mat")
+    return tmp_path / "case14_matpower.mat"
+
+
+@pytest.fixture(scope="session")
+def eurostag_tutorial_example1_cgmes(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("eurostag_tutorial_example1_cgmes")
+    net = pypowsybl.network.create_eurostag_tutorial_example1_network()
+    net.save(tmp_path / "eurostag_tutorial_example1.zip", format="CGMES")
+    return tmp_path / "eurostag_tutorial_example1.zip"
+
+
+@pytest.fixture(scope="session")
+def basic_node_breaker_grid_xiidm() -> Path:
+    """Fixture get saved example_grid.basic_node_breaker_network_powsybl()"""
+    return Path(__file__).parent / "files" / "basic_node_breaker.xiidm"
+
+
+@pytest.fixture(scope="session")
+def ieee14_json() -> Path:
+    pp_dir_path = Path(pp_dir)
+    ieee14_json_path = pp_dir_path / "networks" / "power_system_test_case_jsons" / "case14.json"
+    return ieee14_json_path
 
 
 @pytest.fixture(scope="session")

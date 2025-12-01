@@ -13,6 +13,8 @@ import logbook
 import numpy as np
 import pandas as pd
 import pypowsybl
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     DISTRIBUTED_SLACK,
@@ -28,6 +30,7 @@ from toop_engine_importer.pypowsybl_import.cgmes.powsybl_masks_cgmes import get_
 from toop_engine_importer.pypowsybl_import.contingency_from_file.contingency_file_models import ContingencyImportSchema
 from toop_engine_importer.pypowsybl_import.contingency_from_file.helper_functions import get_all_element_names
 from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
+from toop_engine_interfaces.filesystem_helper import save_numpy_filesystem
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -879,12 +882,26 @@ def save_masks_to_files(network_masks: NetworkMasks, data_folder: Path) -> None:
         The network masks to save.
     data_folder: Path
         The folder to save the masks to.
+    """
+    save_masks_to_filesystem(network_masks, data_folder, filesystem=LocalFileSystem())
 
+
+def save_masks_to_filesystem(network_masks: NetworkMasks, data_folder: Path, filesystem: AbstractFileSystem) -> None:
+    """Save the network masks to a filesystem.
+
+    Parameters
+    ----------
+    network_masks: NetworkMasks
+        The network masks to save.
+    data_folder: Path
+        The folder to save the masks to.
+    filesystem: AbstractFileSystem
+        The filesystem to save the masks to.
     """
     masks_folder = data_folder / PREPROCESSING_PATHS["masks_path"]
     masks_folder.mkdir(exist_ok=True, parents=True)
     for mask_key, mask in asdict(network_masks).items():
-        np.save(masks_folder / NETWORK_MASK_NAMES[mask_key], mask)
+        save_numpy_filesystem(filesystem=filesystem, file_path=masks_folder / NETWORK_MASK_NAMES[mask_key], numpy_array=mask)
 
 
 def remove_slack_from_relevant_subs(

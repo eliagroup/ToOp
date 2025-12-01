@@ -8,6 +8,8 @@ import logbook
 import pandapower as pp
 import pandas as pd
 import pypowsybl
+from fsspec.implementations.dirfs import DirFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
@@ -59,8 +61,12 @@ def test_save_load_preprocessing_statistics():
     )
     with TemporaryDirectory() as temp_dir:
         json_test_file = Path(temp_dir) / "test_save_statistics.json"
-        preprocessing.save_preprocessing_statistics(statistics, json_test_file)
-        loaded_statistics = preprocessing.load_preprocessing_statistics(json_test_file)
+        preprocessing.save_preprocessing_statistics_filesystem(
+            statistics, file_path=json_test_file, filesystem=LocalFileSystem()
+        )
+        loaded_statistics = preprocessing.load_preprocessing_statistics_filesystem(
+            json_test_file, filesystem=LocalFileSystem()
+        )
         assert isinstance(loaded_statistics, PreProcessingStatistics)
         assert statistics == loaded_statistics
         assert loaded_statistics.id_lists == statistics.id_lists
@@ -261,8 +267,9 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl: 
         assert len(net_loaded.get_static_var_compensators()) == 1
 
         # make sure the dc solver does not crash with the svc
+        filesystem_dir = DirFileSystem(str(import_result.data_folder))
         info, _, _ = load_grid(
-            data_folder=import_result.data_folder,
+            data_folder_dirfs=filesystem_dir,
             pandapower=False,
             parameters=PreprocessParameters(),
             status_update_fn=heartbeat_fn,

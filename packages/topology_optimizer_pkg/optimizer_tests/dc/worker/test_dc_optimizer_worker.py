@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from confluent_kafka import Consumer, Producer
+from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.worker import Args, idle_loop, main, optimization_loop
@@ -62,9 +63,9 @@ def test_idle_loop(
         client_id="test_idle_loop_client",
     )
 
-    parsed = idle_loop(consumer, lambda _: None, 100, Path("parent_folder"))
+    parsed = idle_loop(consumer, lambda _: None, 100)
     assert parsed.optimization_id == "test"
-    assert tuple(gf.grid_folder for gf in parsed.grid_files) == ("parent_folder/child_folder",)
+    assert tuple(gf.grid_folder for gf in parsed.grid_files) == ("child_folder",)
     assert consumer.last_msg is not None
     consumer.commit()
 
@@ -73,7 +74,7 @@ def test_idle_loop(
     producer.flush()
 
     with pytest.raises(SystemExit) as excinfo:
-        idle_loop(consumer, lambda _: None, 100, Path("parent_folder"))
+        idle_loop(consumer, lambda _: None, 100)
     assert excinfo.value.code == 0
     consumer.consumer.close()
 
@@ -96,6 +97,7 @@ def test_main_simple(
     producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
+    processed_gridfile_fs = DirFileSystem(str(processed_gridfile_folder))
     with pytest.raises(SystemExit):
         main(
             Args(
@@ -104,8 +106,8 @@ def test_main_simple(
                 optimizer_results_topic=kafka_results_topic,
                 heartbeat_interval_ms=1000,
                 kafka_broker=kafka_connection_str,
-                processed_gridfile_folder=processed_gridfile_folder,
-            )
+            ),
+            processed_gridfile_fs=processed_gridfile_fs,
         )
 
 
@@ -149,6 +151,7 @@ def test_main(
     producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()), partition=0)
     producer.flush()
 
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
     # run the worker
     with pytest.raises(SystemExit):
         main(
@@ -157,8 +160,8 @@ def test_main(
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
                 optimizer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
-                processed_gridfile_folder=grid_folder,
-            )
+            ),
+            processed_gridfile_fs=processed_gridfile_fs,
         )
 
     # subscribe to the results topic
@@ -218,7 +221,7 @@ def test_optimization_loop(
             ),
             loadflow_solver_config=LoadflowSolverParameters(distributed=distributed),
         ),
-        grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder=str(grid_folder / "oberrhein"))],
+        grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder="oberrhein")],
         optimization_id="test",
     )
 
@@ -232,12 +235,15 @@ def test_optimization_loop(
     def send_heartbeat_fn(heartbeat: HeartbeatUnion) -> None:
         heartbeats.append(heartbeat)
 
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
+
     optimization_loop(
         dc_params=start_opt_command.dc_params,
         grid_files=start_opt_command.grid_files,
         send_result_fn=send_result_fn,
         send_heartbeat_fn=send_heartbeat_fn,
         optimization_id=start_opt_command.optimization_id,
+        processed_gridfile_fs=processed_gridfile_fs,
     )
 
     assert isinstance(results[0], OptimizationStartedResult)
@@ -261,7 +267,7 @@ def test_optimization_loop_error_handling(
                 runtime_seconds=5,
             ),
         ),
-        grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder=str(grid_folder / "oberrhein"))],
+        grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder="oberrhein")],
         optimization_id="test",
     )
 
@@ -275,6 +281,8 @@ def test_optimization_loop_error_handling(
     def send_heartbeat_fn(heartbeat: HeartbeatUnion) -> None:
         heartbeats.append(heartbeat)
 
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
+
     with patch("toop_engine_topology_optimizer.dc.worker.worker.initialize_optimization") as mock_initialize_optimization:
         mock_initialize_optimization.side_effect = Exception("error")
         optimization_loop(
@@ -283,6 +291,7 @@ def test_optimization_loop_error_handling(
             send_result_fn=send_result_fn,
             send_heartbeat_fn=send_heartbeat_fn,
             optimization_id=start_opt_command.optimization_id,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
         assert mock_initialize_optimization.called
 
@@ -301,6 +310,7 @@ def test_optimization_loop_error_handling(
             send_result_fn=send_result_fn,
             send_heartbeat_fn=send_heartbeat_fn,
             optimization_id=start_opt_command.optimization_id,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
         assert mock_run_epoch.called
 

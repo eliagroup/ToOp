@@ -235,8 +235,8 @@ def optimization_loop(
 
 def main(
     args: Args,
-    producer: Producer | None = None,
-    command_consumer: LongRunningKafkaConsumer | None = None,
+    producer: Producer,
+    command_consumer: LongRunningKafkaConsumer,
 ) -> None:
     """Start the worker and run the optimization loop."""
     instance_id = str(uuid4())
@@ -245,23 +245,6 @@ def main(
         raise FileNotFoundError(f"Processed gridfile folder {args.processed_gridfile_folder} does not exist. ")
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
-
-    if command_consumer is None:
-        command_consumer = LongRunningKafkaConsumer(
-            topic=args.optimizer_command_topic,
-            group_id="dc_optimizer",
-            bootstrap_servers=args.kafka_broker,
-            client_id=instance_id,
-        )
-
-    if producer is None:
-        producer = Producer(
-            {
-                "bootstrap.servers": args.kafka_broker,
-                "client.id": instance_id,
-                "log_level": 2,
-            }
-        )
 
     def send_heartbeat(message: HeartbeatUnion, ping_consumer: bool) -> None:
         heartbeat = Heartbeat(

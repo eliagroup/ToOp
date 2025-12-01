@@ -232,9 +232,9 @@ def idle_loop(
 
 def main(
     args: Args,
-    producer: Producer | None = None,
-    command_consumer: LongRunningKafkaConsumer | None = None,
-    result_consumer: LongRunningKafkaConsumer | None = None,
+    producer: Producer,
+    command_consumer: LongRunningKafkaConsumer,
+    result_consumer: LongRunningKafkaConsumer,
 ) -> None:
     """Run the main AC worker loop.
 
@@ -244,11 +244,11 @@ def main(
     ----------
     args : Args
         The command line arguments
-    producer : Producer | None
+    producer : Producer
         A Kafka producer
-    command_consumer : LongRunningKafkaConsumer | None
+    command_consumer : LongRunningKafkaConsumer
         A Kafka consumer for commands
-    result_consumer : LongRunningKafkaConsumer | None
+    result_consumer : LongRunningKafkaConsumer
         A Kafka consumer for results
 
     Raises
@@ -262,27 +262,6 @@ def main(
     args.loadflow_result_folder.mkdir(parents=True, exist_ok=True)
     if not args.processed_gridfile_folder.exists():
         raise FileNotFoundError(f"Processed gridfile folder {args.processed_gridfile_folder} does not exist. ")
-
-    # We create two separate consumers for the command and result topics as we don't want to
-    # catch results during the idle loop.
-    if command_consumer is None:
-        command_consumer = LongRunningKafkaConsumer(
-            topic=args.optimizer_command_topic,
-            group_id="ac_optimizer",
-            bootstrap_servers=args.kafka_broker,
-            client_id=instance_id,
-        )
-
-    if result_consumer is None:
-        result_consumer = LongRunningKafkaConsumer(
-            topic=args.optimizer_results_topic,
-            group_id=f"ac_listener_{instance_id}_{uuid4()}",
-            bootstrap_servers=args.kafka_broker,
-            client_id=instance_id,
-        )
-
-    if producer is None:
-        producer = Producer({"bootstrap.servers": args.kafka_broker, "client.id": instance_id})
 
     worker_data = WorkerData(
         command_consumer=command_consumer,

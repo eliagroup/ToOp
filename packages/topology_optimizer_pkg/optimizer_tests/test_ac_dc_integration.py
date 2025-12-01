@@ -2,11 +2,13 @@ import logging
 import sys
 import time
 from pathlib import Path
+from uuid import uuid4
 
 import logbook
 import pytest
 import ray
 from confluent_kafka import Consumer, Producer
+from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
 from toop_engine_topology_optimizer.ac.worker import main as ac_main
@@ -26,6 +28,51 @@ logger = logbook.Logger(__name__)
 logbook.StreamHandler(sys.stdout, level=logging.INFO).push_application()
 
 
+def dc_main_wrapper(args: DCArgs) -> None:
+    instance_id = str(uuid4())
+    command_consumer = LongRunningKafkaConsumer(
+        topic=args.optimizer_command_topic,
+        group_id="dc_optimizer",
+        bootstrap_servers=args.kafka_broker,
+        client_id=instance_id,
+    )
+    producer = Producer(
+        {
+            "bootstrap.servers": args.kafka_broker,
+            "client.id": instance_id,
+            "log_level": 2,
+        }
+    )
+
+    dc_main(args, producer, command_consumer)
+
+
+def ac_main_wrapper(
+    args: ACArgs,
+) -> None:
+    instance_id = str(uuid4())
+    command_consumer = LongRunningKafkaConsumer(
+        topic=args.optimizer_command_topic,
+        group_id="ac_optimizer",
+        bootstrap_servers=args.kafka_broker,
+        client_id=instance_id,
+    )
+    result_consumer = LongRunningKafkaConsumer(
+        topic=args.optimizer_results_topic,
+        group_id="ac_optimizer_results",
+        bootstrap_servers=args.kafka_broker,
+        client_id=instance_id,
+    )
+    producer = Producer(
+        {
+            "bootstrap.servers": args.kafka_broker,
+            "client.id": instance_id,
+            "log_level": 2,
+        }
+    )
+    ac_main(args, producer, command_consumer, result_consumer)
+
+
 @ray.remote
 def launch_dc_worker(
     kafka_command_topic: str,
@@ -36,7 +83,7 @@ def launch_dc_worker(
 ):
     logging.basicConfig(level=logging.INFO)
     try:
-        dc_main(
+        dc_main_wrapper(
             DCArgs(
                 optimizer_command_topic=kafka_command_topic,
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
@@ -65,7 +112,7 @@ def launch_ac_worker(
     logging.basicConfig(level=logging.INFO)
     print("Starting AC worker")
     try:
-        ac_main(
+        ac_main_wrapper(
             ACArgs(
                 optimizer_command_topic=kafka_command_topic,
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,

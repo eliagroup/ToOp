@@ -276,7 +276,29 @@ def load_base_grid_fs(
     grid_path: Path,
     grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"],
 ) -> pandapower.pandapowerNet | Network:
-    """Load a grid from a filesystem."""
+    """Load the base grid from the grid file.
+
+    Force loading pandapower if grid type is pandapower, otherwise load powsybl.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The filesystem to load the grid from
+    grid_path : Path
+        The grid to load
+    grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"]
+        The type of the grid, either "pandapower", "powsybl", "ucte" or "cgmes".
+
+    Returns
+    -------
+    PandapowerNet | Network
+        The loaded grid
+
+    Raises
+    ------
+    ValueError
+        If the grid type is not supported.
+    """
     if grid_type == "pandapower":
         return load_pandapower_from_fs(filesystem, grid_path)
     if grid_type in ["powsybl", "ucte", "cgmes"]:

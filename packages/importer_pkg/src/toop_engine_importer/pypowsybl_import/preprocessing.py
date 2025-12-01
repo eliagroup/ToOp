@@ -6,7 +6,6 @@ Created: 2024-09-04
 """
 
 import json
-import shutil
 from pathlib import Path
 from typing import (
     Any,  # noqa: F401
@@ -33,7 +32,7 @@ from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import 
 )
 from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks, make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology import Topology
-from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
+from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
@@ -273,7 +272,7 @@ def convert_file(
     if processed_gridfile_fs is None:
         processed_gridfile_fs = LocalFileSystem()
     # Copy original grid file
-    copy_file(
+    copy_file_fs(
         src_fs=unprocessed_gridfile_fs,
         src_path=importer_parameters.grid_model_file.as_posix(),
         dest_fs=processed_gridfile_fs,
@@ -550,30 +549,3 @@ def fill_statistics_for_network_masks(
     statistics.import_result.n_load_for_nminus1 = int(network_masks.load_for_nminus1.sum())
     statistics.import_result.n_switch_for_nminus1 = int(network_masks.switch_for_nminus1.sum())
     statistics.import_result.n_switch_for_reward = int(network_masks.switch_for_reward.sum())
-
-
-def copy_file(
-    src_fs: AbstractFileSystem, src_path: str, dest_fs: AbstractFileSystem, dest_path: str, make_dir: bool = True
-) -> None:
-    """Copy a file from one filesystem to another.
-
-    Parameters
-    ----------
-    src_fs: AbstractFileSystem
-        The source filesystem.
-    src_path: str
-        The path to the file in the source filesystem.
-    dest_fs: AbstractFileSystem
-        The destination filesystem.
-    dest_path: str
-        The path to the file in the destination filesystem.
-    make_dir: bool
-        create parent folder if not exists.
-
-    """
-    # create parent directories
-    if make_dir:
-        dest_fs.makedirs(Path(dest_path).parent.as_posix(), exist_ok=True)
-    with src_fs.open(src_path, "rb") as src_file:
-        with dest_fs.open(dest_path, "wb") as dest_file:
-            shutil.copyfileobj(src_file, dest_file)

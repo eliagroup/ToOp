@@ -1,5 +1,6 @@
 """Support functions for the AbstractFileSystem"""
 
+import shutil
 from pathlib import Path
 from typing import TypeVar
 
@@ -112,3 +113,30 @@ def save_numpy_filesystem(
         filesystem.makedirs(Path(file_path).parent.as_posix(), exist_ok=True)
     with filesystem.open(str(file_path), "wb") as f:
         np.save(f, numpy_array)
+
+
+def copy_file_fs(
+    src_fs: AbstractFileSystem, src_path: str, dest_fs: AbstractFileSystem, dest_path: str, make_dir: bool = True
+) -> None:
+    """Copy a file from one filesystem to another.
+
+    Parameters
+    ----------
+    src_fs: AbstractFileSystem
+        The source filesystem.
+    src_path: str
+        The path to the file in the source filesystem.
+    dest_fs: AbstractFileSystem
+        The destination filesystem.
+    dest_path: str
+        The path to the file in the destination filesystem.
+    make_dir: bool
+        create parent folder if not exists.
+
+    """
+    # create parent directories
+    if make_dir:
+        dest_fs.makedirs(Path(dest_path).parent.as_posix(), exist_ok=True)
+    with src_fs.open(src_path, "rb") as src_file:
+        with dest_fs.open(dest_path, "wb") as dest_file:
+            shutil.copyfileobj(src_file, dest_file)

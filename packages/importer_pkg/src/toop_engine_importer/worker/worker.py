@@ -5,8 +5,6 @@ Author:  Nico Westerbeck
 Created: 2024
 """
 
-import os
-import sys
 import time
 import traceback
 from functools import partial
@@ -16,7 +14,6 @@ from uuid import uuid4
 
 import jax
 import logbook
-import tyro
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
@@ -278,14 +275,3 @@ def main(
             )
         producer.flush()
         consumer.stop_processing()
-
-
-if __name__ == "__main__":
-    logbook.StreamHandler(sys.stdout, level=logbook.INFO).push_application()
-    logbook.compat.redirect_logging()
-    if "IMPORTER_CONFIG_FILE" in os.environ:
-        with open(os.environ["IMPORTER_CONFIG_FILE"], "r") as f:
-            args = Args.model_validate_json(f.read())
-    else:
-        args = tyro.cli(Args)
-    main(args)

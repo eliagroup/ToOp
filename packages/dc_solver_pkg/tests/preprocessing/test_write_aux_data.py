@@ -1,4 +1,5 @@
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.example_grids import case30_with_psts
 from toop_engine_dc_solver.postprocess.write_aux_data import write_aux_data
 from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
@@ -79,7 +80,8 @@ def test_write_aux_data(network_data_preprocessed: NetworkData, tmp_path_factory
 def test_write_aux_data_pst_ranges(tmp_path_factory: pytest.TempPathFactory) -> None:
     tmp_path = tmp_path_factory.mktemp("test_write_aux_data_pst_ranges")
     case30_with_psts(tmp_path)
-    backend = PandaPowerBackend(tmp_path)
+    filesystem_dir = DirFileSystem(str(tmp_path))
+    backend = PandaPowerBackend(filesystem_dir)
     network_data = preprocess(backend)
 
     write_aux_data(tmp_path, network_data)

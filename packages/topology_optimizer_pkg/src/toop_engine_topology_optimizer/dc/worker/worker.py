@@ -1,17 +1,14 @@
 """Kafka worker for the genetic algorithm optimization."""
 
-import os
-import sys
 import time
 from functools import partial
-from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
 import jax
 import logbook
-import tyro
 from confluent_kafka import Producer
+from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
@@ -63,17 +60,11 @@ class Args(BaseModel):
     heartbeat_interval_ms: int = 1000
     """The interval in milliseconds to send heartbeats."""
 
-    processed_gridfile_folder: Path = Path("gridfiles")
-    """The parent folder where all the grid files are stored. In production this is a shared network
-    filesystem between the backend and all workers. When a command is received, this will be pre-
-    fixed to the static information file"""
-
 
 def idle_loop(
     consumer: LongRunningKafkaConsumer,
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
     heartbeat_interval_ms: int,
-    parent_grid_folder: Path,
 ) -> StartOptimizationCommand:
     """Run idle loop of the worker.
 
@@ -90,9 +81,6 @@ def idle_loop(
     heartbeat_interval_ms : int
         The time to wait for a new command in milliseconds. If no command has been received, a
         heartbeat will be sent and then the receiver will wait for commands again.
-    parent_grid_folder : Path
-        The folder where all the grid files are stored. This will be prefixed to the static
-        information files in the StartOptimizationCommand.
 
     Returns
     -------
@@ -117,11 +105,6 @@ def idle_loop(
         command = Command.model_validate_json(deserialize_message(message.value()))
 
         if isinstance(command.command, StartOptimizationCommand):
-            # Prefix the gridfile folder to the static information files
-            command.command.grid_files = [
-                gf.model_copy(update={"grid_folder": str(parent_grid_folder / gf.grid_folder)})
-                for gf in command.command.grid_files
-            ]
             return command.command
 
         if isinstance(command.command, ShutdownCommand):
@@ -141,6 +124,7 @@ def optimization_loop(
     send_result_fn: Callable[[ResultUnion], None],
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
     optimization_id: str,
+    processed_gridfile_fs: AbstractFileSystem,
 ) -> None:
     """Run an optimization until the optimization has converged
 
@@ -158,6 +142,13 @@ def optimization_loop(
         The id of the optimization run. This will be used to identify the optimization run in the
         results. Should stay the same for the whole optimization run and should be equal to the kafka
         event key.
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
 
     Raises
     ------
@@ -175,6 +166,7 @@ def optimization_loop(
             params=dc_params,
             optimization_id=optimization_id,
             static_information_files=[gf.static_information_file for gf in grid_files],
+            processed_gridfile_fs=processed_gridfile_fs,
         )
         send_result_fn(
             OptimizationStartedResult(
@@ -236,12 +228,31 @@ def optimization_loop(
         )
 
 
-def main(args: Args) -> None:
-    """Start the worker and run the optimization loop."""
+def main(
+    args: Args,
+    processed_gridfile_fs: AbstractFileSystem,
+) -> None:
+    """Run the main DC worker loop.
+
+    Parameters
+    ----------
+    args : Args
+        The command line arguments
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
+
+    Raises
+    ------
+    SystemExit
+        If the worker receives a ShutdownCommand
+    """
     instance_id = str(uuid4())
     logger.info(f"Starting DC worker {instance_id} with config {args}")
-    if not args.processed_gridfile_folder.exists():
-        raise FileNotFoundError(f"Processed gridfile folder {args.processed_gridfile_folder} does not exist. ")
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
 
@@ -288,7 +299,6 @@ def main(args: Args) -> None:
             consumer=consumer,
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=False),
             heartbeat_interval_ms=args.heartbeat_interval_ms,
-            parent_grid_folder=args.processed_gridfile_folder,
         )
         consumer.start_processing()
         optimization_loop(
@@ -297,16 +307,6 @@ def main(args: Args) -> None:
             send_result_fn=partial(send_result, optimization_id=command.optimization_id),
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=True),
             optimization_id=command.optimization_id,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
         consumer.stop_processing()
-
-
-if __name__ == "__main__":
-    logbook.StreamHandler(sys.stdout, level=logbook.INFO).push_application()
-    logbook.compat.redirect_logging()
-    if "DC_OPTIMIZER_CONFIG_FILE" in os.environ:
-        with open(os.environ["DC_OPTIMIZER_CONFIG_FILE"], "r") as f:
-            args = Args.model_validate_json(f.read())
-    else:
-        args = tyro.cli(Args)
-    main(args)

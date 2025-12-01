@@ -29,8 +29,8 @@ from .powsybl_masks import (
 from .preprocessing import (
     apply_preprocessing_changes_to_network,
     convert_file,
-    load_preprocessing_statistics,
-    save_preprocessing_statistics,
+    load_preprocessing_statistics_filesystem,
+    save_preprocessing_statistics_filesystem,
 )
 
 __all__ = [
@@ -47,10 +47,10 @@ __all__ = [
     "get_branches_df_with_element_name",
     "get_list_of_stations",
     "get_topology",
-    "load_preprocessing_statistics",
+    "load_preprocessing_statistics_filesystem",
     "make_masks",
     "remove_branches_across_switch",
     "save_masks_to_files",
-    "save_preprocessing_statistics",
+    "save_preprocessing_statistics_filesystem",
     "validate_network_masks",
 ]

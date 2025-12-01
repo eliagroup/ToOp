@@ -33,6 +33,7 @@ import jax
 import logbook
 import numpy as np
 import tyro
+from fsspec import AbstractFileSystem
 from pydantic import BaseModel, Field
 from tensorboardX import SummaryWriter
 from toop_engine_interfaces.types import MetricType
@@ -130,6 +131,7 @@ def write_summary(
     n_cells_per_dim: tuple[int, ...],
     descriptor_metrics: tuple[str, ...],
     plot: bool,
+    processed_gridfile_fs: AbstractFileSystem,
 ) -> dict:
     """Write a summary to a json file.
 
@@ -148,7 +150,7 @@ def write_summary(
     iteration : Optional[int]
         The iteration number, if None, will write to res.json, otherwise to res_{iteration}.json
     folder : str
-        The folder to write the summary to
+        The folder to write the summary to, relative to the processed_gridfile_fs
     args_dict : dict
         The arguments used for invocation in a dict format, will be added to the summary for
         documentation purposes
@@ -158,13 +160,20 @@ def write_summary(
         The descriptor metrics to use for MAP-Elites
     plot : bool
         Whether to plot the repertoire
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
 
     Returns
     -------
     dict
         The summary that was written
     """
-    os.makedirs(folder, exist_ok=True)
+    processed_gridfile_fs.makedirs(folder, exist_ok=True)
 
     # Here we assume that contingency_ids are the same for all topos in the repertoire
     contingency_ids = optimizer_data.solver_configs[0].contingency_ids
@@ -182,7 +191,7 @@ def write_summary(
         }
     )
     filename = "res.json" if iteration is None else f"res_{iteration}.json"
-    with open(os.path.join(folder, filename), "w") as f:
+    with processed_gridfile_fs.open(os.path.join(folder, filename), "w") as f:
         json.dump(summary, f)
     if plot:
         plot_repertoire(
@@ -198,13 +207,23 @@ def write_summary(
     return summary
 
 
-def main(args: CLIArgs) -> dict:
+def main(
+    args: CLIArgs,
+    processed_gridfile_fs: AbstractFileSystem,
+) -> dict:
     """Run main optimization function for CLI execution.
 
     Parameters
     ----------
     args : CLIArgs
         The arguments for the optimization
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
 
     Returns
     -------
@@ -224,6 +243,7 @@ def main(args: CLIArgs) -> dict:
         descriptor_metrics=[desc.metric for desc in args.ga_config.me_descriptors],
         plot=args.ga_config.plot,
         args_dict=args_dict,
+        processed_gridfile_fs=processed_gridfile_fs,
     )
 
     optimizer_data, stats, initial_topology = initialize_optimization(
@@ -238,6 +258,7 @@ def main(args: CLIArgs) -> dict:
         ),
         optimization_id="CLI",
         static_information_files=args.fixed_files,
+        processed_gridfile_fs=processed_gridfile_fs,
     )
 
     running_means = init_running_means(

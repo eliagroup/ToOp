@@ -38,14 +38,17 @@ from logging import getLogger
 from pathlib import Path
 
 import pandapower
-import pypowsybl
 import tyro
 from beartype.typing import Callable, Literal
 from confluent_kafka import Producer
+from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pandapower_from_fs
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
     save_loadflow_results_polars,
@@ -268,6 +271,41 @@ def solver_loop(
         )
 
 
+def load_base_grid_fs(
+    filesystem: AbstractFileSystem,
+    grid_path: Path,
+    grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"],
+) -> pandapower.pandapowerNet | Network:
+    """Load the base grid from the grid file.
+
+    Force loading pandapower if grid type is pandapower, otherwise load powsybl.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The filesystem to load the grid from
+    grid_path : Path
+        The grid to load
+    grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"]
+        The type of the grid, either "pandapower", "powsybl", "ucte" or "cgmes".
+
+    Returns
+    -------
+    PandapowerNet | Network
+        The loaded grid
+
+    Raises
+    ------
+    ValueError
+        If the grid type is not supported.
+    """
+    if grid_type == "pandapower":
+        return load_pandapower_from_fs(filesystem, grid_path)
+    if grid_type in ["powsybl", "ucte", "cgmes"]:
+        return load_powsybl_from_fs(filesystem, grid_path)
+    raise ValueError(f"Unknown grid type: {grid_type}")
+
+
 def load_base_grid(
     grid_path: Path, grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"]
 ) -> pandapower.pandapowerNet | Network:
@@ -290,11 +328,7 @@ def load_base_grid(
     ValueError
         If the grid type is not supported.
     """
-    if grid_type == "pandapower":
-        return pandapower.from_json(grid_path)
-    if grid_type in ["powsybl", "ucte", "cgmes"]:
-        return pypowsybl.network.load(grid_path)
-    raise ValueError(f"Unknown grid type: {grid_type}")
+    return load_base_grid_fs(LocalFileSystem(), grid_path, grid_type)
 
 
 def main(args: LoadflowWorkerArgs) -> None:

@@ -6,7 +6,8 @@ from pathlib import Path
 import logbook
 import numpy as np
 import pandapower as pp
-from beartype.typing import Iterable, Optional, Union
+from beartype.typing import Iterable, Optional
+from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from pandapower.pypower.idx_brch import F_BUS, SHIFT, T_BUS
 from pandapower.pypower.makeBdc import calc_b_from_branch
@@ -15,6 +16,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_pandapower_branch_loadflow_results_sequence,
     get_phaseshift_mask,
     get_shunt_real_power,
+    load_pandapower_from_fs,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     get_globally_unique_id,
@@ -28,8 +30,8 @@ from toop_engine_grid_helpers.pandapower.pandapower_tasks import (
     get_trafo3w_ppc_node_idx,
 )
 from toop_engine_interfaces.asset_topology import Topology
-from toop_engine_interfaces.asset_topology_helpers import load_asset_topology
 from toop_engine_interfaces.backend import BackendInterface
+from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (
     CHRONICS_FILE_NAMES,
     NETWORK_MASK_NAMES,
@@ -82,11 +84,11 @@ class PandaPowerBackend(BackendInterface):
 
     def __init__(
         self,
-        data_path: Union[Path, str],
+        data_folder_dirfs: AbstractFileSystem,
         chronics_id: Optional[int] = None,
         chronics_slice: Optional[slice] = None,
     ) -> None:
-        """Initiate the pandapower model by a given Path.
+        """Initiate the pandapower model by a given AbstractFileSystem.
 
         The folder at the path should contain:
         grid.json (The grid model)
@@ -101,24 +103,41 @@ class PandaPowerBackend(BackendInterface):
         - sgen_p.npy (optional)
         - dcline_p.npy (optional)
         - Timestep info for other injections will be filled with constant value from net
+
+        Parameters
+        ----------
+        data_folder_dirfs : AbstractFileSystem
+            A filesystem which is assumed to be a dirfs pointing to the root for this import job. I.e. the folder structure
+            as defined in toop_engine_interfaces.folder_structure is expected to start at root in this filesystem.
+        chronics_id : Optional[int], optional
+            The chronics id to use, by default None
+        chronics_slice: Optional[slice]
+             The chronics id to use, by default None
         """
         super().__init__()
-        data_path = Path(data_path)
-        self.data_path = data_path
+        self.data_folder_dirfs = data_folder_dirfs
         self.chronics_id = chronics_id
         self.chronics_slice = chronics_slice
         if chronics_id is not None:
             chronics_path = self._get_chronics_path()
-            self.load_p = np.load(chronics_path / CHRONICS_FILE_NAMES["load_p"])
-            self.gen_p = np.load(chronics_path / CHRONICS_FILE_NAMES["gen_p"])
+            self.load_p = load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs, file_path=str(chronics_path / CHRONICS_FILE_NAMES["load_p"])
+            )
+            self.gen_p = load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs, file_path=str(chronics_path / CHRONICS_FILE_NAMES["gen_p"])
+            )
             self.sgen_p = (
-                np.load(chronics_path / CHRONICS_FILE_NAMES["sgen_p"])
-                if os.path.exists(chronics_path / CHRONICS_FILE_NAMES["sgen_p"])
+                load_numpy_filesystem(
+                    filesystem=self.data_folder_dirfs, file_path=str(chronics_path / CHRONICS_FILE_NAMES["sgen_p"])
+                )
+                if self.data_folder_dirfs.exists(str(chronics_path / CHRONICS_FILE_NAMES["sgen_p"]))
                 else None
             )
             self.dcline_p = (
-                np.load(chronics_path / CHRONICS_FILE_NAMES["dcline_p"])
-                if os.path.exists(chronics_path / CHRONICS_FILE_NAMES["dcline_p"])
+                load_numpy_filesystem(
+                    filesystem=self.data_folder_dirfs, file_path=str(chronics_path / CHRONICS_FILE_NAMES["dcline_p"])
+                )
+                if self.data_folder_dirfs.exists(str(chronics_path / CHRONICS_FILE_NAMES["dcline_p"]))
                 else None
             )
 
@@ -128,8 +147,9 @@ class PandaPowerBackend(BackendInterface):
                 self.sgen_p = self.sgen_p[chronics_slice] if self.sgen_p is not None else None
                 self.dcline_p = self.dcline_p[chronics_slice] if self.dcline_p is not None else None
 
-        grid_file_path = data_path / PREPROCESSING_PATHS["grid_file_path_pandapower"]
-        self.net: pp.pandapowerNet = pp.from_json(grid_file_path)
+        self.net: pp.pandapowerNet = load_pandapower_from_fs(
+            filesystem=self.data_folder_dirfs, file_path=Path(PREPROCESSING_PATHS["grid_file_path_pandapower"])
+        )
         self.ppci = pp.converter.to_ppc(self.net, init="flat", calculate_voltage_angles=True)
         # # assert len(pp.topology.unsupplied_buses(net)) == 0
         # assert len(self.net.shunt) == 0
@@ -158,13 +178,13 @@ class PandaPowerBackend(BackendInterface):
         return lookup
 
     def _get_masks_path(self) -> Path:
-        return self.data_path / PREPROCESSING_PATHS["masks_path"]
+        return Path(PREPROCESSING_PATHS["masks_path"])
 
     def _get_logs_path(self) -> Path:
-        return self.data_path / PREPROCESSING_PATHS["logs_path"]
+        return Path(PREPROCESSING_PATHS["logs_path"])
 
     def _get_chronics_path(self) -> Path:
-        return self.data_path / PREPROCESSING_PATHS["chronics_path"] / f"{self.chronics_id:04d}"
+        return Path(PREPROCESSING_PATHS["chronics_path"]) / f"{self.chronics_id:04d}"
 
     def get_slack(self) -> int:
         """Get index of the slack node
@@ -202,7 +222,10 @@ class PandaPowerBackend(BackendInterface):
             The mask over nodes, indicating if they are relevant (splittable)
         """
         try:
-            pp_bus_mask = np.load(self._get_masks_path() / NETWORK_MASK_NAMES["relevant_subs"])
+            pp_bus_mask = load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs,
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["relevant_subs"]),
+            )
         except FileNotFoundError:
             pp_bus_mask = np.zeros(len(self.net.bus), dtype=bool)
         aux_bus_mask = np.zeros(len(self.net.trafo3w) + len(self.net.xward), dtype=bool)
@@ -219,7 +242,10 @@ class PandaPowerBackend(BackendInterface):
             The cross-coupler limits of the buses
         """
         try:
-            pp_bus_mask = np.load(self._get_masks_path() / NETWORK_MASK_NAMES["cross_coupler_limits"])
+            pp_bus_mask = load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs,
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["cross_coupler_limits"]),
+            )
         except FileNotFoundError:
             pp_bus_mask = np.zeros(len(self.net.bus), dtype=float)
         aux_bus_mask = np.zeros(len(self.net.trafo3w) + len(self.net.xward), dtype=float)
@@ -363,7 +389,10 @@ class PandaPowerBackend(BackendInterface):
             The shift taps of the controllable phase shifters
         """
         try:
-            controllable_pst_mask = np.load(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_pst_controllable"])
+            controllable_pst_mask = load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs,
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_pst_controllable"]),
+            )
         except FileNotFoundError:
             controllable_pst_mask = np.zeros(len(self.net.trafo), dtype=bool)
 
@@ -428,7 +457,10 @@ class PandaPowerBackend(BackendInterface):
         ppc_branch_mask = np.zeros(ppc_branch_inservice.shape, dtype=bool)
         for branch_type in ["line", "trafo", "trafo3w"]:
             try:
-                branch_type_mask = np.load(self._get_masks_path() / NETWORK_MASK_NAMES[f"{branch_type}_for_reward"])
+                branch_type_mask = load_numpy_filesystem(
+                    filesystem=self.data_folder_dirfs,
+                    file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES[f"{branch_type}_for_reward"]),
+                )
                 (
                     branch_start_index,
                     branch_end_index,
@@ -469,7 +501,10 @@ class PandaPowerBackend(BackendInterface):
         ppc_branch_mask = np.zeros(ppc_branch_inservice.shape, dtype=bool)
         for branch_type in ["line", "trafo", "trafo3w"]:
             try:
-                branch_type_mask = np.load(self._get_masks_path() / NETWORK_MASK_NAMES[f"{branch_type}_disconnectable"])
+                branch_type_mask = load_numpy_filesystem(
+                    filesystem=self.data_folder_dirfs,
+                    file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES[f"{branch_type}_disconnectable"]),
+                )
                 (
                     branch_start_index,
                     branch_end_index,
@@ -507,7 +542,10 @@ class PandaPowerBackend(BackendInterface):
             if self.net[branch_type].empty:
                 continue
             try:
-                branch_type_mask = np.load(self._get_masks_path() / NETWORK_MASK_NAMES[f"{branch_type}_for_nminus1"])
+                branch_type_mask = load_numpy_filesystem(
+                    filesystem=self.data_folder_dirfs,
+                    file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES[f"{branch_type}_for_nminus1"]),
+                )
                 (
                     branch_start_index,
                     branch_end_index,
@@ -546,7 +584,10 @@ class PandaPowerBackend(BackendInterface):
         """
         # Get multi outages relating to trafo3ws
         try:
-            trafo3w_outage_mask = np.load(self._get_masks_path() / NETWORK_MASK_NAMES["trafo3w_for_nminus1"])
+            trafo3w_outage_mask = load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs,
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo3w_for_nminus1"]),
+            )
         except FileNotFoundError:
             logger.info(
                 f"No file 'trafo3w_for_nminus1.npy' in given grid path '{self._get_masks_path()}'. "
@@ -602,7 +643,10 @@ class PandaPowerBackend(BackendInterface):
             The pandapower IDs of the busbar multi-outages
         """
         try:
-            busbar_mask = np.load(self._get_masks_path() / NETWORK_MASK_NAMES["busbar_for_nminus1"])
+            busbar_mask = load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs,
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["busbar_for_nminus1"]),
+            )
         except FileNotFoundError:
             logger.info(
                 f"No file 'busbar_for_nminus1.npy' in given grid path '{self._get_masks_path()}'. "
@@ -737,13 +781,19 @@ class PandaPowerBackend(BackendInterface):
         Currently only supports failing generators
         """
         try:
-            gen_mask = np.load(self._get_masks_path() / NETWORK_MASK_NAMES["generator_for_nminus1"])
+            gen_mask = load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs,
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["generator_for_nminus1"]),
+            )
         except FileNotFoundError:
             gen_mask = np.zeros(len(self.net.gen), dtype=bool)
         gen_mask = gen_mask[self.net.gen.in_service]
 
         try:
-            sgen_mask = np.load(self._get_masks_path() / NETWORK_MASK_NAMES["sgen_for_nminus1"])
+            sgen_mask = load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs,
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["sgen_for_nminus1"]),
+            )
         except FileNotFoundError:
             sgen_mask = np.zeros(len(self.net.sgen), dtype=bool)
         sgen_mask = sgen_mask[self.net.sgen.in_service]
@@ -1088,8 +1138,12 @@ class PandaPowerBackend(BackendInterface):
 
     def get_asset_topology(self) -> Optional[Topology]:
         """Get asset topology of the grid if it exists"""
-        if (self.data_path / PREPROCESSING_PATHS["asset_topology_file_path"]).exists():
-            return load_asset_topology(self.data_path / PREPROCESSING_PATHS["asset_topology_file_path"])
+        if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_file_path"]):
+            return load_pydantic_model_fs(
+                filesystem=self.data_folder_dirfs,
+                file_path=PREPROCESSING_PATHS["asset_topology_file_path"],
+                model_class=Topology,
+            )
         return None
 
     def get_metadata(self) -> dict:
@@ -1114,7 +1168,6 @@ class PandaPowerBackend(BackendInterface):
                     start_datetime = file.read()
 
         return {
-            "data_path": self.data_path,
             "chronics_id": self.chronics_id,
             "chronics_slice": self.chronics_slice,
             "chronics_path": chronics_path,

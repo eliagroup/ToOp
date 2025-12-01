@@ -17,6 +17,7 @@ from toop_engine_interfaces.asset_topology import (
     SwitchableAsset,
     Topology,
 )
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 
 
 def electrical_components(station: Station, min_num_assets: int = 1) -> list[list[int]]:
@@ -868,26 +869,6 @@ def compare_stations(
     )
 
 
-def load_asset_topology_fs(filesystem: AbstractFileSystem, filename: Union[str, Path]) -> Topology:
-    """Load an asset topology from a file system
-
-    Parameters
-    ----------
-    filesystem : AbstractFileSystem
-        The file system to load the asset topology from
-    filename : Union[str, Path]
-        The filename to load the asset topology from
-
-    Returns
-    -------
-    Topology
-        The loaded asset topology
-    """
-    with filesystem.open(str(filename), "r", encoding="utf-8") as file:
-        asset_topology = Topology.model_validate_json(file.read())
-    return asset_topology
-
-
 def load_asset_topology(filename: Union[str, Path]) -> Topology:
     """Load an asset topology from a file
 
@@ -901,7 +882,7 @@ def load_asset_topology(filename: Union[str, Path]) -> Topology:
     Topology
         The loaded asset topology
     """
-    return load_asset_topology_fs(LocalFileSystem(), filename)
+    return load_pydantic_model_fs(filesystem=LocalFileSystem(), file_path=filename, model_class=Topology)
 
 
 def save_asset_topology_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], asset_topology: Topology) -> None:

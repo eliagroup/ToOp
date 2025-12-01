@@ -541,6 +541,23 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         busbar_outage_branch_mask=get_busbar_map_adjacent_branches(network_data),
     )
 
+    pst_branches = np.flatnonzero(network_data.controllable_phase_shift_mask)
+    kept_pst_branches = np.isin(pst_branches, relevant_branches)
+    relevant_phase_shift_taps = list(
+        [taps for taps, keep in zip(network_data.phase_shift_taps, kept_pst_branches, strict=True) if keep]
+    )
+    # PST branches carry a node injection as well, so we need to adjust the injection indices
+    pst_node_indices = np.flatnonzero(network_data.controllable_pst_node_mask)
+    # Assert that the number of PST branches and nodes is the same
+    assert len(pst_branches) == len(pst_node_indices), (
+        "Number of PST branches and PST nodes do not match. Please check the controllable PST masks."
+    )
+    # WARNING: This assumes that PSTs are ordered the same way in both masks
+    kept_pst_nodes_indices = pst_node_indices[kept_pst_branches]
+    # Adapt the controllable PST node mask
+    kept_controllable_pst_node_mask = np.zeros_like(network_data.controllable_pst_node_mask)
+    kept_controllable_pst_node_mask[kept_pst_nodes_indices] = True
+
     return replace(
         network_data,
         ptdf=network_data.ptdf[relevant_branches, :],
@@ -556,6 +573,8 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         shift_angles=network_data.shift_angles[:, relevant_branches],
         phase_shift_mask=network_data.phase_shift_mask[relevant_branches],
         controllable_phase_shift_mask=network_data.controllable_phase_shift_mask[relevant_branches],
+        phase_shift_taps=relevant_phase_shift_taps,
+        controllable_pst_node_mask=kept_controllable_pst_node_mask,
         monitored_branch_mask=network_data.monitored_branch_mask[relevant_branches],
         disconnectable_branch_mask=network_data.disconnectable_branch_mask[relevant_branches],
         outaged_branch_mask=network_data.outaged_branch_mask[relevant_branches],

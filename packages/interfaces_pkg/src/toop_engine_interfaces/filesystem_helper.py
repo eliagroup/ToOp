@@ -116,7 +116,11 @@ def save_numpy_filesystem(
 
 
 def copy_file_fs(
-    src_fs: AbstractFileSystem, src_path: str, dest_fs: AbstractFileSystem, dest_path: str, make_dir: bool = True
+    src_fs: AbstractFileSystem,
+    src_path: Union[str, Path],
+    dest_fs: AbstractFileSystem,
+    dest_path: Union[str, Path],
+    make_dir: bool = True,
 ) -> None:
     """Copy a file from one filesystem to another.
 
@@ -124,11 +128,11 @@ def copy_file_fs(
     ----------
     src_fs: AbstractFileSystem
         The source filesystem.
-    src_path: str
+    src_path: Union[str, Path]
         The path to the file in the source filesystem.
     dest_fs: AbstractFileSystem
         The destination filesystem.
-    dest_path: str
+    dest_path: Union[str, Path]
         The path to the file in the destination filesystem.
     make_dir: bool
         create parent folder if not exists.
@@ -137,6 +141,6 @@ def copy_file_fs(
     # create parent directories
     if make_dir:
         dest_fs.makedirs(Path(dest_path).parent.as_posix(), exist_ok=True)
-    with src_fs.open(src_path, "rb") as src_file:
-        with dest_fs.open(dest_path, "wb") as dest_file:
+    with src_fs.open(str(src_path), "rb") as src_file:
+        with dest_fs.open(str(dest_path), "wb") as dest_file:
             shutil.copyfileobj(src_file, dest_file)

@@ -57,13 +57,13 @@ def test_copy_file_with_make_dir_true(tmp_path):
     src_fsspec = DirFileSystem(src_fs)
     dest_fsspec = DirFileSystem(dest_fs)
 
-    copy_file_fs(src_fs=src_fsspec, src_file=src_file, dest_fs=dest_fsspec, dest_file="subdir/file.txt", make_dir=True)
+    copy_file_fs(src_fs=src_fsspec, src_path=src_file, dest_fs=dest_fsspec, dest_path="subdir/file.txt", make_dir=True)
     assert (dest_fs / "subdir").exists()
     with open(dest_fs / "subdir/file.txt", "r") as f:
         content = f.read()
     assert content == "Test content"
 
-    copy_file_fs(src_fs=src_fsspec, src_file=src_file, dest_fs=dest_fsspec, dest_file="file.txt", make_dir=True)
+    copy_file_fs(src_fs=src_fsspec, src_path=src_file, dest_fs=dest_fsspec, dest_path="file.txt", make_dir=True)
     assert (dest_fs / "file.txt").exists()
     with open(dest_fs / "file.txt", "r") as f:
         content = f.read()
@@ -72,5 +72,14 @@ def test_copy_file_with_make_dir_true(tmp_path):
     # failing subdir not created
     with pytest.raises(FileNotFoundError):
         copy_file_fs(
-            src_fs=src_fsspec, src_file=src_file, dest_fs=dest_fsspec, dest_file="nonexistent_dir/file.txt", make_dir=False
+            src_fs=src_fsspec, src_path=src_file, dest_fs=dest_fsspec, dest_path="nonexistent_dir/file.txt", make_dir=False
         )
+
+    # test Path
+    src_file = Path(src_file)
+    dest_file = Path("file.txt")
+    copy_file_fs(src_fs=src_fsspec, src_path=src_file, dest_fs=dest_fsspec, dest_path=dest_file, make_dir=True)
+    assert (dest_fs / "file.txt").exists()
+    with open(dest_fs / "file.txt", "r") as f:
+        content = f.read()
+    assert content == "Test content"

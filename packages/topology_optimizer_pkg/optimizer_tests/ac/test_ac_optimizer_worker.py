@@ -68,8 +68,6 @@ def test_main_simple(
             ),
             processed_gridfile_fs=processed_gridfile_fs,
             loadflow_result_fs=loadflow_result_fs,
-            processed_gridfile_folder=processed_gridfile_folder,
-            loadflow_result_folder=loadflow_result_folder,
             producer=create_producer(kafka_connection_str, instance_id, log_level=2),
             command_consumer=create_consumer(
                 "LongRunningKafkaConsumer",
@@ -371,8 +369,6 @@ def test_main(
             ),
             processed_gridfile_fs=processed_gridfile_fs,
             loadflow_result_fs=loadflow_result_fs,
-            processed_gridfile_folder=processed_gridfile_folder,
-            loadflow_result_folder=loadflow_result_folder,
             producer=create_producer(kafka_connection_str, instance_id, log_level=2),
             command_consumer=create_consumer(
                 "LongRunningKafkaConsumer",

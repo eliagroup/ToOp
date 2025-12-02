@@ -6,11 +6,12 @@ import pytest
 from confluent_kafka import Consumer
 from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import select
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
-from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
-from toop_engine_interfaces.stored_action_set import load_action_set, random_actions
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.stored_action_set import load_action_set_fs, random_actions
 from toop_engine_topology_optimizer.ac.optimizer import AcNotConvergedError, initialize_optimization, make_runner, run_epoch
 from toop_engine_topology_optimizer.ac.scoring_functions import compute_loadflow
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
@@ -30,15 +31,18 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
             seed=42,
         )
     )
-    grid_files = [GridFile(framework=Framework.PANDAPOWER, grid_folder=str(grid_folder / "case14"))]
+    grid_files = [GridFile(framework=Framework.PANDAPOWER, grid_folder="case14")]
 
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
     # Run the function
     optimizer_data, strategy = initialize_optimization(
         params=params,
         session=create_session(),
         optimization_id="test",
         grid_files=grid_files,
-        loadflow_result_folder=loadflow_result_folder,
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
     )
     assert len(optimizer_data.runners) == 1
     assert len(strategy.timesteps) == 1
@@ -51,15 +55,30 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
 
 
 def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> None:
-    grid_files = [GridFile(framework=Framework.PANDAPOWER, grid_folder=str(grid_folder / "case14"))]
+    grid_files = [GridFile(framework=Framework.PANDAPOWER, grid_folder="case14")]
 
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
     # Load the network datas
-    action_sets = [load_action_set(grid_file.action_set_file) for grid_file in grid_files]
-    nminus1_definitions = [load_nminus1_definition(grid_file.nminus1_definition_file) for grid_file in grid_files]
+    action_sets = [
+        load_action_set_fs(filesystem=processed_gridfile_fs, file_path=grid_file.action_set_file) for grid_file in grid_files
+    ]
+    nminus1_definitions = [
+        load_pydantic_model_fs(
+            filesystem=processed_gridfile_fs, file_path=grid_file.nminus1_definition_file, model_class=Nminus1Definition
+        )
+        for grid_file in grid_files
+    ]
 
     # Prepare the loadflow runners
     runners = [
-        make_runner(action_set, nminus1_definition, grid_file, n_processes=1, batch_size=None)
+        make_runner(
+            action_set,
+            nminus1_definition,
+            grid_file,
+            n_processes=1,
+            batch_size=None,
+            processed_gridfile_fs=processed_gridfile_fs,
+        )
         for action_set, nminus1_definition, grid_file in zip(action_sets, nminus1_definitions, grid_files, strict=True)
     ]
 
@@ -73,6 +92,7 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     dirfs = DirFileSystem(str(tmp_path))
     ref = save_loadflow_results_polars(dirfs, "test_initial_loadflow", lfs)
 
+    loadflow_result_fs = DirFileSystem(str(tmp_path))
     with pytest.raises(FileNotFoundError):
         params = ACOptimizerParameters(
             ga_config=ACGAParameters(
@@ -89,7 +109,8 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
             session=create_session(),
             optimization_id="test",
             grid_files=grid_files,
-            loadflow_result_folder=tmp_path,
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
 
     # Create start parameters
@@ -109,7 +130,8 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
         session=create_session(),
         optimization_id="test",
         grid_files=grid_files,
-        loadflow_result_folder=tmp_path,
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
     )
     assert len(optimizer_data.runners) == 1
     assert len(strategy.timesteps) == 1
@@ -132,15 +154,18 @@ def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> 
             seed=42,
         )
     )
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder=str(grid_folder / "case57"))]
+    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
 
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
     # Run the function
     optimizer_data, strategy = initialize_optimization(
         params=params,
         session=create_session(),
         optimization_id="test",
         grid_files=grid_files,
-        loadflow_result_folder=loadflow_result_folder,
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
     )
     assert optimizer_data is not None
     assert strategy is not None
@@ -169,14 +194,17 @@ def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_re
             seed=42,
         )
     )
-    grid_files = [GridFile(framework=Framework.PANDAPOWER, grid_folder=str(case57_non_converging_path))]
+    grid_files = [GridFile(framework=Framework.PANDAPOWER, grid_folder=str(case57_non_converging_path.name))]
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(case57_non_converging_path.parent))
     with pytest.raises(AcNotConvergedError, match="Too many non-converging loadflows in initial loadflow*"):
         optimizer_data, strategy = initialize_optimization(
             params=params,
             session=create_session(),
             optimization_id="test",
             grid_files=grid_files,
-            loadflow_result_folder=loadflow_result_folder,
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
 
 
@@ -186,13 +214,16 @@ def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:
             runtime_seconds=10, pull_prob=1.0, reconnect_prob=0.0, close_coupler_prob=0.0, seed=42, enable_ac_rejection=False
         )
     )
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder=str(grid_folder / "case57"))]
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
+    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
     optimizer_data, _ = initialize_optimization(
         params=params,
         session=create_session(),
         optimization_id="test",
         grid_files=grid_files,
-        loadflow_result_folder=loadflow_result_folder,
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
     )
 
     action_set = optimizer_data.action_sets[0]

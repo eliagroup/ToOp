@@ -15,6 +15,7 @@ import pandapower as pp
 import pandas as pd
 import pypowsybl
 from beartype.typing import Literal, Optional
+from fsspec.implementations.dirfs import DirFileSystem
 from networkx.algorithms.community import kernighan_lin_bisection
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
@@ -312,14 +313,15 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
     pandapower : bool
         Whether to use the pandapower backend (true) or the powsybl backend (false)
     """
+    filesystem_dir = DirFileSystem(folder)
     if pandapower:
-        backend = PandaPowerBackend(folder)
+        backend = PandaPowerBackend(filesystem_dir)
         pp_counters = PandapowerCounters(
             highest_switch_id=int(backend.net.switch.index.max()) if len(backend.net.switch) else 0,
             highest_bus_id=int(backend.net.bus.index.max()),
         )
     else:
-        backend = PowsyblBackend(folder)
+        backend = PowsyblBackend(filesystem_dir)
         pp_counters = None
     topo_info = random_topology_info_backend(backend, pp_counters)
 
@@ -1034,9 +1036,9 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> N
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, enable_bb_outage=False, bb_outage_as_nminus1=False)
 
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
-
+    filesystem_dir = DirFileSystem(str(folder))
     _info, _static_information, _ = load_grid(
-        data_folder=folder,
+        data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,
@@ -1079,8 +1081,9 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
 
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
 
+    filesystem_dir = DirFileSystem(str(folder))
     _info, _static_information, _ = load_grid(
-        data_folder=folder,
+        data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,

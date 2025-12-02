@@ -5,11 +5,16 @@ such as loadflow results, branch limits, and monitored elements.
 """
 
 import math
+import tempfile
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from beartype.typing import Literal, Optional
+import pypowsybl
+from beartype.typing import Dict, List, Literal, Optional
+from fsspec import AbstractFileSystem
 from pypowsybl.network import Network
+from pypowsybl.report import ReportNode
 
 
 def extract_single_injection_loadflow_result(injections: pd.DataFrame, injection_id: str) -> tuple[float, float]:
@@ -58,56 +63,6 @@ def extract_single_branch_loadflow_result(
     p = branches.loc[branch_id, p_mapper]
     q = branches.loc[branch_id, q_mapper]
     return p, q
-
-
-def monitored_buses_to_monitored_voltage_levels(
-    net: Network, monitored_buses: list[str], bus_breaker_view: bool = False
-) -> list[str]:
-    """Convert a list of monitored buses to the corresponding voltage levels
-
-    Parameters
-    ----------
-    net : Network
-        The powsybl network
-    monitored_buses : list[str]
-        The list of bus ids to convert
-    bus_breaker_view : bool, optional
-        If True, the bus breaker view is used, by default False
-
-    Returns
-    -------
-    list[str]
-        The corresponding voltage levels
-    """
-    buses = net.get_bus_breaker_view_buses() if bus_breaker_view else net.get_buses()
-    return buses.loc[monitored_buses, "voltage_level_id"].unique().tolist()
-
-
-def buses_to_bus_breaker_view_bus(
-    net: Network,
-    buses: list[str],
-) -> list[str]:
-    """Find a corresponding bus breaker view bus id.
-
-    (referring to net.get_bus_breaker_view_buses().index
-    for a list of electrical buses (referring tonet.get_buses().index)
-
-    Parameters
-    ----------
-    net : Network
-        The powsybl network
-    buses : list[str]
-        The list of bus ids into net.get_buses().index
-
-    Returns
-    -------
-    list[str]
-        The corresponding bus breaker view bus ids, indexing into net.get_bus_breaker_view_buses().index
-    """
-    bus_breaker_buses = net.get_bus_breaker_view_buses()[["bus_id"]]
-    bus_breaker_buses = bus_breaker_buses.reset_index().sort_values(by="id")
-    first_breaker_bus_per_bus = bus_breaker_buses.groupby("bus_id").first()
-    return first_breaker_bus_per_bus.loc[buses].id.values.tolist()
 
 
 def get_branches_with_i(branches: pd.DataFrame, net: Network) -> pd.DataFrame:
@@ -316,3 +271,89 @@ def change_dangling_to_tie(dangling_lines: pd.DataFrame, station_elements: pd.Da
         station_elements = pd.concat([station_elements, dangling])
 
     return station_elements
+
+
+def load_powsybl_from_fs(
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    parameters: Optional[Dict[str, str]] = None,
+    post_processors: Optional[List[str]] = None,
+    report_node: Optional[ReportNode] = None,
+    allow_variant_multi_thread_access: bool = False,
+) -> pypowsybl.network.Network:
+    """Load any supported Powsybl network format from a filesystem.
+
+    Supported standard Powsybl formats like CGMES (.zip), powsybl nativa (.xiddm), UCTE (.uct), Matpower (.mat).
+    For all supported formats, see pypowsybl documentation for `pypowsybl.network.load`:
+    https://powsybl.readthedocs.io/projects/powsybl-core/en/stable/grid_exchange_formats/index.html
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The filesystem to load the Powsybl network from.
+    file_path : Path
+        The path to the Powsybl network in the filesystem.
+    parameters : Optional[Dict[str, str]], optional
+        Additional parameters to pass to the pypowsybl.network.load function, by default None
+    post_processors : Optional[List[str]], optional
+        a list of import post processors (will be added to the ones defined by the platform config), by default None
+    report_node : Optional[ReportNode], optional
+        the reporter to be used to create an execution report
+    allow_variant_multi_thread_access : bool, optional
+        allow multi-thread access to variant, by default False
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The loaded Powsybl network.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        filesystem.download(
+            str(file_path),
+            str(tmp_grid_path),
+        )
+        return pypowsybl.network.load(
+            file=str(tmp_grid_path),
+            parameters=parameters,
+            post_processors=post_processors,
+            report_node=report_node,
+            allow_variant_multi_thread_access=allow_variant_multi_thread_access,
+        )
+
+
+def save_powsybl_to_fs(
+    net: pypowsybl.network.Network,
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    format: Optional[Literal["CGMES", "XIIDM", "UCTE", "MATPOWER"]] = "XIIDM",
+    make_dir: bool = True,
+) -> None:
+    """Save any supported Powsybl network format to a filesystem.
+
+    Supported standard Powsybl formats like CGMES (.zip), powsybl nativa (.xiddm), UCTE (.uct), Matpower (.mat).
+    For all supported formats, see pypowsybl documentation for `pypowsybl.network.save`:
+    https://powsybl.readthedocs.io/projects/powsybl-core/en/stable/grid_exchange_formats/index.html
+
+    Parameters
+    ----------
+    net : pypowsybl.network.Network
+        The Powsybl network to save.
+    filesystem : AbstractFileSystem
+        The filesystem to save the Powsybl network to.
+    file_path : Path
+        The path to save the Powsybl network in the filesystem.
+    format : Optional[Literal["CGMES", "XIIDM", "UCTE", "MATPOWER"]], optional
+        The format to save the Powsybl network in, by default "CGMES".
+    make_dir: bool
+        create parent folder if not exists.
+    """
+    if make_dir:
+        filesystem.makedirs(Path(file_path).parent.as_posix(), exist_ok=True)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        net.save(str(tmp_grid_path), format=format)
+        filesystem.upload(
+            str(tmp_grid_path),
+            str(file_path),
+        )

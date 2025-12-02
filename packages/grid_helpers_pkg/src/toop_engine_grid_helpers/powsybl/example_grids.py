@@ -1260,3 +1260,169 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     n.create_operational_limits(limits_tr)
 
     return n
+
+
+def create_complex_substation_layout_grid() -> Network:
+    """Create a simplified complex substation-layout network using bay helpers.
+
+    This version uses `create_voltage_level_topology`, `create_line_bays`,
+    `create_2_windings_transformer_bays` and `create_coupling_device` to build
+    the same conceptual layout (two aligned busbars with three sections and
+    three couplers) in a lot fewer lines of code.
+    """
+    net = pypowsybl.network.create_empty("TEST_COMPLEX_SUBSTATION_LAYOUT_V2")
+
+    # Substations
+    net.create_substations(
+        id=["S1", "S2", "S3"], name=["Substation 1", "Substation 2", "Substation 3"], country=["DE", "DE", "DE"]
+    )
+
+    # Voltage levels
+    # VL1: complex node-breaker with 2 aligned busbars and 3 sections each (replicates B1..B6)
+    net.create_voltage_levels(
+        id=["VL1", "VL2", "VL3", "VL4", "VL5"],
+        substation_id=["S1", "S2", "S1", "S3", "S2"],
+        nominal_v=[380.0, 380.0, 220.0, 380.0, 220.0],
+        topology_kind=["NODE_BREAKER"] * 5,
+        name=["VL1", "VL2", "VL3", "VL4", "VL5"],
+    )
+
+    # Create topology layouts for the voltage levels. For VL1 we want two aligned
+    # busbars with three sections each (3 sections x 2 aligned -> 6 busbar sections)
+    pypowsybl.network.create_voltage_level_topology(
+        network=net, id="VL1", aligned_buses_or_busbar_count=3, section_count=2, switch_kinds="DISCONNECTOR"
+    )
+    pypowsybl.network.create_voltage_level_topology(
+        network=net, id="VL2", aligned_buses_or_busbar_count=2, section_count=1, switch_kinds=""
+    )
+
+    # For the other voltage levels use simple single-busbar layouts
+    for vl in ["VL3", "VL4", "VL5"]:
+        pypowsybl.network.create_voltage_level_topology(
+            network=net, id=vl, aligned_buses_or_busbar_count=1, section_count=1, switch_kinds=""
+        )
+
+    # Create three coupling devices (couplers) between corresponding sections of the
+    # two aligned busbars in VL1. This models the three couplers in the original function.
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL1_1_1"], bus_or_busbar_section_id_2=["VL1_2_1"]
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL1_1_2"], bus_or_busbar_section_id_2=["VL1_3_2"]
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL1_1_2"], bus_or_busbar_section_id_2=["VL1_2_1"]
+    )
+    # VL2
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL2_1_1"], bus_or_busbar_section_id_2=["VL2_2_1"]
+    )
+
+    # Lines: create a small set of line bays connecting VL1 sections to other VLs.
+    lines = pd.DataFrame(
+        [
+            {"bus_or_busbar_section_id_1": "VL1_2_1", "bus_or_busbar_section_id_2": "VL2_1_1", "r": 0.1, "x": 0.2},
+            {"bus_or_busbar_section_id_1": "VL1_1_2", "bus_or_busbar_section_id_2": "VL2_1_1", "r": 0.15, "x": 0.25},
+            {"bus_or_busbar_section_id_1": "VL1_3_1", "bus_or_busbar_section_id_2": "VL4_1_1", "r": 0.2, "x": 0.3},
+            {"bus_or_busbar_section_id_1": "VL1_3_2", "bus_or_busbar_section_id_2": "VL4_1_1", "r": 0.25, "x": 0.35},
+        ]
+    )
+    lines["g1"] = 0.0
+    lines["b1"] = 0.0
+    lines["g2"] = 0.0
+    lines["b2"] = 0.0
+    lines["position_order_1"] = 1
+    lines["position_order_2"] = 1
+    lines["direction_1"] = "TOP"
+    lines["direction_2"] = "TOP"
+    lines["id"] = [f"L{i + 1}" for i in range(len(lines))]
+    lines = lines.set_index("id")
+    pypowsybl.network.create_line_bays(net, df=lines)
+
+    # Transformers (use bay helper to create simpler transformer representation)
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T1",
+        b=1e-6,
+        g=1e-6,
+        r=0.5,
+        x=10.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL1_2_2",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL3_1_1",
+        position_order_2=5,
+        direction_2="TOP",
+    )
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T2",
+        b=1e-6,
+        g=1e-6,
+        r=0.6,
+        x=12.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL1_1_1",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL3_1_1",
+        position_order_2=5,
+        direction_2="TOP",
+    )
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T3",
+        b=1e-6,
+        g=1e-6,
+        r=0.5,
+        x=10.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL2_1_1",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL5_1_1",
+        position_order_2=5,
+        direction_2="TOP",
+    )
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T4",
+        b=1e-6,
+        g=1e-6,
+        r=0.6,
+        x=12.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL2_1_1",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL5_1_1",
+        position_order_2=5,
+        direction_2="TOP",
+    )
+
+    # # A couple of generators/loads to make the network usable in tests
+    pypowsybl.network.create_generator_bay(
+        net,
+        id="Gen1",
+        max_p=1000.0,
+        min_p=0.0,
+        target_p=500.0,
+        voltage_regulator_on=True,
+        target_v=230.0,
+        bus_or_busbar_section_id="VL3_1_1",
+        position_order=1,
+        direction="TOP",
+    )
+    pypowsybl.network.create_load_bay(
+        net, id="Load1", bus_or_busbar_section_id="VL5_1_1", p0=200.0, q0=30.0, position_order=1, direction="TOP"
+    )
+    pypowsybl.network.create_load_bay(
+        net, id="Load2", bus_or_busbar_section_id="VL4_1_1", p0=250.0, q0=20.0, position_order=1, direction="TOP"
+    )
+
+    return net

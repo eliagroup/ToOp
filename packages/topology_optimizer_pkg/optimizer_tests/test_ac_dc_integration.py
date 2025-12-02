@@ -30,7 +30,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 
 
-def dc_main_wrapper(args: DCArgs) -> None:
+def dc_main_wrapper(args: DCArgs, processed_gridfile_fs: AbstractFileSystem) -> None:
     instance_id = str(uuid4())
     command_consumer = LongRunningKafkaConsumer(
         topic=args.optimizer_command_topic,
@@ -46,11 +46,13 @@ def dc_main_wrapper(args: DCArgs) -> None:
         }
     )
 
-    dc_main(args, producer, command_consumer)
+    dc_main(args, processed_gridfile_fs, producer, command_consumer)
 
 
 def ac_main_wrapper(
     args: ACArgs,
+    processed_gridfile_fs: AbstractFileSystem,
+    loadflow_result_fs: AbstractFileSystem,
 ) -> None:
     instance_id = str(uuid4())
     command_consumer = LongRunningKafkaConsumer(
@@ -72,7 +74,7 @@ def ac_main_wrapper(
             "log_level": 2,
         }
     )
-    ac_main(args, producer, command_consumer, result_consumer)
+    ac_main(args, loadflow_result_fs, processed_gridfile_fs, producer, command_consumer, result_consumer)
 
 
 @ray.remote

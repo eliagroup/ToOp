@@ -147,7 +147,6 @@ def test_main_simple(
                 kafka_broker=kafka_connection_str,
             ),
             processed_gridfile_fs=processed_gridfile_fs,
-            processed_gridfile_folder=processed_gridfile_folder,
             producer=create_producer(kafka_connection_str, "dc_worker"),
             command_consumer=create_consumer(
                 "LongRunningKafkaConsumer",
@@ -203,14 +202,13 @@ def test_main(
     # run the worker
     with pytest.raises(SystemExit):
         main(
-            Args(
+            args=Args(
                 optimizer_command_topic=kafka_command_topic,
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
                 optimizer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
             ),
             processed_gridfile_fs=processed_gridfile_fs,
-            processed_gridfile_folder=grid_folder,
             producer=create_producer(kafka_connection_str, "dc_worker"),
             command_consumer=create_consumer(
                 "LongRunningKafkaConsumer",

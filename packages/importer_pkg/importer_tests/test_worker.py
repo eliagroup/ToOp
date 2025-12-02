@@ -285,6 +285,9 @@ def test_main(
 
 def main_wrapper(
     args: Args,
+    unprocessed_gridfile_fs,
+    processed_gridfile_fs,
+    loadflow_result_fs,
 ) -> None:
     instance_id = str(uuid4())
 
@@ -303,7 +306,14 @@ def main_wrapper(
         logger=getLogger("confluent_kafka.producer"),
     )
 
-    main(args, producer, consumer)
+    main(
+        args,
+        producer=producer,
+        consumer=consumer,
+        unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
+        loadflow_result_fs=loadflow_result_fs,
+    )
 
 
 def test_main_idle(

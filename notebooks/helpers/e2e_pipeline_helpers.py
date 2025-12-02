@@ -23,6 +23,7 @@ import pandapower
 
 # Domain-specific imports (may raise if not available in the environment)
 import pypowsybl
+from fsspec.implementations.dirfs import DirFileSystem
 from omegaconf import DictConfig
 
 # Local project imports
@@ -269,8 +270,9 @@ def run_preprocessing(
     )
 
     jax.clear_caches()
+    filesystem_dir = DirFileSystem(str(data_folder))
     info, static_information, _ = load_grid(
-        data_folder=data_folder,
+        data_folder_dirfs=filesystem_dir,
         pandapower=is_pandapower_net,
         status_update_fn=empty_status_update_fn,
         parameters=preprocessing_parameters,

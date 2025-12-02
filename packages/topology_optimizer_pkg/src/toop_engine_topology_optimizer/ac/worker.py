@@ -4,12 +4,12 @@ import time
 import traceback
 from dataclasses import dataclass
 from functools import partial
-from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
 import logbook
 from confluent_kafka import Producer
+from fsspec import AbstractFileSystem
 from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
@@ -43,11 +43,6 @@ class Args(DCArgs):
     Mostly the same as the DC worker except for an additional loadflow results folder
     """
 
-    loadflow_result_folder: Path = Path("loadflow_results")
-    """The parent folder where all loadflow results are stored. In production this is a shared network
-    filesystem between the backend and all workers. Loadflow results are too large to be sent directly
-    over kafka. Only needed for AC"""
-
 
 @dataclass
 class WorkerData:
@@ -74,7 +69,8 @@ def optimization_loop(
     send_result_fn: Callable[[ResultUnion], None],
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
     optimization_id: str,
-    loadflow_result_folder: Path,
+    loadflow_result_fs: AbstractFileSystem,
+    processed_gridfile_fs: AbstractFileSystem,
 ) -> None:
     """Run the main loop for the AC optimizer.
 
@@ -94,8 +90,16 @@ def optimization_loop(
         The function to send heartbeats
     optimization_id : str
         The ID of the optimization run
-    loadflow_result_folder : Path
-        The folder where the loadflow results are stored.
+    loadflow_result_fs: AbstractFileSystem
+        A filesystem where the loadflow results are stored. Loadflows will be stored here using the uuid generation process
+        and passed as a StoredLoadflowReference which contains the subfolder in this filesystem.
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
     """
     logger.info(f"Initializing optimization {optimization_id}")
     try:
@@ -109,7 +113,8 @@ def optimization_loop(
             params=ac_params,
             optimization_id=optimization_id,
             grid_files=grid_files,
-            loadflow_result_folder=loadflow_result_folder,
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
         send_result_fn(
             OptimizationStartedResult(
@@ -163,7 +168,6 @@ def idle_loop(
     worker_data: WorkerData,
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
     heartbeat_interval_ms: int,
-    parent_grid_folder: Path,
 ) -> StartOptimizationCommand:
     """Run idle loop of the AC optimizer worker.
 
@@ -180,9 +184,7 @@ def idle_loop(
     heartbeat_interval_ms : int
         The time to wait for a new command in milliseconds. If no command has been received, a
         heartbeat will be sent and then the receiver will wait for commands again.
-    parent_grid_folder : Path
-        The folder where all the grid files are stored. This will be prefixed to the static
-        information files in the StartOptimizationCommand.
+
 
     Returns
     -------
@@ -212,11 +214,6 @@ def idle_loop(
         command = Command.model_validate_json(deserialize_message(message.value()))
 
         if isinstance(command.command, StartOptimizationCommand):
-            # Prefix the gridfile folder to the static information files
-            command.command.grid_files = [
-                gf.model_copy(update={"grid_folder": str(parent_grid_folder / gf.grid_folder)})
-                for gf in command.command.grid_files
-            ]
             return command.command
 
         if isinstance(command.command, ShutdownCommand):
@@ -232,24 +229,34 @@ def idle_loop(
 
 def main(
     args: Args,
+    loadflow_result_fs: AbstractFileSystem,
+    processed_gridfile_fs: AbstractFileSystem,
     producer: Producer,
     command_consumer: LongRunningKafkaConsumer,
     result_consumer: LongRunningKafkaConsumer,
 ) -> None:
     """Run the main AC worker loop.
 
-    Which for some reason has the same command line arguments as the DC worker :D
-
     Parameters
     ----------
     args : Args
         The command line arguments
+    loadflow_result_fs: AbstractFileSystem
+        A filesystem where the loadflow results are stored. Loadflows will be stored here using the uuid generation process
+        and passed as a StoredLoadflowReference which contains the subfolder in this filesystem.
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
     producer : Producer
-        A Kafka producer
+        A kafka producer to send heartbeats and results
     command_consumer : LongRunningKafkaConsumer
-        A Kafka consumer for commands
+        A kafka consumer listening in for optimization commands
     result_consumer : LongRunningKafkaConsumer
-        A Kafka consumer for results
+        A kafka consumer listening in for results
 
     Raises
     ------
@@ -259,10 +266,8 @@ def main(
     instance_id = str(uuid4())
     logger.info(f"Starting AC worker {instance_id} with config {args}")
 
-    args.loadflow_result_folder.mkdir(parents=True, exist_ok=True)
-    if not args.processed_gridfile_folder.exists():
-        raise FileNotFoundError(f"Processed gridfile folder {args.processed_gridfile_folder} does not exist. ")
-
+    # We create two separate consumers for the command and result topics as we don't want to
+    # catch results during the idle loop.
     worker_data = WorkerData(
         command_consumer=command_consumer,
         # Create a results consumer that will listen to results from any DC optimizers
@@ -309,7 +314,6 @@ def main(
             worker_data=worker_data,
             send_heartbeat_fn=partial(send_heartbeat, ping_commands=False),
             heartbeat_interval_ms=args.heartbeat_interval_ms,
-            parent_grid_folder=args.processed_gridfile_folder,
         )
 
         # During the optimization loop, the command consumer is paused and the result consumer is active
@@ -321,6 +325,7 @@ def main(
             send_result_fn=partial(send_result, optimization_id=command.optimization_id),
             send_heartbeat_fn=partial(send_heartbeat, ping_commands=True),
             optimization_id=command.optimization_id,
-            loadflow_result_folder=args.loadflow_result_folder,
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
         worker_data.command_consumer.stop_processing()

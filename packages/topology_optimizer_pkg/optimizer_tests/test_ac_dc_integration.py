@@ -26,6 +26,8 @@ from toop_engine_topology_optimizer.interfaces.messages.results import Optimizat
 
 logger = logbook.Logger(__name__)
 logbook.StreamHandler(sys.stdout, level=logging.INFO).push_application()
+from fsspec import AbstractFileSystem
+from fsspec.implementations.dirfs import DirFileSystem
 
 
 def dc_main_wrapper(args: DCArgs) -> None:
@@ -79,7 +81,7 @@ def launch_dc_worker(
     kafka_heartbeat_topic: str,
     kafka_results_topic: str,
     kafka_connection_str: str,
-    grid_folder: Path,
+    processed_gridfile_fs: AbstractFileSystem,
 ):
     logging.basicConfig(level=logging.INFO)
     try:
@@ -90,9 +92,9 @@ def launch_dc_worker(
                 optimizer_results_topic=kafka_results_topic,
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
-                processed_gridfile_folder=grid_folder,
                 instance_id="dc_worker",
-            )
+            ),
+            processed_gridfile_fs=processed_gridfile_fs,
         )
     except SystemExit:
         # This is expected when the worker receives a shutdown command
@@ -106,8 +108,8 @@ def launch_ac_worker(
     kafka_heartbeat_topic: str,
     kafka_results_topic: str,
     kafka_connection_str: str,
-    grid_folder: Path,
-    loadflow_result_folder: Path,
+    processed_gridfile_fs: AbstractFileSystem,
+    loadflow_result_fs: AbstractFileSystem,
 ):
     logging.basicConfig(level=logging.INFO)
     print("Starting AC worker")
@@ -119,10 +121,10 @@ def launch_ac_worker(
                 optimizer_results_topic=kafka_results_topic,
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
-                processed_gridfile_folder=grid_folder,
                 instance_id="ac_worker",
-                loadflow_result_folder=loadflow_result_folder,
-            )
+            ),
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
     except SystemExit:
         # This is expected when the worker receives a shutdown command
@@ -142,21 +144,23 @@ def test_ac_dc_integration(
     # Start the ray runtime
     ray.init(num_cpus=4)
 
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
     try:
         ac_future = launch_ac_worker.remote(
             kafka_command_topic=kafka_command_topic,
             kafka_heartbeat_topic=kafka_heartbeat_topic,
             kafka_results_topic=kafka_results_topic,
             kafka_connection_str=kafka_connection_str,
-            grid_folder=grid_folder,
-            loadflow_result_folder=loadflow_result_folder,
+            processed_gridfile_fs=processed_gridfile_fs,
+            loadflow_result_fs=loadflow_result_fs,
         )
         dc_future = launch_dc_worker.remote(
             kafka_command_topic=kafka_command_topic,
             kafka_heartbeat_topic=kafka_heartbeat_topic,
             kafka_results_topic=kafka_results_topic,
             kafka_connection_str=kafka_connection_str,
-            grid_folder=grid_folder,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
 
         grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]

@@ -8,7 +8,7 @@ from typing import Callable, Optional
 
 import logbook
 import numpy as np
-from fsspec.implementations.dirfs import DirFileSystem
+from fsspec import AbstractFileSystem
 from numpy.random import Generator as Rng
 from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
@@ -18,12 +18,13 @@ from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import Lo
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
-from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
-from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
 from toop_engine_topology_optimizer.ac.evolution_functions import evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics, evaluate_acceptance, scoring_function
@@ -141,6 +142,7 @@ def make_runner(
     grid_file: GridFile,
     n_processes: int,
     batch_size: Optional[int],
+    processed_gridfile_fs: AbstractFileSystem,
 ) -> AbstractLoadflowRunner:
     """Initialize a runner for a gridfile, action set and n-1 def
 
@@ -156,6 +158,13 @@ def make_runner(
         The number of processes to use, from the ACGAParameters
     batch_size : Optional[int]
         The batch size to use, if any, from the ACGAParameters
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
 
     Returns
     -------
@@ -170,7 +179,7 @@ def make_runner(
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     else:
         raise ValueError(f"Unknown framework {grid_file.framework}")
-    runner.load_base_grid(grid_file_path)
+    runner.load_base_grid_fs(filesystem=processed_gridfile_fs, grid_path=grid_file_path)
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(nminus1_definition)
     return runner
@@ -181,7 +190,8 @@ def initialize_optimization(
     session: Session,
     optimization_id: str,
     grid_files: list[GridFile],
-    loadflow_result_folder: Path,
+    loadflow_result_fs: AbstractFileSystem,
+    processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[OptimizerData, Strategy]:
     """Initialize an optimization run for the AC optimizer
 
@@ -195,8 +205,17 @@ def initialize_optimization(
         The ID of the optimization run
     grid_files : list[GridFile]
         The grid files to optimize on, must contain at least one file
-    loadflow_result_folder : Path
-        The folder where the loadflow results are stored.
+    loadflow_result_fs: AbstractFileSystem
+        A filesystem where the loadflow results are stored. Loadflows will be stored here using the uuid generation process
+        and passed as a StoredLoadflowReference which contains the subfolder in this filesystem.
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
+
 
     Returns
     -------
@@ -211,8 +230,15 @@ def initialize_optimization(
     ga_config = params.ga_config
 
     # Load the network datas
-    action_sets = [load_action_set(grid_file.action_set_file) for grid_file in grid_files]
-    nminus1_definitions = [load_nminus1_definition(grid_file.nminus1_definition_file) for grid_file in grid_files]
+    action_sets = [
+        load_action_set_fs(filesystem=processed_gridfile_fs, file_path=grid_file.action_set_file) for grid_file in grid_files
+    ]
+    nminus1_definitions = [
+        load_pydantic_model_fs(
+            filesystem=processed_gridfile_fs, file_path=grid_file.nminus1_definition_file, model_class=Nminus1Definition
+        )
+        for grid_file in grid_files
+    ]
     base_case_ids = [(n1def.base_case.id if n1def.base_case is not None else None) for n1def in nminus1_definitions]
 
     num_psts = [len(action_set.pst_ranges) for action_set in action_sets]
@@ -225,6 +251,7 @@ def initialize_optimization(
             grid_file,
             n_processes=ga_config.runner_processes,
             batch_size=ga_config.runner_batchsize,
+            processed_gridfile_fs=processed_gridfile_fs,
         )
         for action_set, nminus1_definition, grid_file in zip(action_sets, nminus1_definitions, grid_files, strict=True)
     ]
@@ -271,13 +298,13 @@ def initialize_optimization(
     for topo in initial_strategy:
         topo.strategy_hash = initial_hash
 
-    dirfs = DirFileSystem(str(loadflow_result_folder))
-
     def store_loadflow(loadflow: LoadflowResultsPolars) -> StoredLoadflowReference:
-        return save_loadflow_results_polars(dirfs, f"{optimization_id}-{loadflow.job_id}-{datetime.now()}", loadflow)
+        return save_loadflow_results_polars(
+            loadflow_result_fs, f"{optimization_id}-{loadflow.job_id}-{datetime.now()}", loadflow
+        )
 
     def loadflow_ref(loadflow: StoredLoadflowReference) -> LoadflowResultsPolars:
-        return load_loadflow_results_polars(dirfs, reference=loadflow)
+        return load_loadflow_results_polars(loadflow_result_fs, reference=loadflow)
 
     # This requires a full loadflow computation if the loadflow results are not passed in
     initial_loadflow_reference = params.initial_loadflow

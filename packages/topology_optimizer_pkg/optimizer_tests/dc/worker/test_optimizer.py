@@ -1,3 +1,4 @@
+from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
@@ -22,14 +23,16 @@ def test_extract_results(
                 runtime_seconds=5,
             ),
         ),
-        grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder=str(grid_folder / "oberrhein"))],
+        grid_files=[GridFile(framework=Framework.PANDAPOWER, grid_folder="oberrhein")],
         optimization_id="test",
     )
 
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
     optimizer_data, stats, initial_strategy = initialize_optimization(
         params=start_opt_command.dc_params,
         optimization_id="test123",
         static_information_files=[gf.static_information_file for gf in start_opt_command.grid_files],
+        processed_gridfile_fs=processed_gridfile_fs,
     )
 
     assert isinstance(optimizer_data, OptimizerData)

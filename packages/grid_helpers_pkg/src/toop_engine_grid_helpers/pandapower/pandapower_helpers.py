@@ -1,13 +1,19 @@
 """Holds functions that help with all sorts of pandapower conversions, that are not specific to a single task."""
 
+import tempfile
 from numbers import Integral
+from pathlib import Path
 
 import numpy as np
 import pandapower as pp
 import pandapower.toolbox
 import pandas as pd
 from beartype.typing import Iterable, Literal, Optional, Sequence
+from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Integer
+from pandapower.converter import from_mpc, to_mpc
+from pandapower.converter.cim.cim2pp.from_cim import from_cim
+from pandapower.converter.ucte.from_ucte import from_ucte
 from pandapower.pypower.idx_brch import SHIFT
 from pandapower.toolbox import get_connected_buses
 
@@ -697,3 +703,83 @@ def get_remotely_connected_buses(
                 f"Max number of iterations ({max_num_iterations}) reached while searching for remotely connected buses."
             )
     return {int(node_id) for node_id in working_set}
+
+
+def load_pandapower_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> pandapower.pandapowerNet:
+    """Load any pandapower network from a filesystem.
+
+    Supported formats are pandapower native (.json), Matpower (.mat), CGMES (.zip) and UCTE (.uct).
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The filesystem to load the pandapower network from.
+    file_path : Path
+        The path to the pandapower network file.
+
+    Returns
+    -------
+    pandapower.pandapowerNet
+        The loaded pandapower network.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        tmp_grid_path_str = str(tmp_grid_path)
+        filesystem.download(
+            str(file_path),
+            tmp_grid_path_str,
+        )
+
+        if file_path.suffix == ".json":
+            net = pandapower.from_json(tmp_grid_path_str)
+        elif file_path.suffix == ".mat":
+            net = from_mpc(tmp_grid_path_str)
+        elif file_path.suffix == ".zip":
+            net = from_cim(tmp_grid_path_str)
+        elif file_path.suffix == ".uct":
+            net = from_ucte(tmp_grid_path_str)
+        else:
+            raise ValueError(f"Unsupported file format for pandapower network: {file_path}")
+
+    return net
+
+
+def save_pandapower_to_fs(
+    net: pandapower.pandapowerNet,
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    format: Optional[Literal["JSON", "MATPOWER"]] = "JSON",
+    make_dir: bool = True,
+) -> None:
+    """Save pandapower network to a filesystem in pandapower native format (.json) or Matpower (.mat).
+
+    Parameters
+    ----------
+    net : pandapower.pandapowerNet
+        The pandapower network to save.
+    filesystem : AbstractFileSystem
+        The filesystem to save the pandapower network to.
+    file_path : Path
+        The path to save the pandapower network file to.
+    format : Optional[Literal["JSON", "MATPOWER"]]
+        The format to save the pandapower network in. Can be "JSON" or "MATPOWER". Defaults to "JSON".
+    make_dir: bool
+        create parent folder if not exists.
+    """
+    if make_dir:
+        filesystem.makedirs(Path(file_path).parent.as_posix(), exist_ok=True)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        tmp_grid_path_str = str(tmp_grid_path)
+
+        if format == "JSON":
+            pandapower.to_json(net, tmp_grid_path_str)
+        elif format == "MATPOWER":
+            to_mpc(net, tmp_grid_path_str)
+        else:
+            raise ValueError(f"Unsupported file format for saving pandapower network: {format}")
+
+        filesystem.upload(
+            tmp_grid_path_str,
+            str(file_path),
+        )

@@ -13,6 +13,7 @@ import pytest
 from confluent_kafka import Consumer, Producer
 from docker import DockerClient
 from docker.models.containers import Container
+from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Int
 from omegaconf import DictConfig
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -180,17 +181,20 @@ def grid_folder() -> Path:
     oberrhein_path = path / "oberrhein"
     if not oberrhein_path.exists():
         oberrhein_data(oberrhein_path)
-        load_grid(oberrhein_path, pandapower=True)
+        filesystem_dir = DirFileSystem(str(oberrhein_path))
+        load_grid(filesystem_dir, pandapower=True)
 
     case14_path = path / "case14"
     if not case14_path.exists():
         case14_pandapower(case14_path)
-        load_grid(case14_path, pandapower=True)
+        filesystem_dir = DirFileSystem(str(case14_path))
+        load_grid(filesystem_dir, pandapower=True)
 
     case57_path = path / "case57"
     if not case57_path.exists():
         case57_data_powsybl(case57_path)
-        load_grid(case57_path, pandapower=False)
+        filesystem_dir = DirFileSystem(str(case57_path))
+        load_grid(filesystem_dir, pandapower=False)
 
     return path
 
@@ -201,7 +205,8 @@ def case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Path
     tmp_path = tmp_path_factory.mktemp("case57_non_converging")
 
     case57_non_converging(tmp_path)
-    load_grid(tmp_path, pandapower=True)
+    filesystem_dir = DirFileSystem(str(tmp_path))
+    load_grid(filesystem_dir, pandapower=True)
     return tmp_path
 
 

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandapower as pp
+from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     table_id,
@@ -15,7 +16,8 @@ from toop_engine_interfaces.folder_structure import (
 
 
 def test_pandapower_backend(data_folder: Path) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
 
     assert backend.net is not None
 
@@ -67,7 +69,8 @@ def test_pandapower_backend(data_folder: Path) -> None:
 
 
 def test_mw_injections(data_folder: Path) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     net = backend.net
     pp.rundcpp(net)
 
@@ -96,7 +99,8 @@ def test_mw_injections(data_folder: Path) -> None:
 
 
 def test_multi_timestep(data_folder: Path) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     mw_injections_net = backend.get_mw_injections()
     injection_types = np.array(backend.get_injection_types())
     assert np.array_equal(
@@ -121,7 +125,8 @@ def test_multi_timestep(data_folder: Path) -> None:
     gen_p = np.load(chronics_path / "0000" / CHRONICS_FILE_NAMES["gen_p"])
     sgen_p = np.load(chronics_path / "0000" / CHRONICS_FILE_NAMES["sgen_p"])
     dcline_p = np.load(chronics_path / "0000" / CHRONICS_FILE_NAMES["dcline_p"])
-    backend = PandaPowerBackend(data_folder, chronics_id=0, chronics_slice=None)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir, chronics_id=0, chronics_slice=None)
     mw_injections = backend.get_mw_injections()
     assert mw_injections.shape == (load_p.shape[0], len(injection_types))
     assert np.array_equal(
@@ -151,7 +156,8 @@ def test_multi_timestep(data_folder: Path) -> None:
     assert np.allclose(mw_injections[0], mw_injections_net[0])
 
     # Test with a slice
-    backend = PandaPowerBackend(data_folder, chronics_id=0, chronics_slice=slice(0, 5))
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir, chronics_id=0, chronics_slice=slice(0, 5))
     mw_injections_slice = backend.get_mw_injections()
 
     assert mw_injections_slice.shape == (5, len(injection_types))
@@ -159,7 +165,8 @@ def test_multi_timestep(data_folder: Path) -> None:
 
 
 def test_globally_unique_ids(data_folder: Path) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
 
     assert len(backend.get_branch_ids()) == len(set(backend.get_branch_ids())), (
         f"Duplicates: {[item for item, count in Counter(backend.get_branch_ids()).items() if count > 1]}"
@@ -174,7 +181,8 @@ def test_globally_unique_ids(data_folder: Path) -> None:
 
 
 def test_psts(case30_data_folder: Path) -> None:
-    backend = PandaPowerBackend(case30_data_folder)
+    filesystem_dir = DirFileSystem(str(case30_data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
 
     assert backend.get_phase_shift_mask().sum() == 4
     assert backend.get_controllable_phase_shift_mask().sum() == 3

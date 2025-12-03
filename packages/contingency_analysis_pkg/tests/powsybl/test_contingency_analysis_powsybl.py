@@ -76,7 +76,7 @@ def test_contingency_analysis_ray_vs_powsybl(powsybl_net: str, request):
     assert lf_parallel_ray_polars == lf_parallel_native_polars
 
 
-def test_run_contingency_analysis_powsybl_converging_basecase() -> None:
+def test_run_contingency_analysis_powsybl_not_converging_basecase() -> None:
     net = pypowsybl.network.create_ieee14()
     loads = net.get_loads(attributes=["q0"])
     # make the ac loadflow fail

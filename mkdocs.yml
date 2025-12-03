@@ -6,7 +6,7 @@ repo_name: EliaGroup-OpenSource/ToOp
 copyright: Copyright &copy; 2024 <a href="https://www.eliagroup.eu/">Elia Group</a>. Correspondence to <a href="mailto:christian.merz@50hertz.com">christian.merz@50hertz.com</a>.
 
 nav:
-  - Getting started: 
+  - Getting started:
     - Introduction: index.md
     - Usage: usage.md
     - Quickstart: quickstart.md
@@ -18,7 +18,7 @@ nav:
       - Grid Helpers: references/reference_grid_helpers.md
       - Contingency Analysis: references/reference_contingency_analysis.md
   - Importer:
-    - importer/intro.md 
+    - importer/intro.md
     - importer/pandapower/index.md
     - importer/pypowsybl/index.md
     - importer/pypowsybl/merge_ucte_with_cgmes.md
@@ -90,7 +90,10 @@ nav:
       - Interfaces: references/reference_interfaces.md
       - Grid Helpers: references/reference_grid_helpers.md
       - Contingency Analysis: references/reference_contingency_analysis.md
-  - Contribution Guide: contribution_guide.md 
+  - Contribution Guide: contribution_guide.md
+  - Benchmark:
+    - benchmark.md
+    - Code Reference: references/reference_benchmark.md
 
 theme:
   name: material

@@ -41,8 +41,8 @@ dependencies = [
     "pyarrow>=21.0.0",
     "fsspec>=2024.0.0",
     "protobuf>=6.33.1",
-    "mypy-protobuf>=3.7.0"
-
+    "mypy-protobuf>=3.7.0",
+    "fonttools>=4.60.2"
 ]
 
 [build-system]

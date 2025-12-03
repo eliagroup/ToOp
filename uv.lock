@@ -198,11 +198,11 @@ wheels = [
 
 [[package]]
 name = "beartype"
-version = "0.22.7"
+version = "0.22.8"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2c/49/e28a77f8a3868b1c9ff6a030678e84de24c4783bae4c12cec9443cf8fb54/beartype-0.22.7.tar.gz", hash = "sha256:c7269855b71e32b7c9f0fc662baade752eb525107266e053338c2f6e8873826b", size = 1599627, upload-time = "2025-11-29T06:49:56.751Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8c/1d/794ae2acaa67c8b216d91d5919da2606c2bb14086849ffde7f5555f3a3a5/beartype-0.22.8.tar.gz", hash = "sha256:b19b21c9359722ee3f7cc433f063b3e13997b27ae8226551ea5062e621f61165", size = 1602262, upload-time = "2025-12-03T05:11:10.766Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/0c/a764253610513295b7f57904b91fae1d99c7afd1b16b6eaae06fdfb71fb5/beartype-0.22.7-py3-none-any.whl", hash = "sha256:e13430ac07c61fa4bc54d375970438aeb9aa47a482c529a6f438ce52e18e6f50", size = 1330771, upload-time = "2025-11-29T06:49:54.545Z" },
+    { url = "https://files.pythonhosted.org/packages/14/2a/fbcbf5a025d3e71ddafad7efd43e34ec4362f4d523c3c471b457148fb211/beartype-0.22.8-py3-none-any.whl", hash = "sha256:b832882d04e41a4097bab9f63e6992bc6de58c414ee84cba9b45b67314f5ab2e", size = 1331895, upload-time = "2025-12-03T05:11:08.373Z" },
 ]
 
 [[package]]
@@ -246,7 +246,7 @@ wheels = [
 
 [[package]]
 name = "blosc2"
-version = "3.11.1"
+version = "3.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "msgpack" },
@@ -257,13 +257,13 @@ dependencies = [
     { name = "py-cpuinfo", marker = "platform_machine != 'wasm32'" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/86/6d/a2a62e5d2d9f4fc2157274565539b1bf3396941e7851e4db8ea3c103532a/blosc2-3.11.1.tar.gz", hash = "sha256:63383f544928e8c6c259b721fab04da0bc21e84df5ab821ea7c68a8bb01b55a8", size = 3973321, upload-time = "2025-11-16T16:02:12.73Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/88/e562ac3bbb57b514c06eb663380b79b172bf11137294a2484ab6c54f97a1/blosc2-3.12.0.tar.gz", hash = "sha256:026cfe7bf8a102988075735a8cdc2033d142a0733f010118e1c660bb3f765333", size = 3974305, upload-time = "2025-12-02T16:06:17.585Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/00/96/6bdc451fc327612daf8052d65a57e1869ec554e5868a74dc8654c8c4d5ea/blosc2-3.11.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:82252eb7f692cffba88b633da2c2ec708ad97b7c02fb6e630f182a9209ddf457", size = 3955382, upload-time = "2025-11-16T16:01:36.507Z" },
-    { url = "https://files.pythonhosted.org/packages/92/45/325e6b33572c03f12e9901e285933f2f39bce7c39c44ea98fc3464afd10b/blosc2-3.11.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:f9dd2c53cc35f5123793e30eb7bac737de3617c23628f068cd38fdf83883c696", size = 3457720, upload-time = "2025-11-16T16:01:37.915Z" },
-    { url = "https://files.pythonhosted.org/packages/cf/46/dfdf9b02cdd5a9bbeecc5e0ff6b85932e50d899b7fe2ba9cc9a6106dadab/blosc2-3.11.1-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:05222fc6da5f553f722e3b954a455889f02533f810d5acecae38fd15c47696f0", size = 4378046, upload-time = "2025-11-16T16:01:39.365Z" },
-    { url = "https://files.pythonhosted.org/packages/93/41/2b76d174426a157d340893204dc1d4d7a744e50178840d00397daa9be048/blosc2-3.11.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:7baad57a93c1d4b174d50ec2f02378c47464c44678db1b648651a0139ec43067", size = 4512031, upload-time = "2025-11-16T16:01:40.986Z" },
-    { url = "https://files.pythonhosted.org/packages/9c/f1/af0f4bde6ab1e1e1ce80ee4dcb9ed596a78f752d51cc0600d846f49bbeb4/blosc2-3.11.1-cp311-cp311-win_amd64.whl", hash = "sha256:fdb38c2c5ce3f956df569fe372ff80fc23b932c09ab66eef29808b562c6147ab", size = 2281396, upload-time = "2025-11-16T16:01:42.641Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/c3/3d3283143c2d6635b9edbc6588110966f970442bb8c6ae30ecf8f7260266/blosc2-3.12.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:99c210167d61df43d4a269a874289e2e5a57fe0f59041ff70c2589848e4e24b4", size = 3955879, upload-time = "2025-12-02T16:05:38.668Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/0b/279033d683c6cf56b3ee13a04003b959bf009ca655a8adad8cf405443540/blosc2-3.12.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:778e99c30e120dac0003dd17c2bcebad2b662038e9d503703a19dbdd105df85a", size = 3458220, upload-time = "2025-12-02T16:05:39.955Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/da/ecaf54268f924c291539af72bdee2c0222635babfd639181e77f1c09c8c3/blosc2-3.12.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:51f24ff32e5fff5a46765a94518e9b37d3fbb67377140751ff3613da8fbca041", size = 4378498, upload-time = "2025-12-02T16:05:41.494Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/b6/056a3933a4a554693fe0f61bf1678e553bcbb237e04ef52f6c41e198fc85/blosc2-3.12.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:69b1891d46bbe2f7f8d5dfed64c5b3f97cb0b13f4bfde0a0027517491afe3100", size = 4512538, upload-time = "2025-12-02T16:05:43.048Z" },
+    { url = "https://files.pythonhosted.org/packages/08/1e/159d470d1e26e5a262831d462bbd55e87e653d90556ad2f9793aeba7679d/blosc2-3.12.0-cp311-cp311-win_amd64.whl", hash = "sha256:50d068bf9fd0338eb4f6c582a19ccde8a32cf3c0d42a694ae9164dc7317a3b1f", size = 2281881, upload-time = "2025-12-02T16:05:44.46Z" },
 ]
 
 [[package]]
@@ -4116,6 +4116,7 @@ name = "toop-engine-interfaces"
 source = { editable = "packages/interfaces_pkg" }
 dependencies = [
     { name = "beartype" },
+    { name = "fonttools" },
     { name = "fsspec" },
     { name = "h5py" },
     { name = "jaxtyping" },
@@ -4135,6 +4136,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "beartype", specifier = ">=0.22.0,<0.23.0" },
+    { name = "fonttools", specifier = ">=4.60.2" },
     { name = "fsspec", specifier = ">=2024.0.0" },
     { name = "h5py", specifier = ">=3.0.0" },
     { name = "jaxtyping", specifier = ">=0.2.22,<0.3.0" },

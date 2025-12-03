@@ -81,7 +81,7 @@ average==1.0
     # via toop-engine-topology-optimizer
 babel==2.17.0
     # via jupyterlab-server
-beartype==0.22.7
+beartype==0.22.8
     # via
     #   toop-engine-contingency-analysis
     #   toop-engine-dc-solver
@@ -95,7 +95,7 @@ bleach==6.3.0
     # via nbconvert
 blinker==1.9.0
     # via flask
-blosc2==3.11.1
+blosc2==3.12.0
     # via tables
 brax==0.13.0
     # via qdax
@@ -215,7 +215,9 @@ flax==0.10.6
     #   brax
     #   qdax
 fonttools==4.61.0
-    # via matplotlib
+    # via
+    #   matplotlib
+    #   toop-engine-interfaces
 fqdn==1.5.1
     # via jsonschema
 fsspec==2025.10.0

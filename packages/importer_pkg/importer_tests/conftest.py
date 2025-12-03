@@ -153,6 +153,24 @@ def ucte_file() -> Path:
 
 
 @pytest.fixture(scope="session")
+def ucte_file_exporter_test() -> Path:
+    ucte_file = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_uct_file.uct")
+    return ucte_file
+
+
+@pytest.fixture(scope="session")
+def ucte_json_exporter_test() -> Path:
+    ucte_json = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_json_file.json")
+    return ucte_json
+
+
+@pytest.fixture(scope="session")
+def output_uct_exporter_ref() -> Path:
+    output_uct = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_uct_file_output_ref.uct")
+    return output_uct
+
+
+@pytest.fixture(scope="session")
 def ucte_file_with_border() -> Path:
     ucte_file = Path(f"{os.path.dirname(__file__)}/files/test_ucte_powsybl_example_with_border.uct")
     return ucte_file

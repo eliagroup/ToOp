@@ -1,12 +1,8 @@
-import os
-from pathlib import Path
-
 from toop_engine_importer.ucte_toolset.ucte_io import interpret_ucte, make_ucte, parse_ucte, specs
 
 
-def test_parse_ucte():
-    ucte_file = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_uct_file.uct")
-    with open(ucte_file, "r") as f:
+def test_parse_ucte(ucte_file_exporter_test):
+    with open(ucte_file_exporter_test, "r") as f:
         contents = f.read()
 
     preamble, nodes, lines, trafo, trafo_reg, postamble = parse_ucte(contents)
@@ -25,9 +21,8 @@ def test_parse_pytest_ucte_file(ucte_file):
     assert contents == reconstructed
 
 
-def test_interpret_ucte():
-    ucte_file = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_uct_file.uct")
-    with open(ucte_file, "r") as f:
+def test_interpret_ucte(ucte_file_exporter_test):
+    with open(ucte_file_exporter_test, "r") as f:
         contents = f.read()
 
     preamble, nodes, lines, trafo, trafo_reg, postamble = parse_ucte(contents)

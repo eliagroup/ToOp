@@ -112,14 +112,6 @@ repos:
         name: "Bandit: scan for security issues"
         description: Security linter for Python code.
         args: [--config, pyproject.toml, "-iii", "-lll"] # Only report HIGH severity & HIGH confidence
-
-  - repo: https://github.com/owenlamont/uv-secure
-    rev: 0.14.4
-    hooks:
-      - id: uv-secure
-        name: "Scan uv.lock for vulnerabilities"
-        description: Scan your uv.lock file for dependencies with known vulnerabilities.
-        exclude: ^requirements\.txt$
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.8.22
     hooks:
@@ -137,3 +129,10 @@ repos:
     hooks:
       - id: commitizen
         stages: [commit-msg]
+  - repo: https://github.com/owenlamont/uv-secure
+    rev: 0.14.4
+    hooks:
+      - id: uv-secure
+        name: "Scan uv.lock for vulnerabilities"
+        description: Scan your uv.lock file for dependencies with known vulnerabilities.
+        exclude: ^requirements\.txt$

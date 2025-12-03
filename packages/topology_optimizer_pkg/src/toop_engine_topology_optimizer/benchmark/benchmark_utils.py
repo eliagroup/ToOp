@@ -23,6 +23,8 @@ import pandapower
 
 # Domain-specific imports (may raise if not available in the environment)
 import pypowsybl
+from fsspec.implementations.dirfs import DirFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from omegaconf import DictConfig
 from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
@@ -193,7 +195,7 @@ def run_task_process(cfg: DictConfig, conn: Optional[Connection] = None) -> Opti
     cli_args = CLIArgs(**cli_args)
 
     try:
-        result = opt_main(cli_args)
+        result = opt_main(cli_args, processed_gridfile_fs=LocalFileSystem())
     except KeyboardInterrupt:
         # Let it propagate
         raise
@@ -357,7 +359,7 @@ def run_preprocessing(
 
     jax.clear_caches()
     info, static_information, _ = load_grid(
-        data_folder=data_folder,
+        data_folder_dirfs=DirFileSystem(data_folder),
         pandapower=is_pandapower_net,
         status_update_fn=empty_status_update_fn,
         parameters=preprocessing_parameters,

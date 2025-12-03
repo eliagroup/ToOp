@@ -33,6 +33,6 @@ jobs:
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
       - name: Run tests with code coverage report
-        run: uv run pytest -n auto--dist loadgroup packages/dc_solver_pkg/tests --cov=packages/dc_solver_pkg/src --cov-config=.coveragerc --cov-report term-missing
+        run: uv run pytest -n auto --dist loadgroup packages/dc_solver_pkg/tests --cov=packages/dc_solver_pkg/src --cov-config=.coveragerc --cov-report term-missing
         env:
           CLEANUP_RAY_AFTER_TESTS: 1

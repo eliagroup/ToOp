@@ -185,25 +185,22 @@ def test_main_simple(
     with pytest.raises(SystemExit):
         instance_id = str(uuid4())
         main(
-            Args(
+            args=Args(
                 importer_command_topic=kafka_command_topic,
                 importer_heartbeat_topic=kafka_heartbeat_topic,
                 importer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
             ),
-            Producer(
-                {
-                    "bootstrap.servers": kafka_connection_str,
-                    "client.id": instance_id,
-                    "log_level": 2,
-                },
-                logger=getLogger(f"ac_worker_producer_{instance_id}"),
-            ),
-            LongRunningKafkaConsumer(
-                topic=kafka_command_topic,
-                group_id="importer_worker",
-                bootstrap_servers=kafka_connection_str,
-                client_id=instance_id,
+            unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
+            loadflow_result_fs=loadflow_result_fs,
+            producer=create_producer(kafka_connection_str, instance_id),
+            consumer=create_consumer(
+                "LongRunningKafkaConsumer",
+                kafka_command_topic,
+                "importer_worker",
+                kafka_connection_str,
+                instance_id,
             ),
         )
 
@@ -251,17 +248,17 @@ def test_main(
     with pytest.raises(SystemExit):
         instance_id = str(uuid4())
         main(
-            Args(
+            args=Args(
                 importer_command_topic=kafka_command_topic,
                 importer_heartbeat_topic=kafka_heartbeat_topic,
                 importer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
-                unprocessed_gridfile_folder=ucte_file.parent,
-                processed_gridfile_folder=output_path,
-                loadflow_result_folder=loadflow_path,
             ),
-            create_producer(kafka_connection_str, instance_id),
-            create_consumer(
+            unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
+            loadflow_result_fs=loadflow_result_fs,
+            producer=create_producer(kafka_connection_str, instance_id),
+            consumer=create_consumer(
                 "LongRunningKafkaConsumer",
                 kafka_command_topic,
                 "importer_worker",

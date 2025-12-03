@@ -33,19 +33,6 @@ jobs:
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
       - name: Run tests with code coverage report
-        run: uv run pytest -n auto packages/importer_pkg/importer_tests --ignore=packages/importer_pkg/importer_tests/worker --cov=packages/importer_pkg/src --cov-config=.coveragerc --cov-report term-missing
-        env:
-          CLEANUP_RAY_AFTER_TESTS: 1
-
-      - name: Run worker tests (worker/kafka) and append coverage
-        run: uv run pytest -n 0 packages/importer_pkg/importer_tests/worker --cov=packages/importer_pkg/src --cov-config=.coveragerc --cov-append
-        env:
-          CLEANUP_RAY_AFTER_TESTS: 1
-
-      - name: Emit combined coverage report
-        run: |
-          # combine any coverage files (no-op if single .coverage) and print combined report
-          uv run coverage combine || true
-          uv run coverage report -m --rcfile=.coveragerc
+        run: uv run pytest -n auto --dist loadgroup packages/importer_pkg/importer_tests --cov=packages/importer_pkg/src --cov-config=.coveragerc --cov-report term-missing
         env:
           CLEANUP_RAY_AFTER_TESTS: 1

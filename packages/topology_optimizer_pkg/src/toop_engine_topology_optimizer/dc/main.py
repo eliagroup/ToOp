@@ -126,10 +126,7 @@ def write_summary(
     emitter_state: EmitterState,
     iteration: int,
     folder: str,
-    args_dict: dict,
-    n_cells_per_dim: tuple[int, ...],
-    descriptor_metrics: tuple[str, ...],
-    plot: bool,
+    cli_args: CLIArgs,
     processed_gridfile_fs: AbstractFileSystem,
     final_results: bool = False,
 ) -> dict:
@@ -151,15 +148,9 @@ def write_summary(
         The iteration number
     folder : str
         The folder to write the summary to, relative to the processed_gridfile_fs
-    args_dict : dict
-        The arguments used for invocation in a dict format, will be added to the summary for
+    cli_args : CLIArgs
+        The arguments used for invocation, will be added to the summary for
         documentation purposes
-    n_cells_per_dim : tuple[int, ...]
-        The number of cells per dimension for MAP-Elites
-    descriptor_metrics : tuple[str, ...]
-        The descriptor metrics to use for MAP-Elites
-    plot : bool
-        Whether to plot the repertoire
     processed_gridfile_fs: AbstractFileSystem
         The target filesystem for the preprocessing worker. This contains all processed grid files.
         During the import job,  a new folder import_results.data_folder was created
@@ -176,6 +167,11 @@ def write_summary(
         The summary that was written
     """
     processed_gridfile_fs.makedirs(folder, exist_ok=True)
+
+    ga_config = cli_args.ga_config
+    n_cells_per_dim = tuple(desc.num_cells for desc in ga_config.me_descriptors)
+    descriptor_metrics = tuple(desc.metric for desc in ga_config.me_descriptors)
+    args_dict = cli_args.model_dump()
 
     # Here we assume that contingency_ids are the same for all topos in the repertoire
     contingency_ids = optimizer_data.solver_configs[0].contingency_ids
@@ -195,16 +191,14 @@ def write_summary(
     filename = "res.json" if final_results else f"res_{iteration}.json"
     with processed_gridfile_fs.open(os.path.join(folder, filename), "w") as f:
         json.dump(summary, f)
-    if plot:
+    if ga_config.plot:
         plot_repertoire(
-            repertoire.fitnesses[
-                : np.prod(n_cells_per_dim)
-            ],  # Only take the first depth layer. The best fitnesses are in the first depth layer already.
+            repertoire.fitnesses[: np.prod(n_cells_per_dim)],
             iteration,
             folder,
             n_cells_per_dim=n_cells_per_dim,
             descriptor_metrics=descriptor_metrics,
-            save_plot=plot,
+            save_plot=ga_config.plot,
         )
     return summary
 
@@ -241,10 +235,7 @@ def main(
     partial_write_summary = partial(
         write_summary,
         folder=args.stats_dir,
-        n_cells_per_dim=[desc.num_cells for desc in args.ga_config.me_descriptors],
-        descriptor_metrics=[desc.metric for desc in args.ga_config.me_descriptors],
-        plot=args.ga_config.plot,
-        args_dict=args_dict,
+        cli_args=args,
         processed_gridfile_fs=processed_gridfile_fs,
     )
 

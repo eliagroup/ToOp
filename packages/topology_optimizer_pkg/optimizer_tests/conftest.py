@@ -204,7 +204,8 @@ def grid_folder() -> Path:
     complex_grid_path = path / "complex_grid"
     if not complex_grid_path.exists():
         create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(complex_grid_path)
-        load_grid(complex_grid_path, pandapower=False)
+        filesystem_dir = DirFileSystem(str(complex_grid_path))
+        load_grid(filesystem_dir, pandapower=False)
 
     return path
 

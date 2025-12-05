@@ -18,3 +18,5 @@ RUN apt-get -qq update && apt-get -qq -y install curl vim zip unzip htop\
     && apt-get -qq -y autoremove \
     && apt-get autoclean \
     && rm -rf /var/lib/apt/lists/* /var/log/dpkg.log
+
+WORKDIR /app

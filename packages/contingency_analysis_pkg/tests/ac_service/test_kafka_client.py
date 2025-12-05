@@ -5,6 +5,9 @@ from confluent_kafka import Consumer, Producer
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
+# Ensure that tests using Kafka are not run in parallel with each other
+pytestmark = pytest.mark.xdist_group("kafka")
+
 
 @pytest.mark.timeout(60)
 def test_long_running_kafka_consumer(

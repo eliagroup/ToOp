@@ -27,6 +27,9 @@ logbook.StreamHandler(sys.stdout, level=logging.INFO).push_application()
 from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 
+# Ensure that tests using Kafka are not run in parallel with each other
+pytestmark = pytest.mark.xdist_group("kafka")
+
 
 @ray.remote
 def launch_dc_worker(

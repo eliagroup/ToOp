@@ -1,6 +1,7 @@
 # import os
 import os
 import time
+import uuid
 from copy import deepcopy
 from pathlib import Path
 from typing import Generator
@@ -37,7 +38,15 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(
+    scope="session",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def docker_client() -> DockerClient:
     return docker.from_env()
 
@@ -56,7 +65,15 @@ def kill_all_containers_with_name(docker_client: DockerClient, target_name: str)
         container.remove(v=True, force=True)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(
+    scope="session",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_container(docker_client: DockerClient) -> Generator[Container, None, None]:
     # Kill all containers that expose port 9092
     kill_all_containers_with_name(docker_client, "test_kafka")
@@ -91,7 +108,15 @@ def kafka_container(docker_client: DockerClient) -> Generator[Container, None, N
     container.remove(v=True, force=True)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(
+    scope="session",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_connection_str(kafka_container: Container) -> str:
     for _ in range(100):
         kafka_container.reload()
@@ -125,23 +150,47 @@ def make_topic(kafka_container: Container, topic: str) -> None:
     assert exit_code == 0, output.decode()
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_command_topic(kafka_container: Container) -> str:
-    topic = "command_topic"
+    topic = f"command_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_results_topic(kafka_container: Container) -> str:
-    topic = "results_topic"
+    topic = f"results_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_heartbeat_topic(kafka_container: Container) -> str:
-    topic = "heartbeat_topic"
+    topic = f"heartbeat_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 
@@ -150,6 +199,24 @@ def kafka_heartbeat_topic(kafka_container: Container) -> str:
 def ucte_file() -> Path:
     ucte_file = Path(f"{os.path.dirname(__file__)}/files/test_ucte_powsybl_example.uct")
     return ucte_file
+
+
+@pytest.fixture(scope="session")
+def ucte_file_exporter_test() -> Path:
+    ucte_file = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_uct_file.uct")
+    return ucte_file
+
+
+@pytest.fixture(scope="session")
+def ucte_json_exporter_test() -> Path:
+    ucte_json = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_json_file.json")
+    return ucte_json
+
+
+@pytest.fixture(scope="session")
+def output_uct_exporter_ref() -> Path:
+    output_uct = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_uct_file_output_ref.uct")
+    return output_uct
 
 
 @pytest.fixture(scope="session")

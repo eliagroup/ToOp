@@ -4205,6 +4205,7 @@ dependencies = [
     { name = "toop-engine-grid-helpers" },
     { name = "toop-engine-interfaces" },
     { name = "tyro" },
+    { name = "werkzeug" },
 ]
 
 [package.metadata]
@@ -4231,6 +4232,7 @@ requires-dist = [
     { name = "toop-engine-grid-helpers", editable = "packages/grid_helpers_pkg" },
     { name = "toop-engine-interfaces", editable = "packages/interfaces_pkg" },
     { name = "tyro", specifier = ">=0.8.0,<0.9.0" },
+    { name = "werkzeug", specifier = ">=3.1.4" },
 ]
 
 [package.metadata.requires-dev]

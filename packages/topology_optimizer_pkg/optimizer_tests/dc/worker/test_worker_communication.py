@@ -4,6 +4,9 @@ from toop_engine_interfaces.messages.protobuf_message_factory import deserialize
 from toop_engine_topology_optimizer.interfaces.messages.commands import Command, StartOptimizationCommand
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
 
+# Ensure that tests using Kafka are not run in parallel with each other
+pytestmark = pytest.mark.xdist_group("kafka")
+
 
 @pytest.mark.timeout(60)
 def test_kafka(kafka_command_topic: str, kafka_connection_str: str) -> None:

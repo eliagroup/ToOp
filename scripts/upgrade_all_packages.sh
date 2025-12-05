@@ -16,4 +16,4 @@ for item in "${ITEMS[@]}"; do
 done
 cd ..
 
-echo "✅ All packages were published."
+echo "✅ All packages were upgraded."

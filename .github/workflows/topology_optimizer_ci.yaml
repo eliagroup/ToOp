@@ -33,4 +33,4 @@ jobs:
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
       - name: Run tests with code coverage report
-        run: uv run pytest packages/topology_optimizer_pkg/optimizer_tests --cov=./packages/topology_optimizer_pkg/src --cov-config=.coveragerc --cov-report term-missing
+        run: uv run pytest -n auto --dist loadgroup packages/topology_optimizer_pkg/optimizer_tests --cov=./packages/topology_optimizer_pkg/src --cov-config=.coveragerc --cov-report term-missing

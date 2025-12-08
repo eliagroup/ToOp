@@ -233,7 +233,9 @@ def test_realize_ba_to_physical_topo_per_station_3_busbars():
     assert busbar_a_mappings_3[5] == [0]
 
 
-@pytest.mark.timeout(40)
+# TODO: set timeout to 40 and run without xdist
+@pytest.mark.xdist_group("performance")
+@pytest.mark.timeout(80)
 def test_realize_ba_to_physical_topo_per_station_large():
     n_assets = 20  # Should give around half a million actions
     np.random.seed(42)  # For reproducibility

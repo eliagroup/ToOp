@@ -12,7 +12,7 @@ jobs:
       pull-requests: read
     runs-on: ubuntu-latest
     env:
-      UV_PROJECT: packages/importer_pkg
+      UV_PROJECT: packages/interfaces_pkg
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4

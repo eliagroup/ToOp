@@ -15,22 +15,16 @@ jobs:
       matrix:
         include:
           - package: importer_pkg
-            test-path: importer_tests
             runner: Runner-ToOp-Projects
           - package: dc_solver_pkg
-            test-path: tests
             runner: Runner-ToOp-Projects
           - package: topology_optimizer_pkg
-            test-path: optimizer_tests
             runner: Runner-ToOp-Projects
           - package: grid_helpers_pkg
-            test-path: grid_helper_tests
             runner: ubuntu-latest
           - package: contingency_analysis_pkg
-            test-path: tests
             runner: ubuntu-latest
           - package: interfaces_pkg
-            test-path: tests
             runner: ubuntu-latest
     runs-on: ${{ matrix.runner == 'ubuntu-latest' && 'ubuntu-latest' || fromJSON('{"labels":["Runner-ToOp-Projects"]}') }}
     env:
@@ -55,7 +49,7 @@ jobs:
 
       - name: Run tests with code coverage report
         run: |
-          uv run pytest -n auto --dist loadgroup packages/${{ matrix.package }}/${{ matrix.test-path }} \
+          uv run pytest -n auto --dist loadgroup packages/${{ matrix.package }}/tests \
             --cov=packages/${{ matrix.package }}/src \
             --cov-config=.coveragerc \
             --cov-report term-missing \
@@ -94,6 +88,3 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}

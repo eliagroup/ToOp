@@ -221,3 +221,6 @@ poetry.lock
 
 # MacOS
 .DS_Store
+
+# Sonarqube Scans
+.scannerwork/*

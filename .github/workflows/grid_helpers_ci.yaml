@@ -32,4 +32,11 @@ jobs:
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
       - name: Run tests with code coverage report
-        run: uv run pytest packages/grid_helpers_pkg/grid_helper_tests --cov=packages/grid_helpers_pkg/src --cov-config=.coveragerc --cov-report term-missing
+        run: uv run pytest packages/grid_helpers_pkg/grid_helper_tests --cov=packages/grid_helpers_pkg/src --cov-config=.coveragerc --cov-report term-missing --cov-report xml:coverage-grid-helpers.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-grid-helpers
+          path: coverage-grid-helpers.xml
+          retention-days: 7

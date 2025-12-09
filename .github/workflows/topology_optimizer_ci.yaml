@@ -33,4 +33,11 @@ jobs:
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
       - name: Run tests with code coverage report
-        run: uv run pytest -n auto --dist loadgroup packages/topology_optimizer_pkg/optimizer_tests --cov=./packages/topology_optimizer_pkg/src --cov-config=.coveragerc --cov-report term-missing
+        run: uv run pytest -n auto --dist loadgroup packages/topology_optimizer_pkg/optimizer_tests --cov=./packages/topology_optimizer_pkg/src --cov-config=.coveragerc --cov-report term-missing --cov-report xml:coverage-topology-optimizer.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-topology-optimizer
+          path: coverage-topology-optimizer.xml
+          retention-days: 7

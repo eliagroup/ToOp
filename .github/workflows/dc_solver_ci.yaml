@@ -33,6 +33,13 @@ jobs:
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
       - name: Run tests with code coverage report
-        run: uv run pytest -n auto --dist loadgroup packages/dc_solver_pkg/tests --cov=packages/dc_solver_pkg/src --cov-config=.coveragerc --cov-report term-missing
+        run: uv run pytest -n auto --dist loadgroup packages/dc_solver_pkg/tests --cov=packages/dc_solver_pkg/src --cov-config=.coveragerc --cov-report term-missing --cov-report xml:coverage-dc-solver.xml
         env:
           CLEANUP_RAY_AFTER_TESTS: 1
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-dc-solver
+          path: coverage-dc-solver.xml
+          retention-days: 7

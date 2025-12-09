@@ -32,4 +32,11 @@ jobs:
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
       - name: Run tests with code coverage report
-        run: uv run pytest -n auto --dist loadgroup packages/contingency_analysis_pkg/tests --cov=./packages/contingency_analysis_pkg/src --cov-config=.coveragerc --cov-report term-missing
+        run: uv run pytest -n auto --dist loadgroup packages/contingency_analysis_pkg/tests --cov=./packages/contingency_analysis_pkg/src --cov-config=.coveragerc --cov-report term-missing --cov-report xml:coverage-contingency-analysis.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-contingency-analysis
+          path: coverage-contingency-analysis.xml
+          retention-days: 7

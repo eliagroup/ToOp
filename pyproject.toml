@@ -115,13 +115,13 @@ pythonpath = [
     "packages/grid_helpers_pkg/src",
     "packages/topology_optimizer_pkg/src",
     "packages/importer_pkg/src",
-    "packages/importer_pkg/src",
     "packages/dc_solver_pkg",
     "packages/contingency_analysis_pkg",
     "packages/interfaces_pkg",
     "packages/grid_helpers_pkg",
     "packages/topology_optimizer_pkg",
     "packages/importer_pkg",
+    "packages",
     ]
 
 addopts = [

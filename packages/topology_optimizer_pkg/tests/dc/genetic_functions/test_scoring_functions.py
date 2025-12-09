@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 from jax_dataclasses import replace
-from optimizer_tests.dc.test_main import assert_topology
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_topology_optimizer.ac.scoring_functions import get_threshold_n_minus1_overload
@@ -22,6 +21,8 @@ from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions impor
 )
 from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import DiscreteMapElites
 from toop_engine_topology_optimizer.interfaces.messages.results import Topology
+
+from packages.topology_optimizer_pkg.tests.dc.test_main import assert_topology
 
 
 def test_translate_topology(static_information_file: str) -> None:

@@ -272,12 +272,13 @@ def main(cfg: DictConfig) -> None:
                 "runtime_seconds": cfg.ga_config.runtime_seconds,
                 "me_descriptors": [
                     {"metric": "switching_distance", "num_cells": cfg.ga_config.switching_distance},
-                    {"metric": "split_subs", "num_cells": cfg.ga_config.split_subs},
+                    {"metric": "split_subs", "num_cells": cfg.lf_config.max_num_splits},
                 ],
                 "n_worst_contingencies": cfg.ga_config.n_worst_contingencies,
                 "random_seed": cfg.ga_config.random_seed,
                 "target_metrics": [["overload_energy_n_1", 1.0], ["split_subs", 1.0]],
                 "plot": cfg.ga_config.get("plot", False),
+                "substation_split_prob": cfg.ga_config.substation_split_prob,
             },
             "area_settings": cfg.area_settings,
         }

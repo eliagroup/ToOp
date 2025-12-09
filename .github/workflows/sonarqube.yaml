@@ -1,6 +1,10 @@
 name: SonarQube Analysis
 
-on: push
+
+workflow_run:
+    workflows: ["contingency analysis tests", "interfaces tests", "importer tests", "grid helpers tests", "dc solver tests", "topology optimizer tests"]   # Name of the other workflow(s)
+    types: [completed]
+
 
 env:
   PYTEST_ON_CI: True
@@ -11,13 +15,6 @@ jobs:
       contents: read
       pull-requests: read
     runs-on: ubuntu-latest
-    needs:
-      - test-importer-package
-      - test-grid-helpers-package
-      - test-dc-solver-package
-      - test-contingency-analysis-package
-      - test-interfaces-package
-      - test-topology-optimizer-package
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -59,178 +56,3 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-
-  test-importer-package:
-    permissions:
-      contents: read
-      pull-requests: read
-    runs-on:
-      labels: Runner-ToOp-Projects
-    env:
-      UV_PROJECT: packages/importer_pkg
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: "Set up Python"
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: "packages/importer_pkg/pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --all-groups --all-extras --frozen
-
-      - name: set PY
-        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
-
-      - name: Run tests with code coverage report
-        run: uv run pytest -n auto --dist loadgroup packages/importer_pkg/importer_tests --cov=packages/importer_pkg/src --cov-config=.coveragerc --cov-report term-missing
-        env:
-          CLEANUP_RAY_AFTER_TESTS: 1
-
-  test-grid-helpers-package:
-    permissions:
-      contents: read
-      pull-requests: read
-    runs-on: ubuntu-latest
-    env:
-      UV_PROJECT: packages/grid_helpers_pkg
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: "Set up Python"
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: "packages/grid_helpers_pkg/pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --all-groups --all-extras --frozen
-
-      - name: set PY
-        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
-
-      - name: Run tests with code coverage report
-        run: uv run pytest packages/grid_helpers_pkg/grid_helper_tests --cov=packages/grid_helpers_pkg/src --cov-config=.coveragerc --cov-report term-missing
-
-  test-dc-solver-package:
-    permissions:
-      contents: read
-      pull-requests: read
-    runs-on:
-      labels: Runner-ToOp-Projects
-    env:
-      UV_PROJECT: packages/dc_solver_pkg
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: "Set up Python"
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: "packages/dc_solver_pkg/pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --all-groups --all-extras --frozen
-
-      - name: set PY
-        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
-
-      - name: Run tests with code coverage report
-        run: uv run pytest -n auto --dist loadgroup packages/dc_solver_pkg/tests --cov=packages/dc_solver_pkg/src --cov-config=.coveragerc --cov-report term-missing
-        env:
-          CLEANUP_RAY_AFTER_TESTS: 1
-
-  test-contingency-analysis-package:
-    permissions:
-      contents: read
-      pull-requests: read
-    runs-on: ubuntu-latest
-    env:
-      UV_PROJECT: packages/contingency_analysis_pkg
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: "Set up Python"
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: "packages/contingency_analysis_pkg/pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --all-groups --all-extras --frozen
-
-      - name: set PY
-        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
-
-      - name: Run tests with code coverage report
-        run: uv run pytest -n auto --dist loadgroup packages/contingency_analysis_pkg/tests --cov=./packages/contingency_analysis_pkg/src --cov-config=.coveragerc --cov-report term-missing
-
-  test-interfaces-package:
-    permissions:
-      contents: read
-      pull-requests: read
-    runs-on: ubuntu-latest
-    env:
-      UV_PROJECT: packages/importer_pkg
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: "Set up Python"
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: "packages/interfaces_pkg/pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --all-groups --all-extras --frozen
-
-      - name: set PY
-        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
-
-      - name: Run tests with code coverage report
-        run: uv run pytest packages/interfaces_pkg/tests --cov=packages/interfaces_pkg/src --cov-config=.coveragerc --cov-report term-missing
-
-  test-topology-optimizer-package:
-    permissions:
-      contents: read
-      pull-requests: read
-    runs-on:
-      labels: Runner-ToOp-Projects
-    env:
-      UV_PROJECT: packages/topology_optimizer_pkg
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: "Set up Python"
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: "packages/topology_optimizer_pkg/pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --all-groups --all-extras --frozen
-
-      - name: set PY
-        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
-
-      - name: Run tests with code coverage report
-        run: uv run pytest -n auto --dist loadgroup packages/topology_optimizer_pkg/optimizer_tests --cov=./packages/topology_optimizer_pkg/src --cov-config=.coveragerc --cov-report term-missing

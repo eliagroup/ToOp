@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+import pandera.typing as pat
+from beartype.typing import Optional
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
@@ -12,42 +14,82 @@ from toop_engine_interfaces.loadflow_results import (
 )
 
 
-def get_loadflow_results_example(job_id: str = "", timestep: int = 0, size: int = 5) -> LoadflowResults:
+def add_contingency_to_branch_results(
+    branch_results: pat.DataFrame[BranchResultSchema], timestep: int, contingency_id: str, n_elements: int
+):
+    """Add dummy contingency results to branch results DataFrame."""
+    for i in range(n_elements):
+        branch_results.loc[(timestep, contingency_id, f"element_{i}", 1), ["i", "p", "q", "loading", "element_name"]] = [
+            i * 0.1,
+            i * 0.2,
+            i * 0.3,
+            i * 0.4,
+            f"branch_name_{i}",
+        ]
+        branch_results.loc[(timestep, contingency_id, f"element_{i}", 2), ["i", "p", "q", "loading", "element_name"]] = [
+            i * 0.1,
+            i * 0.2,
+            i * 0.3,
+            i * 0.4,
+            f"branch_name_{i}",
+        ]
+
+
+def add_contingency_to_node_results(
+    node_results: pat.DataFrame[NodeResultSchema], timestep: int, contingency_id: str, n_elements: int
+):
+    """Add dummy contingency results to node results DataFrame."""
+    for i in range(n_elements):
+        node_results.loc[(timestep, contingency_id, f"node_{i}"), ["vm", "va", "vm_loading", "element_name"]] = [
+            i * 1.01,
+            i * 1.1,
+            1.0,
+            f"node_name_{i}",
+        ]
+
+
+def add_contingency_to_regulating_element_results(
+    regulating_element_results: pat.DataFrame[RegulatingElementResultSchema],
+    timestep: int,
+    contingency_id: str,
+    n_elements: int,
+):
+    """Add dummy contingency results to regulating element results DataFrame."""
+    for i in range(n_elements):
+        regulating_element_results.loc[
+            (timestep, contingency_id, f"regulating_element_{i}"), ["value", "element_name", "regulating_element_type"]
+        ] = [i * 1.01, f"regulating_element_name_{i}", RegulatingElementType.SLACK_P.value]
+
+
+def add_contingency_to_va_diff_results(
+    va_diff_results: pat.DataFrame[VADiffResultSchema], timestep: int, contingency_id: str, n_elements: int
+):
+    """Add dummy contingency results to va diff results DataFrame."""
+    for i in range(n_elements):
+        va_diff_results.loc[(timestep, contingency_id, f"switch_{i}"), ["va_diff", "element_name"]] = [
+            i * 0.05,
+            f"va_diff_name_{i}",
+        ]
+
+
+def get_loadflow_results_example(
+    job_id: str = "", timestep: int = 0, size: int = 5, contingencies: Optional[list[str]] = None
+) -> LoadflowResults:
     """Create an example LoadflowResults object with dummy data."""
     branch_results = get_empty_dataframe_from_model(BranchResultSchema)
     node_results = get_empty_dataframe_from_model(NodeResultSchema)
     regulating_element_results = get_empty_dataframe_from_model(RegulatingElementResultSchema)
     va_diff_results = get_empty_dataframe_from_model(VADiffResultSchema)
     converged = get_empty_dataframe_from_model(ConvergedSchema)
-    for i in range(size):
-        branch_results.loc[(timestep, "contingency", f"element_{i}", 1), ["i", "p", "q", "loading", "element_name"]] = [
-            i * 0.1,
-            i * 0.2,
-            i * 0.3,
-            i * 0.4,
-            f"branch_name_{i}",
-        ]
-        branch_results.loc[(timestep, "contingency", f"element_{i}", 2), ["i", "p", "q", "loading", "element_name"]] = [
-            i * 0.1,
-            i * 0.2,
-            i * 0.3,
-            i * 0.4,
-            f"branch_name_{i}",
-        ]
-        node_results.loc[(timestep, "contingency", f"node_{i}"), ["vm", "va", "vm_loading", "element_name"]] = [
-            i * 1.01,
-            i * 1.1,
-            1.0,
-            f"node_name_{i}",
-        ]
-        regulating_element_results.loc[
-            (timestep, "contingency", f"regulating_element_{i}"), ["value", "element_name", "regulating_element_type"]
-        ] = [i * 1.01, f"regulating_element_name_{i}", RegulatingElementType.SLACK_P.value]
-        va_diff_results.loc[(timestep, "contingency", f"va_diff_{i}"), ["va_diff", "element_name"]] = [
-            i * 0.05,
-            f"va_diff_name_{i}",
-        ]
-        converged.loc[(timestep, "contingency"), ["status"]] = ["CONVERGED" if i % 2 == 0 else "FAILED"]
+    if contingencies is None:
+        contingencies = ["contingency"]
+    for i, contingency in enumerate(contingencies):
+        add_contingency_to_branch_results(branch_results, timestep, contingency, size)
+        add_contingency_to_node_results(node_results, timestep, contingency, size)
+        add_contingency_to_regulating_element_results(regulating_element_results, timestep, contingency, size)
+        add_contingency_to_va_diff_results(va_diff_results, timestep, contingency, size)
+        if size > 0:
+            converged.loc[(timestep, contingency), "status"] = "CONVERGED" if i % 2 == 0 else "FAILED"
 
     return LoadflowResults(
         job_id=job_id,

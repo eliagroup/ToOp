@@ -82,6 +82,7 @@ jobs:
         with:
           pattern: coverage-*
           merge-multiple: true
+          path: .
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@master

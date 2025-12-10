@@ -156,12 +156,11 @@ class PandaPowerBackend(BackendInterface):
         # assert len(self.net.dcline) == 0
         assert (len(self.net.ext_grid) + self.net.gen.slack.sum()) == 1
         assert len(self.net._isolated_buses) == 0
-        assert np.all(self.net.load.scaling == 1.0)
-        assert np.all(self.net.load.const_z_percent == 0.0)
-        assert np.all(self.net.load.const_i_percent == 0.0)
-        assert np.all(self.net.gen.scaling == 1.0)
-        assert np.all(self.net.sgen.scaling == 1.0)
-
+        assert np.allclose(self.net.load.scaling, 1.0)
+        assert np.allclose(self.net.load.const_z_percent, 0.0)
+        assert np.allclose(self.net.load.const_i_percent, 0.0)
+        assert np.allclose(self.net.gen.scaling, 1.0)
+        assert np.allclose(self.net.sgen.scaling, 1.0)
         # assert len(self.net.xward) == 0
         # assert np.all(self.net.sgen.p_mw == 0)
 

@@ -4,6 +4,7 @@ It reuses the LODF formulation from the contingency analysis module, but applies
 to the PTDF matrix instead of computing the flows with it.
 """
 
+import math
 from functools import partial
 
 import jax
@@ -211,7 +212,7 @@ def random_disconnection_indices(
             replace=False,
         )
     )(keys)
-    if chance_for_empty_disconnection == 0.0:
+    if math.isclose(chance_for_empty_disconnection, 0.0):
         return disconnection_indices
 
     empty_disconnections = jax.random.bernoulli(key, float(chance_for_empty_disconnection), (batch_size, n_disconnections))

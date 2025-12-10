@@ -198,6 +198,7 @@ def get_unsplit_flows(
     return jnp.einsum("ij,tj -> ti", ptdf, nodal_injections) + ac_dc_mismatch * ac_dc_interpolation
 
 
+# sonar: noqa: S3776
 def compute_cross_coupler_flows(
     bsdf: Float[Array, " n_splits n_branches"],
     topologies: Bool[Array, " n_splits max_branch_per_sub"],

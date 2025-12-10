@@ -15,10 +15,7 @@ from .uct_exporter import (
 )
 
 __all__ = [
-    "SwitchUpdateDgsInfo",
     "asset_topo_to_uct",
-    "dgs_list_to_xlsx",
-    "get_dgs_from_realized_topology",
     "load_ucte",
     "process_file",
     "validate_ucte_changes",

@@ -958,7 +958,7 @@ def get_connected_assets(station: Station, busbar_index: int) -> list[Switchable
     list of SwitchableAsset
         A list of assets connected to the specified busbar.
     """
-    connected_asset_indices = np.where(station.asset_switching_table[busbar_index])[0]
+    connected_asset_indices = np.nonzero(station.asset_switching_table[busbar_index])[0]
     return [station.assets[i] for i in connected_asset_indices if station.assets[i].in_service]
 
 

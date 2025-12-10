@@ -16,7 +16,6 @@ from multiprocessing import Process
 
 import hydra
 import logbook
-from fsspec.implementations.local import LocalFileSystem
 from hydra import compose
 from omegaconf import DictConfig
 from toop_engine_topology_optimizer.benchmark.benchmark_utils import run_task_process, set_environment_variables

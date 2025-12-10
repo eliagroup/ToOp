@@ -202,7 +202,7 @@ def set_outaged_elements_out_of_service(net: pp.pandapowerNet, outaged_elements:
     else:
         for element in outaged_elements:
             was_in_service = net[element.table].loc[element.table_id, "in_service"]
-            were_in_service.append(was_in_service)
+            were_in_service.append(bool(was_in_service))
             net[element.table].loc[element.table_id, "in_service"] = False
     return were_in_service
 

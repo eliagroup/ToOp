@@ -183,6 +183,9 @@ class PandaPowerBackend(BackendInterface):
     def _get_logs_path(self) -> Path:
         return Path(PREPROCESSING_PATHS["logs_path"])
 
+    def _get_start_datetime_info_file_path(self) -> Path:
+        return Path(PREPROCESSING_PATHS["start_datetime_info_file_path"])
+
     def _get_chronics_path(self) -> Path:
         return Path(PREPROCESSING_PATHS["chronics_path"]) / f"{self.chronics_id:04d}"
 
@@ -1158,10 +1161,10 @@ class PandaPowerBackend(BackendInterface):
         chronics_path = None
 
         if self.chronics_id is not None:
-            if os.path.exists(self._get_logs_path() / "start_datetime.info"):
+            if os.path.exists(self._get_start_datetime_info_file_path()):
                 chronics_path = self._get_chronics_path()
                 with open(
-                    self._get_logs_path() / "start_datetime.info",
+                    self._get_start_datetime_info_file_path(),
                     "r",
                     encoding="utf-8",
                 ) as file:

@@ -476,6 +476,7 @@ def case14_matching_asset_topo_powsybl(folder: Path) -> None:
 
 
 # ruff: noqa: PLR0915
+# sonar: noqa: S3776
 def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     """Create a complex grid with batteries, HVDC, SVC, and 3-winding transformers using Powsybl.
 

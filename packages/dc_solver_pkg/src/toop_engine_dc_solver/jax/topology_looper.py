@@ -651,6 +651,7 @@ def iterate_inj_bruteforce_sequential(
     return results
 
 
+# sonar: noqa: S3776
 def run_solver_symmetric(
     topologies: ActionIndexComputations,
     disconnections: Optional[Int[Array, " n_topologies n_disconnections"]],

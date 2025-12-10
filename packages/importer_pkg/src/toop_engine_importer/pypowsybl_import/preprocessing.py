@@ -49,6 +49,8 @@ from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, 
 
 logger = logbook.Logger(__name__)
 
+CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
+
 
 def save_preprocessing_statistics_filesystem(
     statistics: PreProcessingStatistics, filesystem: AbstractFileSystem, file_path: Union[str, Path]
@@ -118,7 +120,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
     ]
 
     trafos = network.get_2_windings_transformers(attributes=["name"])
-    is_trafo2w = ~trafos.index.str.contains("-Leg[123]$")
+    is_trafo2w = ~trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
     monitored_trafos = [
         GridElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         for idx, row in trafos[is_trafo2w & network_masks.trafo_for_reward].iterrows()
@@ -132,10 +134,10 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         for idx, row in trafos[is_trafo2w & network_masks.trafo_for_nminus1].iterrows()
     ]
 
-    is_trafo3w = trafos.index.str.contains("-Leg[123]$")
-    trafos.index = trafos.index.str.replace("-Leg[123]$", "", regex=True)
+    is_trafo3w = trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
+    trafos.index = trafos.index.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
     if not trafos.empty:
-        trafos.name = trafos.name.str.replace("-Leg[123]$", "", regex=True)
+        trafos.name = trafos.name.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
 
     monitored_trafo3w = [
         GridElement(id=idx, name=row["name"], type="THREE_WINDINGS_TRANSFORMER", kind="branch")

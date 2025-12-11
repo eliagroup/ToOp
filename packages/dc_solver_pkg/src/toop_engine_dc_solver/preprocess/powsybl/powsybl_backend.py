@@ -146,7 +146,6 @@ class PowsyblBackend(BackendInterface):
             right_index=True,
             how="left",
         )
-        branches["name"] = branches["name"]
         branches[["p_max_mw", "p_max_mw_n_1"]] = get_p_max(self.net)
         return branches
 

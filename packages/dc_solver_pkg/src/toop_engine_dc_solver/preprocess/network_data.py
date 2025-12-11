@@ -582,6 +582,7 @@ def extract_branch_ids(network_data: NetworkData) -> tuple[list[str], list[str]]
 
 
 # ruff: noqa: PLR0915
+# sonar: noqa: S3776
 def validate_network_data(network_data: NetworkData) -> None:
     """Run some validation on the preprocessed network data.
 

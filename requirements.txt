@@ -671,7 +671,7 @@ prompt-toolkit==3.0.51
     # via
     #   ipython
     #   jupyter-console
-protobuf==6.33.1
+protobuf==5.29.5
     # via
     #   mypy-protobuf
     #   orbax-checkpoint

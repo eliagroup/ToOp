@@ -66,7 +66,7 @@ def get_total_injection_along_stub_branch(
         total_injection += network_data.nodal_injection[:, node]
 
         # Find all branches connected to this node
-        connected_branches = np.unique(np.where((network_data.from_nodes == node) | (network_data.to_nodes == node))[0])
+        connected_branches = np.unique(np.nonzero((network_data.from_nodes == node) | (network_data.to_nodes == node))[0])
 
         for branch in connected_branches:
             from_node = network_data.from_nodes[branch]
@@ -323,7 +323,7 @@ def extract_busbar_outage_data(
 
     connected_branches_to_outage = []
     connected_assets = get_connected_assets(station, busbar_index)
-    node_indices_to_outage = np.where(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
+    node_indices_to_outage = np.nonzero(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
 
     # Determine the nodal_index of the physical busbar.
     node_index_to_outage = None

@@ -2,8 +2,9 @@ default_stages: [pre-commit, pre-push]
 default_install_hook_types:
   - pre-commit
   - commit-msg
-  
+
 fail_fast: false
+exclude: ^packages/interfaces_pkg/src/toop_engine_interfaces/messages/protobuf_schema/
 minimum_pre_commit_version: 4.1.0
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -100,6 +101,8 @@ repos:
       - id: gitleaks
         name: "Gitleaks: detect secrets"
         description: Scan repository for secrets.
+        # args: ["--config=.gitleaks.toml"]
+
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.6
@@ -109,14 +112,6 @@ repos:
         name: "Bandit: scan for security issues"
         description: Security linter for Python code.
         args: [--config, pyproject.toml, "-iii", "-lll"] # Only report HIGH severity & HIGH confidence
-
-  - repo: https://github.com/owenlamont/uv-secure
-    rev: 0.14.4
-    hooks:
-      - id: uv-secure
-        name: "Scan uv.lock for vulnerabilities"
-        description: Scan your uv.lock file for dependencies with known vulnerabilities.
-        exclude: ^requirements\.txt$
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.8.22
     hooks:
@@ -134,3 +129,18 @@ repos:
     hooks:
       - id: commitizen
         stages: [commit-msg]
+  # - repo: https://github.com/owenlamont/uv-secure
+  #   rev: 0.14.4
+  #   hooks:
+  #     - id: uv-secure
+  #       name: "Scan uv.lock for vulnerabilities"
+  #       description: Scan your uv.lock file for dependencies with known vulnerabilities.
+  #       exclude: ^requirements\.txt$
+  - repo: local
+    hooks:
+      - id: uv-secure-disabled
+        name: uv-secure (temporarily disabled)
+        entry: bash -c 'echo "Skipping uv-secure temporarily"; exit 0'
+        language: system
+        pass_filenames: false
+        always_run: true

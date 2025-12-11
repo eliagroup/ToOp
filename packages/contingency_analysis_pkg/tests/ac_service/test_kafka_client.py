@@ -3,6 +3,10 @@ import time
 import pytest
 from confluent_kafka import Consumer, Producer
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
+
+# Ensure that tests using Kafka are not run in parallel with each other
+pytestmark = pytest.mark.xdist_group("kafka")
 
 
 @pytest.mark.timeout(60)
@@ -25,17 +29,17 @@ def test_long_running_kafka_consumer(
         }
     )
     message = "Test message for long running consumer"
-    producer.produce(kafka_command_topic, value=message.encode())
+    producer.produce(kafka_command_topic, value=serialize_message(message))
     producer.flush()
 
     # Test consuming a message
     consumed_message = client.poll(timeout=30)
     assert consumed_message is not None
-    assert consumed_message.value().decode() == message
+    assert deserialize_message(consumed_message.value()) == message
 
     # Produce a second message that shall not be consumed yet
     message = "Second test message for long running consumer"
-    producer.produce(kafka_command_topic, value=message.encode())
+    producer.produce(kafka_command_topic, value=serialize_message(message))
     producer.flush()
 
     # Test pausing and resuming the consumer
@@ -46,7 +50,7 @@ def test_long_running_kafka_consumer(
 
     client.stop_processing()
     consumed_message = client.poll(timeout=5)
-    assert consumed_message.value().decode() == message, (
+    assert deserialize_message(consumed_message.value()) == message, (
         "The second message should not have been consumed while processing was stopped."
     )
 
@@ -56,13 +60,13 @@ def test_long_running_kafka_consumer(
     client.commit()
 
     for _ in range(10):
-        producer.produce(kafka_command_topic, value=message.encode())
+        producer.produce(kafka_command_topic, value=serialize_message(message))
     producer.flush()
 
     messages = client.consume(timeout=5, num_messages=100)
     assert len(messages) == 10
 
-    producer.produce(kafka_command_topic, value=message.encode())
+    producer.produce(kafka_command_topic, value=serialize_message(message))
     producer.flush()
     messages = client.consume(timeout=5, num_messages=100)
     assert len(messages) == 1
@@ -82,7 +86,7 @@ def test_pause_directly_after_subscribe(
         }
     )
     message = "Test message for pause directly after subscribe"
-    producer.produce(kafka_command_topic, value=message.encode())
+    producer.produce(kafka_command_topic, value=serialize_message(message))
     producer.flush()
 
     client = LongRunningKafkaConsumer(
@@ -103,7 +107,7 @@ def test_pause_directly_after_subscribe(
     # Attempt to consume a message
     consumed_message = client.poll(timeout=5)
     assert consumed_message is not None
-    assert consumed_message.value().decode() == message, (
+    assert deserialize_message(consumed_message.value()) == message, (
         "The message should have been consumed after pausing and resuming the consumer."
     )
     client.consumer.close()
@@ -124,7 +128,7 @@ def test_two_consumers(
     )
     for i in range(25):
         message = f"Test message {i} for two consumers"
-        producer.produce(kafka_command_topic, value=message.encode(), partition=i % 2)
+        producer.produce(kafka_command_topic, value=serialize_message(message), partition=i % 2)
     producer.flush()
 
     # Start two consumers that will consume messages
@@ -166,7 +170,7 @@ def test_pause_including_rebalance(
     )
     for i in range(25):
         message = f"Test message {i} for pause after rebalance"
-        producer.produce(kafka_command_topic, value=message.encode(), partition=i % 2)
+        producer.produce(kafka_command_topic, value=serialize_message(message), partition=i % 2)
     producer.flush()
 
     # Start one consumer that will sleep and one that will consume
@@ -222,7 +226,7 @@ def test_two_consumers_direct(
     )
     for i in range(25):
         message = f"Test message {i} for two consumers direct"
-        producer.produce(kafka_command_topic, value=message.encode(), partition=i % 2)
+        producer.produce(kafka_command_topic, value=serialize_message(message), partition=i % 2)
     producer.flush()
 
     # Start two consumers that will consume messages
@@ -275,7 +279,7 @@ def test_two_consumers_different_order_direct(
     )
     for i in range(25):
         message = f"Test message {i} for two consumers different order direct"
-        producer.produce(kafka_command_topic, value=message.encode(), partition=i % 2)
+        producer.produce(kafka_command_topic, value=serialize_message(message), partition=i % 2)
     producer.flush()
 
     # Start two consumers that will consume messages

@@ -5,20 +5,17 @@ Author:  Nico Westerbeck
 Created: 2024
 """
 
-import os
-import sys
 import time
 import traceback
 from functools import partial
 from logging import getLogger
-from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
 
 import jax
 import logbook
-import tyro
 from confluent_kafka import Producer
+from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_importer.worker.preprocessor import import_grid_model, preprocess
@@ -36,6 +33,10 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ErrorResult,
     PreprocessingStartedResult,
     Result,
+)
+from toop_engine_interfaces.messages.protobuf_message_factory import (
+    deserialize_message,
+    serialize_message,
 )
 
 logger = logbook.Logger(__name__)
@@ -61,68 +62,6 @@ class Args(BaseModel):
 
     heartbeat_interval_ms: int = 1000
     """The interval in milliseconds to send heartbeats."""
-
-    unprocessed_gridfile_folder: Path = Path("gridfiles")
-    """A folder where unprocessed grid files are uploaded to - this should be an NFS share together with the backend"""
-
-    processed_gridfile_folder: Path = Path("processed_gridfiles")
-    """A folder where pre-processed grid files are stored - this should be a NFS share together with the backend and
-    optimizer"""
-
-    loadflow_result_folder: Path = Path("loadflow_results")
-    """A folder where the loadflow results are stored - this should be a NFS share together with the backend and
-    optimizer. The importer needs this to store the initial loadflows"""
-
-
-def adjust_folders(
-    preprocessing_command: StartPreprocessingCommand,
-    unprocessed_gridfile_folder: Path,
-    processed_gridfile_folder: Path,
-) -> StartPreprocessingCommand:
-    """Adjust the folders of all files in the StartPreprocessingCommand, prepending the gridfile_folders.
-
-    Parameters
-    ----------
-    preprocessing_command : StartPreprocessingCommand
-        The command in which to adjust file paths
-    unprocessed_gridfile_folder : Path
-        The folder where unprocessed grid files are uploaded to, this will be prepended to input grid files (ucte/cgmes) and
-        black/whitelists
-    processed_gridfile_folder : Path
-        The folder where pre-processed grid files are stored, this will be prepended to the output grid file
-
-    Returns
-    -------
-    StartPreprocessingCommand
-        The command with adjusted file paths
-    """
-    importer_parameters = preprocessing_command.importer_parameters.model_copy(
-        update={
-            "grid_model_file": unprocessed_gridfile_folder / preprocessing_command.importer_parameters.grid_model_file,
-            "white_list_file": (
-                unprocessed_gridfile_folder / preprocessing_command.importer_parameters.white_list_file
-                if preprocessing_command.importer_parameters.white_list_file is not None
-                else None
-            ),
-            "black_list_file": (
-                unprocessed_gridfile_folder / preprocessing_command.importer_parameters.black_list_file
-                if preprocessing_command.importer_parameters.black_list_file is not None
-                else None
-            ),
-            "data_folder": processed_gridfile_folder / preprocessing_command.importer_parameters.data_folder,
-            "ignore_list_file": unprocessed_gridfile_folder / preprocessing_command.importer_parameters.ignore_list_file
-            if preprocessing_command.importer_parameters.ignore_list_file is not None
-            else None,
-            "contingency_list_file": (
-                unprocessed_gridfile_folder / preprocessing_command.importer_parameters.contingency_list_file
-                if preprocessing_command.importer_parameters.contingency_list_file is not None
-                else None
-            ),
-        }
-    )
-    command = preprocessing_command.model_copy(update={"importer_parameters": importer_parameters})
-    command.model_validate(command)
-    return command
 
 
 def idle_loop(
@@ -161,7 +100,7 @@ def idle_loop(
             send_heartbeat_fn()
             continue
 
-        command = Command.model_validate_json(message.value().decode("utf-8"))
+        command = Command.model_validate_json(deserialize_message(message.value()))
 
         if isinstance(command.command, StartPreprocessingCommand):
             return command.command
@@ -175,8 +114,32 @@ def idle_loop(
         logger.warning(f"Received unknown command, dropping: {command}")
 
 
-def main(args: Args) -> None:
-    """Start main function of the worker."""
+def main(
+    args: Args,
+    unprocessed_gridfile_fs: AbstractFileSystem,
+    processed_gridfile_fs: AbstractFileSystem,
+    loadflow_result_fs: AbstractFileSystem,
+) -> None:
+    """Start main function of the worker.
+
+    Parameters
+    ----------
+    args: Args
+        The arguments to start the worker with.
+    unprocessed_gridfile_fs: AbstractFileSystem
+        A filesystem where the unprocessed gridfiles are stored. The concrete folder to use is determined by the start
+        command, which contains an import location relative to the root of the unprocessed_gridfile_fs.
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
+    loadflow_result_fs: AbstractFileSystem
+        A filesystem where the loadflow results are stored. Loadflows will be stored here using the uuid generation process
+        and passed as a StoredLoadflowReference which contains the subfolder in this filesystem.
+    """
     instance_id = str(uuid4())
     logger.info(f"Starting importer instance {instance_id} with arguments {args}")
     jax.config.update("jax_enable_x64", True)
@@ -201,13 +164,13 @@ def main(args: Args) -> None:
     def heartbeat_idle() -> None:
         producer.produce(
             args.importer_heartbeat_topic,
-            value=PreprocessHeartbeat(
-                idle=True,
-                status_info=None,
-                instance_id=instance_id,
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                PreprocessHeartbeat(
+                    idle=True,
+                    status_info=None,
+                    instance_id=instance_id,
+                ).model_dump_json()
+            ),
             key=instance_id.encode("utf-8"),
         )
         producer.flush()
@@ -221,18 +184,18 @@ def main(args: Args) -> None:
         logger.info(f"Preprocessing stage {stage} for job {preprocess_id} after {time.time() - start_time}s: {message}")
         producer.produce(
             args.importer_heartbeat_topic,
-            value=PreprocessHeartbeat(
-                idle=False,
-                status_info=PreprocessStatusInfo(
-                    preprocess_id=preprocess_id,
-                    runtime=time.time() - start_time,
-                    stage=stage,
-                    message=message,
-                ),
-                instance_id=instance_id,
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                PreprocessHeartbeat(
+                    idle=False,
+                    status_info=PreprocessStatusInfo(
+                        preprocess_id=preprocess_id,
+                        runtime=time.time() - start_time,
+                        stage=stage,
+                        message=message,
+                    ),
+                    instance_id=instance_id,
+                ).model_dump_json()
+            ),
             key=preprocess_id.encode("utf-8"),
         )
         producer.flush()
@@ -246,11 +209,7 @@ def main(args: Args) -> None:
             heartbeat_interval_ms=args.heartbeat_interval_ms,
         )
         consumer.start_processing()
-        command = adjust_folders(
-            command,
-            args.unprocessed_gridfile_folder,
-            args.processed_gridfile_folder,
-        )
+
         start_time = time.time()
         heartbeat_fn = partial(
             heartbeat_working,
@@ -259,39 +218,45 @@ def main(args: Args) -> None:
         )
         producer.produce(
             args.importer_results_topic,
-            value=Result(
-                preprocess_id=command.preprocess_id,
-                runtime=0,
-                result=PreprocessingStartedResult(),
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                Result(
+                    preprocess_id=command.preprocess_id,
+                    runtime=0,
+                    result=PreprocessingStartedResult(),
+                ).model_dump_json()
+            ),
             key=command.preprocess_id.encode(),
         )
         producer.flush()
         heartbeat_fn("start", "Preprocessing run started")
 
         try:
-            importer_results = import_grid_model(start_command=command, status_update_fn=heartbeat_fn)
+            importer_results = import_grid_model(
+                start_command=command,
+                status_update_fn=heartbeat_fn,
+                unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+                processed_gridfile_fs=processed_gridfile_fs,
+            )
 
             result = preprocess(
                 start_command=command,
                 import_results=importer_results,
                 status_update_fn=heartbeat_fn,
-                loadflow_result_folder=args.loadflow_result_folder,
+                loadflow_result_fs=loadflow_result_fs,
+                processed_gridfile_fs=processed_gridfile_fs,
             )
 
             heartbeat_fn("end", "Preprocessing run done")
 
             producer.produce(
                 topic=args.importer_results_topic,
-                value=Result(
-                    preprocess_id=command.preprocess_id,
-                    runtime=time.time() - start_time,
-                    result=result,
-                )
-                .model_dump_json()
-                .encode(),
+                value=serialize_message(
+                    Result(
+                        preprocess_id=command.preprocess_id,
+                        runtime=time.time() - start_time,
+                        result=result,
+                    ).model_dump_json()
+                ),
                 key=command.preprocess_id.encode(),
             )
         except Exception as e:
@@ -299,25 +264,14 @@ def main(args: Args) -> None:
             logger.error(f"Traceback: {traceback.format_exc()}")
             producer.produce(
                 topic=args.importer_results_topic,
-                value=Result(
-                    preprocess_id=command.preprocess_id,
-                    runtime=time.time() - start_time,
-                    result=ErrorResult(error=str(e)),
-                )
-                .model_dump_json()
-                .encode(),
+                value=serialize_message(
+                    Result(
+                        preprocess_id=command.preprocess_id,
+                        runtime=time.time() - start_time,
+                        result=ErrorResult(error=str(e)),
+                    ).model_dump_json()
+                ),
                 key=command.preprocess_id.encode(),
             )
         producer.flush()
         consumer.stop_processing()
-
-
-if __name__ == "__main__":
-    logbook.StreamHandler(sys.stdout, level=logbook.INFO).push_application()
-    logbook.compat.redirect_logging()
-    if "IMPORTER_CONFIG_FILE" in os.environ:
-        with open(os.environ["IMPORTER_CONFIG_FILE"], "r") as f:
-            args = Args.model_validate_json(f.read())
-    else:
-        args = tyro.cli(Args)
-    main(args)

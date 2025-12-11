@@ -7,13 +7,14 @@ import jax
 import jax.experimental
 import jax.numpy as jnp
 import logbook
+from fsspec import AbstractFileSystem
 from jax_dataclasses import pytree_dataclass, replace
 from jaxtyping import Array, Float, Int
 from qdax.core.emitters.standard_emitters import EmitterState
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.aggregate_results import compute_double_limits
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
-from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.jax.inputs import load_static_information_fs
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import (
     ActionSet,
@@ -522,6 +523,7 @@ def algo_setup(
     lf_args: LoadflowSolverParameters,
     double_limits: Optional[tuple[float, float]],
     static_information_files: list[str],
+    processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[
     DiscreteMapElites,
     JaxOptimizerData,
@@ -542,6 +544,13 @@ def algo_setup(
         The lower and upper limit for the relative max mw flow if double limits are used
     static_information_files : list[str]
         A list of files with static information to load
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
 
     Returns
     -------
@@ -561,7 +570,9 @@ def algo_setup(
     """
     n_devices = len(jax.devices()) if lf_args.distributed else 1
 
-    static_informations = tuple([load_static_information(f) for f in static_information_files])
+    static_informations = tuple(
+        [load_static_information_fs(filesystem=processed_gridfile_fs, filename=str(f)) for f in static_information_files]
+    )
 
     logger.info(f"Running {n_devices} GPUs with config {ga_args}, {lf_args}")
 

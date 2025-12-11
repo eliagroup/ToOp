@@ -21,6 +21,7 @@ from typing import Optional
 
 import hydra
 import logbook
+from fsspec.implementations.local import LocalFileSystem
 from hydra import compose
 from omegaconf import DictConfig
 from toop_engine_topology_optimizer.dc.main import CLIArgs
@@ -146,13 +147,14 @@ def run_task_process(cfg: DictConfig, conn: Optional[Connection] = None) -> Opti
     cli_args = {key: value for key, value in cli_args.items() if value is not None}
     cli_args = CLIArgs(**cli_args)
 
+    processed_gridfile_fs = LocalFileSystem()
     # If the connection is None, run the task without sending the result
     if conn is None:
-        res = opt_main(cli_args)
+        res = opt_main(cli_args, processed_gridfile_fs=processed_gridfile_fs)
         return res
 
     try:
-        res = opt_main(cli_args)
+        res = opt_main(cli_args, processed_gridfile_fs=processed_gridfile_fs)
         conn.send(res)
         del res
     except Exception as exception:  # pylint: disable=broad-exception-caught

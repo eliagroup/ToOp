@@ -278,6 +278,7 @@ def validate_shapes_compute_batch(
 
 
 # ruff: noqa: PLR0915
+# sonar: noqa: S3776
 def compute_batch(
     topology_batch: ActionIndexComputations,
     disconnection_batch: Optional[Int[Array, " batch_size_bsdf n_disconnections"]],
@@ -599,6 +600,7 @@ def compute_batch(
     return output, best_inj, topo_res.success
 
 
+# sonar: noqa: S3776
 def compute_symmetric_batch(
     topology_batch: ActionIndexComputations,
     disconnection_batch: Optional[Int[Array, " batch_size_bsdf n_disconnections"]],

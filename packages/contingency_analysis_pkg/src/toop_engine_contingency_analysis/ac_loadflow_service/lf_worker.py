@@ -38,14 +38,17 @@ from logging import getLogger
 from pathlib import Path
 
 import pandapower
-import pypowsybl
 import tyro
 from beartype.typing import Callable, Literal
 from confluent_kafka import Producer
+from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pandapower_from_fs
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
     save_loadflow_results_polars,
@@ -64,6 +67,7 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
     LoadflowStreamResult,
     LoadflowSuccessResult,
 )
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
 logger = getLogger(__name__)
 
@@ -142,7 +146,7 @@ def idle_loop(
             send_heartbeat_fn()
             continue
 
-        command = LoadflowServiceCommand.model_validate_json(message.value().decode("utf-8"))
+        command = LoadflowServiceCommand.model_validate_json(deserialize_message(message.value()))
 
         if isinstance(command.command, StartCalculationCommand):
             return command.command
@@ -204,15 +208,15 @@ def solver_loop(
         for job in command.jobs:
             producer.produce(
                 results_topic,
-                value=LoadflowBaseResult(
-                    job_id=job.id,
-                    instance_id=instance_id,
-                    loadflow_id=command.loadflow_id,
-                    runtime=0.0,
-                    result=LoadflowStartedResult(),
-                )
-                .model_dump_json()
-                .encode(),
+                value=serialize_message(
+                    LoadflowBaseResult(
+                        job_id=job.id,
+                        instance_id=instance_id,
+                        loadflow_id=command.loadflow_id,
+                        runtime=0.0,
+                        result=LoadflowStartedResult(),
+                    ).model_dump_json()
+                ),
                 key=command.loadflow_id.encode(),
             )
             job_loadflow_results_polars = LoadflowResultsPolars(job_id=job.id)
@@ -239,32 +243,67 @@ def solver_loop(
 
                 producer.produce(
                     topic=results_topic,
-                    value=LoadflowBaseResult(
-                        job_id=job.id,
-                        loadflow_id=command.loadflow_id,
-                        instance_id=instance_id,
-                        runtime=time.time() - start_time,
-                        result=result_msg,
-                    )
-                    .model_dump_json()
-                    .encode(),
+                    value=serialize_message(
+                        LoadflowBaseResult(
+                            job_id=job.id,
+                            loadflow_id=command.loadflow_id,
+                            instance_id=instance_id,
+                            runtime=time.time() - start_time,
+                            result=result_msg,
+                        ).model_dump_json()
+                    ),
                     key=command.loadflow_id.encode(),
                 )
     except Exception as e:
         logger.error(f"Error while processing {command.loadflow_id}: {e}")
         producer.produce(
             topic=results_topic,
-            value=LoadflowBaseResult(
-                job_id=command.loadflow_id,
-                instance_id=instance_id,
-                loadflow_id=command.loadflow_id,
-                runtime=time.time() - start_time,
-                result=ErrorResult(error=str(e)),
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                LoadflowBaseResult(
+                    job_id=command.loadflow_id,
+                    instance_id=instance_id,
+                    loadflow_id=command.loadflow_id,
+                    runtime=time.time() - start_time,
+                    result=ErrorResult(error=str(e)),
+                ).model_dump_json()
+            ),
             key=command.loadflow_id.encode(),
         )
+
+
+def load_base_grid_fs(
+    filesystem: AbstractFileSystem,
+    grid_path: Path,
+    grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"],
+) -> pandapower.pandapowerNet | Network:
+    """Load the base grid from the grid file.
+
+    Force loading pandapower if grid type is pandapower, otherwise load powsybl.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The filesystem to load the grid from
+    grid_path : Path
+        The grid to load
+    grid_type: Literal["pandapower", "powsybl", "ucte", "cgmes"]
+        The type of the grid, either "pandapower", "powsybl", "ucte" or "cgmes".
+
+    Returns
+    -------
+    PandapowerNet | Network
+        The loaded grid
+
+    Raises
+    ------
+    ValueError
+        If the grid type is not supported.
+    """
+    if grid_type == "pandapower":
+        return load_pandapower_from_fs(filesystem, grid_path)
+    if grid_type in ["powsybl", "ucte", "cgmes"]:
+        return load_powsybl_from_fs(filesystem, grid_path)
+    raise ValueError(f"Unknown grid type: {grid_type}")
 
 
 def load_base_grid(
@@ -289,11 +328,7 @@ def load_base_grid(
     ValueError
         If the grid type is not supported.
     """
-    if grid_type == "pandapower":
-        return pandapower.from_json(grid_path)
-    if grid_type in ["powsybl", "ucte", "cgmes"]:
-        return pypowsybl.network.load(grid_path)
-    raise ValueError(f"Unknown grid type: {grid_type}")
+    return load_base_grid_fs(LocalFileSystem(), grid_path, grid_type)
 
 
 def main(args: LoadflowWorkerArgs) -> None:
@@ -318,12 +353,12 @@ def main(args: LoadflowWorkerArgs) -> None:
     def heartbeat_idle() -> None:
         producer.produce(
             args.loadflow_heartbeat_topic,
-            value=LoadflowHeartbeat(
-                idle=True,
-                status_info=None,
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                LoadflowHeartbeat(
+                    idle=True,
+                    status_info=None,
+                ).model_dump_json()
+            ),
             key=args.instance_id.encode("utf-8"),
         )
         producer.flush()
@@ -331,16 +366,16 @@ def main(args: LoadflowWorkerArgs) -> None:
     def heartbeat_fn(job_id: str, runtime: float, message: str = "") -> None:
         producer.produce(
             args.loadflow_heartbeat_topic,
-            value=LoadflowHeartbeat(
-                idle=False,
-                status_info=LoadflowStatusInfo(
-                    loadflow_id=job_id,
-                    runtime=runtime,
-                    message=message,
-                ),
-            )
-            .model_dump_json()
-            .encode(),
+            value=serialize_message(
+                LoadflowHeartbeat(
+                    idle=False,
+                    status_info=LoadflowStatusInfo(
+                        loadflow_id=job_id,
+                        runtime=runtime,
+                        message=message,
+                    ),
+                ).model_dump_json()
+            ),
             key=args.instance_id.encode("utf-8"),
         )
         producer.flush()

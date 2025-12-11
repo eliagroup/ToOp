@@ -476,6 +476,7 @@ def case14_matching_asset_topo_powsybl(folder: Path) -> None:
 
 
 # ruff: noqa: PLR0915
+# sonar: noqa: S3776
 def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     """Create a complex grid with batteries, HVDC, SVC, and 3-winding transformers using Powsybl.
 
@@ -628,11 +629,17 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     kwargs_basic_layout = {"aligned_buses_or_busbar_count": 1, "section_count": 2, "switch_kinds": "BREAKER"}
     kwargs_two_busbar_layout = {"aligned_buses_or_busbar_count": 2, "section_count": 1, "switch_kinds": ""}
     kwargs_four_busbar_layout = {"aligned_buses_or_busbar_count": 2, "section_count": 2, "switch_kinds": "BREAKER"}
+    kwargs_four_busbar_disconnector_layout = {
+        "aligned_buses_or_busbar_count": 2,
+        "section_count": 2,
+        "switch_kinds": "DISCONNECTOR",
+    }
 
     no_layout_list = ["VL_LV_load", "VL_DE_1", "VL_DE_2"]
     basic_layout_list = ["VL_2W_MV_LV_LV", "VL_3W_LV"]
     two_busbar_layout_list = ["VL_3W_MV", "VL_2W_MV_LV_MV", "VL_MV_load", "VL_MV_svc", "VL_2W_MV_HV_MV", "VL_HV_gen"]
-    four_busbar_layout_list = ["VL_MV", "VL_3W_HV", "VL_2W_MV_HV_HV", "VL_HV_vsc"]
+    four_busbar_layout_list = ["VL_3W_HV", "VL_2W_MV_HV_HV", "VL_HV_vsc"]
+    four_busbar_disconnector_layout_list = ["VL_MV"]
 
     def _create_busbars(voltage_list: list, kwargs: dict) -> None:
         for vl in voltage_list:
@@ -648,6 +655,26 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     _create_busbars(basic_layout_list, kwargs_basic_layout)
     _create_busbars(two_busbar_layout_list, kwargs_two_busbar_layout)
     _create_busbars(four_busbar_layout_list, kwargs_four_busbar_layout)
+    _create_busbars(four_busbar_disconnector_layout_list, kwargs_four_busbar_disconnector_layout)
+
+    # refine busbar layouts for specific voltage levels
+    pypowsybl.network.create_coupling_device(
+        n,
+        bus_or_busbar_section_id_1=["VL_2W_MV_HV_HV_1_2"],
+        bus_or_busbar_section_id_2=["VL_2W_MV_HV_HV_2_2"],
+    )
+    # FIX ME: currently not working due to an importing issue in the simplyfied station function
+    # pypowsybl.network.create_coupling_device(
+    #     n,
+    #     bus_or_busbar_section_id_1=["VL_MV_1_2"],
+    #     bus_or_busbar_section_id_2=["VL_MV_2_2"],
+    # )
+    # pypowsybl.network.create_coupling_device(
+    #     n,
+    #     bus_or_busbar_section_id_1=["VL_MV_1_1"],
+    #     bus_or_busbar_section_id_2=["VL_MV_1_2"],
+    # )
+    # n.open_switch("VL_MV_DISCONNECTOR_0_2")
 
     # ---------------------------------------------------------------------
     # 3) AC lines
@@ -680,13 +707,13 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
             {"bus_or_busbar_section_id_1": "VL_MV_svc_1_1", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_short},
             {"bus_or_busbar_section_id_1": "VL_MV_svc_1_1", "bus_or_busbar_section_id_2": "VL_2W_MV_HV_MV_1_1", **mv_short},
             {"bus_or_busbar_section_id_1": "VL_2W_MV_LV_MV_1_1", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_short},
-            {"bus_or_busbar_section_id_1": "VL_MV_load_1_1", "bus_or_busbar_section_id_2": "VL_MV_1_1", **mv_short},
-            {"bus_or_busbar_section_id_1": "VL_2W_MV_HV_MV_1_1", "bus_or_busbar_section_id_2": "VL_MV_1_1", **mv_short},
+            {"bus_or_busbar_section_id_1": "VL_MV_load_1_1", "bus_or_busbar_section_id_2": "VL_MV_2_2", **mv_short},
+            {"bus_or_busbar_section_id_1": "VL_2W_MV_HV_MV_1_1", "bus_or_busbar_section_id_2": "VL_MV_2_1", **mv_short},
             {"bus_or_busbar_section_id_1": "VL_MV_load_1_1", "bus_or_busbar_section_id_2": "VL_2W_MV_LV_MV_1_1", **mv_long},
             {"bus_or_busbar_section_id_1": "VL_MV_1_1", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_long},
-            {"bus_or_busbar_section_id_1": "VL_MV_1_1", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_long},
+            {"bus_or_busbar_section_id_1": "VL_MV_1_2", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_long},
             {"bus_or_busbar_section_id_1": "VL_MV_svc_1_1", "bus_or_busbar_section_id_2": "VL_2W_MV_LV_MV_1_1", **mv_long},
-            {"bus_or_busbar_section_id_1": "VL_MV_svc_1_1", "bus_or_busbar_section_id_2": "VL_MV_1_1", **mv_long},
+            {"bus_or_busbar_section_id_1": "VL_MV_svc_1_1", "bus_or_busbar_section_id_2": "VL_MV_2_1", **mv_long},
             {"bus_or_busbar_section_id_1": "VL_MV_load_1_1", "bus_or_busbar_section_id_2": "VL_2W_MV_HV_MV_1_1", **mv_long},
         ]
     )
@@ -698,8 +725,8 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         [
             {"bus_or_busbar_section_id_1": "VL_3W_HV_1_1", "bus_or_busbar_section_id_2": "VL_HV_vsc_1_1", **hv_short},
             {"bus_or_busbar_section_id_1": "VL_3W_HV_2_1", "bus_or_busbar_section_id_2": "VL_HV_vsc_2_1", **hv_short},
-            {"bus_or_busbar_section_id_1": "VL_2W_MV_HV_HV_1_1", "bus_or_busbar_section_id_2": "VL_HV_gen_1_1", **hv_short},
-            {"bus_or_busbar_section_id_1": "VL_2W_MV_HV_HV_2_1", "bus_or_busbar_section_id_2": "VL_HV_gen_2_1", **hv_short},
+            {"bus_or_busbar_section_id_1": "VL_2W_MV_HV_HV_1_2", "bus_or_busbar_section_id_2": "VL_HV_gen_1_1", **hv_short},
+            {"bus_or_busbar_section_id_1": "VL_2W_MV_HV_HV_2_2", "bus_or_busbar_section_id_2": "VL_HV_gen_2_1", **hv_short},
             {"bus_or_busbar_section_id_1": "VL_3W_HV_1_1", "bus_or_busbar_section_id_2": "VL_HV_gen_1_1", **hv_long},
             {"bus_or_busbar_section_id_1": "VL_3W_HV_2_1", "bus_or_busbar_section_id_2": "VL_HV_gen_2_1", **hv_long},
             {"bus_or_busbar_section_id_1": "VL_2W_MV_HV_HV_1_1", "bus_or_busbar_section_id_2": "VL_HV_vsc_1_1", **hv_long},
@@ -745,7 +772,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         x=0.12,
         rated_u1=380.0,
         rated_u2=110.0,
-        bus_or_busbar_section_id_1="VL_2W_MV_HV_HV_1_1",
+        bus_or_busbar_section_id_1="VL_2W_MV_HV_HV_1_2",
         position_order_1=35,
         direction_1="BOTTOM",
         bus_or_busbar_section_id_2="VL_2W_MV_HV_MV_1_1",
@@ -858,7 +885,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
                 "name": "LCC station B",
                 "power_factor": 0.98,
                 "loss_factor": 1.0,
-                "bus_or_busbar_section_id": "VL_2W_MV_HV_HV_1_1",
+                "bus_or_busbar_section_id": "VL_2W_MV_HV_HV_1_2",
                 "position_order": 45,
             },
         ]
@@ -978,7 +1005,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
                 "name": "MV interconnection load",
                 "p0": 80.0,
                 "q0": 20.0,
-                "bus_or_busbar_section_id": "VL_MV_1_1",
+                "bus_or_busbar_section_id": "VL_MV_1_2",
                 "position_order": 20,
                 "direction": "BOTTOM",
             },
@@ -1039,7 +1066,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
                 "name": "MV battery",
                 "min_p": -60.0,
                 "max_p": 60.0,
-                "bus_or_busbar_section_id": "VL_MV_1_1",
+                "bus_or_busbar_section_id": "VL_MV_2_1",
                 "position_order": 30,
                 "direction": "TOP",
                 "target_p": -20.0,
@@ -1142,7 +1169,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
                 "b": hv_long["b1"],
                 "bus_or_busbar_section_id": "VL_2W_MV_HV_HV_1_1",
                 "position_order": 60,
-                "direction": "TOP",
+                "direction": "BOTTOM",
             },
             {
                 "id": "Dangling_outbound",
@@ -1234,3 +1261,169 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     n.create_operational_limits(limits_tr)
 
     return n
+
+
+def create_complex_substation_layout_grid() -> Network:
+    """Create a simplified complex substation-layout network using bay helpers.
+
+    This version uses `create_voltage_level_topology`, `create_line_bays`,
+    `create_2_windings_transformer_bays` and `create_coupling_device` to build
+    the same conceptual layout (two aligned busbars with three sections and
+    three couplers) in a lot fewer lines of code.
+    """
+    net = pypowsybl.network.create_empty("TEST_COMPLEX_SUBSTATION_LAYOUT_V2")
+
+    # Substations
+    net.create_substations(
+        id=["S1", "S2", "S3"], name=["Substation 1", "Substation 2", "Substation 3"], country=["DE", "DE", "DE"]
+    )
+
+    # Voltage levels
+    # VL1: complex node-breaker with 2 aligned busbars and 3 sections each (replicates B1..B6)
+    net.create_voltage_levels(
+        id=["VL1", "VL2", "VL3", "VL4", "VL5"],
+        substation_id=["S1", "S2", "S1", "S3", "S2"],
+        nominal_v=[380.0, 380.0, 220.0, 380.0, 220.0],
+        topology_kind=["NODE_BREAKER"] * 5,
+        name=["VL1", "VL2", "VL3", "VL4", "VL5"],
+    )
+
+    # Create topology layouts for the voltage levels. For VL1 we want two aligned
+    # busbars with three sections each (3 sections x 2 aligned -> 6 busbar sections)
+    pypowsybl.network.create_voltage_level_topology(
+        network=net, id="VL1", aligned_buses_or_busbar_count=3, section_count=2, switch_kinds="DISCONNECTOR"
+    )
+    pypowsybl.network.create_voltage_level_topology(
+        network=net, id="VL2", aligned_buses_or_busbar_count=2, section_count=1, switch_kinds=""
+    )
+
+    # For the other voltage levels use simple single-busbar layouts
+    for vl in ["VL3", "VL4", "VL5"]:
+        pypowsybl.network.create_voltage_level_topology(
+            network=net, id=vl, aligned_buses_or_busbar_count=1, section_count=1, switch_kinds=""
+        )
+
+    # Create three coupling devices (couplers) between corresponding sections of the
+    # two aligned busbars in VL1. This models the three couplers in the original function.
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL1_1_1"], bus_or_busbar_section_id_2=["VL1_2_1"]
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL1_1_2"], bus_or_busbar_section_id_2=["VL1_3_2"]
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL1_1_2"], bus_or_busbar_section_id_2=["VL1_2_1"]
+    )
+    # VL2
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL2_1_1"], bus_or_busbar_section_id_2=["VL2_2_1"]
+    )
+
+    # Lines: create a small set of line bays connecting VL1 sections to other VLs.
+    lines = pd.DataFrame(
+        [
+            {"bus_or_busbar_section_id_1": "VL1_2_1", "bus_or_busbar_section_id_2": "VL2_1_1", "r": 0.1, "x": 0.2},
+            {"bus_or_busbar_section_id_1": "VL1_1_2", "bus_or_busbar_section_id_2": "VL2_1_1", "r": 0.15, "x": 0.25},
+            {"bus_or_busbar_section_id_1": "VL1_3_1", "bus_or_busbar_section_id_2": "VL4_1_1", "r": 0.2, "x": 0.3},
+            {"bus_or_busbar_section_id_1": "VL1_3_2", "bus_or_busbar_section_id_2": "VL4_1_1", "r": 0.25, "x": 0.35},
+        ]
+    )
+    lines["g1"] = 0.0
+    lines["b1"] = 0.0
+    lines["g2"] = 0.0
+    lines["b2"] = 0.0
+    lines["position_order_1"] = 1
+    lines["position_order_2"] = 1
+    lines["direction_1"] = "TOP"
+    lines["direction_2"] = "TOP"
+    lines["id"] = [f"L{i + 1}" for i in range(len(lines))]
+    lines = lines.set_index("id")
+    pypowsybl.network.create_line_bays(net, df=lines)
+
+    # Transformers (use bay helper to create simpler transformer representation)
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T1",
+        b=1e-6,
+        g=1e-6,
+        r=0.5,
+        x=10.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL1_2_2",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL3_1_1",
+        position_order_2=5,
+        direction_2="TOP",
+    )
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T2",
+        b=1e-6,
+        g=1e-6,
+        r=0.6,
+        x=12.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL1_1_1",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL3_1_1",
+        position_order_2=5,
+        direction_2="TOP",
+    )
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T3",
+        b=1e-6,
+        g=1e-6,
+        r=0.5,
+        x=10.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL2_1_1",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL5_1_1",
+        position_order_2=5,
+        direction_2="TOP",
+    )
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="T4",
+        b=1e-6,
+        g=1e-6,
+        r=0.6,
+        x=12.0,
+        rated_u1=380.0,
+        rated_u2=220.0,
+        bus_or_busbar_section_id_1="VL2_1_1",
+        position_order_1=10,
+        direction_1="TOP",
+        bus_or_busbar_section_id_2="VL5_1_1",
+        position_order_2=5,
+        direction_2="TOP",
+    )
+
+    # # A couple of generators/loads to make the network usable in tests
+    pypowsybl.network.create_generator_bay(
+        net,
+        id="Gen1",
+        max_p=1000.0,
+        min_p=0.0,
+        target_p=500.0,
+        voltage_regulator_on=True,
+        target_v=230.0,
+        bus_or_busbar_section_id="VL3_1_1",
+        position_order=1,
+        direction="TOP",
+    )
+    pypowsybl.network.create_load_bay(
+        net, id="Load1", bus_or_busbar_section_id="VL5_1_1", p0=200.0, q0=30.0, position_order=1, direction="TOP"
+    )
+    pypowsybl.network.create_load_bay(
+        net, id="Load2", bus_or_busbar_section_id="VL4_1_1", p0=250.0, q0=20.0, position_order=1, direction="TOP"
+    )
+
+    return net

@@ -33,13 +33,16 @@ DGS_SWITCH_CLOSED = 1
 
 # The setup of the DGS General Sheet is defined in the DGS 7.0 documentation.
 # this is a basic setup for using FIDs (foreign ids) as an identifier for the in the DGS_SHEETS
-DGS_GENERAL_SHEET_CONTENT_FID = [{"ID(a:40)": "1", "Descr(a:40)": "Version", "Val(a:40)": "7.0"}]
+ID_KEY = "ID(a:40)"
+VAL_KEY = "Val(a:40)"
+DESC_KEY = "Descr(a:40)"
+DGS_GENERAL_SHEET_CONTENT_FID = [{ID_KEY: "1", DESC_KEY: "Version", VAL_KEY: "7.0"}]
 
 # The DGS General Sheet with where the FID is pointed to the CIM RDF ID.
 DGS_GENERAL_SHEET_CONTENT_FID_CIM = [
     *DGS_GENERAL_SHEET_CONTENT_FID,
-    {"ID(a:40)": "2", "Descr(a:40)": "Id1", "Val(a:40)": "cimRdfId:0"},
-    {"ID(a:40)": "3", "Descr(a:40)": "IdColumn", "Val(a:40)": "FID"},
+    {ID_KEY: "2", DESC_KEY: "Id1", VAL_KEY: "cimRdfId:0"},
+    {ID_KEY: "3", DESC_KEY: "IdColumn", VAL_KEY: "FID"},
 ]
 
 
@@ -47,15 +50,15 @@ class DgsGeneralSchema(pa.DataFrameModel):
     """Schema for the DGS General sheet."""
 
     ID_a_40_: pat.Series[pa.String] = pa.Field(
-        alias="ID(a:40)",
+        alias=ID_KEY,
         coerce=True,
     )
     Descr_a_40_: pat.Series[pa.String] = pa.Field(
-        alias="Descr(a:40)",
+        alias=DESC_KEY,
         coerce=True,
     )
     Val_a_40_: pat.Series[pa.String] = pa.Field(
-        alias="Val(a:40)",
+        alias=VAL_KEY,
         coerce=True,
     )
 

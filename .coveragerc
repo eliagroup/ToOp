@@ -1,12 +1,7 @@
-[run]
-concurrency = multiprocessing
-parallel = true
-sigterm = true
+[report]
 fail_under = 90
 precision = 0
+show_missing = true
 skip_covered = false
 skip_empty = false
-sort = "Cover"
-
-[report] 
-show_missing = true
+sort = cover

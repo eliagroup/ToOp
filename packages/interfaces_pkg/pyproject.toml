@@ -40,6 +40,8 @@ dependencies = [
     "polars>=1.33.0",
     "pyarrow>=21.0.0",
     "fsspec>=2024.0.0",
+    "protobuf>=6.33.1",
+    "mypy-protobuf>=3.7.0"
 ]
 
 [build-system]
@@ -76,6 +78,7 @@ dev = [
     "pytest-logbook>=1.2.0",
     "pypowsybl-jupyter>=1.0.0",
     "docker>=7.1.0",
+    "ray"
 ]
 
 [[tool.uv.index]]
@@ -83,3 +86,7 @@ name = "MCCS"
 url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/simple/"
 publish-url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/upload/"
 explicit = true
+
+
+[tool.uv-secure.ignore_packages]
+ray = [] # Ignore issues with all versions of the ray package

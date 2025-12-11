@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import time
+import uuid
 from copy import deepcopy
 from pathlib import Path
 
@@ -23,6 +24,7 @@ import yaml
 from beartype.typing import Generator, List, Literal
 from docker import DockerClient
 from docker.models.containers import Container
+from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from pypowsybl.network import Network
 from toop_engine_dc_solver.example_classes import (
@@ -144,7 +146,8 @@ def case14_topologies() -> np.ndarray:
 
 @pytest.fixture(scope="session")
 def case14_network_data(case14_data_folder: Path) -> NetworkData:
-    backend = PandaPowerBackend(case14_data_folder)
+    fs_dir = DirFileSystem(str(case14_data_folder))
+    backend = PandaPowerBackend(fs_dir)
     network_data = preprocess(backend)
 
     return network_data
@@ -294,7 +297,8 @@ def data_folder(oberrhein_data_folder: Path) -> Path:
 
 @pytest.fixture(scope="session")
 def network_data(data_folder: Path) -> NetworkData:
-    backend = PandaPowerBackend(data_folder)
+    fs_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(fs_dir)
     network_data = extract_network_data_from_interface(backend)
     return network_data
 
@@ -319,7 +323,8 @@ def network_data_preprocessed(data_folder: Path, oberrhein_outage_station_busbar
         def get_busbar_outage_map(self):
             return oberrhein_outage_station_busbars_map
 
-    backend = TestBackend(data_folder)
+    fs_dir = DirFileSystem(str(data_folder))
+    backend = TestBackend(fs_dir)
     network_data = preprocess(backend, parameters=PreprocessParameters(enable_bb_outage=True))
     return network_data
 
@@ -341,7 +346,8 @@ def preprocessed_data_folder(data_folder: Path, tmp_path_factory: pytest.TempPat
     )
 
     # Extract data from the backend, run preprocessing
-    backend = PandaPowerBackend(data_folder)
+    fs_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(fs_dir)
     network_data = preprocess(backend)
     save_network_data(temp_network_data_file_path, network_data)
     static_information = convert_to_jax(network_data, enable_bb_outage=False)
@@ -525,7 +531,8 @@ def preprocessed_powsybl_data_folder(powsybl_data_folder: Path, tmp_path_factory
     )
 
     # Extract data from the backend, run preprocessing
-    backend = PowsyblBackend(powsybl_data_folder)
+    fs_dir = DirFileSystem(str(powsybl_data_folder))
+    backend = PowsyblBackend(fs_dir)
     network_data = preprocess(backend)
     save_network_data(temp_network_data_file_path, network_data)
     static_information = convert_to_jax(network_data, enable_bb_outage=False)
@@ -585,7 +592,8 @@ def basic_node_breaker_grid_v1() -> Network:
 def node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("node_breaker_grid_preprocessed")
     node_breaker_folder_powsybl(tmp_path)
-    stats, static_information, _ = load_grid(tmp_path)
+    filesystem_dir = DirFileSystem(str(tmp_path))
+    stats, static_information, _ = load_grid(filesystem_dir)
     assert stats.n_relevant_subs > 0
 
     best_actions = random_topology(
@@ -635,7 +643,8 @@ def network_data_test_grid(test_grid_folder_path: Path, outage_map_test_grid: di
         def get_busbar_outage_map(self):
             return outage_map_test_grid
 
-    backend = TestBackend(test_grid_folder_path, distributed_slack=False)
+    fs_dir = DirFileSystem(str(test_grid_folder_path))
+    backend = TestBackend(fs_dir, distributed_slack=False)
     network_data = preprocess(backend, parameters=PreprocessParameters(enable_bb_outage=True))
     return network_data
 
@@ -821,7 +830,15 @@ def docker_client() -> DockerClient:
     return docker.from_env()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_connection_str(kafka_container: Container) -> str:
     for _ in range(100):
         kafka_container.reload()
@@ -855,23 +872,47 @@ def make_topic(kafka_container: Container, topic: str) -> None:
     assert exit_code == 0, output.decode()
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_command_topic(kafka_container: Container) -> str:
-    topic = "command_topic"
+    topic = f"command_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_results_topic(kafka_container: Container) -> str:
-    topic = "results_topic"
+    topic = f"results_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_heartbeat_topic(kafka_container: Container) -> str:
-    topic = "heartbeat_topic"
+    topic = f"heartbeat_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 

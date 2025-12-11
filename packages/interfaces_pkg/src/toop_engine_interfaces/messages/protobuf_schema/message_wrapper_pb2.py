@@ -18,9 +18,9 @@ from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
 _runtime_version.ValidateProtobufRuntimeVersion(
     _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    1,
+    5,
+    29,
+    5,
     '',
     'toop_engine_interfaces/messages/protobuf_schema/message_wrapper.proto'
 )

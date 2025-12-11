@@ -255,7 +255,8 @@ def get_generating_units_with_load(net: pp.pandapowerNet) -> set[int]:
     """
     result = []
     for df_name in ["gen", "sgen", "ext_grid", "ward", "xward", "load"]:
-        result += list(getattr(net, df_name).bus)
+        if df_name in net:
+            result += list(getattr(net, df_name).bus)
     return set(result)
 
 

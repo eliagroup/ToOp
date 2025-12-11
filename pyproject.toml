@@ -115,13 +115,13 @@ pythonpath = [
     "packages/grid_helpers_pkg/src",
     "packages/topology_optimizer_pkg/src",
     "packages/importer_pkg/src",
-    "packages/importer_pkg/src",
     "packages/dc_solver_pkg",
     "packages/contingency_analysis_pkg",
     "packages/interfaces_pkg",
     "packages/grid_helpers_pkg",
     "packages/topology_optimizer_pkg",
     "packages/importer_pkg",
+    "packages",
     ]
 
 addopts = [
@@ -135,11 +135,11 @@ addopts = [
 junit_family = "legacy"
 testpaths = [
         "packages/interfaces_pkg/tests",
-        "packages/grid_helpers_pkg/grid_helper_tests",
+        "packages/grid_helpers_pkg/tests",
         "packages/dc_solver_pkg/tests",
         "packages/contingency_analysis_pkg/tests",
-        "packages/importer_pkg/importer_tests",
-        "packages/topology_optimizer_pkg/optimizer_tests"
+        "packages/importer_pkg/tests",
+        "packages/topology_optimizer_pkg/tests"
         ]
 timeout = 300
 filterwarnings = [

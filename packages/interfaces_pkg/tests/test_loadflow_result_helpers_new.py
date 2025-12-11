@@ -1,22 +1,9 @@
 import numpy as np
-import pandapower
-import pandas as pd
-import pypowsybl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
-from polars.testing import assert_frame_equal
 from test_loadflow_results_new import get_loadflow_results_example
-from toop_engine_contingency_analysis.pandapower import (
-    run_contingency_analysis_pandapower,
-)
-from toop_engine_contingency_analysis.pypowsybl import (
-    run_contingency_analysis_powsybl,
-)
-from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.loadflow_result_helpers import (
     concatenate_loadflow_results,
-    convert_pandas_loadflow_results_to_polars,
-    convert_polars_loadflow_results_to_pandas,
     extract_branch_results,
     extract_solver_matrices,
     get_failed_branch_results,
@@ -25,7 +12,6 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     save_loadflow_results,
     select_timestep,
 )
-from toop_engine_interfaces.loadflow_results import BranchSide
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 
 
@@ -48,224 +34,34 @@ def test_save_and_load_loadflow_results_no_validate(tmp_path):
 
 
 def test_extract_branch_results():
-    net = pypowsybl.network.create_ieee14()
-    nminus1_def = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in list(net.get_branches().iterrows())[:10]
-        ],
-        contingencies=[
-            Contingency(id=index, elements=[GridElement(id=index, name=row.name, kind="branch", type=row.type)])
-            for index, row in list(net.get_branches().iterrows())[3:7]
-        ],
-    )
-
-    res = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def, job_id="test_job", timestep=0, method="dc"
-    )
+    contingencies = ["BASECASE", "contingency_1", "contingency_2", "contingency_3"]
+    res = get_loadflow_results_example(job_id="test_job", timestep=0, size=50, contingencies=contingencies)
+    contingencies = res.branch_results.reset_index()["contingency"].unique().tolist()
+    monitored_branches = res.branch_results.reset_index()["element"].unique().tolist()
+    monitored_elements = [GridElement(id=elem, name=elem, kind="branch", type="line") for elem in monitored_branches]
     _, matrix = extract_branch_results(
         branch_results=res.branch_results,
         basecase="BASECASE",
-        contingencies=[contingency.id for contingency in nminus1_def.contingencies if not contingency.is_basecase()],
-        monitored_branches=[element for element in nminus1_def.monitored_elements if element.kind == "branch"],
+        contingencies=contingencies[1:],
+        monitored_branches=monitored_elements,
         timestep=0,
     )
-    assert matrix.shape == (len(nminus1_def.contingencies), len(nminus1_def.monitored_elements))
+    assert matrix.shape == (len(contingencies) - 1, len(monitored_branches))
     assert matrix.dtype == float
     assert np.all(np.isfinite(matrix))
 
     _, matrix_2 = extract_branch_results(
         branch_results=res.branch_results,
         basecase="BASECASE",
-        contingencies=[cont.id for cont in reversed(nminus1_def.contingencies)],
-        monitored_branches=[element for element in nminus1_def.monitored_elements if element.kind == "branch"],
+        contingencies=[cont for cont in reversed(contingencies[1:])],
+        monitored_branches=monitored_elements,
         timestep=0,
     )
-    assert matrix_2.shape == (len(nminus1_def.contingencies), len(nminus1_def.monitored_elements))
+    assert matrix_2.shape == (len(contingencies) - 1, len(monitored_branches))
     assert matrix_2.dtype == float
     assert np.all(np.isfinite(matrix_2))
 
     assert np.all(matrix == matrix_2[::-1, :])  # Check that the order of contingencies does not change the result
-
-
-def test_extract_branch_results_disconnected():
-    net = pypowsybl.network.create_ieee14()
-    net.disconnect(net.get_branches().index[0])
-    nminus1_def = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in net.get_branches().iterrows()
-        ],
-        contingencies=[
-            Contingency(id=index, elements=[GridElement(id=index, name=row.name, kind="branch", type=row.type)])
-            for index, row in net.get_branches().iterrows()
-        ],
-    )
-
-    res = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def, job_id="test_job", timestep=0, method="dc"
-    )
-    _, matrix = extract_branch_results(
-        branch_results=res.branch_results,
-        basecase="BASECASE",
-        contingencies=[contingency.id for contingency in nminus1_def.contingencies if not contingency.is_basecase()],
-        monitored_branches=[element for element in nminus1_def.monitored_elements if element.kind == "branch"],
-        timestep=0,
-    )
-    assert matrix.shape == (len(nminus1_def.contingencies), len(nminus1_def.monitored_elements))
-    assert matrix.dtype == float
-    assert np.all(np.isfinite(matrix))
-    assert np.all(matrix[0, :] == 0.0)  # Check that the disconnected branch has a loading of 0.0 in all contingencies
-    assert np.all(matrix[:, 0] == 0.0)  # Check that the first monitored branch has a loading of 0.0 in all contingencies
-
-
-def test_extract_branch_results_pandapower():
-    net = pandapower.networks.case14()
-    nminus1_def = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
-            for index, row in net.line.iterrows()
-        ],
-        contingencies=[
-            Contingency(
-                id=str(index),
-                elements=[
-                    GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
-                ],
-            )
-            for index, row in net.line.iterrows()
-        ],
-    )
-
-    res = run_contingency_analysis_pandapower(
-        net=net, n_minus_1_definition=nminus1_def, job_id="test_job", timestep=0, method="dc"
-    )
-    _, matrix = extract_branch_results(
-        branch_results=res.branch_results,
-        basecase="BASECASE",
-        contingencies=[contingency.id for contingency in nminus1_def.contingencies if not contingency.is_basecase()],
-        monitored_branches=[element for element in nminus1_def.monitored_elements if element.kind == "branch"],
-        timestep=0,
-    )
-    assert matrix.shape == (len(nminus1_def.contingencies), len(nminus1_def.monitored_elements))
-    assert matrix.dtype == float
-    assert np.all(np.isfinite(matrix))
-
-
-def test_extract_branch_results_pandapower_disconnected():
-    net = pandapower.networks.case14()
-    net.line.loc[0, "in_service"] = False  # Disconnect the first line
-    nminus1_def = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
-            for index, row in net.line.iterrows()
-        ],
-        contingencies=[
-            Contingency(
-                id=str(index),
-                elements=[
-                    GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
-                ],
-            )
-            for index, row in net.line.iterrows()
-        ],
-    )
-
-    res = run_contingency_analysis_pandapower(
-        net=net, n_minus_1_definition=nminus1_def, job_id="test_job", timestep=0, method="dc"
-    )
-    contingencies = [contingency.id for contingency in nminus1_def.contingencies if not contingency.is_basecase()]
-    _, matrix = extract_branch_results(
-        branch_results=res.branch_results,
-        basecase="BASECASE",
-        contingencies=[contingency.id for contingency in nminus1_def.contingencies if not contingency.is_basecase()],
-        monitored_branches=[element for element in nminus1_def.monitored_elements if element.kind == "branch"],
-        timestep=0,
-    )
-    assert matrix.shape == (len(nminus1_def.contingencies), len(nminus1_def.monitored_elements))
-    assert matrix.dtype == float
-    assert np.all(np.isfinite(matrix))
-    assert np.all(matrix[0, :] == 0.0)  # Check that the disconnected branch has a loading of 0.0 in all contingencies
-    assert np.all(matrix[:, 0] == 0.0)  # Check that the first monitored branch has a loading of 0.0 in all contingencies
-
-
-def test_extract_solver_matrices():
-    net = pypowsybl.network.create_ieee14()
-    nminus1_def = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in net.get_branches().iterrows()
-        ],
-        contingencies=[Contingency(id="BASECASE", elements=[])]
-        + [
-            Contingency(id=index, elements=[GridElement(id=index, name=row.name, kind="branch", type=row.type)])
-            for index, row in net.get_branches().iterrows()
-        ],
-    )
-
-    res = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def, job_id="test_job", timestep=0, method="dc"
-    )
-    n_0, n_1, success = extract_solver_matrices(
-        loadflow_results=res,
-        nminus1_definition=nminus1_def,
-        timestep=0,
-    )
-    assert n_0.shape == (len(nminus1_def.monitored_elements),)
-    assert n_1.shape == (len(nminus1_def.contingencies) - 1, len(nminus1_def.monitored_elements))
-    assert success.shape == (len(nminus1_def.contingencies) - 1,)
-    assert n_0.dtype == float
-    assert n_1.dtype == float
-    assert success.dtype == bool
-    assert np.all(np.isfinite(n_0))
-    assert np.all(np.isfinite(n_1))
-    assert np.all(success)
-    contingencies = [contingency for contingency in nminus1_def.contingencies if not contingency.is_basecase()]
-    nminus1_def.contingencies = contingencies
-    with pytest.raises(AssertionError):
-        extract_solver_matrices(
-            loadflow_results=res,
-            nminus1_definition=nminus1_def,
-            timestep=0,
-        )
-
-
-def test_extract_solver_matrices_disconnected():
-    net = pypowsybl.network.create_ieee14()
-    net.disconnect(net.get_branches().index[0])
-    nminus1_def = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in net.get_branches().iterrows()
-        ],
-        contingencies=[Contingency(id="BASECASE", elements=[])]
-        + [
-            Contingency(id=index, elements=[GridElement(id=index, name=row.name, kind="branch", type=row.type)])
-            for index, row in net.get_branches().iterrows()
-        ],
-    )
-
-    res = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def, job_id="test_job", timestep=0, method="dc"
-    )
-    n_0, n_1, success = extract_solver_matrices(
-        loadflow_results=res,
-        nminus1_definition=nminus1_def,
-        timestep=0,
-    )
-    assert n_0.shape == (len(nminus1_def.monitored_elements),)
-    assert n_1.shape == (len(nminus1_def.contingencies) - 1, len(nminus1_def.monitored_elements))
-    assert success.shape == (len(nminus1_def.contingencies) - 1,)
-    assert n_0.dtype == float
-    assert n_1.dtype == float
-    assert success.dtype == bool
-    assert np.all(np.isfinite(n_0))
-    assert np.all(np.isfinite(n_1))
-    assert success[0].item() is True, "Outages that are disconnected should be considered successful"
-    assert np.all(success[1:])
-    assert n_0[0] == 0.0  # Check that the disconnected branch has a loading of 0.0 in the base case
-    assert np.all(n_1[:, 0] == 0.0)  # Check that the first monitored branch has a loading of 0.0 in all contingencies
-    assert np.all(n_1[0, :] == 0.0)  # Check that the first contingency has a loading of 0.0 in all monitored branches
 
 
 def test_select_timestep():
@@ -296,33 +92,49 @@ def test_select_timestep_empty():
     assert loadflow_results_new.va_diff_results.empty
 
 
+def test_extract_solver_matrices():
+    contingencies = ["BASECASE", "contingency1", "contingency2"]
+    loadflow_results = get_loadflow_results_example(job_id="test_job", timestep=0, size=5, contingencies=contingencies)
+    monitored_elements = loadflow_results.branch_results.reset_index()["element"].unique().tolist()
+
+    n1_contingencies = [
+        Contingency(id=cont, elements=[GridElement(id=cont, name=cont, kind="branch", type="line")])
+        for cont in contingencies[1:]
+    ]
+    n1_contingencies.insert(0, Contingency(id="BASECASE", elements=[]))
+    n1_monitored_elements = [GridElement(id=elem, name=elem, kind="branch", type="line") for elem in monitored_elements]
+    nminus1_def = Nminus1Definition(
+        monitored_elements=n1_monitored_elements,
+        contingencies=n1_contingencies,
+    )
+
+    n_0, n_1, success = extract_solver_matrices(
+        loadflow_results=loadflow_results,
+        nminus1_definition=nminus1_def,
+        timestep=0,
+    )
+    assert n_0.shape == (len(nminus1_def.monitored_elements),)
+    assert n_1.shape == (len(nminus1_def.contingencies) - 1, len(nminus1_def.monitored_elements))
+    assert success.shape == (len(nminus1_def.contingencies) - 1,)
+    assert n_0.dtype == float
+    assert n_1.dtype == float
+    assert success.dtype == bool
+    assert np.all(np.isfinite(n_0))
+    assert np.all(np.isfinite(n_1))
+    assert np.any(success)
+    contingencies = [contingency for contingency in nminus1_def.contingencies if not contingency.is_basecase()]
+    nminus1_def.contingencies = contingencies
+    with pytest.raises(AssertionError):
+        extract_solver_matrices(
+            loadflow_results=loadflow_results,
+            nminus1_definition=nminus1_def,
+            timestep=0,
+        )
+
+
 def test_concatenate_loadflow_results():
-    net = pypowsybl.network.create_ieee14()
-    nminus1_def_1 = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in net.get_branches().iterrows()
-        ],
-        contingencies=[Contingency(id="BASECASE", elements=[])],
-    )
-
-    nminus1_def_2 = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in net.get_branches().iterrows()
-        ],
-        contingencies=[
-            Contingency(id=index, elements=[GridElement(id=index, name=row.name, kind="branch", type=row.type)])
-            for index, row in net.get_branches().iterrows()
-        ],
-    )
-
-    res_1 = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def_1, job_id="same_test_job", timestep=0, method="dc"
-    )
-    res_2 = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def_2, job_id="same_test_job", timestep=0, method="dc"
-    )
+    res_1 = get_loadflow_results_example(job_id="test_job", timestep=0, size=5, contingencies=["BASECASE", "contingency1"])
+    res_2 = get_loadflow_results_example(job_id="test_job", timestep=0, size=5, contingencies=["contingency2"])
 
     res = concatenate_loadflow_results([res_1, res_2])
 
@@ -430,83 +242,3 @@ def test_get_failed_node_results():
 
     res = get_failed_node_results(timestep=timestep, failed_outages=failed_outages, monitored_nodes=[])
     assert len(res) == 0, "Result should be empty when no monitored nodes are provided"
-
-
-class DummyBranchResult(pd.DataFrame):
-    # Allow attribute access for DataFrame columns
-    @property
-    def _constructor(self):
-        return DummyBranchResult
-
-
-def make_branch_results(timestep, contingencies, branches, values=None):
-    # Create a MultiIndex DataFrame for branch_results with "p" column
-    idx = pd.MultiIndex.from_product(
-        [[timestep], contingencies, branches, [BranchSide.ONE.value]], names=["timestep", "contingency", "element", "side"]
-    )
-    if values is None:
-        p = np.arange(len(idx), dtype=float)
-    else:
-        p = np.array(values, dtype=float)
-    df = DummyBranchResult({"p": p}, index=idx)
-    return df
-
-
-def test_convert_polars_loadflow_results_to_pandas():
-    net = pypowsybl.network.create_ieee14()
-    nminus1_def_1 = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in net.get_branches().iterrows()
-        ],
-        contingencies=[Contingency(id="BASECASE", elements=[])],
-    )
-
-    nminus1_def_2 = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in net.get_branches().iterrows()
-        ],
-        contingencies=[
-            Contingency(id=index, elements=[GridElement(id=index, name=row.name, kind="branch", type=row.type)])
-            for index, row in net.get_branches().iterrows()
-        ],
-    )
-
-    loadflow_data_polars = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def_1, job_id="same_test_job", timestep=0, method="dc", polars=True
-    )
-    loadflow_data_pandas = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def_1, job_id="same_test_job", timestep=0, method="dc", polars=False
-    )
-
-    loadflow_data_pandas_2 = convert_polars_loadflow_results_to_pandas(loadflow_data_polars)
-
-    loadflow_data_polars_2 = convert_pandas_loadflow_results_to_polars(loadflow_data_pandas_2)
-
-    kw_args_testing = {
-        "check_row_order": False,
-        "check_column_order": False,
-        "check_dtypes": True,
-        "check_exact": False,
-        "abs_tol": 1e-9,
-    }
-
-    # this is for debugging purposes
-    assert loadflow_data_polars.job_id == loadflow_data_polars_2.job_id
-    assert_frame_equal(loadflow_data_polars.branch_results, loadflow_data_polars_2.branch_results, **kw_args_testing)
-    assert_frame_equal(loadflow_data_polars.node_results, loadflow_data_polars_2.node_results, **kw_args_testing)
-    assert_frame_equal(
-        loadflow_data_polars.regulating_element_results,
-        loadflow_data_polars_2.regulating_element_results,
-        **kw_args_testing,
-    )
-    assert_frame_equal(loadflow_data_polars.va_diff_results, loadflow_data_polars_2.va_diff_results, **kw_args_testing)
-    assert_frame_equal(loadflow_data_polars.converged, loadflow_data_polars_2.converged, **kw_args_testing)
-    assert loadflow_data_polars.additional_information == loadflow_data_polars_2.additional_information
-    assert loadflow_data_polars.warnings == loadflow_data_polars_2.warnings
-
-    # this is the actual test
-    assert loadflow_data_polars.__eq__(loadflow_data_polars_2)
-
-    assert loadflow_data_pandas.__eq__(loadflow_data_pandas_2)

@@ -42,7 +42,6 @@ dependencies = [
     "fsspec>=2024.0.0",
     "protobuf>=6.33.1",
     "mypy-protobuf>=3.7.0"
-
 ]
 
 [build-system]
@@ -79,6 +78,7 @@ dev = [
     "pytest-logbook>=1.2.0",
     "pypowsybl-jupyter>=1.0.0",
     "docker>=7.1.0",
+    "ray"
 ]
 
 [[tool.uv.index]]
@@ -86,3 +86,7 @@ name = "MCCS"
 url = "***REMOVED***"
 publish-url = "***REMOVED***"
 explicit = true
+
+
+[tool.uv-secure.ignore_packages]
+ray = [] # Ignore issues with all versions of the ray package

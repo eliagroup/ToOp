@@ -253,22 +253,11 @@ def get_generating_units_with_load(net: pp.pandapowerNet) -> set[int]:
     set[int]
         Unique bus indices that have either generation or load.
     """
-
-    # Safely handle cases where some tables may be empty or missing
-    def _safe_buses(df_name: str) -> set[int]:
-        return set(getattr(net, df_name).bus) if df_name in net else set()
-
-    gen_buses = _safe_buses("gen")
-    sgen_buses = _safe_buses("sgen")
-    ext_grid_buses = _safe_buses("ext_grid")
-    ward_buses = _safe_buses("ward")
-    xward_buses = _safe_buses("xward")
-    load_buses = _safe_buses("load")
-
-    generating_buses = gen_buses | sgen_buses | ext_grid_buses | ward_buses | xward_buses
-    generating_units_with_load = generating_buses | load_buses
-
-    return generating_units_with_load
+    result = []
+    for df_name in ["gen", "sgen", "ext_grid", "ward", "xward", "load"]:
+        if df_name in net:
+            result += list(getattr(net, df_name).bus)
+    return set(result)
 
 
 def get_buses_with_reference_sources(net: pp.pandapowerNet) -> set[int]:

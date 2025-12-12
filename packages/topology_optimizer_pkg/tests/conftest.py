@@ -100,7 +100,15 @@ def kafka_container(docker_client: DockerClient) -> Generator[Container, None, N
     container.remove(v=True, force=True)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_connection_str(kafka_container: Container) -> str:
     for _ in range(100):
         kafka_container.reload()
@@ -149,7 +157,15 @@ def make_topic(kafka_container: Container, topic: str, partitions: int = 1) -> N
         time.sleep(0.1)
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_command_topic(kafka_container: Container) -> Generator[str, None, None]:
     topic = "command_topic" + str(os.urandom(4).hex())
     make_topic(kafka_container, topic)
@@ -157,7 +173,15 @@ def kafka_command_topic(kafka_container: Container) -> Generator[str, None, None
     delete_topic(kafka_container, topic)
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_results_topic(kafka_container: Container) -> Generator[str, None, None]:
     topic = "results_topic" + str(os.urandom(4).hex())
     make_topic(kafka_container, topic)
@@ -165,7 +189,15 @@ def kafka_results_topic(kafka_container: Container) -> Generator[str, None, None
     delete_topic(kafka_container, topic)
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_heartbeat_topic(kafka_container: Container) -> Generator[str, None, None]:
     topic = "heartbeat_topic" + str(os.urandom(4).hex())
     make_topic(kafka_container, topic)

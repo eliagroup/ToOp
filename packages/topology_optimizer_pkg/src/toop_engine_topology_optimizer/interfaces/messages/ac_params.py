@@ -6,6 +6,7 @@ batched, and the parameters are slightly different.
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 from pydantic import BaseModel, PositiveInt, confloat, model_validator
@@ -82,7 +83,8 @@ class ACGAParameters(BaseModel):
     @model_validator(mode="after")
     def probabilities_sum_to_one(self) -> ACOptimizerParameters:
         """Ensure that the probabilities sum to one"""
-        if self.pull_prob + self.reconnect_prob + self.close_coupler_prob != 1.0:
+        total_probability = self.pull_prob + self.reconnect_prob + self.close_coupler_prob
+        if not math.isclose(total_probability, 1.0):
             raise ValueError("The probabilities must sum to one")
         return self
 

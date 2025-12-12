@@ -10,7 +10,8 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 
 from pathlib import Path
 
-from beartype.typing import Literal, Optional
+from beartype.typing import Literal, Optional, Union
+from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
@@ -176,6 +177,31 @@ class Nminus1Definition(BaseModel):
         )
 
 
+def load_nminus1_definition_fs(
+    filesystem: AbstractFileSystem,
+    file_path: Union[str, Path],
+) -> Nminus1Definition:
+    """Load an N-1 definition from a file system.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to use to load the N-1 definition.
+    file_path : Union[str, Path]
+        The path to the file containing the N-1 definition in json format.
+
+    Returns
+    -------
+    Nminus1Definition
+        The loaded N-1 definition.
+    """
+    return load_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=file_path,
+        model_class=Nminus1Definition,
+    )
+
+
 def load_nminus1_definition(filename: Path) -> Nminus1Definition:
     """Load an N-1 definition from a json file
 
@@ -189,7 +215,10 @@ def load_nminus1_definition(filename: Path) -> Nminus1Definition:
     Nminus1Definition
         The loaded N-1 definition.
     """
-    return load_pydantic_model_fs(filesystem=LocalFileSystem(), file_path=filename, model_class=Nminus1Definition)
+    return load_nminus1_definition_fs(
+        filesystem=LocalFileSystem(),
+        file_path=filename,
+    )
 
 
 def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definition) -> None:

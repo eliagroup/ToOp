@@ -20,6 +20,7 @@ PREPROCESSING_PATHS: Final[dict[str, str]] = {
     "asset_topology_file_path": "initial_topology/asset_topology.json",
     "original_gridfile_path": "initial_topology/original_gridfile",
     "logs_path": "logs",
+    "start_datetime_info_file_path": "logs/start_datetime.info",
     "chronics_path": "chronics",
     "action_set_file_path": "action_set.json",
     "nminus1_definition_file_path": "nminus1_definition.json",

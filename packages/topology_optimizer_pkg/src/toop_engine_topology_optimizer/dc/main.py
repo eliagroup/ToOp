@@ -34,6 +34,7 @@ import logbook
 import numpy as np
 import tyro
 from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel, Field
 from tensorboardX import SummaryWriter
 from toop_engine_interfaces.types import MetricType
@@ -346,4 +347,5 @@ def main(
 if __name__ == "__main__":
     logbook.StreamHandler(sys.stdout, level=logbook.INFO).push_application()
     args = tyro.cli(CLIArgs)
-    main(args)
+    file_system = LocalFileSystem()
+    main(args, file_system)

@@ -1,16 +1,14 @@
 import polars as pl
-import pypowsybl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from polars.testing import assert_frame_equal
 from test_loadflow_results_new import get_loadflow_results_example
-from toop_engine_contingency_analysis.pypowsybl import (
-    run_contingency_analysis_powsybl,
+from toop_engine_interfaces.loadflow_result_helpers import (
+    convert_pandas_loadflow_results_to_polars,
 )
-from toop_engine_grid_helpers.powsybl.example_grids import powsybl_extended_case57
-from toop_engine_interfaces.loadflow_result_helpers import convert_pandas_loadflow_results_to_polars
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
+    extract_branch_results_polars,
     load_loadflow_results_polars,
     save_loadflow_results_polars,
 )
@@ -39,55 +37,37 @@ def test_save_and_load_loadflow_results_no_validate_polars(tmp_path):
 
 
 def test_extract_branch_results():
-    net = powsybl_extended_case57()
-
+    contingencies = ["BASECASE", "contingency"]
+    lf_result = get_loadflow_results_example(job_id="test_job", timestep=0, size=50, contingencies=contingencies)
+    lf_polars = convert_pandas_loadflow_results_to_polars(lf_result)
+    monitored_elements = lf_result.branch_results.reset_index()["element"].unique().tolist()
+    n1_contingencies = [
+        Contingency(id=cont, elements=[GridElement(id=cont, name=cont, kind="branch", type="line")])
+        for cont in contingencies[1:]
+    ]
+    n1_contingencies.insert(0, Contingency(id="BASECASE", elements=[]))
+    n1_monitored_elements = [GridElement(id=elem, name=elem, kind="branch", type="line") for elem in monitored_elements]
     nminus1_def = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in list(net.get_branches().iterrows())[:10]
-        ]
-        + [
-            GridElement(id=index, name=row.name, kind="bus", type="bus")
-            for index, row in list(net.get_voltage_levels().iterrows())[:10]
-        ],
-        contingencies=[
-            Contingency(id=index, elements=[GridElement(id=index, name=row.name, kind="branch", type=row.type)])
-            for index, row in list(net.get_branches().iterrows())  # [3:7]
-        ],
+        monitored_elements=n1_monitored_elements,
+        contingencies=n1_contingencies,
     )
-
-    res = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def, job_id="test_job", timestep=0, method="ac", polars=True
+    branch_results, matrix = extract_branch_results_polars(
+        lf_polars.branch_results,
+        basecase="BASECASE",
+        timestep=0,
+        contingencies=[contingency.id for contingency in nminus1_def.contingencies if not contingency.is_basecase()],
+        monitored_branches=[element for element in nminus1_def.monitored_elements if element.kind == "branch"],
     )
+    assert matrix.shape == (len(nminus1_def.contingencies) - 1, len(nminus1_def.monitored_elements))
 
 
 def test_concatenate_loadflow_results_polars():
-    net = pypowsybl.network.create_ieee14()
-    nminus1_def_1 = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in net.get_branches().iterrows()
-        ],
-        contingencies=[Contingency(id="BASECASE", elements=[])],
+    res_1_pandas = get_loadflow_results_example(
+        job_id="test_job", timestep=0, size=5, contingencies=["BASECASE", "contingency1"]
     )
-
-    nminus1_def_2 = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
-            for index, row in net.get_branches().iterrows()
-        ],
-        contingencies=[
-            Contingency(id=index, elements=[GridElement(id=index, name=row.name, kind="branch", type=row.type)])
-            for index, row in net.get_branches().iterrows()
-        ],
-    )
-
-    res_1 = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def_1, job_id="same_test_job", timestep=0, method="dc", polars=True
-    )
-    res_2 = run_contingency_analysis_powsybl(
-        net=net, n_minus_1_definition=nminus1_def_2, job_id="same_test_job", timestep=1, method="dc", polars=True
-    )
+    res_2_pandas = get_loadflow_results_example(job_id="test_job", timestep=1, size=5, contingencies=["contingency2"])
+    res_1 = convert_pandas_loadflow_results_to_polars(res_1_pandas)
+    res_2 = convert_pandas_loadflow_results_to_polars(res_2_pandas)
 
     res = concatenate_loadflow_results_polars([res_1, res_2])
 

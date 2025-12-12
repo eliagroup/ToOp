@@ -26,6 +26,9 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     TopologyPushResult,
 )
 
+# Ensure that tests using Kafka are not run in parallel with each other
+pytestmark = pytest.mark.xdist_group("kafka")
+
 
 def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> Producer:
     producer = Producer(

@@ -869,6 +869,31 @@ def compare_stations(
     )
 
 
+def load_asset_topology_fs(
+    filesystem: AbstractFileSystem,
+    file_path: Union[str, Path],
+) -> Topology:
+    """Load an asset topology from a file system.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to use to load the asset topology.
+    file_path : Union[str, Path]
+        The path to the file containing the asset topology in json format.
+
+    Returns
+    -------
+    Topology
+        The loaded asset topology.
+    """
+    return load_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=file_path,
+        model_class=Topology,
+    )
+
+
 def load_asset_topology(filename: Union[str, Path]) -> Topology:
     """Load an asset topology from a file
 
@@ -882,7 +907,10 @@ def load_asset_topology(filename: Union[str, Path]) -> Topology:
     Topology
         The loaded asset topology
     """
-    return load_pydantic_model_fs(filesystem=LocalFileSystem(), file_path=filename, model_class=Topology)
+    return load_asset_topology_fs(
+        filesystem=LocalFileSystem(),
+        file_path=filename,
+    )
 
 
 def save_asset_topology_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], asset_topology: Topology) -> None:
@@ -930,7 +958,7 @@ def get_connected_assets(station: Station, busbar_index: int) -> list[Switchable
     list of SwitchableAsset
         A list of assets connected to the specified busbar.
     """
-    connected_asset_indices = np.where(station.asset_switching_table[busbar_index])[0]
+    connected_asset_indices = np.nonzero(station.asset_switching_table[busbar_index])[0]
     return [station.assets[i] for i in connected_asset_indices if station.assets[i].in_service]
 
 

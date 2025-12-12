@@ -3,7 +3,6 @@ from functools import partial
 
 import jax
 from jax import numpy as jnp
-from optimizer_tests.dc.test_main import assert_topology
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.topology_computations import extract_sub_ids
 from toop_engine_dc_solver.jax.types import int_max
@@ -17,6 +16,8 @@ from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions imp
     mutate_disconnections,
     mutate_sub,
 )
+
+from packages.topology_optimizer_pkg.tests.dc.test_main import assert_topology
 
 
 def test_mutate_disconnection(static_information_file: str) -> None:

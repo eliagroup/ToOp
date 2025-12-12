@@ -1,6 +1,7 @@
 """Provides example grids for testing the dc_solver package."""
 
-# ruff: noqa: PLR0915
+# ruff/sonar: noqa: PLR0915, S3776
+
 import bz2
 import datetime
 import os
@@ -331,7 +332,7 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
         f.write(topo_info.model_dump_json(indent=2))
 
 
-# ruff: noqa: PLR0915
+# ruff/sonar: noqa: PLR0915, S3776
 def oberrhein_data(folder: Path) -> None:
     """Build an example grid file which resembles the grid2op format but has more elements for testing"""
     net = pandapower_extended_oberrhein()
@@ -390,9 +391,9 @@ def oberrhein_data(folder: Path) -> None:
     sgen_for_nminus1 = np.random.rand(len(net.sgen)) > 0.5
     np.save(output_path_masks / NETWORK_MASK_NAMES["sgen_for_nminus1"], sgen_for_nminus1)
 
-    logs_path = folder / PREPROCESSING_PATHS["logs_path"]
-    logs_path.mkdir(parents=True, exist_ok=True)
-    with open(logs_path / "start_datetime.info", "w", encoding="utf-8") as f:
+    start_datetime_info_file_path = folder / PREPROCESSING_PATHS["start_datetime_info_file_path"]
+    start_datetime_info_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(start_datetime_info_file_path, "w", encoding="utf-8") as f:
         f.write(str(datetime.datetime.now()))
 
     # Generate chronics
@@ -475,9 +476,9 @@ def case57_data_pandapower(folder: Path) -> None:
     cross_coupler_limits = np.abs(np.random.randn(len(net.bus))) * 100
     np.save(masks_path / NETWORK_MASK_NAMES["cross_coupler_limits"], cross_coupler_limits)
 
-    logs_path = folder / PREPROCESSING_PATHS["logs_path"]
-    logs_path.mkdir(parents=True, exist_ok=True)
-    with open(logs_path / "start_datetime.info", "w", encoding="utf-8") as f:
+    start_datetime_info_file_path = folder / PREPROCESSING_PATHS["start_datetime_info_file_path"]
+    start_datetime_info_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(start_datetime_info_file_path, "w", encoding="utf-8") as f:
         f.write(str(datetime.datetime.now()))
 
     np.random.seed(0)
@@ -535,9 +536,9 @@ def case57_data_powsybl(folder: Path) -> None:
         cross_coupler_limits,
     )
 
-    output_path_logs = folder / PREPROCESSING_PATHS["logs_path"]
-    output_path_logs.mkdir(parents=True, exist_ok=True)
-    with open(output_path_logs / "start_datetime.info", "w", encoding="utf-8") as f:
+    start_datetime_info_file_path = folder / PREPROCESSING_PATHS["start_datetime_info_file_path"]
+    start_datetime_info_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(start_datetime_info_file_path, "w", encoding="utf-8") as f:
         f.write(str(datetime.datetime.now()))
 
     extract_station_info_powsybl(net, folder)
@@ -710,7 +711,9 @@ def case300_powsybl(folder: Path) -> None:
     extract_station_info_powsybl(net, folder)
 
 
-def case9241_pandapower(data_folder: Path) -> None:  # noqa: PLR0912, C901
+# ruff: noqa: PLR0915
+# sonar: noqa: S3776
+def case9241_pandapower(data_folder: Path) -> None:
     """Create a case9241 example scenario
 
     This is based on the case9241pegase grid from pandapower, but with some modifications:
@@ -781,24 +784,67 @@ def case9241_pandapower(data_folder: Path) -> None:  # noqa: PLR0912, C901
 
     # Don't use bridges for the N-1 analysis
     graph = pp.topology.create_nxgraph(net, multi=True)
-    bridges = list(nx.bridges(graph))
-    for bridge in bridges:
-        edge_data = graph.get_edge_data(*bridge)
-        for table, index in edge_data.keys():
-            if table == "line":
-                line_for_nminus1[int(index)] = False
-            elif table == "trafo":
-                trafo_for_nminus1[int(index)] = False
-            else:
-                raise RuntimeError(f"Unknown table {table}")
+    line_for_nminus1, trafo_for_nminus1 = update_masks_for_bridges(line_for_nminus1, trafo_for_nminus1, graph)
 
     # Partition the grid into 4 regions of roughly equal size
     part1, part2 = kernighan_lin_bisection(graph, seed=np.random.randint(2**32))
     part11, part12 = kernighan_lin_bisection(graph.subgraph(part1), seed=np.random.randint(2**32))
     part21, part22 = kernighan_lin_bisection(graph.subgraph(part2), seed=np.random.randint(2**32))
-
     regions = [part11, part12, part21, part22]
+    region_masks, relevant_sub_indices = generate_region_masks(net, line_for_nminus1, trafo_for_nminus1, graph, regions)
 
+    all_relevant_sub_indices = np.concatenate(relevant_sub_indices)
+    all_relevant_subs = np.zeros(len(net.bus), dtype=bool)
+    all_relevant_subs[all_relevant_sub_indices] = True
+
+    region_masks.update(
+        {
+            "line_for_nminus1": line_for_nminus1,
+            "line_for_reward": np.ones(len(net.line), dtype=bool),
+            "trafo_for_nminus1": trafo_for_nminus1,
+            "trafo_for_reward": np.ones(len(net.trafo), dtype=bool),
+            "relevant_subs": all_relevant_subs,
+            "trafo_pst_controllable": np.ones(len(net.trafo), dtype=bool),
+        }
+    )
+
+    for key, mask in region_masks.items():
+        np.save(masks_path / f"{key}.npy", mask)
+
+    start_datetime_info_file_path = data_folder / PREPROCESSING_PATHS["start_datetime_info_file_path"]
+    start_datetime_info_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(start_datetime_info_file_path, "w", encoding="utf-8") as f:
+        f.write(str(datetime.datetime.now()))
+
+    np.random.seed(0)
+    random_topology_info(data_folder)
+
+
+def generate_region_masks(
+    net: pp.pandapowerNet, line_for_nminus1: np.ndarray, trafo_for_nminus1: np.ndarray, graph: nx.Graph, regions: list[set]
+) -> tuple[dict[str, np.ndarray], list[np.ndarray]]:
+    """Generate region-specific masks for lines, transformers, and relevant substations.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        The pandapower network object.
+    line_for_nminus1 : np.ndarray
+        The line mask for n-1 analysis.
+    trafo_for_nminus1 : np.ndarray
+        The transformer mask for n-1 analysis.
+    graph : nx.Graph
+        The networkx graph of the network.
+    regions : list[set]
+        List of regions, each represented as a set of node indices.
+
+    Returns
+    -------
+    tuple[dict[str, np.ndarray], list[np.ndarray]]
+        A tuple containing:
+        - A dictionary with region-specific masks for lines, transformers, and relevant substations.
+        - A list of arrays containing the indices of relevant substations for each region.
+    """
     region_masks = {}
     relevant_sub_indices = []
 
@@ -833,31 +879,38 @@ def case9241_pandapower(data_folder: Path) -> None:  # noqa: PLR0912, C901
             }
         )
 
-    all_relevant_sub_indices = np.concatenate(relevant_sub_indices)
-    all_relevant_subs = np.zeros(len(net.bus), dtype=bool)
-    all_relevant_subs[all_relevant_sub_indices] = True
+    return region_masks, relevant_sub_indices
 
-    region_masks.update(
-        {
-            "line_for_nminus1": line_for_nminus1,
-            "line_for_reward": np.ones(len(net.line), dtype=bool),
-            "trafo_for_nminus1": trafo_for_nminus1,
-            "trafo_for_reward": np.ones(len(net.trafo), dtype=bool),
-            "relevant_subs": all_relevant_subs,
-            "trafo_pst_controllable": np.ones(len(net.trafo), dtype=bool),
-        }
-    )
 
-    for key, mask in region_masks.items():
-        np.save(masks_path / f"{key}.npy", mask)
+def update_masks_for_bridges(
+    line_for_nminus1: np.ndarray, trafo_for_nminus1: np.ndarray, graph: nx.Graph
+) -> tuple[np.ndarray, np.ndarray]:
+    """Update the n-1 masks to exclude bridges in the network.
 
-    logs_path = data_folder / PREPROCESSING_PATHS["logs_path"]
-    logs_path.mkdir(parents=True, exist_ok=True)
-    with open(logs_path / "start_datetime.info", "w", encoding="utf-8") as f:
-        f.write(str(datetime.datetime.now()))
-
-    np.random.seed(0)
-    random_topology_info(data_folder)
+    Parameters
+    ----------
+    line_for_nminus1 : np.ndarray
+        The line mask for n-1
+    trafo_for_nminus1 : np.ndarray
+        The trafo mask for n-1
+    graph : nx.Graph
+        The networkx graph of the network
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        The updated line and trafo masks for n-1
+    """
+    bridges = list(nx.bridges(graph))
+    for bridge in bridges:
+        edge_data = graph.get_edge_data(*bridge)
+        for table, index in edge_data.keys():
+            if table == "line":
+                line_for_nminus1[int(index)] = False
+            elif table == "trafo":
+                trafo_for_nminus1[int(index)] = False
+            else:
+                raise RuntimeError(f"Unknown table {table}")
+    return line_for_nminus1, trafo_for_nminus1
 
 
 def case9241_powsybl(folder: Path) -> None:

@@ -1,4 +1,6 @@
+import logging
 from pathlib import Path
+from typing import Literal, Union
 from unittest.mock import patch
 
 import pytest
@@ -26,6 +28,43 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
 
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
+
+
+def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> Producer:
+    producer = Producer(
+        {
+            "bootstrap.servers": kafka_broker,
+            "client.id": instance_id,
+            "log_level": log_level,
+        },
+        logger=logging.getLogger(f"ac_worker_producer_{instance_id}"),
+    )
+    return producer
+
+
+def create_consumer(
+    type: Literal["LongRunningKafkaConsumer", "Consumer"], topic: str, group_id: str, bootstrap_servers: str, client_id: str
+) -> Union[LongRunningKafkaConsumer, Consumer]:
+    if type == "LongRunningKafkaConsumer":
+        consumer = LongRunningKafkaConsumer(
+            topic=topic,
+            group_id=group_id,
+            bootstrap_servers=bootstrap_servers,
+            client_id=client_id,
+        )
+    elif type == "Consumer":
+        consumer = Consumer(
+            {
+                "bootstrap.servers": bootstrap_servers,
+                "group.id": group_id,
+                "auto.offset.reset": "earliest",
+                "enable.auto.commit": True,
+                "client.id": client_id,
+            }
+        )
+    else:
+        raise ValueError(f"Unknown consumer type: {type}")
+    return consumer
 
 
 @pytest.mark.timeout(60)
@@ -111,6 +150,14 @@ def test_main_simple(
                 kafka_broker=kafka_connection_str,
             ),
             processed_gridfile_fs=processed_gridfile_fs,
+            producer=create_producer(kafka_connection_str, "dc_worker"),
+            command_consumer=create_consumer(
+                "LongRunningKafkaConsumer",
+                kafka_command_topic,
+                "dc_optimizer",
+                kafka_connection_str,
+                "dc_worker",
+            ),
         )
 
 
@@ -158,13 +205,21 @@ def test_main(
     # run the worker
     with pytest.raises(SystemExit):
         main(
-            Args(
+            args=Args(
                 optimizer_command_topic=kafka_command_topic,
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
                 optimizer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
             ),
             processed_gridfile_fs=processed_gridfile_fs,
+            producer=create_producer(kafka_connection_str, "dc_worker"),
+            command_consumer=create_consumer(
+                "LongRunningKafkaConsumer",
+                kafka_command_topic,
+                "dc_optimizer",
+                kafka_connection_str,
+                "dc_worker",
+            ),
         )
 
     # subscribe to the results topic

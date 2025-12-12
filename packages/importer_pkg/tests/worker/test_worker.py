@@ -1,6 +1,12 @@
+import logging
+import sys
+from logging import getLogger
 from multiprocessing import Process, set_start_method
 from pathlib import Path
+from typing import Literal, Union
+from uuid import uuid4
 
+import logbook
 import pytest
 from confluent_kafka import Consumer, Producer
 from fsspec.implementations.dirfs import DirFileSystem
@@ -24,6 +30,47 @@ from toop_engine_interfaces.messages.protobuf_message_factory import deserialize
 
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
+
+
+logger = logbook.Logger(__name__)
+logbook.StreamHandler(sys.stdout, level=logging.INFO).push_application()
+
+
+def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> Producer:
+    producer = Producer(
+        {
+            "bootstrap.servers": kafka_broker,
+            "client.id": instance_id,
+            "log_level": log_level,
+        },
+        logger=getLogger(f"ac_worker_producer_{instance_id}"),
+    )
+    return producer
+
+
+def create_consumer(
+    type: Literal["LongRunningKafkaConsumer", "Consumer"], topic: str, group_id: str, bootstrap_servers: str, client_id: str
+) -> Union[LongRunningKafkaConsumer, Consumer]:
+    if type == "LongRunningKafkaConsumer":
+        consumer = LongRunningKafkaConsumer(
+            topic=topic,
+            group_id=group_id,
+            bootstrap_servers=bootstrap_servers,
+            client_id=client_id,
+        )
+    elif type == "Consumer":
+        consumer = Consumer(
+            {
+                "bootstrap.servers": bootstrap_servers,
+                "group.id": group_id,
+                "auto.offset.reset": "earliest",
+                "enable.auto.commit": True,
+                "client.id": client_id,
+            }
+        )
+    else:
+        raise ValueError(f"Unknown consumer type: {type}")
+    return consumer
 
 
 @pytest.mark.timeout(100)
@@ -140,16 +187,25 @@ def test_main_simple(
     processed_gridfile_fs = LocalFileSystem()
     loadflow_result_fs = LocalFileSystem()
     with pytest.raises(SystemExit):
+        instance_id = str(uuid4())
         main(
-            Args(
+            args=Args(
                 importer_command_topic=kafka_command_topic,
                 importer_heartbeat_topic=kafka_heartbeat_topic,
                 importer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
-            ),  # type: ignore
+            ),
             unprocessed_gridfile_fs=unprocessed_gridfile_fs,
             processed_gridfile_fs=processed_gridfile_fs,
             loadflow_result_fs=loadflow_result_fs,
+            producer=create_producer(kafka_connection_str, instance_id),
+            consumer=create_consumer(
+                "LongRunningKafkaConsumer",
+                kafka_command_topic,
+                "importer_worker",
+                kafka_connection_str,
+                instance_id,
+            ),
         )
 
 
@@ -194,16 +250,25 @@ def test_main(
     loadflow_result_fs = DirFileSystem(loadflow_path)
 
     with pytest.raises(SystemExit):
+        instance_id = str(uuid4())
         main(
-            Args(
+            args=Args(
                 importer_command_topic=kafka_command_topic,
                 importer_heartbeat_topic=kafka_heartbeat_topic,
                 importer_results_topic=kafka_results_topic,
                 kafka_broker=kafka_connection_str,
-            ),  # type: ignore
+            ),
             unprocessed_gridfile_fs=unprocessed_gridfile_fs,
             processed_gridfile_fs=processed_gridfile_fs,
             loadflow_result_fs=loadflow_result_fs,
+            producer=create_producer(kafka_connection_str, instance_id),
+            consumer=create_consumer(
+                "LongRunningKafkaConsumer",
+                kafka_command_topic,
+                "importer_worker",
+                kafka_connection_str,
+                instance_id,
+            ),
         )
 
     message = consumer.poll(timeout=30.0)
@@ -219,6 +284,39 @@ def test_main(
     assert (output_path / "some_timestep" / PREPROCESSING_PATHS["static_information_file_path"]).exists()
 
 
+def main_wrapper(
+    args: Args,
+    unprocessed_gridfile_fs,
+    processed_gridfile_fs,
+    loadflow_result_fs,
+) -> None:
+    instance_id = str(uuid4())
+
+    consumer = LongRunningKafkaConsumer(
+        topic=args.importer_command_topic,
+        bootstrap_servers=args.kafka_broker,
+        group_id="importer-worker",
+        client_id=instance_id,
+    )
+    producer = Producer(
+        {
+            "bootstrap.servers": args.kafka_broker,
+            "client.id": instance_id,
+            "log_level": 2,
+        },
+        logger=getLogger("confluent_kafka.producer"),
+    )
+
+    main(
+        args,
+        producer=producer,
+        consumer=consumer,
+        unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
+        loadflow_result_fs=loadflow_result_fs,
+    )
+
+
 def test_main_idle(
     kafka_command_topic: str,
     kafka_heartbeat_topic: str,
@@ -231,7 +329,7 @@ def test_main_idle(
     processed_gridfile_fs = LocalFileSystem()
     loadflow_result_fs = LocalFileSystem()
     p = Process(
-        target=main,
+        target=main_wrapper,
         args=(
             Args(
                 importer_command_topic=kafka_command_topic,

@@ -224,6 +224,14 @@ def convert_to_jax(  # noqa: PLR0913
     susceptance = jnp.array(network_data.susceptances)
     shift_degree_min = jnp.array([min(taps) for taps in network_data.phase_shift_taps])
     shift_degree_max = jnp.array([max(taps) for taps in network_data.phase_shift_taps])
+    assert jnp.less_equal(shift_degree_min, shift_degree_max).all(), (
+        "Error in phase shift tap data: min tap greater than max tap!"
+    )
+    pst_n_taps = jnp.array([len(taps) for taps in network_data.phase_shift_taps])
+    max_pst_n_taps = int(jnp.max(pst_n_taps) if pst_n_taps.size > 0 else 0)
+    pst_tap_values = jnp.array(
+        [jnp.pad(jnp.array(taps), (0, max_pst_n_taps - len(taps)), "constant") for taps in network_data.phase_shift_taps]
+    )
 
     logging_fn("pad_out_branch_actions", None)
     assert network_data.branch_action_set is not None, "Please compute branch action set first!"
@@ -285,6 +293,8 @@ def convert_to_jax(  # noqa: PLR0913
             controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
             shift_degree_min=shift_degree_min,
             shift_degree_max=shift_degree_max,
+            pst_n_taps=pst_n_taps,
+            pst_tap_values=pst_tap_values,
         ),
         solver_config=SolverConfig(
             branches_per_sub=HashableArrayWrapper(network_data.num_branches_per_node),

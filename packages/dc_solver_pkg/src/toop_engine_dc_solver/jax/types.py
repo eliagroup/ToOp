@@ -277,6 +277,13 @@ class DynamicInformation:
     shift_degree_max: Float[Array, " n_controllable_pst"]
     """The maximum shift angle for each controllable PST"""
 
+    pst_n_taps: Int[Array, " n_controllable_pst"]
+    """The number of discrete taps for each controllable PST"""
+
+    pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
+    """Discrete individual taps of controllable PSTs. The array is zero-padded to the maximum number of
+    pst_n_taps."""
+
     @property
     def n_timesteps(self) -> int:
         """The number of timesteps in the data"""
@@ -375,6 +382,11 @@ class DynamicInformation:
     def max_inj_per_sub(self) -> int:
         """Maximum injection degree of any relevant substation"""
         return self.action_set.inj_actions.shape[1]
+
+    @property
+    def max_n_tap_positions(self) -> int:
+        """Maximum number of discrete tap positions of any controllable PST"""
+        return self.pst_tap_values.shape[1]
 
 
 @pytree_dataclass
@@ -1063,7 +1075,6 @@ class AggregateMetricProtocol(Protocol):
         This is needed because jax recompiles based on the hash and equality check of the inputs, so
         if the hash/__eq__ result changes, jax will recompile even if it is the same function.
         """
-        raise NotImplementedError("A hash function must be implemented for the aggregate metric function.")
 
     def __eq__(self, other: object) -> bool:
         """Check if the functions are equal.

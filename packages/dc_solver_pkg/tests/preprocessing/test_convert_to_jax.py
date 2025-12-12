@@ -201,6 +201,11 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
     validate_static_information(static_information)
     assert static_information.dynamic_information.shift_degree_max.shape == (2,)
 
+    assert static_information.dynamic_information.pst_n_taps.shape == (2,)
+    pst_n_taps = static_information.dynamic_information.pst_n_taps
+    assert pst_n_taps[0] != pst_n_taps[1], "Case30 should have different number of taps for the two PSTs."
+    assert static_information.dynamic_information.pst_tap_values.shape == (2, jnp.max(pst_n_taps))
+
     action_set = load_action_set(folder / PREPROCESSING_PATHS["action_set_file_path"])
     assert len(action_set.pst_ranges) == 2
     assert np.array_equal(

@@ -404,7 +404,7 @@ def initialize_genetic_algorithm(
     algo = DiscreteMapElites(
         scoring_function=scoring_function_partial,
         emitter=emitter,
-        metrics_function=default_ga_metrics,
+        metrics_function=default_ga_metrics,  # TODO: Why do we set this to default and not observed?
         distributed=distributed,
         n_cells_per_dim=tuple([desc.num_cells for desc in me_descriptors]),
         cell_depth=cell_depth,

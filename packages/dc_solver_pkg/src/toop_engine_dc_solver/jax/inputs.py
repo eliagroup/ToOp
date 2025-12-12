@@ -294,7 +294,10 @@ def validate_static_information(
     assert di.controllable_pst_indices.shape == di.shift_degree_max.shape
     assert jnp.isfinite(di.shift_degree_min).all()
     assert jnp.isfinite(di.shift_degree_max).all()
-    # assert jnp.all(di.shift_degree_min < di.shift_degree_max) # not used for now, needs a preprocessing step
+    assert jnp.all(di.shift_degree_min <= di.shift_degree_max)  # not used for now, needs a preprocessing step
+    assert jnp.all(di.pst_n_taps > 0)  # If not, this would not a controllable PST
+    assert di.pst_n_taps.shape == di.controllable_pst_indices.shape
+    assert di.pst_tap_values.shape[0] == di.controllable_pst_indices.shape[0]
 
 
 def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:
@@ -508,6 +511,14 @@ def _save_static_information(binaryio: BinaryIO, static_information: StaticInfor
             "shift_degree_max",
             data=dynamic_information.shift_degree_max,
         )
+        file.create_dataset(
+            "pst_n_taps",
+            data=dynamic_information.pst_n_taps,
+        )
+        file.create_dataset(
+            "pst_tap_values",
+            data=dynamic_information.pst_tap_values,
+        )
 
         for idx, (branches, nodes) in enumerate(
             zip(
@@ -711,6 +722,8 @@ def _load_static_information(binaryio: BinaryIO) -> StaticInformation:
                 controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
                 shift_degree_min=jnp.array(file["shift_degree_min"][:]),
                 shift_degree_max=jnp.array(file["shift_degree_max"][:]),
+                pst_n_taps=jnp.array(file["pst_n_taps"][:]),
+                pst_tap_values=jnp.array(file["pst_tap_values"][:]),
                 non_rel_bb_outage_data=load_non_rel_bb_outage_data(file, non_rel_bb_outage_data_present),
                 bb_outage_baseline_analysis=load_bb_outage_baseline_analysis(file, bb_outage_baseline_analysis_present),
             ),

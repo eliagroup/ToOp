@@ -24,6 +24,9 @@ from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCE
 def add_phaseshift_transformer_to_line_powsybl(
     net: pypowsybl.network.Network,
     line_idx: str,
+    tap_min: int = -30,
+    tap_max: int = 30,
+    tap_step_degree: float = 2.0,
 ) -> None:
     """Add a phaseshift transformer to the from side of a line
 
@@ -35,6 +38,12 @@ def add_phaseshift_transformer_to_line_powsybl(
         The powsybl network, will be modified in place.
     line_idx : str
         The index of the line in net.line on which to insert the phase-shifting transformer.
+    tap_min : int, optional
+        The minimum tap position, by default -30
+    tap_max : int, optional
+        The maximum tap position, by default 30
+    tap_step_degree : float, optional
+        The step size in degrees for each tap position, by default 2.0
     """
     line = net.get_lines(all_attributes=True).loc[line_idx]
     vl = line["voltage_level1_id"]
@@ -81,7 +90,7 @@ def add_phaseshift_transformer_to_line_powsybl(
     steps_df = pd.DataFrame.from_records(
         index="id",
         columns=["id", "b", "g", "r", "x", "rho", "alpha"],
-        data=[(pst, 0, 0, 0.1, 1, 1, 2 * tap) for tap in range(-30, 31)],
+        data=[(pst, 0, 0, 0.1, 1, 1, tap_step_degree * tap) for tap in range(tap_min, tap_max + 1)],
     )
     net.create_phase_tap_changers(ptc_df, steps_df)
 

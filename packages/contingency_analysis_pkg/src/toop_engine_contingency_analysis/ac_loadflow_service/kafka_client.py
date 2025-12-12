@@ -27,7 +27,13 @@ class LongRunningKafkaConsumer:
     """A kafka consumer for long running processes that need to pause and resume the topic consumption."""
 
     def __init__(
-        self, topic: str, group_id: str, bootstrap_servers: str, client_id: str, max_poll_interval_ms: int = 1_800_000
+        self,
+        topic: str,
+        group_id: str,
+        bootstrap_servers: str,
+        client_id: str,
+        max_poll_interval_ms: int = 1_800_000,
+        kafka_auth_config: dict | None = None,
     ) -> None:
         """Initialize the LongRunningKafkaConsumer.
 
@@ -44,18 +50,23 @@ class LongRunningKafkaConsumer:
         max_poll_interval_ms : int, optional
             The maximum time in milliseconds between polls before the consumer is considered dead. Defaults to 1_800_000
             (30 minutes). Set this long enough so the process fits in with confidence.
+        kafka_auth_config : dict | None, optional
+            Additional kafka authentication configuration to pass to the consumer. Defaults to None.
         """
         self.topic = topic
+        consumer_config = {
+            "bootstrap.servers": bootstrap_servers,
+            "group.id": group_id,
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,
+            "client.id": client_id,
+            "max.poll.interval.ms": max_poll_interval_ms,
+            "log_level": 2,
+        }
+        if kafka_auth_config:
+            consumer_config.update(kafka_auth_config)
         self.consumer = Consumer(
-            {
-                "bootstrap.servers": bootstrap_servers,
-                "group.id": group_id,
-                "auto.offset.reset": "earliest",
-                "enable.auto.commit": False,
-                "client.id": client_id,
-                "max.poll.interval.ms": max_poll_interval_ms,
-                "log_level": 2,
-            },
+            consumer_config,
             logger=getLogger(f"consumer_{client_id}"),
         )
         self.client_id = client_id

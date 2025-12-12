@@ -29,6 +29,9 @@ logbook.StreamHandler(sys.stdout, level=logging.INFO).push_application()
 from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 
+# Ensure that tests using Kafka are not run in parallel with each other
+pytestmark = pytest.mark.xdist_group("kafka")
+
 
 def dc_main_wrapper(args: DCArgs, processed_gridfile_fs: AbstractFileSystem) -> None:
     instance_id = str(uuid4())

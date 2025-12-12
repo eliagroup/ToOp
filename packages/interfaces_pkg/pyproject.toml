@@ -79,6 +79,7 @@ dev = [
     "pytest-logbook>=1.2.0",
     "pypowsybl-jupyter>=1.0.0",
     "docker>=7.1.0",
+    "ray"
 ]
 
 [[tool.uv.index]]
@@ -86,3 +87,7 @@ name = "MCCS"
 url = "***REMOVED***"
 publish-url = "***REMOVED***"
 explicit = true
+
+
+[tool.uv-secure.ignore_packages]
+ray = [] # Ignore issues with all versions of the ray package

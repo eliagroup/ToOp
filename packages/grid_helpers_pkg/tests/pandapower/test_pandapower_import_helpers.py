@@ -142,7 +142,7 @@ def test_drop_elements_connected_to_one_bus():
     assert 0 not in net.line.index.values
     net.trafo.loc[0, "hv_bus"] = 0
     net.trafo.loc[0, "lv_bus"] = 0
-    with pytest.raises(ValueError) as e_info:
+    with pytest.raises(AssertionError) as e_info:
         drop_elements_connected_to_one_bus(net)
     assert "Two winding transformer with same hv and lv bus found in" in e_info.value.args[0]
     net.trafo.loc[0, "hv_bus"] = 1
@@ -150,7 +150,7 @@ def test_drop_elements_connected_to_one_bus():
     net.trafo3w.loc[0, "hv_bus"] = 1
     net.trafo3w.loc[0, "mv_bus"] = 1
     net.trafo3w.loc[0, "lv_bus"] = 1
-    with pytest.raises(ValueError) as e_info:
+    with pytest.raises(AssertionError) as e_info:
         drop_elements_connected_to_one_bus(net)
     assert "Three winding transformer with same hv == lv or hv == mv bus found in" in e_info.value.args[0]
 
@@ -162,5 +162,5 @@ def test_drop_elements_connected_to_one_bus():
 
 def test_drop_elements_connected_to_one_bus_attr_not_exist():
     net = pp.networks.example_multivoltage()
-    with pytest.raises(ValueError):
+    with pytest.raises(AttributeError):
         drop_elements_connected_to_one_bus(net, branch_types=["NOT_EXISTING"])

@@ -25,6 +25,9 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
 )
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
+# Ensure that tests using Kafka are not run in parallel with each other
+pytestmark = pytest.mark.xdist_group("kafka")
+
 
 @pytest.mark.timeout(30)
 def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> None:

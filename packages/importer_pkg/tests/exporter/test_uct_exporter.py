@@ -1,6 +1,3 @@
-import os
-from pathlib import Path
-
 import logbook
 import pandas as pd
 import pytest
@@ -370,8 +367,8 @@ def test_apply_branch_assignment():
     assert results == expected_output
 
 
-def test_get_switch_group_number():
-    input_uct = f"{os.path.dirname(__file__)}/files/test_uct_exporter_uct_file.uct"
+def test_get_switch_group_number(ucte_file_exporter_test):
+    input_uct = ucte_file_exporter_test
     with open(input_uct, "r") as f:
         ucte_contents = f.read()
     preamble, nodes, lines, trafos, trafo_reg, postamble = parse_ucte(ucte_contents)
@@ -444,7 +441,7 @@ def test_get_switch_group_number():
     assert res == result_ref
 
 
-def test_process_file():
+def test_process_file(ucte_json_exporter_test, ucte_file_exporter_test, output_uct_exporter_ref, tmp_path):
     expected_output = {
         "changed_ids": {
             "D8ABC_1_0": {
@@ -472,15 +469,14 @@ def test_process_file():
         }
     }
 
-    input_uct = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_uct_file.uct")
-    input_json = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_json_file.json")
-    output_uct = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_uct_file_output.uct")
-    output_uct_ref = Path(f"{os.path.dirname(__file__)}/files/test_uct_exporter_uct_file_output_ref.uct")
+    output_uct = tmp_path / "test_uct_exporter_uct_file_output.uct"
 
-    output = uct_exporter.process_file(input_uct=input_uct, input_json=input_json, output_uct=output_uct, topo_id=0)
+    output = uct_exporter.process_file(
+        input_uct=ucte_file_exporter_test, input_json=ucte_json_exporter_test, output_uct=output_uct, topo_id=0
+    )
     assert output == expected_output
 
-    with open(output_uct_ref, "r") as f:
+    with open(output_uct_exporter_ref, "r") as f:
         ucte_contents_ref = f.read()
     with open(output_uct, "r") as f:
         ucte_contents = f.read()
@@ -488,5 +484,9 @@ def test_process_file():
 
     with pytest.raises(NotImplementedError):
         uct_exporter.process_file(
-            input_uct=input_uct, input_json=input_json, output_uct=output_uct, topo_id=0, reassign_injections=True
+            input_uct=ucte_file_exporter_test,
+            input_json=ucte_json_exporter_test,
+            output_uct=output_uct,
+            topo_id=0,
+            reassign_injections=True,
         )

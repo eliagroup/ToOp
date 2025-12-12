@@ -1056,6 +1056,7 @@ class AggregateMetricProtocol(Protocol):
         This is needed because jax recompiles based on the hash and equality check of the inputs, so
         if the hash/__eq__ result changes, jax will recompile even if it is the same function.
         """
+        raise NotImplementedError("A hash function must be implemented for the aggregate metric function.")
 
     def __eq__(self, other: object) -> bool:
         """Check if the functions are equal.
@@ -1113,6 +1114,7 @@ class AggregateOutputProtocol(Protocol):
         This is needed because jax recompiles based on the hash and equality check of the inputs, so
         if the hash/__eq__ result changes, jax will recompile even if it is the same function.
         """
+        raise NotImplementedError("A hash function must be implemented for the aggregate output function.")
 
     def __eq__(self, other: object) -> bool:
         """Check if the functions are equal.

@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 import numpy as np
 import pytest
@@ -44,6 +45,8 @@ def test_main_simple(
     kafka_connection_str: str,
     processed_gridfile_folder: Path,
     loadflow_result_folder: Path,
+    create_consumer: callable,
+    create_producer: callable,
 ) -> None:
     producer = Producer(
         {
@@ -56,6 +59,7 @@ def test_main_simple(
     producer.flush()
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     processed_gridfile_fs = DirFileSystem(str(processed_gridfile_folder))
+    instance_id = str(uuid4())
     with pytest.raises(SystemExit):
         main(
             args=Args(
@@ -67,6 +71,21 @@ def test_main_simple(
             ),
             processed_gridfile_fs=processed_gridfile_fs,
             loadflow_result_fs=loadflow_result_fs,
+            producer=create_producer(kafka_connection_str, instance_id, log_level=2),
+            command_consumer=create_consumer(
+                "LongRunningKafkaConsumer",
+                topic=kafka_command_topic,
+                group_id="ac_optimizer",
+                bootstrap_servers=kafka_connection_str,
+                client_id=instance_id,
+            ),
+            result_consumer=create_consumer(
+                "LongRunningKafkaConsumer",
+                topic=kafka_results_topic,
+                group_id=f"ac_listener_{instance_id}_{uuid4()}",
+                bootstrap_servers=kafka_connection_str,
+                client_id=instance_id,
+            ),
         )
 
 
@@ -309,6 +328,8 @@ def test_main(
     topopushresult: Result,
     processed_gridfile_folder: Path,
     loadflow_result_folder: Path,
+    create_consumer: callable,
+    create_producer: callable,
 ) -> None:
     grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
     parameters = ACOptimizerParameters(
@@ -339,18 +360,34 @@ def test_main(
 
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
+    instance_id = str(uuid4())
     with pytest.raises(SystemExit):
         main(
             Args(
                 optimizer_command_topic=kafka_command_topic,
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
                 optimizer_results_topic=kafka_results_topic,
+                heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
             ),
             processed_gridfile_fs=processed_gridfile_fs,
             loadflow_result_fs=loadflow_result_fs,
+            producer=create_producer(kafka_connection_str, instance_id, log_level=2),
+            command_consumer=create_consumer(
+                "LongRunningKafkaConsumer",
+                topic=kafka_command_topic,
+                group_id="ac_optimizer",
+                bootstrap_servers=kafka_connection_str,
+                client_id=instance_id,
+            ),
+            result_consumer=create_consumer(
+                "LongRunningKafkaConsumer",
+                topic=kafka_results_topic,
+                group_id=f"ac_listener_{instance_id}_{uuid4()}",
+                bootstrap_servers=kafka_connection_str,
+                client_id=instance_id,
+            ),
         )
-
     consumer = Consumer(
         {
             "bootstrap.servers": kafka_connection_str,

@@ -4,7 +4,6 @@ import time
 import traceback
 from dataclasses import dataclass
 from functools import partial
-from logging import getLogger
 from typing import Callable
 from uuid import uuid4
 
@@ -232,6 +231,9 @@ def main(
     args: Args,
     loadflow_result_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
+    producer: Producer,
+    command_consumer: LongRunningKafkaConsumer,
+    result_consumer: LongRunningKafkaConsumer,
 ) -> None:
     """Run the main AC worker loop.
 
@@ -249,6 +251,12 @@ def main(
         Internally, only the data folder is passed around as a dirfs.
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
+    producer : Producer
+        A kafka producer to send heartbeats and results
+    command_consumer : LongRunningKafkaConsumer
+        A kafka consumer listening in for optimization commands
+    result_consumer : LongRunningKafkaConsumer
+        A kafka consumer listening in for results
 
     Raises
     ------
@@ -261,28 +269,11 @@ def main(
     # We create two separate consumers for the command and result topics as we don't want to
     # catch results during the idle loop.
     worker_data = WorkerData(
-        command_consumer=LongRunningKafkaConsumer(
-            topic=args.optimizer_command_topic,
-            group_id="ac_optimizer",
-            bootstrap_servers=args.kafka_broker,
-            client_id=instance_id,
-        ),
+        command_consumer=command_consumer,
         # Create a results consumer that will listen to results from any DC optimizers
         # Make sure to use a unique group.id for each instance to avoid conflicts
-        result_consumer=LongRunningKafkaConsumer(
-            topic=args.optimizer_results_topic,
-            group_id=f"ac_listener_{instance_id}_{uuid4()}",
-            bootstrap_servers=args.kafka_broker,
-            client_id=instance_id,
-        ),
-        producer=Producer(
-            {
-                "bootstrap.servers": args.kafka_broker,
-                "client.id": instance_id,
-                "log_level": 2,
-            },
-            logger=getLogger(f"ac_worker_producer_{instance_id}"),
-        ),
+        result_consumer=result_consumer,
+        producer=producer,
         db=create_session(),
     )
 

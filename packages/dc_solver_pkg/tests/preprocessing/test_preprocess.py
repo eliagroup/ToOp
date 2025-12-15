@@ -419,9 +419,12 @@ def test_compute_injection_topology_info(network_data: NetworkData) -> None:
 def test_reduce_branch_dimension(
     network_data: NetworkData,
 ) -> None:
+    network_data = add_nodal_injections_to_network_data(network_data)
     network_data = compute_ptdf_if_not_given(network_data)
     network_data = compute_psdf_if_not_given(network_data)
     network_data = compute_bridging_branches(network_data)
+    network_data = reduce_node_dimension(network_data)
+    network_data = combine_phaseshift_and_injection(network_data)
     reduced_branches = get_relevant_branches(
         from_node=network_data.from_nodes,
         to_node=network_data.to_nodes,

@@ -1,52 +1,43 @@
 
 # Topology Optimization Engine
 
-
-# 📦 Topology Optimization Engine
-
- [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
-
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+-------
 ## About The Project
 
 This repo builds the engine behind the topology optimization project ToOp at EliaGroup. This provides a tool to perform topology optimization on a grid file including import, DC optimization and AC validation. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2501.17529) for a high level academic introduction.
 Please check out our [full documentation](https://eliagroup.github.io/ToOp.pages.github.io).
 
----
-
 ## Getting Started
 
-Instructions to help developers get up and running quickly.
+If you want to get started with the engine, we highly recommend
 
 ### Prerequisites
 
-List any software, libraries, or tools required before installation.
+If you want to contribute to this repository, we recommend using VS Code's Devcontainer Environment. This allows the developers to use the same environment to develop in.
 
-```bash
-# Example
-uv --version
-code --version
-```
+For this setup, you need to install:
+1. `uv`
+2. `Microsoft VS Code`
+3. `Docker`
 
 ### Installation
 
-Step-by-step guide to install and configure the project locally.
+You can follow our installation guide on our [Contributing page](./CONTRIBUTING.md#local-development-setup).
 
+# Usage
 
-# Example
+In order to understand the functionalities of this repo, please have a look at our examples in `notebooks/`.
+There you can find several Jupyter notebooks that explain how to use the engine.
+For example, you can load a grid file and compute the DC loadflow using our GPU-based loadflow solver.
+Or you can load an example grid and minimise the branch overload by running the topology optimizer.
 
-
----
-
-## Usage
-
-Provide examples of how to run or use the project.
-Include CLI commands, screenshots, or links to live demos if relevant.
-
+You can also build the documentation and open it on your web browser by running
 ```bash
-uv run python <>
+uv sync --all-groups
+uv run mkdocs serve
 ```
 
----
 
 ## Roadmap
 
@@ -61,14 +52,14 @@ Use checkboxes for clarity:
 
 ## Contributing
 
-Refer to the mandatory [CONTRIBUTING.md](CONTRIBUTING.md)
+Please have a look at our [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## License
 
 Specify the license under which the project is distributed.
-Example: Distributed under the MIT License. See `LICENSE` for more information.
+Example: Distributed under the MIT License. See [LICENSE](./LICENSE) for more information.
 
 ## Citation
 

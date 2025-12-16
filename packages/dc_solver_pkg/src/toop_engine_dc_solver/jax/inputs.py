@@ -499,6 +499,7 @@ def _save_static_information(binaryio: BinaryIO, static_information: StaticInfor
                     "n_2_overload_weight",
                     data=baseline.overload_weight,
                 )
+
         file.create_dataset(
             "controllable_pst_indices",
             data=dynamic_information.controllable_pst_indices,

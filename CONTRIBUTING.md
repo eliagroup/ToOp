@@ -15,7 +15,7 @@ We use the [Gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows
    ```bash
    git checkout develop
    git pull origin develop
-   git checkout -b feature/your-feature-name
+   git checkout -b feat/your-feature-name
    ```
 
 2. **Bug Fixes**: Create hotfix branches from `main` for critical fixes

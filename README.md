@@ -38,16 +38,6 @@ uv sync --all-groups
 uv run mkdocs serve
 ```
 
-
-## Roadmap
-
-Outline planned features, improvements, or milestones.
-Use checkboxes for clarity:
-
-- [x] MVP
-- [ ] Add authentication
-- [ ] Multi-language support
-
 ---
 
 ## Contributing
@@ -58,8 +48,7 @@ Please have a look at our [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-Specify the license under which the project is distributed.
-Example: Distributed under the MIT License. See [LICENSE](./LICENSE) for more information.
+Distributed under MPL 2.0. See [LICENSE](./LICENSE).
 
 ## Citation
 
@@ -76,6 +65,17 @@ Team – [ToOp](mailto:ToOp@eliagroup.eu)
 
 ---
 
-## Acknowledgments (if applicable)
+## Acknowledgments
 
-Credit any tools, libraries, contributors, or inspirations used in the project.
+We credit the authors of JAX.
+```
+@software{jax2018github,
+  author = {James Bradbury and Roy Frostig and Peter Hawkins and Matthew James Johnson and Chris Leary and Dougal Maclaurin and George Necula and Adam Paszke and Jake Vander{P}las and Skye Wanderman-{M}ilne and Qiao Zhang},
+  title = {{JAX}: composable transformations of {P}ython+{N}um{P}y programs},
+  url = {http://github.com/jax-ml/jax},
+  version = {0.3.13},
+  year = {2018},
+}
+```
+
+-----

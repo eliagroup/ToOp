@@ -34,6 +34,7 @@ from toop_engine_dc_solver.jax.injections import (
 from toop_engine_dc_solver.jax.lodf import calc_lodf_matrix, get_failure_cases_to_zero
 from toop_engine_dc_solver.jax.multi_outages import build_modf_matrices
 from toop_engine_dc_solver.jax.nminus2_outage import split_n_2_analysis_batched
+from toop_engine_dc_solver.jax.nodal_inj_optim import nodal_inj_optimization
 from toop_engine_dc_solver.jax.result_storage import (
     update_aggregate_metrics,
 )
@@ -47,6 +48,8 @@ from toop_engine_dc_solver.jax.types import (
     AggregateOutputProtocol,
     DynamicInformation,
     InjectionComputations,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
     SolverConfig,
     SolverLoadflowResults,
     SparseNMinus0,
@@ -612,6 +615,7 @@ def compute_symmetric_batch(
     topology_batch: ActionIndexComputations,
     disconnection_batch: Optional[Int[Array, " batch_size_bsdf n_disconnections"]],
     injections: Optional[Bool[Array, " batch_size_bsdf n_splits max_inj_per_sub"]],
+    nodal_inj_start_options: Optional[NodalInjStartOptions],
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
 ) -> tuple[
@@ -638,6 +642,9 @@ def compute_symmetric_batch(
         The injection vectors to compute, shape (batch_size_bsdf, n_splits, max_inj_per_sub). Note that the
         injections are over the substations that are split in the topology batch. If None, the default injection that
         is associated with the topology batch will be used. If not None, busbar outages might be incorrect
+    nodal_inj_start_options: Optional[NodalInjStartOptions]
+        The nodal injection optimization is more efficient if it does not start with zero guesses, but for example a previous
+        computation's results. Furthermore, additional parameters like iteration count might be set.
     dynamic_information : DynamicInformation
         The dynamic information about the grid
     solver_config : SolverConfig
@@ -688,7 +695,6 @@ def compute_symmetric_batch(
     )
     topo_res = compute_bsdf_lodf_static_flows(bitvector_topology, disconnection_batch, dynamic_information, solver_config)
 
-    contingency_analysis_matrix_jit = jax.jit(contingency_analysis_matrix)
 
     unbatched_params = UnBatchedContingencyAnalysisParams(
         branches_to_fail=dynamic_information.branches_to_fail,
@@ -704,10 +710,6 @@ def compute_symmetric_batch(
         enable_bb_outages=(solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1),
     )
 
-    contingency_analysis_matrix_partial = partial(
-        contingency_analysis_matrix_jit,
-        unbatched_params=unbatched_params,
-    )
 
     nodal_injections = compute_injections(
         injections=injections,
@@ -731,6 +733,22 @@ def compute_symmetric_batch(
     )
 
     n_0 = jax.vmap(update_n0_flows_after_disconnections)(n_0, topo_res.disconnection_modf)
+
+
+    nodal_inj_optim_results = None
+    if solver_config.enable_nodal_inj_optim:
+        assert nodal_inj_start_options is not None, "nodal injection start options must be provided when nodal injection optimization is enabled."
+        # TODO replace N-1 computation below with the results from optimization as soon as the optimization is halfway stable
+        # It might be a good debug aid to have the original code below still available.
+        n_0, _n_1, nodal_inj_optim_results = nodal_inj_optimization(
+            n_0=n_0,
+            nodal_injections=nodal_injections,
+            topo_res=topo_res,
+            start_options=nodal_inj_start_options,
+            dynamic_information=dynamic_information,
+            solver_config=solver_config,
+        )
+
 
     # Compute the N-1 matrix
     batched_params = BatchedContingencyAnalysisParams(
@@ -761,6 +779,10 @@ def compute_symmetric_batch(
         ),
     )
 
+    contingency_analysis_matrix_partial = partial(
+        jax.jit(contingency_analysis_matrix),
+        unbatched_params=unbatched_params,
+    )
     n_1 = jax.vmap(contingency_analysis_matrix_partial)(batched_params=batched_params)
 
     if topo_res.failure_cases_to_zero is not None:
@@ -814,6 +836,7 @@ def compute_symmetric_batch(
             bb_outage_penalty=bb_outage_penalty,
             bb_outage_overload=overload if bb_outage_as_penalty else None,
             bb_outage_splits=n_grid_splits if bb_outage_as_penalty else None,
+            nodal_inj_optim_results=nodal_inj_optim_results,
         ),
         topo_res.success,
     )

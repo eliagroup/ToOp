@@ -107,6 +107,10 @@ class SolverConfig:
     when we just want to ensure that the busbar outage problems are not exacerbated due to the optimiser, we set
     this to True."""
 
+    enable_nodal_inj_optim: bool = False
+    """Whether to enable an in-the-loop optimization of nodal injections (PST, HVDC, ...). This will add a significant
+    overhead but will yield nodal_optim_results in addition to just topology results"""
+
     def __hash__(self) -> int:
         """Get id as the hash for the static information.
 
@@ -960,6 +964,45 @@ class N2BaselineAnalysis:
 
 
 @pytree_dataclass
+class NodalInjOptimResults:
+    """A container for the results of the nodal injection optimization.
+
+    Currently this includes only the PST taps, but later this might be extended to HVDCs or even redispatch clusters.
+    """
+
+    pst_taps: Float[Array, " batch_size n_timesteps n_controllable_psts"]
+    """The PST taps as actual tap values after optimization (i.e. not shift degrees).
+
+    Though this might be discrete if PST optimization should happen discrete, we store it as a float in case continuous
+    PST optimization is used.
+    """
+
+    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> NodalInjOptimResults:
+        """Access the first batch dimension of the nodal injection optimization results"""
+        return NodalInjOptimResults(
+            pst_taps=self.pst_taps[key],
+        )
+
+@pytree_dataclass
+class NodalInjStartOptions:
+    """Options for the starting point of the nodal injection optimization."""
+
+    previous_results: NodalInjOptimResults
+    """The results from a previous optimization to use as a starting point, e.g. from a previous topology that only has
+    a small mutation distance."""
+
+
+    precision_percent: Float[Array, ""]
+    """The precision to which the optimization should run in percent of the maximal precision.
+
+    During the optimization, this should be set in values between 0 and 1, where 1 means full precision
+    (i.e. the optimization runs until convergence) and 0 means no optimization at all.
+
+    This is not a hard-coded parameter but a variable to allow for adaptive iteration counts based on optimization progress
+    """
+
+
+@pytree_dataclass
 class SolverLoadflowResults:
     """The loadflow results without any preprocessing in matrix form.
 
@@ -1012,6 +1055,9 @@ class SolverLoadflowResults:
     bb_outage_overload: Optional[Float[Array, " ... "]] = None
     """The overload energy caused due to busbar outages"""
 
+    nodal_inj_optim_results: Optional[NodalInjOptimResults] = None
+    """The results of the nodal injection optimization, if any was performed."""
+
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> SolverLoadflowResults:
         """Access the first batch dimension of the loadflow matrices"""
         assert self.n_0_matrix.ndim >= 3, "Only works if a batch dimension is present"
@@ -1028,8 +1074,19 @@ class SolverLoadflowResults:
             bb_outage_splits=(self.bb_outage_splits[key] if self.bb_outage_splits is not None else None),
             bb_outage_overload=(self.bb_outage_overload[key] if self.bb_outage_overload is not None else None),
             disconnections=(self.disconnections[key] if self.disconnections is not None else None),
+            nodal_inj_optim_results=(
+                self.nodal_inj_optim_results[key] if self.nodal_inj_optim_results is not None else None
+            ),
         )
 
+@pytree_dataclass
+class WorstKContingencyResults:
+    """Stores the worst K contingency cases so the AC optimizer can focus on those first."""
+
+    top_k_overloads: Float[Array, " n_timesteps"]
+    """The total overload corresponding to the worst k contingencies for each timestep."""
+    case_indices: Int[Array, " n_timesteps k"]
+    """The indices of the worst k contingencies for each timestep."""
 
 class AggregateMetricProtocol(Protocol):
     """A protocol for the aggregate metric function.

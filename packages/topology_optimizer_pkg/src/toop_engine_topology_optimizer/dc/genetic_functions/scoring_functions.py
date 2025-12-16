@@ -6,19 +6,24 @@
 # Mozilla Public License, version 2.0
 
 """Create scoring functions for the genetic algorithm."""
-
+from beartype.typing import Optional
 import jax
 import jax.numpy as jnp
+from jax_dataclasses import replace
 import numpy as np
 from jaxtyping import Array, Bool, Float, Int
 from qdax.core.emitters.standard_emitters import EmitterState
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric_batched, get_worst_k_contingencies
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
+from toop_engine_dc_solver.jax.nodal_inj_optim import make_start_options
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     DynamicInformation,
     MetricType,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
     SolverConfig,
+    WorstKContingencyResults,
     int_max,
 )
 from toop_engine_interfaces.stored_action_set import PSTRange
@@ -65,11 +70,15 @@ METRICS = {
 # The scoring function runs the loadflow and computes the overload energy
 def compute_overloads(
     topologies: Genotype,
+    nodal_inj_start_options: NodalInjStartOptions,
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
     observed_metrics: tuple[MetricType, ...],
     n_worst_contingencies: int = 10,
-) -> tuple[dict[str, Float[Array, " batch_size"]], Bool[Array, " batch_size"]]:
+) -> tuple[
+    dict[str, Float[Array, " batch_size"]], 
+    Optional[NodalInjOptimResults],
+    Bool[Array, " batch_size"]]:
     """Compute the overloads for a single timestep by invoking the solver and aggregating the results.
 
     Parameters
@@ -90,7 +99,9 @@ def compute_overloads(
     Returns
     -------
     dict[str, Float[Array, " batch_size"]]
-        A dictionary with the overload energy, transport, max flow and median flow
+        A dictionary with the overload energy, transport, max flow and other metrics, from aggregate_to_metric_batched
+    NodalInjOptimResults
+        The results of the nodal injection optimization
     Bool[Array, " batch_size"]
         Whether the topologies were successfully solved
     """
@@ -100,6 +111,7 @@ def compute_overloads(
         topology_batch=topo_comp,
         disconnection_batch=disconnections,
         injections=None,  # Use from action set
+        nodal_inj_start_options=nodal_inj_start_options,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
     )
@@ -119,16 +131,14 @@ def compute_overloads(
     # Note: compute_overloads is called for each timestep separately, so the results are not batched.
     # As we don't have multi timestep optimisation support yet, we compute the worst k contingencies
     # sequentially one timestep at a time. This means that the timestep dimension will always be 1.
-    # This is a temporary solution until we have multi timestep support.
-    worst_k_overload: Float[Array, " batch_size n_timesteps"] = None
-    worst_k_cases: Int[Array, " batch_size n_timesteps n_worst_contingencies"] = None
-    worst_k_overload, worst_k_cases = jax.vmap(get_worst_k_contingencies, in_axes=(None, 0, None))(
-        n_worst_contingencies, lf_res.n_1_matrix, dynamic_information.branch_limits.max_mw_flow
+    #  TODO This is a temporary solution until we have multi timestep support.
+    worst_k_res = jax.vmap(get_worst_k_contingencies, in_axes=(None, 0, None))(
+        n_worst_contingencies, lf_res.n_1_matrix , dynamic_information.branch_limits.max_mw_flow
     )
-    aggregates["top_k_overloads_n_1"] = worst_k_overload[:, 0]  # Take the first timestep only
-    aggregates["case_indices"] = worst_k_cases[:, 0, :]
+    aggregates["top_k_overloads_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
+    aggregates["case_indices"] = worst_k_res.case_indices[:, 0, :]
 
-    return aggregates, success
+    return aggregates, lf_res.nodal_inj_optim_results, success
 
 
 def scoring_function(
@@ -146,6 +156,7 @@ def scoring_function(
     dict,
     dict,
     jax.random.PRNGKey,
+    Genotype,
 ]:
     """Create scoring function for the genetic algorithm.
 
@@ -181,10 +192,16 @@ def scoring_function(
         Emitter Information
     jax.random.PRNGKey
         The random key that was passed in, unused
+    Genotype
+        The genotypes that were passed in, but updated to account for in-the-loop optimizations such as the nodal
+        injection optimization.
     """
     n_topologies = len(topologies.action_index)
-    metrics, success = compute_overloads(
-        topologies,
+    nodal_inj_start_options = make_start_options(topologies.nodal_inj_optim_results)
+
+    metrics, worst_k_contingencies, nodal_inj_optim_results, success = compute_overloads(
+        topologies=topologies,
+        nodal_inj_start_options=nodal_inj_start_options,
         dynamic_information=dynamic_informations[0],
         solver_config=solver_configs[0],
         observed_metrics=observed_metrics,
@@ -192,13 +209,16 @@ def scoring_function(
     )
     # Sequentially compute each subsequent timestep
     for dynamic_information, solver_config in zip(dynamic_informations[1:], solver_configs[1:], strict=True):
-        metrics_local, success_local = compute_overloads(
-            topologies,
+        metrics_local, _worst_k_contingencies_local, _nodal_inj_optim_results_local, success_local = compute_overloads(
+            topologies=topologies,
+            nodal_inj_start_options=nodal_inj_start_options,
             dynamic_information=dynamic_information,
             solver_config=solver_config,
             observed_metrics=observed_metrics,
         )
         success = success & success_local
+
+        # TODO figure out how to stack nodal_inj optim results for multiple timesteps
         for key in observed_metrics:
             combine_fn = METRICS[key]
             metrics[key] = combine_fn(metrics[key], metrics_local[key])
@@ -213,12 +233,15 @@ def scoring_function(
 
     descriptors = jnp.stack([metrics[key].astype(int) for key in descriptor_metrics], axis=1)
 
+    topologies = replace(topologies, nodal_inj_optim_results=nodal_inj_optim_results)
+
     return (
         fitness,
         descriptors,
         metrics,
         emitter_info,
         random_key,
+        topologies,
     )
 
 

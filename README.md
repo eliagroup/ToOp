@@ -69,7 +69,8 @@ If you use our work in scientific research, please cite [our paper on loadflowso
 
 ## Contact
 
-Project Lead – [Christian Merz](mailto:Christian.Merz@50hertz.com)
+
+
 
 Team – [ToOp](mailto:ToOp@eliagroup.eu)
 

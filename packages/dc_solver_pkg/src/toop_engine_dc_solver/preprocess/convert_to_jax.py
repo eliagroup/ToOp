@@ -230,7 +230,10 @@ def convert_to_jax(  # noqa: PLR0913
     pst_n_taps = jnp.array([len(taps) for taps in network_data.phase_shift_taps])
     max_pst_n_taps = int(jnp.max(pst_n_taps) if pst_n_taps.size > 0 else 0)
     pst_tap_values = jnp.array(
-        [jnp.pad(jnp.array(taps), (0, max_pst_n_taps - len(taps)), "constant") for taps in network_data.phase_shift_taps]
+        [
+            jnp.pad(jnp.array(taps), (0, max_pst_n_taps - len(taps)), "constant", constant_values=jnp.nan)
+            for taps in network_data.phase_shift_taps
+        ]
     )
 
     logging_fn("pad_out_branch_actions", None)

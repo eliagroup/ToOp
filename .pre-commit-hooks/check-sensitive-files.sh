@@ -2,7 +2,7 @@
 # Check for sensitive file types with whitelist support
 
 # Define blocked extensions
-BLOCKED_EXTENSIONS=("uct" "xml" "zip" "json" "xiidm" "veragrid", "hdf5")
+BLOCKED_EXTENSIONS=("uct" "xml" "zip" "json" "xiidm" "veragrid" "hdf5")
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

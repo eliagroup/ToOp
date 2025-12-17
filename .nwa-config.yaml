@@ -7,10 +7,10 @@ nwa:
   year: "2025"                      # Default: Current Year
   spdxids: ""                       # Default: ""
   skip:                             # Default: []
-    - "**.py"
+    - .venv/**/*
   path:                             # Default: []
-    - "packages/**/*.py"
-    - "notebooks/**/*"
+    - "**/*.py"
+    - "notebooks/**/*.py"
   # advanced
   mute: false                       # Default: false (unspecified)
   verbose: false                    # Default: false (unspecified)

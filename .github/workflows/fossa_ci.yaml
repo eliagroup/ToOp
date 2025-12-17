@@ -3,9 +3,19 @@ name: Fossa scan
 on: push
 
 jobs:
+  license-headers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: License Header Check
+        uses: B1NARY-GR0UP/nwa@main
+        with:
+          version: latest        # (optional) version of nwa to use; default: latest
+          cmd: check             # (optional) command to execute; options: `check`, `add`, `update`, `remove`; default: check
+          path: .nwa-config.yaml # (optional) configuration file path; default: .nwa-config.yaml
   fossa-scan:
     runs-on: ubuntu-latest
     steps:
+
       - uses: actions/checkout@v3
       - id: fossa-analyze
         uses: fossas/fossa-action@main # Use a specific version if locking is preferred

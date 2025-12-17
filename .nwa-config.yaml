@@ -1,0 +1,28 @@
+nwa:
+  # Used to upate license headers in source files. Run the following command
+  # docker run -it -v ${PWD}:/src ghcr.io/b1nary-gr0up/nwa:latest config
+  # basic
+  cmd: "update"                        # Default: "add"; Can be overwritten by --command (-c) flag; Optional: "add", "check", "remove", "update"
+  holder: "50Hertz Transmission GmbH and Elia Transmission Belgium"          # Default: "<COPYRIGHT HOLDER>"
+  year: "2025"                      # Default: Current Year
+  spdxids: ""                       # Default: ""
+  skip:                             # Default: []
+    - "**.py"
+  path:                             # Default: []
+    - "packages/**/*.py"
+    - "notebooks/**/*"
+  # advanced
+  mute: false                       # Default: false (unspecified)
+  verbose: false                    # Default: false (unspecified)
+  fuzzy: false                      # Default: false (unspecified); Used for "check" and "remove" commands
+  keyword: []                       # Default: []; Used for "add" and "update" commands
+  style: []                         # Default: []
+  tmpltype: live
+  tmpl: |
+    Copyright {{ .Year }} {{ .Holder }}
+
+    This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. 
+    If a copy of the MPL was not distributed with this file,
+    you can obtain one at https://mozilla.org/MPL/2.0/.
+    Mozilla Public License, version 2.0
+    

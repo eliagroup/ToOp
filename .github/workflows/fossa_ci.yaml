@@ -6,6 +6,7 @@ jobs:
   license-headers:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
       - name: License Header Check
         uses: B1NARY-GR0UP/nwa@main
         with:

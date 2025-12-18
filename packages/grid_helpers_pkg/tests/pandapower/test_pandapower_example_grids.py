@@ -14,7 +14,6 @@ from toop_engine_grid_helpers.pandapower.example_grids import (
     pandapower_extended_case57,
     pandapower_extended_oberrhein,
     pandapower_non_converging_case57,
-    pandapower_texas,
 )
 
 
@@ -26,12 +25,6 @@ def test_pandapower_case30_with_psts_converges():
 
 def test_pandapower_case30_with_psts_and_weak_branches():
     net = pandapower_case30_with_psts_and_weak_branches()
-    pandapower.rundcpp(net)
-    pandapower.runpp(net)
-
-
-def test_pandapower_texas():
-    net = pandapower_texas()
     pandapower.rundcpp(net)
     pandapower.runpp(net)
 

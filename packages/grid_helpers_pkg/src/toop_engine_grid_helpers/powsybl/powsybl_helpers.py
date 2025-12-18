@@ -560,7 +560,7 @@ def check_powsybl_import(pypowsybl_network: pypowsybl.network.Network, check_tra
     if check_trafo_resistance:
         transformers = pypowsybl_network.get_2_windings_transformers()
         if len(transformers[transformers["r"] < 0]) > 0:
-            raise ValueError("A Transformer in the converted pandapower net has a negive resistance")
+            raise ValueError("A Transformer in the converted pandapower net has a negative resistance")
 
     # test if lines have the same voltage level
     line_voltage = pypowsybl_network.get_lines(attributes=["voltage_level1_id", "voltage_level2_id"])

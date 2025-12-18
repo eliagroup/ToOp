@@ -396,6 +396,7 @@ def powsybl_case9241() -> pypowsybl.network.Network:
     """
     pandapower_net = pandapower.networks.case9241pegase()
     net = load_pandapower_net_for_powsybl(pandapower_net, check_trafo_resistance=False)
+
     return net
 
 

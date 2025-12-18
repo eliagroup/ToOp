@@ -428,7 +428,7 @@ def select_a_generator_as_slack_and_run_loadflow(network: Network) -> None:
 
 
 def load_pandapower_net_for_powsybl(
-    net: pandapower.pandapowerNet, check_trafo_resistance: bool = True
+    net: pandapower.pandapowerNet, check_trafo_resistance: bool = True, set_slack_generator: bool = True
 ) -> pypowsybl.network.Network:
     """Load a pandapower network and convert it to a pypowsybl network.
 
@@ -450,6 +450,8 @@ def load_pandapower_net_for_powsybl(
         The pandapower network to convert.
     check_trafo_resistance : bool, optional
         If True, check for negative transformer resistance after conversion, by default True
+    set_slack_generator : bool, optional
+        If True, select a generator as slack and run loadflow after conversion, by default True
 
     Returns
     -------
@@ -469,11 +471,11 @@ def load_pandapower_net_for_powsybl(
                 f"Failed to convert pandapower net to pypowsybl network. "
                 f"pypowsybl.network.convert_from_pandapower: {e}. Conversion via grid2opt failed with error: {e2}"
             ) from e2
-
-    try:
-        select_a_generator_as_slack_and_run_loadflow(pypowsybl_network)
-    except Exception as e:
-        raise ValueError(f"Slack selection failed after conversion from pandapower to powsybl: {e}") from e
+    if set_slack_generator:
+        try:
+            select_a_generator_as_slack_and_run_loadflow(pypowsybl_network)
+        except Exception as e:
+            raise ValueError(f"Slack selection failed after conversion from pandapower to powsybl: {e}") from e
 
     return pypowsybl_network
 
@@ -576,6 +578,6 @@ def check_powsybl_import(pypowsybl_network: pypowsybl.network.Network, check_tra
     if not all(line_voltage["nominal_v_vl1"] == line_voltage["nominal_v_vl2"]):
         raise ValueError("A Line in the converted pandapower net has two different voltage levels")
 
-    loadflow_res = pypowsybl.loadflow.run_ac(pypowsybl_network, parameters=DISTRIBUTED_SLACK)[0]
+    loadflow_res = pypowsybl.loadflow.run_ac(pypowsybl_network, DISTRIBUTED_SLACK)[0]
     if loadflow_res.status != pypowsybl._pypowsybl.LoadFlowComponentStatus.CONVERGED:
         raise ValueError(f"Load flow failed: {loadflow_res.status_text}")

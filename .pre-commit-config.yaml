@@ -144,3 +144,10 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: check-sensitive-files
+        name: Check for sensitive file types
+        description: Blocks potentially sensitive file types (.uct, .xml, .zip, .json, .xiidm, .veragrid, .hdf5) unless whitelisted
+        entry: .pre-commit-hooks/check-sensitive-files.sh
+        language: script
+        pass_filenames: false
+        always_run: true

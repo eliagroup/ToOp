@@ -1,4 +1,4 @@
-name: Build_backstage_docs
+name: Build-backstage-docs
 
 on:
   push:

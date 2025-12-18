@@ -7,7 +7,6 @@
 
 import json
 from copy import deepcopy
-from pathlib import Path
 
 import numpy as np
 import pandapower as pp
@@ -159,19 +158,6 @@ def replace_bus_index(net: pp.pandapowerNet, new_index: list[Union[int, np.integ
         if table in net and key in net[table] and len(net[table]) > 0:
             net[table][key] = net[table][key].map(bus_idx_map)
     net.bus = net.bus.reindex(new_index).reset_index(drop=True)
-
-
-def pandapower_texas() -> pp.pandapowerNet:
-    """Load the pandapower Texas grid.
-
-    Returns
-    -------
-    pp.pandapowerNet
-        The pandapower Texas network.
-    """
-    texas_grid_file = Path(__file__).parent.parent / "data" / "texas" / "ACTIVSg2000.m"
-    net = pp.converter.from_mpc(str(texas_grid_file))
-    return net
 
 
 def pandapower_extended_oberrhein() -> pp.pandapowerNet:

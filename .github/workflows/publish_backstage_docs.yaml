@@ -38,37 +38,47 @@ jobs:
       - name: Build the MkDocs site
         run: mkdocs build
 
-      - name: Push site to deploy-backstage-docs branch
-        shell: bash
+      - name: Build and push MkDocs site to deploy-backstage-docs branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -eux
+          set -e
 
-          echo "Preparing temporary folder with built docs..."
-          tmpdir=$(mktemp -d)
-          cp -r site docs mkdocs.yml _backstage/backstage.yaml _backstage/config.yaml "$tmpdir"/
+          echo "Setting git credentials..."
+          git config --global user.email "docbuilder@belgrid.net"
+          git config --global user.name "DocBuilder"
 
-          echo "Check if 'deploy-backstage-docs' exists on remote..."
+          echo "Building the MkDocs site..."
+          uv run mkdocs build
+
+          echo "Copying new docs to temporary folder..."
+          rm -rf /tmp/docs-build
+          mkdir -p /tmp/docs-build
+          cp -r site docs mkdocs.yml _backstage/backstage.yaml _backstage/config.yaml /tmp/docs-build/
+
+          echo "Checking if deploy-backstage-docs branch exists on remote..."
           if git ls-remote --exit-code --heads origin deploy-backstage-docs; then
-            echo "Branch exists. Switching..."
+            echo "Branch exists. Checking out..."
             git fetch origin deploy-backstage-docs
-            git switch deploy-backstage-docs
+            git checkout deploy-backstage-docs
           else
             echo "Branch does not exist. Creating..."
-            git switch --create deploy-backstage-docs
+            git checkout -b deploy-backstage-docs
           fi
 
           echo "Cleaning old files..."
           git rm -rf . || true
-          rm -rf ./* || true
+          rm -rf *
 
           echo "Restoring new docs into _backstage/..."
           mkdir -p _backstage
-          cp -r "$tmpdir"/* _backstage/
+          cp -r /tmp/docs-build/* _backstage/
 
-          echo "Setting git identity..."
-          git config user.email "docbuilder@belgrid.net"
-          git config user.name "DocBuilder"
-
-          echo "Committing & pushing..."
+          echo "Adding changes to git..."
           git add .
+
+          echo "Committing changes..."
           git commit -m "Update MkDocs site" || echo "No changes to commit"
+
+          echo "Pushing to deploy-backstage-docs branch..."
+          git push origin deploy-backstage-docs --force

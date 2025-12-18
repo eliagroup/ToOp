@@ -1,0 +1,74 @@
+name: Build_backstage_docs
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build_docs:
+    name: Build Backstage Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # fetch full history
+          fetch-tags: true # ensure tags are fetched
+          ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
+          persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --frozen --only-group ci --only-group doc
+
+
+      - name: Build the MkDocs site
+        run: mkdocs build
+
+      - name: Push site to deploy-backstage-docs branch
+        shell: bash
+        run: |
+          set -eux
+
+          echo "Preparing temporary folder with built docs..."
+          tmpdir=$(mktemp -d)
+          cp -r site docs mkdocs.yml _backstage/backstage.yaml _backstage/config.yaml "$tmpdir"/
+
+          echo "Check if 'deploy-backstage-docs' exists on remote..."
+          if git ls-remote --exit-code --heads origin deploy-backstage-docs; then
+            echo "Branch exists. Switching..."
+            git fetch origin deploy-backstage-docs
+            git switch deploy-backstage-docs
+          else
+            echo "Branch does not exist. Creating..."
+            git switch --create deploy-backstage-docs
+          fi
+
+          echo "Cleaning old files..."
+          git rm -rf . || true
+          rm -rf ./* || true
+
+          echo "Restoring new docs into _backstage/..."
+          mkdir -p _backstage
+          cp -r "$tmpdir"/* _backstage/
+
+          echo "Setting git identity..."
+          git config user.email "docbuilder@belgrid.net"
+          git config user.name "DocBuilder"
+
+          echo "Committing & pushing..."
+          git add .
+          git commit -m "Update MkDocs site" || echo "No changes to commit"

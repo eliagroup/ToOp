@@ -32,8 +32,6 @@ from toop_engine_dc_solver.example_grids import (
     node_breaker_folder_powsybl,
     oberrhein_data,
     random_topology_info_backend,
-    texas_grid_pandapower,
-    texas_grid_powsybl,
 )
 from toop_engine_dc_solver.jax.bsdf import _apply_bus_split, calc_bsdf, init_bsdf_results
 from toop_engine_dc_solver.jax.inputs import validate_static_information
@@ -263,38 +261,6 @@ def test_case57_non_converging():
         pp_backend = PandaPowerBackend(filesystem_dir_pp)
 
         assert np.all(pp_backend.get_ac_dc_mismatch() == 0)
-
-
-def test_texas_grid() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        texas_grid_pandapower(tmp)
-
-        filesystem_dir_powsybl = DirFileSystem(str(tmp))
-        pp_backend = PandaPowerBackend(filesystem_dir_powsybl)
-
-        assert len(pp_backend.net.bus) == 2000
-
-        network_data = preprocess(pp_backend)
-        static_information = convert_to_jax(network_data)
-
-        assert static_information.n_sub_relevant > 0
-
-
-def test_texas_grid_powsybl() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        texas_grid_powsybl(tmp)
-
-        filesystem_dir_powsybl = DirFileSystem(str(tmp))
-        powsybl_backend = PowsyblBackend(filesystem_dir_powsybl)
-
-        assert len(powsybl_backend.net.get_buses()) == 2000
-
-        network_data = preprocess(powsybl_backend)
-        static_information = convert_to_jax(network_data)
-
-        assert static_information.n_sub_relevant > 0
 
 
 def test_case300() -> None:

@@ -33,7 +33,6 @@ from toop_engine_grid_helpers.pandapower.example_grids import (
     pandapower_extended_case57,
     pandapower_extended_oberrhein,
     pandapower_non_converging_case57,
-    pandapower_texas,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.example_grids import (
@@ -43,7 +42,6 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     powsybl_case30_with_psts,
     powsybl_case9241,
     powsybl_extended_case57,
-    powsybl_texas,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_importer.pypowsybl_import import preprocessing
@@ -591,70 +589,6 @@ def case57_non_converging(folder: Path) -> None:
     )
     np.random.seed(0)
     random_topology_info(folder)
-
-
-def texas_grid_pandapower(folder: Path) -> None:
-    """An artificial texas grid with 2000 buses.
-
-    Obtain the grid file from the ACTIVSg2000 website and remove generator costs to make it
-    importable in pandapower.
-    """
-    net = pandapower_texas()
-    os.makedirs(folder, exist_ok=True)
-    pp.rundcpp(net)
-    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
-    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    pp.to_json(net, grid_file_path)
-
-    masks_path = folder / PREPROCESSING_PATHS["masks_path"]
-    masks_path.mkdir(parents=True, exist_ok=True)
-    rel_sub_mask = np.zeros(len(net.bus), dtype=bool)
-    rel_sub_mask[0:50] = True
-    np.save(masks_path / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
-
-    line_mask = np.zeros(len(net.line), dtype=bool)
-    line_mask[0:500] = 1
-    np.save(masks_path / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
-    np.save(masks_path / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
-
-    trafo_mask = np.zeros(len(net.trafo), dtype=bool)
-    np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
-    np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-
-    np.random.seed(0)
-    random_topology_info(folder)
-
-
-def texas_grid_powsybl(folder: Path) -> None:
-    """An artificical texas grid with 2000 buses.
-
-    Obtain the grid file from the ACTIVSg2000 website and remove generator costs to make it
-    importable in pandapower.
-    """
-    net = powsybl_texas()
-    create_busbar_b_in_ieee(net)
-    os.makedirs(folder, exist_ok=True)
-    grid_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-    grid_path.parent.mkdir(parents=True, exist_ok=True)
-    net.save(folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-
-    output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
-    output_path_masks.mkdir(parents=True, exist_ok=True)
-
-    rel_sub_mask = np.zeros(len(net.get_buses()), dtype=bool)
-    rel_sub_mask[0:50] = True
-    np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
-
-    line_mask = np.zeros(len(net.get_lines()), dtype=bool)
-    line_mask[0:500] = 1
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
-
-    trafo_mask = np.zeros(len(net.get_2_windings_transformers()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-
-    extract_station_info_powsybl(net, folder)
 
 
 def case300_pandapower(folder: Path) -> None:

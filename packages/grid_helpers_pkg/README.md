@@ -14,7 +14,7 @@ Grid Helpers acts as the foundational abstraction layer that standardizes operat
 - **Dual Backend Support**: Utilities for both pandapower and pypowsybl grid models
 - **Data Standardization**: Consistent interfaces for extracting loadflow results, branch parameters, and injection data
 - **ID Management**: Robust global identification system for grid elements across different backends
-- **Example Networks**: Curated test grids including IEEE cases, Texas 2000-bus system, and synthetic networks
+- **Example Networks**: Curated test grids including IEEE cases and synthetic networks
 - **Loadflow Integration**: Parameter configuration and result extraction for power flow studies
 
 ## Pandapower Key Data Structures and Concepts

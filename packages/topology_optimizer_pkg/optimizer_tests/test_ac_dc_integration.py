@@ -88,7 +88,8 @@ def launch_ac_worker(
         pass
 
 
-@pytest.mark.timeout(200)
+# TODO: set to 200, once the xdist_group is run on a dedicated runner
+@pytest.mark.timeout(400)
 def test_ac_dc_integration(
     kafka_command_topic: str,
     kafka_heartbeat_topic: str,

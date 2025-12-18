@@ -6,6 +6,7 @@ import pytest
 from toop_engine_dc_solver.jax.benchmarks.runner import main, run_benchmark_process
 
 
+@pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(100)
 def test_runner(benchmark_config_file: Path, tmp_path_factory: pytest.TempPathFactory) -> None:
     output = tmp_path_factory.mktemp("test_runner") / "output.json"

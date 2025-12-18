@@ -821,6 +821,7 @@ def run_initial_loadflow(
         topology_batch=topo,
         disconnection_batch=None,
         injections=None,
+        nodal_inj_start_options=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )

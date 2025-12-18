@@ -25,7 +25,13 @@ from jaxtyping import Int
 from omegaconf import DictConfig
 from sqlmodel import Session, SQLModel, create_engine, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_dc_solver.example_grids import case14_pandapower, case57_data_powsybl, case57_non_converging, oberrhein_data
+from toop_engine_dc_solver.example_grids import (
+    case14_pandapower,
+    case30_with_psts_powsybl,
+    case57_data_powsybl,
+    case57_non_converging,
+    oberrhein_data,
+)
 from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
@@ -233,6 +239,12 @@ def grid_folder() -> Path:
     if not case57_path.exists():
         case57_data_powsybl(case57_path)
         filesystem_dir = DirFileSystem(str(case57_path))
+        load_grid(filesystem_dir, pandapower=False)
+
+    case30_path = path / "case30"
+    if not case30_path.exists():
+        case30_with_psts_powsybl(case30_path)
+        filesystem_dir = DirFileSystem(str(case30_path))
         load_grid(filesystem_dir, pandapower=False)
 
     return path

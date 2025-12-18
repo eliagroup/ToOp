@@ -6,11 +6,12 @@
 # Mozilla Public License, version 2.0
 
 """Create scoring functions for the genetic algorithm."""
-from beartype.typing import Optional
+
 import jax
 import jax.numpy as jnp
-from jax_dataclasses import replace
 import numpy as np
+from beartype.typing import Optional
+from jax_dataclasses import replace
 from jaxtyping import Array, Bool, Float, Int
 from qdax.core.emitters.standard_emitters import EmitterState
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric_batched, get_worst_k_contingencies
@@ -23,7 +24,6 @@ from toop_engine_dc_solver.jax.types import (
     NodalInjOptimResults,
     NodalInjStartOptions,
     SolverConfig,
-    WorstKContingencyResults,
     int_max,
 )
 from toop_engine_interfaces.stored_action_set import PSTRange
@@ -75,10 +75,7 @@ def compute_overloads(
     solver_config: SolverConfig,
     observed_metrics: tuple[MetricType, ...],
     n_worst_contingencies: int = 10,
-) -> tuple[
-    dict[str, Float[Array, " batch_size"]], 
-    Optional[NodalInjOptimResults],
-    Bool[Array, " batch_size"]]:
+) -> tuple[dict[str, Float[Array, " batch_size"]], Optional[NodalInjOptimResults], Bool[Array, " batch_size"]]:
     """Compute the overloads for a single timestep by invoking the solver and aggregating the results.
 
     Parameters
@@ -87,6 +84,8 @@ def compute_overloads(
         The topologies to score, where the first max_num_splits entries are the substations, the
         second max_num_splits entries are the branch topos and the last max_num_splits entries are
         the injection topos
+    nodal_inj_start_options : NodalInjStartOptions
+        The nodal injection optimization start options
     dynamic_information : DynamicInformation
         The dynamic information of the grid
     solver_config : SolverConfig
@@ -133,7 +132,7 @@ def compute_overloads(
     # sequentially one timestep at a time. This means that the timestep dimension will always be 1.
     #  TODO This is a temporary solution until we have multi timestep support.
     worst_k_res = jax.vmap(get_worst_k_contingencies, in_axes=(None, 0, None))(
-        n_worst_contingencies, lf_res.n_1_matrix , dynamic_information.branch_limits.max_mw_flow
+        n_worst_contingencies, lf_res.n_1_matrix, dynamic_information.branch_limits.max_mw_flow
     )
     aggregates["top_k_overloads_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
     aggregates["case_indices"] = worst_k_res.case_indices[:, 0, :]
@@ -199,7 +198,7 @@ def scoring_function(
     n_topologies = len(topologies.action_index)
     nodal_inj_start_options = make_start_options(topologies.nodal_inj_optim_results)
 
-    metrics, worst_k_contingencies, nodal_inj_optim_results, success = compute_overloads(
+    metrics, nodal_inj_optim_results, success = compute_overloads(
         topologies=topologies,
         nodal_inj_start_options=nodal_inj_start_options,
         dynamic_information=dynamic_informations[0],
@@ -209,7 +208,7 @@ def scoring_function(
     )
     # Sequentially compute each subsequent timestep
     for dynamic_information, solver_config in zip(dynamic_informations[1:], solver_configs[1:], strict=True):
-        metrics_local, _worst_k_contingencies_local, _nodal_inj_optim_results_local, success_local = compute_overloads(
+        metrics_local, _nodal_inj_optim_results_local, success_local = compute_overloads(
             topologies=topologies,
             nodal_inj_start_options=nodal_inj_start_options,
             dynamic_information=dynamic_information,

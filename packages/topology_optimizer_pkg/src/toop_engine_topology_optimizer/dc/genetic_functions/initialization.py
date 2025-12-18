@@ -114,6 +114,7 @@ def update_max_mw_flows_according_to_double_limits(
             topology_batch=default_topology(solver_config_local),
             disconnection_batch=None,
             injections=None,
+            nodal_inj_start_options=None,
             dynamic_information=dynamic_information,
             solver_config=solver_config_local,
         )

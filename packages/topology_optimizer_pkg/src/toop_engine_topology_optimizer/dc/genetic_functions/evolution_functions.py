@@ -19,7 +19,7 @@ import jax.numpy as jnp
 from jax_dataclasses import pytree_dataclass
 from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.jax.topology_computations import extract_sub_ids, sample_action_index_from_branch_actions
-from toop_engine_dc_solver.jax.types import ActionSet, int_max
+from toop_engine_dc_solver.jax.types import ActionSet, NodalInjOptimResults, int_max
 
 
 @pytree_dataclass
@@ -32,9 +32,12 @@ class Genotype:
     disconnections: Int[Array, " *batch_size max_num_disconnections"]
     """The disconnections to apply, padded with int_max for disconnection slots that are unused.
     These are indices into the disconnectable branches set."""
-
+    # TODO: Remove angles in favor of nodal_inj_optim_results
     pst_angles: Float[Array, " *batch_size n_controllable_psts"]
     """The setpoints for the controllable PSTs as a shift angle in degrees, not a tap position."""
+
+    nodal_inj_optim_results: Optional[NodalInjOptimResults] = None
+    """The results of the nodal injection optimization, if any was performed."""
 
 
 def deduplicate_genotypes(
@@ -99,6 +102,7 @@ def fix_dtypes(genotypes: Genotype) -> Genotype:
         action_index=genotypes.action_index.astype(int),
         disconnections=genotypes.disconnections.astype(int),
         pst_angles=genotypes.pst_angles.astype(float),
+        nodal_inj_optim_results=genotypes.nodal_inj_optim_results,
     )
 
 
@@ -107,6 +111,7 @@ def empty_repertoire(
     max_num_splits: int,
     max_num_disconnections: int,
     num_psts: int,
+    n_timesteps: int = 1,
 ) -> Genotype:
     """Create an initial genotype repertoire with all zeros for all entries and int_max for all subs.
 
@@ -120,6 +125,8 @@ def empty_repertoire(
         The maximum number of diconncections as topological measures per topology
     num_psts : int
         The number of controllable PSTs in the grid
+    n_timesteps : int
+        The number of timesteps for PST taps initialization
 
     Returns
     -------
@@ -130,6 +137,11 @@ def empty_repertoire(
         action_index=jnp.full((batch_size, max_num_splits), int_max(), dtype=int),
         disconnections=jnp.full((batch_size, max_num_disconnections), int_max(), dtype=int),
         pst_angles=jnp.full((batch_size, num_psts), 0, dtype=float),
+        nodal_inj_optim_results=NodalInjOptimResults(
+            pst_taps=jnp.zeros((batch_size, n_timesteps, num_psts), dtype=jnp.float32)
+        )
+        if num_psts > 0
+        else None,
     )
 
 

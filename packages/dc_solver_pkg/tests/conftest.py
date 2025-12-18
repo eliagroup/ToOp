@@ -1143,3 +1143,22 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
     )
 
     return tmp_path
+
+
+@pytest.fixture
+def default_nodal_inj_start_options(static_information: StaticInformation):
+    """Create default nodal injection start options for tests.
+
+    This provides a simple starting point for tests that need NodalInjStartOptions
+    but don't care about the specific optimization configuration.
+    """
+    from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions
+
+    n_pst = static_information.dynamic_information.n_controllable_pst
+    n_timesteps = static_information.dynamic_information.nodal_injections.shape[0]
+    batch_size = 1
+
+    return NodalInjStartOptions(
+        previous_results=NodalInjOptimResults(pst_taps=jnp.zeros((batch_size, n_timesteps, n_pst), dtype=jnp.float32)),
+        precision_percent=jnp.array(1.0),
+    )

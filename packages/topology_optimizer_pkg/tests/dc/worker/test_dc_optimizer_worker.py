@@ -142,7 +142,7 @@ def test_main_simple(
             "log_level": 2,
         }
     )
-    command = Command(command=ShutdownCommand(optimization_id="test"))
+    command = Command(command=ShutdownCommand())
     producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 

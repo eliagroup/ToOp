@@ -320,6 +320,7 @@ def test_compute_symmetric_batch(
         topology_batch=action_index_topo,
         disconnection_batch=None,
         injections=injections,
+        nodal_inj_start_options=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )
@@ -353,6 +354,7 @@ def test_compute_batch_symmetric_with_bb_outage(
         topology_batch=topo_indices,
         disconnection_batch=None,
         injections=None,
+        nodal_inj_start_options=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )
@@ -417,6 +419,7 @@ def test_compute_batch_symmetric_with_bb_outage(
         topology_batch=topo_indices,
         disconnection_batch=None,
         injections=None,
+        nodal_inj_start_options=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=solver_config,
     )
@@ -463,6 +466,7 @@ def test_compute_symmetric_batch_with_disconnection(
             topology_batch=action_index_topo,
             disconnection_batch=disconnection_indices_batch,
             injections=injections,
+            nodal_inj_start_options=None,
             dynamic_information=static_information.dynamic_information,
             solver_config=static_information.solver_config,
         )
@@ -507,6 +511,7 @@ def test_compute_symmetric_batch_nminus2(
         topology_batch=action_index_topo,
         disconnection_batch=None,
         injections=injections.injection_topology,
+        nodal_inj_start_options=None,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
     )
@@ -535,6 +540,7 @@ def test_compute_symmetric_batch_multiple_timesteps(
         topology_batch=action_index_topo,
         disconnection_batch=None,
         injections=None,
+        nodal_inj_start_options=None,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
     )
@@ -564,6 +570,7 @@ def test_compute_symmetric_batch_multiple_timesteps(
         topology_batch=action_index_topo,
         disconnection_batch=None,
         injections=None,
+        nodal_inj_start_options=None,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
     )

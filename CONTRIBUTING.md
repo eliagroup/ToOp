@@ -15,7 +15,7 @@ We use the [Gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows
    ```bash
    git checkout develop
    git pull origin develop
-   git checkout -b feature/your-feature-name
+   git checkout -b feat/your-feature-name
    ```
 
 2. **Bug Fixes**: Create hotfix branches from `main` for critical fixes
@@ -25,13 +25,13 @@ We use the [Gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows
    git checkout -b hotfix/fix-description
    ```
 
-3. **Pull Requests**: 
+3. **Pull Requests**:
    - Feature branches should target `develop`
    - Hotfix branches should target `main`
 
 ## Commit Message Standards
 
-We enforce [Conventional Commits](https://www.conventionalcommits.org/) for all commits. Each commit message must follow this format:
+We enforce [Conventional Commits](https://www.conventionalcommits.org/) for all commits and Developer Certificate of Origin (DCO). Each commit message must follow this format:
 
 ```
 <type>[optional scope]: <description>
@@ -39,7 +39,11 @@ We enforce [Conventional Commits](https://www.conventionalcommits.org/) for all 
 [optional body]
 
 [optional footer(s)]
+
+Signed-off-by: FirstName LastName <something@example.org>
 ```
+
+
 
 ### Commit Types
 
@@ -52,14 +56,35 @@ We enforce [Conventional Commits](https://www.conventionalcommits.org/) for all 
 - `test`: Adding missing tests or correcting existing tests
 - `chore`: Changes to the build process or auxiliary tools
 
+### Developer Certificate of Origin
+
+You can add the sign-off manually, or use Git's `-s` option to include it automatically.
+
+```
+$ git commit -s
+```
+
+According to [Git](https://git-scm.com/docs/git-config#Documentation/git-config.txt-formatsignOff)'s own docs:
+> Adding the Signed-off-by trailer to a patch should be a conscious act and means that you certify you have the rights to submit this work under the same open source license.
+
 ### Examples
 
 ```bash
 feat: add user authentication system
+
+Signed-off-by: FirstName LastName <something@example.org>
+---------------------------------------------------------
+
 fix(api): resolve memory leak in data processing
+
+Signed-off-by: FirstName LastName <something@example.org>
+---------------------------------------------------------
+
 docs: update installation instructions
-refactor: simplify configuration loading logic
+
+Signed-off-by: FirstName LastName <something@example.org>
 ```
+
 
 ## Local Development Setup
 
@@ -160,7 +185,7 @@ The release process is automated through `.github/workflows/release.yaml`:
 - Single purpose: Each PR should contain one type of change - either a feature, a bugfix, or a refactor. Avoid mixing different types of changes in a single PR
 - All commits must pass conventional commit validation
 - Code must pass all pre-commit hooks
-- Tests must pass. 
+- Tests must pass.
    - Code coverage must be over 90% and aimed for 100%.
    - Test locally by running `uv run pytest`
 - Documentation should be updated if needed
@@ -174,3 +199,9 @@ If you have questions about contributing:
 - Reach out to the maintainers
 
 Thank you for contributing to ToOp! 🚀
+
+## License
+
+When you contribute to ToOp, you acknowledge and agree to the terms set out for any current and future contributions you provide.
+
+All contributions will be licensed according to the license specified in the repository.

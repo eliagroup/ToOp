@@ -4,7 +4,7 @@ git config --global --add safe.directory /workspaces/ToOp
 set -e
 
 # Use custom .bashrc
-cp "$PWD/.devcontainer/.bashrc" /root/.bashrc
+cp "$PWD/.devcontainer/.bashrc" /home/vscode/.bashrc
 
 # Install development dependencies from uv.lock
 uv sync --all-groups --frozen

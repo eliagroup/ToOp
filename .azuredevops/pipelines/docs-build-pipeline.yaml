@@ -125,7 +125,7 @@ stages:
               cp -r /tmp/docs-build/* _backstage/
 
               echo "Restoring packages into packages/..."
-              mkdir -p _backstage/packages
+              mkdir -p packages
               cp -r /tmp/packages/* packages/
 
               echo "Adding changes to git..."

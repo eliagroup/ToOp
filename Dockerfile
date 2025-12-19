@@ -9,7 +9,7 @@ ENV PATH="/home/$USERNAME/.local/bin:/root/.local/bin:$PATH"
 ENV POETRY_VERSION="2.1.1"
 ENV PROTOBUF_VERSION="33.1"
 
-# Add user and install sudo
+# Add user and usergroup
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID -ms /bin/bash $USERNAME
 
@@ -30,3 +30,4 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && curl -LO $PB_REL/download/v${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-x86_64.zip \
     && unzip protoc-${PROTOBUF_VERSION}-linux-x86_64.zip -d /home/$USERNAME/.local \
     && rm protoc-${PROTOBUF_VERSION}-linux-x86_64.zip
+

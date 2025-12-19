@@ -674,7 +674,6 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
             min_busbars=2,
             min_connected_branches=4,
             min_connected_elements=4,
-            allow_pst=True,
         ),
     )
 

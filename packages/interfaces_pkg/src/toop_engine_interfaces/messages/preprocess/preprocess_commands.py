@@ -139,9 +139,6 @@ class RelevantStationRules(BaseModel):
     """The minimum number of connected elements a substation must have to be considered relevant.
     This includes branches and injections (generators, loads, shunts, etc.)."""
 
-    allow_pst: bool = True
-    """Whether phase shifting transformers are allowed in relevant substations."""
-
 
 class BaseImporterParameters(BaseModel):
     """Parameters that are required to import any data format."""

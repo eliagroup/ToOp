@@ -245,23 +245,24 @@ def add_nodal_injections_to_network_data(network_data: NetworkData) -> NetworkDa
 
 
 def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
-    """Add PSDF to PTDF columns and shifts in degree to nodal injections.
+    """Add PSDF to PTDF columns and shifts in degree to nodal injections and corresponding masks.
 
     Description
     -----------
-    The PSDF needs exactly the same updates for line outages and bus splits. Therefore the PSDF can be assumed to be
+    The PSDF needs exactly the same updates for line outages and bus splits. Therefore, the PSDF can be assumed to be
     a column of the PTDF and the angle_shift vector to be a nodal injection. That is exactly how we implemented
-    the PSDF.
+    the PSDF. We add masks and node/branch info for the phase shifters, too.
 
     Parameters
     ----------
     network_data : NetworkData
-        The network data including nodal injections, phaseshifts, psdf and ptdf
+        The network data including nodal injections, phaseshifts, psdf, and ptdf
 
     Returns
     -------
     NetworkData
-        The network data with the phase shift data added on top of the injection data
+        The network data with the phase shift data added on top of the injection data,
+        including updated masks on node/branch level
     """
     # Add PSDF into PTDF as new columns in the front
     assert network_data.ptdf is not None, "The PTDF has to be computed first!"
@@ -548,6 +549,26 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         busbar_outage_branch_mask=get_busbar_map_adjacent_branches(network_data),
     )
 
+    pst_branches = np.flatnonzero(network_data.controllable_phase_shift_mask)
+    kept_pst_branches = np.isin(pst_branches, relevant_branches)
+    relevant_phase_shift_taps = list(
+        [taps for taps, keep in zip(network_data.phase_shift_taps, kept_pst_branches, strict=True) if keep]
+    )
+    # PST branches carry a node injection as well, so we need to adjust the injection indices
+    pst_node_indices = np.flatnonzero(network_data.controllable_pst_node_mask)
+    # Assert that the number of PST branches and nodes is the same
+    assert len(pst_branches) == len(pst_node_indices), (
+        "Number of PST branches and PST nodes do not match. Please check the controllable PST masks."
+    )
+    if np.any(kept_pst_branches):
+        # WARNING: This assumes that PSTs are ordered the same way in both masks
+        kept_pst_nodes_indices = pst_node_indices[kept_pst_branches]
+        # Adapt the controllable PST node mask
+        kept_controllable_pst_node_mask = np.zeros(network_data.controllable_pst_node_mask.shape, dtype=bool)
+        kept_controllable_pst_node_mask[kept_pst_nodes_indices] = True
+    else:
+        kept_controllable_pst_node_mask = np.zeros(network_data.controllable_pst_node_mask.shape, dtype=bool)
+
     return replace(
         network_data,
         ptdf=network_data.ptdf[relevant_branches, :],
@@ -563,6 +584,8 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         shift_angles=network_data.shift_angles[:, relevant_branches],
         phase_shift_mask=network_data.phase_shift_mask[relevant_branches],
         controllable_phase_shift_mask=network_data.controllable_phase_shift_mask[relevant_branches],
+        phase_shift_taps=relevant_phase_shift_taps,
+        controllable_pst_node_mask=kept_controllable_pst_node_mask,
         monitored_branch_mask=network_data.monitored_branch_mask[relevant_branches],
         disconnectable_branch_mask=network_data.disconnectable_branch_mask[relevant_branches],
         outaged_branch_mask=network_data.outaged_branch_mask[relevant_branches],

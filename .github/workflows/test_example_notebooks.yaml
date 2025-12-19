@@ -9,11 +9,12 @@ name: test notebooks
 
 on: push
 
+permissions: {}
+
 jobs:
   test-example-notebooks:
     permissions:
-          contents: read
-          pull-requests: read
+      contents: read
     runs-on:
       labels: Runner-ToOp-Projects
     timeout-minutes: 10

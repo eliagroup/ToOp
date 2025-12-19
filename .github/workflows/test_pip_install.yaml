@@ -9,9 +9,13 @@ name: test pip install
 
 on: push
 
+permissions: {}
+
 jobs:
   test-pip-install:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4

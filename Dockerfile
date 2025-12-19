@@ -5,7 +5,7 @@ ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
 # Declare environment variables
-ENV PATH="/home/$USERNAME/.local/bin:/root/.local/bin:$PATH"
+ENV PATH="/home/$USERNAME/.local/bin:$PATH"
 ENV POETRY_VERSION="2.1.1"
 ENV PROTOBUF_VERSION="33.1"
 
@@ -24,8 +24,6 @@ WORKDIR /app
 
 # Install user-level tools as vscode user
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && curl -sSL https://install.python-poetry.org | python3 - \
-    && /home/$USERNAME/.local/bin/poetry config virtualenvs.create false \
     && PB_REL="https://github.com/protocolbuffers/protobuf/releases" \
     && curl -LO $PB_REL/download/v${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-x86_64.zip \
     && unzip protoc-${PROTOBUF_VERSION}-linux-x86_64.zip -d /home/$USERNAME/.local \

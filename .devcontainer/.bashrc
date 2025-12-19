@@ -25,5 +25,5 @@ function path() {
 alias cpwd='printf "%q\n" "$(pwd)" | pbcopy && echo "Current directory copied to clipboard:" $(pbpaste)'
 
 # Ensure venv is in PATH:
-export PATH="/home/vscode/.venv/bin:$PATH"
-export VIRTUAL_ENV="/home/vscode/.venv"
+export PATH="$HOME/.venv/bin:$PATH"
+export VIRTUAL_ENV="$HOME/.venv"

@@ -30,4 +30,3 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && curl -LO $PB_REL/download/v${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-x86_64.zip \
     && unzip protoc-${PROTOBUF_VERSION}-linux-x86_64.zip -d /home/$USERNAME/.local \
     && rm protoc-${PROTOBUF_VERSION}-linux-x86_64.zip
-

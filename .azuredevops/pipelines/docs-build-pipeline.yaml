@@ -103,6 +103,9 @@ stages:
               mkdir -p /tmp/docs-build
               cp -r site docs mkdocs.yml _backstage/backstage.yaml _backstage/config.yaml /tmp/docs-build/
 
+              echo "Copying the packages to temporary folder..."
+              cp -r packages /tmp/packages
+
               echo "Checking if deploy-backstage-docs branch exists on remote..."
               if git ls-remote --exit-code --heads origin deploy-backstage-docs; then
                 echo "Branch exists. Checking out..."
@@ -120,6 +123,10 @@ stages:
               echo "Restoring new docs into _backstage/..."
               mkdir -p _backstage
               cp -r /tmp/docs-build/* _backstage/
+
+              echo "Restoring packages into packages/..."
+              mkdir -p _backstage/packages
+              cp -r /tmp/packages/* packages/
 
               echo "Adding changes to git..."
               git add .

@@ -212,7 +212,7 @@ def benchmark_single_grid(
     dc_quality = extract_dc_quality(res)
     timings = timer.summary()
 
-    runtime_seconds = dc_quality.get("runtime_seconds")
+    runtime_seconds = dc_quality.get("runtime_seconds", None)
     dc_timings = timings.get("dc_optimization")
     if dc_timings and runtime_seconds is not None:
         try:

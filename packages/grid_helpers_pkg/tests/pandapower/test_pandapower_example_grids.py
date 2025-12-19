@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import pandapower
 import pytest
 from toop_engine_grid_helpers.pandapower.example_grids import (
@@ -7,7 +14,6 @@ from toop_engine_grid_helpers.pandapower.example_grids import (
     pandapower_extended_case57,
     pandapower_extended_oberrhein,
     pandapower_non_converging_case57,
-    pandapower_texas,
 )
 
 
@@ -19,12 +25,6 @@ def test_pandapower_case30_with_psts_converges():
 
 def test_pandapower_case30_with_psts_and_weak_branches():
     net = pandapower_case30_with_psts_and_weak_branches()
-    pandapower.rundcpp(net)
-    pandapower.runpp(net)
-
-
-def test_pandapower_texas():
-    net = pandapower_texas()
     pandapower.rundcpp(net)
     pandapower.runpp(net)
 

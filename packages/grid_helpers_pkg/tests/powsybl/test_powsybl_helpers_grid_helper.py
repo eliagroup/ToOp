@@ -1,4 +1,12 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import numpy as np
+import pandapower
 import pandas as pd
 import pypowsybl
 import pytest
@@ -6,14 +14,18 @@ from fsspec.implementations.local import LocalFileSystem
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     change_dangling_to_tie,
+    check_powsybl_import,
     extract_single_branch_loadflow_result,
     extract_single_injection_loadflow_result,
     get_branches_with_i,
     get_branches_with_i_max,
     get_injections_with_i,
     get_voltage_level_with_region,
+    load_pandapower_net_for_powsybl,
+    load_pandapower_net_via_grid2opt_for_powsybl,
     load_powsybl_from_fs,
     save_powsybl_to_fs,
+    select_a_generator_as_slack_and_run_loadflow,
 )
 
 
@@ -218,3 +230,37 @@ def test_save_powsybl_to_fs_cgmes(tmp_path_factory: pytest.TempPathFactory, euro
     assert net_original.get_buses().equals(net_loaded.get_buses())
     assert net_original.get_branches().equals(net_loaded.get_branches())
     assert net_original.get_injections().equals(net_loaded.get_injections())
+
+
+def test_load_pandapower_net_for_powsybl_with_convert_from_pandapower():
+    net = pandapower.networks.case14()
+    pypowsybl_network = load_pandapower_net_for_powsybl(net)
+    assert isinstance(pypowsybl_network, pypowsybl.network.Network)
+    assert len(pypowsybl_network.get_buses()) == len(net.bus)
+    assert len(pypowsybl_network.get_branches()) >= len(net.line) + len(net.trafo)
+    assert len(pypowsybl_network.get_injections()) >= len(net.load) + len(net.sgen) + len(net.gen)
+    # Run load flow to verify conversion
+    lf_result = pypowsybl.loadflow.run_ac(pypowsybl_network)
+    assert lf_result[0].status == pypowsybl._pypowsybl.LoadFlowComponentStatus.CONVERGED
+
+
+def test_load_pandapower_net_via_grid2opt_for_powsybl():
+    net = pandapower.networks.case9()
+    pypowsybl_network = load_pandapower_net_via_grid2opt_for_powsybl(net)
+    assert isinstance(pypowsybl_network, pypowsybl.network.Network)
+    assert len(pypowsybl_network.get_buses()) == len(net.bus)
+    assert len(pypowsybl_network.get_branches()) >= len(net.line) + len(net.trafo)
+    assert len(pypowsybl_network.get_injections()) >= len(net.load) + len(net.sgen) + len(net.gen)
+    # Run load flow to verify conversion
+    lf_result = pypowsybl.loadflow.run_ac(pypowsybl_network)
+    assert lf_result[0].status == pypowsybl._pypowsybl.LoadFlowComponentStatus.CONVERGED
+
+
+def test_check_powsybl_import():
+    net = pypowsybl.network.create_ieee57()
+    check_powsybl_import(net)
+
+
+def test_select_a_generator_as_slack_and_run_loadflow():
+    net = pypowsybl.network.create_ieee57()
+    select_a_generator_as_slack_and_run_loadflow(net)

@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 from toop_engine_interfaces.asset_topology import Strategy
 from toop_engine_interfaces.messages.lf_service import loadflow_commands as lf_cmds
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition

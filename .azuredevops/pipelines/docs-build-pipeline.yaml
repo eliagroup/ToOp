@@ -55,10 +55,11 @@ stages:
       targetBranch: 'refs/heads/main'
       entity: 'default/component/Topology-Optimizer-ToOp'
 
-  - stage: Build_Docs
-    displayName: Build Documentation
+  - stage: build_docs_for_backstage
+    condition: always()
+    displayName: Build Documentation and publish to deploy-backstage-docs branch
     jobs:
-      - job: Build_Docs
+      - job: build_docs_for_backstage
         steps:
           - checkout: self
             persistCredentials: true

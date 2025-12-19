@@ -11,6 +11,6 @@ metadata:
 spec:
   type: service # 👈 can be service, library or website
   lifecycle: experimental # 👈 experimental or production
-  owner: Team ToOp AI/ML powered Grid Analysis # this need to be one of `adaptation`, `alarming`, `control`, `data_modelling`, `devops`, `forecasting`, `grid_analysis`, `grid_calculation`, `hops`, `master_data`, `monitoring`
+  owner: toop # this need to be one of `adaptation`, `alarming`, `control`, `data_modelling`, `devops`, `forecasting`, `grid_analysis`, `grid_calculation`, `hops`, `master_data`, `monitoring`
   # system: master_data_systems # Add a system if you want to use one, see mds-meta for an example
   # dependsOn: ["component:gras-gridanalysis-toop-optimiser", "component:gras-gridanalysis-toop-importer", "component:gras-gridanalysis-toop-loadflowsolver"] # 👈 you may also reference other components you have defined in other repositories

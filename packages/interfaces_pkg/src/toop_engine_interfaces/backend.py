@@ -195,6 +195,20 @@ class BackendInterface(ABC):
             The to nodes of the branches
         """
 
+    def get_controllable_pst_node_mask(self) -> Bool[np.ndarray, " n_node"]:
+        """Get the mask of controllable phase shifters over nodes
+
+        True means a node is (bogus node and) a controllable phase shifter, i.e. is connected to a branch
+        that is a controllable phase shifter. False means it normal node.
+
+        Returns
+        -------
+        Bool[np.ndarray, " n_node"]
+            The mask of controllable phase shifters over nodes
+        """
+        # TODO: Implement in backends
+        return np.zeros([], dtype=bool)
+
     @abstractmethod
     def get_shift_angles(self) -> Float[np.ndarray, " n_timestep n_branch"]:
         """Get the shift angles of the branches in degree

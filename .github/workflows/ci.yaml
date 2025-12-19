@@ -9,6 +9,8 @@ name: CI - Tests and SonarQube
 
 on: push
 
+permissions: {}
+
 env:
   PYTEST_ON_CI: True
 

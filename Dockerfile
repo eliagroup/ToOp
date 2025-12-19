@@ -5,8 +5,7 @@ ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
 # Declare environment variables
-ENV PATH="/home/$USERNAME/.local/bin:$PATH"
-ENV PATH="/root/.local/bin:$PATH"
+ENV PATH="/home/$USERNAME/.local/bin:/root/.local/bin:$PATH"
 ENV POETRY_VERSION="2.1.1"
 ENV PROTOBUF_VERSION="33.1"
 

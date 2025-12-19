@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 default_stages: [pre-commit, pre-push]
 default_install_hook_types:
   - pre-commit
@@ -142,5 +149,12 @@ repos:
         name: uv-secure (temporarily disabled)
         entry: bash -c 'echo "Skipping uv-secure temporarily"; exit 0'
         language: system
+        pass_filenames: false
+        always_run: true
+      - id: check-sensitive-files
+        name: Check for sensitive file types
+        description: Blocks potentially sensitive file types (.uct, .xml, .zip, .json, .xiidm, .veragrid, .hdf5) unless whitelisted
+        entry: .pre-commit-hooks/check-sensitive-files.sh
+        language: script
         pass_filenames: false
         always_run: true

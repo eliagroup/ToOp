@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Compute the N-1 AC/DC power flow for the pandapower network."""
 
 import math
@@ -11,6 +18,7 @@ import ray
 from beartype.typing import Literal, Optional, Union
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
+    PandapowerElements,
     PandapowerMonitoredElementSchema,
     PandapowerNMinus1Definition,
     SlackAllocationConfig,
@@ -31,8 +39,11 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     get_failed_node_results,
 )
 from toop_engine_interfaces.loadflow_results import (
+    BranchResultSchema,
     ConvergenceStatus,
     LoadflowResults,
+    NodeResultSchema,
+    VADiffResultSchema,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
@@ -72,16 +83,9 @@ def run_single_outage(
     LoadflowResults
         The results of the ContingencyAnalysis computation
     """
-    were_in_service = []
     outaged_elements = contingency.elements
-    if len(outaged_elements) == 0:
-        # This is the base case. Append a dummy True so it does not raise due to no elements being outaged
-        were_in_service.append(True)
-    else:
-        for element in outaged_elements:
-            was_in_service = net[element.table].loc[element.table_id, "in_service"]
-            were_in_service.append(was_in_service)
-            net[element.table].loc[element.table_id, "in_service"] = False
+
+    were_in_service = set_outaged_elements_out_of_service(net, outaged_elements)
     if not any(were_in_service):
         # If no elements were outaged, this is the base case and we should not run the loadflow
         status = ConvergenceStatus.NO_CALCULATION
@@ -96,23 +100,11 @@ def run_single_outage(
     convergence_df = get_convergence_df(timestep=timestep, contingency=contingency, status=status.value)
     regulating_elements_df = get_regulating_element_results(timestep, monitored_elements, contingency)
 
-    if status == ConvergenceStatus.CONVERGED:
-        branch_results_df = get_branch_results(net, contingency, monitored_elements, timestep)
-        node_results_df = get_node_result_df(net, contingency, monitored_elements, timestep)
-        va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
-    else:
-        monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()
-        monitored_branches = monitored_elements.query("kind == 'branch' & table != 'trafo3w'").index.to_list()
-        monitored_buses = monitored_elements.query("kind == 'bus'").index.to_list()
-        branch_results_df = get_failed_branch_results(
-            timestep, [contingency.unique_id], monitored_branches, monitored_trafo3w
-        )
-        node_results_df = get_failed_node_results(timestep, [contingency.unique_id], monitored_buses)
-        va_diff_results = get_failed_va_diff_results(timestep, monitored_elements, contingency)
+    branch_results_df, node_results_df, va_diff_results = get_element_results_df(
+        net, contingency, monitored_elements, timestep, status
+    )
 
-    for i, element in enumerate(outaged_elements):
-        if were_in_service[i]:
-            net[element.table].loc[int(element.table_id), "in_service"] = True
+    restore_elements_to_service(net, outaged_elements, were_in_service)
 
     element_name_map = monitored_elements["name"].to_dict()
     for df in [branch_results_df, node_results_df, regulating_elements_df, va_diff_results]:
@@ -129,6 +121,97 @@ def run_single_outage(
         warnings=[],
     )
     return lf_result
+
+
+def restore_elements_to_service(
+    net: pp.pandapowerNet, outaged_elements: list[PandapowerElements], were_in_service: list[bool]
+) -> None:
+    """Restore the outaged elements to their original in_service status.
+
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network to restore the elements in
+    outaged_elements : list[PandapowerElements]
+        The elements that were outaged
+    were_in_service : list[bool]
+        A list indicating whether each element was in service before being set out of service
+    """
+    for i, element in enumerate(outaged_elements):
+        if were_in_service[i]:
+            net[element.table].loc[int(element.table_id), "in_service"] = True
+
+
+def get_element_results_df(
+    net: pp.pandapowerNet,
+    contingency: PandapowerContingency,
+    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
+    timestep: int,
+    status: ConvergenceStatus,
+) -> tuple[pat.DataFrame[BranchResultSchema], pat.DataFrame[NodeResultSchema], pat.DataFrame[VADiffResultSchema]]:
+    """Get the element results dataframes for the given contingency and monitored elements.
+
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network to get the results from
+    contingency : PandapowerContingency
+        The contingency to get the results for
+    monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
+        The monitored elements to get the results for
+    timestep : int
+        The timestep of the results
+    status : ConvergenceStatus
+        The convergence status of the loadflow computation
+
+    Returns
+    -------
+    tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
+        The branch results dataframe, node results dataframe and va diff results dataframe
+    """
+    if status == ConvergenceStatus.CONVERGED:
+        branch_results_df = get_branch_results(net, contingency, monitored_elements, timestep)
+        node_results_df = get_node_result_df(net, contingency, monitored_elements, timestep)
+        va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
+    else:
+        monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()
+        monitored_branches = monitored_elements.query("kind == 'branch' & table != 'trafo3w'").index.to_list()
+        monitored_buses = monitored_elements.query("kind == 'bus'").index.to_list()
+        branch_results_df = get_failed_branch_results(
+            timestep, [contingency.unique_id], monitored_branches, monitored_trafo3w
+        )
+        node_results_df = get_failed_node_results(timestep, [contingency.unique_id], monitored_buses)
+        va_diff_results = get_failed_va_diff_results(timestep, monitored_elements, contingency)
+    return branch_results_df, node_results_df, va_diff_results
+
+
+def set_outaged_elements_out_of_service(net: pp.pandapowerNet, outaged_elements: list[PandapowerElements]) -> list[bool]:
+    """Set the outaged elements in the network to out of service.
+
+    Returns info if the elements were in service before being set out of service.
+
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network to set the elements out of service in
+    outaged_elements : list[PandapowerElements]
+        The elements to set out of service
+
+    Returns
+    -------
+    list[bool]
+        A list indicating whether each element was in service before being set out of service
+    """
+    were_in_service = []
+    if len(outaged_elements) == 0:
+        # This is the base case. Append a dummy True so it does not raise due to no elements being outaged
+        were_in_service.append(True)
+    else:
+        for element in outaged_elements:
+            was_in_service = net[element.table].loc[element.table_id, "in_service"]
+            were_in_service.append(bool(was_in_service))
+            net[element.table].loc[element.table_id, "in_service"] = False
+    return were_in_service
 
 
 def run_contingency_analysis_sequential(

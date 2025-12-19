@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Module contains functions for the pypowsybl preprocessing for the grid export into the loadflow solver.
 
 File: preprocessing.py
@@ -48,6 +55,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 
 logger = logbook.Logger(__name__)
+
+CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
 
 
 def save_preprocessing_statistics_filesystem(
@@ -118,7 +127,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
     ]
 
     trafos = network.get_2_windings_transformers(attributes=["name"])
-    is_trafo2w = ~trafos.index.str.contains("-Leg[123]$")
+    is_trafo2w = ~trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
     monitored_trafos = [
         GridElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         for idx, row in trafos[is_trafo2w & network_masks.trafo_for_reward].iterrows()
@@ -132,10 +141,10 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         for idx, row in trafos[is_trafo2w & network_masks.trafo_for_nminus1].iterrows()
     ]
 
-    is_trafo3w = trafos.index.str.contains("-Leg[123]$")
-    trafos.index = trafos.index.str.replace("-Leg[123]$", "", regex=True)
+    is_trafo3w = trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
+    trafos.index = trafos.index.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
     if not trafos.empty:
-        trafos.name = trafos.name.str.replace("-Leg[123]$", "", regex=True)
+        trafos.name = trafos.name.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
 
     monitored_trafo3w = [
         GridElement(id=idx, name=row["name"], type="THREE_WINDINGS_TRANSFORMER", kind="branch")

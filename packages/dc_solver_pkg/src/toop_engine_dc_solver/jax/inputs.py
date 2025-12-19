@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Provides utilities for handling static information and topology computations.
 
 Instead of storing the topology computations in a tree, we omit this optimization and
@@ -94,6 +101,7 @@ def convert_from_stat_bool(
 
 
 # ruff: noqa: PLR0915
+# sonar: noqa: S3776
 def validate_static_information(
     static_information: StaticInformation,
     n_branch: Optional[int] = None,
@@ -149,7 +157,6 @@ def validate_static_information(
     assert jnp.all(di.to_node >= 0)
     assert jnp.all(di.to_node < n_bus)
     assert sc.branches_per_sub.shape == (n_sub_relevant,)
-    assert hash(sc.branches_per_sub) is not None
     assert di.generators_per_sub.shape == (n_sub_relevant,)
     assert di.branch_limits.max_mw_flow.shape == (n_branch_monitored,)
     assert jnp.all(di.branch_limits.max_mw_flow > 0)
@@ -188,7 +195,6 @@ def validate_static_information(
     assert sc.rel_stat_map.shape == (n_sub_relevant,)
     assert jnp.all(sc.rel_stat_map.val >= 0)
     assert jnp.all(sc.rel_stat_map.val < n_bus)
-    assert hash(sc.rel_stat_map) is not None
 
     assert di.relevant_injections.shape == (
         n_timesteps,
@@ -321,6 +327,7 @@ def save_static_information(filename: str | Path, static_information: StaticInfo
 
 
 # ruff: noqa: PLR0915, PLR0912, C901
+# sonar: noqa: S3776
 def _save_static_information(binaryio: BinaryIO, static_information: StaticInformation) -> None:
     """Save the static information to a hdf5 file, given an open file-like object.
 
@@ -641,32 +648,16 @@ def _load_static_information(binaryio: BinaryIO) -> StaticInformation:
             yield jnp.array(file[f"multi_outage_nodes_{idx}"][:])
             idx += 1
 
+    def _get_array_if_exists(file: h5py.File, key: str) -> Optional[Array]:
+        return jnp.array(file[key][:]) if key in file else None
+
     with h5py.File(binaryio, mode="r") as file:
-        n2_baseline_analysis_present = (
-            "n_2_l1_branches" in file
-            and "n_2_tot_stat_blacklisted" in file
-            and "n_2_overloads" in file
-            and "n_2_success_count" in file
-            and "n_2_more_splits_penalty" in file.attrs
-            and "n_2_max_mw_flow" in file
-        )
-
-        rel_bb_outage_data_present = (
-            "action_set_rel_bb_outage_data_branch_outage_set" in file
-            and "action_set_rel_bb_outage_data_nodal_indices" in file
-            and "action_set_rel_bb_outage_data_deltap_set" in file
-            and "action_set_rel_bb_outage_data_critical_node_mask" in file
-        )
-
-        non_rel_bb_outage_data_present = (
-            "non_rel_bb_outage_data_branch_outages" in file
-            and "non_rel_bb_outage_data_nodal_indices" in file
-            and "non_rel_bb_outage_data_deltap" in file
-        )
-
-        bb_outage_baseline_analysis_present = (
-            "bb_outage_baseline_analysis_overload" in file and "bb_outage_baseline_analysis_success_count" in file
-        )
+        (
+            n2_baseline_analysis_present,
+            rel_bb_outage_data_present,
+            non_rel_bb_outage_data_present,
+            bb_outage_baseline_analysis_present,
+        ) = check_data_availability(file)
 
         return StaticInformation(
             dynamic_information=DynamicInformation(
@@ -676,16 +667,12 @@ def _load_static_information(binaryio: BinaryIO) -> StaticInformation:
                 generators_per_sub=jnp.array(file["generators_per_sub"][:]),
                 branch_limits=BranchLimits(
                     max_mw_flow=jnp.array(file["max_mw_flow"][:]),
-                    max_mw_flow_n_1=(jnp.array(file["max_mw_flow_n_1"][:]) if "max_mw_flow_n_1" in file else None),
-                    overload_weight=(jnp.array(file["overload_weight"][:]) if "overload_weight" in file else None),
-                    max_mw_flow_limited=(
-                        jnp.array(file["max_mw_flow_limited"][:]) if "max_mw_flow_limited" in file else None
-                    ),
-                    max_mw_flow_n_1_limited=(
-                        jnp.array(file["max_mw_flow_n_1_limited"][:]) if "max_mw_flow_n_1_limited" in file else None
-                    ),
-                    n0_n1_max_diff=(jnp.array(file["n0_n1_max_diff"][:]) if "n0_n1_max_diff" in file else None),
-                    coupler_limits=(jnp.array(file["coupler_limits"][:]) if "coupler_limits" in file else None),
+                    max_mw_flow_n_1=_get_array_if_exists(file, "max_mw_flow_n_1"),
+                    overload_weight=_get_array_if_exists(file, "overload_weight"),
+                    max_mw_flow_limited=_get_array_if_exists(file, "max_mw_flow_limited"),
+                    max_mw_flow_n_1_limited=_get_array_if_exists(file, "max_mw_flow_n_1_limited"),
+                    n0_n1_max_diff=_get_array_if_exists(file, "n0_n1_max_diff"),
+                    coupler_limits=_get_array_if_exists(file, "coupler_limits"),
                 ),
                 tot_stat=jnp.array(file["tot_stat"][:]),
                 from_stat_bool=jnp.array(file["from_stat_bool"][:]),
@@ -720,44 +707,12 @@ def _load_static_information(binaryio: BinaryIO) -> StaticInformation:
                 relevant_injection_outage_idx=jnp.array(file["relevant_injection_outage_idx"][:]),
                 unsplit_flow=jnp.array(file["unsplit_flow"][:]),
                 branches_monitored=jnp.array(file["branches_monitored"][:]),
-                n2_baseline_analysis=(
-                    N2BaselineAnalysis(
-                        l1_branches=jnp.array(file["n_2_l1_branches"][:]),
-                        tot_stat_blacklisted=jnp.array(file["n_2_tot_stat_blacklisted"][:]),
-                        n_2_overloads=jnp.array(file["n_2_overloads"][:]),
-                        n_2_success_count=jnp.array(file["n_2_success_count"][:]),
-                        more_splits_penalty=jnp.array(float(file.attrs["n_2_more_splits_penalty"])),
-                        max_mw_flow=jnp.array(file["n_2_max_mw_flow"][:]),
-                        overload_weight=(
-                            jnp.array(file["n_2_overload_weight"][:]) if "n_2_overload_weight" in file else None
-                        ),
-                    )
-                    if n2_baseline_analysis_present
-                    else None
-                ),
+                n2_baseline_analysis=load_n2_baseline_analysis(file, n2_baseline_analysis_present),
                 controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
                 shift_degree_min=jnp.array(file["shift_degree_min"][:]),
                 shift_degree_max=jnp.array(file["shift_degree_max"][:]),
-                non_rel_bb_outage_data=NonRelBBOutageData(
-                    branch_outages=jnp.array(file["non_rel_bb_outage_data_branch_outages"][:]),
-                    nodal_indices=jnp.array(file["non_rel_bb_outage_data_nodal_indices"][:]),
-                    deltap=jnp.array(file["non_rel_bb_outage_data_deltap"][:]),
-                )
-                if non_rel_bb_outage_data_present
-                else None,
-                bb_outage_baseline_analysis=(
-                    BBOutageBaselineAnalysis(
-                        overload=jnp.array(file["bb_outage_baseline_analysis_overload"]),
-                        success_count=jnp.array(file["bb_outage_baseline_analysis_success_count"]),
-                        more_splits_penalty=jnp.array(file["bb_outage_baseline_more_splits_penalty"]),
-                        overload_weight=float(file.attrs["bb_outage_baseline_analysis_overload_weight"][:])
-                        if "bb_outage_baseline_analysis_overload_weight" in file.attrs
-                        else None,
-                        max_mw_flow=jnp.array(file["bb_outage_baseline_analysis_max_mw_flow"][:]),
-                    )
-                    if bb_outage_baseline_analysis_present
-                    else None
-                ),
+                non_rel_bb_outage_data=load_non_rel_bb_outage_data(file, non_rel_bb_outage_data_present),
+                bb_outage_baseline_analysis=load_bb_outage_baseline_analysis(file, bb_outage_baseline_analysis_present),
             ),
             solver_config=SolverConfig(
                 branches_per_sub=HashableArrayWrapper(file["branches_per_sub"][:]),
@@ -779,6 +734,139 @@ def _load_static_information(binaryio: BinaryIO) -> StaticInformation:
                 contingency_ids=list(file.attrs.get("contingency_ids", [])),
             ),
         )
+
+
+def load_non_rel_bb_outage_data(file: h5py.File, non_rel_bb_outage_data_present: bool) -> NonRelBBOutageData | None:
+    """Load the non-rel BB outage data from the hdf5 file if present.
+
+    Parameters
+    ----------
+    file : h5py.File
+        The hdf5 file to load from
+    non_rel_bb_outage_data_present : bool
+        Whether the non-rel BB outage data is present in the file
+
+    Returns
+    -------
+    NonRelBBOutageData | None
+        The loaded NonRelBBOutageData or None if not present
+    """
+    if non_rel_bb_outage_data_present:
+        return NonRelBBOutageData(
+            branch_outages=jnp.array(file["non_rel_bb_outage_data_branch_outages"][:]),
+            nodal_indices=jnp.array(file["non_rel_bb_outage_data_nodal_indices"][:]),
+            deltap=jnp.array(file["non_rel_bb_outage_data_deltap"][:]),
+        )
+    return None
+
+
+def load_bb_outage_baseline_analysis(
+    file: h5py.File, bb_outage_baseline_analysis_present: bool
+) -> BBOutageBaselineAnalysis | None:
+    """Load the BB outage baseline analysis from the hdf5 file if present.
+
+    Parameters
+    ----------
+    file : h5py.File
+        The hdf5 file to load from
+    bb_outage_baseline_analysis_present : bool
+        Whether the BB outage baseline analysis data is present in the file
+
+    Returns
+    -------
+    BBOutageBaselineAnalysis | None
+        The loaded BBOutageBaselineAnalysis or None if not present
+    """
+    if bb_outage_baseline_analysis_present:
+        return BBOutageBaselineAnalysis(
+            overload=jnp.array(file["bb_outage_baseline_analysis_overload"]),
+            success_count=jnp.array(file["bb_outage_baseline_analysis_success_count"]),
+            more_splits_penalty=jnp.array(file["bb_outage_baseline_more_splits_penalty"]),
+            overload_weight=float(file.attrs["bb_outage_baseline_analysis_overload_weight"][:])
+            if "bb_outage_baseline_analysis_overload_weight" in file.attrs
+            else None,
+            max_mw_flow=jnp.array(file["bb_outage_baseline_analysis_max_mw_flow"][:]),
+        )
+    return None
+
+
+def load_n2_baseline_analysis(file: h5py.File, n2_baseline_analysis_present: bool) -> N2BaselineAnalysis | None:
+    """Load the N-2 baseline analysis from the hdf5 file if present.
+
+    Parameters
+    ----------
+    file : h5py.File
+        The hdf5 file to load from
+    n2_baseline_analysis_present : bool
+        Whether the N-2 baseline analysis data is present in the file
+
+    Returns
+    -------
+    N2BaselineAnalysis | None
+        The loaded N2BaselineAnalysis or None if not present
+    """
+    if n2_baseline_analysis_present:
+        return N2BaselineAnalysis(
+            l1_branches=jnp.array(file["n_2_l1_branches"][:]),
+            tot_stat_blacklisted=jnp.array(file["n_2_tot_stat_blacklisted"][:]),
+            n_2_overloads=jnp.array(file["n_2_overloads"][:]),
+            n_2_success_count=jnp.array(file["n_2_success_count"][:]),
+            more_splits_penalty=jnp.array(float(file.attrs["n_2_more_splits_penalty"])),
+            max_mw_flow=jnp.array(file["n_2_max_mw_flow"][:]),
+            overload_weight=(jnp.array(file["n_2_overload_weight"][:]) if "n_2_overload_weight" in file else None),
+        )
+    return None
+
+
+def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool]:
+    """Check the availability of optional data in the hdf5 file.
+
+    Parameters
+    ----------
+    file : h5py.File
+        The hdf5 file to check
+
+    Returns
+    -------
+    tuple[bool, bool, bool, bool]
+        A tuple of booleans indicating the presence of:
+        - n2_baseline_analysis_present
+        - rel_bb_outage_data_present
+        - non_rel_bb_outage_data_present
+        - bb_outage_baseline_analysis_present
+    """
+    n2_baseline_analysis_present = (
+        "n_2_l1_branches" in file
+        and "n_2_tot_stat_blacklisted" in file
+        and "n_2_overloads" in file
+        and "n_2_success_count" in file
+        and "n_2_more_splits_penalty" in file.attrs
+        and "n_2_max_mw_flow" in file
+    )
+
+    rel_bb_outage_data_present = (
+        "action_set_rel_bb_outage_data_branch_outage_set" in file
+        and "action_set_rel_bb_outage_data_nodal_indices" in file
+        and "action_set_rel_bb_outage_data_deltap_set" in file
+        and "action_set_rel_bb_outage_data_critical_node_mask" in file
+    )
+
+    non_rel_bb_outage_data_present = (
+        "non_rel_bb_outage_data_branch_outages" in file
+        and "non_rel_bb_outage_data_nodal_indices" in file
+        and "non_rel_bb_outage_data_deltap" in file
+    )
+
+    bb_outage_baseline_analysis_present = (
+        "bb_outage_baseline_analysis_overload" in file and "bb_outage_baseline_analysis_success_count" in file
+    )
+
+    return (
+        n2_baseline_analysis_present,
+        rel_bb_outage_data_present,
+        non_rel_bb_outage_data_present,
+        bb_outage_baseline_analysis_present,
+    )
 
 
 def serialize_static_information(static_information: StaticInformation) -> bytes:

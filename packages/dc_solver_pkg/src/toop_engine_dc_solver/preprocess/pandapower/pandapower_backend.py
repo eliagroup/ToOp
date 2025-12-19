@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Implementation of the Backend-Interface to extract pandapower data."""
 
 import os
@@ -156,12 +163,11 @@ class PandaPowerBackend(BackendInterface):
         # assert len(self.net.dcline) == 0
         assert (len(self.net.ext_grid) + self.net.gen.slack.sum()) == 1
         assert len(self.net._isolated_buses) == 0
-        assert np.all(self.net.load.scaling == 1.0)
-        assert np.all(self.net.load.const_z_percent == 0.0)
-        assert np.all(self.net.load.const_i_percent == 0.0)
-        assert np.all(self.net.gen.scaling == 1.0)
-        assert np.all(self.net.sgen.scaling == 1.0)
-
+        assert np.allclose(self.net.load.scaling, 1.0)
+        assert np.allclose(self.net.load.const_z_percent, 0.0)
+        assert np.allclose(self.net.load.const_i_percent, 0.0)
+        assert np.allclose(self.net.gen.scaling, 1.0)
+        assert np.allclose(self.net.sgen.scaling, 1.0)
         # assert len(self.net.xward) == 0
         # assert np.all(self.net.sgen.p_mw == 0)
 
@@ -182,6 +188,9 @@ class PandaPowerBackend(BackendInterface):
 
     def _get_logs_path(self) -> Path:
         return Path(PREPROCESSING_PATHS["logs_path"])
+
+    def _get_start_datetime_info_file_path(self) -> Path:
+        return Path(PREPROCESSING_PATHS["start_datetime_info_file_path"])
 
     def _get_chronics_path(self) -> Path:
         return Path(PREPROCESSING_PATHS["chronics_path"]) / f"{self.chronics_id:04d}"
@@ -1158,10 +1167,10 @@ class PandaPowerBackend(BackendInterface):
         chronics_path = None
 
         if self.chronics_id is not None:
-            if os.path.exists(self._get_logs_path() / "start_datetime.info"):
+            if os.path.exists(self._get_start_datetime_info_file_path()):
                 chronics_path = self._get_chronics_path()
                 with open(
-                    self._get_logs_path() / "start_datetime.info",
+                    self._get_start_datetime_info_file_path(),
                     "r",
                     encoding="utf-8",
                 ) as file:

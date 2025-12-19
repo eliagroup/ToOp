@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Kafka worker for the genetic algorithm optimization."""
 
 import time
@@ -231,6 +238,8 @@ def optimization_loop(
 def main(
     args: Args,
     processed_gridfile_fs: AbstractFileSystem,
+    producer: Producer,
+    command_consumer: LongRunningKafkaConsumer,
 ) -> None:
     """Run the main DC worker loop.
 
@@ -245,6 +254,10 @@ def main(
         Internally, only the data folder is passed around as a dirfs.
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
+    producer : Producer
+        The Kafka producer to send results and heartbeats with.
+    command_consumer : LongRunningKafkaConsumer
+        The Kafka consumer to receive commands with.
 
     Raises
     ------
@@ -255,15 +268,6 @@ def main(
     logger.info(f"Starting DC worker {instance_id} with config {args}")
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
-
-    consumer = LongRunningKafkaConsumer(
-        topic=args.optimizer_command_topic,
-        bootstrap_servers=args.kafka_broker,
-        group_id="dc-worker",
-        client_id=instance_id,
-    )
-
-    producer = Producer({"bootstrap.servers": args.kafka_broker, "client.id": instance_id, "log_level": 2}, logger=logger)
 
     def send_heartbeat(message: HeartbeatUnion, ping_consumer: bool) -> None:
         heartbeat = Heartbeat(
@@ -278,7 +282,7 @@ def main(
         )
         producer.flush()
         if ping_consumer:
-            consumer.heartbeat()
+            command_consumer.heartbeat()
 
     def send_result(message: ResultUnion, optimization_id: str) -> None:
         result = Result(
@@ -296,11 +300,11 @@ def main(
 
     while True:
         command = idle_loop(
-            consumer=consumer,
+            consumer=command_consumer,
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=False),
             heartbeat_interval_ms=args.heartbeat_interval_ms,
         )
-        consumer.start_processing()
+        command_consumer.start_processing()
         optimization_loop(
             dc_params=command.dc_params,
             grid_files=command.grid_files,
@@ -309,4 +313,4 @@ def main(
             optimization_id=command.optimization_id,
             processed_gridfile_fs=processed_gridfile_fs,
         )
-        consumer.stop_processing()
+        command_consumer.stop_processing()

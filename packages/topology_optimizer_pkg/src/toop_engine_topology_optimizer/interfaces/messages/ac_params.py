@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """The parameters for the AC optimizer.
 
 On AC, some subtelties are different to the DC optimization such as that the optimization is not
@@ -6,6 +13,7 @@ batched, and the parameters are slightly different.
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 from pydantic import BaseModel, PositiveInt, confloat, model_validator
@@ -82,7 +90,8 @@ class ACGAParameters(BaseModel):
     @model_validator(mode="after")
     def probabilities_sum_to_one(self) -> ACOptimizerParameters:
         """Ensure that the probabilities sum to one"""
-        if self.pull_prob + self.reconnect_prob + self.close_coupler_prob != 1.0:
+        total_probability = self.pull_prob + self.reconnect_prob + self.close_coupler_prob
+        if not math.isclose(total_probability, 1.0):
             raise ValueError("The probabilities must sum to one")
         return self
 

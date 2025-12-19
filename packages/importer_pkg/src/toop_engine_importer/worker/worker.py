@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Module contains functions for the kafka communication in the importer repo.
 
 File: worker.py
@@ -8,7 +15,6 @@ Created: 2024
 import time
 import traceback
 from functools import partial
-from logging import getLogger
 from typing import Callable, Optional
 from uuid import uuid4
 
@@ -116,6 +122,8 @@ def idle_loop(
 
 def main(
     args: Args,
+    producer: Producer,
+    consumer: LongRunningKafkaConsumer,
     unprocessed_gridfile_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
     loadflow_result_fs: AbstractFileSystem,
@@ -139,27 +147,15 @@ def main(
     loadflow_result_fs: AbstractFileSystem
         A filesystem where the loadflow results are stored. Loadflows will be stored here using the uuid generation process
         and passed as a StoredLoadflowReference which contains the subfolder in this filesystem.
+    producer: Producer
+        The Kafka producer to send results and heartbeats with.
+    consumer: LongRunningKafkaConsumer
+        The Kafka consumer to receive commands with.
     """
     instance_id = str(uuid4())
     logger.info(f"Starting importer instance {instance_id} with arguments {args}")
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
-
-    consumer = LongRunningKafkaConsumer(
-        topic=args.importer_command_topic,
-        bootstrap_servers=args.kafka_broker,
-        group_id="importer-worker",
-        client_id=instance_id,
-    )
-
-    producer = Producer(
-        {
-            "bootstrap.servers": args.kafka_broker,
-            "client.id": instance_id,
-            "log_level": 2,
-        },
-        logger=getLogger("confluent_kafka.producer"),
-    )
 
     def heartbeat_idle() -> None:
         producer.produce(

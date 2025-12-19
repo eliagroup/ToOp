@@ -1,6 +1,14 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Provides example grids for testing the dc_solver package."""
 
-# ruff: noqa: PLR0915
+# ruff/sonar: noqa: PLR0915, S3776
+
 import bz2
 import datetime
 import os
@@ -25,7 +33,6 @@ from toop_engine_grid_helpers.pandapower.example_grids import (
     pandapower_extended_case57,
     pandapower_extended_oberrhein,
     pandapower_non_converging_case57,
-    pandapower_texas,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.example_grids import (
@@ -35,7 +42,6 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     powsybl_case30_with_psts,
     powsybl_case9241,
     powsybl_extended_case57,
-    powsybl_texas,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_importer.pypowsybl_import import preprocessing
@@ -331,7 +337,7 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
         f.write(topo_info.model_dump_json(indent=2))
 
 
-# ruff: noqa: PLR0915
+# ruff/sonar: noqa: PLR0915, S3776
 def oberrhein_data(folder: Path) -> None:
     """Build an example grid file which resembles the grid2op format but has more elements for testing"""
     net = pandapower_extended_oberrhein()
@@ -390,9 +396,9 @@ def oberrhein_data(folder: Path) -> None:
     sgen_for_nminus1 = np.random.rand(len(net.sgen)) > 0.5
     np.save(output_path_masks / NETWORK_MASK_NAMES["sgen_for_nminus1"], sgen_for_nminus1)
 
-    logs_path = folder / PREPROCESSING_PATHS["logs_path"]
-    logs_path.mkdir(parents=True, exist_ok=True)
-    with open(logs_path / "start_datetime.info", "w", encoding="utf-8") as f:
+    start_datetime_info_file_path = folder / PREPROCESSING_PATHS["start_datetime_info_file_path"]
+    start_datetime_info_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(start_datetime_info_file_path, "w", encoding="utf-8") as f:
         f.write(str(datetime.datetime.now()))
 
     # Generate chronics
@@ -475,9 +481,9 @@ def case57_data_pandapower(folder: Path) -> None:
     cross_coupler_limits = np.abs(np.random.randn(len(net.bus))) * 100
     np.save(masks_path / NETWORK_MASK_NAMES["cross_coupler_limits"], cross_coupler_limits)
 
-    logs_path = folder / PREPROCESSING_PATHS["logs_path"]
-    logs_path.mkdir(parents=True, exist_ok=True)
-    with open(logs_path / "start_datetime.info", "w", encoding="utf-8") as f:
+    start_datetime_info_file_path = folder / PREPROCESSING_PATHS["start_datetime_info_file_path"]
+    start_datetime_info_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(start_datetime_info_file_path, "w", encoding="utf-8") as f:
         f.write(str(datetime.datetime.now()))
 
     np.random.seed(0)
@@ -535,9 +541,9 @@ def case57_data_powsybl(folder: Path) -> None:
         cross_coupler_limits,
     )
 
-    output_path_logs = folder / PREPROCESSING_PATHS["logs_path"]
-    output_path_logs.mkdir(parents=True, exist_ok=True)
-    with open(output_path_logs / "start_datetime.info", "w", encoding="utf-8") as f:
+    start_datetime_info_file_path = folder / PREPROCESSING_PATHS["start_datetime_info_file_path"]
+    start_datetime_info_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(start_datetime_info_file_path, "w", encoding="utf-8") as f:
         f.write(str(datetime.datetime.now()))
 
     extract_station_info_powsybl(net, folder)
@@ -583,70 +589,6 @@ def case57_non_converging(folder: Path) -> None:
     )
     np.random.seed(0)
     random_topology_info(folder)
-
-
-def texas_grid_pandapower(folder: Path) -> None:
-    """An artificial texas grid with 2000 buses.
-
-    Obtain the grid file from the ACTIVSg2000 website and remove generator costs to make it
-    importable in pandapower.
-    """
-    net = pandapower_texas()
-    os.makedirs(folder, exist_ok=True)
-    pp.rundcpp(net)
-    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
-    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    pp.to_json(net, grid_file_path)
-
-    masks_path = folder / PREPROCESSING_PATHS["masks_path"]
-    masks_path.mkdir(parents=True, exist_ok=True)
-    rel_sub_mask = np.zeros(len(net.bus), dtype=bool)
-    rel_sub_mask[0:50] = True
-    np.save(masks_path / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
-
-    line_mask = np.zeros(len(net.line), dtype=bool)
-    line_mask[0:500] = 1
-    np.save(masks_path / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
-    np.save(masks_path / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
-
-    trafo_mask = np.zeros(len(net.trafo), dtype=bool)
-    np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
-    np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-
-    np.random.seed(0)
-    random_topology_info(folder)
-
-
-def texas_grid_powsybl(folder: Path) -> None:
-    """An artificical texas grid with 2000 buses.
-
-    Obtain the grid file from the ACTIVSg2000 website and remove generator costs to make it
-    importable in pandapower.
-    """
-    net = powsybl_texas()
-    create_busbar_b_in_ieee(net)
-    os.makedirs(folder, exist_ok=True)
-    grid_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-    grid_path.parent.mkdir(parents=True, exist_ok=True)
-    net.save(folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-
-    output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
-    output_path_masks.mkdir(parents=True, exist_ok=True)
-
-    rel_sub_mask = np.zeros(len(net.get_buses()), dtype=bool)
-    rel_sub_mask[0:50] = True
-    np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
-
-    line_mask = np.zeros(len(net.get_lines()), dtype=bool)
-    line_mask[0:500] = 1
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
-
-    trafo_mask = np.zeros(len(net.get_2_windings_transformers()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-
-    extract_station_info_powsybl(net, folder)
 
 
 def case300_pandapower(folder: Path) -> None:
@@ -710,7 +652,9 @@ def case300_powsybl(folder: Path) -> None:
     extract_station_info_powsybl(net, folder)
 
 
-def case9241_pandapower(data_folder: Path) -> None:  # noqa: PLR0912, C901
+# ruff: noqa: PLR0915
+# sonar: noqa: S3776
+def case9241_pandapower(data_folder: Path) -> None:
     """Create a case9241 example scenario
 
     This is based on the case9241pegase grid from pandapower, but with some modifications:
@@ -781,24 +725,67 @@ def case9241_pandapower(data_folder: Path) -> None:  # noqa: PLR0912, C901
 
     # Don't use bridges for the N-1 analysis
     graph = pp.topology.create_nxgraph(net, multi=True)
-    bridges = list(nx.bridges(graph))
-    for bridge in bridges:
-        edge_data = graph.get_edge_data(*bridge)
-        for table, index in edge_data.keys():
-            if table == "line":
-                line_for_nminus1[int(index)] = False
-            elif table == "trafo":
-                trafo_for_nminus1[int(index)] = False
-            else:
-                raise RuntimeError(f"Unknown table {table}")
+    line_for_nminus1, trafo_for_nminus1 = update_masks_for_bridges(line_for_nminus1, trafo_for_nminus1, graph)
 
     # Partition the grid into 4 regions of roughly equal size
     part1, part2 = kernighan_lin_bisection(graph, seed=np.random.randint(2**32))
     part11, part12 = kernighan_lin_bisection(graph.subgraph(part1), seed=np.random.randint(2**32))
     part21, part22 = kernighan_lin_bisection(graph.subgraph(part2), seed=np.random.randint(2**32))
-
     regions = [part11, part12, part21, part22]
+    region_masks, relevant_sub_indices = generate_region_masks(net, line_for_nminus1, trafo_for_nminus1, graph, regions)
 
+    all_relevant_sub_indices = np.concatenate(relevant_sub_indices)
+    all_relevant_subs = np.zeros(len(net.bus), dtype=bool)
+    all_relevant_subs[all_relevant_sub_indices] = True
+
+    region_masks.update(
+        {
+            "line_for_nminus1": line_for_nminus1,
+            "line_for_reward": np.ones(len(net.line), dtype=bool),
+            "trafo_for_nminus1": trafo_for_nminus1,
+            "trafo_for_reward": np.ones(len(net.trafo), dtype=bool),
+            "relevant_subs": all_relevant_subs,
+            "trafo_pst_controllable": np.ones(len(net.trafo), dtype=bool),
+        }
+    )
+
+    for key, mask in region_masks.items():
+        np.save(masks_path / f"{key}.npy", mask)
+
+    start_datetime_info_file_path = data_folder / PREPROCESSING_PATHS["start_datetime_info_file_path"]
+    start_datetime_info_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(start_datetime_info_file_path, "w", encoding="utf-8") as f:
+        f.write(str(datetime.datetime.now()))
+
+    np.random.seed(0)
+    random_topology_info(data_folder)
+
+
+def generate_region_masks(
+    net: pp.pandapowerNet, line_for_nminus1: np.ndarray, trafo_for_nminus1: np.ndarray, graph: nx.Graph, regions: list[set]
+) -> tuple[dict[str, np.ndarray], list[np.ndarray]]:
+    """Generate region-specific masks for lines, transformers, and relevant substations.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        The pandapower network object.
+    line_for_nminus1 : np.ndarray
+        The line mask for n-1 analysis.
+    trafo_for_nminus1 : np.ndarray
+        The transformer mask for n-1 analysis.
+    graph : nx.Graph
+        The networkx graph of the network.
+    regions : list[set]
+        List of regions, each represented as a set of node indices.
+
+    Returns
+    -------
+    tuple[dict[str, np.ndarray], list[np.ndarray]]
+        A tuple containing:
+        - A dictionary with region-specific masks for lines, transformers, and relevant substations.
+        - A list of arrays containing the indices of relevant substations for each region.
+    """
     region_masks = {}
     relevant_sub_indices = []
 
@@ -833,31 +820,38 @@ def case9241_pandapower(data_folder: Path) -> None:  # noqa: PLR0912, C901
             }
         )
 
-    all_relevant_sub_indices = np.concatenate(relevant_sub_indices)
-    all_relevant_subs = np.zeros(len(net.bus), dtype=bool)
-    all_relevant_subs[all_relevant_sub_indices] = True
+    return region_masks, relevant_sub_indices
 
-    region_masks.update(
-        {
-            "line_for_nminus1": line_for_nminus1,
-            "line_for_reward": np.ones(len(net.line), dtype=bool),
-            "trafo_for_nminus1": trafo_for_nminus1,
-            "trafo_for_reward": np.ones(len(net.trafo), dtype=bool),
-            "relevant_subs": all_relevant_subs,
-            "trafo_pst_controllable": np.ones(len(net.trafo), dtype=bool),
-        }
-    )
 
-    for key, mask in region_masks.items():
-        np.save(masks_path / f"{key}.npy", mask)
+def update_masks_for_bridges(
+    line_for_nminus1: np.ndarray, trafo_for_nminus1: np.ndarray, graph: nx.Graph
+) -> tuple[np.ndarray, np.ndarray]:
+    """Update the n-1 masks to exclude bridges in the network.
 
-    logs_path = data_folder / PREPROCESSING_PATHS["logs_path"]
-    logs_path.mkdir(parents=True, exist_ok=True)
-    with open(logs_path / "start_datetime.info", "w", encoding="utf-8") as f:
-        f.write(str(datetime.datetime.now()))
-
-    np.random.seed(0)
-    random_topology_info(data_folder)
+    Parameters
+    ----------
+    line_for_nminus1 : np.ndarray
+        The line mask for n-1
+    trafo_for_nminus1 : np.ndarray
+        The trafo mask for n-1
+    graph : nx.Graph
+        The networkx graph of the network
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        The updated line and trafo masks for n-1
+    """
+    bridges = list(nx.bridges(graph))
+    for bridge in bridges:
+        edge_data = graph.get_edge_data(*bridge)
+        for table, index in edge_data.keys():
+            if table == "line":
+                line_for_nminus1[int(index)] = False
+            elif table == "trafo":
+                trafo_for_nminus1[int(index)] = False
+            else:
+                raise RuntimeError(f"Unknown table {table}")
+    return line_for_nminus1, trafo_for_nminus1
 
 
 def case9241_powsybl(folder: Path) -> None:

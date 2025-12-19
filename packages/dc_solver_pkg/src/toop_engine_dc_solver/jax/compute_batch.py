@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Provides routines to compute a single batch of topologies/injections.
 
 If you want to compute any number of batches, use the topology_looper module instead.
@@ -278,6 +285,7 @@ def validate_shapes_compute_batch(
 
 
 # ruff: noqa: PLR0915
+# sonar: noqa: S3776
 def compute_batch(
     topology_batch: ActionIndexComputations,
     disconnection_batch: Optional[Int[Array, " batch_size_bsdf n_disconnections"]],
@@ -599,6 +607,7 @@ def compute_batch(
     return output, best_inj, topo_res.success
 
 
+# sonar: noqa: S3776
 def compute_symmetric_batch(
     topology_batch: ActionIndexComputations,
     disconnection_batch: Optional[Int[Array, " batch_size_bsdf n_disconnections"]],

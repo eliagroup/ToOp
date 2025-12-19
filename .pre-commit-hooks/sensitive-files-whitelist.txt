@@ -1,0 +1,72 @@
+# Whitelist for sensitive file type pre-commit hook
+# One pattern per line. Supports glob patterns.
+# Lines starting with # are comments and will be ignored.
+
+# VS Code settings
+.vscode/settings.json
+
+# Build and configuration files
+.devcontainer/devcontainer.json
+package.json
+
+# Test data files in data/
+data/test_station.json
+data/grid_node_breaker/grid.xiidm
+data/test_grid_node_breaker/grid.xiidm
+data/test_grid_node_breaker/action_set.json
+data/test_grid_node_breaker/static_information.hdf5
+data/test_grid_node_breaker/importer_auxiliary_data.json
+data/test_grid_node_breaker/static_information.zip
+data/test_grid_node_breaker/nminus1_definition.json
+data/test_grid_node_breaker/initial_topology/test_ucte_powsybl_example.xiidm
+data/test_grid_node_breaker/initial_topology/asset_topology.json
+
+# Notebook files
+notebooks/test.xiidm
+
+# Importer package test files
+packages/importer_pkg/tests/files/test_uct_exporter_uct_file.uct
+packages/importer_pkg/tests/files/test_uct_exporter_uct_file_output_ref.uct
+packages/importer_pkg/tests/files/test_ucte_powsybl_example_with_border.uct
+packages/importer_pkg/tests/files/CGMES_Full.zip
+packages/importer_pkg/tests/files/test_uct_exporter_uct_file_output.uct
+packages/importer_pkg/tests/files/test_uct_exporter_json_file.json
+packages/importer_pkg/tests/files/full_json_file_from_optimizer.json
+packages/importer_pkg/tests/files/full_json_file_from_optimizerV2.json
+packages/importer_pkg/tests/files/test_ucte_powsybl_example.uct
+
+# DC solver package test files
+packages/dc_solver_pkg/tests/files/test_ucte_powsybl_example.uct
+packages/dc_solver_pkg/tests/files/test_station.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/grid.xiidm
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/action_set.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/static_information.hdf5
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/importer_auxiliary_data.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/static_information.zip
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/nminus1_definition.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/initial_topology/test_ucte_powsybl_example.xiidm
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/initial_topology/asset_topology.json
+
+# Grid helpers package test files
+packages/grid_helpers_pkg/tests/files/test_ucte_powsybl_example.uct
+packages/grid_helpers_pkg/tests/files/basic_node_breaker.xiidm
+
+# Topology optimizer package test files
+packages/topology_optimizer_pkg/tests/data/case57/grid.xiidm
+packages/topology_optimizer_pkg/tests/data/case57/action_set.json
+packages/topology_optimizer_pkg/tests/data/case57/static_information.hdf5
+packages/topology_optimizer_pkg/tests/data/case57/static_information_stats.json
+packages/topology_optimizer_pkg/tests/data/case57/nminus1_definition.json
+packages/topology_optimizer_pkg/tests/data/case57/initial_topology/asset_topology.json
+packages/topology_optimizer_pkg/tests/data/case14/action_set.json
+packages/topology_optimizer_pkg/tests/data/case14/static_information.hdf5
+packages/topology_optimizer_pkg/tests/data/case14/grid.json
+packages/topology_optimizer_pkg/tests/data/case14/static_information_stats.json
+packages/topology_optimizer_pkg/tests/data/case14/nminus1_definition.json
+packages/topology_optimizer_pkg/tests/data/case14/initial_topology/asset_topology.json
+packages/topology_optimizer_pkg/tests/data/oberrhein/static_information.hdf5
+packages/topology_optimizer_pkg/tests/data/oberrhein/action_set.json
+packages/topology_optimizer_pkg/tests/data/oberrhein/grid.json
+packages/topology_optimizer_pkg/tests/data/oberrhein/static_information_stats.json
+packages/topology_optimizer_pkg/tests/data/oberrhein/nminus1_definition.json
+packages/topology_optimizer_pkg/tests/data/oberrhein/initial_topology/asset_topology.json

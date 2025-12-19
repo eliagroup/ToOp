@@ -1,14 +1,22 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 name: release
 
 on: workflow_dispatch
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   bump-version:
     runs-on: ubuntu-latest
     environment: release
+    permissions:
+      contents: write
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -75,6 +83,8 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' }}
     environment: release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:

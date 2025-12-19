@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Provides a powsybl backend for loading powsybl based grids into the DC solver"""
 
 import functools
@@ -146,7 +153,6 @@ class PowsyblBackend(BackendInterface):
             right_index=True,
             how="left",
         )
-        branches["name"] = branches["name"]
         branches[["p_max_mw", "p_max_mw_n_1"]] = get_p_max(self.net)
         return branches
 

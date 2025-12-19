@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import (
     run_contingency_analysis_powsybl,
     run_powsybl_analysis,
@@ -52,10 +59,7 @@ __all__ = [
     "get_va_diff_results",
     "get_va_diff_results_polars",
     "prepare_branch_limits",
-    "run_contingency_analysis",
-    "run_contingency_analysis_polars",
     "run_contingency_analysis_powsybl",
-    "run_contingency_analysis_ray",
     "run_powsybl_analysis",
     "set_target_values_to_lf_values_incl_distributed_slack",
     "translate_contingency_to_powsybl",

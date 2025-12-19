@@ -25,5 +25,5 @@ function path() {
 alias cpwd='printf "%q\n" "$(pwd)" | pbcopy && echo "Current directory copied to clipboard:" $(pbpaste)'
 
 # Ensure venv is in PATH:
-export PATH="/root/.venv/bin:$PATH"
-export VIRTUAL_ENV="/root/.venv"
+export PATH="$HOME/.venv/bin:$PATH"
+export VIRTUAL_ENV="$HOME/.venv"

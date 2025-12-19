@@ -1,0 +1,109 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+name: CI - Tests and SonarQube
+
+on: push
+
+permissions: {}
+
+env:
+  PYTEST_ON_CI: True
+
+jobs:
+  test-packages:
+    permissions:
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: importer_pkg
+            runner: Runner-ToOp-Projects
+          - package: dc_solver_pkg
+            runner: Runner-ToOp-Projects
+          - package: topology_optimizer_pkg
+            runner: Runner-ToOp-Projects
+          - package: grid_helpers_pkg
+            runner: ubuntu-latest
+          - package: contingency_analysis_pkg
+            runner: ubuntu-latest
+          - package: interfaces_pkg
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner == 'ubuntu-latest' && 'ubuntu-latest' || fromJSON('{"labels":["Runner-ToOp-Projects"]}') }}
+    env:
+      UV_PROJECT: packages/${{ matrix.package }}
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "packages/${{ matrix.package }}/pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --all-groups --all-extras --frozen
+
+      - name: set PY
+        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
+
+      - name: Run tests with code coverage report
+        run: |
+          uv run pytest -n auto --dist loadgroup packages/${{ matrix.package }}/tests \
+            --cov=packages/${{ matrix.package }}/src \
+            --cov-config=.coveragerc \
+            --cov-report term-missing \
+            --cov-report xml:coverage-${{ matrix.package }}.xml
+        env:
+          CLEANUP_RAY_AFTER_TESTS: true
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.package }}
+          path: coverage-${{ matrix.package }}.xml
+          retention-days: 7
+
+  sonarqube:
+    needs: test-packages
+    if: ${{ success() }}
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all coverage reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+          path: .
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      # Check the Quality Gate status.
+      - name: SonarQube Quality Gate check
+        id: sonarqube-quality-gate-check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        with:
+          pollingTimeoutSec: 600
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}

@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Module contains functions for the preprocessing process in pandapower.
 
 File: preprocessing.py
@@ -69,7 +76,7 @@ def modify_constan_z_load(net: pp.pandapowerNet, value: float = 0.0) -> None:
 
     """
     const_z_percent_value = 100.0
-    constan_z_load = net.load[net.load["const_z_percent"] == const_z_percent_value].index
+    constan_z_load = net.load[np.isclose(net.load["const_z_percent"], const_z_percent_value)].index
     net.load.loc[constan_z_load, "const_z_percent"] = value
 
 

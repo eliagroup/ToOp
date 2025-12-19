@@ -1,12 +1,21 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import datetime
 import os
 from pathlib import Path
 
 import numpy as np
+import pandapower
 import pandas as pd
 import pypowsybl
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_stations_bus_breaker
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_pandapower_net_for_powsybl
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.asset_topology_helpers import save_asset_topology
 from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
@@ -88,19 +97,6 @@ def powsybl_case30_with_psts() -> pypowsybl.network.Network:
     net = pypowsybl.network.create_ieee30()
     add_phaseshift_transformer_to_line_powsybl(net, "L8-28-1")
     add_phaseshift_transformer_to_line_powsybl(net, "L6-28-1")
-    return net
-
-
-def powsybl_texas() -> pypowsybl.network.Network:
-    """Load the powsybl Texas grid.
-
-    Returns
-    -------
-    pypowsybl.network.Network
-        The Powsybl Texas network.
-    """
-    texas_grid_file = Path(__file__).parent.parent / "data" / "texas" / "ACTIVSg2000.mat"
-    net = pypowsybl.network.load(str(texas_grid_file))
     return net
 
 
@@ -398,9 +394,9 @@ def powsybl_case9241() -> pypowsybl.network.Network:
     pypowsybl.network.Network
         The loaded Powsybl pegase case9241 network.
     """
-    # Load the Powsybl case9241 grid from the MAT file
-    pegase_grid_file = Path(__file__).parent.parent / "data" / "pegase" / "case9241pegase.mat"
-    net = pypowsybl.network.load(pegase_grid_file)
+    pandapower_net = pandapower.networks.case9241pegase()
+    net = load_pandapower_net_for_powsybl(pandapower_net, check_trafo_resistance=False)
+
     return net
 
 
@@ -476,6 +472,7 @@ def case14_matching_asset_topo_powsybl(folder: Path) -> None:
 
 
 # ruff: noqa: PLR0915
+# sonar: noqa: S3776
 def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     """Create a complex grid with batteries, HVDC, SVC, and 3-winding transformers using Powsybl.
 

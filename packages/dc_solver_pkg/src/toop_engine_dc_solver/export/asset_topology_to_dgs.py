@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Module containing functions to translate asset topology model to the DGS format.
 
 File: asset_topology_to_dgs.py
@@ -252,7 +259,7 @@ def get_asset_switch_states_from_station(
         asset_switch_states = station.asset_switching_table[:, column]
         if asset_switch_states.sum() == 1:
             # reassign
-            assigned_busbar = np.where(asset_switch_states)[0][0]
+            assigned_busbar = np.nonzero(asset_switch_states)[0][0]
             for busbar, switch_id in asset_reassignment_list[column].items():
                 if busbar_id_dict[assigned_busbar] == busbar:
                     set_value_switch = PowsyblSwitchValues.CLOSED.value

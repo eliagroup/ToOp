@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Launcher for the Map-Elites optimizer.
 
 example args:
@@ -33,6 +40,7 @@ import logbook
 import numpy as np
 import tyro
 from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel, Field
 from tensorboardX import SummaryWriter
 from toop_engine_interfaces.types import MetricType
@@ -341,4 +349,5 @@ def main(
 if __name__ == "__main__":
     logbook.StreamHandler(sys.stdout, level=logbook.INFO).push_application()
     args = tyro.cli(CLIArgs)
-    main(args)
+    file_system = LocalFileSystem()
+    main(args, file_system)

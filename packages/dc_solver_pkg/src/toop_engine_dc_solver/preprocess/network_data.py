@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """The network data class that holds the necessary information about the grid."""
 
 import pickle
@@ -582,6 +589,7 @@ def extract_branch_ids(network_data: NetworkData) -> tuple[list[str], list[str]]
 
 
 # ruff: noqa: PLR0915
+# sonar: noqa: S3776
 def validate_network_data(network_data: NetworkData) -> None:
     """Run some validation on the preprocessed network data.
 

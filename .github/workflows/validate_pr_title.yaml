@@ -18,9 +18,14 @@ on:
       - edited # Trigger on title edits
       - reopened
       - synchronize
+
+permissions: {}
+
 jobs:
   validate-pr-title:
     runs-on: ubuntu-latest
+    permissions:
+      contents: none
     steps:
 
       - name: Install commitizen

@@ -13,6 +13,8 @@ on:
       - main
       - develop
 
+permissions: {}
+
 jobs:
   validate_commits:
     permissions:

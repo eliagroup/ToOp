@@ -34,7 +34,6 @@ import os
 import sys
 import time
 from functools import partial
-from typing import Optional
 
 import jax
 import logbook
@@ -133,13 +132,11 @@ def write_summary(
     optimizer_data: OptimizerData,
     repertoire: DiscreteMapElitesRepertoire,
     emitter_state: EmitterState,
-    iteration: Optional[int],
+    iteration: int,
     folder: str,
-    args_dict: dict,
-    n_cells_per_dim: tuple[int, ...],
-    descriptor_metrics: tuple[str, ...],
-    plot: bool,
+    cli_args: CLIArgs,
     processed_gridfile_fs: AbstractFileSystem,
+    final_results: bool = False,
 ) -> dict:
     """Write a summary to a json file.
 
@@ -155,19 +152,13 @@ def write_summary(
         The current repertoire for this iteration, will be used instead of the one in the optimizer_data
     emitter_state : EmitterState
         The emitter state for this iteration, will be used instead of the one in the optimizer_data
-    iteration : Optional[int]
-        The iteration number, if None, will write to res.json, otherwise to res_{iteration}.json
+    iteration : int
+        The iteration number
     folder : str
         The folder to write the summary to, relative to the processed_gridfile_fs
-    args_dict : dict
-        The arguments used for invocation in a dict format, will be added to the summary for
+    cli_args : CLIArgs
+        The arguments used for invocation, will be added to the summary for
         documentation purposes
-    n_cells_per_dim : tuple[int, ...]
-        The number of cells per dimension for MAP-Elites
-    descriptor_metrics : tuple[str, ...]
-        The descriptor metrics to use for MAP-Elites
-    plot : bool
-        Whether to plot the repertoire
     processed_gridfile_fs: AbstractFileSystem
         The target filesystem for the preprocessing worker. This contains all processed grid files.
         During the import job,  a new folder import_results.data_folder was created
@@ -175,6 +166,8 @@ def write_summary(
         Internally, only the data folder is passed around as a dirfs.
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
+    final_results : bool
+        Whether this is the final results summary "res.json" or an intermediate one "res_{iteration}.json"
 
     Returns
     -------
@@ -182,6 +175,11 @@ def write_summary(
         The summary that was written
     """
     processed_gridfile_fs.makedirs(folder, exist_ok=True)
+
+    ga_config = cli_args.ga_config
+    n_cells_per_dim = tuple(desc.num_cells for desc in ga_config.me_descriptors)
+    descriptor_metrics = tuple(desc.metric for desc in ga_config.me_descriptors)
+    args_dict = cli_args.model_dump()
 
     # Here we assume that contingency_ids are the same for all topos in the repertoire
     contingency_ids = optimizer_data.solver_configs[0].contingency_ids
@@ -198,19 +196,17 @@ def write_summary(
             "iteration": iteration,
         }
     )
-    filename = "res.json" if iteration is None else f"res_{iteration}.json"
+    filename = "res.json" if final_results else f"res_{iteration}.json"
     with processed_gridfile_fs.open(os.path.join(folder, filename), "w") as f:
         json.dump(summary, f)
-    if plot:
+    if ga_config.plot:
         plot_repertoire(
-            repertoire.fitnesses[
-                : np.prod(n_cells_per_dim)
-            ],  # Only take the first depth layer. The best fitnesses are in the first depth layer already.
+            repertoire.fitnesses[: np.prod(n_cells_per_dim)],
             iteration,
             folder,
             n_cells_per_dim=n_cells_per_dim,
             descriptor_metrics=descriptor_metrics,
-            save_plot=plot,
+            save_plot=ga_config.plot,
         )
     return summary
 
@@ -247,10 +243,7 @@ def main(
     partial_write_summary = partial(
         write_summary,
         folder=args.stats_dir,
-        n_cells_per_dim=[desc.num_cells for desc in args.ga_config.me_descriptors],
-        descriptor_metrics=[desc.metric for desc in args.ga_config.me_descriptors],
-        plot=args.ga_config.plot,
-        args_dict=args_dict,
+        cli_args=args,
         processed_gridfile_fs=processed_gridfile_fs,
     )
 
@@ -322,6 +315,7 @@ def main(
                     repertoire,
                     emitter_state,
                     iteration=epoch,
+                    final_results=False,
                 )
 
                 running_means = update_running_means(running_means=running_means, emitter_state=emitter_state)
@@ -346,7 +340,8 @@ def main(
         jax.tree_util.tree_map(lambda x: x[0], optimizer_data.jax_data.emitter_state)
         if args.lf_config.distributed
         else optimizer_data.jax_data.emitter_state,
-        iteration=None,
+        iteration=epoch,
+        final_results=True,
     )
     return final_results
 

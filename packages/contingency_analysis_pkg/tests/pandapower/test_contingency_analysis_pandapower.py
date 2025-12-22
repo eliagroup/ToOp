@@ -27,6 +27,7 @@ def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet
     assert lf_result_sequential_polars is not None
 
 
+@pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(300)
 @pytest.mark.skip(reason="Does not work on CI")
 def test_run_ac_contingency_analysis_pandapower_mt(pandapower_net: pp.pandapowerNet, init_ray) -> None:

@@ -58,7 +58,7 @@ jobs:
 
       - name: Run tests with code coverage report
         run: |
-          uv run pytest -n auto --dist loadgroup packages/${{ matrix.package }}/tests \
+          uv run pytest -n 4 --dist loadgroup packages/${{ matrix.package }}/tests \
             --cov=packages/${{ matrix.package }}/src \
             --cov-config=.coveragerc \
             --cov-report term-missing \

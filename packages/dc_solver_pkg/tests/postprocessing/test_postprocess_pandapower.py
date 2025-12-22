@@ -380,6 +380,7 @@ def test_compute_n_1_ac(data_folder: str) -> None:
         assert np.allclose(va_n1[i + offset], monitored_buses_reindexed.va_degree.values, equal_nan=True)
 
 
+@pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(600)
 def test_runner_matches_split_loadflows(preprocessed_data_folder: str) -> None:
     data_path = Path(preprocessed_data_folder)

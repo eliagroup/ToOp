@@ -224,7 +224,7 @@ def kafka_heartbeat_topic(kafka_container: Container) -> Generator[str, None, No
 def grid_folder(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Path:
     """Grid data directory prepared once and shared across workers."""
 
-    def prepare(target_path: Path) -> Path:
+    def initialize_grid_dirs(target_path: Path) -> Path:
         target_path.mkdir(exist_ok=True)
 
         oberrhein_path = target_path / "oberrhein"
@@ -256,15 +256,15 @@ def grid_folder(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Pat
     data_path = Path(__file__).parent / "data"
 
     if worker_id == "master":
-        return prepare(data_path)
+        return initialize_grid_dirs(data_path)
 
     root_tmp_dir = tmp_path_factory.getbasetemp().parent
     lock_file = root_tmp_dir / "grid_folder.lock"
     ready_flag = root_tmp_dir / "grid_folder.ready"
 
     with FileLock(str(lock_file)):
-        if not ready_flag.exists() or not data_path.exists():
-            prepare(data_path)
+        if not ready_flag.exists():
+            initialize_grid_dirs(data_path)
             ready_flag.touch()
 
     return data_path

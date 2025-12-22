@@ -222,7 +222,15 @@ def kafka_heartbeat_topic(kafka_container: Container) -> Generator[str, None, No
 
 @pytest.fixture(scope="session")
 def grid_folder(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Path:
-    """Grid data directory prepared once and shared across workers."""
+    """Grid data directory prepared once and shared across workers.
+
+    Args:
+        tmp_path_factory (pytest.TempPathFactory): Temporary path factory provided by pytest.
+        worker_id (str): Worker ID provided by pytest-xdist.
+
+    Returns:
+        Path: The path to the grid data directory.
+    """
 
     def initialize_grid_dirs(target_path: Path) -> Path:
         target_path.mkdir(exist_ok=True)
@@ -255,6 +263,9 @@ def grid_folder(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Pat
 
     data_path = Path(__file__).parent / "data"
 
+    # Master worker initializes the grid directories
+    # Fix taken from:
+    # https://pytest-xdist.readthedocs.io/en/stable/how-to.html#making-session-scoped-fixtures-execute-only-once
     if worker_id == "master":
         return initialize_grid_dirs(data_path)
 

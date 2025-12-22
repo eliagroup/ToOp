@@ -9,9 +9,13 @@ name: Fossa scan
 
 on: push
 
+permissions: {}
+
 jobs:
   license-headers:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v3
       - name: License Header Check
@@ -22,6 +26,8 @@ jobs:
           path: .nwa-config.yaml # (optional) configuration file path; default: .nwa-config.yaml
   fossa-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v3
       - id: fossa-analyze

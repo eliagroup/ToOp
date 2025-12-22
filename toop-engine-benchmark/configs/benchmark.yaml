@@ -1,0 +1,16 @@
+# configs for ToOp benchmark
+defaults:
+  - grid: config_grid_node_breaker
+  - lf_config: lf_config
+  - ga_config: ga_config
+  - area_settings: area_settings
+  - ac_validation: ac_validation
+
+logging_level: INFO
+
+hydra:
+  run:
+    dir: ${grid.output_dir}/hydra/
+  sweep:
+    dir: ${grid.output_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}

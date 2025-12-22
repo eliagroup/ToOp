@@ -1,0 +1,5 @@
+# Grid config (Hydra group: grid=config_grid_node_breaker)
+name: config_grid_node_breaker
+output_dir: ${oc.env:PWD}/data/grid_node_breaker/results/
+grid_file: ${oc.env:PWD}/data/grid_node_breaker/grid.xiidm
+grid_type: powsybl

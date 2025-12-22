@@ -48,14 +48,6 @@ parameters:
     type: boolean
     default: false
 
-schedules:
-  - cron: "0 1 * * *" # 1:00 AM UTC daily. The mirror pipeline runs daily at midnight. 
-    displayName: Daily execution at an hour after midnight
-    branches:
-      include:
-        - main
-    always: true
-
 trigger:
   branches:
     include:

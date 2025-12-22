@@ -295,6 +295,7 @@ def test_case300_powsybl() -> None:
         assert static_information.n_sub_relevant > 0
 
 
+@pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(300)
 def test_case9241_pp() -> None:
     with tempfile.TemporaryDirectory() as folder:
@@ -378,6 +379,7 @@ def test_case9241_pp_load_grid() -> None:
         validate_static_information(static_information)
 
 
+@pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(300)
 def test_case9241_powsybl() -> None:
     with tempfile.TemporaryDirectory() as folder:

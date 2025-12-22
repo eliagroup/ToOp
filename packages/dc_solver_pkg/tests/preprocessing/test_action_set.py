@@ -112,6 +112,7 @@ def test_make_action_repo() -> None:
     assert set([tuple(x) for x in repo]).intersection(set([tuple(~x) for x in repo])) == set()
 
 
+@pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(5)
 def test_make_action_repo_large() -> None:
     # Work sensible even for rather large amount of branches

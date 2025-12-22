@@ -216,8 +216,8 @@ data/IT*
 docs/source/_autosummary
 test-report.xml
 
-# We do not provide pinned dependencies for poetry projects. 
-poetry.lock 
+# We do not provide pinned dependencies for poetry projects.
+poetry.lock
 
 # MacOS
 .DS_Store

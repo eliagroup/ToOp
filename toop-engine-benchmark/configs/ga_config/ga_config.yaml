@@ -1,0 +1,6 @@
+name: ga_config
+random_seed: 34523412
+runtime_seconds: 60
+switching_distance: 20
+n_worst_contingencies: 2
+substation_split_prob: 0.1

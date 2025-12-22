@@ -1,0 +1,14 @@
+# Assessment config for benchmark.assess_benchmarks
+# Default paths; override on CLI: root=..., save=..., print=false
+root: ${oc.env:PWD}/data
+save: null  # e.g. /workspaces/ToOp/data/aggregate_report.json
+print: true
+
+hydra:
+  run:
+    dir: ${root}/hydra_assess/${now:%Y%m%d_%H%M%S}
+  sweep:
+    dir: ${root}/hydra_assess/sweeps
+    subdir: ${hydra.job.num}
+  job:
+    chdir: True

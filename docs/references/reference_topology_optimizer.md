@@ -14,7 +14,6 @@
 
 # Benchmarks
 ::: toop_engine_topology_optimizer.benchmark.benchmark
-::: toop_engine_topology_optimizer.benchmark.run
 
 # DC Optimizer
 ::: toop_engine_topology_optimizer.dc.ga_helpers

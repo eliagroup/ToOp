@@ -157,6 +157,7 @@ plugins:
             - packages/grid_helpers_pkg/src
             - packages/topology_optimizer_pkg/src
             - packages/importer_pkg/src
+            - .
 extra_css:
   - stylesheets/extra.css
 

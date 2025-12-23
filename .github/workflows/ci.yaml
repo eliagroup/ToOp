@@ -19,7 +19,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-packages:
+  test-packages-toop-runner:
+    permissions:
+      contents: read
+      pull-requests: read
+    strategy:
+      # Only one job of matrix:
+      # https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - package: importer_pkg
+          - package: dc_solver_pkg
+          - package: topology_optimizer_pkg
+    runs-on: Runner-ToOp-Projects
+    steps:
+      - name: Find actions
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Run package tests
+        uses: ./.github/actions/run-package-tests
+        with:
+          package: ${{ matrix.package }}
+
+  test-packages-github-runner:
     permissions:
       contents: read
       pull-requests: read
@@ -27,61 +52,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - package: importer_pkg
-            runner: Runner-ToOp-Projects
-          - package: dc_solver_pkg
-            runner: Runner-ToOp-Projects
-          - package: topology_optimizer_pkg
-            runner: Runner-ToOp-Projects
           - package: grid_helpers_pkg
-            runner: ubuntu-latest
           - package: contingency_analysis_pkg
-            runner: ubuntu-latest
           - package: interfaces_pkg
-            runner: ubuntu-latest
-      # Only one job of matrix:
-      # https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations
-      max-parallel: ${{ matrix.runner == 'Runner-ToOp-Projects' && 1 || 4 }}
-    runs-on: ${{ matrix.runner == 'ubuntu-latest' && 'ubuntu-latest' || fromJSON('{"labels":["Runner-ToOp-Projects"]}') }}
-    env:
-      UV_PROJECT: packages/${{ matrix.package }}
+    runs-on: ubuntu-latest
     steps:
-      - name: Check out repository code
+      - name: Find actions
         uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: "Set up Python"
-        uses: actions/setup-python@v5
         with:
-          python-version-file: "packages/${{ matrix.package }}/pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --all-groups --all-extras --frozen
-
-      - name: set PY
-        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
-
-      - name: Run tests with code coverage report
-        run: |
-          uv run pytest -n auto --dist loadgroup packages/${{ matrix.package }}/tests \
-            --cov=packages/${{ matrix.package }}/src \
-            --cov-config=.coveragerc \
-            --cov-report term-missing \
-            --cov-report xml:coverage-${{ matrix.package }}.xml
-        env:
-          CLEANUP_RAY_AFTER_TESTS: true
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+          fetch-depth: 1
+      - name: Run package tests
+        uses: ./.github/actions/run-package-tests
         with:
-          name: coverage-${{ matrix.package }}
-          path: coverage-${{ matrix.package }}.xml
-          retention-days: 7
+          package: ${{ matrix.package }}
 
   sonarqube:
-    needs: test-packages
+    needs: [test-packages-toop-runner, test-packages-github-runner]
     if: ${{ success() }}
     permissions:
       contents: read

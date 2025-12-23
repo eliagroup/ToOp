@@ -21,6 +21,7 @@ import pytest
 from confluent_kafka import Consumer, Producer
 from docker import DockerClient
 from docker.models.containers import Container
+from filelock import FileLock
 from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Int
 from omegaconf import DictConfig
@@ -29,8 +30,8 @@ from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import Lo
 from toop_engine_dc_solver.example_grids import (
     case14_pandapower,
     case30_with_psts_powsybl,
-    case57_non_converging,
     case57_data_powsybl,
+    case57_non_converging,
     create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     oberrhein_data,
 )
@@ -221,41 +222,70 @@ def kafka_heartbeat_topic(kafka_container: Container) -> Generator[str, None, No
 
 
 @pytest.fixture(scope="session")
-def grid_folder() -> Path:
-    path = Path(__file__).parent / "data"
-    path.mkdir(exist_ok=True)
+def grid_folder(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Path:
+    """Grid data directory prepared once and shared across workers.
 
-    oberrhein_path = path / "oberrhein"
-    if not oberrhein_path.exists():
-        oberrhein_data(oberrhein_path)
-        filesystem_dir = DirFileSystem(str(oberrhein_path))
-        load_grid(filesystem_dir, pandapower=True)
+    Args:
+        tmp_path_factory (pytest.TempPathFactory): Temporary path factory provided by pytest.
+        worker_id (str): Worker ID provided by pytest-xdist.
 
-    case14_path = path / "case14"
-    if not case14_path.exists():
-        case14_pandapower(case14_path)
-        filesystem_dir = DirFileSystem(str(case14_path))
-        load_grid(filesystem_dir, pandapower=True)
+    Returns:
+        Path: The path to the grid data directory.
+    """
 
-    case57_path = path / "case57"
-    if not case57_path.exists():
-        case57_data_powsybl(case57_path)
-        filesystem_dir = DirFileSystem(str(case57_path))
-        load_grid(filesystem_dir, pandapower=False)
+    def initialize_grid_dirs(target_path: Path) -> Path:
+        target_path.mkdir(exist_ok=True)
 
-    case30_path = path / "case30"
-    if not case30_path.exists():
-        case30_with_psts_powsybl(case30_path)
-        filesystem_dir = DirFileSystem(str(case30_path))
-        load_grid(filesystem_dir, pandapower=False)
+        oberrhein_path = target_path / "oberrhein"
+        if not oberrhein_path.exists():
+            oberrhein_data(oberrhein_path)
+            filesystem_dir = DirFileSystem(str(oberrhein_path))
+            load_grid(filesystem_dir, pandapower=True)
 
-    complex_grid_path = path / "complex_grid"
-    if not complex_grid_path.exists():
-        create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(complex_grid_path)
-        filesystem_dir = DirFileSystem(str(complex_grid_path))
-        load_grid(filesystem_dir, pandapower=False)
+        case14_path = target_path / "case14"
+        if not case14_path.exists():
+            case14_pandapower(case14_path)
+            filesystem_dir = DirFileSystem(str(case14_path))
+            load_grid(filesystem_dir, pandapower=True)
 
-    return path
+        case57_path = target_path / "case57"
+        if not case57_path.exists():
+            case57_data_powsybl(case57_path)
+            filesystem_dir = DirFileSystem(str(case57_path))
+            load_grid(filesystem_dir, pandapower=False)
+
+        complex_grid_path = target_path / "complex_grid"
+        if not complex_grid_path.exists():
+            create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(complex_grid_path)
+            filesystem_dir = DirFileSystem(str(complex_grid_path))
+            load_grid(filesystem_dir, pandapower=False)
+
+        case30_path = target_path / "case30"
+        if not case30_path.exists():
+            case30_with_psts_powsybl(case30_path)
+            filesystem_dir = DirFileSystem(str(case30_path))
+            load_grid(filesystem_dir, pandapower=False)
+
+        return target_path
+
+    data_path = Path(__file__).parent / "data"
+
+    # Master worker initializes the grid directories
+    # Fix taken from:
+    # https://pytest-xdist.readthedocs.io/en/stable/how-to.html#making-session-scoped-fixtures-execute-only-once
+    if worker_id == "master":
+        return initialize_grid_dirs(data_path)
+
+    root_tmp_dir = tmp_path_factory.getbasetemp().parent
+    lock_file = root_tmp_dir / "grid_folder.lock"
+    ready_flag = root_tmp_dir / "grid_folder.ready"
+
+    with FileLock(str(lock_file)):
+        if not ready_flag.exists():
+            initialize_grid_dirs(data_path)
+            ready_flag.touch()
+
+    return data_path
 
 
 @pytest.fixture(scope="session")

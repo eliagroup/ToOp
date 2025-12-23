@@ -7,6 +7,9 @@ inputs:
   package:
     description: Name of the package directory under packages/.
     required: true
+  workers:
+    description: Number of workers to use for pytest-xdist.
+    required: true
 
 runs:
   using: composite
@@ -35,7 +38,7 @@ runs:
     - name: Run tests with code coverage report
       shell: bash
       run: |
-        uv run pytest -n auto --dist loadgroup packages/${{ inputs.package }}/tests \
+        uv run pytest -n ${{ inputs.workers }} --dist loadgroup packages/${{ inputs.package }}/tests \
           --cov=packages/${{ inputs.package }}/src \
           --cov-config=.coveragerc \
           --cov-report term-missing \

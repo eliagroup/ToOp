@@ -43,6 +43,7 @@ jobs:
         uses: ./.github/actions/run-package-tests
         with:
           package: ${{ matrix.package }}
+          workers: 4
 
   test-packages-github-runner:
     permissions:
@@ -65,6 +66,7 @@ jobs:
         uses: ./.github/actions/run-package-tests
         with:
           package: ${{ matrix.package }}
+          workers: auto
 
   sonarqube:
     needs: [test-packages-toop-runner, test-packages-github-runner]

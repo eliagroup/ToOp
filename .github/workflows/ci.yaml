@@ -15,11 +15,14 @@ env:
   PYTEST_ON_CI: True
 
 jobs:
-  test-packages:
+  test-packages-performance:
     permissions:
       contents: read
       pull-requests: read
     strategy:
+      # Only one job of matrix:
+      # https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
@@ -29,13 +32,59 @@ jobs:
             runner: Runner-ToOp-Projects
           - package: topology_optimizer_pkg
             runner: Runner-ToOp-Projects
+    runs-on: ${{ fromJSON('{"labels":["Runner-ToOp-Projects"]}') }}
+    env:
+      UV_PROJECT: packages/${{ matrix.package }}
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "packages/${{ matrix.package }}/pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --all-groups --all-extras --frozen
+
+      - name: set PY
+        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
+
+      - name: Run tests with code coverage report
+        run: |
+          uv run pytest -n auto --dist loadgroup packages/${{ matrix.package }}/tests \
+            --cov=packages/${{ matrix.package }}/src \
+            --cov-config=.coveragerc \
+            --cov-report term-missing \
+            --cov-report xml:coverage-${{ matrix.package }}.xml
+        env:
+          CLEANUP_RAY_AFTER_TESTS: true
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.package }}
+          path: coverage-${{ matrix.package }}.xml
+          retention-days: 7
+
+  test-packages-non-performance:
+    permissions:
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - package: grid_helpers_pkg
             runner: ubuntu-latest
           - package: contingency_analysis_pkg
             runner: ubuntu-latest
           - package: interfaces_pkg
             runner: ubuntu-latest
-    runs-on: ${{ matrix.runner == 'ubuntu-latest' && 'ubuntu-latest' || fromJSON('{"labels":["Runner-ToOp-Projects"]}') }}
+    runs-on: ubuntu-latest
     env:
       UV_PROJECT: packages/${{ matrix.package }}
     steps:

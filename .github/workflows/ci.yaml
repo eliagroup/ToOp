@@ -123,7 +123,7 @@ jobs:
           retention-days: 7
 
   sonarqube:
-    needs: test-packages
+    needs: [test-packages-performance, test-packages-non-performance]
     if: ${{ success() }}
     permissions:
       contents: read

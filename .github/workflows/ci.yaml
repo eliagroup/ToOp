@@ -30,9 +30,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - package: importer_pkg
           - package: dc_solver_pkg
           - package: topology_optimizer_pkg
+          - package: importer_pkg
     runs-on: Runner-ToOp-Projects
     steps:
       - name: Find actions

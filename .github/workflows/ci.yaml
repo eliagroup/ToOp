@@ -29,16 +29,10 @@ jobs:
           - package: importer_pkg
           - package: dc_solver_pkg
           - package: topology_optimizer_pkg
-    runs-on: Runner-ToOp-Projects
-    steps:
-      - name: Find actions
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - name: Run package tests
-        uses: ./.github/actions/run-package-tests
-        with:
-          package: ${{ matrix.package }}
+    uses: ./.github/workflows/run-package-tests.yml
+    with:
+      package: ${{ matrix.package }}
+      runner: Runner-ToOp-Projects
 
   test-packages-non-performance:
     permissions:
@@ -51,16 +45,10 @@ jobs:
           - package: grid_helpers_pkg
           - package: contingency_analysis_pkg
           - package: interfaces_pkg
-    runs-on: ubuntu-latest
-    steps:
-      - name: Find actions
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - name: Run package tests
-        uses: ./.github/actions/run-package-tests
-        with:
-          package: ${{ matrix.package }}
+    uses: ./.github/workflows/run-package-tests.yml
+    with:
+      package: ${{ matrix.package }}
+      runner: ubuntu-latest
 
   sonarqube:
     needs: [test-packages-performance, test-packages-non-performance]

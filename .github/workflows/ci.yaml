@@ -31,6 +31,10 @@ jobs:
           - package: topology_optimizer_pkg
     runs-on: Runner-ToOp-Projects
     steps:
+      - name: Find actions
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - name: Run package tests
         uses: ./.github/actions/run-package-tests
         with:
@@ -49,6 +53,10 @@ jobs:
           - package: interfaces_pkg
     runs-on: ubuntu-latest
     steps:
+      - name: Find actions
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - name: Run package tests
         uses: ./.github/actions/run-package-tests
         with:

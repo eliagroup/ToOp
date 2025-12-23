@@ -39,7 +39,8 @@ runs:
           --cov=packages/${{ inputs.package }}/src \
           --cov-config=.coveragerc \
           --cov-report term-missing \
-          --cov-report xml:coverage-${{ inputs.package }}.xml
+          --cov-report xml:coverage-${{ inputs.package }}.xml \
+          --timeout 300
       env:
         CLEANUP_RAY_AFTER_TESTS: true
         UV_PROJECT: packages/${{ inputs.package }}

@@ -4,7 +4,7 @@ git config --global --add safe.directory /workspaces/ToOp
 set -e
 
 # Use custom .bashrc
-cp "$PWD/.devcontainer/.bashrc" "$HOME/.bashrc"
+cp "$PWD/.devcontainer/.bashrc" /root/.bashrc
 
 # Install development dependencies from uv.lock
 uv sync --all-groups --frozen

@@ -43,7 +43,7 @@ jobs:
         uses: ./.github/actions/run-package-tests
         with:
           package: ${{ matrix.package }}
-          workers: 4
+          workers: 1
 
   test-packages-github-runner:
     permissions:

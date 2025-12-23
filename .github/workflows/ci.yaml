@@ -20,6 +20,9 @@ jobs:
       contents: read
       pull-requests: read
     strategy:
+      # Only one job of matrix:
+      # https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:

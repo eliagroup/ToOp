@@ -936,6 +936,4 @@ def get_worst_k_contingencies(
     top_k_overloads, case_indices = jax.lax.top_k(overload_matrix.sum(axis=2), k)
     top_k_overloads = jnp.sum(top_k_overloads, axis=1)
 
-    return WorstKContingencyResults(
-        top_k_overloads=top_k_overloads, case_indices=case_indices
-    )
+    return WorstKContingencyResults(top_k_overloads=top_k_overloads, case_indices=case_indices)

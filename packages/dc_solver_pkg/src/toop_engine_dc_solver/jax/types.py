@@ -983,6 +983,7 @@ class NodalInjOptimResults:
             pst_taps=self.pst_taps[key],
         )
 
+
 @pytree_dataclass
 class NodalInjStartOptions:
     """Options for the starting point of the nodal injection optimization."""
@@ -990,7 +991,6 @@ class NodalInjStartOptions:
     previous_results: NodalInjOptimResults
     """The results from a previous optimization to use as a starting point, e.g. from a previous topology that only has
     a small mutation distance."""
-
 
     precision_percent: Float[Array, ""]
     """The precision to which the optimization should run in percent of the maximal precision.
@@ -1055,7 +1055,7 @@ class SolverLoadflowResults:
     bb_outage_overload: Optional[Float[Array, " ... "]] = None
     """The overload energy caused due to busbar outages"""
 
-    nodal_inj_optim_results: Optional[NodalInjOptimResults] = None
+    nodal_injections_optimized: Optional[NodalInjOptimResults] = None
     """The results of the nodal injection optimization, if any was performed."""
 
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> SolverLoadflowResults:
@@ -1074,10 +1074,11 @@ class SolverLoadflowResults:
             bb_outage_splits=(self.bb_outage_splits[key] if self.bb_outage_splits is not None else None),
             bb_outage_overload=(self.bb_outage_overload[key] if self.bb_outage_overload is not None else None),
             disconnections=(self.disconnections[key] if self.disconnections is not None else None),
-            nodal_inj_optim_results=(
-                self.nodal_inj_optim_results[key] if self.nodal_inj_optim_results is not None else None
+            nodal_injections_optimized=(
+                self.nodal_injections_optimized[key] if self.nodal_injections_optimized is not None else None
             ),
         )
+
 
 @pytree_dataclass
 class WorstKContingencyResults:
@@ -1087,6 +1088,7 @@ class WorstKContingencyResults:
     """The total overload corresponding to the worst k contingencies for each timestep."""
     case_indices: Int[Array, " n_timesteps k"]
     """The indices of the worst k contingencies for each timestep."""
+
 
 class AggregateMetricProtocol(Protocol):
     """A protocol for the aggregate metric function.

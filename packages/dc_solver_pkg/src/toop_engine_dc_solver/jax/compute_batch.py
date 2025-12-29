@@ -48,7 +48,6 @@ from toop_engine_dc_solver.jax.types import (
     AggregateOutputProtocol,
     DynamicInformation,
     InjectionComputations,
-    NodalInjOptimResults,
     NodalInjStartOptions,
     SolverConfig,
     SolverLoadflowResults,
@@ -695,7 +694,6 @@ def compute_symmetric_batch(
     )
     topo_res = compute_bsdf_lodf_static_flows(bitvector_topology, disconnection_batch, dynamic_information, solver_config)
 
-
     unbatched_params = UnBatchedContingencyAnalysisParams(
         branches_to_fail=dynamic_information.branches_to_fail,
         injection_outage_deltap=get_all_injection_outage_deltap(
@@ -709,7 +707,6 @@ def compute_symmetric_batch(
         non_rel_bb_outage_data=dynamic_information.non_rel_bb_outage_data,
         enable_bb_outages=(solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1),
     )
-
 
     nodal_injections = compute_injections(
         injections=injections,
@@ -734,13 +731,14 @@ def compute_symmetric_batch(
 
     n_0 = jax.vmap(update_n0_flows_after_disconnections)(n_0, topo_res.disconnection_modf)
 
-
-    nodal_inj_optim_results = None
+    nodal_injections_optimized = None
     if solver_config.enable_nodal_inj_optim:
-        assert nodal_inj_start_options is not None, "nodal injection start options must be provided when nodal injection optimization is enabled."
+        assert nodal_inj_start_options is not None, (
+            "nodal injection start options must be provided when nodal injection optimization is enabled."
+        )
         # TODO replace N-1 computation below with the results from optimization as soon as the optimization is halfway stable
         # It might be a good debug aid to have the original code below still available.
-        n_0, _n_1, nodal_inj_optim_results = nodal_inj_optimization(
+        n_0, _n_1, nodal_injections_optimized = nodal_inj_optimization(
             n_0=n_0,
             nodal_injections=nodal_injections,
             topo_res=topo_res,
@@ -748,7 +746,6 @@ def compute_symmetric_batch(
             dynamic_information=dynamic_information,
             solver_config=solver_config,
         )
-
 
     # Compute the N-1 matrix
     batched_params = BatchedContingencyAnalysisParams(
@@ -836,7 +833,7 @@ def compute_symmetric_batch(
             bb_outage_penalty=bb_outage_penalty,
             bb_outage_overload=overload if bb_outage_as_penalty else None,
             bb_outage_splits=n_grid_splits if bb_outage_as_penalty else None,
-            nodal_inj_optim_results=nodal_inj_optim_results,
+            nodal_injections_optimized=nodal_injections_optimized,
         ),
         topo_res.success,
     )

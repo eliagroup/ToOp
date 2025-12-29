@@ -137,7 +137,7 @@ def compute_overloads(
     aggregates["top_k_overloads_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
     aggregates["case_indices"] = worst_k_res.case_indices[:, 0, :]
 
-    return aggregates, lf_res.nodal_inj_optim_results, success
+    return aggregates, lf_res.nodal_injections_optimized, success
 
 
 def scoring_function(
@@ -196,9 +196,9 @@ def scoring_function(
         injection optimization.
     """
     n_topologies = len(topologies.action_index)
-    nodal_inj_start_options = make_start_options(topologies.nodal_inj_optim_results)
+    nodal_inj_start_options = make_start_options(topologies.nodal_injections_optimized)
 
-    metrics, nodal_inj_optim_results, success = compute_overloads(
+    metrics, nodal_injections_optimized, success = compute_overloads(
         topologies=topologies,
         nodal_inj_start_options=nodal_inj_start_options,
         dynamic_information=dynamic_informations[0],
@@ -208,7 +208,7 @@ def scoring_function(
     )
     # Sequentially compute each subsequent timestep
     for dynamic_information, solver_config in zip(dynamic_informations[1:], solver_configs[1:], strict=True):
-        metrics_local, _nodal_inj_optim_results_local, success_local = compute_overloads(
+        metrics_local, _nodal_injections_optimized_local, success_local = compute_overloads(
             topologies=topologies,
             nodal_inj_start_options=nodal_inj_start_options,
             dynamic_information=dynamic_information,
@@ -232,7 +232,7 @@ def scoring_function(
 
     descriptors = jnp.stack([metrics[key].astype(int) for key in descriptor_metrics], axis=1)
 
-    topologies = replace(topologies, nodal_inj_optim_results=nodal_inj_optim_results)
+    topologies = replace(topologies, nodal_injections_optimized=nodal_injections_optimized)
 
     return (
         fitness,
@@ -358,9 +358,12 @@ def convert_to_topologies(repertoire: DiscreteMapElitesRepertoire, contingency_i
 
         disconnections = [int(disc) for disc in iter_repertoire.genotypes.disconnections if disc != int_max()]
         # TODO action set is not yet available, make it available in the optimizer
-        pst_setpoints = [int(shift_angle) for shift_angle in iter_repertoire.genotypes.pst_angles]
+        nodal_inj = iter_repertoire.genotypes.nodal_injections_optimized
+        pst_setpoints = []
+        if nodal_inj is not None:
+            pst_setpoints = [int(pst_taps) for pst_taps in nodal_inj.pst_taps]
         # pst_setpoints = [find_pst_tap(shift_angle, pst_range) for (shift_angle, pst_range) in
-        #  zip(iter_repertoire.genotypes.pst_angles, action_set.pst_ranges, strict=True)]
+        #  zip(iter_repertoire.genotypes.nodal_injections_optimized.pst_taps, action_set.pst_ranges, strict=True)]
         case_indices = iter_repertoire.extra_scores.pop("case_indices", [])
         case_ids = np.array(contingency_ids)[case_indices].tolist()
         metrics = Metrics(

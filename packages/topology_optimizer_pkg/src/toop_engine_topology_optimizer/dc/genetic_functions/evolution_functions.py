@@ -32,11 +32,8 @@ class Genotype:
     disconnections: Int[Array, " *batch_size max_num_disconnections"]
     """The disconnections to apply, padded with int_max for disconnection slots that are unused.
     These are indices into the disconnectable branches set."""
-    # TODO: Remove angles in favor of nodal_inj_optim_results
-    pst_angles: Float[Array, " *batch_size n_controllable_psts"]
-    """The setpoints for the controllable PSTs as a shift angle in degrees, not a tap position."""
 
-    nodal_inj_optim_results: Optional[NodalInjOptimResults] = None
+    nodal_injections_optimized: Optional[NodalInjOptimResults]
     """The results of the nodal injection optimization, if any was performed."""
 
 
@@ -62,7 +59,7 @@ def deduplicate_genotypes(
     Int[Array, " n_unique"]
         The indices of the unique genotypes
     """
-    # Purposefully not taking into account pst_angles, as these are not part of the topology
+    # Purposefully not taking into account nodal_injections_optimized, as these are not part of the topology
     genotype_flat = jnp.concatenate(
         [
             genotypes.action_index,
@@ -101,8 +98,7 @@ def fix_dtypes(genotypes: Genotype) -> Genotype:
     return Genotype(
         action_index=genotypes.action_index.astype(int),
         disconnections=genotypes.disconnections.astype(int),
-        pst_angles=genotypes.pst_angles.astype(float),
-        nodal_inj_optim_results=genotypes.nodal_inj_optim_results,
+        nodal_injections_optimized=genotypes.nodal_injections_optimized,
     )
 
 
@@ -111,7 +107,6 @@ def empty_repertoire(
     max_num_splits: int,
     max_num_disconnections: int,
     num_psts: int,
-    n_timesteps: int = 1,
 ) -> Genotype:
     """Create an initial genotype repertoire with all zeros for all entries and int_max for all subs.
 
@@ -125,8 +120,6 @@ def empty_repertoire(
         The maximum number of diconncections as topological measures per topology
     num_psts : int
         The number of controllable PSTs in the grid
-    n_timesteps : int
-        The number of timesteps for PST taps initialization
 
     Returns
     -------
@@ -136,10 +129,8 @@ def empty_repertoire(
     return Genotype(
         action_index=jnp.full((batch_size, max_num_splits), int_max(), dtype=int),
         disconnections=jnp.full((batch_size, max_num_disconnections), int_max(), dtype=int),
-        pst_angles=jnp.full((batch_size, num_psts), 0, dtype=float),
-        nodal_inj_optim_results=NodalInjOptimResults(
-            pst_taps=jnp.zeros((batch_size, n_timesteps, num_psts), dtype=jnp.float32)
-        )
+        # TODO: Why don't we use the n_timesteps here?
+        nodal_injections_optimized=NodalInjOptimResults(pst_taps=jnp.zeros((batch_size, num_psts), dtype=float))
         if num_psts > 0
         else None,
     )
@@ -283,7 +274,7 @@ def mutate(
     topologies_mutated = Genotype(
         action_index=action,
         disconnections=disconnections_topo,
-        pst_angles=repeated_topologies.pst_angles,
+        nodal_injections_optimized=repeated_topologies.nodal_injections_optimized,
     )
 
     if mutation_repetition > 1:
@@ -661,7 +652,7 @@ def crossover_unbatched(
     return Genotype(
         action_index=actions,
         disconnections=disconnections,
-        pst_angles=topologies_a.pst_angles,
+        nodal_injections_optimized=topologies_a.nodal_injections_optimized,
     ), subkeys[-1]
 
 

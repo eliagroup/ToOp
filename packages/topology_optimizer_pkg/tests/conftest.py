@@ -21,7 +21,6 @@ import pytest
 from confluent_kafka import Consumer, Producer
 from docker import DockerClient
 from docker.models.containers import Container
-from filelock import FileLock
 from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Int
 from omegaconf import DictConfig
@@ -222,7 +221,7 @@ def kafka_heartbeat_topic(kafka_container: Container) -> Generator[str, None, No
 
 
 @pytest.fixture(scope="session")
-def grid_folder(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Path:
+def grid_folder() -> Path:
     """Grid data directory prepared once and shared across workers.
 
     Args:
@@ -270,22 +269,9 @@ def grid_folder(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Pat
 
     data_path = Path(__file__).parent / "data"
 
-    # Master worker initializes the grid directories
-    # Fix taken from:
-    # https://pytest-xdist.readthedocs.io/en/stable/how-to.html#making-session-scoped-fixtures-execute-only-once
-    if worker_id == "master":
-        return initialize_grid_dirs(data_path)
+    target_path = initialize_grid_dirs(data_path)
 
-    root_tmp_dir = tmp_path_factory.getbasetemp().parent
-    lock_file = root_tmp_dir / "grid_folder.lock"
-    ready_flag = root_tmp_dir / "grid_folder.ready"
-
-    with FileLock(str(lock_file)):
-        if not ready_flag.exists():
-            initialize_grid_dirs(data_path)
-            ready_flag.touch()
-
-    return data_path
+    return target_path
 
 
 @pytest.fixture(scope="session")

@@ -1,8 +1,17 @@
+"""Nodal injection optimization routines.
+
+These include PST Optimization routines.
+"""
+
 import jax.numpy as jnp
-from toop_engine_dc_solver.jax.types import DynamicInformation, NodalInjStartOptions, SolverConfig, TopologyResults
-from jaxtyping import Float, Array, Int
-from jax_dataclasses import pytree_dataclass
-from toop_engine_dc_solver.jax.types import NodalInjOptimResults
+from jaxtyping import Array, Float
+from toop_engine_dc_solver.jax.types import (
+    DynamicInformation,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
+    SolverConfig,
+    TopologyResults,
+)
 
 
 def make_start_options(
@@ -11,7 +20,7 @@ def make_start_options(
     """Create start options for nodal injection optimization from previous results."""
     return NodalInjStartOptions(
         previous_results=old_res,
-        precision_percent=jnp.array(1.0), # TODO
+        precision_percent=jnp.array(1.0),  # TODO
     )
 
 
@@ -25,11 +34,7 @@ def nodal_inj_optimization(
 ) -> tuple[
     Float[Array, " batch_size n_timesteps n_branches"],
     Float[Array, " batch_size n_timesteps n_outages n_branches_monitored"],
-    NodalInjOptimResults
+    NodalInjOptimResults,
 ]:
-    """Optimize PST settings to reduce overloads in the base case.
-    """
+    """Optimize PST settings to reduce overloads in the base case."""
     raise NotImplementedError("Nodal injection optimization is not yet implemented.")
-
-
-

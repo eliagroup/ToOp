@@ -104,8 +104,8 @@ def powsybl_case30_with_psts() -> pypowsybl.network.Network:
         The Powsybl IEEE 30 bus network with phase-shifting transformers.
     """
     net = pypowsybl.network.create_ieee30()
-    add_phaseshift_transformer_to_line_powsybl(net, "L8-28-1")
-    add_phaseshift_transformer_to_line_powsybl(net, "L6-28-1")
+    add_phaseshift_transformer_to_line_powsybl(net, "L8-28-1", tap_min=-20, tap_max=10, tap_step_degree=3.0)
+    add_phaseshift_transformer_to_line_powsybl(net, "L6-28-1", tap_min=-30, tap_max=35, tap_step_degree=4.0)
     return net
 
 

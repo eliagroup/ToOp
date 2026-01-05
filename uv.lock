@@ -4275,10 +4275,12 @@ ci = [
     { name = "commitizen" },
 ]
 dev = [
+    { name = "defusedxml" },
     { name = "docker" },
     { name = "ipykernel" },
     { name = "ipympl" },
     { name = "jupyter" },
+    { name = "nbclient" },
     { name = "openpyxl" },
     { name = "pep8-naming" },
     { name = "plotly" },
@@ -4319,10 +4321,12 @@ requires-dist = [
 [package.metadata.requires-dev]
 ci = [{ name = "commitizen", specifier = ">=4.9.1" }]
 dev = [
+    { name = "defusedxml", specifier = ">=0.7.0" },
     { name = "docker", specifier = ">=7.1.0" },
     { name = "ipykernel", specifier = ">=6.25.2" },
     { name = "ipympl", specifier = ">=0.9.8" },
     { name = "jupyter", specifier = ">=1.0.0" },
+    { name = "nbclient", specifier = ">=0.10.0" },
     { name = "openpyxl", specifier = ">=3.1.2" },
     { name = "pep8-naming" },
     { name = "plotly", specifier = ">=3.0.0" },

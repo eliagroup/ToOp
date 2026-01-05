@@ -15,13 +15,13 @@ runs:
   using: composite
   steps:
     - name: Check out repository code
-      uses: actions/checkout@v4
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
       with:
         python-version-file: packages/${{ inputs.package }}/pyproject.toml
 

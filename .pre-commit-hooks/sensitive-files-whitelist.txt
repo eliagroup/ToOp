@@ -20,6 +20,7 @@ data/test_grid_node_breaker/static_information.zip
 data/test_grid_node_breaker/nminus1_definition.json
 data/test_grid_node_breaker/initial_topology/test_ucte_powsybl_example.xiidm
 data/test_grid_node_breaker/initial_topology/asset_topology.json
+data/complex_grid/grid.xiidm
 
 # Notebook files
 notebooks/test.xiidm

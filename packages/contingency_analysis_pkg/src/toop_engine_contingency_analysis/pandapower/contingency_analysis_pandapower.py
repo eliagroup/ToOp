@@ -1,18 +1,27 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Compute the N-1 AC/DC power flow for the pandapower network."""
 
 import math
 from copy import deepcopy
-from typing import Union
 
 import pandapower as pp
+import pandapower.topology as top
 import pandera as pa
 import pandera.typing as pat
 import ray
-from beartype.typing import Literal, Optional
+from beartype.typing import Literal, Optional, Union
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
+    PandapowerElements,
     PandapowerMonitoredElementSchema,
     PandapowerNMinus1Definition,
+    SlackAllocationConfig,
     get_branch_results,
     get_convergence_df,
     get_failed_va_diff_results,
@@ -21,6 +30,8 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     get_va_diff_results,
     translate_nminus1_for_pandapower,
 )
+from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
+from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
 from toop_engine_interfaces.loadflow_result_helpers import (
     concatenate_loadflow_results,
     convert_pandas_loadflow_results_to_polars,
@@ -28,8 +39,11 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     get_failed_node_results,
 )
 from toop_engine_interfaces.loadflow_results import (
+    BranchResultSchema,
     ConvergenceStatus,
     LoadflowResults,
+    NodeResultSchema,
+    VADiffResultSchema,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
@@ -69,16 +83,9 @@ def run_single_outage(
     LoadflowResults
         The results of the ContingencyAnalysis computation
     """
-    were_in_service = []
     outaged_elements = contingency.elements
-    if len(outaged_elements) == 0:
-        # This is the base case. Append a dummy True so it does not raise due to no elements being outaged
-        were_in_service.append(True)
-    else:
-        for element in outaged_elements:
-            was_in_service = net[element.table].loc[element.table_id, "in_service"]
-            were_in_service.append(was_in_service)
-            net[element.table].loc[element.table_id, "in_service"] = False
+
+    were_in_service = set_outaged_elements_out_of_service(net, outaged_elements)
     if not any(were_in_service):
         # If no elements were outaged, this is the base case and we should not run the loadflow
         status = ConvergenceStatus.NO_CALCULATION
@@ -93,23 +100,11 @@ def run_single_outage(
     convergence_df = get_convergence_df(timestep=timestep, contingency=contingency, status=status.value)
     regulating_elements_df = get_regulating_element_results(timestep, monitored_elements, contingency)
 
-    if status == ConvergenceStatus.CONVERGED:
-        branch_results_df = get_branch_results(net, contingency, monitored_elements, timestep)
-        node_results_df = get_node_result_df(net, contingency, monitored_elements, timestep)
-        va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
-    else:
-        monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()
-        monitored_branches = monitored_elements.query("kind == 'branch' & table != 'trafo3w'").index.to_list()
-        monitored_buses = monitored_elements.query("kind == 'bus'").index.to_list()
-        branch_results_df = get_failed_branch_results(
-            timestep, [contingency.unique_id], monitored_branches, monitored_trafo3w
-        )
-        node_results_df = get_failed_node_results(timestep, [contingency.unique_id], monitored_buses)
-        va_diff_results = get_failed_va_diff_results(timestep, monitored_elements, contingency)
+    branch_results_df, node_results_df, va_diff_results = get_element_results_df(
+        net, contingency, monitored_elements, timestep, status
+    )
 
-    for i, element in enumerate(outaged_elements):
-        if were_in_service[i]:
-            net[element.table].loc[int(element.table_id), "in_service"] = True
+    restore_elements_to_service(net, outaged_elements, were_in_service)
 
     element_name_map = monitored_elements["name"].to_dict()
     for df in [branch_results_df, node_results_df, regulating_elements_df, va_diff_results]:
@@ -128,11 +123,103 @@ def run_single_outage(
     return lf_result
 
 
+def restore_elements_to_service(
+    net: pp.pandapowerNet, outaged_elements: list[PandapowerElements], were_in_service: list[bool]
+) -> None:
+    """Restore the outaged elements to their original in_service status.
+
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network to restore the elements in
+    outaged_elements : list[PandapowerElements]
+        The elements that were outaged
+    were_in_service : list[bool]
+        A list indicating whether each element was in service before being set out of service
+    """
+    for i, element in enumerate(outaged_elements):
+        if were_in_service[i]:
+            net[element.table].loc[int(element.table_id), "in_service"] = True
+
+
+def get_element_results_df(
+    net: pp.pandapowerNet,
+    contingency: PandapowerContingency,
+    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
+    timestep: int,
+    status: ConvergenceStatus,
+) -> tuple[pat.DataFrame[BranchResultSchema], pat.DataFrame[NodeResultSchema], pat.DataFrame[VADiffResultSchema]]:
+    """Get the element results dataframes for the given contingency and monitored elements.
+
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network to get the results from
+    contingency : PandapowerContingency
+        The contingency to get the results for
+    monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
+        The monitored elements to get the results for
+    timestep : int
+        The timestep of the results
+    status : ConvergenceStatus
+        The convergence status of the loadflow computation
+
+    Returns
+    -------
+    tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
+        The branch results dataframe, node results dataframe and va diff results dataframe
+    """
+    if status == ConvergenceStatus.CONVERGED:
+        branch_results_df = get_branch_results(net, contingency, monitored_elements, timestep)
+        node_results_df = get_node_result_df(net, contingency, monitored_elements, timestep)
+        va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
+    else:
+        monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()
+        monitored_branches = monitored_elements.query("kind == 'branch' & table != 'trafo3w'").index.to_list()
+        monitored_buses = monitored_elements.query("kind == 'bus'").index.to_list()
+        branch_results_df = get_failed_branch_results(
+            timestep, [contingency.unique_id], monitored_branches, monitored_trafo3w
+        )
+        node_results_df = get_failed_node_results(timestep, [contingency.unique_id], monitored_buses)
+        va_diff_results = get_failed_va_diff_results(timestep, monitored_elements, contingency)
+    return branch_results_df, node_results_df, va_diff_results
+
+
+def set_outaged_elements_out_of_service(net: pp.pandapowerNet, outaged_elements: list[PandapowerElements]) -> list[bool]:
+    """Set the outaged elements in the network to out of service.
+
+    Returns info if the elements were in service before being set out of service.
+
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network to set the elements out of service in
+    outaged_elements : list[PandapowerElements]
+        The elements to set out of service
+
+    Returns
+    -------
+    list[bool]
+        A list indicating whether each element was in service before being set out of service
+    """
+    were_in_service = []
+    if len(outaged_elements) == 0:
+        # This is the base case. Append a dummy True so it does not raise due to no elements being outaged
+        were_in_service.append(True)
+    else:
+        for element in outaged_elements:
+            was_in_service = net[element.table].loc[element.table_id, "in_service"]
+            were_in_service.append(bool(was_in_service))
+            net[element.table].loc[element.table_id, "in_service"] = False
+    return were_in_service
+
+
 def run_contingency_analysis_sequential(
     net: pp.pandapowerNet,
     n_minus_1_definition: PandapowerNMinus1Definition,
     job_id: str,
     timestep: int,
+    slack_allocation_config: SlackAllocationConfig,
     method: Literal["ac", "dc"] = "dc",
     runpp_kwargs: Optional[dict] = None,
 ) -> list[LoadflowResults]:
@@ -148,6 +235,8 @@ def run_contingency_analysis_sequential(
         The job id of the current job
     timestep : int
         The timestep of the results
+    slack_allocation_config : SlackAllocationConfig
+        Precomputed configuration for slack allocation per island.
     method : Literal["ac", "dc"], optional
         The method to use for the loadflow, by default "dc"
     runpp_kwargs : Optional[dict], optional
@@ -158,9 +247,21 @@ def run_contingency_analysis_sequential(
     list[LoadflowResults]
         A list of the results per contingency
     """
-    results = [
-        run_single_outage(
-            net=deepcopy(net),
+    results = []
+
+    for contingency in n_minus_1_definition.contingencies:
+        copy_net = deepcopy(net)
+        elements_ids = [element.unique_id for element in contingency.elements]
+        removed_edges = assign_slack_per_island(
+            net=copy_net,
+            net_graph=slack_allocation_config.net_graph,
+            bus_lookup=slack_allocation_config.bus_lookup,
+            elements_ids=elements_ids,
+            min_island_size=slack_allocation_config.min_island_size,
+        )
+
+        single_res = run_single_outage(
+            net=copy_net,
             contingency=contingency,
             monitored_elements=n_minus_1_definition.monitored_elements,
             timestep=timestep,
@@ -168,8 +269,9 @@ def run_contingency_analysis_sequential(
             method=method,
             runpp_kwargs=runpp_kwargs,
         )
-        for contingency in n_minus_1_definition.contingencies
-    ]
+
+        results.append(single_res)
+        slack_allocation_config.net_graph.add_edges_from(removed_edges)
 
     return results
 
@@ -179,6 +281,7 @@ def run_contingency_analysis_parallel(
     n_minus_1_definition: PandapowerNMinus1Definition,
     job_id: str,
     timestep: int,
+    slack_allocation_config: SlackAllocationConfig,
     method: Literal["ac", "dc"] = "dc",
     n_processes: int = 1,
     batch_size: Optional[int] = None,
@@ -198,6 +301,8 @@ def run_contingency_analysis_parallel(
         The job id of the current job
     timestep : int
         The timestep of the results
+    slack_allocation_config : SlackAllocationConfig
+        Precomputed configuration for slack allocation per island.
     method : Literal["ac", "dc"], optional
         The method to use for the loadflow, by default "dc"
     n_processes : int, optional
@@ -231,6 +336,7 @@ def run_contingency_analysis_parallel(
                 n_minus_1_definition=batch,
                 job_id=job_id,
                 timestep=timestep,
+                slack_allocation_config=slack_allocation_config,
                 method=method,
                 runpp_kwargs=runpp_kwargs,
             )
@@ -253,6 +359,7 @@ def run_contingency_analysis_pandapower(
     n_minus_1_definition: Nminus1Definition,
     job_id: str,
     timestep: int,
+    min_island_size: int = 11,
     method: Literal["ac", "dc"] = "ac",
     n_processes: int = 1,
     batch_size: Optional[int] = None,
@@ -271,6 +378,8 @@ def run_contingency_analysis_pandapower(
         The job id of the current job
     timestep : int
         The timestep of the results
+    min_island_size: int
+        The minimum island size to consider
     method : Literal["ac", "dc"], optional
         The method to use for the loadflow, by default "ac"
     n_processes : int, optional
@@ -292,6 +401,13 @@ def run_contingency_analysis_pandapower(
         The results of the loadflow computation
     """
     pp_n1_definition = translate_nminus1_for_pandapower(n_minus_1_definition, net)
+    net_graph = top.create_nxgraph(net)
+    bus_lookup, _ = create_bus_lookup_simple(net)
+    slack_allocation_config = SlackAllocationConfig(
+        net_graph=net_graph,
+        bus_lookup=bus_lookup,
+        min_island_size=min_island_size,
+    )
 
     if n_processes == 1 and batch_size is None:
         results = run_contingency_analysis_sequential(
@@ -299,6 +415,7 @@ def run_contingency_analysis_pandapower(
             n_minus_1_definition=pp_n1_definition,
             job_id=job_id,
             timestep=timestep,
+            slack_allocation_config=slack_allocation_config,
             method=method,
             runpp_kwargs=runpp_kwargs,
         )
@@ -308,6 +425,7 @@ def run_contingency_analysis_pandapower(
             n_minus_1_definition=pp_n1_definition,
             job_id=job_id,
             timestep=timestep,
+            slack_allocation_config=slack_allocation_config,
             method=method,
             n_processes=n_processes,
             batch_size=batch_size,

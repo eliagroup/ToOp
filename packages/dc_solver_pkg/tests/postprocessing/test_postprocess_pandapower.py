@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -7,6 +14,7 @@ import numpy as np
 import pandapower as pp
 import pytest
 import ray
+from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import load_static_information
@@ -50,7 +58,8 @@ from toop_engine_interfaces.stored_action_set import ActionSet
 
 
 def test_apply_topology_unsplit(data_folder: str) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     net = backend.net
     pp.rundcpp(net)
     network_data = preprocess(backend)
@@ -102,7 +111,8 @@ def test_apply_disconnections(data_folder: str) -> None:
 
 
 def test_compute_n_1_dc(data_folder: str) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     network_data = preprocess(backend)
     static_information = convert_to_jax(network_data)
 
@@ -202,7 +212,7 @@ def test_compute_n_1_dc(data_folder: str) -> None:
     assert n_1.shape[1] == sum(network_data.monitored_branch_mask)
 
     original_in_service = backend.net._ppc["internal"]["branch_is"]
-    for i, (pp_type, pp_id) in enumerate(zip(outaged_branch_types, outaged_branch_ids)):
+    for i, (pp_type, pp_id) in enumerate(zip(outaged_branch_types, outaged_branch_ids, strict=True)):
         outage_net = deepcopy(backend.net)
         outage_net[pp_type].loc[int(pp_id), "in_service"] = False
         pp.rundcpp(outage_net)
@@ -221,7 +231,9 @@ def test_compute_n_1_dc(data_folder: str) -> None:
     offset = len(outaged_branch_types)
 
     # Test multi outages
-    for i, (pp_type, pp_id) in enumerate(zip(network_data.multi_outage_types, table_ids(network_data.multi_outage_ids))):
+    for i, (pp_type, pp_id) in enumerate(
+        zip(network_data.multi_outage_types, table_ids(network_data.multi_outage_ids), strict=True)
+    ):
         outage_net = deepcopy(backend.net)
         outage_net[pp_type].loc[int(pp_id), "in_service"] = False
         pp.rundcpp(outage_net)
@@ -285,7 +297,8 @@ def test_compute_n_1_dc(data_folder: str) -> None:
 
 
 def test_compute_n_1_ac(data_folder: str) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     backend.net
     network_data = preprocess(backend)
 
@@ -367,6 +380,7 @@ def test_compute_n_1_ac(data_folder: str) -> None:
         assert np.allclose(va_n1[i + offset], monitored_buses_reindexed.va_degree.values, equal_nan=True)
 
 
+@pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(600)
 def test_runner_matches_split_loadflows(preprocessed_data_folder: str) -> None:
     data_path = Path(preprocessed_data_folder)
@@ -427,7 +441,8 @@ def test_runner_matches_split_loadflows(preprocessed_data_folder: str) -> None:
 
 
 def test_compute_cross_coupler_flows(preprocessed_data_folder: str) -> None:
-    backend = PandaPowerBackend(preprocessed_data_folder)
+    filesystem_dir = DirFileSystem(str(preprocessed_data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     net = backend.net
     data_path = Path(preprocessed_data_folder)
     network_data = load_network_data(data_path / PREPROCESSING_PATHS["network_data_file_path"])

@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Initialization of the genetic algorithm for branch and injection choice optimization."""
 
 from functools import partial
@@ -7,13 +14,14 @@ import jax
 import jax.experimental
 import jax.numpy as jnp
 import logbook
+from fsspec import AbstractFileSystem
 from jax_dataclasses import pytree_dataclass, replace
 from jaxtyping import Array, Float, Int
 from qdax.core.emitters.standard_emitters import EmitterState
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.aggregate_results import compute_double_limits
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
-from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.jax.inputs import load_static_information_fs
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import (
     ActionSet,
@@ -100,7 +108,7 @@ def update_max_mw_flows_according_to_double_limits(
         raise ValueError(f"Lower limit {lower_limit} must be smaller than upper limit {upper_limit}")
 
     updated_dynamic_informations = []
-    for dynamic_information, solver_config in zip(dynamic_informations, solver_configs):
+    for dynamic_information, solver_config in zip(dynamic_informations, solver_configs, strict=True):
         solver_config_local = replace(solver_config, batch_size_bsdf=1)
         lf_res, success = compute_symmetric_batch(
             topology_batch=default_topology(solver_config_local),
@@ -265,7 +273,7 @@ def update_static_information(
             dynamic_information=dynamic_information,
         )
         for static_information, solver_config, dynamic_information in zip(
-            static_informations, solver_configs, dynamic_informations
+            static_informations, solver_configs, dynamic_informations, strict=True
         )
     ]
 
@@ -522,6 +530,7 @@ def algo_setup(
     lf_args: LoadflowSolverParameters,
     double_limits: Optional[tuple[float, float]],
     static_information_files: list[str],
+    processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[
     DiscreteMapElites,
     JaxOptimizerData,
@@ -542,6 +551,13 @@ def algo_setup(
         The lower and upper limit for the relative max mw flow if double limits are used
     static_information_files : list[str]
         A list of files with static information to load
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
 
     Returns
     -------
@@ -561,7 +577,9 @@ def algo_setup(
     """
     n_devices = len(jax.devices()) if lf_args.distributed else 1
 
-    static_informations = tuple([load_static_information(f) for f in static_information_files])
+    static_informations = tuple(
+        [load_static_information_fs(filesystem=processed_gridfile_fs, filename=str(f)) for f in static_information_files]
+    )
 
     logger.info(f"Running {n_devices} GPUs with config {ga_args}, {lf_args}")
 
@@ -579,7 +597,7 @@ def algo_setup(
         )
         static_informations = [
             replace(static_information, dynamic_information=dynamic_info)
-            for static_information, dynamic_info in zip(static_informations, dynamic_infos)
+            for static_information, dynamic_info in zip(static_informations, dynamic_infos, strict=True)
         ]
 
     algo, jax_data = initialize_genetic_algorithm(

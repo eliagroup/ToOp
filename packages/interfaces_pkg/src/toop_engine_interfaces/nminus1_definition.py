@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """The N-1 definition holds monitored and outaged elements for a grid.
 
 This information is not present in the grid models and hence needs to be stored separately to run an N-1 computation. The
@@ -10,8 +17,11 @@ order of the outages should be the same as in the jax code, where it's hardcoded
 
 from pathlib import Path
 
-from beartype.typing import Literal, Optional
+from beartype.typing import Literal, Optional, Union
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel, Field
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 
 # The type of the ids used in the N-1 definition. This changes how the elements are identified in the grid.
 # - unique_pandapower:
@@ -103,6 +113,20 @@ class LoadflowParameters(BaseModel):
     distributed_slack: bool = False
     """Whether to distribute the slack across all injections in the grid. Only relevant for powsybl grids."""
 
+    contingency_propagation: bool = False
+    """Whether to enable powsybl's contingency propagation in the N-1 analysis.
+
+    Powsybl:
+    https://powsybl.readthedocs.io/projects/powsybl-open-loadflow/en/latest/security/parameters.html
+    Security Analysis will determine by topological search the switches with type circuit breakers
+    (i.e. capable of opening fault currents) that must be opened to isolate the fault. Depending on the network structure,
+    this could lead to more equipments to be simulated as tripped, because disconnectors and load break switches
+    (i.e., not capable of opening fault currents) are not considered.
+
+    Pandapower:
+    Currently not supported in pandapower.
+    """
+
 
 class Nminus1Definition(BaseModel):
     """An N-1 definition holds monitored and outaged elements for a grid.
@@ -160,6 +184,31 @@ class Nminus1Definition(BaseModel):
         )
 
 
+def load_nminus1_definition_fs(
+    filesystem: AbstractFileSystem,
+    file_path: Union[str, Path],
+) -> Nminus1Definition:
+    """Load an N-1 definition from a file system.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to use to load the N-1 definition.
+    file_path : Union[str, Path]
+        The path to the file containing the N-1 definition in json format.
+
+    Returns
+    -------
+    Nminus1Definition
+        The loaded N-1 definition.
+    """
+    return load_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=file_path,
+        model_class=Nminus1Definition,
+    )
+
+
 def load_nminus1_definition(filename: Path) -> Nminus1Definition:
     """Load an N-1 definition from a json file
 
@@ -173,8 +222,10 @@ def load_nminus1_definition(filename: Path) -> Nminus1Definition:
     Nminus1Definition
         The loaded N-1 definition.
     """
-    with open(filename, "r") as f:
-        return Nminus1Definition.model_validate_json(f.read())
+    return load_nminus1_definition_fs(
+        filesystem=LocalFileSystem(),
+        file_path=filename,
+    )
 
 
 def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definition) -> None:
@@ -187,5 +238,4 @@ def save_nminus1_definition(filename: Path, nminus1_definition: Nminus1Definitio
     nminus1_definition : Nminus1Definition
         The N-1 definition to save.
     """
-    with open(filename, "w") as f:
-        f.write(nminus1_definition.model_dump_json(indent=2))
+    save_pydantic_model_fs(filesystem=LocalFileSystem(), file_path=filename, pydantic_model=nminus1_definition)

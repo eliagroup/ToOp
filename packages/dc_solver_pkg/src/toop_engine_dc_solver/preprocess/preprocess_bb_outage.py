@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Contains functions to enumerate branch and injection outages for unsplit busbar outages in the given network."""
 
 from dataclasses import replace
@@ -66,7 +73,7 @@ def get_total_injection_along_stub_branch(
         total_injection += network_data.nodal_injection[:, node]
 
         # Find all branches connected to this node
-        connected_branches = np.unique(np.where((network_data.from_nodes == node) | (network_data.to_nodes == node))[0])
+        connected_branches = np.unique(np.nonzero((network_data.from_nodes == node) | (network_data.to_nodes == node))[0])
 
         for branch in connected_branches:
             from_node = network_data.from_nodes[branch]
@@ -323,7 +330,7 @@ def extract_busbar_outage_data(
 
     connected_branches_to_outage = []
     connected_assets = get_connected_assets(station, busbar_index)
-    node_indices_to_outage = np.where(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
+    node_indices_to_outage = np.nonzero(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
 
     # Determine the nodal_index of the physical busbar.
     node_index_to_outage = None
@@ -672,7 +679,9 @@ def get_rel_non_rel_sub_bb_maps(
     """
     non_rel_station_busbars_map = {}
     rel_station_busbars_map = {}
-    relevent_node_ids = [node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask) if mask]
+    relevent_node_ids = [
+        node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
+    ]
     for station_id, busbars in outage_station_busbars_map.items():
         if station_id in relevent_node_ids:
             rel_station_busbars_map[station_id] = busbars

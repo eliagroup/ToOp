@@ -1,8 +1,16 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import os
 from pathlib import Path
 
 import numpy as np
 import pandapower as pp
+from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     extract_network_data_from_interface,
@@ -17,7 +25,8 @@ from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
 def test_extract_network_data(data_folder: str) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     network_data = extract_network_data_from_interface(backend)
     assert network_data is not None
 

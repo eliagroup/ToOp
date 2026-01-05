@@ -1,9 +1,17 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 from copy import deepcopy
 from pathlib import Path
 
 import jax.numpy as jnp
 import numpy as np
 import pandapower as pp
+from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from pandapower.pypower.idx_brch import PF
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
@@ -47,7 +55,8 @@ def test_grid_loadflow_uptodate(data_folder: Path) -> None:
 
 
 def test_n_0_results(data_folder: Path, preprocessed_data_folder: Path) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     pp.rundcpp(backend.net)
 
     abs_backend_loadflow = np.abs(backend.net._ppc["internal"]["branch"][backend.get_monitored_branch_mask(), PF].real)
@@ -71,7 +80,8 @@ def test_n_0_results(data_folder: Path, preprocessed_data_folder: Path) -> None:
 
 
 def test_nminus1_results_one_timestep(data_folder: Path, preprocessed_data_folder: Path) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     pp.rundcpp(backend.net)
     network_data = load_network_data(preprocessed_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
     static_information = load_static_information(
@@ -109,7 +119,8 @@ def test_n_0_results_with_disconnection(data_folder: Path) -> None:
             branch_mask[from_branch:to_branch] = False
             return branch_mask
 
-    backend = FakeBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = FakeBackend(filesystem_dir)
     network_data = preprocess(backend)
     static_information = convert_to_jax(network_data)
 
@@ -190,7 +201,8 @@ def test_multi_timestep(data_folder: Path) -> None:
     sgen_p = np.load(chronics_path / "0000" / CHRONICS_FILE_NAMES["sgen_p"])
     dcline_p = np.load(chronics_path / "0000" / CHRONICS_FILE_NAMES["dcline_p"])
 
-    backend = PandaPowerBackend(data_folder, chronics_id=0, chronics_slice=slice(0, 3))
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir, chronics_id=0, chronics_slice=slice(0, 3))
     network_data = preprocess(backend)
     static_information = convert_to_jax(network_data)
 
@@ -230,7 +242,8 @@ def test_multi_timestep(data_folder: Path) -> None:
 
 
 def test_extract_loadflow_results(data_folder: Path) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     network_data = preprocess(backend)
     net = backend.net
     pp.rundcpp(net)

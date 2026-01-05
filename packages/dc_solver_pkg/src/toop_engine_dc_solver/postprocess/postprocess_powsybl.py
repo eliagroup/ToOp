@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Postprocessing for powsybl based networks.
 
 Provides postprocessing routines for powsybl based networks, including routines for reassigning
@@ -11,6 +18,8 @@ from pathlib import Path
 import numpy as np
 import pypowsybl
 from beartype.typing import Literal, Optional
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float
 from overrides import overrides
 from pypowsybl.network import Network
@@ -30,6 +39,7 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     extract_single_branch_loadflow_result,
     extract_single_injection_loadflow_result,
+    load_powsybl_from_fs,
 )
 from toop_engine_interfaces.asset_topology_helpers import electrical_components
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -226,6 +236,19 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self.last_action_info: Optional[AdditionalActionInfo] = None
 
     @overrides
+    def load_base_grid_fs(self, filesystem: AbstractFileSystem, grid_path: Path) -> None:
+        """Load the base grid into the loadflow runner, loading from a file system.
+
+        Parameters
+        ----------
+        filesystem : AbstractFileSystem
+            The file system to use to load the grid.
+        grid_path : Path
+            The path to the grid file
+        """
+        self.replace_grid(load_powsybl_from_fs(filesystem=filesystem, file_path=grid_path))
+
+    @overrides
     def load_base_grid(self, grid_path: Path) -> None:
         """Load the base grid into the loadflow runner.
 
@@ -234,7 +257,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         grid_path : Path
             The path to the grid file
         """
-        self.replace_grid(pypowsybl.network.load(grid_path))
+        self.load_base_grid_fs(LocalFileSystem(), grid_path)
 
     def replace_grid(self, net: Network) -> None:
         """Apply a base grid to the runner, if you don't want to load it from a file

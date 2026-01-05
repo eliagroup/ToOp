@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Holds a format for storing the action set for later use in postprocessing.
 
 This is different from the jax-internal action set as defined in jax/types.py where only jax-relevant
@@ -28,8 +35,12 @@ topology into the action set.
 from pathlib import Path
 
 import numpy as np
+from beartype.typing import Union
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel
 from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.nminus1_definition import GridElement
 
 
@@ -89,12 +100,14 @@ class ActionSet(BaseModel):
     stations."""
 
 
-def load_action_set(filename: Path) -> ActionSet:
-    """Load an action set from a file.
+def load_action_set_fs(filesystem: AbstractFileSystem, file_path: Union[str, Path]) -> ActionSet:
+    """Load an action set from a file system.
 
     Parameters
     ----------
-    filename : Path
+    filesystem : AbstractFileSystem
+        The file system to use to load the action set.
+    file_path : Union[str, Path]
         The path to the file containing the action set in json format.
 
     Returns
@@ -102,23 +115,38 @@ def load_action_set(filename: Path) -> ActionSet:
     ActionSet
         The action set loaded from the file.
     """
-    with open(filename, "r") as f:
+    with filesystem.open(str(file_path), "r") as f:
         return ActionSet.model_validate_json(f.read())
 
 
-def save_action_set(filename: Path, action_set: ActionSet) -> None:
+def load_action_set(file_path: Union[str, Path]) -> ActionSet:
+    """Load an action set from a file.
+
+    Parameters
+    ----------
+    file_path : Union[str, Path]
+        The path to the file containing the action set in json format.
+
+    Returns
+    -------
+    ActionSet
+        The action set loaded from the file.
+    """
+    return load_action_set_fs(LocalFileSystem(), file_path)
+
+
+def save_action_set(file_path: Union[str, Path], action_set: ActionSet) -> None:
     """Save an action set to a file.
 
     Parameters
     ----------
-    filename : Path
+    file_path : Union[str, Path]
         The path to the file to save the action set to in json format.
     action_set : ActionSet
         The action set to save.
 
     """
-    with open(filename, "w") as f:
-        f.write(action_set.model_dump_json())
+    save_pydantic_model_fs(filesystem=LocalFileSystem(), file_path=file_path, pydantic_model=action_set)
 
 
 def random_actions(action_set: ActionSet, rng: np.random.Generator, n_split_subs: int) -> list[int]:

@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 from multiprocessing import Process, set_start_method
 from pathlib import Path
 
@@ -23,6 +30,10 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
     LoadflowStartedResult,
     LoadflowSuccessResult,
 )
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
+
+# Ensure that tests using Kafka are not run in parallel with each other
+pytestmark = pytest.mark.xdist_group("kafka")
 
 
 @pytest.mark.timeout(30)
@@ -40,7 +51,7 @@ def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> N
             "log_level": 2,
         }
     )
-    producer.produce(kafka_command_topic, value=data.encode())
+    producer.produce(kafka_command_topic, value=serialize_message(data))
     producer.flush()
 
     consumer = Consumer(
@@ -52,11 +63,10 @@ def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> N
         }
     )
     consumer.subscribe([kafka_command_topic])
-    message = consumer.poll(timeout=10)
-    assert message is not None
-    assert message.value().decode() == data
-
-    data_decoded = LoadflowServiceCommand.model_validate_json(message.value().decode())
+    recd_message = consumer.poll(timeout=10)
+    assert recd_message is not None
+    assert deserialize_message(recd_message.value()) == data
+    data_decoded = LoadflowServiceCommand.model_validate_json(deserialize_message(recd_message.value()))
     assert data_decoded.command.loadflow_id == "test"
     consumer.close()
 
@@ -78,7 +88,7 @@ def test_idle_loop(
             loadflow_id="test", method="ac", grid_data=PowsyblGrid(grid_files=["grid.xiidm"]), jobs=[Job(id="test_job")]
         )
     )
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     consumer = LongRunningKafkaConsumer(
@@ -93,7 +103,7 @@ def test_idle_loop(
     consumer.commit()
 
     command = LoadflowServiceCommand(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
 
     with pytest.raises(SystemExit):
         idle_loop(consumer, lambda: None, 100)
@@ -110,7 +120,7 @@ def test_main_simple(
         }
     )
     command = LoadflowServiceCommand(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     with pytest.raises(SystemExit):
@@ -152,12 +162,12 @@ def test_main(
             jobs=[Job(id="test_job")],
         )
     )
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     # Shutdown the worker after successful preprocessing
     command = LoadflowServiceCommand(command=ShutdownCommand())
-    producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+    producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
 
     with pytest.raises(SystemExit):
@@ -186,12 +196,12 @@ def test_main(
     message = consumer.poll(timeout=10)
     assert message is not None
 
-    result = LoadflowBaseResult.model_validate_json(message.value().decode())
+    result = LoadflowBaseResult.model_validate_json(deserialize_message(message.value()))
     assert isinstance(result.result, LoadflowStartedResult)
 
     message = consumer.poll(timeout=1)
     assert message is not None
-    result = LoadflowBaseResult.model_validate_json(message.value().decode())
+    result = LoadflowBaseResult.model_validate_json(deserialize_message(message.value()))
     assert isinstance(result.result, LoadflowSuccessResult)
     assert isinstance(result.result.loadflow_reference.relative_path, str)
 
@@ -242,7 +252,7 @@ def test_main_idle(
         consumer.subscribe([kafka_heartbeat_topic])
         message = consumer.poll(timeout=60)
         assert message is not None
-        heartbeat = LoadflowHeartbeat.model_validate_json(message.value().decode())
+        heartbeat = LoadflowHeartbeat.model_validate_json(deserialize_message(message.value()))
         assert heartbeat.idle
         assert heartbeat.status_info is None
 
@@ -254,7 +264,7 @@ def test_main_idle(
             }
         )
         command = LoadflowServiceCommand(command=ShutdownCommand())
-        producer.produce(kafka_command_topic, value=command.model_dump_json().encode())
+        producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
         producer.flush()
         consumer.close()
         p.join(timeout=10)

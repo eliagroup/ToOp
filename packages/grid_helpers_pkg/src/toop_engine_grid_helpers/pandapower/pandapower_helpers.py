@@ -1,13 +1,26 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Holds functions that help with all sorts of pandapower conversions, that are not specific to a single task."""
 
+import tempfile
 from numbers import Integral
+from pathlib import Path
 
 import numpy as np
 import pandapower as pp
 import pandapower.toolbox
 import pandas as pd
 from beartype.typing import Iterable, Literal, Optional, Sequence
+from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Integer
+from pandapower.converter import from_mpc, to_mpc
+from pandapower.converter.cim.cim2pp.from_cim import from_cim
+from pandapower.converter.ucte.from_ucte import from_ucte
 from pandapower.pypower.idx_brch import SHIFT
 from pandapower.toolbox import get_connected_buses
 
@@ -79,7 +92,9 @@ def get_phaseshift_mask(
     tap_max = np.array(net.trafo.tap_max)[controllable]
     tap_step = np.array(net.trafo.tap_step_degree)[controllable]
 
-    shift_taps = [np.arange(t_min, t_max + 1) * t_step for (t_min, t_max, t_step) in zip(tap_min, tap_max, tap_step)]
+    shift_taps = [
+        np.arange(t_min, t_max + 1) * t_step for (t_min, t_max, t_step) in zip(tap_min, tap_max, tap_step, strict=True)
+    ]
 
     ppci_start, ppci_end = net._pd2ppc_lookups["branch"]["trafo"]
     pst_indices = np.arange(ppci_start, ppci_end)[controllable]
@@ -433,7 +448,7 @@ def get_pandapower_loadflow_results_injection(
         sign = pandapower.toolbox.signing_system_value(table)
         return net[res_table].loc[elem_id, power_key] * sign
 
-    injection_power = np.array([get_from_net(t, i) for t, i in zip(types, ids)])
+    injection_power = np.array([get_from_net(t, i) for t, i in zip(types, ids, strict=True)])
     return injection_power
 
 
@@ -482,7 +497,9 @@ def get_pandapower_branch_loadflow_results_sequence(
     mapped_signs = (sign_mapper[t] for t in types) if adjust_signs else (1 for _ in types)
 
     # It might be more performant to group this in the future, i.e. to get all results at once
-    branch_loads = np.array([net[t][c].loc[i] * s for t, c, i, s in zip(mapped_types, mapped_columns, ids, mapped_signs)])
+    branch_loads = np.array(
+        [net[t][c].loc[i] * s for t, c, i, s in zip(mapped_types, mapped_columns, ids, mapped_signs, strict=True)]
+    )
 
     # Currents are saved in kA, we want A
     if measurement == "current":
@@ -563,7 +580,9 @@ def check_for_splits(
     mapped_types = (type_mapper[t] for t in monitored_branch_types)
     mapped_columns = (isnan_column_mapper[t] for t in monitored_branch_types)
 
-    isnan = any(np.isnan(net[t][c].loc[i]) for t, c, i in zip(mapped_types, mapped_columns, monitored_branch_ids))
+    isnan = any(
+        np.isnan(net[t][c].loc[i]) for t, c, i in zip(mapped_types, mapped_columns, monitored_branch_ids, strict=True)
+    )
     return isnan
 
 
@@ -691,3 +710,83 @@ def get_remotely_connected_buses(
                 f"Max number of iterations ({max_num_iterations}) reached while searching for remotely connected buses."
             )
     return {int(node_id) for node_id in working_set}
+
+
+def load_pandapower_from_fs(filesystem: AbstractFileSystem, file_path: Path) -> pandapower.pandapowerNet:
+    """Load any pandapower network from a filesystem.
+
+    Supported formats are pandapower native (.json), Matpower (.mat), CGMES (.zip) and UCTE (.uct).
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The filesystem to load the pandapower network from.
+    file_path : Path
+        The path to the pandapower network file.
+
+    Returns
+    -------
+    pandapower.pandapowerNet
+        The loaded pandapower network.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        tmp_grid_path_str = str(tmp_grid_path)
+        filesystem.download(
+            str(file_path),
+            tmp_grid_path_str,
+        )
+
+        if file_path.suffix == ".json":
+            net = pandapower.from_json(tmp_grid_path_str)
+        elif file_path.suffix == ".mat":
+            net = from_mpc(tmp_grid_path_str)
+        elif file_path.suffix == ".zip":
+            net = from_cim(tmp_grid_path_str)
+        elif file_path.suffix == ".uct":
+            net = from_ucte(tmp_grid_path_str)
+        else:
+            raise ValueError(f"Unsupported file format for pandapower network: {file_path}")
+
+    return net
+
+
+def save_pandapower_to_fs(
+    net: pandapower.pandapowerNet,
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    format: Optional[Literal["JSON", "MATPOWER"]] = "JSON",
+    make_dir: bool = True,
+) -> None:
+    """Save pandapower network to a filesystem in pandapower native format (.json) or Matpower (.mat).
+
+    Parameters
+    ----------
+    net : pandapower.pandapowerNet
+        The pandapower network to save.
+    filesystem : AbstractFileSystem
+        The filesystem to save the pandapower network to.
+    file_path : Path
+        The path to save the pandapower network file to.
+    format : Optional[Literal["JSON", "MATPOWER"]]
+        The format to save the pandapower network in. Can be "JSON" or "MATPOWER". Defaults to "JSON".
+    make_dir: bool
+        create parent folder if not exists.
+    """
+    if make_dir:
+        filesystem.makedirs(Path(file_path).parent.as_posix(), exist_ok=True)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        tmp_grid_path_str = str(tmp_grid_path)
+
+        if format == "JSON":
+            pandapower.to_json(net, tmp_grid_path_str)
+        elif format == "MATPOWER":
+            to_mpc(net, tmp_grid_path_str)
+        else:
+            raise ValueError(f"Unsupported file format for saving pandapower network: {format}")
+
+        filesystem.upload(
+            tmp_grid_path_str,
+            str(file_path),
+        )

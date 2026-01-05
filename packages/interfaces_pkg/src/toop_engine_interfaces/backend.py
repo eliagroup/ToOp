@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """The abstract interface definition for accessing data from pandapower/powerfactory/..."""
 
 from abc import ABC, abstractmethod
@@ -187,6 +194,20 @@ class BackendInterface(ABC):
         Int[np.ndarray, " n_branch"]
             The to nodes of the branches
         """
+
+    def get_controllable_pst_node_mask(self) -> Bool[np.ndarray, " n_node"]:
+        """Get the mask of controllable phase shifters over nodes
+
+        True means a node is (bogus node and) a controllable phase shifter, i.e. is connected to a branch
+        that is a controllable phase shifter. False means it normal node.
+
+        Returns
+        -------
+        Bool[np.ndarray, " n_node"]
+            The mask of controllable phase shifters over nodes
+        """
+        # TODO: Implement in backends
+        return np.zeros([], dtype=bool)
 
     @abstractmethod
     def get_shift_angles(self) -> Float[np.ndarray, " n_timestep n_branch"]:

@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import tempfile
 from pathlib import Path
 
@@ -6,6 +13,7 @@ import numpy as np
 import pandapower as pp
 import pypowsybl
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from tests.numpy_reference import calc_bsdf as calc_bsdf_numpy
 from toop_engine_dc_solver.example_grids import (
     PandapowerCounters,
@@ -19,11 +27,11 @@ from toop_engine_dc_solver.example_grids import (
     case300_powsybl,
     case9241_pandapower,
     case9241_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
+    create_ucte_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
     random_topology_info_backend,
-    texas_grid_pandapower,
-    texas_grid_powsybl,
 )
 from toop_engine_dc_solver.jax.bsdf import _apply_bus_split, calc_bsdf, init_bsdf_results
 from toop_engine_dc_solver.jax.inputs import validate_static_information
@@ -44,7 +52,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import Prepr
 
 
 def test_random_topology_info(data_folder: Path) -> None:
-    backend = PandaPowerBackend(data_folder)
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
     pp_counters = PandapowerCounters(
         highest_bus_id=int(backend.net.bus.index.max()),
         highest_switch_id=int(backend.net.switch.index.max()),
@@ -58,9 +67,8 @@ def test_oberrhein_data() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         oberrhein_data(tmp)
-
-        pp_backend = PandaPowerBackend(tmp)
-
+        filesystem_dir = DirFileSystem(str(tmp))
+        pp_backend = PandaPowerBackend(filesystem_dir)
         network_data = preprocess(pp_backend)
         assert len(network_data.branches_at_nodes) > 0
 
@@ -73,8 +81,10 @@ def test_case57_match():
             case57_data_powsybl(Path(powsybl_folder))
             case57_data_pandapower(Path(pp_folder))
 
-            pp_backend = PandaPowerBackend(Path(pp_folder))
-            powsybl_backend = PowsyblBackend(Path(powsybl_folder), distributed_slack=False)
+            filesystem_dir_pp = DirFileSystem(str(pp_folder))
+            filesystem_dir_powsybl = DirFileSystem(str(powsybl_folder))
+            pp_backend = PandaPowerBackend(filesystem_dir_pp)
+            powsybl_backend = PowsyblBackend(filesystem_dir_powsybl, distributed_slack=False)
 
             assert np.allclose(
                 pp_backend.net.res_bus["va_degree"].values,
@@ -88,8 +98,10 @@ def test_case57_backends_match():
             case57_data_powsybl(Path(powsybl_folder))
             case57_data_pandapower(Path(pp_folder))
 
-            pp_backend = PandaPowerBackend(Path(pp_folder))
-            powsybl_backend = PowsyblBackend(Path(powsybl_folder), distributed_slack=False)
+            filesystem_dir_pp = DirFileSystem(str(pp_folder))
+            filesystem_dir_powsybl = DirFileSystem(str(powsybl_folder))
+            pp_backend = PandaPowerBackend(filesystem_dir_pp)
+            powsybl_backend = PowsyblBackend(filesystem_dir_powsybl, distributed_slack=False)
 
             assert len(pp_backend.get_susceptances()) == len(powsybl_backend.get_susceptances())
             assert np.allclose(pp_backend.get_susceptances(), powsybl_backend.get_susceptances())
@@ -245,40 +257,10 @@ def test_case57_non_converging():
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         case57_non_converging(tmp)
-
-        pp_backend = PandaPowerBackend(tmp)
+        filesystem_dir_pp = DirFileSystem(str(tmp))
+        pp_backend = PandaPowerBackend(filesystem_dir_pp)
 
         assert np.all(pp_backend.get_ac_dc_mismatch() == 0)
-
-
-def test_texas_grid() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        texas_grid_pandapower(tmp)
-
-        pp_backend = PandaPowerBackend(tmp)
-
-        assert len(pp_backend.net.bus) == 2000
-
-        network_data = preprocess(pp_backend)
-        static_information = convert_to_jax(network_data)
-
-        assert static_information.n_sub_relevant > 0
-
-
-def test_texas_grid_powsybl() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        texas_grid_powsybl(tmp)
-
-        powsybl_backend = PowsyblBackend(tmp)
-
-        assert len(powsybl_backend.net.get_buses()) == 2000
-
-        network_data = preprocess(powsybl_backend)
-        static_information = convert_to_jax(network_data)
-
-        assert static_information.n_sub_relevant > 0
 
 
 def test_case300() -> None:
@@ -286,7 +268,8 @@ def test_case300() -> None:
         tmp = Path(tmp)
         case300_pandapower(tmp)
 
-        pp_backend = PandaPowerBackend(tmp)
+        filesystem_dir_powsybl = DirFileSystem(str(tmp))
+        pp_backend = PandaPowerBackend(filesystem_dir_powsybl)
 
         assert len(pp_backend.net.bus) == 300
 
@@ -301,7 +284,8 @@ def test_case300_powsybl() -> None:
         tmp = Path(tmp)
         case300_powsybl(tmp)
 
-        powsybl_backend = PowsyblBackend(tmp)
+        filesystem_dir_powsybl = DirFileSystem(str(tmp))
+        powsybl_backend = PowsyblBackend(filesystem_dir_powsybl)
 
         assert len(powsybl_backend.net.get_buses()) == 300
 
@@ -311,6 +295,7 @@ def test_case300_powsybl() -> None:
         assert static_information.n_sub_relevant > 0
 
 
+@pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(300)
 def test_case9241_pp() -> None:
     with tempfile.TemporaryDirectory() as folder:
@@ -364,7 +349,8 @@ def test_case9241_pp() -> None:
         )
         assert relevant_subs.sum() == 400
 
-        backend = PandaPowerBackend(folder)
+        filesystem_dir_pp = DirFileSystem(str(folder))
+        backend = PandaPowerBackend(filesystem_dir_pp)
         assert sum(backend.get_controllable_phase_shift_mask())
 
 
@@ -373,8 +359,9 @@ def test_case9241_pp_load_grid() -> None:
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
         case9241_pandapower(folder)
+        filesystem_dir = DirFileSystem(str(folder))
         stats, static_information, network_data = load_grid(
-            folder,
+            filesystem_dir,
             chronics_id=0,
             timesteps=slice(0, 1),
             pandapower=True,
@@ -392,12 +379,14 @@ def test_case9241_pp_load_grid() -> None:
         validate_static_information(static_information)
 
 
+@pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(300)
 def test_case9241_powsybl() -> None:
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
         case9241_powsybl(folder)
-        backend = PowsyblBackend(folder)
+        filesystem_dir = DirFileSystem(str(folder))
+        backend = PowsyblBackend(filesystem_dir)
         assert len(backend.net.get_buses()) == 9241
         assert sum(backend.get_relevant_node_mask()) == 400
         assert np.isfinite(backend.get_susceptances()).all()
@@ -410,9 +399,10 @@ def test_case9241_powsybl_load_grid() -> None:
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
         case9241_powsybl(folder)
+        filesystem_dir = DirFileSystem(str(folder))
         clip_to_n_actions = 2**3
         stats, static_information, network_data = load_grid(
-            folder,
+            filesystem_dir,
             chronics_id=0,
             timesteps=slice(0, 1),
             pandapower=False,
@@ -449,7 +439,8 @@ def test_case14_pandapower() -> None:
         tmp_dir = Path(tmp_dir)
         case14_pandapower(tmp_dir)
 
-        pp_backend = PandaPowerBackend(tmp_dir)
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        pp_backend = PandaPowerBackend(filesystem_dir)
         assert sum(pp_backend.get_relevant_node_mask()) == 5
         assert len(pp_backend.get_relevant_node_mask()) == 14
         assert sum(pp_backend.get_monitored_branch_mask()) == 20
@@ -461,7 +452,8 @@ def test_case30_with_psts() -> None:
         tmp_dir = Path(tmp_dir)
         case30_with_psts(tmp_dir)
 
-        pp_backend = PandaPowerBackend(tmp_dir)
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        pp_backend = PandaPowerBackend(filesystem_dir)
         assert pp_backend.get_phase_shift_mask().sum() == 4
         assert pp_backend.get_controllable_phase_shift_mask().sum() == 3
 
@@ -471,7 +463,8 @@ def test_case30_with_psts_powsybl() -> None:
         tmp_dir = Path(tmp_dir)
         case30_with_psts_powsybl(tmp_dir)
 
-        powsybl_backend = PowsyblBackend(tmp_dir)
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        powsybl_backend = PowsyblBackend(filesystem_dir)
         assert powsybl_backend.get_phase_shift_mask().sum() == 2
         assert powsybl_backend.get_controllable_phase_shift_mask().sum() == 2
 
@@ -481,7 +474,8 @@ def test_case14_with_matching_asset_topo() -> None:
         tmp_dir = Path(tmp_dir)
         case14_matching_asset_topo_powsybl(tmp_dir)
 
-        backend = PowsyblBackend(tmp_dir)
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        backend = PowsyblBackend(filesystem_dir)
         preprocess(backend, parameters=PreprocessParameters())
 
         # Check the asset topology
@@ -500,7 +494,32 @@ def test_node_breaker_folder_powsybl() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir = Path(tmp_dir)
         node_breaker_folder_powsybl(tmp_dir)
-        backend = PowsyblBackend(tmp_dir)
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        backend = PowsyblBackend(filesystem_dir)
+        assert sum(backend.get_relevant_node_mask())
+        network_data = preprocess(backend)
+        assert sum(network_data.relevant_node_mask) > 0
+        assert len(network_data.branch_action_set)
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir)
+        create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_dir)
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        backend = PowsyblBackend(filesystem_dir)
+        assert sum(backend.get_relevant_node_mask())
+        network_data = preprocess(backend)
+        assert sum(network_data.relevant_node_mask) > 0
+        assert len(network_data.branch_action_set)
+
+
+def test_create_ucte_data_folder(ucte_file) -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir)
+        create_ucte_data_folder(tmp_dir, ucte_file=ucte_file)
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        backend = PowsyblBackend(filesystem_dir)
         assert sum(backend.get_relevant_node_mask())
         network_data = preprocess(backend)
         assert sum(network_data.relevant_node_mask) > 0

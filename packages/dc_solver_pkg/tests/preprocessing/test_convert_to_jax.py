@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import os
 import shutil
 from dataclasses import replace
@@ -7,6 +14,7 @@ from tempfile import TemporaryDirectory
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.example_grids import case30_with_psts, case30_with_psts_powsybl
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import (
@@ -148,8 +156,9 @@ def test_load_grid(data_folder: Path) -> None:
     with TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
         shutil.copytree(data_folder, temp_dir, dirs_exist_ok=True)
+        filesystem_dir = DirFileSystem(str(temp_dir))
         stats, static_information, network_data = load_grid(
-            data_folder=temp_dir,
+            data_folder_dirfs=filesystem_dir,
             chronics_id=0,
             timesteps=slice(0, 1),
             pandapower=True,
@@ -167,7 +176,8 @@ def test_load_grid(data_folder: Path) -> None:
 def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
     folder = tmp_path_factory.mktemp("case30")
     case30_with_psts(folder)
-    _, static_information, _ = load_grid(data_folder=folder, pandapower=True)
+    filesystem_dir = DirFileSystem(str(folder))
+    _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=True)
     validate_static_information(static_information)
     assert static_information.dynamic_information.shift_degree_max.shape == (3,)
 
@@ -186,7 +196,8 @@ def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
 def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> None:
     folder = tmp_path_factory.mktemp("case30")
     case30_with_psts_powsybl(folder)
-    _, static_information, _ = load_grid(data_folder=folder, pandapower=False)
+    filesystem_dir = DirFileSystem(str(folder))
+    _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=False)
     validate_static_information(static_information)
     assert static_information.dynamic_information.shift_degree_max.shape == (2,)
 

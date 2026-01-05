@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import numpy as np
 import pandas as pd
 import pypowsybl
@@ -662,7 +669,7 @@ def test_get_convergence_df():
         timestep=timestep,
     )
 
-    assert len(failed_outages) > 0, "In the test case there should be some failed outages"
+    assert len(failed_outages) == 0, "In the test case all should converge"
     assert len(convergence_df) == len(outages) + 1, (
         "The convergence dataframe should have one row for each outage and one for the base case"
     )

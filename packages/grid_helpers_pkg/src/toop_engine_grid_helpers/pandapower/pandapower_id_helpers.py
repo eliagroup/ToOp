@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Functions to handle pandapower ids
 
 Pandapower indices are usually not globally unique, so we provide some helper functions to make
@@ -56,12 +63,12 @@ def parse_globally_unique_id(globally_unique_id: str) -> tuple[int, str]:
     return int(elem_id), elem_type
 
 
-def get_globally_unique_id_from_index(element_idx: pd.Index, element_type: str) -> pd.Index:
+def get_globally_unique_id_from_index(element_idx: pd.Index | pd.Series, element_type: str) -> pd.Index | pd.Series:
     """Parse a series of globally unique ids into a dataframe
 
     Parameters
     ----------
-    element_idx : pd.Index
+    element_idx : pd.Index | pd.Series
         The index of the element table
     element_type : str
         The type of the element table (e.g. "bus", "line", etc.)

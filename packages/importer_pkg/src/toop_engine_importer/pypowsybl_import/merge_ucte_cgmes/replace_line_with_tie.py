@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Logic to replace a dangling node with tie lines."""
 
 import numpy as np
@@ -326,37 +333,79 @@ def get_dangling_lines_creation_schema(
     new_dangling_df["q0"] = 0.0
     new_dangling_df["connected"] = True
 
-    for index, row in new_dangling_df.iterrows():
-        # get only lines
-        if row["type"] != "LINE":
-            continue
+    for index, row in new_dangling_df.query("type=='LINE'").iterrows():
         # define dangling information depending on the voltage level side
-        if row["voltage_level1_id"] == dangling_voltage_level:
-            new_dangling_df.loc[index, "voltage_level_id"] = row["voltage_level2_id"]
-            new_dangling_df.loc[index, "bus_id"] = row["bus_breaker_bus2_id"]
-            if row["pairing_key"] == "":
-                new_dangling_df.loc[index, "pairing_key"] = "X" + row["bus_breaker_bus1_id"][1:]
-        else:
-            new_dangling_df.loc[index, "voltage_level_id"] = row["voltage_level1_id"]
-            new_dangling_df.loc[index, "bus_id"] = row["bus_breaker_bus1_id"]
-            if row["pairing_key"] == "":
-                new_dangling_df.loc[index, "pairing_key"] = "X" + row["bus_breaker_bus2_id"][1:]
+        new_dangling_df = add_voltage_level_infos(dangling_voltage_level, new_dangling_df, index, row)
         new_dangling_df.loc[index, "b"] = row["b1"] + row["b2"]
         new_dangling_df.loc[index, "g"] = row["g1"] + row["g2"]
         # double check if connected is consistent
-        if row["connected1"] and row["connected2"]:
-            new_dangling_df.loc[index, "connected"] = True
-        elif not row["connected1"] and not row["connected2"]:
-            new_dangling_df.loc[index, "connected"] = False
-        else:
-            raise ValueError(
-                f"Connected at {index} is not consistent. connected1: "
-                f"{row['connected1']} and connected2: {row['connected2']}"
-                "This is likely a data quality issue."
-            )
-
+        new_dangling_df = set_and_validate_connection_status(new_dangling_df, index, row)
     dangling_columns = ["name", "pairing_key", "bus_id", "voltage_level_id", "r", "x", "g", "b", "p0", "q0", "connected"]
     new_dangling_df = new_dangling_df[dangling_columns]
+    return new_dangling_df
+
+
+def set_and_validate_connection_status(new_dangling_df: pd.DataFrame, index: int, row: pd.Series) -> pd.DataFrame:
+    """Validate that the connection status of the dangling line is consistent.
+
+    Parameters
+    ----------
+    new_dangling_df : pd.DataFrame
+        The dataframe with the dangling lines to modify.
+    index : int
+        The index of the row to modify.
+    row : pd.Series
+        The row to extract the info from.
+
+    Returns
+    -------
+    new_dangling_df : pd.DataFrame
+        The modified dataframe with the connection status validated.
+    """
+    if row["connected1"] and row["connected2"]:
+        new_dangling_df.loc[index, "connected"] = True
+    elif not row["connected1"] and not row["connected2"]:
+        new_dangling_df.loc[index, "connected"] = False
+    else:
+        raise ValueError(
+            f"Connected at {index} is not consistent. connected1: "
+            f"{row['connected1']} and connected2: {row['connected2']}"
+            "This is likely a data quality issue."
+        )
+    return new_dangling_df
+
+
+def add_voltage_level_infos(
+    dangling_voltage_level: str, new_dangling_df: pd.DataFrame, index: int, row: pd.Series
+) -> pd.DataFrame:
+    """Add the voltage level information to the new dangling line dataframe.
+
+    Parameters
+    ----------
+    dangling_voltage_level : str
+        The id of the voltage level of the dangling node.
+    new_dangling_df : pd.DataFrame
+        The dataframe with the dangling lines to modify.
+    index : int
+        The index of the row to modify.
+    row : pd.Series
+        The row to extract the info from.
+
+    Returns
+    -------
+    new_dangling_df : pd.DataFrame
+        The modified dataframe with the voltage level information added.
+    """
+    if row["voltage_level1_id"] == dangling_voltage_level:
+        new_dangling_df.loc[index, "voltage_level_id"] = row["voltage_level2_id"]
+        new_dangling_df.loc[index, "bus_id"] = row["bus_breaker_bus2_id"]
+        if row["pairing_key"] == "":
+            new_dangling_df.loc[index, "pairing_key"] = "X" + row["bus_breaker_bus1_id"][1:]
+    else:
+        new_dangling_df.loc[index, "voltage_level_id"] = row["voltage_level1_id"]
+        new_dangling_df.loc[index, "bus_id"] = row["bus_breaker_bus1_id"]
+        if row["pairing_key"] == "":
+            new_dangling_df.loc[index, "pairing_key"] = "X" + row["bus_breaker_bus2_id"][1:]
     return new_dangling_df
 
 

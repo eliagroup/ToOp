@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Convert a pypowsybl network to a NetworkGraph."""
 
 import datetime
@@ -246,6 +253,7 @@ def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.DataFrame) -> NodeA
     node_assets_df.drop(columns=["foreign_id"], inplace=True)
     node_assets_df = node_assets_df.merge(all_names_df, how="left", left_on="grid_model_id", right_index=True)
     node_assets_df.rename(columns={"connectable_type": "asset_type", "name": "foreign_id"}, inplace=True)
+    node_assets_df.fillna({"foreign_id": ""}, inplace=True)
     node_assets_df = node_assets_df[["grid_model_id", "foreign_id", "node", "asset_type"]]
     # TODO: might need to be changed once there is more information about the in_service state
     node_assets_df["in_service"] = True
@@ -415,7 +423,7 @@ def get_topology(network: Network, network_masks: NetworkMasks, importer_paramet
     """
     relevant_voltage_level_with_region = get_relevant_voltage_levels(network=network, network_masks=network_masks)
     station_list = get_station_list(network=network, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
-    grid_model_file = str(importer_parameters.grid_model_file)
+    grid_model_file = str(importer_parameters.grid_model_file.name)
     topology_id = importer_parameters.grid_model_file.name
     timestamp = datetime.datetime.now()
 

@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import gc
 import json
 from copy import deepcopy
@@ -12,6 +19,8 @@ import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
 import pytest
 import ray
+from fsspec.implementations.dirfs import DirFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import load_static_information
@@ -219,6 +228,17 @@ def test_apply_disconnections_matches_loadflows(
         assert np.allclose(n_0_single, n_0_ref)
 
 
+def test_runner_load_from_fs(preprocessed_powsybl_data_folder: Path) -> None:
+    runner = PowsyblRunner()
+    runner.load_base_grid(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+
+    runner2 = PowsyblRunner()
+    runner2.load_base_grid_fs(
+        LocalFileSystem(), preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    )
+    assert runner.net.get_buses().equals(runner2.net.get_buses())
+
+
 def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
     runner = PowsyblRunner()
     runner.load_base_grid(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
@@ -267,7 +287,8 @@ def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
 
 
 def test_compute_cross_coupler_flows(preprocessed_powsybl_data_folder: Path) -> None:
-    backend = PowsyblBackend(preprocessed_powsybl_data_folder)
+    fs_dir = DirFileSystem(str(preprocessed_powsybl_data_folder))
+    backend = PowsyblBackend(fs_dir)
     net = backend.net
     network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
     action_set = extract_action_set(network_data)

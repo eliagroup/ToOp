@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Filter strategy for switches.
 
 The Issue:
@@ -42,6 +49,7 @@ Solution:
 
 """
 
+from itertools import pairwise
 from typing import Literal, Union
 
 import logbook
@@ -276,7 +284,7 @@ def get_coupler_bay_edge_ids(
     for edge_id, shortest_path_to_busbar_dict in asset_bay_edge_id_update_dict.items():
         bay_list = []
         for path in shortest_path_to_busbar_dict.values():
-            bay_list += [(from_id, to_id) for from_id, to_id in zip(path[:-1], path[1:])]
+            bay_list += [(from_id, to_id) for from_id, to_id in pairwise(path)]
         bay_dict[edge_id] = bay_list
 
     return bay_dict

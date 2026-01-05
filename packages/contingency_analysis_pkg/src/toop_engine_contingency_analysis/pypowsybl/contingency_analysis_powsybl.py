@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Compute the N-1 AC/DC power flow for the network."""
 
 import polars as pl
@@ -89,9 +96,10 @@ def run_powsybl_analysis(
         # The security analysis in DC should always run with a single slack to avoid changing gen values for each N-1 case
         # This way it matches the current way our N-1 analysis in the GPU-solver is set up
         lf_params = SINGLE_SLACK
+    contingency_propagation = "true" if n_minus_1_definition.contingency_propagation else "false"
     security_params = pypowsybl.security.impl.parameters.Parameters(
         load_flow_parameters=lf_params,
-        provider_parameters={"threadCount": str(n_processes)},
+        provider_parameters={"threadCount": str(n_processes), "contingencyPropagation": contingency_propagation},
     )
 
     res = analysis.run_ac(net, security_params) if method == "ac" else analysis.run_dc(net, security_params)
@@ -140,7 +148,7 @@ def run_contingency_analysis_polars(
     post_contingency_results = ca_result.post_contingency_results
     pre_contingency_result = ca_result.pre_contingency_result
 
-    all_outage_ids = [contingency.id for contingency in pow_n1_definition.contingencies]
+    all_outage_ids = [contingency.id for contingency in pow_n1_definition.contingencies if not contingency.is_basecase()]
     convergence_df, failed_outages = get_convergence_result_df(
         post_contingency_results, pre_contingency_result, all_outage_ids, timestep, basecase_id
     )

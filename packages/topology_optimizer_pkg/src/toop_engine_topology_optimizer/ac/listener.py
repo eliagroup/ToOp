@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """A listener that listens for new topologies on a kafka result stream and saves them to db
 
 This is intended for usage both in the AC optimizer and the backend, as they both listen for
@@ -13,6 +20,7 @@ import logbook
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, convert_message_topo_to_db_topo
 from toop_engine_topology_optimizer.interfaces.messages.results import OptimizationStartedResult, Result, TopologyPushResult
 
@@ -48,7 +56,7 @@ def poll_results_topic(
     added_topos = []
     messages = consumer.consume(timeout=30.0 if first_poll else 0.1, num_messages=10000)
     for message in messages:
-        result = Result.model_validate_json(message.value().decode("utf-8"))
+        result = Result.model_validate_json(deserialize_message(message.value()))
 
         strategies = None
         if isinstance(result.result, TopologyPushResult):

@@ -1,35 +1,13 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 benchmark_tasks:
-  - task_name: "Experiment 6_gs"
-    task_config: task/exp6
+  - task_name: "Experiment 1"
+    task_config: task/some-task
 
-  - task_name: "Experiment 7-4t"
-    task_config: task/exp7-4t
-
-  - task_name: "Experiment 7-8t"
-    task_config: task/exp7-8t
-
-  - task_name: "Experiment 7-16t"
-    task_config: task/exp7-16t
-
-  - task_name: "Experiment 7-20t"
-    task_config: task/exp7-20t
-
-  - task_name: "Experiment 7-24t"
-    task_config: task/exp7-24t
-
-  - task_name: "Experiment 8"
-    task_config: task/exp8
-
-  - task_name: "Experiment 9"
-    task_config: task/exp9
-
-  - task_name: "Experiment 10-v2"
-    task_config: task/exp10
-
-  - task_name: "Experiment 11"
-    task_config: task/exp11
-
-  - task_name: "Experiment 12"
-    task_config: task/exp12
 
 output_json: data/results/output.json

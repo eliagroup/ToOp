@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 from pathlib import Path
 
 import numpy as np
@@ -105,6 +112,7 @@ def test_make_action_repo() -> None:
     assert set([tuple(x) for x in repo]).intersection(set([tuple(~x) for x in repo])) == set()
 
 
+@pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(5)
 def test_make_action_repo_large() -> None:
     # Work sensible even for rather large amount of branches

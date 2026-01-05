@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Module contains functions to create artificical operational limits based on the loadflow result for the PowSyBl backend.
 
 File: loadflow_based_current_limits.py
@@ -27,6 +34,7 @@ def create_current_limits_df(
     side: BranchSide,
     limit_name: str,
     acceptable_duration: int,
+    group_names: pd.Series,
 ) -> pd.DataFrame:
     """Create a dataframe matching the operational_limits format from pyposwybl.
 
@@ -44,6 +52,8 @@ def create_current_limits_df(
         The name of the new limit
     acceptable_duration: int
         The length of time this limit holds
+    group_names: pd.Series
+        The group names of the limits. Required to match permanent limit
 
     Returns
     -------
@@ -60,9 +70,11 @@ def create_current_limits_df(
             "type": np.full(n_elements, "CURRENT"),
             "value": new_limit_series.values,
             "acceptable_duration": np.full(n_elements, acceptable_duration),
+            "group_name": group_names.values,
         },
     )
     new_limits.index.name = "element_id"
+    new_limits.set_index(["side", "type", "acceptable_duration", "group_name"], append=True, inplace=True)
     return new_limits.dropna()
 
 
@@ -88,19 +100,23 @@ def get_branches_including_limits_and_dangling_lines(
         The branches dataframe with the columns:
         type, update_i, i1, i2, old_limit_n0, old_limit_n1, dangling_line1_id, dangling_line2_id
     """
+    op_lims = operational_limits.reset_index()
     for side in [BranchSide.ONE, BranchSide.TWO]:
-        branches_df[f"n0_i{side.value}_max"] = (
-            operational_limits[(operational_limits.name == "permanent_limit") & (operational_limits.side == side.name)]
-            .groupby("element_id")
-            .value.max()
+        branches_df[[f"n0_i{side.value}_max", f"n0_group_name_{side.value}"]] = (
+            op_lims[(op_lims.name == "permanent_limit") & (op_lims.side == side.name)]
+            .groupby("element_id")[["value", "group_name"]]
+            .max()
         )
-        branches_df[f"n1_i{side.value}_max"] = (
-            operational_limits[(operational_limits.name == "N-1") & (operational_limits.side == side.name)]
-            .groupby("element_id")
-            .value.max()
+        branches_df[[f"n1_i{side.value}_max", f"n1_group_name_{side.value}"]] = (
+            op_lims[(op_lims.name == "N-1") & (op_lims.side == side.name)]
+            .groupby("element_id")[["value", "group_name"]]
+            .max()
         )
         branches_df[f"n1_i{side.value}_max"] = branches_df[f"n1_i{side.value}_max"].fillna(
             branches_df[f"n0_i{side.value}_max"]
+        )
+        branches_df[f"n1_group_name_{side.value}"] = branches_df[f"n1_group_name_{side.value}"].fillna(
+            branches_df[f"n0_group_name_{side.value}"]
         )
 
     branches_df[["dangling_line1_id", "dangling_line2_id"]] = tie_lines_df[["dangling_line1_id", "dangling_line2_id"]]
@@ -173,7 +189,7 @@ def get_loadflow_based_line_limits(
         old_limit = lines_df[f"{case}_i{side.value}_max"]
         factor, min_increase = limit_parameters.get_parameters_for_case(case)
         new_limit = get_new_limits_for_branch(update_i, old_limit, factor, min_increase)
-
+        group_names = lines_df[f"{case}_group_name_{side.value}"]
         border_line_limits.append(
             create_current_limits_df(
                 new_limit[~old_limit.isna()],
@@ -181,6 +197,7 @@ def get_loadflow_based_line_limits(
                 side=side.name,
                 limit_name=f"loadflow_based_{case}",
                 acceptable_duration=100 if case == "n0" else 200,
+                group_names=group_names[~old_limit.isna()],
             )
         )
     return border_line_limits
@@ -213,19 +230,21 @@ def get_loadflow_based_tie_line_limits(
         return []
     border_dangling_limits = []
     tie_lines_df["update_i"] = tie_lines_df[["i1", "i2"]].max(axis=1)
-    for dangling_line_col in ["dangling_line1_id", "dangling_line2_id"]:
+    for side_value, dangling_line_col in zip([1, 2], ["dangling_line1_id", "dangling_line2_id"], strict=True):
         dangling_df = tie_lines_df.set_index(dangling_line_col)
         old_limit = dangling_df[[f"{case}_i1_max", f"{case}_i2_max"]].min(axis=1)
 
         new_limit = get_new_limits_for_branch(
             dangling_df["update_i"], old_limit, *limit_parameters.get_parameters_for_case(case)
         )
+        group_names = dangling_df[f"{case}_group_name_{side_value}"]
         dangling_limit_df = create_current_limits_df(
             new_limit[~old_limit.isna()],
             element_type="DANGLING_LINE",
             side="NONE",
             limit_name=f"loadflow_based_{case}",
             acceptable_duration=100 if case == "n0" else 200,
+            group_names=group_names[~old_limit.isna()],
         )
         border_dangling_limits.append(dangling_limit_df)
     return border_dangling_limits
@@ -264,12 +283,14 @@ def get_loadflow_based_trafo_limits(
         old_limit = trafos_df[f"{case}_i{side.value}_max"]
         factor, min_increase = limit_parameters.get_parameters_for_case(case)
         new_limit = get_new_limits_for_branch(update_i, old_limit, factor, min_increase)
+        group_names = trafos_df[f"{case}_group_name_{side.value}"]
         side_limits = create_current_limits_df(
             new_limit[~old_limit.isna()],
             element_type="TWO_WINDINGS_TRANSFORMER",
             side=side.name,
             limit_name=f"loadflow_based_{case}",
             acceptable_duration=100 if case == "n0" else 200,
+            group_names=group_names[~old_limit.isna()],
         )
         border_trafo_limits.append(side_limits)
 
@@ -396,5 +417,5 @@ def create_new_border_limits(
             existing_limits.index.get_level_values("element_id")
         )
     ]
-    network.create_operational_limits(updated_border_limits_df)
+    network.create_operational_limits(updated_border_limits_df.reset_index("acceptable_duration"))
     return updated_border_limits_df

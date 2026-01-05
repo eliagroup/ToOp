@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """The postprocessing module has the main functionality of porting back a topology to a pandapower network."""
 
 from copy import deepcopy
@@ -7,6 +14,8 @@ from pathlib import Path
 import numpy as np
 import pandapower as pp
 from beartype.typing import Iterable, Literal, Optional
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float
 from overrides import overrides
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
@@ -19,6 +28,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_element_table,
     get_pandapower_branch_loadflow_results_sequence,
     get_pandapower_loadflow_results_injection,
+    load_pandapower_from_fs,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     parse_globally_unique_id,
@@ -266,6 +276,16 @@ class PandapowerRunner(AbstractLoadflowRunner):
         self.last_action_info: Optional[RealizedTopology] = None
 
     @overrides
+    def load_base_grid_fs(self, filesystem: AbstractFileSystem, grid_path: Path) -> None:
+        """Load the base grid from a file system"""
+        self.replace_grid(
+            load_pandapower_from_fs(
+                filesystem=filesystem,
+                file_path=grid_path,
+            )
+        )
+
+    @overrides
     def load_base_grid(self, grid_path: Path) -> None:
         """Load the base grid from a file
 
@@ -274,7 +294,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
         grid_path : Path
             The path to the grid file
         """
-        self.replace_grid(pp.from_json(grid_path))
+        self.load_base_grid_fs(LocalFileSystem(), grid_path)
 
     def replace_grid(self, net: pp.pandapowerNet) -> None:
         """Replace the base grid with a new one

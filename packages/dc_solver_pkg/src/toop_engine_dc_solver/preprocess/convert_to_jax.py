@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """A set of routines to convert a network data object into a static information object.
 
 Includes the high-level load_grid function which is performing the entire preprocessing.
@@ -12,6 +19,7 @@ import jax.numpy as jnp
 import logbook
 import numpy as np
 from beartype.typing import Callable, Literal, Optional
+from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric,
@@ -25,7 +33,7 @@ from toop_engine_dc_solver.jax.cross_coupler_flow import get_unsplit_flows
 from toop_engine_dc_solver.jax.inputs import (
     convert_from_stat_bool,
     convert_tot_stat,
-    save_static_information,
+    save_static_information_fs,
     validate_static_information,
 )
 from toop_engine_dc_solver.jax.nminus2_outage import unsplit_n_2_analysis
@@ -42,14 +50,15 @@ from toop_engine_dc_solver.jax.types import (
     int_max,
 )
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
-from toop_engine_dc_solver.postprocess.write_aux_data import write_aux_data
+from toop_engine_dc_solver.postprocess.write_aux_data import write_aux_data_fs
 from toop_engine_dc_solver.preprocess.action_set import (
     pad_out_action_set,
 )
-from toop_engine_dc_solver.preprocess.network_data import NetworkData, save_network_data
+from toop_engine_dc_solver.preprocess.network_data import NetworkData, save_network_data_fs
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
+from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
@@ -607,7 +616,7 @@ def convert_rel_bb_outage_data(  # noqa: C901
 
 
 def load_grid(
-    data_folder: Path,
+    data_folder_dirfs: AbstractFileSystem,
     chronics_id: Optional[int] = None,
     timesteps: Optional[slice] = None,
     pandapower: bool = False,
@@ -618,9 +627,9 @@ def load_grid(
 
     Parameters
     ----------
-    data_folder : Path
-        The path to the data folder containing the subfolders
-        as defined in toop_engine_dc_solver.interfaces.folder_structure
+    data_folder_dirfs : AbstractFileSystem
+        A filesystem which is assumed to be a dirfs pointing to the root for this import job. I.e. the folder structure
+        as defined in toop_engine_interfaces.folder_structure is expected to start at root in this filesystem.
     chronics_id : Optional[int], optional
         The chronics id to use, by default None. Note that powsybl does not support chronics yet
     timesteps : Optional[slice], optional
@@ -651,10 +660,10 @@ def load_grid(
 
     if pandapower:
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into PandaPower backend")
-        backend = PandaPowerBackend(data_folder, chronics_id=chronics_id, chronics_slice=timesteps)
+        backend = PandaPowerBackend(data_folder_dirfs=data_folder_dirfs, chronics_id=chronics_id, chronics_slice=timesteps)
     else:
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into Powsybl backend")
-        backend = PowsyblBackend(data_folder=data_folder)
+        backend = PowsyblBackend(data_folder_dirfs=data_folder_dirfs)
     network_data = preprocess(backend, logging_fn=status_update_fn, parameters=parameters)
     static_information = convert_to_jax(
         network_data=network_data,
@@ -682,16 +691,23 @@ def load_grid(
         network_data.metadata.get("start_datetime", ""),
     )
 
-    status_update_fn("save_artifacts", f"Saving to {data_folder}")
-    output_path_static_information = data_folder / PREPROCESSING_PATHS["static_information_file_path"]
-    output_path_static_information.parent.mkdir(parents=True, exist_ok=True)
-    save_static_information(output_path_static_information, static_information)
-    output_path_network_data = data_folder / PREPROCESSING_PATHS["network_data_file_path"]
-    output_path_network_data.parent.mkdir(parents=True, exist_ok=True)
-    save_network_data(output_path_network_data, network_data)
-    write_aux_data(data_folder=data_folder, network_data=network_data)
-    with open(data_folder / PREPROCESSING_PATHS["static_information_stats_file_path"], "w") as f:
-        f.write(info.model_dump_json(indent=2))
+    status_update_fn("save_artifacts", "Saving to filesystem")
+    data_folder_dirfs.makedirs(Path(PREPROCESSING_PATHS["static_information_file_path"]).parent.as_posix(), exist_ok=True)
+    save_static_information_fs(
+        PREPROCESSING_PATHS["static_information_file_path"], static_information, filesystem=data_folder_dirfs
+    )
+
+    data_folder_dirfs.makedirs(Path(PREPROCESSING_PATHS["network_data_file_path"]).parent.as_posix(), exist_ok=True)
+    save_network_data_fs(
+        filesystem=data_folder_dirfs, filename=PREPROCESSING_PATHS["network_data_file_path"], network_data=network_data
+    )
+    write_aux_data_fs(filesystem=data_folder_dirfs, network_data=network_data)
+
+    save_pydantic_model_fs(
+        filesystem=data_folder_dirfs,
+        file_path=PREPROCESSING_PATHS["static_information_stats_file_path"],
+        pydantic_model=info,
+    )
 
     return info, static_information, network_data
 

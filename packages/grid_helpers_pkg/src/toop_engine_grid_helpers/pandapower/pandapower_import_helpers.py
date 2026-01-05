@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Module contains additional functions to process pandapower network.
 
 File: pandapower_toolset.py
@@ -244,8 +251,7 @@ def remove_out_of_service(net: pp.pandapowerNet) -> None:
             net[element] = net[element][net[element]["in_service"]]
 
 
-# TODO: refactor due to C901
-def drop_elements_connected_to_one_bus(net: pp.pandapowerNet, branch_types: Optional[list[str]] = None) -> None:  # noqa: C901
+def drop_elements_connected_to_one_bus(net: pp.pandapowerNet, branch_types: Optional[list[str]] = None) -> None:
     """Drop elements connected to one bus.
 
     - impedance -> Capacitor will end up on the same bus
@@ -267,36 +273,58 @@ def drop_elements_connected_to_one_bus(net: pp.pandapowerNet, branch_types: Opti
     """
     if branch_types is None:
         branch_types = ["line", "trafo", "trafo3w", "impedance", "switch"]
+
     for branch_type in branch_types:
-        if not hasattr(net, branch_type):
-            raise ValueError(f"Branch type {branch_type} not found in pandapower network")
+        handle_elements_connected_to_one_bus(net, branch_type)
 
-        branch_df = getattr(net, branch_type)
-        if "from_bus" in branch_df.columns and "to_bus" in branch_df.columns:
-            branch_index = branch_df[branch_df["from_bus"] == branch_df["to_bus"]].index
-            pp.drop_elements(net, element_type=branch_type, element_index=branch_index)
-        elif "bus" in branch_df.columns and "element" in branch_df.columns:
-            branch_index = branch_df[(branch_df["bus"] == branch_df["element"]) & (branch_df["et"] == "b")].index
-            pp.drop_elements(net, element_type=branch_type, element_index=branch_index)
-        elif branch_type == "trafo":
-            branch_index = branch_df[branch_df["hv_bus"] == branch_df["lv_bus"]].index
-            if len(branch_index) > 0:
-                raise ValueError(
-                    "Two winding transformer with same hv and lv bus found in " + f"{branch_df.loc[branch_index].to_dict()}"
-                )
 
-        elif branch_type == "trafo3w":
-            hv_cond = (branch_df["hv_bus"] == branch_df["lv_bus"]) | (branch_df["hv_bus"] == branch_df["mv_bus"])
-            branch_index = branch_df[hv_cond].index
-            if len(branch_index) > 0:
-                raise ValueError(
-                    "Three winding transformer with same hv == lv or hv == mv bus found in "
-                    + f"{branch_df.loc[branch_index].to_dict()}"
-                )
-            lv_cond = branch_df["lv_bus"] == branch_df["mv_bus"]
-            branch_index = branch_df[lv_cond].index
-            if len(branch_index) > 0:
-                logger.warning(
-                    "Three winding transformer with same mv and lv bus found in "
-                    + f"{branch_df.loc[branch_index].to_dict()}"
-                )
+def handle_elements_connected_to_one_bus(net: pp.pandapowerNet, branch_type: str) -> None:
+    """Drop elements of a specific branch type connected to one bus.
+
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        pandapower network
+        Note: the network is modified in place
+    branch_type : str
+        branch type to drop elements connected to one bus
+
+    Raises
+    ------
+    ValueError
+        If the branch type is not recognized.
+    AssertionError
+        If a two-winding transformer with same hv and lv bus is found.
+        If a three-winding transformer with same hv == lv or hv == mv bus is found
+
+    Returns
+    -------
+    None
+    """
+    branch_df = getattr(net, branch_type)
+    if branch_type == "switch":
+        branch_index = branch_df[(branch_df["bus"] == branch_df["element"]) & (branch_df["et"] == "b")].index
+        pp.drop_elements(net, element_type=branch_type, element_index=branch_index)
+    elif branch_type in ["line", "impedance"]:
+        branch_index = branch_df[branch_df["from_bus"] == branch_df["to_bus"]].index
+        pp.drop_elements(net, element_type=branch_type, element_index=branch_index)
+    elif branch_type == "trafo":
+        branch_index = branch_df[branch_df["hv_bus"] == branch_df["lv_bus"]].index
+        assert len(branch_index) == 0, (
+            "Two winding transformer with same hv and lv bus found in " + f"{branch_df.loc[branch_index].to_dict()}"
+        )
+    elif branch_type == "trafo3w":
+        hv_cond = (branch_df["hv_bus"] == branch_df["lv_bus"]) | (branch_df["hv_bus"] == branch_df["mv_bus"])
+        branch_index = branch_df[hv_cond].index
+        assert len(branch_index) == 0, (
+            "Three winding transformer with same hv == lv or hv == mv bus found in "
+            + f"{branch_df.loc[branch_index].to_dict()}"
+        )
+        lv_cond = branch_df["lv_bus"] == branch_df["mv_bus"]
+        branch_index = branch_df[lv_cond].index
+        if len(branch_index) > 0:
+            logger.warning(
+                "Three winding transformer with same mv and lv bus found in " + f"{branch_df.loc[branch_index].to_dict()}"
+            )
+    else:
+        raise ValueError(f"Branch type {branch_type} not recognized for dropping elements connected to one bus.")

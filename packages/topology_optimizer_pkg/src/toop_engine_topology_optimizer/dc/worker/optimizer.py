@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Callable functions for the optimizer worker."""
 
 import time
@@ -6,6 +13,7 @@ from functools import partial
 from typing import Any, Callable
 
 import jax
+from fsspec import AbstractFileSystem
 from jax import lax
 from jax_dataclasses import replace
 from jaxtyping import Array, Int
@@ -74,6 +82,7 @@ def initialize_optimization(
     params: DCOptimizerParameters,
     optimization_id: str,
     static_information_files: tuple[str, ...],
+    processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[OptimizerData, list[StaticInformationStats], Strategy]:
     """Initialize the optimization run.
 
@@ -88,6 +97,13 @@ def initialize_optimization(
         The id of the optimization run, used to annotate results and heartbeats
     static_information_files : tuple[str, ...]
         The paths to the static information files to load
+    processed_gridfile_fs: AbstractFileSystem
+        The target filesystem for the preprocessing worker. This contains all processed grid files.
+        During the import job,  a new folder import_results.data_folder was created
+        which will be completed with the preprocess call to this function.
+        Internally, only the data folder is passed around as a dirfs.
+        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
+        unprocessed gridfiles were already done.
 
 
     Returns
@@ -122,6 +138,7 @@ def initialize_optimization(
         if params.double_limits is not None
         else None,
         static_information_files=static_information_files,
+        processed_gridfile_fs=processed_gridfile_fs,
     )
 
     metrics = convert_metrics(initial_fitness, initial_metrics)

@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import bz2
 import gc
 import json
@@ -5,6 +12,8 @@ import logging
 import os
 import shutil
 import time
+import uuid
+from copy import deepcopy
 from pathlib import Path
 
 import chex
@@ -22,6 +31,7 @@ import yaml
 from beartype.typing import Generator, List, Literal
 from docker import DockerClient
 from docker.models.containers import Container
+from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from pypowsybl.network import Network
 from toop_engine_dc_solver.example_classes import (
@@ -31,6 +41,8 @@ from toop_engine_dc_solver.example_grids import (
     case14_pandapower,
     case30_with_psts,
     case57_data_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
+    create_ucte_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
 )
@@ -92,7 +104,9 @@ from toop_engine_interfaces.folder_structure import (
     POSTPROCESSING_PATHS,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    PreprocessParameters,
+)
 
 chex.set_n_cpu_devices(2)
 jax.config.update("jax_enable_x64", True)
@@ -139,14 +153,15 @@ def case14_topologies() -> np.ndarray:
 
 @pytest.fixture(scope="session")
 def case14_network_data(case14_data_folder: Path) -> NetworkData:
-    backend = PandaPowerBackend(case14_data_folder)
+    fs_dir = DirFileSystem(str(case14_data_folder))
+    backend = PandaPowerBackend(fs_dir)
     network_data = preprocess(backend)
 
     return network_data
 
 
 @pytest.fixture(scope="session")
-def jax_inputs(
+def _jax_inputs(
     case14_network_data: NetworkData,
 ) -> tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation]:
     static_information = convert_to_jax(
@@ -193,6 +208,13 @@ def jax_inputs(
         ),
     )
     return computations, candidates, static_information
+
+
+@pytest.fixture(scope="function")
+def jax_inputs(
+    _jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
+) -> tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation]:
+    return deepcopy(_jax_inputs)
 
 
 @pytest.fixture
@@ -282,7 +304,8 @@ def data_folder(oberrhein_data_folder: Path) -> Path:
 
 @pytest.fixture(scope="session")
 def network_data(data_folder: Path) -> NetworkData:
-    backend = PandaPowerBackend(data_folder)
+    fs_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(fs_dir)
     network_data = extract_network_data_from_interface(backend)
     return network_data
 
@@ -307,7 +330,8 @@ def network_data_preprocessed(data_folder: Path, oberrhein_outage_station_busbar
         def get_busbar_outage_map(self):
             return oberrhein_outage_station_busbars_map
 
-    backend = TestBackend(data_folder)
+    fs_dir = DirFileSystem(str(data_folder))
+    backend = TestBackend(fs_dir)
     network_data = preprocess(backend, parameters=PreprocessParameters(enable_bb_outage=True))
     return network_data
 
@@ -329,7 +353,8 @@ def preprocessed_data_folder(data_folder: Path, tmp_path_factory: pytest.TempPat
     )
 
     # Extract data from the backend, run preprocessing
-    backend = PandaPowerBackend(data_folder)
+    fs_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(fs_dir)
     network_data = preprocess(backend)
     save_network_data(temp_network_data_file_path, network_data)
     static_information = convert_to_jax(network_data, enable_bb_outage=False)
@@ -402,12 +427,12 @@ def loaded_net(data_folder: Path) -> pp.pandapowerNet:
 @pytest.fixture(scope="session")
 def benchmark_config_file(
     tmp_path_factory: pytest.TempPathFactory,
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
+    _jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
 ) -> Path:
     orig_path = Path(__file__).parent / "files" / "jax" / "benchmarks" / "test.yaml"
     tmp_path = tmp_path_factory.mktemp("benchmarks")
 
-    save_static_information(tmp_path / "static_information.hdf5", jax_inputs[2])
+    save_static_information(tmp_path / "static_information.hdf5", _jax_inputs[2])
 
     with open(orig_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
@@ -513,7 +538,8 @@ def preprocessed_powsybl_data_folder(powsybl_data_folder: Path, tmp_path_factory
     )
 
     # Extract data from the backend, run preprocessing
-    backend = PowsyblBackend(powsybl_data_folder)
+    fs_dir = DirFileSystem(str(powsybl_data_folder))
+    backend = PowsyblBackend(fs_dir)
     network_data = preprocess(backend)
     save_network_data(temp_network_data_file_path, network_data)
     static_information = convert_to_jax(network_data, enable_bb_outage=False)
@@ -573,7 +599,8 @@ def basic_node_breaker_grid_v1() -> Network:
 def node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("node_breaker_grid_preprocessed")
     node_breaker_folder_powsybl(tmp_path)
-    stats, static_information, _ = load_grid(tmp_path)
+    filesystem_dir = DirFileSystem(str(tmp_path))
+    stats, static_information, _ = load_grid(filesystem_dir)
     assert stats.n_relevant_subs > 0
 
     best_actions = random_topology(
@@ -623,7 +650,8 @@ def network_data_test_grid(test_grid_folder_path: Path, outage_map_test_grid: di
         def get_busbar_outage_map(self):
             return outage_map_test_grid
 
-    backend = TestBackend(test_grid_folder_path, distributed_slack=False)
+    fs_dir = DirFileSystem(str(test_grid_folder_path))
+    backend = TestBackend(fs_dir, distributed_slack=False)
     network_data = preprocess(backend, parameters=PreprocessParameters(enable_bb_outage=True))
     return network_data
 
@@ -672,6 +700,28 @@ def jax_inputs_oberrhein(network_data_preprocessed: NetworkData) -> tuple[Action
 def ucte_file() -> Path:
     ucte_file = Path(f"{os.path.dirname(__file__)}/files/test_ucte_powsybl_example.uct")
     return ucte_file
+
+
+@pytest.fixture(scope="session")
+def create_ucte_data_path(ucte_file: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("ucte_grid")
+    create_ucte_data_folder(tmp_path, ucte_file=ucte_file)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def basic_ucte_data_folder(create_ucte_data_path: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    powsybl_data_folder = create_ucte_data_path
+    tmp_path = tmp_path_factory.mktemp("ucte_grid", numbered=True)
+
+    # Copy over the grid file
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
+
+    return tmp_path
 
 
 @pytest.fixture(scope="session")
@@ -787,7 +837,15 @@ def docker_client() -> DockerClient:
     return docker.from_env()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_connection_str(kafka_container: Container) -> str:
     for _ in range(100):
         kafka_container.reload()
@@ -821,23 +879,47 @@ def make_topic(kafka_container: Container, topic: str) -> None:
     assert exit_code == 0, output.decode()
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_command_topic(kafka_container: Container) -> str:
-    topic = "command_topic"
+    topic = f"command_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_results_topic(kafka_container: Container) -> str:
-    topic = "results_topic"
+    topic = f"results_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_heartbeat_topic(kafka_container: Container) -> str:
-    topic = "heartbeat_topic"
+    topic = f"heartbeat_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 
@@ -1037,3 +1119,27 @@ def overlapping_monitored_and_disconnected_branch_data(
     best_actions = get_random_topology_results(static_information)
     check_branches_match_between_network_data_and_static_info(network_data, static_information)
     return network_data, static_information, best_actions
+
+
+@pytest.fixture(scope="session")
+def create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("complex_grid")
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    powsybl_data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_data_path
+    tmp_path = tmp_path_factory.mktemp("complex_grid", numbered=True)
+
+    # Copy over the grid file
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
+
+    return tmp_path

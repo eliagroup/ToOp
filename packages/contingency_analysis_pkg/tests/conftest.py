@@ -1,4 +1,12 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import time
+import uuid
 from copy import deepcopy
 from pathlib import Path
 from typing import Generator
@@ -75,23 +83,47 @@ def make_topic(kafka_container: Container, topic: str) -> None:
     assert exit_code == 0, output.decode()
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_command_topic(kafka_container: Container) -> str:
-    topic = "command_topic"
+    topic = f"command_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_results_topic(kafka_container: Container) -> str:
-    topic = "results_topic"
+    topic = f"results_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 
 
-@pytest.fixture
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.param(
+            "kafka",
+            marks=pytest.mark.xdist_group("kafka"),
+        ),
+    ],
+)
 def kafka_heartbeat_topic(kafka_container: Container) -> str:
-    topic = "heartbeat_topic"
+    topic = f"heartbeat_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
 

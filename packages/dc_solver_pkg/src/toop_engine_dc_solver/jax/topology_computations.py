@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Functions to work with the ActionIndexComputations and TopoVectBranchComputations dataclass.
 
 Transforms between the different representations of branch topologies and
@@ -421,6 +428,7 @@ def convert_topo_sel_sorted(
     for (sub_id, len_sub), topo_vect_position in zip(
         enumerate(branches_per_sub),
         np.cumsum(branches_per_sub),
+        strict=True,
     ):
         topologies = topologies.at[: topo_sel_sorted.shape[0], sub_id, :len_sub].set(
             topo_sel_sorted[:, topo_vect_position - len_sub : topo_vect_position]
@@ -1103,7 +1111,7 @@ def get_random_topology_results(static_information: StaticInformation, random_se
             "actions": [int(x) for x in a if x < static_information.n_actions],
             "metrics": {"n_failures": 0},
         }
-        for a, b, i, d in zip(best_actions.action, best_branch, best_injections, best_disconnections)
+        for a, b, i, d in zip(best_actions.action, best_branch, best_injections, best_disconnections, strict=True)
     ]
 
     return best

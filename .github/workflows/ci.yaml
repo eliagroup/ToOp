@@ -1,0 +1,110 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+name: CI - Tests and SonarQube
+
+on: push
+
+permissions: {}
+
+env:
+  PYTEST_ON_CI: True
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-packages-toop-runner:
+    permissions:
+      contents: read
+      pull-requests: read
+    strategy:
+      # Only one job of matrix:
+      # https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - package: dc_solver_pkg
+          - package: topology_optimizer_pkg
+          - package: importer_pkg
+    runs-on: Runner-ToOp-Projects
+    steps:
+      - name: Find actions
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          fetch-depth: 1
+      - name: Run package tests
+        uses: ./.github/actions/run-package-tests
+        with:
+          package: ${{ matrix.package }}
+          workers: 1
+
+  test-packages-github-runner:
+    permissions:
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: grid_helpers_pkg
+          - package: contingency_analysis_pkg
+          - package: interfaces_pkg
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
+
+      - name: "Set up Python"
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          fetch-depth: 1
+      - name: Run package tests
+        uses: ./.github/actions/run-package-tests
+        with:
+          package: ${{ matrix.package }}
+          workers: auto
+
+  sonarqube:
+    needs: [test-packages-toop-runner, test-packages-github-runner]
+    if: ${{ success() }}
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          fetch-depth: 0
+
+      - name: Download all coverage reports
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+          path: .
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      # Check the Quality Gate status.
+      - name: SonarQube Quality Gate check
+        id: sonarqube-quality-gate-check
+        uses: sonarsource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b
+        with:
+          pollingTimeoutSec: 600
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}

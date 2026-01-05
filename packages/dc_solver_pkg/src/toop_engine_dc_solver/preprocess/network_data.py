@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """The network data class that holds the necessary information about the grid."""
 
 import pickle
@@ -6,6 +13,8 @@ from pathlib import Path
 
 import numpy as np
 from beartype.typing import NamedTuple, Optional, Sequence, Union
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.backend import BackendInterface
@@ -399,8 +408,27 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
     )
 
 
+def save_network_data_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], network_data: NetworkData) -> None:
+    """Save the network data to a file system.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to save the network data to
+    filename : Union[str, Path]
+        The filename to save the network data to
+    network_data : NetworkData
+        The network data to save
+
+    """
+    with filesystem.open(str(filename), "wb") as file:
+        pickle.dump(network_data, file)
+
+
 def save_network_data(filename: Union[str, Path], network_data: NetworkData) -> None:
     """Save the network data to a file.
+
+    Calls save_network_data_fs with a LocalFileSystem.
 
     Parameters
     ----------
@@ -410,8 +438,26 @@ def save_network_data(filename: Union[str, Path], network_data: NetworkData) -> 
         The network data to save
 
     """
-    with open(filename, "wb") as file:
-        pickle.dump(network_data, file)
+    save_network_data_fs(LocalFileSystem(), filename, network_data)
+
+
+def load_network_data_fs(filesystem: AbstractFileSystem, filename: Union[str, Path]) -> NetworkData:
+    """Load the network data from a file system.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to load the network data from
+    filename : Union[str, Path]
+        The filename to load the network data from
+
+    Returns
+    -------
+    NetworkData
+        The loaded network data
+    """
+    with filesystem.open(str(filename), "rb") as file:
+        return pickle.load(file)
 
 
 def load_network_data(filename: Union[str, Path]) -> NetworkData:
@@ -427,8 +473,7 @@ def load_network_data(filename: Union[str, Path]) -> NetworkData:
     NetworkData
         The loaded network data
     """
-    with open(filename, "rb") as file:
-        return pickle.load(file)
+    return load_network_data_fs(LocalFileSystem(), filename)
 
 
 def assert_network_data(network_data: NetworkData) -> None:
@@ -535,13 +580,16 @@ def extract_branch_ids(network_data: NetworkData) -> tuple[list[str], list[str]]
         A list of outaged branch ids
     """
     monitored_branches = [
-        id for (id, monitored) in zip(network_data.branch_ids, network_data.monitored_branch_mask) if monitored
+        id for (id, monitored) in zip(network_data.branch_ids, network_data.monitored_branch_mask, strict=True) if monitored
     ]
-    outaged_branches = [id for (id, outaged) in zip(network_data.branch_ids, network_data.outaged_branch_mask) if outaged]
+    outaged_branches = [
+        id for (id, outaged) in zip(network_data.branch_ids, network_data.outaged_branch_mask, strict=True) if outaged
+    ]
     return monitored_branches, outaged_branches
 
 
 # ruff: noqa: PLR0915
+# sonar: noqa: S3776
 def validate_network_data(network_data: NetworkData) -> None:
     """Run some validation on the preprocessed network data.
 
@@ -640,7 +688,10 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert sum(len(mo) for mo in network_data.split_multi_outage_nodes) == n_multi_outage
 
     for branch_act, inj_act, sw_dist in zip(
-        network_data.branch_action_set, network_data.injection_action_set, network_data.branch_action_set_switching_distance
+        network_data.branch_action_set,
+        network_data.injection_action_set,
+        network_data.branch_action_set_switching_distance,
+        strict=True,
     ):
         assert len(branch_act) == len(inj_act) == len(sw_dist)
 
@@ -667,7 +718,9 @@ def get_relevant_stations(network_data: NetworkData) -> list[Station]:
     list[Station]
         A list of relevant stations.
     """
-    relevant_node_ids = [node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask) if mask]
+    relevant_node_ids = [
+        node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
+    ]
 
     def find_station(stations: list[Station], grid_model_id: str, fallback: Optional[Station] = None) -> Station:
         for station in stations:
@@ -739,6 +792,7 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             network_data.branch_types,
             network_data.branch_names,
             network_data.disconnectable_branch_mask,
+            strict=True,
         )
         if disconnectable
     ]
@@ -785,7 +839,11 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
     monitored_branches = [
         GridElement(id=branch_id, name=branch_name, type=branch_type, kind="branch")
         for (branch_id, branch_type, branch_name, monitored) in zip(
-            network_data.branch_ids, network_data.branch_types, network_data.branch_names, network_data.monitored_branch_mask
+            network_data.branch_ids,
+            network_data.branch_types,
+            network_data.branch_names,
+            network_data.monitored_branch_mask,
+            strict=True,
         )
         if monitored
     ]
@@ -814,7 +872,11 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
             name=branch_name,
         )
         for (branch_id, branch_type, branch_name, outage) in zip(
-            network_data.branch_ids, network_data.branch_types, network_data.branch_names, network_data.outaged_branch_mask
+            network_data.branch_ids,
+            network_data.branch_types,
+            network_data.branch_names,
+            network_data.outaged_branch_mask,
+            strict=True,
         )
         if outage
     ]
@@ -825,11 +887,12 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         network_data.multi_outage_node_mask,
         network_data.multi_outage_ids,
         network_data.multi_outage_names,
+        strict=True,
     ):
         elements = [
             GridElement(id=branch_id, type=branch_type, name=branch_name or "", kind="branch")
             for (branch_id, branch_type, branch_name, outage) in zip(
-                network_data.branch_ids, network_data.branch_types, network_data.branch_names, branch_mask
+                network_data.branch_ids, network_data.branch_types, network_data.branch_names, branch_mask, strict=True
             )
             if outage
         ]

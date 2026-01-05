@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Helper functions to translate the N-1 definition into a usable format for Powsybl.
 
 This includes translating contingencies, monitored elements and collecting
@@ -63,6 +70,13 @@ class PowsyblContingency(BaseModel):
     elements: list[str]
     """The list of outaged element ids."""
 
+    def is_basecase(self) -> bool:
+        """Check if the contingency is a basecase.
+
+        A basecase contingency has no outaged elements.
+        """
+        return len(self.elements) == 0
+
 
 class PowsyblMonitoredElements(TypedDict):
     """A dictionary to hold the monitored element ids for the N-1 analysis.
@@ -121,6 +135,16 @@ class PowsyblNMinus1Definition(BaseModel):
 
     distributed_slack: bool = True
     """Whether to distribute the slack across the generators in the grid. Only relevant for powsybl grids."""
+
+    contingency_propagation: bool = False
+    """Whether to enable powsybl's contingency propagation in the N-1 analysis.
+
+    https://powsybl.readthedocs.io/projects/powsybl-open-loadflow/en/latest/security/parameters.html
+    Security Analysis will determine by topological search the switches with type circuit breakers
+    (i.e. capable of opening fault currents) that must be opened to isolate the fault. Depending on the network structure,
+    this could lead to more equipments to be simulated as tripped, because disconnectors and load break switches
+    (i.e., not capable of opening fault currents) are not considered.
+    """
 
     def __getitem__(self, key: str | int | slice) -> "PowsyblNMinus1Definition":
         """Get a subset of the nminus1definition based on the contingencies.
@@ -290,12 +314,12 @@ def prepare_branch_limits(branch_limits: pd.DataFrame, chosen_limit: str, monito
     branch_limits : pd.DataFrame
         The dataframe containing the branch limits for the N-1 analysis in the right format.
     """
-    chosen_limit_type = branch_limits["name"] == chosen_limit
-    limit_monitored = branch_limits.index.get_level_values("element_id").isin(monitored_branches)
-    branch_limits = branch_limits[chosen_limit_type & limit_monitored]
-    branch_limits["side"] = branch_limits.side.map({"ONE": 1, "TWO": 2, "THREE": 3})
-    branch_limits.set_index(["side"], append=True, inplace=True)
-    return branch_limits[["value"]]
+    translated_limits = branch_limits.reset_index()
+    chosen_limit_type = translated_limits["name"] == chosen_limit
+    limit_monitored = translated_limits["element_id"].isin(monitored_branches)
+    translated_limits = translated_limits[chosen_limit_type & limit_monitored]
+    translated_limits["side"] = translated_limits["side"].map({"ONE": 1, "TWO": 2, "THREE": 3})
+    return translated_limits.groupby(by=["element_id", "side"]).min()[["value"]]
 
 
 def get_blank_va_diff(
@@ -574,6 +598,7 @@ def translate_nminus1_for_powsybl(n_minus_1_definition: Nminus1Definition, net: 
         distributed_slack=n_minus_1_definition.loadflow_parameters.distributed_slack,
         missing_elements=missing_elements,
         missing_contingencies=missing_contingencies,
+        contingency_propagation=n_minus_1_definition.loadflow_parameters.contingency_propagation,
     )
 
 
@@ -821,15 +846,18 @@ def get_convergence_result_df(
         for contingency in outages
     ]
     converge_converted_df.status = converge_converted_df["status"].map(POWSYBL_CONVERGENCE_MAP)
+    failed_outages = [
+        outage
+        for outage, success in zip(outages, converge_converted_df.status.values == "CONVERGED", strict=True)
+        if not success
+    ]
 
     if basecase_name is not None:
         # Add the basecase to the convergence dataframe
         converge_converted_df.loc[(timestep, basecase_name), "status"] = POWSYBL_CONVERGENCE_MAP[
             pre_contingency_result.status.value
         ]
-    failed_outages = [
-        outage for outage, success in zip(outages, converge_converted_df.status.values == "CONVERGED") if not success
-    ]
+
     converge_converted_df["iteration_count"] = np.nan
     converge_converted_df["warnings"] = ""
     converge_converted_df["contingency_name"] = ""
@@ -930,6 +958,11 @@ def set_target_values_to_lf_values_incl_distributed_slack(net: Network, method: 
     if method == "ac":
         gens["target_q"] = (-gens["q"]).fillna(gens["target_q"])
     net.update_generators(gens[["target_p", "target_q"]])
+    batteries = net.get_batteries()
+    batteries["target_p"] = (-batteries["p"]).fillna(batteries["target_p"])
+    if method == "ac":
+        batteries["target_q"] = (-batteries["q"]).fillna(batteries["target_q"])
+    net.update_batteries(batteries[["target_p", "target_q"]])
     return net
 
 

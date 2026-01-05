@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Creates a Asset Topology from a Network Graph."""
 
 from typing import Literal, Optional, Union
@@ -507,7 +514,8 @@ def get_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
         (asset_bays_df["asset_type"] == "DISCONNECTOR") & (asset_bays_df["direct_busbar_grid_model_id"] != "")
     ]
     return {
-        g_id: f_id for g_id, f_id in zip(sr_sw["direct_busbar_grid_model_id"].to_list(), sr_sw["grid_model_id"].to_list())
+        g_id: f_id
+        for g_id, f_id in zip(sr_sw["direct_busbar_grid_model_id"].to_list(), sr_sw["grid_model_id"].to_list(), strict=True)
     }
 
 
@@ -544,7 +552,9 @@ def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
         )
         dv_sr_dict = {
             f_id: g_id
-            for f_id, g_id in zip(dv_sr_sw["direct_busbar_grid_model_id"].to_list(), dv_sr_sw["grid_model_id"].to_list())
+            for f_id, g_id in zip(
+                dv_sr_sw["direct_busbar_grid_model_id"].to_list(), dv_sr_sw["grid_model_id"].to_list(), strict=True
+            )
         }
     else:
         dv_sr_dict = {}

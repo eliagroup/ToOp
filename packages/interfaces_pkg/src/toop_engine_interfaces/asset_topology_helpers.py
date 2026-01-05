@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Collects some common helper functions for asset topology manipulation."""
 
 import itertools
@@ -6,6 +13,8 @@ from pathlib import Path
 import networkx as nx
 import numpy as np
 from beartype.typing import Literal, Optional, Union
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
@@ -15,6 +24,7 @@ from toop_engine_interfaces.asset_topology import (
     SwitchableAsset,
     Topology,
 )
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 
 
 def electrical_components(station: Station, min_num_assets: int = 1) -> list[list[int]]:
@@ -42,7 +52,7 @@ def electrical_components(station: Station, min_num_assets: int = 1) -> list[lis
 
     graph = nx.Graph()
     graph.add_nodes_from(
-        [(busbar.int_id, {"degree": degree}) for busbar, degree in zip(station.busbars, n_connections_per_bus)]
+        [(busbar.int_id, {"degree": degree}) for busbar, degree in zip(station.busbars, n_connections_per_bus, strict=True)]
     )
     graph.add_edges_from(
         [(coupler.busbar_from_id, coupler.busbar_to_id) for coupler in station.couplers if not coupler.open]
@@ -428,8 +438,8 @@ def filter_assets_by_type(
     if all(asset_mask):
         return station, []
 
-    removed_assets = [asset for asset, mask in zip(station.assets, asset_mask) if not mask]
-    kept_assets = [asset for asset, mask in zip(station.assets, asset_mask) if mask]
+    removed_assets = [asset for asset, mask in zip(station.assets, asset_mask, strict=True) if not mask]
+    kept_assets = [asset for asset, mask in zip(station.assets, asset_mask, strict=True) if mask]
 
     new_station = station.model_copy(
         update={
@@ -866,6 +876,31 @@ def compare_stations(
     )
 
 
+def load_asset_topology_fs(
+    filesystem: AbstractFileSystem,
+    file_path: Union[str, Path],
+) -> Topology:
+    """Load an asset topology from a file system.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to use to load the asset topology.
+    file_path : Union[str, Path]
+        The path to the file containing the asset topology in json format.
+
+    Returns
+    -------
+    Topology
+        The loaded asset topology.
+    """
+    return load_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=file_path,
+        model_class=Topology,
+    )
+
+
 def load_asset_topology(filename: Union[str, Path]) -> Topology:
     """Load an asset topology from a file
 
@@ -879,9 +914,26 @@ def load_asset_topology(filename: Union[str, Path]) -> Topology:
     Topology
         The loaded asset topology
     """
-    with open(filename, "r", encoding="utf-8") as file:
-        asset_topology = Topology.model_validate_json(file.read())
-    return asset_topology
+    return load_asset_topology_fs(
+        filesystem=LocalFileSystem(),
+        file_path=filename,
+    )
+
+
+def save_asset_topology_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], asset_topology: Topology) -> None:
+    """Save an asset topology to a file system
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to save the asset topology to
+    filename : Union[str, Path]
+        The filename to save the asset topology to
+    asset_topology: Topology
+        The asset topology to save
+    """
+    with filesystem.open(str(filename), "w", encoding="utf-8") as file:
+        file.write(asset_topology.model_dump_json(indent=2))
 
 
 def save_asset_topology(filename: Union[str, Path], asset_topology: Topology) -> None:
@@ -891,11 +943,10 @@ def save_asset_topology(filename: Union[str, Path], asset_topology: Topology) ->
     ----------
     filename : Union[str, Path]
         The filename to save the asset topology to
-    asset_topology: Topology,
+    asset_topology: Topology
         The asset topology to save
     """
-    with open(filename, "w", encoding="utf-8") as file:
-        file.write(asset_topology.model_dump_json(indent=2))
+    save_asset_topology_fs(LocalFileSystem(), filename, asset_topology)
 
 
 def get_connected_assets(station: Station, busbar_index: int) -> list[SwitchableAsset]:
@@ -914,7 +965,7 @@ def get_connected_assets(station: Station, busbar_index: int) -> list[Switchable
     list of SwitchableAsset
         A list of assets connected to the specified busbar.
     """
-    connected_asset_indices = np.where(station.asset_switching_table[busbar_index])[0]
+    connected_asset_indices = np.nonzero(station.asset_switching_table[busbar_index])[0]
     return [station.assets[i] for i in connected_asset_indices if station.assets[i].in_service]
 
 
@@ -1018,7 +1069,7 @@ def station_diff(
             )
 
     coupler_diff = []
-    for start_coupler, target_coupler in zip(start_station.couplers, target_station.couplers):
+    for start_coupler, target_coupler in zip(start_station.couplers, target_station.couplers, strict=True):
         if start_coupler.open != target_coupler.open:
             coupler_diff.append(target_coupler)
 
@@ -1051,7 +1102,7 @@ def topology_diff(
     """
     realized_stations = [
         station_diff(start_station, target_station)
-        for (start_station, target_station) in zip(start_topo.stations, target_topo.stations)
+        for (start_station, target_station) in zip(start_topo.stations, target_topo.stations, strict=True)
     ]
     coupler_diff, reassignment_diff, disconnection_diff = accumulate_diffs(realized_stations)
     return RealizedTopology(

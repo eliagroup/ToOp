@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Helper functions for the NetworkGraphData model."""
 
 from typing import Any, Iterable, Iterator, Literal, Optional, Union
@@ -300,18 +307,16 @@ def get_busbar_true_nodes(graph: nx.Graph) -> tuple[list[int], list[int]]:
         The returned lists are of the same length
     """
     busbars = get_node_list_by_attribute(graph=graph, attribute="node_type", value=["busbar"])
-    busbars_helper_nodes = []
-    for node_id in busbars:
+    busbars_helper_nodes = get_node_list_by_attribute(graph=graph, attribute="node_type", value=["busbar"])
+    for index, node_id in enumerate(busbars):
         neighbors = graph[node_id]
         if len(neighbors) == 1:
             for neighbor in neighbors.keys():
                 if graph.nodes[neighbor]["grid_model_id"] == "":
-                    busbars_helper_nodes.append(neighbor)
-    if len(busbars_helper_nodes) == len(busbars):
-        return (busbars, busbars_helper_nodes)
-    if len(busbars_helper_nodes) == 0:
-        return (busbars, busbars)
-    raise ValueError("The busbar helper nodes are not correctly set.")
+                    busbars_helper_nodes[index] = neighbor
+
+    # returns (busbars, busbars) if no helper node is found
+    return (busbars, busbars_helper_nodes)
 
 
 def get_busbar_connection_info(

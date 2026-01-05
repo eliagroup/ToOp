@@ -1,4 +1,12 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.example_grids import case30_with_psts
 from toop_engine_dc_solver.postprocess.write_aux_data import write_aux_data
 from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
@@ -79,7 +87,8 @@ def test_write_aux_data(network_data_preprocessed: NetworkData, tmp_path_factory
 def test_write_aux_data_pst_ranges(tmp_path_factory: pytest.TempPathFactory) -> None:
     tmp_path = tmp_path_factory.mktemp("test_write_aux_data_pst_ranges")
     case30_with_psts(tmp_path)
-    backend = PandaPowerBackend(tmp_path)
+    filesystem_dir = DirFileSystem(str(tmp_path))
+    backend = PandaPowerBackend(filesystem_dir)
     network_data = preprocess(backend)
 
     write_aux_data(tmp_path, network_data)

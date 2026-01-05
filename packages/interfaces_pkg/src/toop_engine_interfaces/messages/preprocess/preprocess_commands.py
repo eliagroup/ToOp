@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Defines the commands that can be sent to a preprocessing worker."""
 
 import uuid
@@ -118,6 +125,21 @@ class AreaSettings(BaseModel):
     """ A weight that is used for lines that leave the n-1 area, to neighbouring TSOs"""
 
 
+class RelevantStationRules(BaseModel):
+    """Rules to determine whether a substation is relevant or not."""
+
+    min_busbars: PositiveInt = 2
+    """The minimum number of busbars a substation must have to be considered relevant."""
+
+    min_connected_branches: PositiveInt = 4
+    """The minimum number of connected branches a substation must have to be considered relevant.
+    This only counts branches (lines, transformers, tie-lines), not injections (generators, loads, shunts, etc.)."""
+
+    min_connected_elements: PositiveInt = 4
+    """The minimum number of connected elements a substation must have to be considered relevant.
+    This includes branches and injections (generators, loads, shunts, etc.)."""
+
+
 class BaseImporterParameters(BaseModel):
     """Parameters that are required to import any data format."""
 
@@ -127,7 +149,7 @@ class BaseImporterParameters(BaseModel):
     data_folder: Path
     """The path where the entry point where the timestep data folder structure starts.
 
-    The folder structure is defined in dc_solver.interfaces.folder_structure. This folder is relative to the
+    The folder structure is defined in interfaces.folder_structure. This folder is relative to the
     processed_grid_folder that is configured in the backend/importer. A typical default would be grid_model_file.stem"""
 
     grid_model_file: Path
@@ -157,6 +179,13 @@ class BaseImporterParameters(BaseModel):
     The implementation is expected to ignore all elements that are in the ignore list.
     """
 
+    select_by_voltage_level_id_list: Optional[list[str]] = None
+    """If given, only the voltage levels in this list will be imported.
+    Note: not all voltage levels in this list might be considered relevant after preprocessing.
+    This can happen if the requirements for relevant substations are not met.
+    E.g. minimum number of busbars, connected branches or missing busbar couplers.
+    """
+
     ingress_id: Optional[str] = None
     """An optional id that is used to identify the source of the data.
     This can be used to track where the data came from, e.g. if it was imported from a specific
@@ -176,6 +205,9 @@ class BaseImporterParameters(BaseModel):
     - importer/contingency_from_power_factory/PF_data_class.py
     - importer/pypowsybl_import/contingency_from_file/contingency_file_models.py
     """
+
+    relevant_station_rules: RelevantStationRules = RelevantStationRules()
+    """Rules to determine whether a substation is relevant or not."""
 
 
 class UcteImporterParameters(BaseImporterParameters):

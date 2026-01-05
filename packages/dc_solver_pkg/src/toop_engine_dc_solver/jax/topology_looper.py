@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Calls the bsdf, injection and contingency module to perform their computations.
 
 The original topology looper uses a tree formulation to structure the computation, here we rely
@@ -651,6 +658,7 @@ def iterate_inj_bruteforce_sequential(
     return results
 
 
+# sonar: noqa: S3776
 def run_solver_symmetric(
     topologies: ActionIndexComputations,
     disconnections: Optional[Int[Array, " n_topologies n_disconnections"]],

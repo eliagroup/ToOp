@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Contains functions to realise branch actions to physical topology"""
 
 from dataclasses import replace
@@ -203,7 +210,7 @@ def enumerate_spreaded_nodal_injections_for_rel_subs(
     rel_subs_busbar_a_mappings = network_data.busbar_a_mappings
 
     nodal_injection_combis = []
-    for sub, local_busbar_a_mappings in zip(rel_stations, rel_subs_busbar_a_mappings):
+    for sub, local_busbar_a_mappings in zip(rel_stations, rel_subs_busbar_a_mappings, strict=True):
         busbar_indices = set(index for index in range(len(sub.busbars)))
         local_injection_combis = []
         for busbar_a_mappings in local_busbar_a_mappings:

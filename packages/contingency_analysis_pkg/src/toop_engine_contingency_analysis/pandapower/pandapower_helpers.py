@@ -1,5 +1,13 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Module containing helper functions to translate Pandapower N-1 definitions and results."""
 
+import dataclasses
 from typing import Any, get_args
 
 import numpy as np
@@ -8,6 +16,7 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Literal
+from networkx.classes import MultiGraph
 from pandapower import pandapowerNet
 from pandapower.toolbox import res_power_columns
 from pandera.typing import Index, Series
@@ -41,6 +50,15 @@ BUS_COLUMN_MAP = {
     "trafo": ["hv_bus", "lv_bus"],
     "trafo3w": ["hv_bus", "lv_bus"],
 }
+
+
+@dataclasses.dataclass
+class SlackAllocationConfig:
+    """Carry configuration required for slack allocation per island."""
+
+    net_graph: MultiGraph
+    bus_lookup: list[int]
+    min_island_size: int = 11
 
 
 class VADiffInfo(BaseModel):
@@ -532,17 +550,17 @@ def match_node_to_next_switch_type(
     pd.DataFrame
         A dataframe with the original node id, the switch id, switch name and unique id.
     """
-    switches_to_check = switches_df.reset_index().query("closed")
+    switches_to_check = switches_df.reset_index(names="original_index").query("closed")
     if id_type == "unique_pandapower":
-        switches_to_check["unique_id"] = get_globally_unique_id_from_index(switches_to_check.index, "switch")
+        switches_to_check["unique_id"] = get_globally_unique_id_from_index(switches_to_check.original_index, "switch")
     elif id_type == "cgmes":
         switches_to_check["unique_id"] = switches_to_check["origin_id"]
     else:
         raise ValueError(f"Unsupported ID Type: {id_type}")
     bidirectional_switches = np.concatenate(
         [
-            switches_to_check[["index", "bus", "element", "type", "name", "unique_id"]].values,
-            switches_to_check[["index", "element", "bus", "type", "name", "unique_id"]].values,
+            switches_to_check[["original_index", "bus", "element", "type", "name", "unique_id"]].values,
+            switches_to_check[["original_index", "element", "bus", "type", "name", "unique_id"]].values,
         ],
         axis=0,
     )
@@ -601,7 +619,9 @@ def get_node_to_switch_map(net: pandapowerNet, id_type: PANDAPOWER_SUPPORTED_ID_
         considered_nodes, net.switch, actual_busbars, switch_type="CB", id_type=id_type, max_jumps=4
     )
     grouped_by_bus = matched.groupby("original_node").agg(list)[["unique_id", "name"]].to_dict(orient="index")
-    node_to_switch_map = {outage: dict(zip(info["unique_id"], info["name"])) for outage, info in grouped_by_bus.items()}
+    node_to_switch_map = {
+        outage: dict(zip(info["unique_id"], info["name"], strict=True)) for outage, info in grouped_by_bus.items()
+    }
     return node_to_switch_map
 
 
@@ -694,7 +714,7 @@ def get_branch_results(
                 timestep=timestep, contingency=contingency.unique_id, side=side + 1, element=unique_ids
             )
             branch_df.set_index(["timestep", "contingency", "element", "side"], inplace=True)
-            branch_df.rename(columns=dict(zip(columns, ["p", "q", "i", "loading"])), inplace=True)
+            branch_df.rename(columns=dict(zip(columns, ["p", "q", "i", "loading"], strict=True)), inplace=True)
             # Fix kA -> A and % -> 1
             branch_df["i"] *= 1000
             branch_df["loading"] /= 100
@@ -851,8 +871,6 @@ def get_va_diff_results(
     contingency : Contingency
         The contingency to compute the voltage angle difference results for.
         Will also calculate the va_diff of the outaged elements if they are lines or transformers
-    node_to_switch_map: dict[int, list[int]]
-        A mapping from nodes at branches and their closest Circuit breaker switches
 
     Returns
     -------

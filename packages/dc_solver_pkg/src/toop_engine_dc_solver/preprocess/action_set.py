@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Action Set Creation and Filtering
 
 This module provides functionality for creating, filtering, and managing action sets
@@ -372,8 +379,8 @@ def enumerate_branch_actions_for_sub(
     randomly_select = None
     if 2**effective_degree > clip_to_n_actions:
         logger.warning(
-            f"Substation {network_data.node_ids[network_data.relevant_nodes[sub_id]]} has ",
-            f"{sub_degree} branches. Resorting to random action enumeration.",
+            f"Substation {network_data.node_ids[network_data.relevant_nodes[sub_id]]} has "
+            f"{sub_degree} branches. Resorting to random action enumeration."
         )
         randomly_select = clip_to_n_actions
 
@@ -524,7 +531,7 @@ def unpad_branch_actions(
     """
     branch_actions = []
     index = 0
-    for n_actions, n_branches in zip(branch_set.n_actions_per_sub, branches_per_sub):
+    for n_actions, n_branches in zip(branch_set.n_actions_per_sub, branches_per_sub, strict=True):
         branch_actions.append(branch_set.branch_actions[index : index + n_actions, :n_branches])
         index += n_actions
 

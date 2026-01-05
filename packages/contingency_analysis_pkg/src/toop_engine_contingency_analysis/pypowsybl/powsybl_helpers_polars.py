@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Helper functions to translate the N-1 definition into a usable format for Powsybl.
 
 This includes translating contingencies, monitored elements and collecting
@@ -227,13 +234,21 @@ def get_branch_results_polars(
     converted_branch_results = converted_branch_results.cast({"timestep": pl.Int64, "side": pl.Int64})
     branch_limits = branch_limits.cast({"side": pl.Int64, "value": pl.Float64})
 
-    converted_branch_results = (
-        converted_branch_results.join(
-            branch_limits, left_on=["element", "side"], right_on=["element_id", "side"], how="left"
-        )  # m:1 join
-        .with_columns(loading=pl.col("i") / pl.col("value"))
-        .drop("value")
-    )
+    if not converted_branch_results.limit(1).collect().is_empty():
+        converted_branch_results = (
+            converted_branch_results.join(
+                branch_limits, left_on=["element", "side"], right_on=["element_id", "side"], how="left"
+            )  # m:1 join
+            .with_columns(loading=pl.col("i") / pl.col("value"))
+            .drop("value")
+        )
+    else:
+        # add i column
+        converted_branch_results = converted_branch_results.with_columns(i=pl.lit(float("nan")))
+        # add loading column
+        converted_branch_results = converted_branch_results.with_columns(loading=pl.lit(float("nan")))
+        # cast null to str
+        converted_branch_results = converted_branch_results.cast({"contingency": pl.String, "element": pl.String})
     # fill loading nulls with nans for loading
     converted_branch_results = converted_branch_results.with_columns(pl.col("loading").fill_null(float("nan")))
     # add empty element_name and contingency_name columns to match the schema

@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Provides a powsybl backend for loading powsybl based grids into the DC solver"""
 
 import functools
@@ -9,6 +16,7 @@ import pandas as pd
 import pandera.typing as pat
 import pypowsybl as pp
 from beartype.typing import Optional, Sequence, Union
+from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     BranchModel,
@@ -19,9 +27,10 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_trafos,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.asset_topology import Topology
-from toop_engine_interfaces.asset_topology_helpers import load_asset_topology
 from toop_engine_interfaces.backend import BackendInterface
+from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -62,10 +71,23 @@ class PowsyblBackend(BackendInterface):
     Currently, the backend doesn't accept chronics, i.e. only a single timestep.
     """
 
-    def __init__(self, data_folder: Union[str, Path], distributed_slack: bool = True) -> None:
-        self.data_folder = Path(data_folder)
-        grid_path = self.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-        net = pp.network.load(grid_path)
+    def __init__(self, data_folder_dirfs: AbstractFileSystem, distributed_slack: bool = True) -> None:
+        """Initiate the powsybl model by a given AbstractFileSystem.
+
+        Parameters
+        ----------
+        data_folder_dirfs : AbstractFileSystem
+            A filesystem which is assumed to be a dirfs pointing to the root for this import job. I.e. the folder structure
+            as defined in toop_engine_interfaces.folder_structure is expected to start at root in this filesystem.
+        distributed_slack: bool
+            Use distributed_slack to initialize the backend.
+        """
+        super().__init__()
+        self.data_folder_dirfs = data_folder_dirfs
+        net = load_powsybl_from_fs(
+            filesystem=data_folder_dirfs,
+            file_path=Path(PREPROCESSING_PATHS["grid_file_path_powsybl"]),
+        )
 
         self.distributed_slack = distributed_slack
         lf_params = DISTRIBUTED_SLACK if distributed_slack else SINGLE_SLACK
@@ -84,12 +106,7 @@ class PowsyblBackend(BackendInterface):
 
         assert dc_results[0].status == pp.loadflow.ComponentStatus.CONVERGED, "DC loadflow did not converge"
         assert not self.net.get_shunt_compensators()["p"].any(), "Shunt compensators are not supported yet"
-        assert self.net.get_batteries().empty, "Batteries are not supported yet"
         assert self.net.get_3_windings_transformers().empty, "3 winding transformers are not supported yet"
-        assert self.net.get_static_var_compensators().empty, "Static var compensators are not supported yet"
-        assert self.net.get_hvdc_lines().empty, "HVDC lines are not supported yet"
-        assert self.net.get_lcc_converter_stations().empty, "LCC converter stations are not supported yet"
-        assert self.net.get_vsc_converter_stations().empty, "VSC converter stations are not supported yet"
 
     @functools.lru_cache
     def _get_nodes(self) -> pd.DataFrame:
@@ -99,13 +116,13 @@ class PowsyblBackend(BackendInterface):
 
         TODO add x-nodes for trafo3ws
         """
-        nodes = self.net.get_buses(attributes=["name", "connected_component"])
+        nodes = self.net.get_buses(attributes=["name", "connected_component", "synchronous_component"])
         n_nodes = len(nodes)
         nodes["relevant"] = self._get_mask(NETWORK_MASK_NAMES["relevant_subs"], False, n_nodes)
         nodes["coupler_limit"] = self._get_mask(NETWORK_MASK_NAMES["cross_coupler_limits"], 0.0, n_nodes)
 
         # Filter to only the first connected component
-        nodes = nodes[nodes["connected_component"] == 0]
+        nodes = nodes[(nodes["connected_component"] == 0) & (nodes["synchronous_component"] == 0)]
 
         nodes["int_id"] = np.arange(len(nodes))
         return nodes
@@ -136,14 +153,22 @@ class PowsyblBackend(BackendInterface):
             right_index=True,
             how="left",
         )
-        branches["name"] = branches["name"]
         branches[["p_max_mw", "p_max_mw_n_1"]] = get_p_max(self.net)
         return branches
 
     @functools.lru_cache
     def _get_injections(self) -> pd.DataFrame:
         """Merge information from generators, loads and dangling lines into the injections dataframe."""
-        injections = pd.concat([self._get_generators(), self._get_loads(), self._get_dangling_lines()])
+        injections = pd.concat(
+            [
+                self._get_generators(),
+                self._get_loads(),
+                self._get_dangling_lines(),
+                self._get_battery(),
+                self._get_hvdc_lcc(),
+                self._get_hvdc_vsc(),
+            ]
+        )
 
         return injections
 
@@ -167,7 +192,9 @@ class PowsyblBackend(BackendInterface):
             A mask for the chosen element either with the values in the file or the default value
         """
         try:
-            return np.load(self._get_masks_path() / mask_filename)
+            return load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs, file_path=str(self._get_masks_path() / mask_filename)
+            )
         except FileNotFoundError:
             return np.full(default_shape, default_value)
 
@@ -248,6 +275,60 @@ class PowsyblBackend(BackendInterface):
         return gens
 
     @functools.lru_cache
+    def _get_battery(self) -> pd.DataFrame:
+        """Get all batteries that are connected to a node in _get_nodes()"""
+        nodes = self._get_nodes()
+
+        batteries = self.net.get_batteries()
+
+        # TODO: create battery mask
+        # batteries["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["battery_for_nminus1"], False, len(batteries))
+        batteries["for_nminus1"] = False
+
+        batteries = batteries[batteries["bus_id"].isin(nodes.index) & (batteries["bus_id"] != self.slack_id)]
+        batteries["bus_id_int"] = nodes.loc[batteries["bus_id"], "int_id"].values
+        batteries["type"] = "GENERATOR"
+        batteries.loc[batteries["p"] > 0, "type"] = "LOAD"
+
+        return batteries
+
+    @functools.lru_cache
+    def _get_hvdc_lcc(self) -> pd.DataFrame:
+        """Get all lcc converter stations that are connected to a node in _get_nodes()"""
+        nodes = self._get_nodes()
+
+        lcc = self.net.get_lcc_converter_stations()
+
+        # TODO: create lcc and vsc mask
+        # lcc["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["lcc_for_nminus1"], False, len(lcc))
+        lcc["for_nminus1"] = False
+
+        lcc = lcc[lcc["bus_id"].isin(nodes.index) & (lcc["bus_id"] != self.slack_id)]
+        lcc["bus_id_int"] = nodes.loc[lcc["bus_id"], "int_id"].values
+        lcc["type"] = "GENERATOR"
+        lcc.loc[lcc["p"] > 0, "type"] = "LOAD"
+
+        return lcc
+
+    @functools.lru_cache
+    def _get_hvdc_vsc(self) -> pd.DataFrame:
+        """Get all vsc converter stations that are connected to a node in _get_nodes()"""
+        nodes = self._get_nodes()
+
+        vsc = self.net.get_vsc_converter_stations()
+
+        # TODO: create vsc mask
+        # vsc["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["vsc_for_nminus1"], False, len(vsc))
+        vsc["for_nminus1"] = False
+
+        vsc = vsc[vsc["bus_id"].isin(nodes.index) & (vsc["bus_id"] != self.slack_id)]
+        vsc["bus_id_int"] = nodes.loc[vsc["bus_id"], "int_id"].values
+        vsc["type"] = "GENERATOR"
+        vsc.loc[vsc["p"] > 0, "type"] = "LOAD"
+
+        return vsc
+
+    @functools.lru_cache
     def _get_loads(self) -> pd.DataFrame:
         """Get all loads that are connected to a node in _get_nodes()"""
         nodes = self._get_nodes()
@@ -283,10 +364,10 @@ class PowsyblBackend(BackendInterface):
         return dangling
 
     def _get_masks_path(self) -> Path:
-        return self.data_folder / PREPROCESSING_PATHS["masks_path"]
+        return Path(PREPROCESSING_PATHS["masks_path"])
 
     def _get_logs_path(self) -> Path:
-        return self.data_folder / PREPROCESSING_PATHS["logs_path"]
+        return Path(PREPROCESSING_PATHS["logs_path"])
 
     def get_slack(self) -> int:
         """Get the index of the slack node"""
@@ -343,7 +424,7 @@ class PowsyblBackend(BackendInterface):
 
     def get_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of branches that can have a phase shift"""
-        return self._get_branches()["alpha"].notna().values
+        return self._get_branches()["has_pst_tap"].values
 
     def get_controllable_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of controllable psts"""
@@ -353,7 +434,7 @@ class PowsyblBackend(BackendInterface):
         """Get a list of taps for each pst"""
         shift_taps = []
         steps = self.net.get_phase_tap_changer_steps(attributes=["alpha"])
-        for pst_id in self._get_branches().index[self._get_branches()["pst_controllable"]]:
+        for pst_id in self._get_branches()[self._get_branches()["pst_controllable"]].index:
             taps = np.squeeze(steps.loc[pst_id].values)
             shift_taps.append(np.sort(taps))
         return shift_taps
@@ -462,14 +543,17 @@ class PowsyblBackend(BackendInterface):
 
     def get_asset_topology(self) -> Optional[Topology]:
         """Get the asset topology if it exists"""
-        if (self.data_folder / PREPROCESSING_PATHS["asset_topology_file_path"]).exists():
-            return load_asset_topology(self.data_folder / PREPROCESSING_PATHS["asset_topology_file_path"])
+        if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_file_path"]):
+            return load_pydantic_model_fs(
+                filesystem=self.data_folder_dirfs,
+                file_path=PREPROCESSING_PATHS["asset_topology_file_path"],
+                model_class=Topology,
+            )
         return None
 
     def get_metadata(self) -> dict:
         """Get the path to the data_folder, masks_folder and the start datetime of the case"""
         return {
-            "data_folder": self.data_folder,
             "masks_folder": self._get_masks_path(),
             "start_datetime": str(self.net.case_date),
             "distributed_slack": self.distributed_slack,

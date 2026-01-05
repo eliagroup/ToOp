@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -233,7 +240,9 @@ def test_realize_ba_to_physical_topo_per_station_3_busbars():
     assert busbar_a_mappings_3[5] == [0]
 
 
-@pytest.mark.timeout(40)
+# TODO: set timeout to 40 and run without xdist
+@pytest.mark.xdist_group("performance")
+@pytest.mark.timeout(80)
 def test_realize_ba_to_physical_topo_per_station_large():
     n_assets = 20  # Should give around half a million actions
     np.random.seed(42)  # For reproducibility

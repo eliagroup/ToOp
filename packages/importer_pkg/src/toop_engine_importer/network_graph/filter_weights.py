@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Set all weights for the edges DataFrame in the NetworkGraphData model.
 
 Weights are used to map assets to categories in the network graph.
@@ -69,7 +76,7 @@ def set_station_weight(branches_df: BranchSchema, switches_df: SwitchSchema, hel
         Note: The DataFrame is modified in place.
     """
     # weights =  [self.branches, self.switches, self.helper_branches]
-    weights = [WeightValues.high.value, WeightValues.step.value, WeightValues.low.value]
+    weights = (WeightValues.high.value, WeightValues.step.value, WeightValues.low.value)
     weight_name = "station_weight"
     set_weights_for_edges(
         branches_df=branches_df,
@@ -105,7 +112,7 @@ def set_bay_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helper_
         Note: The DataFrame is modified in place.
     """
     # weights =  [self.branches, self.switches, self.helper_branches]
-    weights = [WeightValues.high.value, WeightValues.low.value, WeightValues.low.value]
+    weights = (WeightValues.high.value, WeightValues.low.value, WeightValues.low.value)
     weight_name = "bay_weight"
     set_weights_for_edges(
         branches_df=branches_df,
@@ -136,7 +143,7 @@ def set_trafo_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helpe
         Note: The DataFrame is modified in place.
     """
     # weights =  [self.branches, self.switches, self.helper_branches]
-    weights = [WeightValues.low.value, WeightValues.low.value, WeightValues.low.value]
+    weights = (WeightValues.low.value, WeightValues.low.value, WeightValues.low.value)
     weight_name = "trafo_weight"
     set_weights_for_edges(
         branches_df=branches_df,
@@ -172,7 +179,7 @@ def set_coupler_weight(branches_df: BranchSchema, switches_df: SwitchSchema, hel
         Note: The DataFrame is modified in place.
     """
     # weights =  [self.branches, self.switches, self.helper_branches]
-    weights = [WeightValues.high.value, WeightValues.step.value, WeightValues.low.value]
+    weights = (WeightValues.high.value, WeightValues.step.value, WeightValues.low.value)
     weight_name = "coupler_weight"
     set_weights_for_edges(
         branches_df=branches_df,
@@ -203,7 +210,7 @@ def set_busbar_weight(branches_df: BranchSchema, switches_df: SwitchSchema, help
         Note: The DataFrame is modified in place.
     """
     # weights =  [self.branches, self.switches, self.helper_branches]
-    weights = [WeightValues.low.value, WeightValues.low.value, WeightValues.low.value]
+    weights = (WeightValues.low.value, WeightValues.low.value, WeightValues.low.value)
     weight_name = "busbar_weight"
     set_weights_for_edges(
         branches_df=branches_df,
@@ -236,7 +243,7 @@ def set_switch_open_weight(
         Note: The DataFrame is modified in place.
     """
     # weights =  [self.branches, self.switches, self.helper_branches]
-    weights = [WeightValues.low.value, WeightValues.low.value, WeightValues.low.value]
+    weights = (WeightValues.low.value, WeightValues.low.value, WeightValues.low.value)
     weight_name = "switch_open_weight"
     set_weights_for_edges(
         branches_df=branches_df,

@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Holds functions to identify bridges inside a network."""
 
 import numpy as np
@@ -25,7 +32,7 @@ def zip_branch_lists(
     """
     return [
         np.concatenate([branches_from, branches_to])
-        for branches_from, branches_to in zip(branches_from_node_list, branches_to_node_list)
+        for branches_from, branches_to in zip(branches_from_node_list, branches_to_node_list, strict=True)
     ]
 
 
@@ -50,7 +57,7 @@ def get_branch_direction(
     """
     branch_direction = [
         np.isin(branches_at_node, branches_from_node)
-        for branches_at_node, branches_from_node in zip(branches_at_node_list, branches_from_node_list)
+        for branches_at_node, branches_from_node in zip(branches_at_node_list, branches_from_node_list, strict=True)
     ]
     return branch_direction
 

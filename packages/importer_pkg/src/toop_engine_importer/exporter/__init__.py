@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Export data from the AICoE_HPC_RL_Optimizer back to the original format.
 
 - `asset_topology_to_dgs.py`: Translate asset topology model to a DGS file (PowerFactory).
@@ -15,10 +22,7 @@ from .uct_exporter import (
 )
 
 __all__ = [
-    "SwitchUpdateDgsInfo",
     "asset_topo_to_uct",
-    "dgs_list_to_xlsx",
-    "get_dgs_from_realized_topology",
     "load_ucte",
     "process_file",
     "validate_ucte_changes",

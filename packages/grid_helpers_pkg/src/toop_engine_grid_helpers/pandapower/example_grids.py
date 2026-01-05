@@ -1,6 +1,12 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import json
 from copy import deepcopy
-from pathlib import Path
 
 import numpy as np
 import pandapower as pp
@@ -147,24 +153,11 @@ def replace_bus_index(net: pp.pandapowerNet, new_index: list[Union[int, np.integ
     new_index : list[Union[int, np.integer]]
         The new bus index
     """
-    bus_idx_map = {new: old for old, new in zip(net.bus.index, new_index)}
+    bus_idx_map = {new: old for old, new in zip(net.bus.index, new_index, strict=True)}
     for table, key in pp.element_bus_tuples():
         if table in net and key in net[table] and len(net[table]) > 0:
             net[table][key] = net[table][key].map(bus_idx_map)
     net.bus = net.bus.reindex(new_index).reset_index(drop=True)
-
-
-def pandapower_texas() -> pp.pandapowerNet:
-    """Load the pandapower Texas grid.
-
-    Returns
-    -------
-    pp.pandapowerNet
-        The pandapower Texas network.
-    """
-    texas_grid_file = Path(__file__).parent.parent / "data" / "texas" / "ACTIVSg2000.m"
-    net = pp.converter.from_mpc(str(texas_grid_file))
-    return net
 
 
 def pandapower_extended_oberrhein() -> pp.pandapowerNet:

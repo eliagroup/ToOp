@@ -1,3 +1,10 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Provides general helper functions for pypowsybl networks.
 
 These functions are used to extract and manipulate data from pypowsybl networks,
@@ -5,11 +12,18 @@ such as loadflow results, branch limits, and monitored elements.
 """
 
 import math
+import tempfile
+from pathlib import Path
 
 import numpy as np
+import pandapower
 import pandas as pd
-from beartype.typing import Literal, Optional
+import pypowsybl
+from beartype.typing import Dict, List, Literal, Optional
+from fsspec import AbstractFileSystem
 from pypowsybl.network import Network
+from pypowsybl.report import ReportNode
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 
 
 def extract_single_injection_loadflow_result(injections: pd.DataFrame, injection_id: str) -> tuple[float, float]:
@@ -58,56 +72,6 @@ def extract_single_branch_loadflow_result(
     p = branches.loc[branch_id, p_mapper]
     q = branches.loc[branch_id, q_mapper]
     return p, q
-
-
-def monitored_buses_to_monitored_voltage_levels(
-    net: Network, monitored_buses: list[str], bus_breaker_view: bool = False
-) -> list[str]:
-    """Convert a list of monitored buses to the corresponding voltage levels
-
-    Parameters
-    ----------
-    net : Network
-        The powsybl network
-    monitored_buses : list[str]
-        The list of bus ids to convert
-    bus_breaker_view : bool, optional
-        If True, the bus breaker view is used, by default False
-
-    Returns
-    -------
-    list[str]
-        The corresponding voltage levels
-    """
-    buses = net.get_bus_breaker_view_buses() if bus_breaker_view else net.get_buses()
-    return buses.loc[monitored_buses, "voltage_level_id"].unique().tolist()
-
-
-def buses_to_bus_breaker_view_bus(
-    net: Network,
-    buses: list[str],
-) -> list[str]:
-    """Find a corresponding bus breaker view bus id.
-
-    (referring to net.get_bus_breaker_view_buses().index
-    for a list of electrical buses (referring tonet.get_buses().index)
-
-    Parameters
-    ----------
-    net : Network
-        The powsybl network
-    buses : list[str]
-        The list of bus ids into net.get_buses().index
-
-    Returns
-    -------
-    list[str]
-        The corresponding bus breaker view bus ids, indexing into net.get_bus_breaker_view_buses().index
-    """
-    bus_breaker_buses = net.get_bus_breaker_view_buses()[["bus_id"]]
-    bus_breaker_buses = bus_breaker_buses.reset_index().sort_values(by="id")
-    first_breaker_bus_per_bus = bus_breaker_buses.groupby("bus_id").first()
-    return first_breaker_bus_per_bus.loc[buses].id.values.tolist()
 
 
 def get_branches_with_i(branches: pd.DataFrame, net: Network) -> pd.DataFrame:
@@ -208,7 +172,7 @@ def get_branches_with_i_max(branches: pd.DataFrame, net: Network, limit_name: st
     """
     current_limits = net.get_operational_limits()
     current_limits = current_limits[current_limits["name"] == limit_name]
-
+    current_limits = current_limits.groupby(level=["element_id", "side"]).min().reset_index("side")
     current_limits1 = current_limits[current_limits["side"] == "ONE"]["value"].reindex(current_limits.index)
     current_limits2 = current_limits[current_limits["side"] == "TWO"]["value"].reindex(current_limits.index)
 
@@ -316,3 +280,304 @@ def change_dangling_to_tie(dangling_lines: pd.DataFrame, station_elements: pd.Da
         station_elements = pd.concat([station_elements, dangling])
 
     return station_elements
+
+
+def load_powsybl_from_fs(
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    parameters: Optional[Dict[str, str]] = None,
+    post_processors: Optional[List[str]] = None,
+    report_node: Optional[ReportNode] = None,
+    allow_variant_multi_thread_access: bool = False,
+) -> pypowsybl.network.Network:
+    """Load any supported Powsybl network format from a filesystem.
+
+    Supported standard Powsybl formats like CGMES (.zip), powsybl nativa (.xiddm), UCTE (.uct), Matpower (.mat).
+    For all supported formats, see pypowsybl documentation for `pypowsybl.network.load`:
+    https://powsybl.readthedocs.io/projects/powsybl-core/en/stable/grid_exchange_formats/index.html
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The filesystem to load the Powsybl network from.
+    file_path : Path
+        The path to the Powsybl network in the filesystem.
+    parameters : Optional[Dict[str, str]], optional
+        Additional parameters to pass to the pypowsybl.network.load function, by default None
+    post_processors : Optional[List[str]], optional
+        a list of import post processors (will be added to the ones defined by the platform config), by default None
+    report_node : Optional[ReportNode], optional
+        the reporter to be used to create an execution report
+    allow_variant_multi_thread_access : bool, optional
+        allow multi-thread access to variant, by default False
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The loaded Powsybl network.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        filesystem.download(
+            str(file_path),
+            str(tmp_grid_path),
+        )
+        return pypowsybl.network.load(
+            file=str(tmp_grid_path),
+            parameters=parameters,
+            post_processors=post_processors,
+            report_node=report_node,
+            allow_variant_multi_thread_access=allow_variant_multi_thread_access,
+        )
+
+
+def save_powsybl_to_fs(
+    net: pypowsybl.network.Network,
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+    format: Optional[Literal["CGMES", "XIIDM", "UCTE", "MATPOWER"]] = "XIIDM",
+    make_dir: bool = True,
+) -> None:
+    """Save any supported Powsybl network format to a filesystem.
+
+    Supported standard Powsybl formats like CGMES (.zip), powsybl nativa (.xiddm), UCTE (.uct), Matpower (.mat).
+    For all supported formats, see pypowsybl documentation for `pypowsybl.network.save`:
+    https://powsybl.readthedocs.io/projects/powsybl-core/en/stable/grid_exchange_formats/index.html
+
+    Parameters
+    ----------
+    net : pypowsybl.network.Network
+        The Powsybl network to save.
+    filesystem : AbstractFileSystem
+        The filesystem to save the Powsybl network to.
+    file_path : Path
+        The path to save the Powsybl network in the filesystem.
+    format : Optional[Literal["CGMES", "XIIDM", "UCTE", "MATPOWER"]], optional
+        The format to save the Powsybl network in, by default "CGMES".
+    make_dir: bool
+        create parent folder if not exists.
+    """
+    if make_dir:
+        filesystem.makedirs(Path(file_path).parent.as_posix(), exist_ok=True)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        net.save(str(tmp_grid_path), format=format)
+        filesystem.upload(
+            str(tmp_grid_path),
+            str(file_path),
+        )
+
+
+def select_a_generator_as_slack_and_run_loadflow(network: Network) -> None:
+    """Select a generator as slack and run loadflow.
+
+    Powsybl tends to set the reference bus and slack as two different buses.
+    Additionally, in some cases the slack is not a generator bus.
+    This function selects a generator as slack bus and runs the loadflow again.
+
+    Parameters
+    ----------
+    network : Network
+        The Powsybl network to modify and run loadflow on.
+
+    Raises
+    ------
+    ValueError
+        If the loadflow does not converge after setting the slack.
+        If the slack bus is not a generator.
+    """
+    try:
+        # try to get slack from CGMES data
+        b = network.get_buses()
+        ref_bus = b[(b["v_angle"] == 0) & (b["connected_component"] == 0)]
+
+        slack_voltage_id = ref_bus["voltage_level_id"].values[0]
+        slack_bus_id = ref_bus.index.values[0]
+    except Exception:
+        # if not found, set first largest generator as slack
+        generators = network.get_generators(attributes=["bus_id", "voltage_level_id", "max_p"])
+        generators = generators.sort_values(by="max_p", ascending=False)
+        first = 1
+        slack_bus_id = generators["bus_id"].values[first]
+        slack_voltage_id = generators["voltage_level_id"].values[first]
+
+    dict_slack = {"voltage_level_id": slack_voltage_id, "bus_id": slack_bus_id}
+    pypowsybl.network.Network.create_extensions(network, extension_name="slackTerminal", **dict_slack)
+    network.get_extensions("slackTerminal")
+
+    powsybl_loadflow_parameter = pypowsybl.loadflow.Parameters(
+        voltage_init_mode=pypowsybl.loadflow.VoltageInitMode.DC_VALUES,
+        read_slack_bus=True,
+        distributed_slack=True,
+        use_reactive_limits=True,
+        connected_component_mode=pypowsybl.loadflow.ConnectedComponentMode.MAIN,  # ConnectedComponentMode
+    )
+
+    loadflow_res = pypowsybl.loadflow.run_ac(network, parameters=powsybl_loadflow_parameter)[0]
+    if loadflow_res.status != pypowsybl._pypowsybl.LoadFlowComponentStatus.CONVERGED:
+        raise ValueError(
+            f"Load flow did not converge. Status: {loadflow_res.status}, "
+            f"Status text: {loadflow_res.status_text}, "
+            f"Reference bus ID: {loadflow_res.reference_bus_id}"
+        )
+
+    slack_bus_id = loadflow_res.slack_bus_results[0].id
+    generators = network.get_generators(attributes=["bus_id"])
+    if slack_bus_id not in generators["bus_id"].values:
+        raise ValueError("The slack bus must be a generator.")
+
+
+def load_pandapower_net_for_powsybl(
+    net: pandapower.pandapowerNet, check_trafo_resistance: bool = True, set_slack_generator: bool = True
+) -> pypowsybl.network.Network:
+    """Load a pandapower network and convert it to a pypowsybl network.
+
+    Known pandapower test grids that fail to convert:
+    (This list is a logical AND of convert_from_pandapower and grid2opt conversion methods
+    + the logical OR of check_powsybl_import errors)
+    'example_multivoltage'      -> Generator minimum reactive power is not set
+    'simple_four_bus_system'    -> Generator minimum reactive power is not set
+    'simple_mv_open_ring_net'   -> 2 windings transformer '0_1_6': b is invalid
+    'create_cigre_network_hv'   -> Generator minimum reactive power is not set
+    'create_cigre_network_lv'   -> No Slack Generator found
+    'case145'                   -> Transformer with negative resistance
+    'case_illinois200'          -> No Slack Generator found
+    'case300'                   -> No Slack Generator found
+
+    Parameters
+    ----------
+    net : pandapower.pandapowerNet
+        The pandapower network to convert.
+    check_trafo_resistance : bool, optional
+        If True, check for negative transformer resistance after conversion, by default True
+    set_slack_generator : bool, optional
+        If True, select a generator as slack and run loadflow after conversion, by default True
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The converted pypowsybl network.
+
+    """
+    try:
+        pypowsybl_network = load_pandapower_net_for_powsybl_with_convert_from_pandapower(net)
+        check_powsybl_import(pypowsybl_network, check_trafo_resistance=check_trafo_resistance)
+    except (pypowsybl.PyPowsyblError, ValueError) as e:
+        try:
+            pypowsybl_network = load_pandapower_net_via_grid2opt_for_powsybl(net)
+            check_powsybl_import(pypowsybl_network, check_trafo_resistance=check_trafo_resistance)
+        except Exception as e2:
+            raise ValueError(
+                f"Failed to convert pandapower net to pypowsybl network. "
+                f"pypowsybl.network.convert_from_pandapower: {e}. Conversion via grid2opt failed with error: {e2}"
+            ) from e2
+    if set_slack_generator:
+        try:
+            select_a_generator_as_slack_and_run_loadflow(pypowsybl_network)
+        except Exception as e:
+            raise ValueError(f"Slack selection failed after conversion from pandapower to powsybl: {e}") from e
+
+    return pypowsybl_network
+
+
+def load_pandapower_net_for_powsybl_with_convert_from_pandapower(net: pandapower.pandapowerNet) -> pypowsybl.network.Network:
+    """Load a pandapower network and convert it to a pypowsybl network using convert_from_pandapower.
+
+    Known pandapower test grids that fail to convert:
+    'example_simple'            -> Generator minimum reactive power is not set
+    'example_multivoltage'      -> Generator minimum reactive power is not set
+    'simple_four_bus_system'    -> Generator minimum reactive power is not set
+    'simple_mv_open_ring_net'   -> 2 windings transformer '0_1_6': b is invalid
+    'create_cigre_network_hv'   -> Generator minimum reactive power is not set
+
+    Parameters
+    ----------
+    net : pandapower.pandapowerNet
+        The pandapower network to convert.
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The converted pypowsybl network.
+    """
+    pypowsybl_network = pypowsybl.network.convert_from_pandapower(net)
+    return pypowsybl_network
+
+
+def load_pandapower_net_via_grid2opt_for_powsybl(
+    net: pandapower.pandapowerNet,
+) -> pypowsybl.network.Network:
+    """Load a pandapower network and convert it to a pypowsybl network using grid2opt.
+
+    Known pandapower test grids that fail to convert:
+    'example_multivoltage'      -> Transformer with negative resistance
+    'create_cigre_network_hv'   -> Line with different voltage levels -> failed transformer conversion
+    'case14'                    -> Line with different voltage levels -> failed transformer conversion
+    'case_ieee30'               -> Line with different voltage levels -> failed transformer conversion
+    'case57'                    -> Line with different voltage levels -> failed transformer conversion
+    'case89pegase'              -> Line with different voltage levels -> failed transformer conversion
+    'case118'                   -> Line with different voltage levels -> failed transformer conversion
+    'case145'                   -> Transformer with negative resistance
+    'case_illinois200'          -> Line with different voltage levels -> failed transformer conversion
+    'case300'                   -> Line with different voltage levels -> failed transformer conversion
+
+    Parameters
+    ----------
+    net : pandapower.pandapowerNet
+        The pandapower network to convert.
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The converted pypowsybl network.
+    """
+    pandapower.runpp(net)
+    with tempfile.NamedTemporaryFile(suffix=".mat", delete=True) as tmpfile:
+        _ = pandapower.converter.to_mpc(net, tmpfile.name)
+        loading_params = {
+            "matpower.import.ignore-base-voltage": "false",  # change the voltage from per unit to Kv
+        }
+        pypowsybl_network = pypowsybl.network.load(tmpfile.name, loading_params)
+    return pypowsybl_network
+
+
+def check_powsybl_import(pypowsybl_network: pypowsybl.network.Network, check_trafo_resistance: bool = True) -> None:
+    """Check the import of a pypowsybl network.
+
+    Parameters
+    ----------
+    pypowsybl_network : pypowsybl.network.Network
+        The pypowsybl network to test.
+    check_trafo_resistance : bool, optional
+        If True, check for negative transformer resistance, by default True
+
+    Raises
+    ------
+    ValueError
+        If a transformer with negative resistance is found in the converted network.
+        If a line with different voltage levels is found in the converted network.
+        If the load flow does not converge.
+    """
+    # importing pn.example_multivoltage -> one transformer has negative resistance
+    if check_trafo_resistance:
+        transformers = pypowsybl_network.get_2_windings_transformers()
+        if len(transformers[transformers["r"] < 0]) > 0:
+            raise ValueError("A Transformer in the converted pandapower net has a negative resistance")
+
+    # test if lines have the same voltage level
+    line_voltage = pypowsybl_network.get_lines(attributes=["voltage_level1_id", "voltage_level2_id"])
+    line_voltage = line_voltage.merge(
+        pypowsybl_network.get_voltage_levels(attributes=["nominal_v"]), left_on="voltage_level1_id", right_index=True
+    )
+    line_voltage = line_voltage.merge(
+        pypowsybl_network.get_voltage_levels(attributes=["nominal_v"]),
+        left_on="voltage_level2_id",
+        right_index=True,
+        suffixes=("_vl1", "_vl2"),
+    )
+    if not all(line_voltage["nominal_v_vl1"] == line_voltage["nominal_v_vl2"]):
+        raise ValueError("A Line in the converted pandapower net has two different voltage levels")
+
+    loadflow_res = pypowsybl.loadflow.run_ac(pypowsybl_network, DISTRIBUTED_SLACK)[0]
+    if loadflow_res.status != pypowsybl._pypowsybl.LoadFlowComponentStatus.CONVERGED:
+        raise ValueError(f"Load flow failed: {loadflow_res.status_text}")

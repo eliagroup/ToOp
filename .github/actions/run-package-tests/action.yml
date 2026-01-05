@@ -1,0 +1,55 @@
+name: Run package tests
+
+description: |
+  Prepare the uv environment, execute pytest with coverage, and upload artifacts for a package.
+
+inputs:
+  package:
+    description: Name of the package directory under packages/.
+    required: true
+  workers:
+    description: Number of workers to use for pytest-xdist.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Check out repository code
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
+
+    - name: Set up Python
+      uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+      with:
+        python-version-file: packages/${{ inputs.package }}/pyproject.toml
+
+    - name: Install dependencies
+      shell: bash
+      run: uv sync --all-groups --all-extras --frozen
+      env:
+        UV_PROJECT: packages/${{ inputs.package }}
+
+    - name: set PY
+      shell: bash
+      run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+    - name: Run tests with code coverage report
+      shell: bash
+      run: |
+        uv run pytest -n ${{ inputs.workers }} --dist loadgroup packages/${{ inputs.package }}/tests \
+          --cov=packages/${{ inputs.package }}/src \
+          --cov-config=.coveragerc \
+          --cov-report term-missing \
+          --cov-report xml:coverage-${{ inputs.package }}.xml
+      env:
+        CLEANUP_RAY_AFTER_TESTS: true
+        UV_PROJECT: packages/${{ inputs.package }}
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-${{ inputs.package }}
+        path: coverage-${{ inputs.package }}.xml
+        retention-days: 7

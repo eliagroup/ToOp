@@ -105,7 +105,14 @@ doc = [
 ]
 
 # TOOLS
-
+[tool.uv]
+# Excludes nvconvert because of CVE.
+# nbconverts pdf-conversion is not needed
+# https://access.redhat.com/security/cve/cve-2025-53000
+# See https://github.com/astral-sh/uv/issues/7214#issuecomment-2340188447
+override-dependencies = [
+    "nbconvert; sys_platform == 'never'", 
+]
 [tool.pytest.ini_options]
 
 pythonpath = [

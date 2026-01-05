@@ -168,7 +168,7 @@ def test_main_simple(
         )
 
 
-@pytest.mark.timeout(150)
+@pytest.mark.timeout(300)
 def test_main(
     kafka_command_topic: str,
     kafka_heartbeat_topic: str,

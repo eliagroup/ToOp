@@ -84,6 +84,8 @@ dev = [
     "pytest-xdist>=3.8.0",
     "ipykernel>=6.25.2",
     "jupyter>=1.0.0",
+    "nbclient>=0.10.0",
+    "defusedxml>=0.7.0",
     "seaborn>=0.13.0",
     "plotly>=3.0.0",
     "openpyxl>=3.1.2",
@@ -105,7 +107,14 @@ doc = [
 ]
 
 # TOOLS
-
+[tool.uv]
+# Excludes nvconvert because of CVE.
+# nbconverts pdf-conversion is not needed
+# https://access.redhat.com/security/cve/cve-2025-53000
+# See https://github.com/astral-sh/uv/issues/7214#issuecomment-2340188447
+override-dependencies = [
+    "nbconvert; sys_platform == 'never'", 
+]
 [tool.pytest.ini_options]
 
 pythonpath = [

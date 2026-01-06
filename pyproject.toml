@@ -21,7 +21,7 @@ classifiers=[
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: MIT License',
+        'License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)',
         'Natural Language :: English',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
@@ -40,8 +40,8 @@ dependencies = [
     "toop_engine_topology_optimizer=={{ version }}",
 ]
 
-license = "MIT"
-license-files = ["LICEN[CS]E.*"]
+license = "MPL-2.0"
+license-files = ["LICENSE"]
 
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]

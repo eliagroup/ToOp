@@ -15,10 +15,11 @@ from nbformat import read
 NOTEBOOK_DIR = Path("notebooks")
 TIMEOUT = 600
 
-notebook_paths = sorted(NOTEBOOK_DIR.rglob("example*.ipynb"))
+example_notebook_paths = sorted(NOTEBOOK_DIR.rglob("example*.ipynb"))
 
 
-@pytest.mark.parametrize("nb_path", notebook_paths, ids=[p.name for p in notebook_paths])
+# Executes each example notebook and ensure it executes without errors
+@pytest.mark.parametrize("nb_path", example_notebook_paths, ids=[p.name for p in example_notebook_paths])
 def test_notebook_executes(nb_path: Path):
     with nb_path.open("r", encoding="utf-8") as f:
         nb = read(f, as_version=4)

@@ -224,10 +224,6 @@ def kafka_heartbeat_topic(kafka_container: Container) -> Generator[str, None, No
 def grid_folder() -> Path:
     """Grid data directory prepared once and shared across workers.
 
-    Args:
-        tmp_path_factory (pytest.TempPathFactory): Temporary path factory provided by pytest.
-        worker_id (str): Worker ID provided by pytest-xdist.
-
     Returns:
         Path: The path to the grid data directory.
     """

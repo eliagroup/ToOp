@@ -35,6 +35,7 @@ from toop_engine_dc_solver.jax.types import (
     BranchLimits,
     DynamicInformation,
     N2BaselineAnalysis,
+    NodalInjectionInformation,
     NonRelBBOutageData,
     RelBBOutageData,
     SolverConfig,
@@ -288,16 +289,30 @@ def validate_static_information(
         if baseline.overload_weight is not None:
             assert baseline.overload_weight.shape == (n_branch_monitored,)
 
-    assert jnp.all(di.controllable_pst_indices >= 0)
-    assert jnp.all(di.controllable_pst_indices < n_bus)
-    assert di.controllable_pst_indices.shape == di.shift_degree_min.shape
-    assert di.controllable_pst_indices.shape == di.shift_degree_max.shape
-    assert jnp.isfinite(di.shift_degree_min).all()
-    assert jnp.isfinite(di.shift_degree_max).all()
-    assert jnp.all(di.shift_degree_min <= di.shift_degree_max)  # not used for now, needs a preprocessing step
-    assert jnp.all(di.pst_n_taps > 0)  # If not, this would not a controllable PST
-    assert di.pst_n_taps.shape == di.controllable_pst_indices.shape
-    assert di.pst_tap_values.shape[0] == di.controllable_pst_indices.shape[0]
+    if di.nodal_injection_information is not None:
+        assert jnp.all(di.nodal_injection_information.controllable_pst_indices >= 0)
+        assert jnp.all(di.nodal_injection_information.controllable_pst_indices < n_bus)
+        assert (
+            di.nodal_injection_information.controllable_pst_indices.shape
+            == di.nodal_injection_information.shift_degree_min.shape
+        )
+        assert (
+            di.nodal_injection_information.controllable_pst_indices.shape
+            == di.nodal_injection_information.shift_degree_max.shape
+        )
+        assert jnp.isfinite(di.nodal_injection_information.shift_degree_min).all()
+        assert jnp.isfinite(di.nodal_injection_information.shift_degree_max).all()
+        assert jnp.all(
+            di.nodal_injection_information.shift_degree_min <= di.nodal_injection_information.shift_degree_max
+        )  # not used for now, needs a preprocessing step
+        assert jnp.all(di.nodal_injection_information.pst_n_taps > 0)  # If not, this would not a controllable PST
+        assert (
+            di.nodal_injection_information.pst_n_taps.shape == di.nodal_injection_information.controllable_pst_indices.shape
+        )
+        assert (
+            di.nodal_injection_information.pst_tap_values.shape[0]
+            == di.nodal_injection_information.controllable_pst_indices.shape[0]
+        )
 
 
 def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:
@@ -499,27 +514,28 @@ def _save_static_information(binaryio: BinaryIO, static_information: StaticInfor
                     "n_2_overload_weight",
                     data=baseline.overload_weight,
                 )
-
-        file.create_dataset(
-            "controllable_pst_indices",
-            data=dynamic_information.controllable_pst_indices,
-        )
-        file.create_dataset(
-            "shift_degree_min",
-            data=dynamic_information.shift_degree_min,
-        )
-        file.create_dataset(
-            "shift_degree_max",
-            data=dynamic_information.shift_degree_max,
-        )
-        file.create_dataset(
-            "pst_n_taps",
-            data=dynamic_information.pst_n_taps,
-        )
-        file.create_dataset(
-            "pst_tap_values",
-            data=dynamic_information.pst_tap_values,
-        )
+        if dynamic_information.nodal_injection_information is not None:
+            nodal_inj_opt = dynamic_information.nodal_injection_information
+            file.create_dataset(
+                "controllable_pst_indices",
+                data=nodal_inj_opt.controllable_pst_indices,
+            )
+            file.create_dataset(
+                "shift_degree_min",
+                data=nodal_inj_opt.shift_degree_min,
+            )
+            file.create_dataset(
+                "shift_degree_max",
+                data=nodal_inj_opt.shift_degree_max,
+            )
+            file.create_dataset(
+                "pst_n_taps",
+                data=nodal_inj_opt.pst_n_taps,
+            )
+            file.create_dataset(
+                "pst_tap_values",
+                data=nodal_inj_opt.pst_tap_values,
+            )
 
         for idx, (branches, nodes) in enumerate(
             zip(
@@ -669,6 +685,7 @@ def _load_static_information(binaryio: BinaryIO) -> StaticInformation:
             rel_bb_outage_data_present,
             non_rel_bb_outage_data_present,
             bb_outage_baseline_analysis_present,
+            nodal_injection_optimization_present,
         ) = check_data_availability(file)
 
         return StaticInformation(
@@ -720,11 +737,7 @@ def _load_static_information(binaryio: BinaryIO) -> StaticInformation:
                 unsplit_flow=jnp.array(file["unsplit_flow"][:]),
                 branches_monitored=jnp.array(file["branches_monitored"][:]),
                 n2_baseline_analysis=load_n2_baseline_analysis(file, n2_baseline_analysis_present),
-                controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
-                shift_degree_min=jnp.array(file["shift_degree_min"][:]),
-                shift_degree_max=jnp.array(file["shift_degree_max"][:]),
-                pst_n_taps=jnp.array(file["pst_n_taps"][:]),
-                pst_tap_values=jnp.array(file["pst_tap_values"][:]),
+                nodal_injection_information=load_nodal_injection_optimization(file, nodal_injection_optimization_present),
                 non_rel_bb_outage_data=load_non_rel_bb_outage_data(file, non_rel_bb_outage_data_present),
                 bb_outage_baseline_analysis=load_bb_outage_baseline_analysis(file, bb_outage_baseline_analysis_present),
             ),
@@ -832,7 +845,35 @@ def load_n2_baseline_analysis(file: h5py.File, n2_baseline_analysis_present: boo
     return None
 
 
-def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool]:
+def load_nodal_injection_optimization(
+    file: h5py.File, nodal_injection_optimization_present: bool
+) -> NodalInjectionInformation | None:
+    """Load the nodal injection optimization data from the hdf5 file if present.
+
+    Parameters
+    ----------
+    file : h5py.File
+        The hdf5 file to load from
+    nodal_injection_optimization_present : bool
+        Whether the nodal injection optimization data is present in the file
+
+    Returns
+    -------
+    NodalInjectionOptimization | None
+        The loaded NodalInjectionOptimization or None if not present
+    """
+    if nodal_injection_optimization_present:
+        return NodalInjectionInformation(
+            controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
+            shift_degree_min=jnp.array(file["shift_degree_min"][:]),
+            shift_degree_max=jnp.array(file["shift_degree_max"][:]),
+            pst_n_taps=jnp.array(file["pst_n_taps"][:]),
+            pst_tap_values=jnp.array(file["pst_tap_values"][:]),
+        )
+    return None
+
+
+def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bool]:
     """Check the availability of optional data in the hdf5 file.
 
     Parameters
@@ -842,12 +883,13 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool]:
 
     Returns
     -------
-    tuple[bool, bool, bool, bool]
+    tuple[bool, bool, bool, bool, bool]
         A tuple of booleans indicating the presence of:
         - n2_baseline_analysis_present
         - rel_bb_outage_data_present
         - non_rel_bb_outage_data_present
         - bb_outage_baseline_analysis_present
+        - nodal_injection_optimization_present
     """
     n2_baseline_analysis_present = (
         "n_2_l1_branches" in file
@@ -875,11 +917,20 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool]:
         "bb_outage_baseline_analysis_overload" in file and "bb_outage_baseline_analysis_success_count" in file
     )
 
+    nodal_injection_optimization_present = (
+        "controllable_pst_indices" in file
+        and "shift_degree_min" in file
+        and "shift_degree_max" in file
+        and "pst_n_taps" in file
+        and "pst_tap_values" in file
+    )
+
     return (
         n2_baseline_analysis_present,
         rel_bb_outage_data_present,
         non_rel_bb_outage_data_present,
         bb_outage_baseline_analysis_present,
+        nodal_injection_optimization_present,
     )
 
 

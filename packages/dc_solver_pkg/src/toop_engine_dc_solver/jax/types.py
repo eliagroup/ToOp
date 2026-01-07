@@ -111,6 +111,12 @@ class SolverConfig:
     """Whether to enable an in-the-loop optimization of nodal injections (PST, HVDC, ...). This will add a significant
     overhead but will yield nodal_optim_results in addition to just topology results"""
 
+    precision_percent: float = 0.1  # TODO: Should this be a starting minimum precision?
+    """The initial precision to which the nodal injection optimization should run in percent of the maximal precision.
+    This is only used if nodal injection optimization is enabled via enable_nodal_inj_optim.
+
+    This option introduces a significant overhead to the solver, as it optimizes a subset of nodal injections."""
+
     def __hash__(self) -> int:
         """Get id as the hash for the static information.
 
@@ -271,22 +277,9 @@ class DynamicInformation:
     This is calculated if a comparision of bb_outage analysis has to be made between the unsplit
     and split grid."""
 
-    controllable_pst_indices: Int[Array, " n_controllable_pst"]
-    """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
-    actually shift angles and can be varied between shift_min and shift_max."""
-
-    shift_degree_min: Float[Array, " n_controllable_pst"]
-    """The minimum shift angle for each controllable PST"""
-
-    shift_degree_max: Float[Array, " n_controllable_pst"]
-    """The maximum shift angle for each controllable PST"""
-
-    pst_n_taps: Int[Array, " n_controllable_pst"]
-    """The number of discrete taps for each controllable PST"""
-
-    pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
-    """Discrete individual taps of controllable PSTs. The array is zero-padded to the maximum number of
-    pst_n_taps."""
+    nodal_injection_information: Optional[NodalInjectionInformation]
+    """If provided, contains the information about nodal injections (e.g. PSTs).
+    This is required for nodal injection optimization (and thus PST optimization)"""
 
     @property
     def n_timesteps(self) -> int:
@@ -370,7 +363,11 @@ class DynamicInformation:
     @property
     def n_controllable_pst(self) -> int:
         """The number of controllable PSTs"""
-        return len(self.controllable_pst_indices)
+        return (
+            len(self.nodal_injection_information.controllable_pst_indices)
+            if self.nodal_injection_information is not None
+            else 0
+        )
 
     @property
     def n_actions(self) -> int:
@@ -390,7 +387,9 @@ class DynamicInformation:
     @property
     def max_n_tap_positions(self) -> int:
         """Maximum number of discrete tap positions of any controllable PST"""
-        return self.pst_tap_values.shape[1]
+        return (
+            self.nodal_injection_information.pst_tap_values.shape[1] if self.nodal_injection_information is not None else 0
+        )
 
 
 @pytree_dataclass
@@ -1134,6 +1133,7 @@ class AggregateMetricProtocol(Protocol):
         This is needed because jax recompiles based on the hash and equality check of the inputs, so
         if the hash/__eq__ result changes, jax will recompile even if it is the same function.
         """
+        raise NotImplementedError("A hash function must be implemented for the aggregate metric function.")
 
     def __eq__(self, other: object) -> bool:
         """Check if the functions are equal.
@@ -1328,3 +1328,25 @@ class BBOutageBaselineAnalysis:
     """The overload weights used to compute the bb_outage overload energy. This is likely a copy of
     branch_limits.overload_weight, however it is less bug-prone to replicate it so the unsplit and
     split analysis will always use the same weights."""
+
+
+@pytree_dataclass
+class NodalInjectionInformation:
+    """Holds the nodal injection optimization data required by the DC solver."""
+
+    controllable_pst_indices: Int[Array, " n_controllable_pst"]
+    """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
+    actually shift angles and can be varied between shift_min and shift_max."""
+
+    shift_degree_min: Float[Array, " n_controllable_pst"]
+    """The minimum shift angle for each controllable PST"""
+
+    shift_degree_max: Float[Array, " n_controllable_pst"]
+    """The maximum shift angle for each controllable PST"""
+
+    pst_n_taps: Int[Array, " n_controllable_pst"]
+    """The number of discrete taps for each controllable PST"""
+
+    pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
+    """Discrete individual taps of controllable PSTs. The array is zero-padded to the maximum number of
+    pst_n_taps."""

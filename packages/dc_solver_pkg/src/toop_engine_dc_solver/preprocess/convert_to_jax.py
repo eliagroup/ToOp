@@ -43,6 +43,7 @@ from toop_engine_dc_solver.jax.types import (
     BranchLimits,
     DynamicInformation,
     MetricType,
+    NodalInjectionInformation,
     NonRelBBOutageData,
     RelBBOutageData,
     SolverConfig,
@@ -125,6 +126,8 @@ def convert_to_jax(  # noqa: PLR0913
     bb_outage_more_splits_penalty: float = 2000.0,
     clip_bb_outage_penalty: bool = False,
     ac_dc_interpolation: float = 0.0,
+    enable_nodal_inj_optim: bool = False,
+    precision_percent: float = 0.1,
     logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
 ) -> StaticInformation:
     """Convert the finalized network data into static info for the solver
@@ -177,6 +180,10 @@ def convert_to_jax(  # noqa: PLR0913
         Whether to clip the lower bound of busbar outage penalty to 0.
     ac_dc_interpolation: float, optional
         The interpolation factor for AC/DC mismatch, by default 0.0 (full DC).
+    precision_percent: float, optional
+        The precision to which the nodal injection optimization should run in percent of the maximal precision.
+    enable_nodal_inj_optim: bool, optional
+        Whether to enable nodal injection optimization (PST optimization)
     logging_fn: Callable, optional
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters, by default None
@@ -293,11 +300,15 @@ def convert_to_jax(  # noqa: PLR0913
             n2_baseline_analysis=None,
             non_rel_bb_outage_data=convert_non_rel_bb_outage(network_data) if enable_bb_outage else None,
             bb_outage_baseline_analysis=None,
-            controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
-            shift_degree_min=shift_degree_min,
-            shift_degree_max=shift_degree_max,
-            pst_n_taps=pst_n_taps,
-            pst_tap_values=pst_tap_values,
+            nodal_injection_information=NodalInjectionInformation(
+                controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
+                shift_degree_min=shift_degree_min,
+                shift_degree_max=shift_degree_max,
+                pst_n_taps=pst_n_taps,
+                pst_tap_values=pst_tap_values,
+            )
+            if network_data.controllable_pst_node_mask.any()
+            else None,
         ),
         solver_config=SolverConfig(
             branches_per_sub=HashableArrayWrapper(network_data.num_branches_per_node),
@@ -317,6 +328,8 @@ def convert_to_jax(  # noqa: PLR0913
             bb_outage_as_nminus1=bb_outage_as_nminus1,
             clip_bb_outage_penalty=clip_bb_outage_penalty,
             contingency_ids=network_data.contingency_ids,
+            enable_nodal_inj_optim=enable_nodal_inj_optim,
+            precision_percent=jnp.array(precision_percent),
         ),
     )
 

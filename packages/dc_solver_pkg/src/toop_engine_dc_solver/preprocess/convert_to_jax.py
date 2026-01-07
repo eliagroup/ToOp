@@ -329,7 +329,7 @@ def convert_to_jax(  # noqa: PLR0913
             clip_bb_outage_penalty=clip_bb_outage_penalty,
             contingency_ids=network_data.contingency_ids,
             enable_nodal_inj_optim=enable_nodal_inj_optim,
-            precision_percent=jnp.array(precision_percent),
+            precision_percent=precision_percent,
         ),
     )
 

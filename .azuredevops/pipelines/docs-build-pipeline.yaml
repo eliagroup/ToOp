@@ -54,7 +54,7 @@ trigger:
       - main
       - develop
       - refs/tags/*
-
+      
 stages:
 
   - template: techdocs.yaml@egaf-pipeline-templates
@@ -62,10 +62,11 @@ stages:
       targetBranch: 'refs/heads/main'
       entity: 'default/component/Topology-Optimizer-ToOp'
 
-  - stage: Build_Docs
-    displayName: Build Documentation
+  - stage: build_docs_for_backstage
+    condition: always()
+    displayName: Build Documentation and publish to deploy-backstage-docs branch
     jobs:
-      - job: Build_Docs
+      - job: build_docs_for_backstage
         steps:
           - checkout: self
             persistCredentials: true
@@ -102,6 +103,9 @@ stages:
               mkdir -p /tmp/docs-build
               cp -r site docs mkdocs.yml _backstage/backstage.yaml _backstage/config.yaml /tmp/docs-build/
 
+              echo "Copying the packages to temporary folder..."
+              cp -r packages /tmp/packages
+
               echo "Checking if deploy-backstage-docs branch exists on remote..."
               if git ls-remote --exit-code --heads origin deploy-backstage-docs; then
                 echo "Branch exists. Checking out..."
@@ -119,6 +123,10 @@ stages:
               echo "Restoring new docs into _backstage/..."
               mkdir -p _backstage
               cp -r /tmp/docs-build/* _backstage/
+
+              echo "Restoring packages into packages/..."
+              mkdir -p packages
+              cp -r /tmp/packages/* packages/
 
               echo "Adding changes to git..."
               git add .

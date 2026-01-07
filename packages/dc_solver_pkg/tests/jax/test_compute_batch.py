@@ -621,7 +621,7 @@ def test_compute_symmetric_batch_with_nodal_inj_optim(
             (
                 batch_size_bsdf,
                 static_information.dynamic_information.n_controllable_pst,
-                static_information.dynamic_information.n_controllable_pst,
+                static_information.dynamic_information.n_timesteps,
             ),
         )
     )
@@ -649,9 +649,7 @@ def test_compute_symmetric_batch_nodal_inj_optim_off_but_set_precision(
     # Activate nodal injection optimization
     static_information = replace(
         static_information,
-        solver_config=replace(
-            static_information.solver_config, enable_nodal_inj_optim=False, precision_percent=jnp.array(1.0)
-        ),
+        solver_config=replace(static_information.solver_config, enable_nodal_inj_optim=False, precision_percent=1.0),
     )
 
     batch_size_bsdf = static_information.solver_config.batch_size_bsdf

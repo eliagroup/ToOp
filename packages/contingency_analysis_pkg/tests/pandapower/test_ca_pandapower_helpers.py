@@ -57,22 +57,22 @@ def n_1_definition_unique_pp_id(pandapower_net: pp.pandapowerNet) -> Nminus1Defi
 
 
 @pytest.fixture
-def n_1_definition_impedance(pandapower_net: pp.pandapowerNet) -> Nminus1Definition:
+def n_1_definition_impedance(pandapower_net_with_impedance: pp.pandapowerNet) -> Nminus1Definition:
     contingencies = [
         Contingency(
             id=get_globally_unique_id(id, "line"),
             name=f"contingency_{id}",
             elements=[GridElement(id=get_globally_unique_id(id, "line"), type="line", name=f"line_{id}", kind="branch")],
         )
-        for id in pandapower_net.line.index
+        for id in pandapower_net_with_impedance.line.index
     ]
     monitored_elements = [
         GridElement(id=get_globally_unique_id(id, "line"), type="line", name="id", kind="branch")
-        for id in pandapower_net.line.index
+        for id in pandapower_net_with_impedance.line.index
     ]
     monitored_elements += [
         GridElement(id=get_globally_unique_id(id, "impedance"), type="impedance", name="id", kind="branch")
-        for id in pandapower_net.impedance.index
+        for id in pandapower_net_with_impedance.impedance.index
     ]
     nminus1_definition = Nminus1Definition(
         contingencies=contingencies, monitored_elements=monitored_elements, id_type="unique_pandapower"
@@ -235,14 +235,14 @@ def test_translate_nminus1_for_pandapower(pandapower_net: pp.pandapowerNet, n_1_
     assert len(translated_nminus1.monitored_elements) == 0, "No monitored elements should be translated"
 
 
-def test_get_impedance_results(pandapower_net: pp.pandapowerNet, n_1_definition_impedance: Nminus1Definition):
-    translated_nminus1 = translate_nminus1_for_pandapower(n_1_definition_impedance, pandapower_net)
+def test_get_impedance_results(pandapower_net_with_impedance: pp.pandapowerNet, n_1_definition_impedance: Nminus1Definition):
+    translated_nminus1 = translate_nminus1_for_pandapower(n_1_definition_impedance, pandapower_net_with_impedance)
     contingency = translated_nminus1.contingencies[0]
     monitored_elements = translated_nminus1.monitored_elements
 
     timestep = 0
 
-    outage_net = deepcopy(pandapower_net)
+    outage_net = deepcopy(pandapower_net_with_impedance)
     outage_net.line.loc[outage_net.line.index[:1], "in_service"] = False  # Simulate an outage for the branch
     pp.runpp(outage_net)
     branch_results = get_branch_results(outage_net, contingency, monitored_elements, timestep=timestep)

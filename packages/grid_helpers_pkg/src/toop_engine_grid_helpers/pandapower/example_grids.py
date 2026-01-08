@@ -338,6 +338,34 @@ def pandapower_extended_oberrhein() -> pp.pandapowerNet:
         name="test_xward",
     )
 
+    # create new bus
+    imp_bus = pp.create_bus(net, vn_kv=20, name="impedance_bus", in_service=True)
+
+    # create sgen on new bus
+    pp.create_sgen(
+        net,
+        bus=imp_bus,
+        p_mw=1,
+        q_mvar=1,
+        sn_mva=net.sn_mva,
+        name="impedance_sgen",
+        in_service=True,
+    )
+
+    # connect busB to busA with impedance (bidirectional params)
+    pp.create_impedance(
+        net,
+        from_bus=3,
+        to_bus=imp_bus,
+        rft_pu=0.001,
+        xft_pu=0.02,
+        rtf_pu=0.001,
+        xtf_pu=0.02,
+        sn_mva=net.sn_mva,
+        name="impedance_1",
+        in_service=True,
+    )
+
     # Set scaling of sgens so they are recognized
     net.sgen.scaling = 1.0
 

@@ -917,6 +917,7 @@ def test_preprocess_case30(case30_data_folder: str) -> None:
     assert network_data.controllable_pst_node_mask.shape == (n_nodes,)
     assert np.sum(network_data.controllable_phase_shift_mask) == np.sum(network_data.controllable_pst_node_mask)
     assert len(network_data.phase_shift_taps) == network_data.controllable_phase_shift_mask.sum()
+    assert len(network_data.phase_shift_angles) == network_data.controllable_phase_shift_mask.sum()
 
     assert network_data.controllable_phase_shift_mask.sum() == 3
 

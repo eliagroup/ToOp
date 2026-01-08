@@ -310,7 +310,7 @@ def validate_static_information(
             di.nodal_injection_information.pst_n_taps.shape == di.nodal_injection_information.controllable_pst_indices.shape
         )
         assert (
-            di.nodal_injection_information.pst_tap_values.shape[0]
+            di.nodal_injection_information.pst_tapped_angle_values.shape[0]
             == di.nodal_injection_information.controllable_pst_indices.shape[0]
         )
 
@@ -533,8 +533,8 @@ def _save_static_information(binaryio: BinaryIO, static_information: StaticInfor
                 data=nodal_inj_opt.pst_n_taps,
             )
             file.create_dataset(
-                "pst_tap_values",
-                data=nodal_inj_opt.pst_tap_values,
+                "pst_tapped_angle_values",
+                data=nodal_inj_opt.pst_tapped_angle_values,
             )
 
         for idx, (branches, nodes) in enumerate(
@@ -868,7 +868,7 @@ def load_nodal_injection_optimization(
             shift_degree_min=jnp.array(file["shift_degree_min"][:]),
             shift_degree_max=jnp.array(file["shift_degree_max"][:]),
             pst_n_taps=jnp.array(file["pst_n_taps"][:]),
-            pst_tap_values=jnp.array(file["pst_tap_values"][:]),
+            pst_tapped_angle_values=jnp.array(file["pst_tapped_angle_values"][:]),
         )
     return None
 
@@ -922,7 +922,7 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bo
         and "shift_degree_min" in file
         and "shift_degree_max" in file
         and "pst_n_taps" in file
-        and "pst_tap_values" in file
+        and "pst_tapped_angle_values" in file
     )
 
     return (

@@ -229,17 +229,17 @@ def convert_to_jax(  # noqa: PLR0913
     overload_weights = jnp.array(network_data.overload_weights[branches_monitored])
     n0_n1_max_diff_factors = jnp.array(network_data.n0_n1_max_diff_factors[branches_monitored])
     susceptance = jnp.array(network_data.susceptances)
-    shift_degree_min = jnp.array([min(taps) for taps in network_data.phase_shift_taps])
-    shift_degree_max = jnp.array([max(taps) for taps in network_data.phase_shift_taps])
+    shift_degree_min = jnp.array([min(taps) for taps in network_data.phase_shift_angles])
+    shift_degree_max = jnp.array([max(taps) for taps in network_data.phase_shift_angles])
     assert jnp.less_equal(shift_degree_min, shift_degree_max).all(), (
         "Error in phase shift tap data: min tap greater than max tap!"
     )
-    pst_n_taps = jnp.array([len(taps) for taps in network_data.phase_shift_taps])
+    pst_n_taps = jnp.array([len(taps) for taps in network_data.phase_shift_angles])
     max_pst_n_taps = int(jnp.max(pst_n_taps) if pst_n_taps.size > 0 else 0)
-    pst_tap_values = jnp.array(
+    pst_tapped_angle_values = jnp.array(
         [
             jnp.pad(jnp.array(taps), (0, max_pst_n_taps - len(taps)), "constant", constant_values=jnp.nan)
-            for taps in network_data.phase_shift_taps
+            for taps in network_data.phase_shift_angles
         ]
     )
 
@@ -305,7 +305,7 @@ def convert_to_jax(  # noqa: PLR0913
                 shift_degree_min=shift_degree_min,
                 shift_degree_max=shift_degree_max,
                 pst_n_taps=pst_n_taps,
-                pst_tap_values=pst_tap_values,
+                pst_tapped_angle_values=pst_tapped_angle_values,
             )
             if network_data.controllable_pst_node_mask.any()
             else None,

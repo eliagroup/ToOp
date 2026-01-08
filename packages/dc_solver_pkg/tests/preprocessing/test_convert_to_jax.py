@@ -204,7 +204,7 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
     assert static_information.dynamic_information.nodal_injection_information.pst_n_taps.shape == (2,)
     pst_n_taps = static_information.dynamic_information.nodal_injection_information.pst_n_taps
     assert pst_n_taps[0] != pst_n_taps[1], "Case30 should have different number of taps for the two PSTs."
-    assert static_information.dynamic_information.nodal_injection_information.pst_tap_values.shape == (
+    assert static_information.dynamic_information.nodal_injection_information.pst_tapped_angle_values.shape == (
         2,
         jnp.max(pst_n_taps),
     )

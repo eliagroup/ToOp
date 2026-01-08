@@ -400,8 +400,10 @@ def test_psts(tmp_path_factory: pytest.TempPathFactory) -> None:
     backend = PowsyblBackend(filesystem_dir_powsybl)
 
     assert backend.get_controllable_phase_shift_mask().sum() == 2
-    assert len(backend.get_phase_shift_taps()) == 2
-    for taps in backend.get_phase_shift_taps():
-        assert len(taps)
+    assert len(backend.get_phase_shift_taps_and_angles()[0]) == 2
+    for taps, shift_angles in backend.get_phase_shift_taps_and_angles():
+        assert len(shift_angles)
         assert taps[0] == taps.min()
         assert taps[-1] == taps.max()
+        assert shift_angles[0] == shift_angles.min()
+        assert shift_angles[-1] == shift_angles.max()

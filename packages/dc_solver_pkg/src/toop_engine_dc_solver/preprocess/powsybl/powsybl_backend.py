@@ -430,14 +430,20 @@ class PowsyblBackend(BackendInterface):
         """Get a mask of controllable psts"""
         return self._get_branches()["pst_controllable"].values
 
-    def get_phase_shift_taps(self) -> list[Float[np.ndarray, " n_controllable_psts"]]:
-        """Get a list of taps for each pst"""
-        shift_taps = []
+    def get_phase_shift_taps_and_angles(
+        self,
+    ) -> tuple[list[Float[np.ndarray, " n_tap_positions"]], list[Float[np.ndarray, " n_tap_positions"]]]:
+        """Get a list of tap positions and corresponding angles for each pst."""
+        shift_angles = []
+        tap_positions = []
         steps = self.net.get_phase_tap_changer_steps(attributes=["alpha"])
         for pst_id in self._get_branches()[self._get_branches()["pst_controllable"]].index:
-            taps = np.squeeze(steps.loc[pst_id].values)
-            shift_taps.append(np.sort(taps))
-        return shift_taps
+            # Sort by index to have a consistent order
+            steps_sorted = steps.loc[pst_id].sort_index()
+            tap_position_array = np.array(steps_sorted.index, dtype=float)
+            tap_positions.append(tap_position_array)
+            shift_angles.append(np.squeeze(steps_sorted.values))
+        return tap_positions, shift_angles
 
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get a mask of relevant nodes"""

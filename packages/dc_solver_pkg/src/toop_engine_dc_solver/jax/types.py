@@ -1336,7 +1336,8 @@ class NodalInjectionInformation:
 
     controllable_pst_indices: Int[Array, " n_controllable_pst"]
     """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
-    actually shift angles and can be varied between shift_min and shift_max."""
+    actually shift angles and can be varied between shift_min and shift_max. Use these to determine
+    the default shift angles from the nodal injections."""
 
     shift_degree_min: Float[Array, " n_controllable_pst"]
     """The minimum shift angle for each controllable PST"""
@@ -1347,6 +1348,10 @@ class NodalInjectionInformation:
     pst_n_taps: Int[Array, " n_controllable_pst"]
     """The number of discrete taps for each controllable PST"""
 
-    pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
-    """Discrete individual taps of controllable PSTs. The array is zero-padded to the maximum number of
+    pst_taps: Float[Array, " n_controllable_pst max_n_tap_positions"]
+    """The discrete tap values for each controllable PST. The array is NaN-padded to the maximum number of
+    pst_n_taps."""
+
+    pst_tapped_angle_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
+    """Discrete individual taps of controllable PSTs. The array is NaN-padded to the maximum number of
     pst_n_taps."""

@@ -554,6 +554,9 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
     relevant_phase_shift_taps = list(
         [taps for taps, keep in zip(network_data.phase_shift_taps, kept_pst_branches, strict=True) if keep]
     )
+    relevant_phase_shift_angles = list(
+        [angles for angles, keep in zip(network_data.phase_shift_angles, kept_pst_branches, strict=True) if keep]
+    )
     # PST branches carry a node injection as well, so we need to adjust the injection indices
     pst_node_indices = np.flatnonzero(network_data.controllable_pst_node_mask)
     # Assert that the number of PST branches and nodes is the same
@@ -585,6 +588,7 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         phase_shift_mask=network_data.phase_shift_mask[relevant_branches],
         controllable_phase_shift_mask=network_data.controllable_phase_shift_mask[relevant_branches],
         phase_shift_taps=relevant_phase_shift_taps,
+        phase_shift_angles=relevant_phase_shift_angles,
         controllable_pst_node_mask=kept_controllable_pst_node_mask,
         monitored_branch_mask=network_data.monitored_branch_mask[relevant_branches],
         disconnectable_branch_mask=network_data.disconnectable_branch_mask[relevant_branches],

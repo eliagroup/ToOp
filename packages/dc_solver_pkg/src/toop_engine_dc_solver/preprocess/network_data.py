@@ -94,9 +94,14 @@ class NetworkData:
     """Which branch is a phase shifter that is controllable. This must be a subset of phase_shift_mask"""
 
     phase_shift_taps: list[Float[np.ndarray, " n_tap_positions"]]
+    """The shift taps of the controllable PSTs. The outer list has as many entries as there are controllable PSTs (see
+    controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
+    value representing the tap position for the given tap position. The taps are ordered smallest to largest tap position."""
+
+    phase_shift_angles: list[Float[np.ndarray, " n_tap_positions"]]
     """The shift angles of the controllable PSTs. The outer list has as many entries as there are controllable PSTs (see
     controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
-    value representing the angle shift for the given tap position. The taps are ordered smallest to largest angle shift."""
+    value representing the angle shift for the given tap position. The angles are ordered smallest to largest angle shift."""
 
     monitored_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch is monitored"""
@@ -363,6 +368,8 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
     def fillna(a: np.ndarray, b: Union[np.ndarray, float]) -> np.ndarray:
         return np.where(np.isnan(a), b, a)
 
+    phase_shift_taps, phase_shift_angles = interface.get_phase_shift_taps_and_angles()
+
     return NetworkData(
         ptdf=interface.get_ptdf(),
         psdf=interface.get_psdf(),
@@ -403,7 +410,8 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         metadata=interface.get_metadata(),
         asset_topology=interface.get_asset_topology(),
         controllable_phase_shift_mask=interface.get_controllable_phase_shift_mask(),
-        phase_shift_taps=interface.get_phase_shift_taps(),
+        phase_shift_taps=phase_shift_taps,
+        phase_shift_angles=phase_shift_angles,
         busbar_outage_map=interface.get_busbar_outage_map(),
     )
 
@@ -648,8 +656,8 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert not np.any(network_data.controllable_phase_shift_mask & ~network_data.phase_shift_mask)
     assert network_data.controllable_pst_node_mask.shape == (n_nodes,)
     assert np.sum(network_data.controllable_phase_shift_mask) == np.sum(network_data.controllable_pst_node_mask)
-    assert len(network_data.phase_shift_taps) == network_data.controllable_phase_shift_mask.sum()
-    assert all(len(tap) > 0 for tap in network_data.phase_shift_taps)
+    assert len(network_data.phase_shift_angles) == network_data.controllable_phase_shift_mask.sum()
+    assert all(len(tap) > 0 for tap in network_data.phase_shift_angles)
     assert network_data.monitored_branch_mask.shape == (n_branch,)
     assert network_data.disconnectable_branch_mask.shape == (n_branch,)
     assert network_data.outaged_branch_mask.shape == (n_branch,)
@@ -806,7 +814,7 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             kind="branch",
             shift_steps=taps.tolist(),
         )
-        for (index, taps) in zip(controllable_pst_indices, network_data.phase_shift_taps, strict=True)
+        for (index, taps) in zip(controllable_pst_indices, network_data.phase_shift_angles, strict=True)
     ]
 
     return ActionSet(

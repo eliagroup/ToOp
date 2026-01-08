@@ -249,8 +249,10 @@ class BackendInterface(ABC):
         """
         return np.zeros_like(self.get_phase_shift_mask())
 
-    def get_phase_shift_taps(self) -> list[Float[np.ndarray, " n_tap_positions"]]:
-        """Return the possible tap positions of each controllable PST.
+    def get_phase_shift_taps_and_angles(
+        self,
+    ) -> tuple[list[Float[np.ndarray, " n_tap_positions"]], list[Float[np.ndarray, " n_tap_positions"]]]:
+        """Get a list of tap positions and corresponding angles for each pst.
 
         The outer list has as many entries as there are controllable PSTs (see
         controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
@@ -259,7 +261,8 @@ class BackendInterface(ABC):
         """
         # Get the viable shift from the zeroth timestep as a viable default value if the user hasn't overloaded the function
         viable_shifts = self.get_shift_angles()[0, self.get_controllable_phase_shift_mask()]
-        return [np.array([shift]) for shift in viable_shifts]
+        tap_positions = [0] * len(viable_shifts)
+        return tap_positions, [np.array([shift]) for shift in viable_shifts]
 
     @abstractmethod
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:

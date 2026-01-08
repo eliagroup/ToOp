@@ -194,4 +194,4 @@ def test_psts(case30_data_folder: Path) -> None:
     assert backend.get_phase_shift_mask().sum() == 4
     assert backend.get_controllable_phase_shift_mask().sum() == 3
     assert not np.any(backend.get_controllable_phase_shift_mask() & ~backend.get_phase_shift_mask())
-    assert len(backend.get_phase_shift_taps()) == backend.get_controllable_phase_shift_mask().sum()
+    assert len(backend.get_phase_shift_taps_and_angles()[0]) == backend.get_controllable_phase_shift_mask().sum()

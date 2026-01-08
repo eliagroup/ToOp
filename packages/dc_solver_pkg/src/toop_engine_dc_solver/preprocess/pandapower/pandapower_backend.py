@@ -441,16 +441,19 @@ class PandaPowerBackend(BackendInterface):
         mask, _taps = self._get_controllable_phase_shift_data()
         return mask
 
-    def get_phase_shift_taps(self) -> list[Float[np.ndarray, " n_tap_positions"]]:
-        """Return the tap positions of the phase shifters
+    def get_phase_shift_taps_and_angles(
+        self,
+    ) -> tuple[list[Float[np.ndarray, " n_tap_positions"]], list[Float[np.ndarray, " n_tap_positions"]]]:
+        """Get a list of tap positions and corresponding angles for each pst.
 
         Returns
         -------
         list[Float[np.ndarray, " n_tap_positions"]]
             The tap positions of the phase shifters
         """
-        _mask, taps = self._get_controllable_phase_shift_data()
-        return taps
+        _mask, shift_angles = self._get_controllable_phase_shift_data()
+        tap_positions = [np.arange(len(angles), dtype=float) for angles in shift_angles]
+        return tap_positions, shift_angles
 
     def get_monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get mask of monitored branches for the reward calculation

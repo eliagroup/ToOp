@@ -224,7 +224,7 @@ def calc_bb_outage_contingency(
         The branch outage flows for all timesteps, branch outages, and monitored branches.
     """
     padded_action_indices: Int[Array, " n_rel_subs"] = pad_action_with_unsplit_action_indices(action_set, action_indices)
-    bb_outage_flows, _success_rel_bbs = perform_rel_bb_outage_single_topo(
+    bb_outage_flows, _success_rel_bbs = perform_rel_bb_outage_single_topo(  # TODO
         n_0_flows=n_0_flows,
         action_indices=padded_action_indices,
         ptdf=ptdf,

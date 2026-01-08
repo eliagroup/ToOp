@@ -1,6 +1,7 @@
 # Contingency Analysis
 
-The Contingency Analysis package provides the implementation to the [`Load-flow-Service`][packages.interfaces_pkg.src.toop_engine_interfaces.messages.lf_service] interface. This enables a backend independent Contingency definition. Additional it offers either Polars or Pandas DataFrames as a return value.
+The Contingency Analysis package provides the 
+implementation to the [`Load-flow-Service`][packages.interfaces_pkg.src.toop_engine_interfaces.messages.lf_service] interface. This enables a backend independent Contingency definition. Additional it offers either Polars or Pandas DataFrames as a return value.
 
 ## Usage:
 

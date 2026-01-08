@@ -55,6 +55,7 @@ def n_1_definition_unique_pp_id(pandapower_net: pp.pandapowerNet) -> Nminus1Defi
     )
     return nminus1_definition
 
+
 @pytest.fixture
 def n_1_definition_impedance(pandapower_net: pp.pandapowerNet) -> Nminus1Definition:
     contingencies = [
@@ -257,9 +258,7 @@ def test_get_impedance_results(pandapower_net: pp.pandapowerNet, n_1_definition_
         == monitored_elements.index.tolist()
     ), "Element IDs should match monitored elements"
 
-    branch_results = branch_results[
-        branch_results.index.get_level_values("element").str.contains("impedance")
-    ]
+    branch_results = branch_results[branch_results.index.get_level_values("element").str.contains("impedance")]
     assert all(branch_results.loc[:, :, :, BranchSide.ONE.value].p.values == outage_net.res_impedance.p_from_mw.values), (
         "Active power from side should match the outage net"
     )
@@ -272,12 +271,12 @@ def test_get_impedance_results(pandapower_net: pp.pandapowerNet, n_1_definition_
     assert all(branch_results.loc[:, :, :, BranchSide.TWO.value].q.values == outage_net.res_impedance.q_to_mvar.values), (
         "Reactive power to side should match the outage net"
     )
-    assert all(branch_results.loc[:, :, :, BranchSide.ONE.value].i.values == outage_net.res_impedance.i_from_ka.values * 1000), (
-        "Current from side should match the outage net"
-    )
-    assert all(branch_results.loc[:, :, :, BranchSide.TWO.value].i.values == outage_net.res_impedance.i_to_ka.values * 1000), (
-        "Current to side should match the outage net"
-    )
+    assert all(
+        branch_results.loc[:, :, :, BranchSide.ONE.value].i.values == outage_net.res_impedance.i_from_ka.values * 1000
+    ), "Current from side should match the outage net"
+    assert all(
+        branch_results.loc[:, :, :, BranchSide.TWO.value].i.values == outage_net.res_impedance.i_to_ka.values * 1000
+    ), "Current to side should match the outage net"
 
 
 def test_get_branch_results(pandapower_net: pp.pandapowerNet, n_1_definition_unique_pp_id: Nminus1Definition):

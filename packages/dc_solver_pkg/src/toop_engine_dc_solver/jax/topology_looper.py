@@ -29,6 +29,7 @@ from toop_engine_dc_solver.jax.batching import (
     get_injections_for_topo_range,
     greedy_buffer_size_selection,
     pad_topologies_action_index,
+    slice_nodal_inj_start_options,
     slice_topologies_action_index,
     split_injections,
 )
@@ -54,8 +55,6 @@ from toop_engine_dc_solver.jax.types import (
     SparseSolverOutput,
     TopoVectBranchComputations,
 )
-
-from packages.dc_solver_pkg.src.toop_engine_dc_solver.jax.batching import slice_nodal_inj_start_options
 
 
 def concatenate_results(

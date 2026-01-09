@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import pypowsybl
 import pytest
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
 from toop_engine_interfaces.folder_structure import (
@@ -415,7 +416,10 @@ def test_update_masks_from_contingency_list_file(
 
     network_masks = powsybl_masks.create_default_network_masks(network)
     network_masks = powsybl_masks.update_masks_from_power_factory_contingency_list_file(
-        network_masks=network_masks, network=network, importer_parameters=ucte_importer_parameters
+        network_masks=network_masks,
+        network=network,
+        importer_parameters=ucte_importer_parameters,
+        filesystem=LocalFileSystem(),
     )
     assert powsybl_masks.validate_network_masks(network_masks, default_masks)
     assert np.array_equal(network_masks.line_for_nminus1, np.array([True, False, False, False, False, True]))
@@ -441,7 +445,10 @@ def test_make_masks_with_contingency_file(
 
     network_masks = powsybl_masks.create_default_network_masks(network)
     network_masks = powsybl_masks.update_masks_from_power_factory_contingency_list_file(
-        network_masks=network_masks, network=network, importer_parameters=ucte_importer_parameters
+        network_masks=network_masks,
+        network=network,
+        importer_parameters=ucte_importer_parameters,
+        filesystem=LocalFileSystem(),
     )
     assert powsybl_masks.validate_network_masks(network_masks, default_masks)
     assert np.array_equal(network_masks.line_for_nminus1, np.array([True, False, False, False, False, False]))
@@ -671,6 +678,7 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
         network_masks=default_masks,
         network=network,
         importer_parameters=ucte_importer_parameters,
+        filesystem=LocalFileSystem(),
         process_multi_outages=False,
     )
 
@@ -695,6 +703,7 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
             network_masks=default_masks,
             network=network,
             importer_parameters=ucte_importer_parameters,
+            filesystem=LocalFileSystem(),
             process_multi_outages=True,
         )
 
@@ -705,5 +714,6 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
             network_masks=default_masks,
             network=network,
             importer_parameters=ucte_importer_parameters,
+            filesystem=LocalFileSystem(),
             process_multi_outages=False,
         )

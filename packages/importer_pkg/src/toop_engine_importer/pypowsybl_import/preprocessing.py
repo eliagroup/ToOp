@@ -354,7 +354,7 @@ def convert_file(
 
     # get N-1 masks
     status_update_fn("get_masks", "Creating Network Masks")
-    network_masks = get_network_masks(network, importer_parameters, statistics)
+    network_masks = get_network_masks(network, importer_parameters, statistics, filesystem=unprocessed_gridfile_fs)
     save_masks_to_filesystem(
         data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
     )
@@ -406,6 +406,7 @@ def get_network_masks(
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
     statistics: PreProcessingStatistics,
+    filesystem: AbstractFileSystem,
 ) -> NetworkMasks:
     """Create network masks and save them.
 
@@ -417,6 +418,8 @@ def get_network_masks(
         import parameters that include the datafolder
     statistics: PreProcessingStatistics
         preprocessing statistics to fill with information
+    filesystem: AbstractFileSystem
+        The filesystem to load the mask files from.
 
     Returns
     -------
@@ -427,6 +430,7 @@ def get_network_masks(
         network=network,
         importer_parameters=importer_parameters,
         blacklisted_ids=statistics.id_lists["black_list"],
+        filesystem=filesystem,
     )
     fill_statistics_for_network_masks(network=network, statistics=statistics, network_masks=network_masks)
     return network_masks

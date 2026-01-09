@@ -330,7 +330,9 @@ def convert_file(
         statistics = network_analysis.apply_cb_lists(
             network=network,
             statistics=statistics,
-            ucte_importer_parameters=importer_parameters,
+            white_list_file=importer_parameters.white_list_file,
+            black_list_file=importer_parameters.black_list_file,
+            fs=unprocessed_gridfile_fs,
         )
     elif importer_parameters.data_type == "cgmes":
         statistics.id_lists["white_list"] = []

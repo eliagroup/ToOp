@@ -335,7 +335,7 @@ def save_static_information_fs(filename: str, static_information: StaticInformat
     filesystem: AbstractFileSystem
         The filesystem to save the StaticInformation to.
     """
-    with filesystem.open(filename, "wb") as file:
+    with filesystem.open(str(filename), "wb") as file:
         _save_static_information(file, static_information)
 
 
@@ -634,7 +634,7 @@ def load_static_information_fs(filesystem: AbstractFileSystem, filename: str) ->
     StaticInformation
         The loaded static information
     """
-    with filesystem.open(filename, "rb") as file:
+    with filesystem.open(str(filename), "rb") as file:
         return _load_static_information(file)
 
 

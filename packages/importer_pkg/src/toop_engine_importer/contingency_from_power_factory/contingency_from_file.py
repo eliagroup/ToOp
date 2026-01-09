@@ -52,7 +52,7 @@ def get_contingencies_from_file(
     """
     if filesystem is None:
         filesystem = LocalFileSystem()
-    with filesystem.open(n1_file, "r") as f:
+    with filesystem.open(str(n1_file), "r") as f:
         n1_definition = pd.read_csv(f, delimiter=delimiter)
     cond = n1_definition["power_factory_grid_model_name"].isna()
     n1_definition.loc[cond, "power_factory_grid_model_name"] = n1_definition.loc[cond, "contingency_name"]

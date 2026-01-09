@@ -44,7 +44,7 @@ class DiscreteMapElites:
         self,
         scoring_function: Callable[
             [Genotype, RNGKey, PyTree],
-            Tuple[Fitness, Descriptor, ExtraScores, EmitterScores, RNGKey],
+            Tuple[Fitness, Descriptor, ExtraScores, EmitterScores, RNGKey, Genotype],
         ],
         emitter: Emitter,
         metrics_function: Callable[[DiscreteMapElitesRepertoire], Metrics],
@@ -91,6 +91,7 @@ class DiscreteMapElites:
             extra_scores,
             emitter_scores,
             random_key,
+            genotypes,
         ) = self._scoring_function(genotypes, random_key, scoring_data)
 
         # gather across all devices
@@ -172,6 +173,7 @@ class DiscreteMapElites:
             extra_scores,
             emitter_info,
             random_key,
+            genotypes,
         ) = self._scoring_function(genotypes, random_key, scoring_data)
 
         # gather across all devices

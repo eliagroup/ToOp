@@ -406,6 +406,7 @@ def test_run_solver_symmetric(
         topology_batch=topology_batch,
         disconnection_batch=None,
         injections=injection_batch.injection_topology,
+        nodal_inj_start_options=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )

@@ -85,7 +85,7 @@ def idle_loop(
     ----------
     consumer : LongRunningKafkaConsumer
         The initialized Kafka consumer to listen for commands on.
-    send_heartbeat_fn : callable
+    send_heartbeat_fn : Callable
         A function to call when there were no messages received for a while.
     heartbeat_interval_ms : int
         The time to wait for a new command in milliseconds. If no command has been received, a

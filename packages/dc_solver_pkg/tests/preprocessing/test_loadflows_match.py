@@ -68,6 +68,7 @@ def test_n_0_results(data_folder: Path, preprocessed_data_folder: Path) -> None:
         default_topology(static_information.solver_config),
         None,
         None,
+        nodal_inj_start_options=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )
@@ -92,6 +93,7 @@ def test_nminus1_results_one_timestep(data_folder: Path, preprocessed_data_folde
         default_topology(static_information.solver_config),
         None,
         None,
+        nodal_inj_start_options=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )
@@ -167,8 +169,9 @@ def test_n_0_results_with_disconnection(data_folder: Path) -> None:
         action_index_topo,
         disconnection_batch,
         inj_topology_batch,
-        static_information.dynamic_information,
-        static_information.solver_config,
+        nodal_inj_start_options=None,
+        dynamic_information=static_information.dynamic_information,
+        solver_config=static_information.solver_config,
     )
     assert jnp.all(success)
     abs_solver_loadflow = np.abs(lf_res.n_0_matrix)
@@ -232,8 +235,9 @@ def test_multi_timestep(data_folder: Path) -> None:
         unsplit_topo,
         None,
         unsplit_inj.injection_topology,
-        static_information.dynamic_information,
-        static_information.solver_config,
+        nodal_inj_start_options=None,
+        dynamic_information=static_information.dynamic_information,
+        solver_config=static_information.solver_config,
     )
     assert np.all(success)
     abs_solver_loadflow = np.abs(lf_res.n_0_matrix)

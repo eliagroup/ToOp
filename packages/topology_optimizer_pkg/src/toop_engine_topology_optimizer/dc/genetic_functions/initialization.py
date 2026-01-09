@@ -114,6 +114,7 @@ def update_max_mw_flows_according_to_double_limits(
             topology_batch=default_topology(solver_config_local),
             disconnection_batch=None,
             injections=None,
+            nodal_inj_start_options=None,
             dynamic_information=dynamic_information,
             solver_config=solver_config_local,
         )
@@ -404,7 +405,7 @@ def initialize_genetic_algorithm(
     algo = DiscreteMapElites(
         scoring_function=scoring_function_partial,
         emitter=emitter,
-        metrics_function=default_ga_metrics,
+        metrics_function=default_ga_metrics,  # TODO: Why do we set this to default and not observed?
         distributed=distributed,
         n_cells_per_dim=tuple([desc.num_cells for desc in me_descriptors]),
         cell_depth=cell_depth,

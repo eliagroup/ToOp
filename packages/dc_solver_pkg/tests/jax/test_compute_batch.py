@@ -7,6 +7,7 @@
 
 import jax
 import numpy as np
+import pytest
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from tests.jax.test_busbar_outage import compute_splits_and_injections
@@ -34,6 +35,8 @@ from toop_engine_dc_solver.jax.topology_looper import (
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     InjectionComputations,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
     StaticInformation,
     TopoVectBranchComputations,
     int_max,
@@ -320,6 +323,7 @@ def test_compute_symmetric_batch(
         topology_batch=action_index_topo,
         disconnection_batch=None,
         injections=injections,
+        nodal_inj_start_options=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )
@@ -353,6 +357,7 @@ def test_compute_batch_symmetric_with_bb_outage(
         topology_batch=topo_indices,
         disconnection_batch=None,
         injections=None,
+        nodal_inj_start_options=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )
@@ -417,6 +422,7 @@ def test_compute_batch_symmetric_with_bb_outage(
         topology_batch=topo_indices,
         disconnection_batch=None,
         injections=None,
+        nodal_inj_start_options=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=solver_config,
     )
@@ -463,6 +469,7 @@ def test_compute_symmetric_batch_with_disconnection(
             topology_batch=action_index_topo,
             disconnection_batch=disconnection_indices_batch,
             injections=injections,
+            nodal_inj_start_options=None,
             dynamic_information=static_information.dynamic_information,
             solver_config=static_information.solver_config,
         )
@@ -507,6 +514,7 @@ def test_compute_symmetric_batch_nminus2(
         topology_batch=action_index_topo,
         disconnection_batch=None,
         injections=injections.injection_topology,
+        nodal_inj_start_options=None,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
     )
@@ -535,6 +543,7 @@ def test_compute_symmetric_batch_multiple_timesteps(
         topology_batch=action_index_topo,
         disconnection_batch=None,
         injections=None,
+        nodal_inj_start_options=None,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
     )
@@ -564,6 +573,7 @@ def test_compute_symmetric_batch_multiple_timesteps(
         topology_batch=action_index_topo,
         disconnection_batch=None,
         injections=None,
+        nodal_inj_start_options=None,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
     )
@@ -576,3 +586,111 @@ def test_compute_symmetric_batch_multiple_timesteps(
         dynamic_information.n_branches_monitored,
     )
     assert jnp.allclose(multi_timestep.n_1_matrix[:, 0], single_timestep_ref.n_1_matrix[:, 0])
+
+
+def test_compute_symmetric_batch_with_nodal_inj_optim(
+    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
+) -> None:
+    topologies, _, static_information = jax_inputs
+
+    # Activate nodal injection optimization
+    static_information = replace(
+        static_information, solver_config=replace(static_information.solver_config, enable_nodal_inj_optim=True)
+    )
+
+    batch_size_bsdf = static_information.solver_config.batch_size_bsdf
+    batch_size_injection = static_information.solver_config.batch_size_injection
+    max_inj_per_sub = static_information.dynamic_information.max_inj_per_sub
+
+    # this test relies on this
+    assert batch_size_bsdf <= batch_size_injection
+
+    batched_topologies = batch_topologies(topologies, batch_size_bsdf)
+    batch_index = jnp.array(0, dtype=int)
+
+    action_index_topo = convert_topo_to_action_set_index_jittable(
+        topologies=batched_topologies,
+        branch_actions=static_information.dynamic_information.action_set,
+    )[batch_index]
+    n_splits = action_index_topo.action.shape[1]
+
+    injections = jnp.zeros((batch_size_bsdf, n_splits, max_inj_per_sub), dtype=bool)
+    pst_previous_results = NodalInjOptimResults(
+        jax.random.uniform(
+            jax.random.PRNGKey(32453423423),
+            (
+                batch_size_bsdf,
+                static_information.dynamic_information.n_controllable_pst,
+                static_information.dynamic_information.n_timesteps,
+            ),
+        )
+    )
+    solver_config = static_information.solver_config
+    nodal_inj_start_options = NodalInjStartOptions(
+        previous_results=pst_previous_results, precision_percent=jnp.array(solver_config.precision_percent)
+    )
+
+    with pytest.raises(NotImplementedError):
+        _, _ = compute_symmetric_batch(
+            topology_batch=action_index_topo,
+            disconnection_batch=None,
+            injections=injections,
+            nodal_inj_start_options=nodal_inj_start_options,
+            dynamic_information=static_information.dynamic_information,
+            solver_config=static_information.solver_config,
+        )
+
+
+def test_compute_symmetric_batch_nodal_inj_optim_off_but_set_precision(
+    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
+) -> None:
+    topologies, _, static_information = jax_inputs
+
+    # Activate nodal injection optimization
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, enable_nodal_inj_optim=False, precision_percent=1.0),
+    )
+
+    batch_size_bsdf = static_information.solver_config.batch_size_bsdf
+    batch_size_injection = static_information.solver_config.batch_size_injection
+    max_inj_per_sub = static_information.dynamic_information.max_inj_per_sub
+
+    # this test relies on this
+    assert batch_size_bsdf <= batch_size_injection
+
+    batched_topologies = batch_topologies(topologies, batch_size_bsdf)
+    batch_index = jnp.array(0, dtype=int)
+
+    action_index_topo = convert_topo_to_action_set_index_jittable(
+        topologies=batched_topologies,
+        branch_actions=static_information.dynamic_information.action_set,
+    )[batch_index]
+    n_splits = action_index_topo.action.shape[1]
+
+    injections = jnp.zeros((batch_size_bsdf, n_splits, max_inj_per_sub), dtype=bool)
+    pst_previous_results = NodalInjOptimResults(
+        jax.random.uniform(
+            jax.random.PRNGKey(32453423423),
+            (
+                batch_size_bsdf,
+                static_information.dynamic_information.n_timesteps,
+                static_information.dynamic_information.n_controllable_pst,
+            ),
+        )
+    )
+    solver_config = static_information.solver_config
+    nodal_inj_start_options = NodalInjStartOptions(
+        previous_results=pst_previous_results, precision_percent=jnp.array(solver_config.precision_percent)
+    )
+
+    loadflow_results, _ = compute_symmetric_batch(
+        topology_batch=action_index_topo,
+        disconnection_batch=None,
+        injections=injections,
+        nodal_inj_start_options=nodal_inj_start_options,
+        dynamic_information=static_information.dynamic_information,
+        solver_config=static_information.solver_config,
+    )
+
+    assert loadflow_results.nodal_injections_optimized is None

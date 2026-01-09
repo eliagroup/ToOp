@@ -107,9 +107,9 @@ def pandapower_case30_with_psts() -> pp.pandapowerNet:
     net = pp.networks.case30()
     # Add two phase shifters in the middle of the grid and one on the edge to almost separate
     # the grid into two parts, only connected by line 34 if you removed all psts
-    add_phaseshift_transformer_to_line(net, 13, at_from_bus=False)
+    add_phaseshift_transformer_to_line(net, 13, at_from_bus=False, tap_min=-20, tap_max=20, tap_step_degree=1.0)
     add_phaseshift_transformer_to_line(net, 11, at_from_bus=False)
-    add_phaseshift_transformer_to_line(net, 14)
+    add_phaseshift_transformer_to_line(net, 14, tap_max=40, tap_step_degree=10.0)
     return net
 
 

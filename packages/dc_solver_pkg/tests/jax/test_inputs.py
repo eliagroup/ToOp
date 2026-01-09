@@ -49,6 +49,11 @@ def assert_static_information(a: StaticInformation, b: StaticInformation) -> Non
                 assert isinstance(getattr(b.dynamic_information, key), NonRelBBOutageData)
                 assert isinstance(getattr(a.dynamic_information, key), NonRelBBOutageData)
                 assert a.dynamic_information.non_rel_bb_outage_data == b.dynamic_information.non_rel_bb_outage_data
+        elif key == "nodal_injection_information":
+            if a.dynamic_information.nodal_injection_information is not None:
+                assert getattr(b.dynamic_information, key) is not None
+                assert getattr(a.dynamic_information, key) is not None
+                assert a.dynamic_information.nodal_injection_information == b.dynamic_information.nodal_injection_information
         else:
             assert jnp.array_equal(
                 getattr(a.dynamic_information, key),

@@ -20,6 +20,7 @@ from jaxtyping import Array, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.types import (
     BranchLimits,
     SolverLoadflowResults,
+    WorstKContingencyResults,
 )
 from toop_engine_interfaces.types import (
     MatrixMetric,
@@ -909,7 +910,7 @@ def get_worst_k_contingencies(
     k: Int[Array, " "],
     n_1_matrix: Float[Array, " n_timesteps n_failures n_branches_monitored"],
     max_mw_flow: Float[Array, " n_branches"],
-) -> tuple[Float[Array, " n_timesteps"], Int[Array, " n_timesteps k"]]:
+) -> WorstKContingencyResults:
     """Get the worst k contingencies from the n-1 matrix.
 
     Parameters
@@ -935,4 +936,4 @@ def get_worst_k_contingencies(
     top_k_overloads, case_indices = jax.lax.top_k(overload_matrix.sum(axis=2), k)
     top_k_overloads = jnp.sum(top_k_overloads, axis=1)
 
-    return top_k_overloads, case_indices
+    return WorstKContingencyResults(top_k_overloads=top_k_overloads, case_indices=case_indices)

@@ -55,6 +55,8 @@ from toop_engine_dc_solver.jax.types import (
     TopoVectBranchComputations,
 )
 
+from packages.dc_solver_pkg.src.toop_engine_dc_solver.jax.batching import slice_nodal_inj_start_options
+
 
 def concatenate_results(
     results: list[SparseSolverOutput],
@@ -779,7 +781,7 @@ def run_solver_symmetric(
                 0 if disconnections is not None else None,
                 0 if injections is not None else None,
                 0,
-                None,
+                0,
                 jax.tree_util.tree_map(lambda _: None, dynamic_information),
                 jax.tree_util.tree_map(lambda _: None, solver_config),
                 None,
@@ -881,12 +883,17 @@ def iterate_symmetric_sequential(
         injections_batch = (
             jax.lax.dynamic_slice_in_dim(injections, i * batch_size, batch_size, axis=0) if injections is not None else None
         )
+        nodal_inj_start_options_batch = slice_nodal_inj_start_options(
+            nodal_inj_start_options,
+            i,
+            batch_size,
+        )
 
         lf_res, new_succ = compute_symmetric_batch(
             topology_batch,
             disconnections_batch,
             injections_batch,
-            nodal_inj_start_options,
+            nodal_inj_start_options_batch,
             dynamic_information,
             solver_config,
         )

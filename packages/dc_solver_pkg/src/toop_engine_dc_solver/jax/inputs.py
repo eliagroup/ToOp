@@ -313,6 +313,12 @@ def validate_static_information(
             di.nodal_injection_information.pst_tap_values.shape[0]
             == di.nodal_injection_information.controllable_pst_indices.shape[0]
         )
+        assert jnp.equal(
+            di.nodal_injection_information.shift_degree_min, di.nodal_injection_information.pst_tap_values.min(axis=1)
+        ).all(), "Error in phase shift tap data: Cached minima do not equal true minima!"
+        assert jnp.equal(
+            di.nodal_injection_information.shift_degree_max, di.nodal_injection_information.pst_tap_values.max(axis=1)
+        ).all(), "Error in phase shift tap data: Cached maxima do not equal true maxima!"
 
 
 def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:

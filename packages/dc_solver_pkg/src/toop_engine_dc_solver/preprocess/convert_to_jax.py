@@ -231,9 +231,7 @@ def convert_to_jax(  # noqa: PLR0913
     susceptance = jnp.array(network_data.susceptances)
     shift_degree_min = jnp.array([min(taps) for taps in network_data.phase_shift_taps])
     shift_degree_max = jnp.array([max(taps) for taps in network_data.phase_shift_taps])
-    assert jnp.less_equal(shift_degree_min, shift_degree_max).all(), (
-        "Error in phase shift tap data: min tap greater than max tap!"
-    )
+
     pst_n_taps = jnp.array([len(taps) for taps in network_data.phase_shift_taps])
     max_pst_n_taps = int(jnp.max(pst_n_taps) if pst_n_taps.size > 0 else 0)
     pst_tap_values = jnp.array(

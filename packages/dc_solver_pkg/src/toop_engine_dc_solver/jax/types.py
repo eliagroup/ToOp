@@ -969,7 +969,7 @@ class NodalInjOptimResults:
     Currently this includes only the PST taps, but later this might be extended to HVDCs or even redispatch clusters.
     """
 
-    pst_taps: Float[Array, " batch_size n_timesteps n_controllable_psts"]
+    pst_taps: Float[Array, " ... n_timesteps n_controllable_pst"]
     """The PST taps as actual tap values after optimization (i.e. not shift degrees).
 
     Though this might be discrete if PST optimization should happen discrete, we store it as a float in case continuous
@@ -1339,14 +1339,14 @@ class NodalInjectionInformation:
     actually shift angles and can be varied between shift_min and shift_max."""
 
     shift_degree_min: Float[Array, " n_controllable_pst"]
-    """The minimum shift angle for each controllable PST"""
+    """The minimum shift angle for each controllable PST. Cached here to avoid repeated access."""
 
     shift_degree_max: Float[Array, " n_controllable_pst"]
-    """The maximum shift angle for each controllable PST"""
+    """The maximum shift angle for each controllable PST. Cached here to avoid repeated access."""
 
     pst_n_taps: Int[Array, " n_controllable_pst"]
     """The number of discrete taps for each controllable PST"""
 
     pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
-    """Discrete individual taps of controllable PSTs. The array is zero-padded to the maximum number of
+    """Discrete individual taps (in degrees) of controllable PSTs. The array is zero-padded to the maximum number of
     pst_n_taps."""

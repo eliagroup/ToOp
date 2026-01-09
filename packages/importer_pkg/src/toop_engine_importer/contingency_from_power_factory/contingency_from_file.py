@@ -17,6 +17,8 @@ from pathlib import Path
 
 import logbook
 import pandas as pd
+from fsspec import AbstractFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_importer.contingency_from_power_factory.power_factory_data_class import (
     AllGridElementsSchema,
     ContingencyImportSchemaPowerFactory,
@@ -26,7 +28,9 @@ from toop_engine_importer.contingency_from_power_factory.power_factory_data_clas
 logger = logbook.Logger(__name__)
 
 
-def get_contingencies_from_file(n1_file: Path, delimiter: str = ";") -> ContingencyImportSchemaPowerFactory:
+def get_contingencies_from_file(
+    n1_file: Path, delimiter: str = ";", filesystem: AbstractFileSystem | None = None
+) -> ContingencyImportSchemaPowerFactory:
     """Get the contingencies from the file.
 
     This function reads the contingencies from the file and returns a DataFrame in the
@@ -38,13 +42,18 @@ def get_contingencies_from_file(n1_file: Path, delimiter: str = ";") -> Continge
         The path to the file.
     delimiter : str
         The delimiter of the file. Default is ";".
+    filesystem : AbstractFileSystem | None
+        The filesystem to use to read the file. If None, the local filesystem is used.
 
     Returns
     -------
     ContingencyImportSchema
         A DataFrame containing the contingencies.
     """
-    n1_definition = pd.read_csv(n1_file, delimiter=delimiter)
+    if filesystem is None:
+        filesystem = LocalFileSystem()
+    with filesystem.open(n1_file, "r") as f:
+        n1_definition = pd.read_csv(f, delimiter=delimiter)
     cond = n1_definition["power_factory_grid_model_name"].isna()
     n1_definition.loc[cond, "power_factory_grid_model_name"] = n1_definition.loc[cond, "contingency_name"]
     n1_definition["contingency_id"] = n1_definition["contingency_id"].astype(int)

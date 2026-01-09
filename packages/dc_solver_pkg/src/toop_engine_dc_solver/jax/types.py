@@ -991,8 +991,10 @@ class NodalInjStartOptions:
     """The results from a previous optimization to use as a starting point, e.g. from a previous topology that only has
     a small mutation distance."""
 
-    precision_percent: Float[Array, ""]
+    precision_percent: Float[Array, " "]
     """The precision to which the optimization should run in percent of the maximal precision.
+
+    This is a scalar (0-D array) that applies uniformly to all topologies in the batch.
 
     During the optimization, this should be set in values between 0 and 1, where 1 means full precision
     (i.e. the optimization runs until convergence) and 0 means no optimization at all.

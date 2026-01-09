@@ -24,11 +24,11 @@ from jaxtyping import Array, Float, Int
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     InjectionComputations,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
     TopoVectBranchComputations,
     int_max,
 )
-
-from packages.dc_solver_pkg.src.toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions
 
 
 def pad_topologies(topologies: TopoVectBranchComputations, desired_size: int) -> TopoVectBranchComputations:
@@ -256,10 +256,14 @@ def slice_nodal_inj_start_options(
     previous_results = NodalInjOptimResults(
         pst_taps=nodal_inj_start_options.previous_results.pst_taps.at[cur_range].get(mode="fill", fill_value=jnp.nan),
     )
-    return NodalInjStartOptions(
+    result = NodalInjStartOptions(
         previous_results=previous_results,
-        precision_percent=nodal_inj_start_options.precision_percent.at[cur_range].get(mode="fill", fill_value=int_max()),
+        precision_percent=nodal_inj_start_options.precision_percent,
     )
+    assert result.precision_percent.ndim == 0, (
+        f"precision_percent must remain scalar (0-D), got shape {result.precision_percent.shape}"
+    )
+    return result
 
 
 def batch_injection_selection(

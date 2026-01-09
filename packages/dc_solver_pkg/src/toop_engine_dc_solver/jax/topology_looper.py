@@ -882,10 +882,10 @@ def iterate_symmetric_sequential(
         injections_batch = (
             jax.lax.dynamic_slice_in_dim(injections, i * batch_size, batch_size, axis=0) if injections is not None else None
         )
-        nodal_inj_start_options_batch = slice_nodal_inj_start_options(
-            nodal_inj_start_options,
-            i,
-            batch_size,
+        nodal_inj_start_options_batch = (
+            slice_nodal_inj_start_options(nodal_inj_start_options, i, batch_size)
+            if nodal_inj_start_options is not None
+            else None
         )
 
         lf_res, new_succ = compute_symmetric_batch(

@@ -125,13 +125,7 @@ def test_scoring_function(static_information_file: str) -> None:
         mutation_repetition=1,
     )
 
-    (
-        fitness,
-        descriptors,
-        metrics,
-        emitter_info,
-        random_key,
-    ) = scoring_function(
+    (fitness, descriptors, metrics, emitter_info, random_key, topologies) = scoring_function(
         topologies,
         key,
         [static_information.dynamic_information],

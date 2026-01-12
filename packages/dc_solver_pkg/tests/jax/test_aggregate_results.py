@@ -792,7 +792,7 @@ def test_get_worst_n_k_contingency_basic() -> None:
     n_1_matrix = jax.random.uniform(key, (n_timesteps, n_failures, n_branches))
     max_mw_flow = jnp.ones((n_branches,))
 
-    top_k_overloads, case_indices = get_worst_k_contingencies(k, n_1_matrix, max_mw_flow)
-    assert top_k_overloads.shape == (n_timesteps,)
-    assert case_indices.shape == (n_timesteps, k)
-    assert jnp.all(top_k_overloads >= 0)
+    worst_k_overload = get_worst_k_contingencies(k, n_1_matrix, max_mw_flow)
+    assert worst_k_overload.top_k_overloads.shape == (n_timesteps,)
+    assert worst_k_overload.case_indices.shape == (n_timesteps, k)
+    assert jnp.all(worst_k_overload.top_k_overloads >= 0)

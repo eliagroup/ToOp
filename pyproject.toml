@@ -38,6 +38,7 @@ dependencies = [
     "toop_engine_dc_solver=={{ version }}",
     "toop_engine_importer=={{ version }}",
     "toop_engine_topology_optimizer=={{ version }}",
+    "pypowsybl>=1.13.1",
 ]
 
 license = "MIT"
@@ -67,6 +68,7 @@ toop_engine_dc_solver = { path = "packages/dc_solver_pkg", editable = true }
 toop_engine_grid_helpers = { path = "packages/grid_helpers_pkg", editable = true }
 toop_engine_importer = { path = "packages/importer_pkg", editable = true }
 toop_engine_topology_optimizer = { path = "packages/topology_optimizer_pkg", editable = true }
+pypowsybl = { path = "artifacts/pypowsybl-1.13.5-cp311-cp311-manylinux_2_39_x86_64.whl" }
 
 [dependency-groups]
 ci = [

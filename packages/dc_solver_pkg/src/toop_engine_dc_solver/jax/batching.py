@@ -24,6 +24,8 @@ from jaxtyping import Array, Float, Int
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     InjectionComputations,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
     TopoVectBranchComputations,
     int_max,
 )
@@ -222,6 +224,46 @@ def slice_topologies_action_index(
         action=topologies.action.at[cur_range].get(mode="fill", fill_value=int_max()),
         pad_mask=topologies.pad_mask.at[cur_range].get(mode="fill", fill_value=False),
     )
+
+
+def slice_nodal_inj_start_options(
+    nodal_inj_start_options: NodalInjStartOptions,
+    nodal_inj_index: Int[Array, " "],
+    batch_size_bsdf: int,
+) -> NodalInjStartOptions:
+    """Get a slice of the topologies by batch_size_bsdf.
+
+    Slices the topologies to contain only the topologies between nodal_inj_index*batch_size_bsdf and
+    (nodal_inj_index+1)*batch_size_bsdf
+
+    The same as slice_topologies but for ActionIndexBranchComputations
+
+    Parameters
+    ----------
+    nodal_inj_start_options : NodalInjStartOptions
+        The original nodal injection start options, shape (n_topologies, ...)
+    nodal_inj_index : Int[Array, " "]
+        The index of the topology batch
+    batch_size_bsdf : int
+        The size of a topology batch
+
+    Returns
+    -------
+    NodalInjStartOptions
+        The slice of topology computations, shape (batch_size_bsdf, ...)
+    """
+    cur_range = jnp.arange(batch_size_bsdf) + nodal_inj_index * batch_size_bsdf
+    previous_results = NodalInjOptimResults(
+        pst_taps=nodal_inj_start_options.previous_results.pst_taps.at[cur_range].get(mode="fill", fill_value=jnp.nan),
+    )
+    result = NodalInjStartOptions(
+        previous_results=previous_results,
+        precision_percent=nodal_inj_start_options.precision_percent,
+    )
+    assert result.precision_percent.ndim == 0, (
+        f"precision_percent must remain scalar (0-D), got shape {result.precision_percent.shape}"
+    )
+    return result
 
 
 def batch_injection_selection(

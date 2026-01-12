@@ -107,6 +107,16 @@ class SolverConfig:
     when we just want to ensure that the busbar outage problems are not exacerbated due to the optimiser, we set
     this to True."""
 
+    enable_nodal_inj_optim: bool = False
+    """Whether to enable an in-the-loop optimization of nodal injections (PST, HVDC, ...). This will add a significant
+    overhead but will yield nodal_optim_results in addition to just topology results"""
+
+    precision_percent: float = 0.1  # TODO: Should this be a starting minimum precision?
+    """The initial precision to which the nodal injection optimization should run in percent of the maximal precision.
+    This is only used if nodal injection optimization is enabled via enable_nodal_inj_optim.
+
+    This option introduces a significant overhead to the solver, as it optimizes a subset of nodal injections."""
+
     def __hash__(self) -> int:
         """Get id as the hash for the static information.
 
@@ -267,15 +277,9 @@ class DynamicInformation:
     This is calculated if a comparision of bb_outage analysis has to be made between the unsplit
     and split grid."""
 
-    controllable_pst_indices: Int[Array, " n_controllable_pst"]
-    """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
-    actually shift angles and can be varied between shift_min and shift_max."""
-
-    shift_degree_min: Float[Array, " n_controllable_pst"]
-    """The minimum shift angle for each controllable PST"""
-
-    shift_degree_max: Float[Array, " n_controllable_pst"]
-    """The maximum shift angle for each controllable PST"""
+    nodal_injection_information: Optional[NodalInjectionInformation]
+    """If provided, contains the information about nodal injections (e.g. PSTs).
+    This is required for nodal injection optimization (and thus PST optimization)"""
 
     @property
     def n_timesteps(self) -> int:
@@ -359,7 +363,11 @@ class DynamicInformation:
     @property
     def n_controllable_pst(self) -> int:
         """The number of controllable PSTs"""
-        return len(self.controllable_pst_indices)
+        return (
+            len(self.nodal_injection_information.controllable_pst_indices)
+            if self.nodal_injection_information is not None
+            else 0
+        )
 
     @property
     def n_actions(self) -> int:
@@ -375,6 +383,13 @@ class DynamicInformation:
     def max_inj_per_sub(self) -> int:
         """Maximum injection degree of any relevant substation"""
         return self.action_set.inj_actions.shape[1]
+
+    @property
+    def max_n_tap_positions(self) -> int:
+        """Maximum number of discrete tap positions of any controllable PST"""
+        return (
+            self.nodal_injection_information.pst_tap_values.shape[1] if self.nodal_injection_information is not None else 0
+        )
 
 
 @pytree_dataclass
@@ -948,6 +963,47 @@ class N2BaselineAnalysis:
 
 
 @pytree_dataclass
+class NodalInjOptimResults:
+    """A container for the results of the nodal injection optimization.
+
+    Currently this includes only the PST taps, but later this might be extended to HVDCs or even redispatch clusters.
+    """
+
+    pst_taps: Float[Array, " ... n_timesteps n_controllable_pst"]
+    """The PST taps as actual tap values after optimization (i.e. not shift degrees).
+
+    Though this might be discrete if PST optimization should happen discrete, we store it as a float in case continuous
+    PST optimization is used.
+    """
+
+    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> NodalInjOptimResults:
+        """Access the first batch dimension of the nodal injection optimization results"""
+        return NodalInjOptimResults(
+            pst_taps=self.pst_taps[key],
+        )
+
+
+@pytree_dataclass
+class NodalInjStartOptions:
+    """Options for the starting point of the nodal injection optimization."""
+
+    previous_results: NodalInjOptimResults
+    """The results from a previous optimization to use as a starting point, e.g. from a previous topology that only has
+    a small mutation distance."""
+
+    precision_percent: Float[Array, " "]
+    """The precision to which the optimization should run in percent of the maximal precision.
+
+    This is a scalar (0-D array) that applies uniformly to all topologies in the batch.
+
+    During the optimization, this should be set in values between 0 and 1, where 1 means full precision
+    (i.e. the optimization runs until convergence) and 0 means no optimization at all.
+
+    This is not a hard-coded parameter but a variable to allow for adaptive iteration counts based on optimization progress
+    """
+
+
+@pytree_dataclass
 class SolverLoadflowResults:
     """The loadflow results without any preprocessing in matrix form.
 
@@ -1000,6 +1056,9 @@ class SolverLoadflowResults:
     bb_outage_overload: Optional[Float[Array, " ... "]] = None
     """The overload energy caused due to busbar outages"""
 
+    nodal_injections_optimized: Optional[NodalInjOptimResults] = None
+    """The results of the nodal injection optimization, if any was performed."""
+
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> SolverLoadflowResults:
         """Access the first batch dimension of the loadflow matrices"""
         assert self.n_0_matrix.ndim >= 3, "Only works if a batch dimension is present"
@@ -1016,7 +1075,20 @@ class SolverLoadflowResults:
             bb_outage_splits=(self.bb_outage_splits[key] if self.bb_outage_splits is not None else None),
             bb_outage_overload=(self.bb_outage_overload[key] if self.bb_outage_overload is not None else None),
             disconnections=(self.disconnections[key] if self.disconnections is not None else None),
+            nodal_injections_optimized=(
+                self.nodal_injections_optimized[key] if self.nodal_injections_optimized is not None else None
+            ),
         )
+
+
+@pytree_dataclass
+class WorstKContingencyResults:
+    """Stores the worst K contingency cases so the AC optimizer can focus on those first."""
+
+    top_k_overloads: Float[Array, " n_timesteps"]
+    """The total overload corresponding to the worst k contingencies for each timestep."""
+    case_indices: Int[Array, " n_timesteps k"]
+    """The indices of the worst k contingencies for each timestep."""
 
 
 class AggregateMetricProtocol(Protocol):
@@ -1258,3 +1330,25 @@ class BBOutageBaselineAnalysis:
     """The overload weights used to compute the bb_outage overload energy. This is likely a copy of
     branch_limits.overload_weight, however it is less bug-prone to replicate it so the unsplit and
     split analysis will always use the same weights."""
+
+
+@pytree_dataclass
+class NodalInjectionInformation:
+    """Holds the nodal injection optimization data required by the DC solver."""
+
+    controllable_pst_indices: Int[Array, " n_controllable_pst"]
+    """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
+    actually shift angles and can be varied between shift_min and shift_max."""
+
+    shift_degree_min: Float[Array, " n_controllable_pst"]
+    """The minimum shift angle for each controllable PST. Cached here to avoid repeated access."""
+
+    shift_degree_max: Float[Array, " n_controllable_pst"]
+    """The maximum shift angle for each controllable PST. Cached here to avoid repeated access."""
+
+    pst_n_taps: Int[Array, " n_controllable_pst"]
+    """The number of discrete taps for each controllable PST"""
+
+    pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
+    """Discrete individual taps (in degrees) of controllable PSTs. The array is zero-padded to the maximum number of
+    pst_n_taps."""

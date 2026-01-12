@@ -28,6 +28,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_dc_solver.example_grids import (
     case14_pandapower,
+    case30_with_psts_powsybl,
     case57_data_powsybl,
     case57_non_converging,
     create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
@@ -252,6 +253,12 @@ def grid_folder() -> Path:
         if not complex_grid_path.exists():
             create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(complex_grid_path)
             filesystem_dir = DirFileSystem(str(complex_grid_path))
+            load_grid(filesystem_dir, pandapower=False)
+
+        case30_path = target_path / "case30"
+        if not case30_path.exists():
+            case30_with_psts_powsybl(case30_path)
+            filesystem_dir = DirFileSystem(str(case30_path))
             load_grid(filesystem_dir, pandapower=False)
 
         return target_path

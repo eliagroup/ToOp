@@ -56,6 +56,30 @@ def n_1_definition_unique_pp_id(pandapower_net: pp.pandapowerNet) -> Nminus1Defi
     return nminus1_definition
 
 
+@pytest.fixture
+def n_1_definition_impedance(pandapower_net_with_impedance: pp.pandapowerNet) -> Nminus1Definition:
+    contingencies = [
+        Contingency(
+            id=get_globally_unique_id(id, "line"),
+            name=f"contingency_{id}",
+            elements=[GridElement(id=get_globally_unique_id(id, "line"), type="line", name=f"line_{id}", kind="branch")],
+        )
+        for id in pandapower_net_with_impedance.line.index
+    ]
+    monitored_elements = [
+        GridElement(id=get_globally_unique_id(id, "line"), type="line", name="id", kind="branch")
+        for id in pandapower_net_with_impedance.line.index
+    ]
+    monitored_elements += [
+        GridElement(id=get_globally_unique_id(id, "impedance"), type="impedance", name="id", kind="branch")
+        for id in pandapower_net_with_impedance.impedance.index
+    ]
+    nminus1_definition = Nminus1Definition(
+        contingencies=contingencies, monitored_elements=monitored_elements, id_type="unique_pandapower"
+    )
+    return nminus1_definition
+
+
 def test_panda_power_n_minus_1_definition():
     contingencies = [
         PandapowerContingency(
@@ -209,6 +233,50 @@ def test_translate_nminus1_for_pandapower(pandapower_net: pp.pandapowerNet, n_1_
     )
     assert len(translated_nminus1.contingencies) == 0, "No contingencies should be translated"
     assert len(translated_nminus1.monitored_elements) == 0, "No monitored elements should be translated"
+
+
+def test_get_impedance_results(pandapower_net_with_impedance: pp.pandapowerNet, n_1_definition_impedance: Nminus1Definition):
+    translated_nminus1 = translate_nminus1_for_pandapower(n_1_definition_impedance, pandapower_net_with_impedance)
+    contingency = translated_nminus1.contingencies[0]
+    monitored_elements = translated_nminus1.monitored_elements
+
+    timestep = 0
+
+    outage_net = deepcopy(pandapower_net_with_impedance)
+    outage_net.line.loc[outage_net.line.index[:1], "in_service"] = False  # Simulate an outage for the branch
+    pp.runpp(outage_net)
+    branch_results = get_branch_results(outage_net, contingency, monitored_elements, timestep=timestep)
+    assert isinstance(branch_results, pd.DataFrame), "The result should be a DataFrame"
+    assert all(branch_results.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
+    assert all(branch_results.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
+    assert (
+        branch_results.loc[:, :, :, BranchSide.ONE.value].index.get_level_values("element").tolist()
+        == monitored_elements.index.tolist()
+    ), "Element IDs should match monitored elements"
+    assert (
+        branch_results.loc[:, :, :, BranchSide.TWO.value].index.get_level_values("element").tolist()
+        == monitored_elements.index.tolist()
+    ), "Element IDs should match monitored elements"
+
+    branch_results = branch_results[branch_results.index.get_level_values("element").str.contains("impedance")]
+    assert all(branch_results.loc[:, :, :, BranchSide.ONE.value].p.values == outage_net.res_impedance.p_from_mw.values), (
+        "Active power from side should match the outage net"
+    )
+    assert all(branch_results.loc[:, :, :, BranchSide.TWO.value].p.values == outage_net.res_impedance.p_to_mw.values), (
+        "Active power to side should match the outage net"
+    )
+    assert all(branch_results.loc[:, :, :, BranchSide.ONE.value].q.values == outage_net.res_impedance.q_from_mvar.values), (
+        "Reactive power from side should match the outage net"
+    )
+    assert all(branch_results.loc[:, :, :, BranchSide.TWO.value].q.values == outage_net.res_impedance.q_to_mvar.values), (
+        "Reactive power to side should match the outage net"
+    )
+    assert all(
+        branch_results.loc[:, :, :, BranchSide.ONE.value].i.values == outage_net.res_impedance.i_from_ka.values * 1000
+    ), "Current from side should match the outage net"
+    assert all(
+        branch_results.loc[:, :, :, BranchSide.TWO.value].i.values == outage_net.res_impedance.i_to_ka.values * 1000
+    ), "Current to side should match the outage net"
 
 
 def test_get_branch_results(pandapower_net: pp.pandapowerNet, n_1_definition_unique_pp_id: Nminus1Definition):

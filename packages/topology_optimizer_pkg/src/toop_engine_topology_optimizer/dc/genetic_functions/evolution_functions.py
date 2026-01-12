@@ -19,7 +19,7 @@ import jax.numpy as jnp
 from jax_dataclasses import pytree_dataclass
 from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.jax.topology_computations import extract_sub_ids, sample_action_index_from_branch_actions
-from toop_engine_dc_solver.jax.types import ActionSet, int_max
+from toop_engine_dc_solver.jax.types import ActionSet, NodalInjOptimResults, int_max
 
 
 @pytree_dataclass
@@ -33,8 +33,8 @@ class Genotype:
     """The disconnections to apply, padded with int_max for disconnection slots that are unused.
     These are indices into the disconnectable branches set."""
 
-    pst_angles: Float[Array, " *batch_size n_controllable_psts"]
-    """The setpoints for the controllable PSTs as a shift angle in degrees, not a tap position."""
+    nodal_injections_optimized: Optional[NodalInjOptimResults]
+    """The results of the nodal injection optimization, if any was performed."""
 
 
 def deduplicate_genotypes(
@@ -59,7 +59,7 @@ def deduplicate_genotypes(
     Int[Array, " n_unique"]
         The indices of the unique genotypes
     """
-    # Purposefully not taking into account pst_angles, as these are not part of the topology
+    # Purposefully not taking into account nodal_injections_optimized, as these are not part of the topology
     genotype_flat = jnp.concatenate(
         [
             genotypes.action_index,
@@ -98,7 +98,7 @@ def fix_dtypes(genotypes: Genotype) -> Genotype:
     return Genotype(
         action_index=genotypes.action_index.astype(int),
         disconnections=genotypes.disconnections.astype(int),
-        pst_angles=genotypes.pst_angles.astype(float),
+        nodal_injections_optimized=genotypes.nodal_injections_optimized,
     )
 
 
@@ -129,7 +129,10 @@ def empty_repertoire(
     return Genotype(
         action_index=jnp.full((batch_size, max_num_splits), int_max(), dtype=int),
         disconnections=jnp.full((batch_size, max_num_disconnections), int_max(), dtype=int),
-        pst_angles=jnp.full((batch_size, num_psts), 0, dtype=float),
+        # TODO: Why don't we use the n_timesteps here?
+        nodal_injections_optimized=NodalInjOptimResults(pst_taps=jnp.zeros((batch_size, num_psts), dtype=float))
+        if num_psts > 0
+        else None,
     )
 
 
@@ -271,7 +274,7 @@ def mutate(
     topologies_mutated = Genotype(
         action_index=action,
         disconnections=disconnections_topo,
-        pst_angles=repeated_topologies.pst_angles,
+        nodal_injections_optimized=repeated_topologies.nodal_injections_optimized,
     )
 
     if mutation_repetition > 1:
@@ -649,7 +652,7 @@ def crossover_unbatched(
     return Genotype(
         action_index=actions,
         disconnections=disconnections,
-        pst_angles=topologies_a.pst_angles,
+        nodal_injections_optimized=topologies_a.nodal_injections_optimized,
     ), subkeys[-1]
 
 

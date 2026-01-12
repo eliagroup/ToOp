@@ -1080,7 +1080,7 @@ def update_masks_from_contingency_list_file(
     trafo3ws = network.get_3_windings_transformers()
     assert trafo3ws.empty, "3-winding transformers should have been converted to 2w-trafos."
 
-    with filesystem.open(importer_parameters.contingency_list_file, mode="r") as f:
+    with filesystem.open(str(importer_parameters.contingency_list_file), mode="r") as f:
         contingency_analysis_df: ContingencyImportSchema = pd.read_csv(f, index_col=0, header=0)
 
     monitored_ids = contingency_analysis_df.query("observe_std").index.to_list()

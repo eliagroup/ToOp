@@ -170,7 +170,7 @@ def apply_cb_lists(
     branches_with_elementname = branches_with_elementname[branches_with_elementname.index.isin(op_lim)]
 
     if white_list_file is not None:
-        with fs.open(white_list_file, "r") as f:
+        with fs.open(str(white_list_file), "r") as f:
             white_list_df = pd.read_csv(f, delimiter=";").fillna("")
         dacf_whitelists.assign_element_id_to_cb_df(cb_df=white_list_df, branches_with_elementname=branches_with_elementname)
         statistics.import_result.n_white_list = len(white_list_df)
@@ -181,7 +181,7 @@ def apply_cb_lists(
     else:
         statistics.id_lists["white_list"] = []
     if black_list_file is not None:
-        with fs.open(black_list_file, "r") as f:
+        with fs.open(str(black_list_file), "r") as f:
             black_list_df = pd.read_csv(f, delimiter=";").fillna("")
         dacf_whitelists.assign_element_id_to_cb_df(cb_df=black_list_df, branches_with_elementname=branches_with_elementname)
         statistics.import_result.n_black_list = len(black_list_df)

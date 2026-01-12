@@ -93,7 +93,7 @@ def load_preprocessing_statistics_filesystem(file_path: Path, filesystem: Abstra
         The loaded statistics.
 
     """
-    with filesystem.open(file_path, "r") as f:
+    with filesystem.open(str(file_path), "r") as f:
         statistics = json.load(f)
     import_result = PreProcessingStatistics(**statistics)
     return import_result

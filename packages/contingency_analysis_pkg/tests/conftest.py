@@ -13,6 +13,7 @@ from typing import Generator
 
 import docker
 import pandapower
+import pandapower as pp
 import pandas as pd
 import pandera
 import polars as pl
@@ -202,6 +203,40 @@ def _pandapower_net() -> pandapower.pandapowerNet:
 def pandapower_net(_pandapower_net: pandapower.pandapowerNet) -> pandapower.pandapowerNet:
     # Create a copy of the pandapower network for each test to avoid side effects
     return deepcopy(_pandapower_net)
+
+
+@pytest.fixture(scope="function")
+def pandapower_net_with_impedance(_pandapower_net: pandapower.pandapowerNet) -> pandapower.pandapowerNet:
+    # Create a copy of the pandapower network for each test to avoid side effects
+    net = deepcopy(_pandapower_net)
+    # create new bus
+    imp_bus = pp.create_bus(net, vn_kv=20, name="impedance_bus", in_service=True)
+
+    # create sgen on new bus
+    pp.create_sgen(
+        net,
+        bus=imp_bus,
+        p_mw=1,
+        q_mvar=1,
+        sn_mva=net.sn_mva,
+        name="impedance_sgen",
+        in_service=True,
+    )
+
+    # connect busB to busA with impedance (bidirectional params)
+    pp.create_impedance(
+        net,
+        from_bus=3,
+        to_bus=imp_bus,
+        rft_pu=0.001,
+        xft_pu=0.02,
+        rtf_pu=0.001,
+        xtf_pu=0.02,
+        sn_mva=net.sn_mva,
+        name="impedance_1",
+        in_service=True,
+    )
+    return net
 
 
 @pytest.fixture(scope="session")

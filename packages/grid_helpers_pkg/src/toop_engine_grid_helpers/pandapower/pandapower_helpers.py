@@ -185,6 +185,7 @@ def get_element_table(element_type: str, res_table: bool = False) -> str:
         "switch": "switch",
         # branches
         "line": "line",
+        "impedance": "impedance",
         "trafo": "trafo",
         "trafo3w": "trafo3w",
         "trafo3w_lv": "trafo3w",

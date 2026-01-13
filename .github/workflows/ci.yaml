@@ -76,12 +76,19 @@ jobs:
 
   sonarqube:
     needs: [test-packages-toop-runner, test-packages-github-runner]
-    if: ${{ success() }}
+    if: always()
     permissions:
       contents: read
       pull-requests: read
     runs-on: ubuntu-latest
     steps:
+      - name: Check test results
+        run: |
+          if [[ "${{ needs.test-packages-toop-runner.result }}" != "success" || "${{ needs.test-packages-github-runner.result }}" != "success" ]]; then
+            echo "Tests failed or were cancelled. Marking SonarQube job as failed."
+            exit 1
+          fi
+      
       - name: Check out repository code
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:

@@ -326,6 +326,9 @@ def validate_static_information(
 def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:
     """Save the static information to a hdf5 file.
 
+    This first writes everything to memory, as some file systems do not support the seek operation which is required for
+    h5py.
+
     Parameters
     ----------
     filename : str
@@ -335,8 +338,11 @@ def save_static_information_fs(filename: str, static_information: StaticInformat
     filesystem: AbstractFileSystem
         The filesystem to save the StaticInformation to.
     """
+    bytes_io = io.BytesIO()
+    _save_static_information(bytes_io, static_information)
+    bytes_io.seek(0)
     with filesystem.open(str(filename), "wb") as file:
-        _save_static_information(file, static_information)
+        file.write(bytes_io.getbuffer())
 
 
 def save_static_information(filename: str | Path, static_information: StaticInformation) -> None:

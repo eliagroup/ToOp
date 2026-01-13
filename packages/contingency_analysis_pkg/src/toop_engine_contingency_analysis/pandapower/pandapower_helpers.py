@@ -709,15 +709,18 @@ def get_branch_results(
             except KeyError:
                 # This means all sides were considered
                 break
-            branch_df = net[f"res_{branch_type}"].loc[table_ids, columns]
+            common_columns = net[f"res_{branch_type}"].columns.intersection(columns)
+            branch_df = net[f"res_{branch_type}"].loc[table_ids, common_columns]
             branch_df = branch_df.assign(
                 timestep=timestep, contingency=contingency.unique_id, side=side + 1, element=unique_ids
             )
             branch_df.set_index(["timestep", "contingency", "element", "side"], inplace=True)
             branch_df.rename(columns=dict(zip(columns, ["p", "q", "i", "loading"], strict=True)), inplace=True)
-            # Fix kA -> A and % -> 1
-            branch_df["i"] *= 1000
-            branch_df["loading"] /= 100
+            # Fix kA -> A and % -> 1 scale only if present
+            if "i" in branch_df.columns:
+                branch_df["i"] *= 1000
+            if "loading" in branch_df.columns:
+                branch_df["loading"] /= 100
             branch_df.loc[branch_df.i.isna(), "p"] = np.nan
             branch_df.loc[branch_df.i.isna(), "q"] = np.nan
             branch_element_list.append(branch_df)

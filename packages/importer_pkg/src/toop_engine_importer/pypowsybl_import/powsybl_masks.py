@@ -910,7 +910,7 @@ def save_masks_to_filesystem(network_masks: NetworkMasks, data_folder: Path, fil
         The filesystem to save the masks to.
     """
     masks_folder = data_folder / PREPROCESSING_PATHS["masks_path"]
-    masks_folder.mkdir(exist_ok=True, parents=True)
+    filesystem.makedirs(str(masks_folder), exist_ok=True)
     for mask_key, mask in asdict(network_masks).items():
         save_numpy_filesystem(filesystem=filesystem, file_path=masks_folder / NETWORK_MASK_NAMES[mask_key], numpy_array=mask)
 

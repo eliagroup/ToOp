@@ -201,7 +201,7 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
 
-    network_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    network_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
 
     expected_bus_mask = np.zeros(17, dtype=bool)
     expected_bus_mask[3] = True
@@ -215,7 +215,9 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
             temp_file.write(file_content)
 
         importer_parameters.ignore_list_file = temp_file_path
-        updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+        updated_masks = powsybl_masks.update_bus_masks(
+            default_masks, network, importer_parameters, filesystem=LocalFileSystem()
+        )
         expected_bus_mask[3] = False
         assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
@@ -227,27 +229,29 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
             temp_file.write(file_content)
 
         importer_parameters.ignore_list_file = temp_file_path
-        updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+        updated_masks = powsybl_masks.update_bus_masks(
+            default_masks, network, importer_parameters, filesystem=LocalFileSystem()
+        )
         expected_bus_mask[3] = True
         assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
     # test select_station_grid_model_id_list
     importer_parameters.ignore_list_file = None
     importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
     importer_parameters.select_by_voltage_level_id_list = ["D8SU1_1"]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
     importer_parameters.select_by_voltage_level_id_list = ["D8SU1_2"]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
     assert not (updated_masks.relevant_subs).any()
 
     # test independent of area codes
     importer_parameters.area_settings.control_area = ["D2"]
     importer_parameters.area_settings.cutoff_voltage = 1000
     importer_parameters.select_by_voltage_level_id_list = ["D8SU1_1"]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
 
 
@@ -259,7 +263,7 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
         area_settings=AreaSettings(cutoff_voltage=220, control_area=["BE"], view_area=["BE"], nminus1_area=["BE"]),
     )
     default_masks = powsybl_masks.create_default_network_masks(network)
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
 
     expected_bus_mask = np.array([True, True, True, False, False])
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
@@ -274,11 +278,11 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
     assert np.array_equal(network_masks.relevant_subs, expected_bus_mask_no_slack)
 
     importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
     importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)[:2]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
     expected_bus_mask = np.array([True, True, False, False, False])
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
@@ -295,7 +299,7 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
     importer_parameters.area_settings.control_area = ["FR"]
     importer_parameters.area_settings.cutoff_voltage = 1000
     importer_parameters.select_by_voltage_level_id_list = list(network.get_voltage_levels().index)[:2]
-    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters)
+    updated_masks = powsybl_masks.update_bus_masks(default_masks, network, importer_parameters, filesystem=LocalFileSystem())
     expected_bus_mask = np.array([True, True, False, False, False])
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 

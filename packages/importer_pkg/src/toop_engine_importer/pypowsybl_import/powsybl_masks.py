@@ -600,12 +600,18 @@ def update_bus_masks(
     if importer_parameters.ignore_list_file is not None:
         with filesystem.open(str(importer_parameters.ignore_list_file), "r") as file:
             ignore_df = pd.read_csv(file, sep=";")
-        ignore_subs = ignore_df["grid_model_id"].to_list()
-        # str[:-2], because the bus names have a suffix e.g. "_0" or "_1" added to the station name
-        relevant_subs = np.logical_and(
-            relevant_subs,
-            ~np.isin(substation_ids, ignore_subs),
-        )
+        if "grid_model_id" not in ignore_df.columns:
+            logger.warn(
+                f"Ignore list file {importer_parameters.ignore_list_file} does not contain the required columns."
+                f" Columns found: {ignore_df.columns.tolist()} -- ignoring ignore list."
+            )
+        else:
+            ignore_subs = ignore_df["grid_model_id"].to_list()
+            # str[:-2], because the bus names have a suffix e.g. "_0" or "_1" added to the station name
+            relevant_subs = np.logical_and(
+                relevant_subs,
+                ~np.isin(substation_ids, ignore_subs),
+            )
 
     return replace(
         network_masks,

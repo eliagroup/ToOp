@@ -551,6 +551,7 @@ def update_bus_masks(
     network_masks: NetworkMasks,
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    filesystem: AbstractFileSystem,
 ) -> NetworkMasks:
     """Update the bus masks for the network.
 
@@ -562,6 +563,8 @@ def update_bus_masks(
         The network to get the masks for.
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters including control_area and cutoff_voltage
+    filesystem: AbstractFileSystem
+        The filesystem to read the ignore list from.
 
     Returns
     -------
@@ -595,7 +598,8 @@ def update_bus_masks(
 
     # apply ignore list
     if importer_parameters.ignore_list_file is not None:
-        ignore_df = pd.read_csv(importer_parameters.ignore_list_file, sep=";")
+        with filesystem.open(str(importer_parameters.ignore_list_file), "r") as file:
+            ignore_df = pd.read_csv(file, sep=";")
         ignore_subs = ignore_df["grid_model_id"].to_list()
         # str[:-2], because the bus names have a suffix e.g. "_0" or "_1" added to the station name
         relevant_subs = np.logical_and(
@@ -831,7 +835,7 @@ def make_masks(
     network_masks = update_tie_and_dangling_line_masks(network_masks, network, importer_parameters)
     network_masks = update_load_and_generation_masks(network_masks, network, importer_parameters)
     network_masks = update_switch_masks(network_masks, network, importer_parameters)
-    network_masks = update_bus_masks(network_masks, network, importer_parameters)
+    network_masks = update_bus_masks(network_masks, network, importer_parameters, filesystem=filesystem)
     network_masks = update_reward_masks_to_include_border_branches(network_masks, importer_parameters)
     network_masks = remove_slack_from_relevant_subs(network, network_masks, distributed_slack=True)
 

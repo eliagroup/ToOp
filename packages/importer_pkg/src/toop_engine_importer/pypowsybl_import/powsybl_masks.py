@@ -551,6 +551,7 @@ def update_bus_masks(
     network_masks: NetworkMasks,
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    filesystem: AbstractFileSystem,
 ) -> NetworkMasks:
     """Update the bus masks for the network.
 
@@ -562,6 +563,8 @@ def update_bus_masks(
         The network to get the masks for.
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters including control_area and cutoff_voltage
+    filesystem: AbstractFileSystem
+        The filesystem to read the ignore list from.
 
     Returns
     -------
@@ -595,7 +598,8 @@ def update_bus_masks(
 
     # apply ignore list
     if importer_parameters.ignore_list_file is not None:
-        ignore_df = pd.read_csv(importer_parameters.ignore_list_file, sep=";")
+        with filesystem.open(str(importer_parameters.ignore_list_file), "r") as file:
+            ignore_df = pd.read_csv(file, sep=";")
         ignore_subs = ignore_df["grid_model_id"].to_list()
         # str[:-2], because the bus names have a suffix e.g. "_0" or "_1" added to the station name
         relevant_subs = np.logical_and(
@@ -788,6 +792,7 @@ def update_switch_masks(
 def make_masks(
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    filesystem: AbstractFileSystem = None,
     blacklisted_ids: list[str] | None = None,
 ) -> NetworkMasks:
     """Create all masks for the network, depending on the import parameters.
@@ -799,6 +804,8 @@ def make_masks(
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters including control_area, nminus1_area, cutoff_voltage
         Optional: border_line_factors, border_line_weight, dso_trafo_factors, dso_trafo_weight
+    filesystem: AbstractFileSystem
+        The filesystem to use for loading the contingency lists from. If not provided, the local filesystem is used.
     blacklisted_ids: list[str] | None
         The ids of the branche that are blacklisted.
 
@@ -807,6 +814,8 @@ def make_masks(
     network_masks: NetworkMasks
         The masks for the network.
     """
+    if filesystem is None:
+        filesystem = LocalFileSystem()
     if blacklisted_ids is None:
         blacklisted_ids = []
     default_masks = create_default_network_masks(network)
@@ -826,17 +835,19 @@ def make_masks(
     network_masks = update_tie_and_dangling_line_masks(network_masks, network, importer_parameters)
     network_masks = update_load_and_generation_masks(network_masks, network, importer_parameters)
     network_masks = update_switch_masks(network_masks, network, importer_parameters)
-    network_masks = update_bus_masks(network_masks, network, importer_parameters)
+    network_masks = update_bus_masks(network_masks, network, importer_parameters, filesystem=filesystem)
     network_masks = update_reward_masks_to_include_border_branches(network_masks, importer_parameters)
     network_masks = remove_slack_from_relevant_subs(network, network_masks, distributed_slack=True)
 
     if importer_parameters.contingency_list_file is not None:
         if importer_parameters.schema_format == "ContingencyImportSchemaPowerFactory":
             network_masks = update_masks_from_power_factory_contingency_list_file(
-                network_masks, network, importer_parameters
+                network_masks, network, importer_parameters, filesystem=filesystem
             )
         elif importer_parameters.schema_format == "ContingencyImportSchema":
-            network_masks = update_masks_from_contingency_list_file(network_masks, network, importer_parameters)
+            network_masks = update_masks_from_contingency_list_file(
+                network_masks, network, importer_parameters, filesystem=filesystem
+            )
         else:
             logger.warning(f"Contingency list processing for {importer_parameters.ingress_id} is not implemented yet.")
     if not validate_network_masks(network_masks, default_masks):
@@ -903,7 +914,7 @@ def save_masks_to_filesystem(network_masks: NetworkMasks, data_folder: Path, fil
         The filesystem to save the masks to.
     """
     masks_folder = data_folder / PREPROCESSING_PATHS["masks_path"]
-    masks_folder.mkdir(exist_ok=True, parents=True)
+    filesystem.makedirs(str(masks_folder), exist_ok=True)
     for mask_key, mask in asdict(network_masks).items():
         save_numpy_filesystem(filesystem=filesystem, file_path=masks_folder / NETWORK_MASK_NAMES[mask_key], numpy_array=mask)
 
@@ -937,6 +948,7 @@ def update_masks_from_power_factory_contingency_list_file(
     network_masks: NetworkMasks,
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    filesystem: AbstractFileSystem,
     process_multi_outages: bool = False,
 ) -> NetworkMasks:
     """Update the network masks from the power factory contingency list file.
@@ -953,6 +965,8 @@ def update_masks_from_power_factory_contingency_list_file(
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters of the current import, containing nminus1_area, control_area,
         cutoffvoltage, border_line_weight and the contingency list file
+    filesystem: AbstractFileSystem
+        The filesystem to use for loading the contingency list file.
     process_multi_outages: bool
         If True, the contingency list file is processed as a multi-outage file.
         If False, the contingency list file is processed as a single-outage file.
@@ -969,7 +983,9 @@ def update_masks_from_power_factory_contingency_list_file(
     NotImplementedError
         If process_multi_outages is True, this function is not implemented yet.
     """
-    contingency_list = get_contingencies_from_file(n1_file=importer_parameters.contingency_list_file, delimiter=";")
+    contingency_list = get_contingencies_from_file(
+        n1_file=importer_parameters.contingency_list_file, delimiter=";", filesystem=filesystem
+    )
     all_element_names = get_all_element_names(net=network)
     processed_n1_definition = match_contingencies(
         n1_definition=contingency_list, all_element_names=all_element_names, match_by_name=True
@@ -1035,6 +1051,7 @@ def update_masks_from_contingency_list_file(
     network_masks: NetworkMasks,
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    filesystem: AbstractFileSystem,
     process_multi_outages: bool = False,
 ) -> NetworkMasks:
     """Update the network masks from the contingency list file.
@@ -1052,6 +1069,8 @@ def update_masks_from_contingency_list_file(
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters of the current import, containing nminus1_area, control_area,
         cutoffvoltage, border_line_weight and the contingency list file
+    filesystem: AbstractFileSystem
+        The filesystem to use for loading the contingency list file.
     process_multi_outages: bool
         If True, the contingency list file is processed as a multi-outage file.
         If False, the contingency list file is processed as a single-outage file.
@@ -1065,9 +1084,8 @@ def update_masks_from_contingency_list_file(
     trafo3ws = network.get_3_windings_transformers()
     assert trafo3ws.empty, "3-winding transformers should have been converted to 2w-trafos."
 
-    contingency_analysis_df: ContingencyImportSchema = pd.read_csv(
-        importer_parameters.contingency_list_file, index_col=0, header=0
-    )
+    with filesystem.open(str(importer_parameters.contingency_list_file), mode="r") as f:
+        contingency_analysis_df: ContingencyImportSchema = pd.read_csv(f, index_col=0, header=0)
 
     monitored_ids = contingency_analysis_df.query("observe_std").index.to_list()
     contingency_ids = contingency_analysis_df.query("contingency_case").index.to_list()

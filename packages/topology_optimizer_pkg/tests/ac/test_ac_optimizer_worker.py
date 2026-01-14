@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from pathlib import Path
+from typing import Callable
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -52,8 +53,8 @@ def test_main_simple(
     kafka_connection_str: str,
     processed_gridfile_folder: Path,
     loadflow_result_folder: Path,
-    create_consumer: callable,
-    create_producer: callable,
+    create_consumer: Callable,
+    create_producer: Callable,
 ) -> None:
     producer = Producer(
         {
@@ -335,8 +336,8 @@ def test_main(
     topopushresult: Result,
     processed_gridfile_folder: Path,
     loadflow_result_folder: Path,
-    create_consumer: callable,
-    create_producer: callable,
+    create_consumer: Callable,
+    create_producer: Callable,
 ) -> None:
     grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
     parameters = ACOptimizerParameters(

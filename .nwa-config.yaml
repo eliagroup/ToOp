@@ -18,6 +18,8 @@ nwa:
   path:                             # Default: []
     - "**/*.py"
     - "notebooks/**/*.py"
+    - "**/*.yaml"
+    - "**/*.sh"
   # advanced
   mute: false                       # Default: false (unspecified)
   verbose: false                    # Default: false (unspecified)

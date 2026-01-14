@@ -324,6 +324,12 @@ class PreprocessParameters(BaseModel):
     """How to penalize additional splits in busbar outages that were not there in the unsplit grid. Will be
     added to the overload energy penalty."""
 
+    enable_nodal_inj_optim: bool = False
+    """Whether to enable nodal injection optimization (including PST optimization)"""
+
+    precision_percent: float = 0.0
+    """The precision percent for the nodal injection optimization."""
+
     # TODO: MOve this parameter to optimiser configs
     clip_bb_outage_penalty: bool = False
     """

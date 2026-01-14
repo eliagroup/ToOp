@@ -19,8 +19,8 @@ import math
 from functools import partial
 
 import jax
+import jax.numpy as jnp
 from beartype.typing import Optional
-from jax import numpy as jnp  # pylint: disable=no-name-in-module
 from jax_dataclasses import replace
 from jaxtyping import Array, Bool, Float, Int, PyTree, Shaped
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric
@@ -29,6 +29,7 @@ from toop_engine_dc_solver.jax.batching import (
     get_injections_for_topo_range,
     greedy_buffer_size_selection,
     pad_topologies_action_index,
+    slice_nodal_inj_start_options,
     slice_topologies_action_index,
     split_injections,
 )
@@ -46,6 +47,7 @@ from toop_engine_dc_solver.jax.types import (
     BranchLimits,
     DynamicInformation,
     InjectionComputations,
+    NodalInjStartOptions,
     SolverConfig,
     SolverLoadflowResults,
     SparseNMinus0,
@@ -666,6 +668,7 @@ def run_solver_symmetric(
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
     aggregate_output_fn: AggregateOutputProtocol,
+    nodal_inj_start_options: Optional[NodalInjStartOptions] = None,
 ) -> tuple[PyTree[Shaped, " n_topologies ..."], Bool[Array, " n_topologies"]]:
     """Run the symmetric solver for a given set of topologies and injections.
 
@@ -692,6 +695,8 @@ def run_solver_symmetric(
         A function that takes the N-0 and N-1 matrices of a single topology (no batch dimension)
         and returns any aggregated information the user wishes to compute. The aggregate function
         must be vmappable.
+    nodal_inj_start_options : Optional[NodalInjStartOptions], optional
+        Starting options for nodal injection optimization. If None (default), optimization is disabled.
 
     Returns
     -------
@@ -775,18 +780,20 @@ def run_solver_symmetric(
                 0 if disconnections is not None else None,
                 0 if injections is not None else None,
                 0,
+                0,
                 jax.tree_util.tree_map(lambda _: None, dynamic_information),
                 jax.tree_util.tree_map(lambda _: None, solver_config),
                 None,
             ),
             out_axes=(0, 0),
-            static_broadcasted_argnums=(5, 6),
+            static_broadcasted_argnums=(6, 7),
             donate_argnums=(3,),
         )(
             topologies,
             disconnections,
             injections,
             result_storage,
+            nodal_inj_start_options,
             dynamic_information,
             solver_config,
             aggregate_output_fn,
@@ -800,6 +807,7 @@ def run_solver_symmetric(
             disconnections=disconnections,
             injections=injections,
             result_storage=result_storage,
+            nodal_inj_start_options=nodal_inj_start_options,
             dynamic_information=dynamic_information,
             solver_config=solver_config,
             aggregate_output_fn=aggregate_output_fn,
@@ -816,6 +824,7 @@ def iterate_symmetric_sequential(
     disconnections: Optional[Int[Array, " n_topologies n_disconnections"]],
     injections: Optional[Bool[Array, " n_topologies n_splits max_inj_per_sub"]],
     result_storage: PyTree[Shaped, " n_topologies ..."],
+    nodal_inj_start_options: Optional[NodalInjStartOptions],
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
     aggregate_output_fn: AggregateOutputProtocol,
@@ -832,6 +841,8 @@ def iterate_symmetric_sequential(
         The injection computations to perform, padded to match the batch size
     result_storage : PyTree[Shaped, " n_topologies ..."]
         An array with storage reserved for the results
+    nodal_inj_start_options : Optional[NodalInjStartOptions]
+        Starting options for nodal injection optimization. If None, optimization is disabled.
     dynamic_information : DynamicInformation
         Dynamic information about the grid, such as the PTDF matrix
     solver_config : SolverConfig
@@ -871,11 +882,17 @@ def iterate_symmetric_sequential(
         injections_batch = (
             jax.lax.dynamic_slice_in_dim(injections, i * batch_size, batch_size, axis=0) if injections is not None else None
         )
+        nodal_inj_start_options_batch = (
+            slice_nodal_inj_start_options(nodal_inj_start_options, i, batch_size)
+            if nodal_inj_start_options is not None
+            else None
+        )
 
         lf_res, new_succ = compute_symmetric_batch(
             topology_batch,
             disconnections_batch,
             injections_batch,
+            nodal_inj_start_options_batch,
             dynamic_information,
             solver_config,
         )

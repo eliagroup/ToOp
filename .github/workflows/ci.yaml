@@ -76,7 +76,7 @@ jobs:
 
   sonarqube:
     needs: [test-packages-toop-runner, test-packages-github-runner]
-    if: ${{ success() }}
+    if: success()
     permissions:
       contents: read
       pull-requests: read
@@ -97,7 +97,7 @@ jobs:
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       # Check the Quality Gate status.
       - name: SonarQube Quality Gate check
@@ -106,5 +106,20 @@ jobs:
         with:
           pollingTimeoutSec: 600
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+  ci-success-check:
+    needs: [sonarqube]
+    if: always()
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check test results
+        run: |
+          if [[ "${{ needs.sonarqube.result }}" != "success" ]]; then
+            echo "CI pipeline failed or was cancelled. Marking final job as failed."
+            exit 1
+          fi
+      

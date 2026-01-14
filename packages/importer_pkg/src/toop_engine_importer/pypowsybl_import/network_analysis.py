@@ -14,6 +14,7 @@ Created: 2024-Q1
 
 import logbook
 import pandas as pd
+from fsspec import AbstractFileSystem
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import import dacf_whitelists, powsybl_masks
 from toop_engine_importer.pypowsybl_import.dacf_whitelists import (
@@ -21,9 +22,6 @@ from toop_engine_importer.pypowsybl_import.dacf_whitelists import (
 )
 from toop_engine_importer.pypowsybl_import.data_classes import (
     PreProcessingStatistics,
-)
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
-    UcteImporterParameters,
 )
 
 logger = logbook.Logger(__name__)
@@ -136,7 +134,9 @@ def get_branches_df_with_element_name(network: Network) -> pd.DataFrame:
 def apply_cb_lists(
     network: Network,
     statistics: PreProcessingStatistics,
-    ucte_importer_parameters: UcteImporterParameters,
+    white_list_file: str | None,
+    black_list_file: str | None,
+    fs: AbstractFileSystem,
 ) -> PreProcessingStatistics:
     """Run the black or white list to the powsybl network.
 
@@ -147,9 +147,12 @@ def apply_cb_lists(
     statistics : ProcessingStatistics
         The statistics to fill with the id lists of the black and white list
         Note: The statistics are modified in place.
-    ucte_importer_parameters : UcteImporterParameters
-        Parameters that are required to import the data from a UCTE file. This will utilize
-        powsybl and the powsybl backend to the loadflow solver
+    white_list_file : str | None
+        The path to the white list file, if None, no white list is applied.
+    black_list_file : str | None
+        The path to the black list file, if None, no black list is applied.
+    fs : AbstractFileSystem
+        The filesystem to use to read the files.
 
     Returns
     -------
@@ -166,8 +169,9 @@ def apply_cb_lists(
     op_lim = network.get_operational_limits(attributes=[]).index.get_level_values("element_id").to_list()
     branches_with_elementname = branches_with_elementname[branches_with_elementname.index.isin(op_lim)]
 
-    if ucte_importer_parameters.white_list_file is not None:
-        white_list_df = pd.read_csv(ucte_importer_parameters.white_list_file, delimiter=";").fillna("")
+    if white_list_file is not None:
+        with fs.open(str(white_list_file), "r") as f:
+            white_list_df = pd.read_csv(f, delimiter=";").fillna("")
         dacf_whitelists.assign_element_id_to_cb_df(cb_df=white_list_df, branches_with_elementname=branches_with_elementname)
         statistics.import_result.n_white_list = len(white_list_df)
         white_list_df = white_list_df[white_list_df["element_id"].notnull()]
@@ -176,8 +180,9 @@ def apply_cb_lists(
         statistics.import_result.n_white_list_applied = len(white_list_df["element_id"])
     else:
         statistics.id_lists["white_list"] = []
-    if ucte_importer_parameters.black_list_file is not None:
-        black_list_df = pd.read_csv(ucte_importer_parameters.black_list_file, delimiter=";").fillna("")
+    if black_list_file is not None:
+        with fs.open(str(black_list_file), "r") as f:
+            black_list_df = pd.read_csv(f, delimiter=";").fillna("")
         dacf_whitelists.assign_element_id_to_cb_df(cb_df=black_list_df, branches_with_elementname=branches_with_elementname)
         statistics.import_result.n_black_list = len(black_list_df)
         black_list_df = black_list_df[black_list_df["element_id"].notnull()]

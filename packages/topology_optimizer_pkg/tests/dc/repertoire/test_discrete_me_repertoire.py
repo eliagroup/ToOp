@@ -7,6 +7,7 @@
 
 import jax
 import jax.numpy as jnp
+from toop_engine_dc_solver.jax.types import NodalInjOptimResults
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
     Genotype,
 )
@@ -155,10 +156,13 @@ def test_create_repertoire_with_cell_depth() -> None:
     n_cells_per_dim = (3,)
 
     # Fake data
+    nodal_injections_optimized = NodalInjOptimResults(
+        pst_taps=jnp.zeros((batch_size, 1)),
+    )
     genotypes = Genotype(  # 4 topologies
         action_index=jnp.array([[0], [1], [2], [0]]),
         disconnections=jnp.array([[0], [1], [2], [0]]),
-        pst_angles=jnp.array([[]]),
+        nodal_injections_optimized=nodal_injections_optimized,
     )
     extra_scores = {
         "score1": jax.random.normal(jax.random.PRNGKey(0), (batch_size, 10)),
@@ -218,10 +222,13 @@ def test_add_to_repertoire_with_depth():
         return index + num_cells * layer
 
     # Create empty repertoire
+    nodal_injections_optimized = NodalInjOptimResults(
+        pst_taps=jnp.zeros(([1])),
+    )
     initial_genotype = Genotype(
         action_index=jnp.array([0]),  # must only contain one genotype, not a list of genotype
         disconnections=jnp.array([0]),
-        pst_angles=jnp.array([]),
+        nodal_injections_optimized=nodal_injections_optimized,
     )
     initial_extra_score = {
         "score": jnp.array([0.0]),
@@ -237,11 +244,13 @@ def test_add_to_repertoire_with_depth():
 
     # ___________________________________________
     # Case 0) A new individual needs to be added in the first layer
-
+    nodal_injections_optimized = NodalInjOptimResults(
+        pst_taps=jnp.array([[0.0]]),
+    )
     genotypes_zero = Genotype(  # this time it's a batch, so there is a list of genotypes
         action_index=jnp.array([[1]]),
         disconnections=jnp.array([[1]]),
-        pst_angles=jnp.array([[]]),
+        nodal_injections_optimized=nodal_injections_optimized,
     )
     descriptors_zero = jnp.array([[1]])
     index_zero = get_cells_indices(descriptors_zero, n_cells_per_dim)[0]
@@ -276,10 +285,13 @@ def test_add_to_repertoire_with_depth():
     # ___________________________________________
     # Case 0-deep) A new individual needs to be added in a deep layer
     """Plan : add a new individual to the same repertoire repertoire_zero but with a fitness that is half of the first one"""
+    nodal_injections_optimized = NodalInjOptimResults(
+        pst_taps=jnp.array([[1.0]]),
+    )
     genotypes_zero_deep = Genotype(
         action_index=jnp.array([[2]]),
         disconnections=jnp.array([[1]]),
-        pst_angles=jnp.array([[]]),
+        nodal_injections_optimized=nodal_injections_optimized,
     )
     descriptors_zero_deep = descriptors_zero
     index_zero_deep = index_zero
@@ -318,11 +330,13 @@ def test_add_to_repertoire_with_depth():
     # ___________________________________________
     # Case 1) A new individual needs to replace a first layer individual, which needs to be pushed to a deep layer
     """Plan : add a new individual to the repertoire repertoire_zero with a better fitness"""
-
+    nodal_injections_optimized = NodalInjOptimResults(
+        pst_taps=jnp.array([[1.0]]),
+    )
     genotypes_one = Genotype(
         action_index=jnp.array([[3]]),
         disconnections=jnp.array([[1]]),
-        pst_angles=jnp.array([[]]),
+        nodal_injections_optimized=nodal_injections_optimized,
     )
     descriptors_one = descriptors_zero
     index_one = index_zero
@@ -429,11 +443,13 @@ def test_add_to_repertoire_with_depth():
     # ___________________________________________
     # Case 3) A new individual has worse fitness than the ones in its full cell
     """Plan : add a new individual to the repertoire_zero_deep, which has 2 individuals with better fitnesses"""
-
+    nodal_injections_optimized = NodalInjOptimResults(
+        pst_taps=jnp.array([[5.0]]),
+    )
     genotypes_three = Genotype(
         action_index=jnp.array([[4]]),
         disconnections=jnp.array([[1]]),
-        pst_angles=jnp.array([[]]),
+        nodal_injections_optimized=nodal_injections_optimized,
     )
     descriptors_three = descriptors_zero
     index_three = index_zero
@@ -528,10 +544,13 @@ def test_add_to_repertoire_aranged_data():
     jnp.prod(jnp.array(n_cells_per_dim)).item()
 
     # Create empty repertoire
+    nodal_injections_optimized = NodalInjOptimResults(
+        pst_taps=jnp.zeros((batch_size, 1)),
+    )
     initial_genotype = Genotype(
         action_index=jnp.array([[0], [1], [2], [3]]),
         disconnections=jnp.array([[0], [1], [2], [3]]),
-        pst_angles=jnp.array([[]]),
+        nodal_injections_optimized=nodal_injections_optimized,
     )
     initial_fitness = -jnp.array([0.0, 1.0, 2.0, 3.0])  # minus sign so the first ones are the best
     initial_descriptors = jnp.array([[0], [1], [2], [3]])
@@ -548,10 +567,13 @@ def test_add_to_repertoire_aranged_data():
     )
 
     batch_of_fitnesses = jnp.arange(batch_size)
+    nodal_injections_optimized = NodalInjOptimResults(
+        pst_taps=(jnp.arange(batch_size) + 4).reshape(-1, 1),
+    )
     batch_of_genotypes = Genotype(
         action_index=(jnp.arange(batch_size) + 4).reshape(-1, 1),
         disconnections=(jnp.arange(batch_size) + 4).reshape(-1, 1),
-        pst_angles=jnp.array([[]]),
+        nodal_injections_optimized=nodal_injections_optimized,
     )
     batch_of_descriptors = jnp.arange(batch_size).reshape(-1, 1)
     batch_of_extra_scores = {

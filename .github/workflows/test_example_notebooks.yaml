@@ -41,8 +41,5 @@ jobs:
     - name: Verify jupyter installation
       run: uv run jupyter --version
 
-    - name: Make script executable
-      run: chmod +x scripts/test_notebooks.sh
-
     - name: Test example notebooks
-      run: uv run scripts/test_notebooks.sh notebooks "example*.ipynb"
+      run: uv run pytest -n auto --dist loadgroup notebooks/tests

@@ -7,7 +7,7 @@
 
 """Helper functions for the NetworkGraphData model."""
 
-from typing import Any, Iterable, Iterator, Literal, Optional, Union
+from typing import Any, Callable, Iterable, Iterator, Literal, Optional, Union
 
 import networkx as nx
 from toop_engine_importer.network_graph.data_classes import (
@@ -157,8 +157,8 @@ def shortest_paths_to_target_ids(
     graph: nx.Graph,
     target_node_ids: list[int],
     start_node_id: int,
-    weight: Union[str, callable] = "station_weight",
-    cutoff: int = WeightValues.high.value,
+    weight: Union[str, Callable] = "station_weight",
+    cutoff: int = int(WeightValues.high.value),
 ) -> dict[int, list[int]]:
     """Find the shortest paths from one busbar to a list of busbars in the NetworkX graph.
 
@@ -170,8 +170,8 @@ def shortest_paths_to_target_ids(
         The list of busbar node ids, to which the shortest path is calculated.
     start_node_id : int
         The node id from which the shortest path is calculated.
-    weight : Union[str, callable], default: "station_weight"
-        string or callable
+    weight : Union[str, Callable], default: "station_weight"
+        string or Callable
         If this is a string, then edge weights will be accessed via the
         edge attribute with this key (that is, the weight of the edge
         joining `u` to `v` will be ``G.edges[u, v][weight]``). If no
@@ -253,7 +253,7 @@ def set_substation_id(
         nx.set_node_attributes(graph, substation_id_dict)
 
 
-def multi_weight_function(weight_list: list[str], weight_multiplier: Optional[dict[str, float]] = None) -> callable:
+def multi_weight_function(weight_list: list[str], weight_multiplier: Optional[dict[str, float]] = None) -> Callable:
     """Create a multi weight function for the NetworkGraphData model.
 
     Parameters

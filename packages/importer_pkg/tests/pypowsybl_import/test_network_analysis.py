@@ -10,6 +10,7 @@ from pathlib import Path
 import logbook
 import pandas as pd
 import pypowsybl
+from fsspec.implementations.local import LocalFileSystem
 from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
@@ -82,7 +83,7 @@ def test_remove_branches_across_switch(ucte_file):
     ]
 
 
-def test_apply_CB_lists(ucte_file, ucte_importer_parameters):
+def test_apply_cb_lists(ucte_file, ucte_importer_parameters):
     network = pypowsybl.network.load(ucte_file)
     # Create a sample DataFrame
     white_list_df = pd.DataFrame(
@@ -110,8 +111,8 @@ def test_apply_CB_lists(ucte_file, ucte_importer_parameters):
         data_folder=ucte_importer_parameters.data_folder,
     )
 
-    ucte_importer_parameters.white_list_file = ucte_importer_parameters.data_folder / "CB_White-Liste.csv"
-    ucte_importer_parameters.black_list_file = ucte_importer_parameters.data_folder / "CB_Black-Liste.csv"
+    white_list_file = ucte_importer_parameters.data_folder / "CB_White-Liste.csv"
+    black_list_file = ucte_importer_parameters.data_folder / "CB_Black-Liste.csv"
     statistics = PreProcessingStatistics(
         id_lists={},
         import_result=import_result,
@@ -122,7 +123,9 @@ def test_apply_CB_lists(ucte_file, ucte_importer_parameters):
     network_analysis.apply_cb_lists(
         network=network,
         statistics=statistics,
-        ucte_importer_parameters=ucte_importer_parameters,
+        white_list_file=white_list_file,
+        black_list_file=black_list_file,
+        fs=LocalFileSystem(),
     )
     assert statistics.id_lists["white_list"] == ["D8SU1_12 D8SU1_11 2"]
     assert statistics.id_lists["black_list"] == ["D8SU1_12 D7SU2_11 2"]
@@ -146,7 +149,9 @@ def test_apply_CB_lists(ucte_file, ucte_importer_parameters):
     network_analysis.apply_cb_lists(
         network=network,
         statistics=statistics,
-        ucte_importer_parameters=ucte_importer_parameters,
+        white_list_file=None,
+        black_list_file=black_list_file,
+        fs=LocalFileSystem(),
     )
     assert statistics.id_lists["black_list"] == ["D8SU1_12 D7SU2_11 2"]
     assert "white_list" in statistics.id_lists
@@ -171,7 +176,9 @@ def test_apply_CB_lists(ucte_file, ucte_importer_parameters):
     network_analysis.apply_cb_lists(
         network=network,
         statistics=statistics,
-        ucte_importer_parameters=ucte_importer_parameters,
+        white_list_file=None,
+        black_list_file=None,
+        fs=LocalFileSystem(),
     )
     assert "white_list" in statistics.id_lists
     assert "black_list" in statistics.id_lists

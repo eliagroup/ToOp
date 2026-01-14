@@ -18,12 +18,15 @@ from toop_engine_dc_solver.jax.batching import (
     greedy_n_subs_selection,
     pad_topologies,
     slice_injections,
+    slice_nodal_inj_start_options,
     slice_topologies,
     split_injections,
     upper_bound_buffer_size_injections,
 )
 from toop_engine_dc_solver.jax.types import (
     InjectionComputations,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
     StaticInformation,
     TopoVectBranchComputations,
 )
@@ -147,6 +150,95 @@ def test_batch_injections(
             batched_topologies=batched_topologies,
             batch_size_injection=batch_size_injections,
             buffer_size_injection=2,
+        )
+
+
+def test_slice_nodal_inj_start_options() -> None:
+    """Test slicing of NodalInjStartOptions preserves scalar precision_percent and slices pst_taps correctly."""
+    batch_size_bsdf = 16
+    n_batches = 3
+    total_size = batch_size_bsdf * n_batches
+    n_timesteps = 24
+    n_pst = 5
+
+    # Create test data with distinct values per batch
+    pst_taps_data = jnp.arange(total_size * n_timesteps * n_pst, dtype=jnp.float32).reshape(total_size, n_timesteps, n_pst)
+    precision_scalar = jnp.array(0.5)
+
+    options = NodalInjStartOptions(
+        previous_results=NodalInjOptimResults(pst_taps=pst_taps_data),
+        precision_percent=precision_scalar,
+    )
+
+    # Test slicing at index 0
+    sliced_0 = slice_nodal_inj_start_options(options, 0, batch_size_bsdf)
+    assert sliced_0.previous_results.pst_taps.shape == (batch_size_bsdf, n_timesteps, n_pst)
+    assert sliced_0.precision_percent.ndim == 0
+    assert sliced_0.precision_percent == precision_scalar
+    assert jnp.array_equal(
+        sliced_0.previous_results.pst_taps,
+        pst_taps_data[:batch_size_bsdf],
+    )
+
+    # Test slicing at index 1
+    sliced_1 = slice_nodal_inj_start_options(options, 1, batch_size_bsdf)
+    assert sliced_1.previous_results.pst_taps.shape == (batch_size_bsdf, n_timesteps, n_pst)
+    assert sliced_1.precision_percent.ndim == 0
+    assert sliced_1.precision_percent == precision_scalar
+    assert jnp.array_equal(
+        sliced_1.previous_results.pst_taps,
+        pst_taps_data[batch_size_bsdf : 2 * batch_size_bsdf],
+    )
+
+    # Test slicing at index 2 (last batch)
+    sliced_2 = slice_nodal_inj_start_options(options, 2, batch_size_bsdf)
+    assert sliced_2.previous_results.pst_taps.shape == (batch_size_bsdf, n_timesteps, n_pst)
+    assert sliced_2.precision_percent.ndim == 0
+    assert sliced_2.precision_percent == precision_scalar
+    assert jnp.array_equal(
+        sliced_2.previous_results.pst_taps,
+        pst_taps_data[2 * batch_size_bsdf :],
+    )
+
+    # Test out-of-bounds slicing (index 10) - should fill with nan
+    sliced_oob = slice_nodal_inj_start_options(options, 10, batch_size_bsdf)
+    assert sliced_oob.previous_results.pst_taps.shape == (batch_size_bsdf, n_timesteps, n_pst)
+    assert sliced_oob.precision_percent.ndim == 0
+    assert sliced_oob.precision_percent == precision_scalar
+    assert jnp.all(jnp.isnan(sliced_oob.previous_results.pst_taps))
+
+
+def test_slice_nodal_inj_start_options_reconstruction() -> None:
+    """Test that slicing NodalInjStartOptions in a loop reconstructs the original data."""
+    batch_size_bsdf = 16
+    n_batches = 3
+    total_size = batch_size_bsdf * n_batches
+    n_timesteps = 24
+    n_pst = 5
+
+    # Create test data
+    pst_taps_data = jnp.arange(total_size * n_timesteps * n_pst, dtype=jnp.float32).reshape(total_size, n_timesteps, n_pst)
+    precision_scalar = jnp.array(0.75)
+
+    options = NodalInjStartOptions(
+        previous_results=NodalInjOptimResults(pst_taps=pst_taps_data),
+        precision_percent=precision_scalar,
+    )
+
+    # Slice each batch and verify reconstruction
+    for i in range(n_batches):
+        sliced = slice_nodal_inj_start_options(options, i, batch_size_bsdf)
+
+        # Verify scalar precision is preserved
+        assert sliced.precision_percent.ndim == 0
+        assert sliced.precision_percent == precision_scalar
+
+        # Verify pst_taps data matches original at correct indices
+        start_idx = i * batch_size_bsdf
+        end_idx = (i + 1) * batch_size_bsdf
+        assert jnp.array_equal(
+            sliced.previous_results.pst_taps,
+            pst_taps_data[start_idx:end_idx],
         )
 
 

@@ -60,7 +60,7 @@ build-backend = "hatchling.build"
 source = "uv-dynamic-versioning"
 
 [project.optional-dependencies]
-pypowsybl = ["pypowsybl>=1.11.2"]
+pypowsybl = ["pypowsybl>=1.13.0"]
 pandapower = ["pandapower>=3.0.0"]
 
 [dependency-groups]

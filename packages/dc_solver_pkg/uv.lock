@@ -2071,7 +2071,7 @@ wheels = [
 
 [[package]]
 name = "pypowsybl"
-version = "1.13.0"
+version = "1.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "networkx" },
@@ -2079,10 +2079,10 @@ dependencies = [
     { name = "prettytable" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/77/5bace602ff0da02820440edb736e57fc7195b611a6643d89f2facf9b6f9b/pypowsybl-1.13.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:3e41a619d5afad8ac44db2cd05077aab27464f76c38d5b063ed5e4ee18a2072e", size = 70991607, upload-time = "2025-10-31T11:48:09.476Z" },
-    { url = "https://files.pythonhosted.org/packages/a1/eb/0509452ea82f2cefb933da28a566a277f2461909c23c90a21bd2a92d3aff/pypowsybl-1.13.0-cp311-cp311-macosx_11_0_x86_64.whl", hash = "sha256:d0678b2e142a17d4cce0ee796fdafc39c3e82516c5d1c11190c0a709fa2bf21c", size = 72085402, upload-time = "2025-10-31T11:48:30.632Z" },
-    { url = "https://files.pythonhosted.org/packages/82/9e/f3025c545a6b9a0c244eb6ee6e024db0aec81ee822fe67d1a9d59249ce30/pypowsybl-1.13.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6486d4d9b3051dac1bfb2a5c41ea06eecc87d5f8c550aaad5cbbd05aad9c9609", size = 86036810, upload-time = "2025-10-31T11:48:53.76Z" },
-    { url = "https://files.pythonhosted.org/packages/05/06/6e9770d5abd0fe952983afc69a9c58a063eb2b3743e9d767ee471563c804/pypowsybl-1.13.0-cp311-cp311-win_amd64.whl", hash = "sha256:0d872a1c0bd41a56ed7388151e1737eeff0d4c3a9ed824130d052659fd736faf", size = 67894822, upload-time = "2025-10-31T11:49:16.228Z" },
+    { url = "https://files.pythonhosted.org/packages/95/7c/578f5807067d973ca280cbc2e0a8915968f948435f1f61b7843987816d76/pypowsybl-1.14.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:d99274b3011ec126e9a8829d97d7061b275bc83a8ac705e7a45f9fdcf8d8287b", size = 72030547, upload-time = "2026-01-15T12:34:32.611Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/ce/575c3c92553c6cc71d13671ac65f11d3f055d8fbcef657686bfec6bfbf57/pypowsybl-1.14.0-cp311-cp311-macosx_11_0_x86_64.whl", hash = "sha256:9d40f1da138402c0b6c440a0f81fbfd3946cbc0ae8be9464e9e2989cf9d82f31", size = 73169745, upload-time = "2026-01-15T12:34:53.491Z" },
+    { url = "https://files.pythonhosted.org/packages/14/97/7ec85b2a9c92adff0c019c826ceee5e0e24c9c446b0e7d6f0bfb3408a921/pypowsybl-1.14.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:edd2d194f4889550a163d286c03497a57f479babdddc142bc6fc04cd7666f723", size = 87300518, upload-time = "2026-01-15T12:35:16.161Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/c8/0d6bba79bf7683331757e9df006edd0bf0ad6719c7460de0c02308fe5146/pypowsybl-1.14.0-cp311-cp311-win_amd64.whl", hash = "sha256:e0d48e886bc7f466de438f9e4b8df9a3233006728de854255769ce9a308ecdbf", size = 68940777, upload-time = "2026-01-15T12:35:38.147Z" },
 ]
 
 [[package]]
@@ -2668,7 +2668,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.33.0" },
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pydantic", specifier = ">=1.10.3,<3.0.0" },
-    { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.11.2" },
+    { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.13.0" },
     { name = "ray", specifier = ">=2.42.1,<3.0.0" },
     { name = "toop-engine-grid-helpers", editable = "../grid_helpers_pkg" },
     { name = "toop-engine-interfaces", editable = "../interfaces_pkg" },
@@ -2778,7 +2778,7 @@ requires-dist = [
     { name = "pandas", extras = ["hdf5"], specifier = ">=2.2.3,<3.0.0" },
     { name = "pandera", specifier = ">=0.22.1,<0.23.0" },
     { name = "pydantic", specifier = ">=1.10.3,<3.0.0" },
-    { name = "pypowsybl", specifier = ">=1.10.0,<2.0.0" },
+    { name = "pypowsybl", specifier = ">=1.13.0,<2.0.0" },
     { name = "ray", specifier = ">=2.42.1,<3.0.0" },
     { name = "scipy", specifier = ">=1.11.3,<2.0.0" },
     { name = "toop-engine-contingency-analysis", editable = "../contingency_analysis_pkg" },

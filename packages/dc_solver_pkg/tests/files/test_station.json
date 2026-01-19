@@ -1,0 +1,867 @@
+{
+   "grid_model_id": "VL2_0",
+   "name": "Station_ID",
+   "type": null,
+   "region": "BE",
+   "voltage_level": 380.0,
+   "busbars": [
+      {
+         "grid_model_id": "VL2_1_1",
+         "type": "busbar",
+         "name": "VL2_1_1",
+         "int_id": 0,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_1_2",
+         "type": "busbar",
+         "name": "VL2_1_2",
+         "int_id": 1,
+         "in_service": false,
+         "bus_branch_bus_id": ""
+      },
+      {
+         "grid_model_id": "VL2_1_3",
+         "type": "busbar",
+         "name": "VL2_1_3",
+         "int_id": 2,
+         "in_service": false,
+         "bus_branch_bus_id": ""
+      },
+      {
+         "grid_model_id": "VL2_1_4",
+         "type": "busbar",
+         "name": "VL2_1_4",
+         "int_id": 3,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_1_5",
+         "type": "busbar",
+         "name": "VL2_1_5",
+         "int_id": 4,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_1_6",
+         "type": "busbar",
+         "name": "VL2_1_6",
+         "int_id": 5,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_1_7",
+         "type": "busbar",
+         "name": "VL2_1_7",
+         "int_id": 6,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_1_8",
+         "type": "busbar",
+         "name": "VL2_1_8",
+         "int_id": 7,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_14"
+      },
+      {
+         "grid_model_id": "VL2_2_1",
+         "type": "busbar",
+         "name": "VL2_2_1",
+         "int_id": 8,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_2_2",
+         "type": "busbar",
+         "name": "VL2_2_2",
+         "int_id": 9,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_2_3",
+         "type": "busbar",
+         "name": "VL2_2_3",
+         "int_id": 10,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_2_4",
+         "type": "busbar",
+         "name": "VL2_2_4",
+         "int_id": 11,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_2_5",
+         "type": "busbar",
+         "name": "VL2_2_5",
+         "int_id": 12,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_2_6",
+         "type": "busbar",
+         "name": "VL2_2_6",
+         "int_id": 13,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_2_7",
+         "type": "busbar",
+         "name": "VL2_2_7",
+         "int_id": 14,
+         "in_service": true,
+         "bus_branch_bus_id": "VL2_0"
+      },
+      {
+         "grid_model_id": "VL2_2_8",
+         "type": "busbar",
+         "name": "VL2_2_8",
+         "int_id": 15,
+         "in_service": false,
+         "bus_branch_bus_id": ""
+      }
+   ],
+   "couplers": [
+      {
+         "grid_model_id": "BBS1_1-BBS1_4",
+         "type": "DISCONNECTOR",
+         "name": "BBS1_1-BBS1_4",
+         "busbar_from_id": 0,
+         "busbar_to_id": 10,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "BBS1_3-BBS1_5",
+         "type": "DISCONNECTOR",
+         "name": "BBS1_3-BBS1_5",
+         "busbar_from_id": 9,
+         "busbar_to_id": 3,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "L112_DISCONNECTOR_49_8",
+         "type": "DISCONNECTOR",
+         "name": "L112_DISCONNECTOR_49_8",
+         "busbar_from_id": 4,
+         "busbar_to_id": 12,
+         "open": true,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_BREAKER",
+         "type": "BREAKER",
+         "name": "VL2_BREAKER",
+         "busbar_from_id": 12,
+         "busbar_to_id": 5,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_BREAKER#0",
+         "type": "BREAKER",
+         "name": "VL2_BREAKER#0",
+         "busbar_from_id": 6,
+         "busbar_to_id": 15,
+         "open": true,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_BREAKER_2_2",
+         "type": "BREAKER",
+         "name": "VL2_BREAKER_2_2",
+         "busbar_from_id": 9,
+         "busbar_to_id": 10,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_DISCONNECTOR_10_12",
+         "type": "DISCONNECTOR",
+         "name": "VL2_DISCONNECTOR_10_12",
+         "busbar_from_id": 5,
+         "busbar_to_id": 6,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_DISCONNECTOR_11_13",
+         "type": "DISCONNECTOR",
+         "name": "VL2_DISCONNECTOR_11_13",
+         "busbar_from_id": 13,
+         "busbar_to_id": 14,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_DISCONNECTOR_1_3",
+         "type": "DISCONNECTOR",
+         "name": "VL2_DISCONNECTOR_1_3",
+         "busbar_from_id": 8,
+         "busbar_to_id": 9,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_DISCONNECTOR_5_7",
+         "type": "DISCONNECTOR",
+         "name": "VL2_DISCONNECTOR_5_7",
+         "busbar_from_id": 10,
+         "busbar_to_id": 11,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_DISCONNECTOR_6_8",
+         "type": "DISCONNECTOR",
+         "name": "VL2_DISCONNECTOR_6_8",
+         "busbar_from_id": 3,
+         "busbar_to_id": 4,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_DISCONNECTOR_7_9",
+         "type": "DISCONNECTOR",
+         "name": "VL2_DISCONNECTOR_7_9",
+         "busbar_from_id": 11,
+         "busbar_to_id": 12,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_DISCONNECTOR_8_10",
+         "type": "DISCONNECTOR",
+         "name": "VL2_DISCONNECTOR_8_10",
+         "busbar_from_id": 4,
+         "busbar_to_id": 5,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      },
+      {
+         "grid_model_id": "VL2_DISCONNECTOR_9_11",
+         "type": "DISCONNECTOR",
+         "name": "VL2_DISCONNECTOR_9_11",
+         "busbar_from_id": 12,
+         "busbar_to_id": 13,
+         "open": false,
+         "in_service": true,
+         "asset_bay": null
+      }
+   ],
+   "assets": [
+      {
+         "grid_model_id": "L1",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L11_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_1": "L11_DISCONNECTOR_25_0",
+               "VL2_2_1": "L11_DISCONNECTOR_25_1"
+            }
+         }
+      },
+      {
+         "grid_model_id": "L10",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L101_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_8": "L101_DISCONNECTOR_45_14",
+               "VL2_2_8": "L101_DISCONNECTOR_45_15"
+            }
+         }
+      },
+      {
+         "grid_model_id": "L2",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L21_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_1": "L21_DISCONNECTOR_27_0",
+               "VL2_2_1": "L21_DISCONNECTOR_27_1"
+            }
+         }
+      },
+      {
+         "grid_model_id": "L3",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L31_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_4": "L31_DISCONNECTOR_29_6",
+               "VL2_2_4": "L31_DISCONNECTOR_29_7"
+            }
+         }
+      },
+      {
+         "grid_model_id": "L4",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L41_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_4": "L41_DISCONNECTOR_31_6",
+               "VL2_2_4": "L41_DISCONNECTOR_31_7"
+            }
+         }
+      },
+      {
+         "grid_model_id": "L5",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L51_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_4": "L51_DISCONNECTOR_33_6",
+               "VL2_2_4": "L51_DISCONNECTOR_33_7"
+            }
+         }
+      },
+      {
+         "grid_model_id": "L6",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L61_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_1": "L61_DISCONNECTOR_35_0",
+               "VL2_2_1": "L61_DISCONNECTOR_35_1"
+            }
+         }
+      },
+      {
+         "grid_model_id": "L7",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L71_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_7": "L71_DISCONNECTOR_37_12",
+               "VL2_2_7": "L71_DISCONNECTOR_37_13"
+            }
+         }
+      },
+      {
+         "grid_model_id": "L8",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L81_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_7": "L81_DISCONNECTOR_39_12",
+               "VL2_2_7": "L81_DISCONNECTOR_39_13"
+            }
+         }
+      },
+      {
+         "grid_model_id": "L9",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L91_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_7": "L91_DISCONNECTOR_42_12",
+               "VL2_2_7": "L91_DISCONNECTOR_42_13"
+            }
+         }
+      },
+      {
+         "grid_model_id": "L9",
+         "type": "LINE",
+         "name": "",
+         "in_service": true,
+         "branch_end": null,
+         "asset_bay": {
+            "sl_switch_grid_model_id": null,
+            "dv_switch_grid_model_id": "L92_BREAKER",
+            "sr_switch_grid_model_id": {
+               "VL2_1_8": "L92_DISCONNECTOR_43_14",
+               "VL2_2_8": "L92_DISCONNECTOR_43_15"
+            }
+         }
+      }
+   ],
+   "asset_switching_table": [
+      [
+         true,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         true,
+         true,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         true,
+         true,
+         false,
+         false
+      ],
+      [
+         false,
+         true,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         true
+      ],
+      [
+         false,
+         false,
+         true,
+         false,
+         false,
+         false,
+         true,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         true,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         true,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ]
+   ],
+   "asset_connectivity": [
+      [
+         true,
+         false,
+         true,
+         false,
+         false,
+         false,
+         true,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         true,
+         true,
+         true,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         true,
+         true,
+         true,
+         false
+      ],
+      [
+         false,
+         true,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         true
+      ],
+      [
+         true,
+         false,
+         true,
+         false,
+         false,
+         false,
+         true,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         true,
+         true,
+         true,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false
+      ],
+      [
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         true,
+         true,
+         true,
+         false
+      ],
+      [
+         false,
+         true,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         false,
+         true
+      ]
+   ],
+   "model_log": []
+}

@@ -1,0 +1,195 @@
+[
+  {
+    "initial_metrics": {
+      "max_flow_n_0": 1.0,
+      "median_flow_n_0": 1.0,
+      "overload_energy_n_0": 1.0,
+      "underload_energy_n_0": 1.0,
+      "transport_n_0": 1.0,
+      "max_flow_n_1": 1.0,
+      "median_flow_n_1": 1.0,
+      "overload_energy_n_1": 1.0,
+      "underload_energy_n_1": 1.0,
+      "transport_n_1": 1.0
+    },
+    "optim_metrics": {
+      "max_flow_n_0": 1.0,
+      "median_flow_n_0": 1.0,
+      "overload_energy_n_0": 1.0,
+      "underload_energy_n_0": 1.0,
+      "transport_n_0": 1.0,
+      "max_flow_n_1": 1.0,
+      "median_flow_n_1": 1.0,
+      "overload_energy_n_1": 1.0,
+      "underload_energy_n_1": 1.0,
+      "transport_n_1": 1.0
+    },
+    "topology": {
+      "substation_info": [
+      {
+        "id": "TEST1_1_0",
+        "type": "BUS",
+        "name": "",
+        "relevant_node_index": 8252,
+        "branch_assignments": [
+          {
+            "id": "TEST1_11 TEST2_11 1",
+            "type": "LINE",
+            "name": "TEST1_11 ## TEST2_11 ## XXX",
+            "index": 111,
+            "on_bus_b": false,
+            "from_end": true,
+            "other_end": {
+              "id": "TEST2_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          },
+          {
+            "id": "TEST1_13 TEST5_12 1",
+            "type": "LINE",
+            "name": "TEST1_13 ## TEST5_12 ## XXX",
+            "index": 112,
+            "on_bus_b": false,
+            "from_end": true,
+            "other_end": {
+              "id": "TEST5_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          },
+          {
+            "id": "TEST6_11 TEST1_13 1",
+            "type": "LINE",
+            "name": "TEST6_11 ## TEST1_13 ## XXX",
+            "index": 112,
+            "on_bus_b": false,
+            "from_end": false,
+            "other_end": {
+              "id": "TEST6_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          },
+          {
+            "id": "TEST6_12 TEST1_11 1",
+            "type": "LINE",
+            "name": "TEST6_12 ## TEST1_11 ## XXX",
+            "index": 113,
+            "on_bus_b": false,
+            "from_end": false,
+            "other_end": {
+              "id": "TEST6_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          },
+          {
+            "id": "TEST7_12 TEST1_13 1",
+            "type": "LINE",
+            "name": "TEST7_12 ## TEST1_13 ## XXX",
+            "index": 114,
+            "on_bus_b": true,
+            "from_end": false,
+            "other_end": {
+              "id": "TEST7_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          },
+          {
+            "id": "TEST8_11 TEST1_11 1",
+            "type": "LINE",
+            "name": "TEST8_11 ## TEST1_11 ## XXX",
+            "index": 115,
+            "on_bus_b": true,
+            "from_end": false,
+            "other_end": {
+              "id": "TEST8_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          },
+          {
+            "id": "TEST1_11 TEST8_12 1",
+            "type": "TWO_WINDINGS_TRANSFORMER",
+            "name": "TEST8_12 ## TEST1_11 ## XXX",
+            "index": 116,
+            "on_bus_b": true,
+            "from_end": false,
+            "other_end": {
+              "id": "TEST8_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          },
+          {
+            "id": "TEST1_11 TEST3_15 1",
+            "type": "TWO_WINDINGS_TRANSFORMER",
+            "name": "TEST3_15 ## TEST1_11 ## XXX",
+            "index": 117,
+            "on_bus_b": false,
+            "from_end": false,
+            "other_end": {
+              "id": "TEST3_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          },
+          {
+            "id": "TEST1_13 TEST3_14 1",
+            "type": "TWO_WINDINGS_TRANSFORMER",
+            "name": "TEST3_14 ## TEST1_13 ## XXX",
+            "index": 117,
+            "on_bus_b": false,
+            "from_end": false,
+            "other_end": {
+              "id": "TEST3_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          },
+          {
+            "id": "TEST1_13 TEST3_15 1",
+            "type": "TWO_WINDINGS_TRANSFORMER",
+            "name": "TEST3_15 ## TEST1_13 ## XXX",
+            "index": 119,
+            "on_bus_b": false,
+            "from_end": false,
+            "other_end": {
+              "id": "TEST3_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          }
+        ],
+        "injection_assignments": [
+          {
+            "id": "TEST1_11_load",
+            "type": "LOAD",
+            "name": "",
+            "index": 110,
+            "on_bus_b": true,
+            "mw_injections": [
+              5.0
+            ]
+          },
+          {
+            "id": "TEST1_13_load",
+            "type": "LOAD",
+            "name": "",
+            "index": 109,
+            "on_bus_b": true,
+            "mw_injections": [
+              6.0
+            ]
+          }
+        ]
+      
+      }
+    ],
+    "outage_info": []
+  },
+  "postproc_metrics": {}
+}
+]

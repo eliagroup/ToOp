@@ -1,0 +1,110 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+name: release
+
+on: workflow_dispatch
+
+permissions: {}
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          fetch-depth: 0 # fetch full history
+          fetch-tags: true # ensure tags are fetched
+          ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
+          persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
+
+      - name: "Set up Python"
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --frozen --only-group ci
+
+      - name: Set development release flag
+        run: |
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            echo "isDevRelease=false" >> $GITHUB_ENV
+          else
+            echo "isDevRelease=true" >> $GITHUB_ENV
+          fi
+
+          echo "Developmental release: $isDevRelease"
+
+      - name: Get new version
+        run: |
+          if [ "$isDevRelease" = "true" ]; then
+            newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes --devrelease $GITHUB_RUN_ID)
+          else
+            newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes)
+          fi 
+
+          if [[ -z "$newVersion" ]]; then
+            echo "No new version to release. Exiting."
+            exit 1
+          else
+            echo "New version: $newVersion"
+            echo "newVersion=$newVersion" >> $GITHUB_ENV
+          fi
+
+      - name: Configure git profile
+        run: |
+          git config user.name "ToOp Build Service"
+          git config user.email ToOp@eliagroup.eu
+
+      - name: Create release tag
+        run: |
+          echo "Creating git tag"
+          git tag "v$newVersion"
+
+      - name: Push tags to remote
+        run: |
+          echo "Pushing changes to remote."
+          git push --tags
+
+  publish-docs:
+    needs: bump-version
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
+
+      - name: Configure git profile
+        run: |
+          git config user.name "ToOp Build Service"
+          git config user.email ToOp@eliagroup.eu
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
+
+      - name: "Set up Python"
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --only-group doc --frozen
+
+      - name: Conditional Deployment
+        run: uv run mkdocs gh-deploy --force

@@ -1,0 +1,56 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+benchmarks:
+  - name: symmetric
+    method: symmetric
+    static_information_path: ../../data/14_bus/fixed_0.hdf5
+    bench_runner_config:
+      n_topologies_per_run: 8
+      n_disconnections_per_topology: 0
+      n_runs: 1
+    single_precision: true
+    cuda_visible_devices: [0]
+    omp_num_threads: 1
+    xla_force_host_platform_device_count: null
+    random_seed: 0
+    hyperparameters:
+      limit_n_subs: 3
+      aggregation_metric: max_flow
+      number_most_affected_n_0: 10
+      number_most_affected: 10
+      number_max_out_in_most_affected: 5
+      buffer_size_injection: null
+      distributed: false
+    grid_search:
+      - batch_size_bsdf: 2
+        batch_size_injection: 2
+      - batch_size_bsdf: 4
+        batch_size_injection: 4
+  - name: ratio
+    method: inj_ratio
+    static_information_path: ../../data/14_bus/fixed_0.hdf5
+    bench_runner_config:
+      n_topologies_per_run: 8
+      n_disconnections_per_topology: 0
+      n_runs: 1
+      n_injections_per_topology: 2
+    single_precision: true
+    cuda_visible_devices: [0]
+    omp_num_threads: 1
+    xla_force_host_platform_device_count: null
+    random_seed: 0
+    hyperparameters:
+      limit_n_subs: 3
+      aggregation_metric: max_flow
+      number_most_affected_n_0: 10
+      number_most_affected: 10
+      number_max_out_in_most_affected: 5
+      buffer_size_injection: null
+      distributed: false
+      batch_size_bsdf: 8
+      batch_size_injection: 16

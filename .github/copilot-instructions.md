@@ -129,7 +129,7 @@ uv run pytest -n auto --dist loadgroup           # Parallel, all packages
 - **IDs**: String identifiers end in `_ids` (e.g., `branch_ids`, `node_ids`)
 
 ### Branching & Releases
-- **Gitflow**: Feature branches → `develop` → `main`
+- **Trunk-based development**: Feature branches → `main`
 - Releases via GitHub Actions create tags only (no package publishing)
 - Version from git tags using `uv-dynamic-versioning`
 

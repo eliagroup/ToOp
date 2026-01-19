@@ -2,32 +2,31 @@
 
 Thank you for your interest in contributing to ToOp! This guide will help you understand our development workflow and contribution process.
 
-## Branch Strategy (Gitflow)
+## Branch Strategy
 
-We use the [Gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow) branching model with two main branches:
+We use [trunk-based development](https://trunkbaseddevelopment.com/):
 
-- **`main`**: The production-ready branch containing stable releases
-- **`develop`**: The integration branch where features are merged and tested
+- **`main`**: The stable trunk branch containing all development and releases
 
 ### Working with Branches
 
-1. **Feature Development**: Create feature branches from `develop`
-   ```bash
-   git checkout develop
-   git pull origin develop
-   git checkout -b feat/your-feature-name
-   ```
-
-2. **Bug Fixes**: Create hotfix branches from `main` for critical fixes
+1. **Feature Development**: Create feature branches from `main`
    ```bash
    git checkout main
    git pull origin main
-   git checkout -b hotfix/fix-description
+   git checkout -b feat/your-feature-name
+   ```
+
+2. **Bug Fixes**: Create fix branches from `main`
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b fix/fix-description
    ```
 
 3. **Pull Requests**:
-   - Feature branches should target `develop`
-   - Hotfix branches should target `main`
+   - All feature and fix branches should target `main`
+   - Ensure your changes are tested and pass all CI checks before requesting review
 
 ## Commit Message Standards
 
@@ -42,8 +41,6 @@ We enforce [Conventional Commits](https://www.conventionalcommits.org/) for all 
 
 Signed-off-by: FirstName LastName <something@example.org>
 ```
-
-
 
 ### Commit Types
 
@@ -144,12 +141,10 @@ Releases are managed through GitHub Actions and only generate Git tags. No commi
 
 1. **Stable Releases** (from `main` branch):
    - Follow semantic versioning (e.g., `v1.2.3`)
-   - Triggered manually via GitHub Actions workflow dispatch
    - Used for production-ready code
 
-2. **Development Releases** (from `develop` or feature branches):
+2. **Development Releases** (from feature branches):
    - Include a development identifier (e.g., `v1.2.3.dev12345`)
-   - Triggered manually via GitHub Actions workflow dispatch
    - Used for testing and preview purposes
 
 ### Release Workflow
@@ -165,7 +160,7 @@ The release process is automated through `.github/workflows/release.yaml`:
 
 ### Creating a Release
 
-1. Ensure your branch (main for stable, develop for dev) has the changes you want to release
+1. Ensure your branch has the changes you want to release
 2. Go to the GitHub Actions tab in the repository
 3. Select the "release" workflow
 4. Click "Run workflow" and select the appropriate branch
@@ -173,12 +168,12 @@ The release process is automated through `.github/workflows/release.yaml`:
 
 ## Pull Request Process
 
-1. **Create a Branch**: Follow the branching strategy above
+1. **Create a Branch**: Create a new branch from the `main` branch
 2. **Make Changes**: Implement your feature or fix
 3. **Write Tests**: Ensure your changes are covered by tests
 4. **Commit**: Use conventional commit messages
 5. **Push**: Push your branch to the repository
-6. **Open PR**: Create a pull request targeting the appropriate branch (`develop` for features, `main` for hotfixes)
+6. **Open PR**: Create a pull request targeting the `main` branch
 
 ### PR Requirements
 

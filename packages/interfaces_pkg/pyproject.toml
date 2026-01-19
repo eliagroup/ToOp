@@ -1,0 +1,93 @@
+[project]
+name = "toop_engine_interfaces"
+dynamic = ["version"]
+description = "Global interface definitions for the toop project"
+authors = [
+    {name = "Nico Westerbeck", email = "Nico.Westerbeck@50hertz.com"},
+    {name = "Leonard Hilfrich", email = "Leonard.Hilfrich@50hertz.com"},
+    {name = "Benjamin Petrick", email = "Benjamin.Petrick@externel.be"},
+]
+
+keywords = [
+    "topology interface",
+    "n-1 definition",
+    "asset topology"
+
+]
+classifiers=[
+        'Development Status :: 4 - Beta',
+        'Environment :: Console',
+        'Intended Audience :: Developers',
+        'Natural Language :: English',
+        'Operating System :: OS Independent',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3.11'
+]
+
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "pandera (>=0.22.1,<0.23.0)",
+    "beartype (>=0.22.0,<0.23.0)",
+    "numpy (>=1.26.0,<2.0.0)",
+    "pandas (>=2.2.3,<3.0.0)",
+    "pydantic (>=1.10.3,<3.0.0)",
+    "logbook (>=1.8.1,<1.9.0)",
+    "h5py>=3.0.0",
+    "numpydantic (>=1.6.4,<2.0.0)",
+    "jaxtyping (>=0.2.22,<0.3.0)",
+    "networkx>=2.5.0",
+    "polars>=1.33.0",
+    "pyarrow>=21.0.0",
+    "fsspec>=2024.0.0",
+    "protobuf (>=5,<6)",
+    "mypy-protobuf>=3.7.0",
+    "fonttools>=4.60.2"
+]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/toop_engine_interfaces"]
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[project.optional-dependencies]
+pypowsybl = ["pypowsybl>=1.13.0"]
+pandapower = ["pandapower>=3.0.0"]
+
+[dependency-groups]
+dev = [
+    "pep8-naming",
+    "pre-commit",
+    "pre-commit-hooks",
+    "pytest",
+    "pytest-cov",
+    "pytest-dotenv",
+    "pytest-mock",
+    "pytest-timeout",
+    "pytest-xdist>=3.8.0",
+    "ipykernel>=6.25.2",
+    "jupyter>=1.0.0",
+    "seaborn>=0.13.0",
+    "plotly>=3.0.0",
+    "openpyxl>=3.1.2",
+    "ruff",
+    "types-confluent-kafka>=1.3.3",
+    "pytest-logbook>=1.2.0",
+    "pypowsybl-jupyter>=1.0.0",
+    "docker>=7.1.0",
+    "ray"
+]
+
+[[tool.uv.index]]
+name = "MCCS"
+url = "***REMOVED***"
+publish-url = "***REMOVED***"
+explicit = true
+
+
+[tool.uv-secure.ignore_packages]
+ray = [] # Ignore issues with all versions of the ray package

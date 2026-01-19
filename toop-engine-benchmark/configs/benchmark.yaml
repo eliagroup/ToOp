@@ -1,0 +1,23 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+# configs for ToOp benchmark
+defaults:
+  - grid: config_grid_node_breaker
+  - lf_config: lf_config
+  - ga_config: ga_config
+  - area_settings: area_settings
+  - ac_validation: ac_validation
+
+logging_level: INFO
+
+hydra:
+  run:
+    dir: ${grid.output_dir}/hydra/
+  sweep:
+    dir: ${grid.output_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}

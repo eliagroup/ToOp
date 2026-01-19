@@ -1,0 +1,22 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: Topology-Optimizer-ToOp
+  displayName: Topology Optimizer (ToOp)
+  description: A GPU based Topology Optimizer.
+  links: []
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    developerhub.eliagroup.io/techdocs-builder: external
+spec:
+  type: service
+  lifecycle: experimental
+  owner: mccs-team

@@ -1,0 +1,70 @@
+[
+  {
+    "initial_metrics": {
+      "max_flow_n_0": 1.0,
+      "median_flow_n_0": 1.0,
+      "overload_energy_n_0": 1.0,
+      "underload_energy_n_0": 1.0,
+      "transport_n_0": 1.0,
+      "max_flow_n_1": 1.0,
+      "median_flow_n_1": 1.0,
+      "overload_energy_n_1": 1.0,
+      "underload_energy_n_1": 1.0,
+      "transport_n_1": 1.0
+    },
+    "optim_metrics": {
+      "max_flow_n_0": 1.0,
+      "median_flow_n_0": 1.0,
+      "overload_energy_n_0": 1.0,
+      "underload_energy_n_0": 1.0,
+      "transport_n_0": 1.0,
+      "max_flow_n_1": 1.0,
+      "median_flow_n_1": 1.0,
+      "overload_energy_n_1": 1.0,
+      "underload_energy_n_1": 1.0,
+      "transport_n_1": 1.0
+    },
+    "topology": {
+      "substation_info": [
+      {
+        "id": "D8ABC_1_0",
+        "type": "BUS",
+        "name": "",
+        "relevant_node_index": 1,
+        "branch_assignments": [
+          {
+            "id": "D8ABC_11 D8DEF_12 1",
+            "type": "LINE",
+            "name": "D8ABC_11 ## D8ABC_11 ## 123",
+            "index": 1,
+            "on_bus_b": false,
+            "from_end": true,
+            "other_end": {
+              "id": "D8ABC_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+          },
+          {
+            "id": "D8ABC_11 D8ASD_11 1",
+            "type": "LINE",
+            "name": "D8ABC_11 ## D8ABC_11 ## 123",
+            "index": 2,
+            "on_bus_b": true,
+            "from_end": true,
+            "other_end": {
+              "id": "D8ABC_1_0",
+              "type": "BUS",
+              "name": ""
+            }
+        }
+        ],
+        "injection_assignments": []
+    
+      }
+    ],
+    "outage_info": []
+  },
+  "postproc_metrics": {}
+}
+]

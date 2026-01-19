@@ -1,0 +1,174 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+site_name: Topology Optimizer
+
+repo_url: https://github.com/eliagroup/ToOp
+repo_name: EliaGroup-OpenSource/ToOp
+
+copyright: Copyright &copy; 2024 <a href="https://www.eliagroup.eu/">Elia Group</a>. Correspondence to <a href="mailto:christian.merz@50hertz.com">christian.merz@50hertz.com</a>.
+
+nav:
+  - Getting started:
+    - Introduction: index.md
+    - Usage: usage.md
+    - Quickstart: quickstart.md
+    - Code Reference:
+      - Importer: references/reference_importer.md
+      - DC Solver: references/reference_dc_solver.md
+      - Topology Optimizer: references/reference_topology_optimizer.md
+      - Interfaces: references/reference_interfaces.md
+      - Grid Helpers: references/reference_grid_helpers.md
+      - Contingency Analysis: references/reference_contingency_analysis.md
+  - Importer:
+    - importer/intro.md
+    - importer/pandapower/index.md
+    - importer/pypowsybl/index.md
+    - importer/pypowsybl/merge_ucte_with_cgmes.md
+    - importer/network_graph/index.md
+    - importer/contingency_from_power_factory/index.md
+    - importer/worker/worker.md
+    - importer/exporter/index.md
+    - Code Reference:
+      - Importer: references/reference_importer.md
+      - DC Solver: references/reference_dc_solver.md
+      - Topology Optimizer: references/reference_topology_optimizer.md
+      - Interfaces: references/reference_interfaces.md
+      - Grid Helpers: references/reference_grid_helpers.md
+      - Contingency Analysis: references/reference_contingency_analysis.md
+  - DC Solver:
+    - dc_solver/intro.md
+    - dc_solver/quickstart.md
+    - dc_solver/switching_distance.md
+    - dc_solver/nminus2.md
+    - dc_solver/preprocessing.md
+    - dc_solver/busbar_outage.md
+    - dc_solver/install_time.md
+    - Code Reference:
+      - Importer: references/reference_importer.md
+      - DC Solver: references/reference_dc_solver.md
+      - Topology Optimizer: references/reference_topology_optimizer.md
+      - Interfaces: references/reference_interfaces.md
+      - Grid Helpers: references/reference_grid_helpers.md
+      - Contingency Analysis: references/reference_contingency_analysis.md
+  - Topology Optimizer:
+    - topology_optimizer/intro.md
+    - topology_optimizer/structure.md
+    - topology_optimizer/deepdive.md
+    - AC Validation:
+      - topology_optimizer/ac/select_strategy.md
+      - topology_optimizer/ac/early_stopping.md
+    - Code Reference:
+      - Importer: references/reference_importer.md
+      - DC Solver: references/reference_dc_solver.md
+      - Topology Optimizer: references/reference_topology_optimizer.md
+      - Interfaces: references/reference_interfaces.md
+      - Grid Helpers: references/reference_grid_helpers.md
+      - Contingency Analysis: references/reference_contingency_analysis.md
+  - Interfaces:
+    - interfaces/intro.md
+    - interfaces/asset_topology.md
+    - Code Reference:
+      - Importer: references/reference_importer.md
+      - DC Solver: references/reference_dc_solver.md
+      - Topology Optimizer: references/reference_topology_optimizer.md
+      - Interfaces: references/reference_interfaces.md
+      - Grid Helpers: references/reference_grid_helpers.md
+      - Contingency Analysis: references/reference_contingency_analysis.md
+  - Grid Helpers:
+    - grid_helpers/intro.md
+    - Code Reference:
+      - Importer: references/reference_importer.md
+      - DC Solver: references/reference_dc_solver.md
+      - Topology Optimizer: references/reference_topology_optimizer.md
+      - Interfaces: references/reference_interfaces.md
+      - Grid Helpers: references/reference_grid_helpers.md
+      - Contingency Analysis: references/reference_contingency_analysis.md
+  - Contingency Analysis:
+    - contingency_analysis/intro.md
+    - Code Reference:
+      - Importer: references/reference_importer.md
+      - DC Solver: references/reference_dc_solver.md
+      - Topology Optimizer: references/reference_topology_optimizer.md
+      - Interfaces: references/reference_interfaces.md
+      - Grid Helpers: references/reference_grid_helpers.md
+      - Contingency Analysis: references/reference_contingency_analysis.md
+  - Contribution Guide: contribution_guide.md
+  - Benchmark:
+    - benchmark.md
+    - Code Reference: references/reference_benchmark.md
+
+theme:
+  name: material
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+      repo: fontawesome/brands/github
+  logo: assets/elia-group-logo.png
+  features:
+    - navigation.instant
+    # - navigation.sections # Collapsible navigation sections
+    - navigation.tabs
+    - navigation.expand: false
+    - navigation.top
+    - content.code.copy # Adds a copy button to code blocks for easy copying
+    # - toc.integrate # Integrates the table of contents into the page for better navigation
+
+plugins:
+  - techdocs-core # Core plugin for MkDocs TechDocs (DeveloperHub configuration)
+  - autorefs # Automatically generates references for links in the documentation
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_root_heading: true
+            show_if_no_docstring: true
+            inherited_members: true
+            members_order: source
+            separate_signature: true
+            unwrap_annotated: true
+            merge_init_into_class: true
+            docstring_section_style: spacy
+            signature_crossrefs: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            docstring_style: numpy
+          paths:
+            - packages/dc_solver_pkg/src
+            - packages/contingency_analysis_pkg/src
+            - packages/interfaces_pkg/src
+            - packages/grid_helpers_pkg/src
+            - packages/topology_optimizer_pkg/src
+            - packages/importer_pkg/src
+            - .
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - toc:
+      permalink: "#"

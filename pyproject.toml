@@ -1,0 +1,171 @@
+[project]
+name = "toop_loadflow_solver"
+dynamic = ["version", "dependencies"]
+description = "Brute-force DC topological remedial actions"
+
+readme = "README.md"
+keywords = [
+    "topological remedial actions",
+    "DC loadflow",
+    "GPU Topology Optimization",
+    "Contingency Analysis",
+    "AC Validation",
+    "PTDF",
+    "BSDF",
+    "LODF",
+    "Busbar Outage",
+]
+classifiers=[
+        'Development Status :: 4 - Beta',
+        'Environment :: Console',
+        'Intended Audience :: Developers',
+        'Intended Audience :: Education',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)',
+        'Natural Language :: English',
+        'Operating System :: OS Independent',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3.11'
+]
+requires-python = ">=3.11,<3.12"
+
+[tool.hatch.metadata.hooks.uv-dynamic-versioning]
+
+dependencies = [
+    "toop_engine_interfaces=={{ version }}",
+    "toop_engine_contingency_analysis=={{ version }}",
+    "toop_engine_grid_helpers=={{ version }}",
+    "toop_engine_dc_solver=={{ version }}",
+    "toop_engine_importer=={{ version }}",
+    "toop_engine_topology_optimizer=={{ version }}",
+]
+
+license = "MPL-2.0"
+license-files = ["LICENSE"]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "packages/interfaces_pkg/src",
+    "packages/contingency_analysis_pkg/src",
+    "packages/dc_solver_pkg/src",
+    "packages/grid_helpers_pkg/src",
+    "packages/importer_pkg/src",
+    "packages/topology_optimizer_pkg/src",
+]
+
+[tool.uv.sources]
+toop_engine_interfaces = { path = "packages/interfaces_pkg", editable = true }
+toop_engine_contingency_analysis = { path = "packages/contingency_analysis_pkg", editable = true }
+toop_engine_dc_solver = { path = "packages/dc_solver_pkg", editable = true }
+toop_engine_grid_helpers = { path = "packages/grid_helpers_pkg", editable = true }
+toop_engine_importer = { path = "packages/importer_pkg", editable = true }
+toop_engine_topology_optimizer = { path = "packages/topology_optimizer_pkg", editable = true }
+
+[dependency-groups]
+ci = [
+    "commitizen>=4.9.1",
+]
+dev = [
+    "pep8-naming",
+    "pre-commit",
+    "pre-commit-hooks",
+    "pytest",
+    "pytest-cov",
+    "pytest-dotenv",
+    "pytest-mock",
+    "pytest-timeout",
+    "pytest-xdist>=3.8.0",
+    "ipykernel>=6.25.2",
+    "jupyter>=1.0.0",
+    "nbclient>=0.10.0",
+    "defusedxml>=0.7.0",
+    "seaborn>=0.13.0",
+    "plotly>=3.0.0",
+    "openpyxl>=3.1.2",
+    "ruff",
+    "types-confluent-kafka>=1.3.3",
+    "pytest-logbook>=1.2.0",
+    "pypowsybl-jupyter>=1.0.0",
+    "docker>=7.1.0",
+    "ipympl>=0.9.8"
+]
+doc = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.6.8",
+    "mkdocs-autorefs>=1.4.2",
+    "mkdocs-material-extensions>=1.3.1",
+    "mkdocs-include-markdown-plugin>=7.1.6",
+    "mkdocs-techdocs-core >=1.5.4",
+    "mkdocstrings[python]>=0.30.0",
+]
+
+# TOOLS
+[tool.uv]
+# Excludes nvconvert because of CVE.
+# nbconverts pdf-conversion is not needed
+# https://access.redhat.com/security/cve/cve-2025-53000
+# See https://github.com/astral-sh/uv/issues/7214#issuecomment-2340188447
+override-dependencies = [
+    "nbconvert; sys_platform == 'never'", 
+]
+[tool.pytest.ini_options]
+
+pythonpath = [
+    "packages/dc_solver_pkg/src",
+    "packages/contingency_analysis_pkg/src",
+    "packages/interfaces_pkg/src",
+    "packages/grid_helpers_pkg/src",
+    "packages/topology_optimizer_pkg/src",
+    "packages/importer_pkg/src",
+    "packages/dc_solver_pkg",
+    "packages/contingency_analysis_pkg",
+    "packages/interfaces_pkg",
+    "packages/grid_helpers_pkg",
+    "packages/topology_optimizer_pkg",
+    "packages/importer_pkg",
+    "packages",
+    ]
+
+addopts = [
+  "--durations=20",
+  "--junit-xml=test-report.xml",
+  "--new-first",
+  "--show-capture=all",
+  "--verbosity=4",
+  "--jaxtyping-packages=dc_solver",
+]
+junit_family = "legacy"
+testpaths = [
+        "packages/interfaces_pkg/tests",
+        "packages/grid_helpers_pkg/tests",
+        "packages/dc_solver_pkg/tests",
+        "packages/contingency_analysis_pkg/tests",
+        "packages/importer_pkg/tests",
+        "packages/topology_optimizer_pkg/tests"
+        ]
+timeout = 300
+filterwarnings = [
+]
+
+# Misc
+[tool.bandit]
+skips = ["B101", "B601"]
+exclude_dirs = ["*/*tests"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+ignored_tag_formats = ["v$major.$minor.$patch.$devrelease"]
+version_scheme = "pep440"
+version_provider = "scm"
+update_changelog_on_bump = false
+
+[tool.uv-secure.ignore_packages]
+ray = [] # Ignore issues with all versions of the ray package

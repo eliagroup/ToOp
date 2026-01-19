@@ -1,0 +1,7 @@
+[report]
+fail_under = 90
+precision = 0
+show_missing = true
+skip_covered = false
+skip_empty = false
+sort = cover

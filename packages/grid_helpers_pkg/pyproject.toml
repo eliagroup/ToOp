@@ -1,0 +1,84 @@
+[project]
+name = "toop_engine_grid_helpers"
+dynamic = ["version", "dependencies"]
+description = "Helper functions for pandapower and pypowsybl"
+
+readme = "README.md"
+keywords = [
+    "pandapower helpers",
+    "powsybl helpers",
+    "example grids",
+    "single line diagram",
+    "loadflow parameters"
+]
+classifiers=[
+        'Development Status :: 4 - Beta',
+        'Environment :: Console',
+        'Intended Audience :: Developers',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)',
+        'Natural Language :: English',
+        'Operating System :: OS Independent',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3.11'
+]
+
+requires-python = ">=3.11,<3.12"
+
+[tool.hatch.metadata.hooks.uv-dynamic-versioning]
+dependencies = [
+    "numpy (>=1.26.0,<2.0.0)",
+    "pandas[hdf5] (>=2.2.3,<3.0.0)",
+    "jaxtyping (>=0.2.22,<0.3.0)",
+    "beartype (>=0.22.0,<0.23.0)",
+    "kafka (>=1.3.5,<2.0.0)",
+    "toop_engine_interfaces=={{ version }}",
+    "polars>=1.33.0",
+    "orjson>=3.11.3",
+    "pyarrow>=21.0.0",
+]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[project.optional-dependencies]
+pypowsybl = ["pypowsybl>=1.13.0"]
+pandapower = ["pandapower>=3.0.0"]
+
+[dependency-groups]
+dev = [
+    "pep8-naming",
+    "pre-commit",
+    "pre-commit-hooks",
+    "pytest",
+    "pytest-cov",
+    "pytest-dotenv",
+    "pytest-mock",
+    "pytest-timeout",
+    "pytest-xdist>=3.8.0",
+    "ipykernel>=6.25.2",
+    "jupyter>=1.0.0",
+    "seaborn>=0.13.0",
+    "plotly>=3.0.0",
+    "openpyxl>=3.1.2",
+    "ruff",
+    "types-confluent-kafka>=1.3.3",
+    "pytest-logbook>=1.2.0",
+    "pypowsybl-jupyter>=1.0.0",
+    "docker>=7.1.0",
+    "matpowercaseframes>=1.1.4",
+    "numba>=0.61.2",
+]
+
+[tool.uv.sources]
+toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }
+
+[[tool.uv.index]]
+name = "MCCS"
+url = "***REMOVED***"
+publish-url = "***REMOVED***"
+explicit = true

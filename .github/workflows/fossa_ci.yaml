@@ -1,0 +1,42 @@
+# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+name: Fossa scan
+
+on: push
+
+permissions: {}
+
+jobs:
+  license-headers:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - name: License Header Check
+        uses: B1NARY-GR0UP/nwa@924fd990a1769a8198a3cc5d2a83f72a41a51951
+        with:
+          version: latest        # (optional) version of nwa to use; default: latest
+          cmd: check             # (optional) command to execute; options: `check`, `add`, `update`, `remove`; default: check
+          path: .nwa-config.yaml # (optional) configuration file path; default: .nwa-config.yaml
+  fossa-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - id: fossa-analyze
+        uses: fossas/fossa-action@3ebcea1862c6ffbd5cf1b4d0bd6b3fe7bd6f2cac # Use a specific version if locking is preferred
+        with:
+          api-key: ${{secrets.FOSSA_API_KEY}}
+          run-tests: false # Add another run with run-tests: true if ci should fail on issues
+      - id: fossa-test
+        uses: fossas/fossa-action@3ebcea1862c6ffbd5cf1b4d0bd6b3fe7bd6f2cac # Use a specific version if locking is preferred
+        with:
+          api-key: ${{secrets.FOSSA_API_KEY}}
+          run-tests: true # Add another run with run-tests: true if ci should fail on issues

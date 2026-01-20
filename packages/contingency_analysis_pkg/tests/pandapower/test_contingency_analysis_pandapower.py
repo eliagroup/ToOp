@@ -16,16 +16,22 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     extract_branch_results,
 )
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
-
+import pandera as pa
 
 def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet, init_ray) -> None:
     nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
-
+    validation_on = pa.config.PanderaConfig(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA)
+    pa.config.reset_config_context(validation_on)
     lf_result_sequential_polars = get_ac_loadflow_results(
         pandapower_net, nminus1_definition, job_id="test_job", n_processes=1
     )
+    validation_off = pa.config.PanderaConfig(validation_enabled=False)
+    pa.config.reset_config_context(validation_off)
+    lf_result_sequential_polars_no_val = get_ac_loadflow_results(
+        pandapower_net, nminus1_definition, job_id="test_job", n_processes=1
+    )
     assert lf_result_sequential_polars is not None
-
+    assert lf_result_sequential_polars_no_val == lf_result_sequential_polars
 
 @pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(300)

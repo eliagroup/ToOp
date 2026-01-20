@@ -92,6 +92,7 @@ def test_contingency_analysis_validated_or_not(powsybl_node_breaker_net: pypowsy
 
     assert lf_result_with_val_polars == lf_result_no_val_polars
 
+
 @pytest.mark.parametrize("powsybl_net", ["powsybl_bus_breaker_net", "powsybl_node_breaker_net"])
 def test_contingency_analysis_ray_vs_powsybl(powsybl_net: str, request):
     net = request.getfixturevalue(powsybl_net)

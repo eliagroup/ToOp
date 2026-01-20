@@ -23,7 +23,7 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     extract_solver_matrices,
 )
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
-
+import pandera as pa
 
 def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
@@ -71,10 +71,27 @@ def test_run_ac_contingency_analysis_powsybl(powsybl_net: str, request, init_ray
     )
     assert len(lf_result_sequential_polars.converged.collect()) == len(lf_result_parallel_polars.converged.collect())
 
+def test_contingency_analysis_validated_or_not(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
+
+    validation_on = pa.config.PanderaConfig(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA)
+    pa.config.reset_config_context(validation_on)
+    lf_result_no_val_polars = get_ac_loadflow_results(
+        powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
+    )
+
+    validation_off = pa.config.PanderaConfig(validation_enabled=False)
+    pa.config.reset_config_context(validation_off)
+    lf_result_val_polars = get_ac_loadflow_results(
+        powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
+    )
+
+    assert lf_result_no_val_polars == lf_result_val_polars
 
 @pytest.mark.parametrize("powsybl_net", ["powsybl_bus_breaker_net", "powsybl_node_breaker_net"])
 def test_contingency_analysis_ray_vs_powsybl(powsybl_net: str, request):
     net = request.getfixturevalue(powsybl_net)
+
     nminus1_definition = get_full_nminus1_definition_powsybl(net)
 
     lf_parallel_ray_polars = get_ac_loadflow_results(

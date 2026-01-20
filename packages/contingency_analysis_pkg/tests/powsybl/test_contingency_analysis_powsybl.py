@@ -80,18 +80,17 @@ def test_contingency_analysis_validated_or_not(powsybl_node_breaker_net: pypowsy
         validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA
     )
     pa.config.reset_config_context(validation_on)
-    lf_result_no_val_polars = get_ac_loadflow_results(
+    lf_result_with_val_polars = get_ac_loadflow_results(
         powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
     )
 
     validation_off = pa.config.PanderaConfig(validation_enabled=False)
     pa.config.reset_config_context(validation_off)
-    lf_result_val_polars = get_ac_loadflow_results(
+    lf_result_no_val_polars = get_ac_loadflow_results(
         powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
     )
 
-    assert lf_result_no_val_polars == lf_result_val_polars
-
+    assert lf_result_with_val_polars == lf_result_no_val_polars
 
 @pytest.mark.parametrize("powsybl_net", ["powsybl_bus_breaker_net", "powsybl_node_breaker_net"])
 def test_contingency_analysis_ray_vs_powsybl(powsybl_net: str, request):

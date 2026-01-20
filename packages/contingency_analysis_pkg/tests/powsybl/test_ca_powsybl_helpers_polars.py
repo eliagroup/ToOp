@@ -606,7 +606,7 @@ def test_update_basename_drops():
     assert empty_df.collect().is_empty(), "The empty dataframe should remain empty"
     assert updated_empty_df.collect().is_empty(), "The updated empty dataframe should remain empty"
 
-
+import pandera as pa
 def test_translate_element_names():
     timestep = 0
     contingency = "test_contingency"

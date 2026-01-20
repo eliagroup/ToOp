@@ -938,7 +938,9 @@ def get_failed_va_diff_results(
         )
     ).assign(va_diff=np.nan)
     # fill missing columns with NaN
-    failed_va_diff_results["element_name"] = failed_va_diff_results.index.get_level_values("element").map(all_power_switches).fillna("")
+    failed_va_diff_results["element_name"] = (
+        failed_va_diff_results.index.get_level_values("element").map(all_power_switches).fillna("")
+    )
     failed_va_diff_results["contingency_name"] = ""
     return failed_va_diff_results
 

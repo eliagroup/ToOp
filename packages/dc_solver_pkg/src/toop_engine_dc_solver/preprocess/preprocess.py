@@ -66,8 +66,10 @@ from toop_engine_dc_solver.preprocess.preprocess_station_realisations import (
     enumerate_station_realisations,
 )
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
+    OptimalSeparationSetInfo,
     add_missing_asset_topology_branch_info,
     add_missing_asset_topology_injection_info,
+    make_optimal_separation_set,
     prepare_for_separation_set,
 )
 from toop_engine_interfaces.asset_topology_helpers import order_topology
@@ -1213,6 +1215,40 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
     return remove_relevant_subs(network_data, np.array(keep_mask, dtype=bool))
 
 
+def compute_separaration_set_for_stations(
+    network_data: NetworkData,
+    clip_hamming_distance: int = 0,
+    clip_at_size: int = 100,
+) -> NetworkData:
+    """Compute the optimal separation set for all stations in the network data
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        The network data to compute the separation set for
+    clip_hamming_distance : int, optional
+        The maximum hamming distance to consider for the separation set, by default 0
+    clip_at_size : int, optional
+        The maximum size of the separation set to consider, by default 100
+
+    Returns
+    -------
+    NetworkData
+        The network data with the separation set computed
+    """
+    assert network_data.simplified_asset_topology is not None, "Please simplify the asset topology first"
+
+    separation_sets_info: list[OptimalSeparationSetInfo] = []
+    for station in network_data.simplified_asset_topology.stations:
+        separation_set_info = make_optimal_separation_set(station, clip_hamming_distance, clip_at_size)
+        separation_sets_info.append(separation_set_info)
+
+    return replace(
+        network_data,
+        separation_sets_info=separation_sets_info,
+    )
+
+
 def preprocess(  # noqa: PLR0915
     interface: BackendInterface,
     logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
@@ -1298,6 +1334,13 @@ def preprocess(  # noqa: PLR0915
 
     logging_fn("simplify_asset_topology", None)
     network_data = simplify_asset_topology(network_data, close_couplers=parameters.asset_topo_close_couplers)
+
+    logging_fn("compute_separation_set", None)
+    network_data = compute_separaration_set_for_stations(
+        network_data,
+        clip_hamming_distance=parameters.separation_set_clip_hamming_distance,
+        clip_at_size=parameters.separation_set_clip_at_size,
+    )
 
     logging_fn("compute_electrical_actions", None)
     network_data = compute_electrical_actions(

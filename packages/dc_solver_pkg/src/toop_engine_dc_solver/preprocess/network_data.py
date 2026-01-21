@@ -16,6 +16,7 @@ from beartype.typing import NamedTuple, Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
+from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, LoadflowParameters, Nminus1Definition
@@ -233,6 +234,9 @@ class NetworkData:
 
     simplified_asset_topology: Optional[Topology] = None
     """The asset topology in a simplified version, containing only optimization-relevant stations and assets."""
+
+    separation_sets_info: Optional[list[OptimalSeparationSetInfo]] = None
+    """The optimal separation set information for each relevant substation."""
 
     branch_action_set: Optional[list[Bool[np.ndarray, " n_local_actions n_branches_at_node"]]] = None
     """If computed, the branch action set for the grid. This is a list of length relevant nodes with

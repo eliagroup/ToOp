@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
 from toop_engine_dc_solver.jax.types import (
     int_max,
 )
+
 # deactivate formatting for the region type definitions
 # fmt: off
 # As defined in
@@ -276,7 +277,6 @@ class ReassignmentLimits(BaseModel):
     station_specific_limits: dict[str, int] = Field(default_factory=dict)
     """If given, specific reassignment limits per station to override the global reassignment limit."""
 
-    
 
 class PreprocessParameters(BaseModel):
     """Parameters for the preprocessing procedure which is independent of the data source"""

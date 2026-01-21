@@ -62,13 +62,15 @@ def make_action_repo(
     ----------
     sub_degree : int
         The number of branches in the substation
+    separation_set : Bool[np.ndarray, " n_configurations 2 n_assets"]
+        The separation set for the substation.
     exclude_isolations : bool
         Whether to exclude actions that isolate a branch. Defaults to True.
-    exclude_inverse : bool
-        Whether to exclude the inverse of the actions. Defaults to True.
     randomly_select : Optional[int]
         If given, only randomly_select actions will be enumerated, which are randomly drawn. If None,
         all actions will be exhaustively enumerated. Defaults to None.
+    limit_reassignments : Optional[int]
+        If given, the maximum number of reassignments to perform during the electrical reconfiguration.
 
     Returns
     -------
@@ -96,7 +98,6 @@ def make_action_repo(
     if exclude_isolations:
         num_bus_b = np.sum(repo, axis=1)
         repo = repo[(num_bus_b != 1) & (num_bus_b != sub_degree - 1), :]
-    
 
     # We only want to keep the inverse that has fewer elements in another setup compared to the base config
     # Hence, we invert where the electrical switching distance is lesser for the inverse configuration
@@ -382,7 +383,13 @@ def enumerate_branch_actions_for_sub(
         )
         randomly_select = clip_to_n_actions
     separation_set = network_data.separation_sets_info[sub_id].separation_set
-    repo = make_action_repo(sub_degree, separation_set, exclude_isolations, randomly_select=randomly_select, limit_reassignments=limit_reassignments)
+    repo = make_action_repo(
+        sub_degree,
+        separation_set,
+        exclude_isolations,
+        randomly_select=randomly_select,
+        limit_reassignments=limit_reassignments,
+    )
     if exclude_bridge_lookup_splits:
         repo = filter_splits_by_bridge_lookup(sub_id, repo, network_data)
     if exclude_bsdf_lodf_splits:
@@ -420,7 +427,7 @@ def enumerate_branch_actions(
         larger than this, a random subset will be returned. Defaults to 2**20.
     reassignment_limits : Optional[ReassignmentLimits]
         If given, settings to limit the amount of reassignment during the electrical reconfiguration.
-        
+
     Returns
     -------
     list[Bool[Array, " _ _"]]
@@ -436,7 +443,7 @@ def enumerate_branch_actions(
     else:
         station_specific_reassignment_limits = {}
         reassignment_limit = None
-    
+
     return [
         enumerate_branch_actions_for_sub(
             sub_id=sub_id,
@@ -447,7 +454,8 @@ def enumerate_branch_actions(
             bsdf_lodf_batch_size=bsdf_lodf_batch_size,
             clip_to_n_actions=clip_to_n_actions,
             limit_reassignments=station_specific_reassignment_limits.get(grid_model_id, reassignment_limit),
-        ) for sub_id, grid_model_id in zip(range(sum(network_data.relevant_node_mask)), relevant_ids, strict=True)
+        )
+        for sub_id, grid_model_id in zip(range(sum(network_data.relevant_node_mask)), relevant_ids, strict=True)
     ]
 
 

@@ -50,6 +50,7 @@ NumpyPreprocessStage: TypeAlias = Literal[
     "enumerate_station_realizations",
     "remove_relevant_subs_without_actions",
     "simplify_asset_topology",
+    "compute_separation_set",
     "convert_multi_outages",
     "filter_inactive_injections",
     "compute_injection_topology_info",

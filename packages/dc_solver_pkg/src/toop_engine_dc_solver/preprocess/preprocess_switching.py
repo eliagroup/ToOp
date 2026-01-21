@@ -419,22 +419,9 @@ def make_optimal_separation_set(
 
     Returns
     -------
-    Bool[np.ndarray, " n_configurations 2 n_assets"]
-        The separation set of busbars in the station. Each row corresponds to a possible two-way split of
-        the station obtained by opening some couplers. This is the optimized table, i.e. equivalent
-        configurations have been purged and the table is in the format where busbar A and B are joined,
-        i.e. B is the inverse of A.
-    Bool[np.ndarray, " n_configurations n_couplers"]
-        A table of coupler states. Each row corresponds to a configuration, and each column
-        corresponds to a coupler. The value in the table is True if the coupler is open, and False
-        if it is closed.
-    Int[Array, " n_configurations"]
-        The hamming distance between the coupler states of the station and the coupler states of the
-        configuration in number of switches changed.
-    list[set[int]]
-        A list of length n_configurations containing sets, each set contains the busbars that are
-        considered busbar A in the configurations table. The integers in the set correspond to the
-        int_ids of the busbars in the station.
+    OptimalSeparationSetInfo
+        A tuple containing the optimized separation set information.
+        The separation_set itself, the coupler states, the coupler distances and the busbar A matchings.
     """
     configuration_table, coupler_states, busbar_matchings = make_separation_set(station)
     clip_hamming_distance = 0 if configuration_table.shape[0] < clip_at_size else clip_hamming_distance

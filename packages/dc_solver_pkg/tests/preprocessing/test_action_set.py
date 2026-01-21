@@ -37,7 +37,7 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     compute_injection_topology_info,
     compute_psdf_if_not_given,
     compute_ptdf_if_not_given,
-    compute_separaration_set_for_stations,
+    compute_separation_set_for_stations,
     convert_multi_outages,
     exclude_bridges_from_outage_masks,
     filter_disconnectable_branches_nminus2,
@@ -178,7 +178,7 @@ def test_filter_splits(network_data: NetworkData) -> None:
     # network_data = add_bus_b_columns_to_ptdf(network_data)
     # network_data = compute_branch_actions(network_data)
     network_data = simplify_asset_topology(network_data)
-    network_data = compute_separaration_set_for_stations(network_data)
+    network_data = compute_separation_set_for_stations(network_data)
 
     # Bus 22 has a lot of stubs, check if the actions on it are filtered properly
     node_idx = network_data.node_names.index("Bus 22")
@@ -232,7 +232,7 @@ def test_enumerate_branch_actions(network_data: NetworkData) -> None:
     network_data = process_injection_outages(network_data)
     # network_data = compute_branch_actions(network_data)
     network_data = simplify_asset_topology(network_data)
-    network_data = compute_separaration_set_for_stations(network_data)
+    network_data = compute_separation_set_for_stations(network_data)
 
     sub_id = 0
 
@@ -342,7 +342,7 @@ def test_remove_relevant_subs_without_actions(
     network_data = convert_multi_outages(network_data)
     network_data = add_missing_asset_topo_info(network_data)
     network_data = simplify_asset_topology(network_data)
-    network_data = compute_separaration_set_for_stations(network_data)
+    network_data = compute_separation_set_for_stations(network_data)
 
     # network_data = compute_electrical_actions(
     #     network_data,

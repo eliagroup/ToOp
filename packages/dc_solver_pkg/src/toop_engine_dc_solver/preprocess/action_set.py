@@ -109,7 +109,7 @@ def make_action_repo(
     repo[better_inverse, :] = ~repo[better_inverse, :]
 
     if limit_reassignments is not None and limit_reassignments < sub_degree:
-        min_distance = np.min([min_distance, min_distance_inverse], axis=0)
+        min_distance = np.minimum(min_distance, min_distance_inverse)
         repo = repo[min_distance <= limit_reassignments, :]
 
     # Make sure the first combination is the unsplit action
@@ -349,8 +349,6 @@ def enumerate_branch_actions_for_sub(
         substations
     network_data : NetworkData
         The network data of the grid
-    separation_set : Optional[Bool[np.ndarray, " n_configurations 2 n_assets"]]
-        The separation set for the substation. If None, the default unseparated configuration
     exclude_isolations : bool
         Whether to exclude actions that isolate a branch
     exclude_bridge_lookup_splits : bool

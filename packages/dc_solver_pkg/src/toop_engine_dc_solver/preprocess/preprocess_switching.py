@@ -17,7 +17,7 @@ import jax.numpy as jnp
 import logbook
 import networkx as nx
 import numpy as np
-from beartype.typing import Literal, Optional, Sequence
+from beartype.typing import Literal, NamedTuple, Optional, Sequence
 from jaxtyping import Array, Bool, Int
 from networkx.algorithms.components import (
     connected_components,
@@ -42,6 +42,31 @@ from toop_engine_interfaces.asset_topology_helpers import (
 )
 
 logger = logbook.Logger(__name__)
+
+
+class OptimalSeparationSetInfo(NamedTuple):
+    """Tuple that holds information about the possible 2-node separations in a Station"""
+
+    separation_set: Bool[np.ndarray, " n_configurations 2 n_assets"]
+    """The separation set of busbars in the station. Each row corresponds to a possible two-way split of
+    the station obtained by opening some couplers. This is the optimized table, i.e. equivalent
+    configurations have been purged and the table is in the format where busbar A and B are joined,
+    i.e. B is the inverse of A."""
+
+    coupler_states: Bool[np.ndarray, " n_configurations n_couplers"]
+    """Bool[np.ndarray, " n_configurations n_couplers"]
+    A table of coupler states. Each row corresponds to a configuration, and each column
+    corresponds to a coupler. The value in the table is True if the coupler is open, and False
+    if it is closed."""
+
+    coupler_distance: Int[Array, " n_configurations"]
+    """The hamming distance between the coupler states of the station and the coupler states of the
+    configuration in number of switches changed."""
+
+    busbar_a: list[set[int]]
+    """A list of length n_configurations containing sets, each set contains the busbars that are
+    considered busbar A in the configurations table. The integers in the set correspond to the
+    int_ids of the busbars in the station."""
 
 
 def make_separation_set(
@@ -371,12 +396,7 @@ def make_optimal_separation_set(
     station: Station,
     clip_hamming_distance: int = 0,
     clip_at_size: int = 100,
-) -> tuple[
-    Bool[np.ndarray, " n_configurations 2 n_assets"],
-    Bool[np.ndarray, " n_configurations n_couplers"],
-    Int[Array, " n_configurations"],
-    list[set[int]],
-]:
+) -> OptimalSeparationSetInfo:
     """Build the configurations table for a station and optimize it using clipping and hamming distance.
 
     This function will:
@@ -427,7 +447,12 @@ def make_optimal_separation_set(
         jnp.array(coupler_states), jnp.array([coupler.open for coupler in station.couplers], dtype=bool)
     )
 
-    return configuration_table, coupler_states, coupler_distances, busbar_matchings
+    return OptimalSeparationSetInfo(
+        separation_set=configuration_table,
+        coupler_states=coupler_states,
+        coupler_distance=coupler_distances,
+        busbar_a=busbar_matchings,
+    )
 
 
 def pad_configurations_table(

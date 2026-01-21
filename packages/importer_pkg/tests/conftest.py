@@ -206,9 +206,11 @@ def kafka_heartbeat_topic(kafka_container: Container) -> str:
 @pytest.fixture(scope="function")
 def test_consumer(kafka_connection_str: str) -> Generator[Consumer, None, None]:
     consumer = Consumer(
-        bootstrap_servers=kafka_connection_str,
-        auto_offset_reset="earliest",
-        group_id="test-group",
+        {
+            "bootstrap.servers": kafka_connection_str,
+            "auto.offset.reset": "earliest",
+            "group.id": "test-group",
+        }
     )
     yield consumer
     consumer.close()

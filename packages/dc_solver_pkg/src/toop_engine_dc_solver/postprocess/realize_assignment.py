@@ -13,11 +13,12 @@ import jax
 import jax.numpy as jnp
 import logbook
 import numpy as np
-from beartype.typing import Literal
+from beartype.typing import Literal, Optional
 from jaxtyping import Array, Bool, Int
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_station_switching_distance
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_interfaces.asset_topology import Station
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = logbook.Logger(__name__)
 
@@ -291,7 +292,7 @@ def compute_switching_table(
     # Also compute the physical reassignment distance, which can be larger than the electrical
     # distance if an asset was connected to multiple busbars before the action.
     phy_reassignment_distance = jnp.sum(jnp.logical_xor(original_switching_table, current_switching_table))
-
+    
     return (
         current_switching_table,
         chosen_coupler_state,
@@ -309,6 +310,7 @@ def realise_ba_to_physical_topo_per_station_jax(
     batch_size: int = 1024,
     choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"] = "least_connected_busbar",
     validate: bool = True,
+    reassignment_limits: Optional[ReassignmentLimits] = None,
 ) -> tuple[list[Station], Bool[np.ndarray, "n_combinations n_branches"], list[list[int]], list[int]]:
     """Realize the branch actions to physical topology per station.
 
@@ -419,6 +421,17 @@ def realise_ba_to_physical_topo_per_station_jax(
     chosen_coupler_state = np.array(chosen_coupler_state[success])
     chosen_busbar_mapping = np.array(chosen_busbar_mapping[success])
     phy_reassignment_distance = np.array(phy_reassignment_distance[success])
+
+    # Only keep those within the reassignment limits
+    if reassignment_limits is not None:
+        max_reassignments = reassignment_limits.station_specific_limits.get(station.grid_model_id, reassignment_limits.global_limit)
+        within_limit = phy_reassignment_distance <= max_reassignments
+        switching_table = switching_table[within_limit]
+        local_branch_action_set = local_branch_action_set[within_limit]
+        chosen_coupler_state = chosen_coupler_state[within_limit]
+        chosen_busbar_mapping = chosen_busbar_mapping[within_limit]
+        phy_reassignment_distance = phy_reassignment_distance[within_limit]
+    
 
     # Create the realised stations
     realised_stations = [

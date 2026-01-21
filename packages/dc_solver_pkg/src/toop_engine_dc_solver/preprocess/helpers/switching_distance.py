@@ -9,7 +9,7 @@
 
 import jax.numpy as jnp
 from beartype.typing import Optional
-from jaxtyping import Array, Bool, Int
+from jaxtyping import Array, Bool, Int, ArrayLike
 
 
 def per_station_switching_distance(
@@ -121,3 +121,24 @@ def hamming_distance(
         assert ignore_assets.shape == target_configuration.shape
         diff = diff & ~ignore_assets
     return jnp.sum(diff, axis=-1)
+
+def min_hamming_distance_matrix(
+    permutations: Bool[ArrayLike, " n_permutations n_assets"],
+    possible_starting_configs: Bool[ArrayLike, " n_possible_starting_configs n_assets"],
+) -> Int[Array, " n_permutations"]:
+    """Compute the hamming distance matrix between two sets of configurations.
+
+    Parameters
+    ----------
+    permutations : Bool[Array, " n_permutations n_assets"]
+        The first table of configurations to compare.
+    possible_starting_configs : Bool[Array, " n_possible_starting_configs n_assets"]
+        The second table of configurations to compare.
+    
+    Returns
+    -------
+    The minimum hamming distance between each configuration in permutations and any configuration in possible_starting_configs.
+    """
+    dist_matrix = jnp.sum(jnp.logical_xor(permutations[:, None, :], possible_starting_configs[None, :, :]), axis=2)
+    min_changes = jnp.min(dist_matrix, axis=1)
+    return min_changes

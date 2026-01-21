@@ -13,7 +13,9 @@ from pathlib import Path
 
 from beartype.typing import Final, Literal, Optional, TypeAlias, Union
 from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
-
+from toop_engine_dc_solver.jax.types import (
+    int_max,
+)
 # deactivate formatting for the region type definitions
 # fmt: off
 # As defined in
@@ -265,6 +267,17 @@ class CgmesImporterParameters(BaseImporterParameters):
     """A constant field to indicate that this is a CGMES importer"""
 
 
+class ReassignmentLimits(BaseModel):
+    """Reassignment limits for electrical reconfiguration at substations."""
+
+    global_limit: int = Field(default_factory=int_max)
+    """If given, the maximum number of reassignments to perform during the electrical reconfiguration."""
+
+    station_specific_limits: dict[str, int] = Field(default_factory=dict)
+    """If given, specific reassignment limits per station to override the global reassignment limit."""
+
+    
+
 class PreprocessParameters(BaseModel):
     """Parameters for the preprocessing procedure which is independent of the data source"""
 
@@ -300,6 +313,14 @@ class PreprocessParameters(BaseModel):
     """By what size a table is considered large. If the table is larger than this size, the
     clip_hamming_distance will be used to reduce the table size, by default 100. If a table is
     smaller, no reduction will be applied."""
+
+    electrical_reassignment_limits: Optional[ReassignmentLimits] = None
+    """Limits for the electrical reassignment at substations during the electrical reconfiguration.
+    If not given, no limits will be applied."""
+
+    physical_reassignment_limits: Optional[ReassignmentLimits] = None
+    """Limits for the physical reassignment at substations during the physical reconfiguration.
+    If not given, no limits will be applied."""
 
     realise_station_busbar_choice_heuristic: Literal["first", "least_connected_busbar"] = "least_connected_busbar"
     """The heuristic to use when there are multiple physical busbars available for an asset. The options are:

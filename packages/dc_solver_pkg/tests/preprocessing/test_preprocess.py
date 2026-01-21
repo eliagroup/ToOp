@@ -572,9 +572,9 @@ def test_enumerate_station_realisations(
     network_data = compute_branch_topology_info(network_data)
     network_data = filter_inactive_injections(network_data)
     network_data = compute_injection_topology_info(network_data)
-    network_data = compute_electrical_actions(network_data)
     network_data = simplify_asset_topology(network_data)
     network_data = compute_separaration_set_for_stations(network_data)
+    network_data = compute_electrical_actions(network_data)
     network_data = enumerate_station_realisations(network_data)
     assert network_data.realised_stations is not None
     assert len(network_data.realised_stations) == network_data.relevant_node_mask.sum()
@@ -597,7 +597,6 @@ def test_enumerate_station_realisations_no_coupler(
     network_data = compute_branch_topology_info(network_data)
     network_data = filter_inactive_injections(network_data)
     network_data = compute_injection_topology_info(network_data)
-    network_data = compute_electrical_actions(network_data)
     with pytest.raises(ValueError):
         network_data = simplify_asset_topology(network_data)
 

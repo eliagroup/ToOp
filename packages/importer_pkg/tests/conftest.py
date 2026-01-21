@@ -12,7 +12,7 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 from typing import Generator
-
+from confluent_kafka import Consumer
 import docker
 import networkx as nx
 import numpy as np
@@ -201,6 +201,15 @@ def kafka_heartbeat_topic(kafka_container: Container) -> str:
     make_topic(kafka_container, topic)
     return topic
 
+@pytest.fixture(scope="function")
+def test_consumer(kafka_connection_str: str) -> Generator[Consumer, None, None]:
+    consumer = Consumer(
+        bootstrap_servers=kafka_connection_str,
+        auto_offset_reset="earliest",
+        group_id="test-group",
+    )
+    yield consumer
+    consumer.close()
 
 @pytest.fixture(scope="session")
 def ucte_file() -> Path:
@@ -1086,3 +1095,4 @@ def asset_topo_edge_cases_node_breaker_grid() -> pypowsybl.network.Network:
     )
 
     return net
+

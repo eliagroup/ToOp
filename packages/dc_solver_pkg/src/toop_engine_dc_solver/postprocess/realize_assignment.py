@@ -292,7 +292,7 @@ def compute_switching_table(
     # Also compute the physical reassignment distance, which can be larger than the electrical
     # distance if an asset was connected to multiple busbars before the action.
     phy_reassignment_distance = jnp.sum(jnp.logical_xor(original_switching_table, current_switching_table))
-    
+
     return (
         current_switching_table,
         chosen_coupler_state,
@@ -337,6 +337,8 @@ def realise_ba_to_physical_topo_per_station_jax(
         By default, it is set to "least_connected_busbar".
     validate : bool, optional
         Whether to validate the station before processing. This will invoke the station validators for all stations.
+    reassignment_limits : Optional[ReassignmentLimits], optional
+        If given, settings to limit the amount of reassignment during the physical reconfiguration.
 
     Returns
     -------
@@ -424,14 +426,15 @@ def realise_ba_to_physical_topo_per_station_jax(
 
     # Only keep those within the reassignment limits
     if reassignment_limits is not None:
-        max_reassignments = reassignment_limits.station_specific_limits.get(station.grid_model_id, reassignment_limits.global_limit)
+        max_reassignments = reassignment_limits.station_specific_limits.get(
+            station.grid_model_id, reassignment_limits.global_limit
+        )
         within_limit = phy_reassignment_distance <= max_reassignments
         switching_table = switching_table[within_limit]
         local_branch_action_set = local_branch_action_set[within_limit]
         chosen_coupler_state = chosen_coupler_state[within_limit]
         chosen_busbar_mapping = chosen_busbar_mapping[within_limit]
         phy_reassignment_distance = phy_reassignment_distance[within_limit]
-    
 
     # Create the realised stations
     realised_stations = [

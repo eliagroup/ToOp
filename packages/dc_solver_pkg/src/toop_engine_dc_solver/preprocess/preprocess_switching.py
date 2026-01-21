@@ -11,7 +11,6 @@ The switching distance is evaluated between a topology and a reference topology.
 """
 
 import itertools
-from functools import lru_cache
 from dataclasses import dataclass
 
 import jax.numpy as jnp

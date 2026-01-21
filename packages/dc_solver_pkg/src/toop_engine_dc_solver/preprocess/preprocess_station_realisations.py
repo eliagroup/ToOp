@@ -30,7 +30,7 @@ logger = logbook.Logger(__name__)
 def enumerate_station_realisations(
     network_data: NetworkData,
     choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"] = "least_connected_busbar",
-    reassignment_limits: Optional[ReassignmentLimits] = None
+    reassignment_limits: Optional[ReassignmentLimits] = None,
 ) -> NetworkData:
     """Find a physical station realization for every branch action in the branch action set.
 

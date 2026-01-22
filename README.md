@@ -1,4 +1,7 @@
-
+[![CI](https://github.com/eliagroup/ToOp/actions/workflows/ci.yaml/badge.svg)](https://github.com/eliagroup/ToOp/actions/workflows/ci.yaml)
+[![FOSSA Status](https://app.fossa.com/api/projects/custom%2B29092%2Fgithub.com%2Feliagroup%2FToOp.svg?type=shield&issueType=license)](https://app.fossa.com/projects/custom%2B29092%2Fgithub.com%2Feliagroup%2FToOp?ref=badge_shield&issueType=license)
+[![Quality Gate Status](https://sonarqube.consumercentricity.io/api/project_badges/measure?project=gras-gridanalysis-toop-engine&metric=alert_status&token=sqb_ef169a74b3d4e0c7da3da0aa2ca3e4db85aafe3c)](https://sonarqube.consumercentricity.io/dashboard?id=gras-gridanalysis-toop-engine)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 # Topology Optimization Engine
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
@@ -78,4 +81,5 @@ We credit the authors of JAX.
 }
 ```
 
+-----
 -----

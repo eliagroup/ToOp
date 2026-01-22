@@ -143,6 +143,11 @@ repos:
   #       name: "Scan uv.lock for vulnerabilities"
   #       description: Scan your uv.lock file for dependencies with known vulnerabilities.
   #       exclude: ^requirements\.txt$
+  - repo: https://github.com/tcort/markdown-link-check
+    rev: v3.14.2
+    hooks:
+      - id: markdown-link-check
+        args: [-q]
   - repo: local
     hooks:
       - id: uv-secure-disabled

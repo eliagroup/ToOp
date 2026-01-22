@@ -14,20 +14,20 @@ The DC optimizer performs rapid exploration of the topology space using an accel
 - **Performance**: GPU-accelerated computation using JAX for massive parallel evaluation
 - **Output**: Pareto-optimal topologies sent to the AC stage for validation
 
-Entry point: [`initialize_optimization`][packages.topology_optimizer_pkg.src.toop_engine_topology_optimizer.dc.worker.optimizer.initialize_optimization]
+Entry point: [`initialize_optimization`][toop_engine_topology_optimizer.dc.worker.optimizer.initialize_optimization]
 
 ### 2. AC Stage (Validation and Refinement)
 The AC optimizer validates promising DC solutions using full AC loadflow calculations and applies further evolutionary refinements:
 
-- **Validation**: Full AC power flow analysis with N-1 contingency checking. Use [`optimization_loop`][packages.topology_optimizer_pkg.src.toop_engine_topology_optimizer.ac.worker.optimization_loop]  
-- **Evolution operators**: Pull (from DC), reconnection, coupler closing: Use [`evolution_try`][packages.topology_optimizer_pkg.src.toop_engine_topology_optimizer.ac.evolution_functions.evolution_try]  
-- **[Early stopping](ac/early_stopping.md)**: Rejection based on worst-case overload comparison
-- **[Selection strategy](ac/select_strategy.md)**: Filtering method using median, dominator, and discriminator filters
+- **Validation**: Full AC power flow analysis with N-1 contingency checking. Use [`optimization_loop`][toop_engine_topology_optimizer.ac.worker.optimization_loop]  
+- **Evolution operators**: Pull (from DC), reconnection, coupler closing: Use [`evolution_try`][toop_engine_topology_optimizer.ac.evolution_functions.evolution_try]  
+- **[Early stopping](https://eliagroup.github.io/ToOp/topology_optimizer/ac/early_stopping/)**: Rejection based on worst-case overload comparison
+- **[Selection strategy](https://eliagroup.github.io/ToOp/topology_optimizer/ac/select_strategy/)**: Filtering method using median, dominator, and discriminator filters
 
 ## Key Data Structures
 
 ### Topology Representation
-- **Actions**: List of substation switching indices from the [`ActionSet`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.action_set]
+- **Actions**: List of substation switching indices from the [`ActionSet`][toop_engine_dc_solver.preprocess.action_set]
 - **Disconnections**: Branch outage specifications for N-1 analysis
 - **PST Setpoints**: Phase-shifting transformer positions
 - **Metrics**: Multi-objective fitness values and constraint violations
@@ -38,7 +38,7 @@ The AC optimizer validates promising DC solutions using full AC loadflow calcula
 - **Message Protocols**: Standardized formats for inter-optimizer communication
 
 ## Prerequisites
-The optimization process requires preprocessed grid data from the [`Importer`](../importer/intro.md) package:
+The optimization process requires preprocessed grid data from the **[`Importer`](https://eliagroup.github.io/ToOp/importer/intro/)** package:
 
 1. **Static Information**: Grid electrical parameters and topology
 2. **Action Set**: Enumerated switching possibilities  
@@ -84,7 +84,7 @@ optimizer_data, stats, initial_strategy = initialize_optimization(
 
 ## Advanced Topics
 
-- **[AC Selection Strategy](ac/select_strategy.md)**: Sophisticated filtering for AC candidate selection
-- **[Early Stopping](ac/early_stopping.md)**: Efficient topology rejection in N-1 analysis  
-- **[DC Solver Configuration](../dc_solver/intro.md)**: GPU optimization and batch processing parameters
-- **[Interface Definitions](../interfaces/intro.md)**: Data structure specifications and message protocols
+- **[AC Selection Strategy](https://eliagroup.github.io/ToOp/topology_optimizer/ac/select_strategy/)**: Sophisticated filtering for AC candidate selection
+- **[Early Stopping](https://eliagroup.github.io/ToOp/topology_optimizer/ac/early_stopping/)**: Efficient topology rejection in N-1 analysis  
+- **[DC Solver Configuration](https://eliagroup.github.io/ToOp/dc_solver/intro/)**: GPU optimization and batch processing parameters
+- **[Interface Definitions](https://eliagroup.github.io/ToOp/interfaces/intro/)**: Data structure specifications and message protocols

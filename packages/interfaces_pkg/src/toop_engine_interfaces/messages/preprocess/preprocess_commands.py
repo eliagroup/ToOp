@@ -375,6 +375,8 @@ class StartPreprocessingCommand(BaseModel):
     """The id of the preprocessing run, should be included in all responses to identify where
     the data came from"""
 
+    command_type: Literal["start_preprocessing"] = "start_preprocessing"
+
 
 class ShutdownCommand(BaseModel):
     """A command to shut down the preprocessing worker"""
@@ -382,11 +384,13 @@ class ShutdownCommand(BaseModel):
     exit_code: Optional[int] = 0
     """The exit code to return"""
 
+    command_type: Literal["shutdown"] = "shutdown"
+
 
 class Command(BaseModel):
     """A wrapper to aid deserialization"""
 
-    command: Union[StartPreprocessingCommand, ShutdownCommand]
+    command: Union[StartPreprocessingCommand, ShutdownCommand] = Field(discriminator="command_type")
     """The actual command posted"""
 
     timestamp: str = Field(default_factory=lambda: str(datetime.now()))

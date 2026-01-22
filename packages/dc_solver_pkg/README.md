@@ -35,7 +35,7 @@ There are various concepts that are required to grasp in order to make sense of 
 
 The solver can not directly work with grid data in common grid formats (ucte, cgmes, etc). Instead, it needs to load the relevant information for loadflow computations from a backend. Currently, the supported backends are [pandapower](https://pandapower.readthedocs.io/) and [powsybl](https://powsybl.org). During a preprocessing step, the solver will compute the PTDF matrix and other relevant information for the solver. The aim of the preprocessing is to obtain a [`StaticInformation`][packages.dc_solver_pkg.src.toop_engine_dc_solver.jax.types.StaticInformation] dataclass with relevant information for the loadflow solving and a [`NetworkData`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.network_data.NetworkData] dataclass with additional information useful for postprocessing.
 
-Read more on the [`preprocessing page`](./preprocessing.md).
+Read more on the [`preprocessing page`](../../docs/dc_solver/preprocessing.md).
 
 ## Injection bruteforcing
 
@@ -70,4 +70,4 @@ The two most costly parts of the code are the BSDF computation and the LODF comp
 ## Scientific Background
 
 A publication about the solver can be found [here](https://arxiv.org/abs/2501.17529).
-The solver works with the [BSDF formulation](https://doi.org/10.36227/techrxiv.22298950.v1) to project bus splits and busbar assignments directly to the PTDF matrix. Furthermore, it uses the [MODF formulation](https://arxiv.org/abs/1606.07276) to do the same with branch outages. Hence, during the preprocessing, the [`PTDF`][packages.dc_solver_pkg.src.toop_engine_dc_solver.jax.types.StaticInformation] matrix needs to be created. As the PTDF is not enough in the presence of phase shifters, the preprocessing scripts concatenates the [PSDF](https://doi.org/10.1109/TPAS.1985.319195) to the PTDF matrix to compute the loadflow results with one single matrix multiplication.
+The solver works with the <!-- markdown-link-check-disable -->[BSDF formulation](https://www.techrxiv.org/doi/full/10.36227/techrxiv.22298950.v1)<!-- markdown-link-check-enable --> to project bus splits and busbar assignments directly to the PTDF matrix. Furthermore, it uses the [MODF formulation](https://arxiv.org/abs/1606.07276) to do the same with branch outages. Hence, during the preprocessing, the [`PTDF`][packages.dc_solver_pkg.src.toop_engine_dc_solver.jax.types.StaticInformation] matrix needs to be created. As the PTDF is not enough in the presence of phase shifters, the preprocessing scripts concatenates the [PSDF](https://doi.org/10.1109/TPAS.1985.319195) to the PTDF matrix to compute the loadflow results with one single matrix multiplication.

@@ -37,9 +37,9 @@ Grid Helpers acts as the foundational abstraction layer that standardizes operat
 
 For complete integration examples with other ToOp packages, see:
 
-- **[DC Solver Examples](../quickstart.md)**: Grid preprocessing and optimization setup
-- **[Contingency Analysis](../contingency_analysis/intro.md)**: N-1 analysis configuration
-- **[Topology Optimizer](../topology_optimizer/intro.md)**: Multi-objective switching optimization
+- **[DC Solver Examples](../../docs/quickstart.md)**: Grid preprocessing and optimization setup
+- **[Contingency Analysis](../../docs/contingency_analysis/intro.md)**: N-1 analysis configuration
+- **[Topology Optimizer](../../docs/topology_optimizer/intro.md)**: Multi-objective switching optimization
 
 ## Reference Documentation
 

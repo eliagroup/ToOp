@@ -21,7 +21,7 @@ ToOp delivers as an output AC validated Optimization results in the form of:
 If you want to use all capabilities of this repository, you need to understand how the packages interact and integrate with each other.
 To see this in action, you can either use the direct python interface or run the whole repo as a composition of Docker containers.
 
-To see the whole repo in action, check out the [`end-to-end pipeline`](https://github.com/eliagroup/ToOp/blob/develop/notebooks/e2e_pipeline.ipynb).
+To see the whole repo in action, check out the **[`end-to-end pipeline`](../notebooks/example3_e2e_pipeline.ipynb)**.
 If you want to use Kafka workers instead, read on.
 
 ## Kafka messaging

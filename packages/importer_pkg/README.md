@@ -16,12 +16,12 @@ At its core, the package leverages two Python libraries as backends:
 
 The Importer package is organized into several focused modules, each addressing specific aspects of the grid import process:
 
-- **[Pandapower Import](pandapower/index.md)**: Utilities for importing grid models into the PandaPower format, providing traditional power system analysis capabilities
-- **[PyPowSyBl Import](pypowsybl/index.md)**: Advanced grid import functionality using the PyPowSyBl library for modern grid modeling standards
-- **[Network Graph Processing](network_graph/index.md)**: Tool to create an [Asset Topology](../interfaces/asset_topology.md)
-- **[PowerFactory Contingency Import](contingency_from_power_factory/index.md)**: Specialized functionality for importing contingency definitions from PowerFactory projects
-- **[Worker Processes](worker/worker.md)**: A Kafka worker for deploying the importer as a service
-- **[Data Export](exporter/index.md)**: UCTE only: Tool to export the topological changes back as a UCTE format
+- **[Pandapower Import](../../docs/importer/pandapower/index.md)**: Utilities for importing grid models into the PandaPower format, providing traditional power system analysis capabilities
+- **[PyPowSyBl Import](../../docs/importer/pypowsybl/index.md)**: Advanced grid import functionality using the PyPowSyBl library for modern grid modeling standards
+- **[Network Graph Processing](../../docs/importer/network_graph/index.md)**: Tool to create an [Asset Topology](../../docs/interfaces/asset_topology.md)
+- **[PowerFactory Contingency Import](../../docs/importer/contingency_from_power_factory/index.md)**: Specialized functionality for importing contingency definitions from PowerFactory projects
+- **[Worker Processes](../../docs/importer/worker/worker.md)**: A Kafka worker for deploying the importer as a service
+- **[Data Export](../../docs/importer/exporter/index.md)**: UCTE only: Tool to export the topological changes back as a UCTE format
 
 Main entry point: [`convert_file`][packages.importer_pkg.src.toop_engine_importer.pypowsybl_import.preprocessing.convert_file]
 

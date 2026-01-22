@@ -21,8 +21,8 @@ The AC optimizer validates promising DC solutions using full AC loadflow calcula
 
 - **Validation**: Full AC power flow analysis with N-1 contingency checking. Use [`optimization_loop`][packages.topology_optimizer_pkg.src.toop_engine_topology_optimizer.ac.worker.optimization_loop]  
 - **Evolution operators**: Pull (from DC), reconnection, coupler closing: Use [`evolution_try`][packages.topology_optimizer_pkg.src.toop_engine_topology_optimizer.ac.evolution_functions.evolution_try]  
-- **[Early stopping](ac/early_stopping.md)**: Rejection based on worst-case overload comparison
-- **[Selection strategy](ac/select_strategy.md)**: Filtering method using median, dominator, and discriminator filters
+- **[Early stopping](../../docs/topology_optimizer/ac/early_stopping.md)**: Rejection based on worst-case overload comparison
+- **[Selection strategy](../../docs/topology_optimizer/ac/select_strategy.md)**: Filtering method using median, dominator, and discriminator filters
 
 ## Key Data Structures
 
@@ -38,7 +38,7 @@ The AC optimizer validates promising DC solutions using full AC loadflow calcula
 - **Message Protocols**: Standardized formats for inter-optimizer communication
 
 ## Prerequisites
-The optimization process requires preprocessed grid data from the [`Importer`](../importer/intro.md) package:
+The optimization process requires preprocessed grid data from the **[`Importer`](../../docs/importer/intro.md)** package:
 
 1. **Static Information**: Grid electrical parameters and topology
 2. **Action Set**: Enumerated switching possibilities  
@@ -84,7 +84,7 @@ optimizer_data, stats, initial_strategy = initialize_optimization(
 
 ## Advanced Topics
 
-- **[AC Selection Strategy](ac/select_strategy.md)**: Sophisticated filtering for AC candidate selection
-- **[Early Stopping](ac/early_stopping.md)**: Efficient topology rejection in N-1 analysis  
-- **[DC Solver Configuration](../dc_solver/intro.md)**: GPU optimization and batch processing parameters
-- **[Interface Definitions](../interfaces/intro.md)**: Data structure specifications and message protocols
+- **[AC Selection Strategy](../../docs/topology_optimizer/ac/select_strategy.md)**: Sophisticated filtering for AC candidate selection
+- **[Early Stopping](../../docs/topology_optimizer/ac/early_stopping.md)**: Efficient topology rejection in N-1 analysis  
+- **[DC Solver Configuration](../../docs/dc_solver/intro.md)**: GPU optimization and batch processing parameters
+- **[Interface Definitions](../../docs/interfaces/intro.md)**: Data structure specifications and message protocols

@@ -6,7 +6,7 @@
 ## About The Project
 
 This repo builds the engine behind the topology optimization project ToOp at EliaGroup. This provides a tool to perform topology optimization on a grid file including import, DC optimization and AC validation. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2501.17529) for a high level academic introduction.
-Please check out our [full documentation](https://eliagroup.github.io/ToOp.pages.github.io).
+Please check out our [full documentation](https://eliagroup.github.io/ToOp).
 
 ## Getting Started
 

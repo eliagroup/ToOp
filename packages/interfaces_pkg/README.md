@@ -5,7 +5,7 @@ The `interfaces` package provides a set of abstractions and adapters to enable i
 ## Interfaces
 
 [Asset Topology][packages.interfaces_pkg.src.toop_engine_interfaces.asset_topology] - Defines the physical structure and configuration of electrical assets in the grid system.
-A full description is found here: [Asset Topology](asset_topology.md)
+A full description is found here: [Asset Topology](../../docs/interfaces/asset_topology.md)
 
 The [`BackendInterface`][packages.interfaces_pkg.src.toop_engine_interfaces.backend.BackendInterface] is an abstract interface to read grid data for a bus-branch model. It provides raw numeric inputs for the solver — no validation or processing. Specifically not task of this interface is to perform any validations or processing of the data.
 Implementations can be found in the repository: [`powsybl_backend.py`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] and [`pandapower_backend.py`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend]

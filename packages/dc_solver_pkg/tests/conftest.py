@@ -553,8 +553,7 @@ def preprocessed_powsybl_data_folder(powsybl_data_folder: Path, tmp_path_factory
         static_information,
         solver_config=replace(static_information.solver_config, batch_size_bsdf=10, limit_n_subs=3),
     )
-
-    best = get_random_topology_results(static_information)
+    best = get_random_topology_results(static_information, random_seed=50)
     post_process_file_path = (
         tmp_path / POSTPROCESSING_PATHS["dc_optimizer_snapshots_path"] / OUTPUT_FILE_NAMES["multiple_topologies"]
     )

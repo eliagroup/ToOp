@@ -76,19 +76,14 @@ def test_run_ac_contingency_analysis_powsybl(powsybl_net: str, request, init_ray
 def test_contingency_analysis_validated_or_not(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
 
-    validation_on = pa.config.PanderaConfig(
-        validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA
-    )
-    pa.config.reset_config_context(validation_on)
-    lf_result_with_val_polars = get_ac_loadflow_results(
-        powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
-    )
-
-    validation_off = pa.config.PanderaConfig(validation_enabled=False)
-    pa.config.reset_config_context(validation_off)
-    lf_result_no_val_polars = get_ac_loadflow_results(
-        powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
-    )
+    with pa.config.config_context(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA):
+        lf_result_with_val_polars = get_ac_loadflow_results(
+            powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
+        )
+    with pa.config.config_context(validation_enabled=False):
+        lf_result_no_val_polars = get_ac_loadflow_results(
+            powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
+        )
 
     assert lf_result_with_val_polars == lf_result_no_val_polars
 

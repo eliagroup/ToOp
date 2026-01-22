@@ -105,8 +105,22 @@ def test_kafka(kafka_command_topic: str, kafka_connection_str: str) -> None:
     consumer.close()
 
 
+def test_pydantic_validation() -> None:
+    command = Command(
+        command=StartPreprocessingCommand(
+            preprocess_id="test",
+            importer_parameters=UcteImporterParameters(
+                grid_model_file="not/actually/a/ucte/file", data_folder="not/a/folder"
+            ),
+        )
+    )
+    data = command.model_dump_json()
+    command_decoded = Command.model_validate_json(data)
+    assert command_decoded.command.preprocess_id == "test"
+
+
 @pytest.mark.timeout(100)
-def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> None:
+def test_serialization(kafka_command_topic: str, kafka_connection_str: str, test_consumer: Consumer) -> None:
     command = Command(
         command=StartPreprocessingCommand(
             preprocess_id="test",
@@ -126,21 +140,12 @@ def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> N
     producer.produce(kafka_command_topic, value=serialize_message(data))
     producer.flush()
 
-    consumer = Consumer(
-        {
-            "bootstrap.servers": kafka_connection_str,
-            "auto.offset.reset": "earliest",
-            "group.id": "test_serialization",
-            "log_level": 2,
-        }
-    )
-    consumer.subscribe([kafka_command_topic])
-    message = consumer.poll(timeout=30.0)
+    test_consumer.subscribe([kafka_command_topic])
+    message = test_consumer.poll(timeout=30.0)
     assert deserialize_message(message.value()) == data
 
     data_decoded = Command.model_validate_json(deserialize_message(message.value()))
     assert data_decoded.command.preprocess_id == "test"
-    consumer.close()
 
 
 @pytest.mark.timeout(100)

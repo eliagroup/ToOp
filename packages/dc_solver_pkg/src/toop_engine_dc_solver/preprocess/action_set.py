@@ -46,6 +46,27 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import Reass
 logger = logbook.Logger(__name__)
 
 
+def set_unsplit_action_as_first(
+    action_repo: Bool[np.ndarray, " n_configurations sub_degree"],
+) -> Bool[np.ndarray, " n_configurations sub_degree"]:
+    """Ensure that the unsplit action is the first action in the action repo.
+
+    Parameters
+    ----------
+    action_repo : Bool[np.ndarray, " n_configurations sub_degree"]
+        The repo of possible branch topology actions
+
+    Returns
+    -------
+    Bool[np.ndarray, " n_configurations sub_degree"]
+        The action repo with the unsplit action as the first action
+    """
+    unsplit_action = np.zeros((1, action_repo.shape[1]), dtype=bool)
+    action_repo = action_repo[np.any(action_repo, axis=1)]
+    action_repo = np.vstack((unsplit_action, action_repo))
+    return np.unique(action_repo, axis=0)
+
+
 def make_action_repo(
     sub_degree: int,
     separation_set: Bool[np.ndarray, " n_configurations 2 n_assets"],
@@ -77,6 +98,11 @@ def make_action_repo(
     Bool[Array, " possible_configurations sub_degree"]
         The repo of physically possible topology actions
     """
+    # In case of zero reassignments, we just return the unsplit action and the starting configurations
+    if limit_reassignments is not None and limit_reassignments == 0:
+        repo = separation_set[:, 1, :sub_degree]
+        return set_unsplit_action_as_first(repo)
+
     # -1 because we concatenate the inverse only on demand.
     num_possible_splits = 2 ** (sub_degree - 1)
     if randomly_select is not None and randomly_select < num_possible_splits:
@@ -114,9 +140,7 @@ def make_action_repo(
 
     # Make sure the first combination is the unsplit action
     # The fixed assignments might have changed this
-    unsplit_action = np.zeros((1, repo.shape[1]), dtype=bool)
-    repo = np.vstack((unsplit_action, repo))
-
+    repo = set_unsplit_action_as_first(repo)
     return repo
 
 
@@ -337,7 +361,7 @@ def enumerate_branch_actions_for_sub(
     exclude_bridge_lookup_splits: bool = True,
     exclude_bsdf_lodf_splits: bool = False,
     bsdf_lodf_batch_size: int = 8,
-    clip_to_n_actions: int = 2**20,
+    clip_to_n_actions: int = 2**23,
     limit_reassignments: Optional[int] = None,
 ) -> Bool[np.ndarray, " n_configurations sub_degree"]:
     """Enumerate all combinations for one substation, optionally excluding some combinations
@@ -381,6 +405,7 @@ def enumerate_branch_actions_for_sub(
         )
         randomly_select = clip_to_n_actions
     separation_set = network_data.separation_sets_info[sub_id].separation_set
+
     repo = make_action_repo(
         sub_degree,
         separation_set,
@@ -402,7 +427,7 @@ def enumerate_branch_actions(
     exclude_bridge_lookup_splits: bool = True,
     exclude_bsdf_lodf_splits: bool = False,
     bsdf_lodf_batch_size: int = 8,
-    clip_to_n_actions: int = 2**20,
+    clip_to_n_actions: int = 2**23,
     reassignment_limits: Optional[ReassignmentLimits] = None,
 ) -> list[Bool[np.ndarray, " _ _"]]:
     """Enumerate all possible branch actions for all relevant substations in the network

@@ -13,9 +13,6 @@ from pathlib import Path
 
 from beartype.typing import Final, Literal, Optional, TypeAlias, Union
 from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
-from toop_engine_dc_solver.jax.types import (
-    int_max,
-)
 
 # deactivate formatting for the region type definitions
 # fmt: off
@@ -271,7 +268,7 @@ class CgmesImporterParameters(BaseImporterParameters):
 class ReassignmentLimits(BaseModel):
     """Reassignment limits for electrical reconfiguration at substations."""
 
-    global_limit: int = Field(default_factory=int_max)
+    global_limit: int = 1000
     """If given, the maximum number of reassignments to perform during the electrical reconfiguration."""
 
     station_specific_limits: dict[str, int] = Field(default_factory=dict)
@@ -298,14 +295,14 @@ class PreprocessParameters(BaseModel):
     action_set_filter_bsdf_lodf_batch_size: int = 8
     """If filtering with bsdf/lodf - which batch size to use. Larger will use more memory but be faster."""
 
-    action_set_clip: int = 2**20
+    action_set_clip: int = 2**23
     """After which size to randomly subselect actions at a substation. If a substations has a lot of branches, the action
     space will explode exponentially and a safe-guard is to clip after a certain number of actions."""
 
     asset_topo_close_couplers: bool = False
     """Whether to close open couplers in all stations in the asset topology. This might accidentally cancel a maintenance"""
 
-    separation_set_clip_hamming_distance: PositiveInt = 0
+    separation_set_clip_hamming_distance: int = 0
     """If a large configuration table comes out of a substation, the table size can be reduced
     by removing configurations that are close to each other. This parameter sets the definition
     of close in terms of hamming distance, by default 0 (no reduction)."""
@@ -396,6 +393,8 @@ class StartPreprocessingCommand(BaseModel):
     """The id of the preprocessing run, should be included in all responses to identify where
     the data came from"""
 
+    command_type: Literal["start_preprocessing"] = "start_preprocessing"
+
 
 class ShutdownCommand(BaseModel):
     """A command to shut down the preprocessing worker"""
@@ -403,11 +402,13 @@ class ShutdownCommand(BaseModel):
     exit_code: Optional[int] = 0
     """The exit code to return"""
 
+    command_type: Literal["shutdown"] = "shutdown"
+
 
 class Command(BaseModel):
     """A wrapper to aid deserialization"""
 
-    command: Union[StartPreprocessingCommand, ShutdownCommand]
+    command: Union[StartPreprocessingCommand, ShutdownCommand] = Field(discriminator="command_type")
     """The actual command posted"""
 
     timestamp: str = Field(default_factory=lambda: str(datetime.now()))

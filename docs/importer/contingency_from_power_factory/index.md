@@ -10,25 +10,25 @@ This project provides tools to import contingency data from PowerFactory files a
 ### 1. power_factory_data_class.py
 This module is the interface pandera class to define the expected import data
 
-[`power_factory_data_class`][packages.importer_pkg.src.toop_engine_importer.contingency_from_power_factory.power_factory_data_class]
+[`power_factory_data_class`][toop_engine_importer.contingency_from_power_factory.power_factory_data_class]
 
 ### 2. contingency_from_file.py
 This module contains functions to:
 - Import contingencies from a file.
 - Match contingencies with grid model elements by index or name.
 
-[`contingency_from_file`][packages.importer_pkg.src.toop_engine_importer.contingency_from_power_factory.contingency_from_file]
+[`contingency_from_file`][toop_engine_importer.contingency_from_power_factory.contingency_from_file]
 
 #### **Main Functions**
 
-[`get_contingencies_from_file`][packages.importer_pkg.src.toop_engine_importer.contingency_from_power_factory.get_contingencies_from_file]
+[`get_contingencies_from_file`][toop_engine_importer.contingency_from_power_factory.get_contingencies_from_file]
 
-[`match_contingencies`][packages.importer_pkg.src.toop_engine_importer.contingency_from_power_factory.match_contingencies]
+[`match_contingencies`][toop_engine_importer.contingency_from_power_factory.match_contingencies]
 
 ### 3. power_factory_data_class.py
 This module defines schemas for validating contingency and grid model data using `pandera`.
 
-[`power_factory_data_class`][packages.importer_pkg.src.toop_engine_importer.contingency_from_power_factory.power_factory_data_class]
+[`power_factory_data_class`][toop_engine_importer.contingency_from_power_factory.power_factory_data_class]
 
 ---
 

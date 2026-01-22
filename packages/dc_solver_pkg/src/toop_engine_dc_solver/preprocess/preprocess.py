@@ -813,7 +813,7 @@ def compute_electrical_actions(
     exclude_bridge_lookup_splits: bool = True,
     exclude_bsdf_lodf_splits: bool = False,
     bsdf_lodf_batch_size: int = 8,
-    clip_to_n_actions: int = 2**20,
+    clip_to_n_actions: int = 2**23,
     reassignment_limits: Optional[ReassignmentLimits] = None,
 ) -> NetworkData:
     """Compute the electrical branch actions for the grid and update the network data accordingly

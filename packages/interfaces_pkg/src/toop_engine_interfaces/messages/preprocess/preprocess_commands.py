@@ -292,7 +292,7 @@ class PreprocessParameters(BaseModel):
     asset_topo_close_couplers: bool = False
     """Whether to close open couplers in all stations in the asset topology. This might accidentally cancel a maintenance"""
 
-    separation_set_clip_hamming_distance: PositiveInt = 0
+    separation_set_clip_hamming_distance: int = 0
     """If a large configuration table comes out of a substation, the table size can be reduced
     by removing configurations that are close to each other. This parameter sets the definition
     of close in terms of hamming distance, by default 0 (no reduction)."""

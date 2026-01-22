@@ -344,27 +344,6 @@ def test_remove_relevant_subs_without_actions(
     network_data = simplify_asset_topology(network_data)
     network_data = compute_separation_set_for_stations(network_data)
 
-    # network_data = compute_electrical_actions(
-    #     network_data,
-    #     exclude_bridge_lookup_splits=parameters.action_set_filter_bridge_lookup,
-    #     exclude_bsdf_lodf_splits=parameters.action_set_filter_bsdf_lodf,
-    #     bsdf_lodf_batch_size=parameters.action_set_filter_bsdf_lodf_batch_size,
-    #     clip_to_n_actions=parameters.action_set_clip,
-    #     reassignment_limits=parameters.electrical_reassignment_limits,
-    # )
-
-    # network_data = enumerate_station_realisations(
-    #     network_data, choice_heuristic=parameters.realise_station_busbar_choice_heuristic
-    # )
-
-    # network_data = remove_relevant_subs_without_actions(network_data)
-
-    # network_data = compute_injection_actions(network_data)
-
-    # network_data = process_injection_outages(network_data)
-
-    # network_data = add_bus_b_columns_to_ptdf(network_data)
-
     actions = enumerate_branch_actions(network_data)
     # We know that bus 22 has only stubs and no sensible actions
     # Hence, this relevant sub isn't actually a sensible relevant sub

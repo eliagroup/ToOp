@@ -1,6 +1,6 @@
 # N Minus 2
 
-To catch exquisite failure cases, we implement an N-2 calculation routine. The main function for this is [`n_2_analysis`][packages.dc_solver_pkg.src.toop_engine_dc_solver.jax.nminus2_outage.n_2_analysis]. Computing an N-2 analysis is only part of the process; sensible evaluation requires splitting the computation into an *unsplit analysis* during preprocessing and a *split analysis* under the applied topology during the solving process.
+To catch exquisite failure cases, we implement an N-2 calculation routine. The main function for this is [`n_2_analysis`][toop_engine_dc_solver.jax.nminus2_outage.n_2_analysis]. Computing an N-2 analysis is only part of the process; sensible evaluation requires splitting the computation into an *unsplit analysis* during preprocessing and a *split analysis* under the applied topology during the solving process.
 
 A N-2 analysis consists in our case of
 - a list of first-level branch failures, which are all branches at split relevant substations. We will refer to them as L1 cases

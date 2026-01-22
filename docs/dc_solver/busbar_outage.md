@@ -66,7 +66,7 @@ There are certain busbars in the station, the outage of which can split the grid
 
 ## Busbar outage integration into optimiser
 
-### Case 1: Elia - Treat busbar outage as N-1 case
+### Case 1: Treat busbar outage as N-1 case
 
 Here, the busbar outages need to be treated like other N-1 cases as the objective is to solve busbar outage problems.
 
@@ -78,7 +78,7 @@ solver_config.bb_outage_as_nminus1 = True
 
 We calculate the loadflows due to different busbar outages, and concatenate it to the N-1 matrix.
 
-### Case 2: 50 Hz - Treat busbar outage similar to N-2 case
+### Case 2: Treat busbar outage similar to N-2 case
 
 ```python
 # Enable busbar outage and don't treat bb_outage as N-1

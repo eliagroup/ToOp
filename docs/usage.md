@@ -20,8 +20,8 @@ ToOp delivers as an output AC validated Optimization results in the form of:
 
 If you want to use all capabilities of this repository, you need to understand how the packages interact and integrate with each other.
 To see this in action, you can either use the direct python interface or run the whole repo as a composition of Docker containers.
-
-To see the whole repo in action, check out the **[`end-to-end pipeline`](../notebooks/example3_e2e_pipeline.ipynb)**.
+<!-- markdown-link-check-disable-next-line --> 
+To see the whole repo in action, check out the **[notebooks/example3_e2e_pipeline.ipynb](https://github.com/EliaGroup/ToOp/blob/main/notebooks/example3_e2e_pipeline.ipynb)**.
 If you want to use Kafka workers instead, read on.
 
 ## Kafka messaging
@@ -35,8 +35,8 @@ If you want to use Kafka workers instead, read on.
 
 To use the tool, you need to import the grid into your file. This entails two fundamental steps:
 
-- The [convert_file][packages.importer_pkg.src.toop_engine_importer.pypowsybl_import.preprocessing.convert_file] function, taking an import command. This will prepare masks and perform initial preprocessing tasks in the grid.
-- The [load_grid][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.load_grid] function writes data into the data folder, creating a folder with several artifacts. The most relevant one being the `static_information.hdf5` which holds the data relevant for the DC GPU optimizer.
+- The [convert_file][toop_engine_importer.pypowsybl_import.preprocessing.convert_file] function, taking an import command. This will prepare masks and perform initial preprocessing tasks in the grid.
+- The [load_grid][toop_engine_dc_solver.preprocess.load_grid] function writes data into the data folder, creating a folder with several artifacts. The most relevant one being the `static_information.hdf5` which holds the data relevant for the DC GPU optimizer.
 
 ### Step 2: Perform an optimization
 
@@ -51,7 +51,7 @@ cd dev-deployment
 docker-compose up
 ```
 
-This will spin up a kafka server with 6 topics, 3 importer topics and 3 optimizer topics. The importer topics are only required in case you want to run the importer as a kafka component, but they do no harm if you just want to run an optimization. For the optimizer, we have [`commands`][packages.topology_optimizer_pkg.src.toop_engine_topology_optimizer.interfaces.messages.commands] which is a topic where usually only an [`StartOptimizationCommand`][packages.topology_optimizer_pkg.src.toop_engine_topology_optimizer.interfaces.messages.commands.StartOptimizationCommand] will be sent to. Also there is the `results` topic, which contains topologies with their metrics. Both the DC and AC stage push their topologies there, and the AC stage also pulls DC topologies for validation.
+This will spin up a kafka server with 6 topics, 3 importer topics and 3 optimizer topics. The importer topics are only required in case you want to run the importer as a kafka component, but they do no harm if you just want to run an optimization. For the optimizer, we have [`commands`][toop_engine_topology_optimizer.interfaces.messages.commands] which is a topic where usually only an [`StartOptimizationCommand`][toop_engine_topology_optimizer.interfaces.messages.commands.StartOptimizationCommand] will be sent to. Also there is the `results` topic, which contains topologies with their metrics. Both the DC and AC stage push their topologies there, and the AC stage also pulls DC topologies for validation.
 
 Now, we need to spin up the DC and AC optimizer:
 

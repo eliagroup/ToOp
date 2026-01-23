@@ -45,15 +45,15 @@ def preprocess_bus_bus_switches(net: pp.pandapowerNet) -> pd.DataFrame:
 
     # Keep only bus-bus switches; your original summary says bus-to-bus switches.
     if "et" in sw.columns:
-        sw = sw.loc[sw["et"].astype(str).str.lower().str.strip() == "b"].copy()
+        sw = sw.loc[sw["et"] == "b"]
 
     if sw.empty:
         return pd.DataFrame(columns=["bus", "element", "type", "closed"])
 
     sw["bus"] = sw["bus"].astype(int)
     sw["element"] = sw["element"].astype(int)
-    sw["type"] = sw["type"].astype(str).str.strip().str.upper()
-    sw["closed"] = sw["closed"].fillna(False).astype(bool)
+    sw["type"] = sw["type"].astype(str)
+    sw["closed"] = sw["closed"].astype(bool)
 
     return sw[["bus", "element", "type", "closed"]]
 
@@ -65,7 +65,7 @@ def aggregate_switch_pairs(sw: pd.DataFrame) -> pd.DataFrame:
     Produces columns: u, v, closed_non_cb, closed_cb, total_switches.
     """
     if sw is None or sw.empty:
-        return pd.DataFrame(columns=["u", "v", "closed_non_cb", "closed_cb", "total_switches"])
+        return pd.DataFrame(columns=["u", "v", "closed_non_cb"])
 
     u_arr = np.minimum(sw["bus"].to_numpy(), sw["element"].to_numpy()).astype(int)
     v_arr = np.maximum(sw["bus"].to_numpy(), sw["element"].to_numpy()).astype(int)
@@ -78,14 +78,20 @@ def aggregate_switch_pairs(sw: pd.DataFrame) -> pd.DataFrame:
             "u": u_arr,
             "v": v_arr,
             "closed_non_cb": closed_arr & (~is_cb_arr),
-            "closed_cb": closed_arr & is_cb_arr,
         }
     )
+    # For each unordered (bus, element) pair,
+    # check whether at least one non-circuit-breaker switch is closed between them
+    agg = (
+        pair_df.groupby(["u", "v"], sort=False)
+        .agg(
+            {
+                "closed_non_cb": "any",
+            }
+        )
+        .reset_index()
+    )
 
-    agg = pair_df.groupby(["u", "v"], sort=False).agg({"closed_non_cb": "any", "closed_cb": "any"}).reset_index()
-
-    counts = pair_df.groupby(["u", "v"], sort=False).size().reset_index(name="total_switches")
-    agg = agg.merge(counts, on=["u", "v"], how="left")
     return agg
 
 

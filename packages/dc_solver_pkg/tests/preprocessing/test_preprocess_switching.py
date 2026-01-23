@@ -222,7 +222,6 @@ def test_preprocess_station() -> None:
     assert len(busbar_a) == n_configs
     assert all([len(a) <= 2 for a in busbar_a])
 
-
 def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> None:
     num_assets_before = sum(len(station.assets) for station in network_data.asset_topology.stations)
 

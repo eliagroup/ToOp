@@ -43,14 +43,10 @@ def write_aux_data_fs(
 
     Parameters
     ----------
-    data_folder : Path
-        The root folder of the processed timestep, the N-1 definition will be stored in
-        data_folder/PREPROCESSING_PATHS["nminus1_definition_file_path"] and the action set in
-        data_folder/PREPROCESSING_PATHS["action_set_file_path"]
     network_data : NetworkData
         The filled network data from where to extract the N-1 definition and action set
-    filesystem: AbstractFileSystem
-        Filesystem to save the aux data to.
+    filesystem : AbstractFileSystem
+        Filesystem where the auxiliary data is persisted using PREPROCESSING_PATHS
     """
     action_set = extract_action_set(network_data)
     save_pydantic_model_fs(

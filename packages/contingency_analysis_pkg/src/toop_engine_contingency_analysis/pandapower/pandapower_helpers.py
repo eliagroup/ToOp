@@ -849,7 +849,8 @@ def get_regulating_element_results(
         regulating_elements.loc[
             (timestep, contingency.unique_id, monitored_elements.index[1]), "regulating_element_type"
         ] = RegulatingElementType.SLACK_P.value
-
+    regulating_elements["element_name"] = ""
+    regulating_elements["contingency_name"] = ""
     return regulating_elements
 
 
@@ -1116,7 +1117,9 @@ def get_failed_va_diff_results(
         )
     ).assign(va_diff=np.nan)
     # fill missing columns with NaN
-    failed_va_diff_results["element_name"] = failed_va_diff_results.index.get_level_values("element").map(all_power_switches)
+    failed_va_diff_results["element_name"] = (
+        failed_va_diff_results.index.get_level_values("element").map(all_power_switches).fillna("")
+    )
     failed_va_diff_results["contingency_name"] = ""
     return failed_va_diff_results
 

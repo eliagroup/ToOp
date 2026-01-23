@@ -320,6 +320,12 @@ class PreprocessParameters(BaseModel):
     evenly across the busbars in a station.
     """
 
+    electrical_reassignment_limits: Optional[ReassignmentLimits] = None
+    """If given, limits for the electrical reassignment at substations."""
+
+    physical_reassignment_limits: Optional[ReassignmentLimits] = None
+    """If given, limits for the physical reassignment at substations."""
+
     # ---- Parameters for convert_to_jax ------
 
     ac_dc_interpolation: float = 0.0

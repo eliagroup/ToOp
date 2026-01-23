@@ -56,7 +56,8 @@ def enumerate_station_realisations(
     Raises
     ------
     AssertionError
-        If `network_data.simplified_asset_topology` or `network_data.branch_action_set` is not provided.
+        If `network_data.simplified_asset_topology`, `network_data.branch_action_set`
+        or `network_data.separation_sets_info` is not provided.
 
     Notes
     -----
@@ -67,19 +68,25 @@ def enumerate_station_realisations(
     """
     assert network_data.simplified_asset_topology is not None, "Simplified asset topology is not provided"
     assert network_data.branch_action_set is not None, "Branch action set is not provided"
-
+    assert network_data.separation_sets_info is not None, "Separation set info is not provided, please compute it first"
     branch_action_set = network_data.branch_action_set.copy()
     all_rel_realised_stations = []
     all_rel_subs_busbar_a_mappings = []
     all_rel_subs_reassignment_distances = []
 
-    for index, (station, local_branch_action_set) in enumerate(
-        zip(network_data.simplified_asset_topology.stations, branch_action_set, strict=True)
+    for index, (station, local_branch_action_set, separation_set_info) in enumerate(
+        zip(
+            network_data.simplified_asset_topology.stations,
+            branch_action_set,
+            network_data.separation_sets_info,
+            strict=True,
+        )
     ):
         (realised_stations, local_updated_branch_action_set, local_busbar_a_mappings, local_reassignment_distances) = (
             realise_ba_to_physical_topo_per_station_jax(
                 local_branch_action_set=local_branch_action_set,
                 station=station,
+                separation_set_info=separation_set_info,
                 choice_heuristic=choice_heuristic,
                 validate=True,
             )

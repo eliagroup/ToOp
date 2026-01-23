@@ -286,8 +286,8 @@ def test_realize_ba_to_physical_topo_per_station_large():
         asset_switching_table=switching_table,
     )
 
+    action_set = make_action_repo(20)
     separation_set_station = make_optimal_separation_set(station)
-    action_set = make_action_repo(20, separation_set_station.separation_set)
 
     realized_stations, updated_action_set, busbar_a_mappings, reassignment_distance = (
         realise_ba_to_physical_topo_per_station_jax(

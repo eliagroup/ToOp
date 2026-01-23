@@ -311,14 +311,6 @@ class PreprocessParameters(BaseModel):
     clip_hamming_distance will be used to reduce the table size, by default 100. If a table is
     smaller, no reduction will be applied."""
 
-    electrical_reassignment_limits: Optional[ReassignmentLimits] = None
-    """Limits for the electrical reassignment at substations during the electrical reconfiguration.
-    If not given, no limits will be applied."""
-
-    physical_reassignment_limits: Optional[ReassignmentLimits] = None
-    """Limits for the physical reassignment at substations during the physical reconfiguration.
-    If not given, no limits will be applied."""
-
     realise_station_busbar_choice_heuristic: Literal["first", "least_connected_busbar"] = "least_connected_busbar"
     """The heuristic to use when there are multiple physical busbars available for an asset. The options are:
     - "first": Use the first busbar in the list of busbars (fastest preprocessing)

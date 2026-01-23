@@ -50,7 +50,7 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     compute_injection_topology_info,
     compute_psdf_if_not_given,
     compute_ptdf_if_not_given,
-    compute_separation_set_for_stations,
+    compute_separaration_set_for_stations,
     convert_multi_outages,
     exclude_bridges_from_outage_masks,
     filter_disconnectable_branches_nminus2,
@@ -538,7 +538,7 @@ def test_compute_electrical_actions(network_data_filled: NetworkData) -> None:
     network_data = filter_inactive_injections(network_data)
     network_data = compute_injection_topology_info(network_data)
     network_data = simplify_asset_topology(network_data)
-    network_data = compute_separation_set_for_stations(network_data)
+    network_data = compute_separaration_set_for_stations(network_data)
     network_data = compute_electrical_actions(network_data)
     network_data = enumerate_station_realisations(network_data)
     network_data = compute_injection_actions(network_data)
@@ -573,8 +573,7 @@ def test_enumerate_station_realisations(
     network_data = filter_inactive_injections(network_data)
     network_data = compute_injection_topology_info(network_data)
     network_data = simplify_asset_topology(network_data)
-    network_data = compute_separation_set_for_stations(network_data)
-    network_data = compute_electrical_actions(network_data)
+    network_data = compute_separaration_set_for_stations(network_data)
     network_data = enumerate_station_realisations(network_data)
     assert network_data.realised_stations is not None
     assert len(network_data.realised_stations) == network_data.relevant_node_mask.sum()

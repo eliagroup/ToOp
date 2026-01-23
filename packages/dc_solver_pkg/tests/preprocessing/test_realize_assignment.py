@@ -13,6 +13,9 @@ from toop_engine_dc_solver.postprocess.realize_assignment import (
     realise_ba_to_physical_topo_per_station_jax,
 )
 from toop_engine_dc_solver.preprocess.action_set import make_action_repo
+from toop_engine_dc_solver.preprocess.preprocess_switching import (
+    make_optimal_separation_set,
+)
 from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset
 
 
@@ -40,10 +43,14 @@ def test_realize_ba_to_physical_topo_per_station_simple():
             [False, False, True, False, True],
         ]
     )
+    separation_set_station = make_optimal_separation_set(station)
 
     realized_stations, updated_action_set, busbar_a_mappings, reassignment_distance = (
         realise_ba_to_physical_topo_per_station_jax(
-            local_branch_action_set=action_set, station=station, choice_heuristic="first"
+            local_branch_action_set=action_set,
+            station=station,
+            separation_set_info=separation_set_station,
+            choice_heuristic="first",
         )
     )
 
@@ -102,7 +109,10 @@ def test_realize_ba_to_physical_topo_per_station_simple():
     # With 2 busbars, the "first" heuristic should be equivalent to "least_connected"
     realized_stations_2, updated_action_set_2, busbar_a_mappings_2, reassignment_distance_2 = (
         realise_ba_to_physical_topo_per_station_jax(
-            local_branch_action_set=action_set, station=station, choice_heuristic="least_connected_busbar"
+            local_branch_action_set=action_set,
+            station=station,
+            separation_set_info=separation_set_station,
+            choice_heuristic="least_connected_busbar",
         )
     )
     assert realized_stations_2 == realized_stations
@@ -146,10 +156,14 @@ def test_realize_ba_to_physical_topo_per_station_3_busbars():
             [False, True, True, True, True],
         ]
     )
+    separation_set_station = make_optimal_separation_set(station)
 
     realized_stations, updated_action_set, busbar_a_mappings, reassignment_distance = (
         realise_ba_to_physical_topo_per_station_jax(
-            local_branch_action_set=action_set, station=station, choice_heuristic="first"
+            local_branch_action_set=action_set,
+            station=station,
+            separation_set_info=separation_set_station,
+            choice_heuristic="first",
         )
     )
 
@@ -213,7 +227,10 @@ def test_realize_ba_to_physical_topo_per_station_3_busbars():
     # Recompute with "least_connected_busbar" heuristic
     realized_stations_2, updated_action_set_2, busbar_a_mappings_2, reassignment_distance_2 = (
         realise_ba_to_physical_topo_per_station_jax(
-            local_branch_action_set=action_set, station=station, choice_heuristic="least_connected_busbar"
+            local_branch_action_set=action_set,
+            station=station,
+            separation_set_info=separation_set_station,
+            choice_heuristic="least_connected_busbar",
         )
     )
 
@@ -228,7 +245,10 @@ def test_realize_ba_to_physical_topo_per_station_3_busbars():
     # Most connected will yield the same result as first
     realized_stations_3, updated_action_set_3, busbar_a_mappings_3, reassignment_distance_3 = (
         realise_ba_to_physical_topo_per_station_jax(
-            local_branch_action_set=action_set, station=station, choice_heuristic="most_connected_busbar"
+            local_branch_action_set=action_set,
+            station=station,
+            separation_set_info=separation_set_station,
+            choice_heuristic="most_connected_busbar",
         )
     )
 
@@ -267,10 +287,14 @@ def test_realize_ba_to_physical_topo_per_station_large():
     )
 
     action_set = make_action_repo(20)
+    separation_set_station = make_optimal_separation_set(station)
 
     realized_stations, updated_action_set, busbar_a_mappings, reassignment_distance = (
         realise_ba_to_physical_topo_per_station_jax(
-            local_branch_action_set=action_set, station=station, choice_heuristic="least_connected_busbar"
+            local_branch_action_set=action_set,
+            station=station,
+            separation_set_info=separation_set_station,
+            choice_heuristic="least_connected_busbar",
         )
     )
 
@@ -317,10 +341,15 @@ def test_realize_ba_to_physical_topo_per_station_limited_connectivity():
             [False, False, True, False, False],
         ]
     )
+    separation_set_station = make_optimal_separation_set(station)
 
     realized_stations, updated_action_set, busbar_a_mappings, reassignment_distance = (
         realise_ba_to_physical_topo_per_station_jax(
-            local_branch_action_set=action_set, station=station, choice_heuristic="first", validate=True
+            local_branch_action_set=action_set,
+            station=station,
+            separation_set_info=separation_set_station,
+            choice_heuristic="first",
+            validate=True,
         )
     )
 
@@ -391,6 +420,7 @@ def test_realize_ba_to_physical_topo_per_station_invalid_actions():
             [[True, True, False, False, False], [False, False, True, True, False], [False, False, False, False, True]]
         ),
     )
+    separation_set_station = make_optimal_separation_set(station)
 
     action_set = np.array(
         [
@@ -405,7 +435,11 @@ def test_realize_ba_to_physical_topo_per_station_invalid_actions():
 
     realized_stations, updated_action_set, busbar_a_mappings, reassignment_distance = (
         realise_ba_to_physical_topo_per_station_jax(
-            local_branch_action_set=action_set, station=station, choice_heuristic="first", validate=True
+            local_branch_action_set=action_set,
+            station=station,
+            separation_set_info=separation_set_station,
+            choice_heuristic="first",
+            validate=True,
         )
     )
 
@@ -453,10 +487,14 @@ def test_realize_ba_to_physical_topo_per_station_invalid_actions_hard():
             [False, False, True, False, False],  # Impossible
         ]
     )
+    separation_set_station = make_optimal_separation_set(station)
 
     realized_stations, updated_action_set, busbar_a_mappings, reassignment_distance = (
         realise_ba_to_physical_topo_per_station_jax(
-            local_branch_action_set=action_set, station=station, choice_heuristic="first"
+            local_branch_action_set=action_set,
+            station=station,
+            separation_set_info=separation_set_station,
+            choice_heuristic="first",
         )
     )
 

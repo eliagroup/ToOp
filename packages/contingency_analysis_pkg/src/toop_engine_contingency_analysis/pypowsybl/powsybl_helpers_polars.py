@@ -428,11 +428,11 @@ def add_name_column_polars(
         The updated dataframe with the ids translated to the original names.
     """
     result_df = result_df.with_columns(
-        pl.when(pl.col(index_level).is_in(list(name_map.keys())))
-        .then(pl.col(index_level).replace(name_map))
-        .otherwise(pl.col(f"{index_level}_name"))
+        pl.col(index_level)
+        .replace(name_map, default=pl.col(f"{index_level}_name").fill_null(""))
         .alias(f"{index_level}_name")
     )
+
     # fill nulls with empty string
     result_df = result_df.with_columns(pl.col(f"{index_level}_name").fill_null(""))
     return result_df

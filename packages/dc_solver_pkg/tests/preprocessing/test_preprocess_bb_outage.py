@@ -11,7 +11,7 @@ from dataclasses import replace
 import numpy as np
 from tests.deprecated.assignment import realise_bus_split_single_station
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, map_branch_injection_ids
-from toop_engine_dc_solver.preprocess.preprocess import compute_separation_set_for_stations
+from toop_engine_dc_solver.preprocess.preprocess import compute_separaration_set_for_stations
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     extract_busbar_outage_data,
     extract_outage_index_injection_from_asset,
@@ -410,7 +410,7 @@ def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: 
 def test_get_branch_injection_outages_for_rel_subs(
     network_data_preprocessed: NetworkData,
 ):
-    network_data_preprocessed = compute_separation_set_for_stations(network_data_preprocessed)
+    network_data_preprocessed = compute_separaration_set_for_stations(network_data_preprocessed)
     network_data_preprocessed = enumerate_station_realisations(network_data_preprocessed)
     # 71%%bus is a relevant node
     rel_station_busbars_map = {

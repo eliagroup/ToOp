@@ -1218,7 +1218,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
     return remove_relevant_subs(network_data, np.array(keep_mask, dtype=bool))
 
 
-def compute_separation_set_for_stations(
+def compute_separaration_set_for_stations(
     network_data: NetworkData,
     clip_hamming_distance: int = 0,
     clip_at_size: int = 100,
@@ -1339,7 +1339,7 @@ def preprocess(  # noqa: PLR0915
     network_data = simplify_asset_topology(network_data, close_couplers=parameters.asset_topo_close_couplers)
 
     logging_fn("compute_separation_set", None)
-    network_data = compute_separation_set_for_stations(
+    network_data = compute_separaration_set_for_stations(
         network_data,
         clip_hamming_distance=parameters.separation_set_clip_hamming_distance,
         clip_at_size=parameters.separation_set_clip_at_size,

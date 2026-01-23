@@ -3,14 +3,14 @@
 The preprocessing process is split into three parts:
 - An importing procedure that prepares the grid data—this is specific to the data source and power system modelling framework. The code for this is not hosted in this repository, but in the importer repo.
 
-- A [`preprocess`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.preprocess] routine which extracts DC-loadflow relevant information from a backend and performs various data transformations.
-- A [`convert_to_jax`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine which reformats the data from the Python format used during preprocessing to the format required by the solver. All processing happens in `preprocess`; this function purely reformats. The only exception is currently the N-2 unsplit analysis.
+- A [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] routine which extracts DC-loadflow relevant information from a backend and performs various data transformations.
+- A [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine which reformats the data from the Python format used during preprocessing to the format required by the solver. All processing happens in `preprocess`; this function purely reformats. The only exception is currently the N-2 unsplit analysis.
 
-The [`load_grid`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] routine combines the two and runs an initial loadflow. This routine serves as a top-level entrypoint for preprocessing.
+The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] routine combines the two and runs an initial loadflow. This routine serves as a top-level entrypoint for preprocessing.
 
 ## Data artifacts
 
-Output data pieces are defined in the [`folder_structure`][packages.interfaces_pkg.src.toop_engine_interfaces.folder_structure.PREPROCESSING_PATHS]. Most notably, the following data objects are written out:
+Output data pieces are defined in the [`folder_structure`][toop_engine_interfaces.folder_structure.PREPROCESSING_PATHS]. Most notably, the following data objects are written out:
 
 - A`static_information.hdf5` file containing all JAX data—this is all the DC solver and optimizer need to run an optimization.
 - An `action_set.json` containing an asset-topology-based representation of the action set, used for postprocessing the raw bus/branch DC topologies to node/breaker topologies.
@@ -18,11 +18,11 @@ Output data pieces are defined in the [`folder_structure`][packages.interfaces_p
 
 ## Backend interface
 
-The [`backend`][packages.interfaces_pkg.src.toop_engine_interfaces.backend.BackendInterface] interface exposes a common format for both pandapower and powsybl-based grids. The main task of the backend is loading the masks and exposing the information in the required format. Instead of modelling lines, trafos, etc., the backend exposes branches, nodes, and injections.
+The [`backend`][toop_engine_interfaces.backend.BackendInterface] interface exposes a common format for both pandapower and powsybl-based grids. The main task of the backend is loading the masks and exposing the information in the required format. Instead of modelling lines, trafos, etc., the backend exposes branches, nodes, and injections.
 
 ## `preprocess()` routine
 
-The [`preprocess`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.preprocess] function performs multiple steps to convert the backend information. The network data dataclass gets consecutively filled during these preprocessing steps:
+The [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] function performs multiple steps to convert the backend information. The network data dataclass gets consecutively filled during these preprocessing steps:
 
 - `extract_network_data_from_interface` pulls all backend information and stores it in the network data.
 - `filter_relevant_nodes` checks if some relevant nodes have fewer than 4 branches connected. These nodes cannot be relevant as they can never be split N-1 safely and are thus de-designated as relevant nodes.
@@ -50,7 +50,7 @@ The [`preprocess`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.p
 
 ## `convert_to_jax()` routine
 
-The [`convert_to_jax`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine performs the following steps:
+The [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine performs the following steps:
 
 - `convert_tot_stat` pads out the branch topology info at the relevant subs.
 - `convert_relevant_inj` pads out the injections at relevant subs to the upper bound length.
@@ -62,12 +62,12 @@ The [`convert_to_jax`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preproce
 
 ## `load_grid()` routine
 
-The [`load_grid`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] routine performs the following tasks:
+The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] routine performs the following tasks:
 
-- Instantiate the backend, depending on whether it is a [`PandaPowerBackend`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] or [`PowsyblBackend`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] grid. (`load_grid_into_loadflow_solver_backend`)
-- Call the [`preprocess`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.preprocess] routine.
-- Call the [`convert_to_jax`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine.
-- [`Validate`][packages.dc_solver_pkg.src.toop_engine_dc_solver.jax.inputs.validate_static_information] the resulting static information.
-- Run an [`initial loadflow`][packages.dc_solver_pkg.src.toop_engine_dc_solver.preprocess.convert_to_jax.run_initial_loadflow] and update the double limits accordingly (`compute_base_loadflows`).
-- Extract some [`StaticInformationStats`][packages.interfaces_pkg.src.toop_engine_interfaces.messages.preprocess.preprocess_results.StaticInformationStats].
+- Instantiate the backend, depending on whether it is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] or [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] grid. (`load_grid_into_loadflow_solver_backend`)
+- Call the [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] routine.
+- Call the [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine.
+- [`Validate`][toop_engine_dc_solver.jax.inputs.validate_static_information] the resulting static information.
+- Run an [`initial loadflow`][toop_engine_dc_solver.preprocess.convert_to_jax.run_initial_loadflow] and update the double limits accordingly (`compute_base_loadflows`).
+- Extract some [`StaticInformationStats`][toop_engine_interfaces.messages.preprocess.preprocess_results.StaticInformationStats].
 - Save the [data artifacts](#data-artifacts) (`save_artifacts`).

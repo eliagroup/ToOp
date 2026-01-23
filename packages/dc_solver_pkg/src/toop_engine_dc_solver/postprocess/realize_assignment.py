@@ -16,7 +16,7 @@ import numpy as np
 from beartype.typing import Literal
 from jaxtyping import Array, Bool, Int
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_station_switching_distance
-from toop_engine_dc_solver.preprocess.preprocess_switching import make_optimal_separation_set
+from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_interfaces.asset_topology import Station
 
 logger = logbook.Logger(__name__)
@@ -305,6 +305,7 @@ def compute_switching_table(
 def realise_ba_to_physical_topo_per_station_jax(
     local_branch_action_set: Bool[np.ndarray, " n_combinations n_branches"],
     station: Station,
+    separation_set_info: OptimalSeparationSetInfo,
     batch_size: int = 1024,
     choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"] = "least_connected_busbar",
     validate: bool = True,
@@ -320,6 +321,8 @@ def realise_ba_to_physical_topo_per_station_jax(
     station : Station
         The station object representing the electrical station where the actions are to be realised. This assumes a
         simplified station
+    separation_set_info : OptimalSeparationSetInfo
+        The optimal separation set info for the station as computed by make_optimal_separation_set.
     batch_size : int, optional
         The batch size for SIMD parallelization during the computation of the switching tables, by default 1024.
         Reduce if the memory usage is too high.
@@ -349,7 +352,7 @@ def realise_ba_to_physical_topo_per_station_jax(
         is equal to the number of branch actions for the station. Each element
         represents the number of reassignments needed to reach the target configuration
     """
-    separation_set, coupler_states, _coupler_distances, busbar_a_separation = make_optimal_separation_set(station)
+    separation_set, coupler_states, _coupler_distances, busbar_a_separation = separation_set_info
     current_coupler_state = [c.open for c in station.couplers]
 
     if separation_set.size == 0 or not np.any(local_branch_action_set):

@@ -7,6 +7,7 @@
 
 import numpy as np
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
+from toop_engine_dc_solver.preprocess.preprocess import compute_separaration_set_for_stations
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import (
     enumerate_spreaded_nodal_injections_for_rel_subs,
     enumerate_station_realisations,
@@ -14,7 +15,8 @@ from toop_engine_dc_solver.preprocess.preprocess_station_realisations import (
 
 
 def test_enumerate_station_realisations(network_data_test_grid: NetworkData):
-    network_data = enumerate_station_realisations(network_data_test_grid)
+    network_data = compute_separaration_set_for_stations(network_data_test_grid)
+    network_data = enumerate_station_realisations(network_data)
     assert len(network_data.realised_stations) == len(network_data.branch_action_set), (
         "The number of realised stations should be equal to the number of branch action sets. They equal to the number of relevant stations."
     )

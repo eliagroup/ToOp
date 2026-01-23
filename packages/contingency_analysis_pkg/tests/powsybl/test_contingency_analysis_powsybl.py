@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import numpy as np
+import pandera as pa
 import pypowsybl
 import pytest
 from polars.testing import assert_frame_equal
@@ -72,9 +73,25 @@ def test_run_ac_contingency_analysis_powsybl(powsybl_net: str, request, init_ray
     assert len(lf_result_sequential_polars.converged.collect()) == len(lf_result_parallel_polars.converged.collect())
 
 
+def test_contingency_analysis_validated_or_not(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
+
+    with pa.config.config_context(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA):
+        lf_result_with_val_polars = get_ac_loadflow_results(
+            powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
+        )
+    with pa.config.config_context(validation_enabled=False):
+        lf_result_no_val_polars = get_ac_loadflow_results(
+            powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
+        )
+
+    assert lf_result_with_val_polars == lf_result_no_val_polars
+
+
 @pytest.mark.parametrize("powsybl_net", ["powsybl_bus_breaker_net", "powsybl_node_breaker_net"])
 def test_contingency_analysis_ray_vs_powsybl(powsybl_net: str, request):
     net = request.getfixturevalue(powsybl_net)
+
     nminus1_definition = get_full_nminus1_definition_powsybl(net)
 
     lf_parallel_ray_polars = get_ac_loadflow_results(

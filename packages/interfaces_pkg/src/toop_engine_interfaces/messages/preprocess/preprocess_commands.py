@@ -292,6 +292,15 @@ class PreprocessParameters(BaseModel):
     asset_topo_close_couplers: bool = False
     """Whether to close open couplers in all stations in the asset topology. This might accidentally cancel a maintenance"""
 
+    separation_set_clip_hamming_distance: int = 0
+    """If a large configuration table comes out of a substation, the table size can be reduced
+    by removing configurations that are close to each other. This parameter sets the definition
+    of close in terms of hamming distance, by default 0 (no reduction)."""
+    separation_set_clip_at_size: int = 100
+    """By what size a table is considered large. If the table is larger than this size, the
+    clip_hamming_distance will be used to reduce the table size, by default 100. If a table is
+    smaller, no reduction will be applied."""
+
     realise_station_busbar_choice_heuristic: Literal["first", "least_connected_busbar"] = "least_connected_busbar"
     """The heuristic to use when there are multiple physical busbars available for an asset. The options are:
     - "first": Use the first busbar in the list of busbars (fastest preprocessing)
@@ -366,6 +375,8 @@ class StartPreprocessingCommand(BaseModel):
     """The id of the preprocessing run, should be included in all responses to identify where
     the data came from"""
 
+    command_type: Literal["start_preprocessing"] = "start_preprocessing"
+
 
 class ShutdownCommand(BaseModel):
     """A command to shut down the preprocessing worker"""
@@ -373,11 +384,13 @@ class ShutdownCommand(BaseModel):
     exit_code: Optional[int] = 0
     """The exit code to return"""
 
+    command_type: Literal["shutdown"] = "shutdown"
+
 
 class Command(BaseModel):
     """A wrapper to aid deserialization"""
 
-    command: Union[StartPreprocessingCommand, ShutdownCommand]
+    command: Union[StartPreprocessingCommand, ShutdownCommand] = Field(discriminator="command_type")
     """The actual command posted"""
 
     timestamp: str = Field(default_factory=lambda: str(datetime.now()))

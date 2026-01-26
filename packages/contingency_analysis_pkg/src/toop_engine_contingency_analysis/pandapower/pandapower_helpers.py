@@ -923,6 +923,64 @@ def _build_node_to_component_map(net: pandapowerNet) -> dict[str, int]:
     return {node: comp_idx for comp_idx, component in enumerate(connected_components) for node in component}
 
 
+def _build_side(df: pd.DataFrame, key_from: str, bus_from: str, node_to_component: dict) -> pd.DataFrame:
+    """
+    Build a normalized (component, switch, bus) table for one side of a bus-bus switch.
+
+    This helper maps the *other* end of a bus-bus connection into a connected
+    component, while keeping the known bus on the current side. It is used to
+    construct per-switch connectivity rows in a vectorized manner.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame representing one side of bus-bus switches.
+        Must contain columns referenced by `key_from` and `bus_from`.
+        The DataFrame index is assumed to represent the switch identifier.
+
+    key_from : str
+        Name of the column whose values identify the **other-end bus** of the
+        switch. These values are converted into component lookup keys of the
+        form `"b_<bus_id>"` and mapped via `node_to_component`.
+
+    bus_from : str
+        Name of the column whose values identify the **known bus on this side**
+        of the switch. These values are used to populate the output `bus` column.
+
+    node_to_component : dict[str, Any]
+        Mapping from node identifiers (e.g. `"b_12"`) to connected component
+        identifiers. Rows whose lookup key is not present in the mapping are
+        dropped.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with columns:
+
+        - comp: connected component identifier
+        - switch: switch identifier (copied from `df.index`)
+        - bus: bus index on the current side of the switch
+
+        Rows without a matching component are excluded.
+    """
+    out = df.copy()
+
+    # build component lookup
+    out["comp_key"] = "b_" + out[key_from].astype(str)
+    out["comp"] = out["comp_key"].map(node_to_component)
+
+    # keep switch id from index
+    out["switch"] = out.index
+
+    # output bus
+    out["bus"] = out[bus_from].astype(int)
+
+    # drop those without a component match
+    out = out.dropna(subset=["comp"])
+
+    return out[["comp", "switch", "bus"]]
+
+
 def _make_one_sided_rows(
     open_cb_rest: pd.DataFrame,
     va_deg: pd.Series,
@@ -940,22 +998,20 @@ def _make_one_sided_rows(
     cb_element_side = open_cb_rest.loc[mask_element_side]
 
     # element-side: known va bus is r.element; component from OTHER end r.bus
-    cb_element_side["comp_key"] = "b_" + cb_element_side["bus"].astype(str)
-    cb_element_side["comp"] = cb_element_side["comp_key"].map(node_to_component)
-    cb_element_side["switch"] = cb_element_side.index
-    cb_element_side.dropna(subset=["comp"], inplace=True)
-    cb_element_side = cb_element_side[["comp", "switch", "element"]]
-    cb_element_side.rename(columns={"element": "bus"}, inplace=True)
-    cb_bus_side["bus"] = cb_bus_side["bus"].astype(int)
-    cb_element_side = cb_element_side[["comp", "switch", "bus"]]
+    cb_element_side = _build_side(
+        cb_element_side,
+        key_from="bus",
+        bus_from="element",
+        node_to_component=node_to_component,
+    )
 
     # bus-side: known va bus is r.bus; component from OTHER end r.element
-    cb_bus_side["comp_key"] = "b_" + cb_bus_side["element"].astype(str)
-    cb_bus_side["comp"] = cb_bus_side["comp_key"].map(node_to_component)
-    cb_bus_side["switch"] = cb_bus_side.index
-    cb_bus_side.dropna(subset=["comp"], inplace=True)
-    cb_bus_side["bus"] = cb_bus_side["bus"].astype(int)
-    cb_bus_side = cb_bus_side[["comp", "switch", "bus"]]
+    cb_bus_side = _build_side(
+        cb_bus_side,
+        key_from="element",
+        bus_from="bus",
+        node_to_component=node_to_component,
+    )
 
     result = pd.concat([cb_bus_side, cb_element_side], ignore_index=True)
     return result

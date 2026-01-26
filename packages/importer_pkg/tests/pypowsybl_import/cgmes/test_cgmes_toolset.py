@@ -13,8 +13,8 @@ from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import (
 )
 
 
-def test_get_voltage_level_with_region(basic_node_breaker_network_powsybl):
-    net = basic_node_breaker_network_powsybl
+def test_get_voltage_level_with_region(basic_node_breaker_network_powsybl_network_graph):
+    net = basic_node_breaker_network_powsybl_network_graph
     res = get_voltage_level_with_region(net).columns
     assert len(res) == 6
     for col in ["name", "substation_id", "nominal_v", "high_voltage_limit", "low_voltage_limit", "region"]:
@@ -56,8 +56,8 @@ def test_get_voltage_level_with_region(basic_node_breaker_network_powsybl):
         get_voltage_level_with_region(net, attributes=attributes, all_attributes=True)
 
 
-def test_get_region_for_df(basic_node_breaker_network_powsybl):
-    net = basic_node_breaker_network_powsybl
+def test_get_region_for_df(basic_node_breaker_network_powsybl_network_graph):
+    net = basic_node_breaker_network_powsybl_network_graph
     sw = net.get_switches()
     res = get_region_for_df(network=net, df=sw)
     assert "region" in res.columns
@@ -70,8 +70,8 @@ def test_get_region_for_df(basic_node_breaker_network_powsybl):
     assert res["region_2"].isna().sum() == 0
 
 
-def test_get_busbar_sections_with_in_service(basic_node_breaker_network_powsybl):
-    net = basic_node_breaker_network_powsybl
+def test_get_busbar_sections_with_in_service(basic_node_breaker_network_powsybl_network_graph):
+    net = basic_node_breaker_network_powsybl_network_graph
     res = get_busbar_sections_with_in_service(net)
     assert "in_service" in res.columns, "in_service column is missing"
     assert [*list(net.get_busbar_sections().columns), "in_service"] == list(res.columns), (

@@ -10,8 +10,8 @@ from copy import deepcopy
 from toop_engine_importer.pypowsybl_import.cgmes.powsybl_masks_cgmes import get_switchable_buses_cgmes
 
 
-def test_get_switchable_buses_cgmes(basic_node_breaker_network_powsybl):
-    net = deepcopy(basic_node_breaker_network_powsybl)
+def test_get_switchable_buses_cgmes(basic_node_breaker_network_powsybl_network_graph):
+    net = deepcopy(basic_node_breaker_network_powsybl_network_graph)
     res = get_switchable_buses_cgmes(net, area_codes=["BE"])
     expected = ["VL1_0", "VL2_0", "VL3_0"]
     assert res == expected

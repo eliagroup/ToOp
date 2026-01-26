@@ -25,6 +25,7 @@ from docker.models.containers import Container
 from toop_engine_grid_helpers.pandapower.example_grids import (
     example_multivoltage_cross_coupler,
 )
+from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_topology
 from toop_engine_importer.network_graph.data_classes import BranchSchema, NetworkGraphData, SubstationInformation
 from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
@@ -40,6 +41,7 @@ from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
+    CgmesImporterParameters,
     LimitAdjustmentParameters,
     UcteImporterParameters,
 )
@@ -260,7 +262,7 @@ def ucte_importer_parameters(tmp_path_factory: pytest.TempPathFactory, ucte_file
 @pytest.fixture(scope="function")
 def cgmes_importer_parameters(tmp_path_factory: pytest.TempPathFactory, test_pypowsybl_cgmes_with_3w_trafo):
     tmp_path = tmp_path_factory.mktemp("empty_folder")
-    return UcteImporterParameters(
+    return CgmesImporterParameters(
         grid_model_file=test_pypowsybl_cgmes_with_3w_trafo,
         data_folder=tmp_path,
         white_list_file=None,
@@ -485,7 +487,7 @@ def network_graph_data_test1(get_graph_input_dicts) -> NetworkGraphData:
 
 
 @pytest.fixture(scope="function")
-def basic_node_breaker_network_powsybl():
+def basic_node_breaker_network_powsybl_network_graph():
     net = pypowsybl.network.create_empty()
 
     n_subs = 5
@@ -1086,3 +1088,28 @@ def asset_topo_edge_cases_node_breaker_grid() -> pypowsybl.network.Network:
     )
 
     return net
+
+
+@pytest.fixture(scope="function")
+def basic_node_breaker_network_powsybl_not_disconnectable():
+    network = basic_node_breaker_network_powsybl()
+    lines = pd.DataFrame.from_records(
+        data=[
+            {
+                "node1": 51,
+                "node2": 51,
+                "voltage_level2_id": "VL1",
+                "id": "not_disconnectable_line",
+                "voltage_level1_id": "VL2",
+                "r": 0.1,
+                "x": 10,
+                "g1": 0,
+                "b1": 0,
+                "g2": 0,
+                "b2": 0,
+            },
+        ]
+    )
+    lines = lines.set_index("id")
+    network.create_lines(lines)
+    return network

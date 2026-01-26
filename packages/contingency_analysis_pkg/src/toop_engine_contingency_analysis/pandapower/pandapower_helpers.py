@@ -876,11 +876,33 @@ def _compute_va_diff_both_ends(
     va_deg: pd.Series,
 ) -> tuple[pd.Series, pd.DataFrame]:
     """
-    Return
+    Compute voltage angle differences for open circuit breakers where
 
+    voltage angle results are available on both sides.
+
+    Parameters
+    ----------
+    open_cb : pandas.DataFrame
+        DataFrame in the same format as ``net.switch`` containing **only
+        open circuit breakers**. The following columns are required:
+        The DataFrame index is assumed to be the switch index.
+
+    va_deg : pandas.Series
+        Voltage angle results in degrees, in the same format as
+        ``net.res_bus.va_degree``. The Series index must be bus indices
+        and the values are voltage angles in degrees.
+
+    Returns
     -------
-      - va_diff Series indexed by switch id for switches where both ends have va
-      - remaining open_cb rows where NOT both ends have va (for one-sided inference)
+    va_diff : pandas.Series
+        Voltage angle difference ``va(bus) - va(element)`` for all open
+        switches where voltage angle results are available on **both**
+        connected buses. The Series is indexed by switch index.
+
+    open_cb_rest : pandas.DataFrame
+     Subset of ``open_cb`` containing switches for which voltage angle
+     results are **not available on both sides**. These switches may
+     be handled by one-sided or outage-group inference logic.
     """
     mask_both = open_cb["bus"].isin(va_deg.index) & open_cb["element"].isin(va_deg.index)
     cb_both = open_cb.loc[mask_both].copy()
@@ -917,21 +939,26 @@ def _make_one_sided_rows(
     cb_bus_side = open_cb_rest.loc[mask_bus_side]
     cb_element_side = open_cb_rest.loc[mask_element_side]
 
-    rows: list[dict] = []
-
     # element-side: known va bus is r.element; component from OTHER end r.bus
-    for r in cb_element_side.itertuples():
-        comp = node_to_component.get(f"b_{r.bus}")
-        if comp is not None:
-            rows.append({"switch": r.Index, "bus": int(r.element), "comp": comp})
+    cb_element_side["comp_key"] = "b_" + cb_element_side["bus"].astype(str)
+    cb_element_side["comp"] = cb_element_side["comp_key"].map(node_to_component)
+    cb_element_side["switch"] = cb_element_side.index
+    cb_element_side.dropna(subset=["comp"], inplace=True)
+    cb_element_side = cb_element_side[["comp", "switch", "element"]]
+    cb_element_side.rename(columns={"element": "bus"}, inplace=True)
+    cb_bus_side["bus"] = cb_bus_side["bus"].astype(int)
+    cb_element_side = cb_element_side[["comp", "switch", "bus"]]
 
     # bus-side: known va bus is r.bus; component from OTHER end r.element
-    for r in cb_bus_side.itertuples():
-        comp = node_to_component.get(f"b_{r.element}")
-        if comp is not None:
-            rows.append({"switch": r.Index, "bus": int(r.bus), "comp": comp})
+    cb_bus_side["comp_key"] = "b_" + cb_bus_side["element"].astype(str)
+    cb_bus_side["comp"] = cb_bus_side["comp_key"].map(node_to_component)
+    cb_bus_side["switch"] = cb_bus_side.index
+    cb_bus_side.dropna(subset=["comp"], inplace=True)
+    cb_bus_side["bus"] = cb_bus_side["bus"].astype(int)
+    cb_bus_side = cb_bus_side[["comp", "switch", "bus"]]
 
-    return pd.DataFrame(rows, columns=["switch", "bus", "comp"])
+    result = pd.concat([cb_bus_side, cb_element_side], ignore_index=True)
+    return result
 
 
 def _filter_components_with_enough_va(df_rows: pd.DataFrame) -> pd.DataFrame:
@@ -1054,7 +1081,25 @@ def get_va_diff_results(
 ) -> pat.DataFrame[VADiffResultSchema]:
     """Get the voltage angle difference results for the given network and contingency.
 
-    Currently does not return the va_diff of outaged trafo3w
+    Currently does not return the va_diff of outaged trafo3w with PST
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        The network to compute the voltage angle difference results for
+    timestep : int
+        The timestep of the results
+    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema]
+        The dataframe containing the monitored elements
+    contingency : PandapowerContingency
+        The contingency to compute the voltage angle difference results for.
+        Will also calculate the va_diff of the outaged elements if they are lines or transformers
+
+    Returns
+    -------
+    pat.DataFrame[VADiffResultSchema]
+        The voltage angle difference results for the given network and contingency
+
     """
     open_cb = _select_monitored_open_cb_bus_bus_switches(net, monitored_elements)
     va_deg = _get_bus_va_series(net)

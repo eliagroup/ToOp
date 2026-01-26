@@ -142,8 +142,6 @@ def test_va_diff_out_group_trafo():
     # = max(abs(bus_2_va - bus_6_va)) = max(abs(2-6)) = 4
     assert va_diff_df.loc[va_diff_df.element == "3%%switch"].va_diff.item() == 4
 
-    a = 1
-
 
 def test_va_diff_out_group_multiple_els():
     net = create_test_net_for_va_diff_with_multiple_els()

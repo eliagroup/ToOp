@@ -17,6 +17,7 @@ import docker
 import jax
 import numpy as np
 import pandera
+import pypowsybl
 import pytest
 from confluent_kafka import Consumer, Producer
 from docker import DockerClient
@@ -31,11 +32,20 @@ from toop_engine_dc_solver.example_grids import (
     case30_with_psts_powsybl,
     case57_data_powsybl,
     case57_non_converging,
-    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     oberrhein_data,
 )
 from toop_engine_dc_solver.preprocess import load_grid
+from toop_engine_grid_helpers.powsybl.example_grids import (
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
+)
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    AreaSettings,
+    CgmesImporterParameters,
+    PreprocessParameters,
+)
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
@@ -582,3 +592,45 @@ def create_consumer():
         return consumer
 
     return _create
+
+
+def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> None:
+    """Create a preprocessed folder for create_complex_grid_battery_hvdc_svc_3w_trafo().
+
+    Runs the importer and preprocessing.
+
+    Parameter:
+    folder: Path
+        The root folder where the data is saved to.
+    """
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+
+    output_path_grid = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    output_path_grid.parent.mkdir(parents=True, exist_ok=True)
+    net.save(output_path_grid)
+    output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
+    output_path_masks.mkdir(parents=True, exist_ok=True)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=output_path_grid,
+        data_folder=folder,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            cross_border_limits_n0=None,
+            cross_border_limits_n1=None,
+        ),
+    )
+    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, enable_bb_outage=False, bb_outage_as_nminus1=False)
+
+    _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    filesystem_dir = DirFileSystem(str(folder))
+    _info, _static_information, _ = load_grid(
+        data_folder_dirfs=filesystem_dir,
+        pandapower=False,
+        status_update_fn=None,
+        parameters=preprocessing_parameters,
+    )

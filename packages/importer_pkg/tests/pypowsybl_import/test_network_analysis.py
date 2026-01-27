@@ -11,8 +11,13 @@ import logbook
 import pandas as pd
 import pypowsybl
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
+from toop_engine_importer.pypowsybl_import.network_analysis import (
+    apply_cb_lists,
+    convert_low_impedance_lines,
+    remove_branches_across_switch,
+    remove_branches_with_same_bus,
+)
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     UcteImportResult,
 )
@@ -27,7 +32,7 @@ def test_convert_low_impedance_lines(ucte_file):
         "D2SU1_31 D2SU1_31 2",
         "B_SU2_11 B_SU1_11 1",
     ]
-    network_analysis.convert_low_impedance_lines(network, "D8")
+    convert_low_impedance_lines(network, "D8")
     network.get_lines()
     assert network.get_lines().index.to_list() == [
         "D8SU1_12 D7SU2_11 1",
@@ -36,7 +41,7 @@ def test_convert_low_impedance_lines(ucte_file):
         "B_SU2_11 B_SU1_11 1",
     ]
     assert "D8SU1_12 D8SU1_11 2" in network.get_switches().index.to_list()
-    network_analysis.convert_low_impedance_lines(network, "D2")
+    convert_low_impedance_lines(network, "D2")
     network.get_lines()
     assert network.get_lines().index.to_list() == [
         "D8SU1_12 D7SU2_11 1",
@@ -59,7 +64,7 @@ def test_remove_branches_across_switch(ucte_file):
         "B_SU2_11 B_SU1_11 1",
     ]
 
-    network_analysis.remove_branches_across_switch(network)
+    remove_branches_across_switch(network)
     final_branch_count = len(network.get_branches())
 
     assert final_branch_count + 2 == initial_branch_count
@@ -72,7 +77,7 @@ def test_remove_branches_across_switch(ucte_file):
     # test 2
     network = pypowsybl.network.load(ucte_file)
     network.remove_elements("D8SU1_12 D8SU1_11 1")
-    network_analysis.remove_branches_across_switch(network)
+    remove_branches_across_switch(network)
     final_branch_count = len(network.get_branches())
     assert final_branch_count + 1 == initial_branch_count
     assert network.get_lines().index.to_list() == [
@@ -120,7 +125,7 @@ def test_apply_cb_lists(ucte_file, ucte_importer_parameters):
         network_changes={},
         import_parameter=ucte_importer_parameters,
     )
-    network_analysis.apply_cb_lists(
+    apply_cb_lists(
         network=network,
         statistics=statistics,
         white_list_file=white_list_file,
@@ -146,7 +151,7 @@ def test_apply_cb_lists(ucte_file, ucte_importer_parameters):
         import_parameter=ucte_importer_parameters,
     )
     ucte_importer_parameters.white_list_file = None
-    network_analysis.apply_cb_lists(
+    apply_cb_lists(
         network=network,
         statistics=statistics,
         white_list_file=None,
@@ -173,7 +178,7 @@ def test_apply_cb_lists(ucte_file, ucte_importer_parameters):
         import_parameter=ucte_importer_parameters,
     )
     ucte_importer_parameters.black_list_file = None
-    network_analysis.apply_cb_lists(
+    apply_cb_lists(
         network=network,
         statistics=statistics,
         white_list_file=None,
@@ -207,7 +212,7 @@ def test_remove_branches_with_same_bus(ucte_file):
     )
     branches = network.get_branches()
     with logbook.handlers.TestHandler() as caplog:
-        network_analysis.remove_branches_with_same_bus(network=network)
+        remove_branches_with_same_bus(network=network)
         assert caplog.has_warnings
         assert "branches with the same bus id" in "".join(caplog.formatted_records)
 

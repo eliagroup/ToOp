@@ -125,10 +125,10 @@ def test_get_node_assets(basic_node_breaker_network_powsyblV2):
     NodeAssetSchema.validate(node_assets_df)
 
 
-def test_get_station(basic_node_breaker_network_powsybl):
+def test_get_station(basic_node_breaker_network_powsybl_network_graph):
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL3"}
     station_info = SubstationInformation(**station_info)
-    res = get_station(basic_node_breaker_network_powsybl, "VL3_0", station_info)
+    res = get_station(basic_node_breaker_network_powsybl_network_graph, "VL3_0", station_info)
     assert isinstance(res, Station)
     assert res.name == "Station_ID"
     assert res.grid_model_id == "VL3_0"
@@ -579,8 +579,8 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     )
 
 
-def test_get_topo_integration(basic_node_breaker_network_powsybl):
-    net = basic_node_breaker_network_powsybl
+def test_get_topo_integration(basic_node_breaker_network_powsybl_network_graph):
+    net = basic_node_breaker_network_powsybl_network_graph
     importer_parameters = CgmesImporterParameters(
         grid_model_file=Path("cgmes_file.zip"),
         data_folder="data_folder",

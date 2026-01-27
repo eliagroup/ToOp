@@ -184,7 +184,7 @@ def test_convert_file(ucte_file):
         assert isinstance(import_result, UcteImportResult)
 
 
-def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl: pypowsybl.network.Network):
+def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_network_graph: pypowsybl.network.Network):
     with TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
 
@@ -207,8 +207,8 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl: 
             ]
         ).set_index("id")
 
-        pypowsybl.network.create_static_var_compensator_bay(basic_node_breaker_network_powsybl, df=svc)
-        basic_node_breaker_network_powsybl.save(temp_grid_file)
+        pypowsybl.network.create_static_var_compensator_bay(basic_node_breaker_network_powsybl_network_graph, df=svc)
+        basic_node_breaker_network_powsybl_network_graph.save(temp_grid_file)
         # def parameters for function
         logger = logbook.Logger(__name__)
 

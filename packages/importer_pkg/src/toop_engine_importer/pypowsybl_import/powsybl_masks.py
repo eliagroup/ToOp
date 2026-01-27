@@ -1143,7 +1143,7 @@ def _is_disconnectable(network: Network, grid_model_id: list[str]) -> np.ndarray
     Returns
     -------
     np.ndarray
-        A boolean NumPy array indicating if the switch is disconnectable.
+        A boolean NumPy array indicating if the grid_model_id is disconnectable.
     """
     network_copy = deepcopy(network)
     disconnectable = np.zeros(len(grid_model_id), dtype=bool)

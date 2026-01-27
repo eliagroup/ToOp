@@ -12,6 +12,7 @@ Author:  Benjamin Petrick
 Created: 2024-08-13
 """
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Union
@@ -408,7 +409,8 @@ def update_line_masks(
     control_area_mask = get_mask_for_area_codes(
         lines_df, importer_parameters.area_settings.control_area, region_colums[0], region_colums[1]
     )
-    disconnectable_mask = control_area_mask & hv_line_mask
+    is_disconnectable = _is_disconnectable(network=network, grid_model_id=lines_df.index.tolist())
+    disconnectable_mask = control_area_mask & hv_line_mask & is_disconnectable
 
     blacklisted_lines = lines_df.index.isin(blacklisted_ids)
 
@@ -517,7 +519,8 @@ def update_trafo_masks(
     view_area_mask = get_mask_for_area_codes(
         trafos_df, importer_parameters.area_settings.view_area, region_colums[0], region_colums[1]
     )
-    disconnectable_mask = controllable_mask & hv_trafos
+    is_disconnectable = _is_disconnectable(network=network, grid_model_id=trafos_df.index.tolist())
+    disconnectable_mask = controllable_mask & hv_trafos & is_disconnectable
     pst_controllable_mask = controllable_mask & hv_trafos
     outage_mask = nminus1_area_mask & hv_trafos
     reward_mask = view_area_mask & trafos_with_limits & hv_trafos
@@ -1122,3 +1125,29 @@ def update_masks_from_contingency_list_file(
     else:
         raise NotImplementedError("Multi-outages are not supported yet.")
     return network_masks
+
+
+def _is_disconnectable(network: Network, grid_model_id: list[str]) -> np.ndarray:
+    """Check if powsybl allows to disconnect a given id.
+
+    In a node braker model, there might be elements that cannot be disconnected.
+    E.g. if a a branch has no switch on both sides, it cannot be disconnected.
+
+    Parameters
+    ----------
+    network : Network
+        The network to check.
+    grid_model_id : list[str]
+        The grid model ids to check.
+
+    Returns
+    -------
+    np.ndarray
+        A boolean NumPy array indicating if the grid_model_id is disconnectable.
+    """
+    network_copy = deepcopy(network)
+    disconnectable = np.zeros(len(grid_model_id), dtype=bool)
+    for idx, switch_id in enumerate(grid_model_id):
+        disconnectable[idx] = network_copy.disconnect(switch_id)
+
+    return disconnectable

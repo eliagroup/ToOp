@@ -255,8 +255,8 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
 
 
-def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network_powsybl):
-    network = basic_node_breaker_network_powsybl
+def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network_powsybl_network_graph):
+    network = basic_node_breaker_network_powsybl_network_graph
     importer_parameters = CgmesImporterParameters(
         grid_model_file=Path("cgmes_file.zip"),
         data_folder="data_folder",
@@ -395,6 +395,15 @@ def test_make_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporte
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
     masks = powsybl_masks.make_masks(network=network, importer_parameters=ucte_importer_parameters)
+    assert powsybl_masks.validate_network_masks(masks, default_masks)
+
+
+def test_make_masks_node_breaker(
+    basic_node_breaker_network_powsybl_not_disconnectable, cgmes_importer_parameters: CgmesImporterParameters
+):
+    network = basic_node_breaker_network_powsybl_not_disconnectable
+    default_masks = powsybl_masks.create_default_network_masks(network)
+    masks = powsybl_masks.make_masks(network=network, importer_parameters=cgmes_importer_parameters)
     assert powsybl_masks.validate_network_masks(masks, default_masks)
 
 
@@ -721,3 +730,11 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
             filesystem=LocalFileSystem(),
             process_multi_outages=False,
         )
+
+
+def test_is_disconnectable(basic_node_breaker_network_powsybl_not_disconnectable):
+    network = basic_node_breaker_network_powsybl_not_disconnectable
+    res = powsybl_masks._is_disconnectable(network, ["not_disconnectable_line"])
+    assert np.array_equal(res, np.array([False]))
+    res = powsybl_masks._is_disconnectable(network, ["L1", "not_disconnectable_line"])
+    assert np.array_equal(res, np.array([True, False]))

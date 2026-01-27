@@ -4,7 +4,7 @@
 # If a copy of the MPL was not distributed with this file,
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
-
+import numpy as np
 import pandapower as pp
 import pytest
 from toop_engine_grid_helpers.pandapower.network_topology_utils import (
@@ -34,7 +34,7 @@ def test_get_line_edges_returns_from_to_bus_pair():
     edges = _get_line_edges(net, int(line_id))
     assert isinstance(edges, list) and len(edges) == 1
     assert edges[0] == (0, 2)
-    assert all(isinstance(x, int) for x in edges[0])
+    assert all(isinstance(x, np.int64) for x in edges[0])
 
 
 def test_get_switch_edges_bus_bus_returns_bus_pair():
@@ -42,7 +42,7 @@ def test_get_switch_edges_bus_bus_returns_bus_pair():
     sw_id = pp.create_switch(net, bus=1, element=2, et="b", closed=True)
     edges = _get_switch_edges(net, int(sw_id))
     assert edges == [(1, 2)]
-    assert all(isinstance(x, int) for x in edges[0])
+    assert all(isinstance(x, np.int64) for x in edges[0])
 
 
 def test_get_switch_edges_line_switch_returns_bus_and_line_id():
@@ -53,7 +53,7 @@ def test_get_switch_edges_line_switch_returns_bus_and_line_id():
     sw_id = pp.create_switch(net, bus=0, element=int(line_id), et="l", closed=True)
     edges = _get_switch_edges(net, int(sw_id))
     assert edges == [(0, line_id)]
-    assert all(isinstance(x, int) for x in edges[0])
+    assert all(isinstance(x, np.int64) for x in edges[0])
 
 
 def test_get_trafo_edges_maps_hv_to_lv():
@@ -73,7 +73,7 @@ def test_get_trafo_edges_maps_hv_to_lv():
     )
     edges = _get_trafo_edges(net, int(trafo_id))
     assert edges == [(0, 2)]
-    assert all(isinstance(x, int) for x in edges[0])
+    assert all(isinstance(x, np.int64) for x in edges[0])
 
 
 def test_get_trafo3w_edges_connects_all_windings():
@@ -103,7 +103,7 @@ def test_get_trafo3w_edges_connects_all_windings():
     edges = _get_trafo3w_edges(net, int(t3_id))
     assert set(edges) == {(0, 3), (1, 3), (0, 1)}
     for e in edges:
-        assert all(isinstance(x, int) for x in e)
+        assert all(isinstance(x, np.int64) for x in e)
 
 
 def test_get_bus_edges_collects_all_closed_switch_edges_for_bus():
@@ -128,7 +128,7 @@ def test_get_bus_edges_collects_all_closed_switch_edges_for_bus():
 
     for e in edges:
         assert isinstance(e, tuple) and len(e) == 2
-        assert isinstance(e[0], int) and isinstance(e[1], int)
+        assert isinstance(e[0], np.int64) and isinstance(e[1], np.int64)
 
 
 def test_get_bus_edges_empty_when_no_closed_switches_touch_bus():
@@ -145,7 +145,7 @@ def test_edges_for_branch_element_line():
     )
     edges = _edges_for_branch_element(net, "line", int(line_id))
     assert edges == [(0, 2)]
-    assert all(isinstance(x, int) for x in edges[0])
+    assert all(isinstance(x, np.int64) for x in edges[0])
 
 
 def test_edges_for_branch_element_trafo():
@@ -286,7 +286,7 @@ def test_collect_element_edges_mixed_types_and_closed_bus_switches_only():
     # Type sanity: all entries are pairs of ints
     for e in edges:
         assert isinstance(e, tuple) and len(e) == 2
-        assert all(isinstance(x, int) for x in e)
+        assert all(isinstance(x, np.int64) for x in e)
 
 
 def test_collect_element_edges_deduplicates_bus_edges():

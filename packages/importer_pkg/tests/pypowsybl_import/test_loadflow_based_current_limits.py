@@ -443,6 +443,7 @@ def test_create_new_border_limits(ucte_file_with_border, ucte_importer_parameter
 
 def test_create_new_border_limits_3wtrf(test_pypowsybl_cgmes_with_3w_trafo, cgmes_importer_parameters):
     network = pypowsybl.network.load(test_pypowsybl_cgmes_with_3w_trafo)
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
     pypowsybl.loadflow.run_ac(network)
     limits_before = network.get_operational_limits().copy()
     cgmes_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
@@ -458,10 +459,20 @@ def test_create_new_border_limits_3wtrf(test_pypowsybl_cgmes_with_3w_trafo, cgme
     border_trafos_with_lf = trafos[network_masks.trafo_dso_border & ~trafos["i2"].isna()]
     border_lines_with_lf = lines[network_masks.line_tso_border & ~lines["i2"].isna()]
     border_tie_lines_with_lf = tie_lines[network_masks.tie_line_tso_border & ~tie_lines["i2"].isna()]
+    # n_new_limits = n_cases * (
+    #     len(border_lines_with_lf) * 2
+    #     + len(border_tie_lines_with_lf) * 4  # For each dangling line, there are 2 tie line limits. so 4
+    #     + len(border_trafos_with_lf)
+    # )
+    # TODO: clearify behavior of branches that have no currently limit set -> get_loadflow_based_trafo_limits when old_limit is NaN
+    # currently this does not create a new limit, is this intended?
+    n_trafos_with_two_limits = 2
+    n_trafos_with_one_limit = 1
     n_new_limits = n_cases * (
         len(border_lines_with_lf) * 2
         + len(border_tie_lines_with_lf) * 4  # For each dangling line, there are 2 tie line limits. so 4
-        + len(border_trafos_with_lf)
+        + n_trafos_with_two_limits * 2  # 2 sides with existing limits
+        + n_trafos_with_one_limit * 1  # 1 side with existing limit
     )
     create_new_border_limits(network, network_masks, cgmes_importer_parameters)
     limits_after = network.get_operational_limits()

@@ -9,11 +9,12 @@
 
 from itertools import chain
 
+import numpy as np
 import pandapower as pp
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 
 
-def _get_line_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]:
+def _get_line_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[np.int64, np.int64]]:
     """
     For a line element, return its edge as (from_bus, to_bus).
 
@@ -30,10 +31,10 @@ def _get_line_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]:
         A single edge [(from_bus, to_bus)] for the specified line.
     """
     row = net.line.loc[el_id]
-    return [(int(row.from_bus), int(row.to_bus))]
+    return [(np.int64(row.from_bus), np.int64(row.to_bus))]
 
 
-def _get_switch_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]:
+def _get_switch_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[np.int64, np.int64]]:
     """
     For a switch element, return its edge as (from_bus, to_bus).
 
@@ -50,10 +51,10 @@ def _get_switch_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]
         A single edge [(from_bus, to_bus)] for the specified switch.
     """
     row = net.switch.loc[el_id]
-    return [(int(row.bus), int(row.element))]
+    return [(np.int64(row.bus), np.int64(row.element))]
 
 
-def _get_trafo_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]:
+def _get_trafo_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[np.int64, np.int64]]:
     """
     For a 2-winding transformer, return its edge as (hv_bus, lv_bus).
 
@@ -70,10 +71,10 @@ def _get_trafo_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]
         A single edge [(hv_bus, lv_bus)] for the specified transformer.
     """
     row = net.trafo.loc[el_id]
-    return [(int(row.hv_bus), int(row.lv_bus))]
+    return [(np.int64(row.hv_bus), np.int64(row.lv_bus))]
 
 
-def _get_trafo3w_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int]]:
+def _get_trafo3w_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[np.int64, np.int64]]:
     """
     For a 3-winding transformer, return edges between all three windings.
 
@@ -95,7 +96,7 @@ def _get_trafo3w_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int
         Edges connecting all transformer windings: [(hv, lv), (mv, lv), (hv, mv)].
     """
     row = net.trafo3w.loc[el_id]
-    hv, mv, lv = int(row.hv_bus), int(row.mv_bus), int(row.lv_bus)
+    hv, mv, lv = np.int64(row.hv_bus), np.int64(row.mv_bus), np.int64(row.lv_bus)
 
     return [
         (hv, lv),
@@ -104,7 +105,7 @@ def _get_trafo3w_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[int, int
     ]
 
 
-def _get_bus_edges(net: pp.pandapowerNet, bus_id: int) -> list[tuple[int, int]]:
+def _get_bus_edges(net: pp.pandapowerNet, bus_id: int) -> list[tuple[np.int64, np.int64]]:
     """
     Get all edges connected to a given bus via closed switches.
 
@@ -126,7 +127,7 @@ def _get_bus_edges(net: pp.pandapowerNet, bus_id: int) -> list[tuple[int, int]]:
     return switches_edges
 
 
-def _edges_for_branch_element(net: pp.pandapowerNet, el_type: str, el_id: int) -> list[tuple[int, int]]:
+def _edges_for_branch_element(net: pp.pandapowerNet, el_type: str, el_id: int) -> list[tuple[np.int64, np.int64]]:
     """
     Dispatch helper: given an element type and its ID, return its corresponding edges.
 
@@ -158,7 +159,7 @@ def _edges_for_branch_element(net: pp.pandapowerNet, el_type: str, el_id: int) -
     return res
 
 
-def collect_element_edges(net: pp.pandapowerNet, elements_ids: list[str]) -> list[tuple[int, int]]:
+def collect_element_edges(net: pp.pandapowerNet, elements_ids: list[str]) -> list[tuple[np.int64, np.int64]]:
     """
     Build a list of bus-to-bus edges touched by the given elements.
 

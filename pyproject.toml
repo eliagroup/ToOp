@@ -151,6 +151,7 @@ testpaths = [
         "packages/topology_optimizer_pkg/tests"
         ]
 timeout = 300
+timeout_func_only = true
 filterwarnings = [
 ]
 

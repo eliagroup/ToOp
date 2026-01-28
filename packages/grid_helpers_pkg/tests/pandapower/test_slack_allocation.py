@@ -440,7 +440,7 @@ def test_clears_existing_slacks_and_assigns_new_one(monkeypatch):
     bus_lookup = list(net4.bus.index)  # [0,1,2,3]
 
     def fake_collect_edges(net, element_ids):
-        return [(1, 2)]
+        return [(np.int64(1), np.int64(2))]
 
     def fake_get_ref_buses(net):
         return {b1, b2}
@@ -516,7 +516,7 @@ def test_filters_islands_by_min_size_and_candidates(monkeypatch):
     G = make_graph()
     bus_lookup = list(net4.bus.index)
     mod = __import__(IMPORT_PATH, fromlist=["*"])
-    monkeypatch.setattr(mod, "collect_element_edges", lambda net, ids: [(1, 2)])
+    monkeypatch.setattr(mod, "collect_element_edges", lambda net, ids: [(np.int64(1), np.int64(2))])
     monkeypatch.setattr(mod, "get_buses_with_reference_sources", lambda net: {b0})
     monkeypatch.setattr(mod, "get_generating_units_with_load", lambda net: {b0, b1})
 

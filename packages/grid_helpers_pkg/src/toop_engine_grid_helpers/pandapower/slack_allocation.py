@@ -348,7 +348,7 @@ def assign_slack_per_island(
     bus_lookup: list[int],
     elements_ids: list[str],
     min_island_size: int,
-) -> list[tuple[int, int]]:
+) -> list[tuple[np.int64, np.int64]]:
     """
     Assign one slack generator per valid island in the network after isolating specific elements.
 

@@ -427,7 +427,7 @@ def realise_ba_to_physical_topo_per_station_jax(
     # Only keep those within the reassignment limits
     if reassignment_limits is not None:
         max_reassignments = reassignment_limits.station_specific_limits.get(
-            station.grid_model_id, reassignment_limits.global_limit
+            station.grid_model_id, reassignment_limits.max_reassignments_per_sub
         )
         within_limit = phy_reassignment_distance <= max_reassignments
         switching_table = switching_table[within_limit]

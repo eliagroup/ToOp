@@ -462,7 +462,7 @@ def enumerate_branch_actions(
     relevant_ids = np.array(network_data.node_ids)[network_data.relevant_node_mask]
     if reassignment_limits is not None:
         station_specific_reassignment_limits = reassignment_limits.station_specific_limits
-        reassignment_limit = reassignment_limits.global_limit
+        reassignment_limit = reassignment_limits.max_reassignments_per_sub
     else:
         station_specific_reassignment_limits = {}
         reassignment_limit = None

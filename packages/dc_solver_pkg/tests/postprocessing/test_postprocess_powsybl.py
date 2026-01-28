@@ -597,6 +597,10 @@ def test_n0_in_ac_unsplit(preprocessed_powsybl_data_folder: Path) -> None:
 # @pytest.mark.skip(reason="It's not guaranteed that the N-0 in AC must be better after splits than the pure DC approach")
 @pytest.mark.parametrize("topo_idx", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 def test_n0_in_ac_split_ignoring_disconnections(preprocessed_powsybl_data_folder: Path, topo_idx: int) -> None:
+    # TODO Validate if this is a meaningful way to test this
+    # Due to the random nature of the topologies, this may or may not fail. We need a better way to test this.
+    # For most random seeds, this should have at least more than 50% success rate. If this suddenly drops to 0% you
+    # probably broke something
     network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
 
     post_process_file_path = (

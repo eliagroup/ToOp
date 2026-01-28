@@ -37,19 +37,43 @@ from toop_engine_dc_solver.jax.types import ActionSet
 from toop_engine_dc_solver.preprocess.helpers.ptdf import (
     get_extended_ptdf,
 )
+from toop_engine_dc_solver.preprocess.helpers.switching_distance import min_hamming_distance_matrix
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, get_relevant_stations
 from toop_engine_interfaces.asset_topology import Station
 from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = logbook.Logger(__name__)
 
 
+def set_unsplit_action_as_first(
+    action_repo: Bool[np.ndarray, " n_configurations sub_degree"],
+) -> Bool[np.ndarray, " n_configurations sub_degree"]:
+    """Ensure that the unsplit action is the first action in the action repo.
+
+    Parameters
+    ----------
+    action_repo : Bool[np.ndarray, " n_configurations sub_degree"]
+        The repo of possible branch topology actions
+
+    Returns
+    -------
+    Bool[np.ndarray, " n_configurations sub_degree"]
+        The action repo with the unsplit action as the first action
+    """
+    unsplit_action = np.zeros((1, action_repo.shape[1]), dtype=bool)
+    action_repo = action_repo[np.any(action_repo, axis=1)]
+    action_repo = np.vstack((unsplit_action, action_repo))
+    return np.unique(action_repo, axis=0)
+
+
 def make_action_repo(
     sub_degree: int,
+    separation_set: Bool[np.ndarray, " n_configurations 2 n_assets"],
     exclude_isolations: bool = True,
     exclude_inverse: bool = True,
-    fixed_assignments: tuple[tuple[int, bool], ...] = (),
     randomly_select: Optional[int] = None,
+    limit_reassignments: Optional[int] = None,
 ) -> Bool[np.ndarray, " possible_configurations sub_degree"]:
     """Make a repo of all possible topology configurations that are electrically possible
 
@@ -60,30 +84,31 @@ def make_action_repo(
     ----------
     sub_degree : int
         The number of branches in the substation
+    separation_set : Bool[np.ndarray, " n_configurations 2 n_assets"]
+        The separation set for the substation.
     exclude_isolations : bool
         Whether to exclude actions that isolate a branch. Defaults to True.
-    exclude_inverse : bool
+    exclude_inverse: bool = True,
         Whether to exclude the inverse of the actions. Defaults to True.
-    fixed_assignments : tuple[tuple[int, bool], ...]
-        A tuple of tuples of the form (branch_idx, busbar_b) that represent possible fixed
-        assignments. For example, if (0, True) is in the tuple, the first branch will always be
-        assigned to busbar B. Defaults to an empty tuple, i.e. full flexibility. Duplicate branch
-        indices in the assignment will lead to undefined behavior.
     randomly_select : Optional[int]
         If given, only randomly_select actions will be enumerated, which are randomly drawn. If None,
         all actions will be exhaustively enumerated. Defaults to None.
+    limit_reassignments : Optional[int]
+        If given, the maximum number of reassignments to perform during the electrical reconfiguration.
 
     Returns
     -------
     Bool[Array, " possible_configurations sub_degree"]
         The repo of physically possible topology actions
     """
-    sub_degree -= len(fixed_assignments)
+    # In case of zero reassignments, we just return the unsplit action and the starting configurations
+    if limit_reassignments is not None and limit_reassignments == 0:
+        repo = separation_set[:, 1, :sub_degree]
+        return set_unsplit_action_as_first(repo)
 
     # -1 because we concatenate the inverse only on demand.
     num_possible_splits = 2 ** (sub_degree - 1)
-    if randomly_select is not None:
-        randomly_select = min(randomly_select, num_possible_splits)
+    if randomly_select is not None and randomly_select < num_possible_splits:
         action_range = np.random.choice(int(num_possible_splits), randomly_select)
         # We can't pass replace=False to np.random.choice because that would implement a massive
         # array internally, hence we just filter out duplicates here
@@ -113,14 +138,22 @@ def make_action_repo(
         num_bus_b = np.sum(repo, axis=1)
         repo = repo[(num_bus_b != 1) & (num_bus_b != sub_degree - 1), :]
 
-    # If there are fixed assignments, we need to apply them
-    for branch_idx, busbar_b in fixed_assignments:
-        repo = np.insert(repo, branch_idx, busbar_b, axis=1)
+    # We only want to keep the inverse that has fewer elements in another setup compared to the base config
+    # Hence, we invert where the electrical switching distance is lesser for the inverse configuration
+    # Currently we ignore the injections in the separation set for this computation
+    starting_configurations = separation_set[:, 1, :sub_degree]
+    min_distance = min_hamming_distance_matrix(repo, starting_configurations)
+    min_distance_inverse = min_hamming_distance_matrix(~repo, starting_configurations)
+    better_inverse = min_distance_inverse < min_distance
+    repo[better_inverse, :] = ~repo[better_inverse, :]
+
+    if limit_reassignments is not None and limit_reassignments < sub_degree:
+        min_distance = np.minimum(min_distance, min_distance_inverse)
+        repo = repo[min_distance <= limit_reassignments, :]
 
     # Make sure the first combination is the unsplit action
     # The fixed assignments might have changed this
-    repo[0, :] = False
-
+    repo = set_unsplit_action_as_first(repo)
     return repo
 
 
@@ -338,11 +371,11 @@ def enumerate_branch_actions_for_sub(
     sub_id: int,
     network_data: NetworkData,
     exclude_isolations: bool = True,
-    exclude_inverse: bool = True,
     exclude_bridge_lookup_splits: bool = True,
     exclude_bsdf_lodf_splits: bool = False,
     bsdf_lodf_batch_size: int = 8,
-    clip_to_n_actions: int = 2**20,
+    clip_to_n_actions: int = 2**23,
+    limit_reassignments: Optional[int] = None,
 ) -> Bool[np.ndarray, " n_configurations sub_degree"]:
     """Enumerate all combinations for one substation, optionally excluding some combinations
 
@@ -355,8 +388,6 @@ def enumerate_branch_actions_for_sub(
         The network data of the grid
     exclude_isolations : bool
         Whether to exclude actions that isolate a branch
-    exclude_inverse : bool
-        Whether to exclude the inverse of the actions
     exclude_bridge_lookup_splits : bool
         Whether to exclude actions that split the grid by isolating bridges
     exclude_bsdf_lodf_splits : bool
@@ -367,6 +398,8 @@ def enumerate_branch_actions_for_sub(
     clip_to_n_actions : int
         The maximum number of actions to return. If the number of actions is anticipated to be
         larger than this, a random subset will be returned. Defaults to 2**20.
+    limit_reassignments : Optional[int]
+        If given, the maximum number of reassignments to perform during the electrical reconfiguration.
 
     Returns
     -------
@@ -375,7 +408,8 @@ def enumerate_branch_actions_for_sub(
     """
     sub_degree = len(network_data.branches_at_nodes[sub_id])
     assert sub_degree >= 4, "Substation has less than 4 branches, this should have been filtered out"
-    effective_degree = sub_degree - int(exclude_inverse)
+    # -1 because the inverse configuration is not included in the action set
+    effective_degree = sub_degree - 1
     randomly_select = None
     if 2**effective_degree > clip_to_n_actions:
         logger.warning(
@@ -383,8 +417,15 @@ def enumerate_branch_actions_for_sub(
             f"{sub_degree} branches. Resorting to random action enumeration."
         )
         randomly_select = clip_to_n_actions
+    separation_set = network_data.separation_sets_info[sub_id].separation_set
 
-    repo = make_action_repo(sub_degree, exclude_isolations, exclude_inverse, randomly_select=randomly_select)
+    repo = make_action_repo(
+        sub_degree,
+        separation_set,
+        exclude_isolations,
+        randomly_select=randomly_select,
+        limit_reassignments=limit_reassignments,
+    )
     if exclude_bridge_lookup_splits:
         repo = filter_splits_by_bridge_lookup(sub_id, repo, network_data)
     if exclude_bsdf_lodf_splits:
@@ -396,11 +437,11 @@ def enumerate_branch_actions_for_sub(
 def enumerate_branch_actions(
     network_data: NetworkData,
     exclude_isolations: bool = True,
-    exclude_inverse: bool = True,
     exclude_bridge_lookup_splits: bool = True,
     exclude_bsdf_lodf_splits: bool = False,
     bsdf_lodf_batch_size: int = 8,
-    clip_to_n_actions: int = 2**20,
+    clip_to_n_actions: int = 2**23,
+    reassignment_limits: Optional[ReassignmentLimits] = None,
 ) -> list[Bool[np.ndarray, " _ _"]]:
     """Enumerate all possible branch actions for all relevant substations in the network
 
@@ -410,8 +451,6 @@ def enumerate_branch_actions(
         The network data of the grid
     exclude_isolations : bool
         Whether to exclude actions that isolate a branch
-    exclude_inverse : bool
-        Whether to exclude the inverse of the actions
     exclude_bridge_lookup_splits : bool
         Whether to exclude actions that split the grid by isolating non-bridges
     exclude_bsdf_lodf_splits : bool
@@ -422,6 +461,8 @@ def enumerate_branch_actions(
     clip_to_n_actions : int
         The maximum number of actions to return. If the number of actions is anticipated to be
         larger than this, a random subset will be returned. Defaults to 2**20.
+    reassignment_limits : Optional[ReassignmentLimits]
+        If given, settings to limit the amount of reassignment during the electrical reconfiguration.
 
     Returns
     -------
@@ -429,18 +470,28 @@ def enumerate_branch_actions(
         A list of branch actions for each substation where each branch action set has been generated
         through enumerate_branch_actions_for_sub.
     """
+    assert network_data.separation_sets_info is not None, "Separation sets must be computed first"
+    # get id of relevant substations
+    relevant_ids = np.array(network_data.node_ids)[network_data.relevant_node_mask]
+    if reassignment_limits is not None:
+        station_specific_reassignment_limits = reassignment_limits.station_specific_limits
+        reassignment_limit = reassignment_limits.max_reassignments_per_sub
+    else:
+        station_specific_reassignment_limits = {}
+        reassignment_limit = None
+
     return [
         enumerate_branch_actions_for_sub(
             sub_id=sub_id,
             network_data=network_data,
             exclude_isolations=exclude_isolations,
-            exclude_inverse=exclude_inverse,
             exclude_bridge_lookup_splits=exclude_bridge_lookup_splits,
             exclude_bsdf_lodf_splits=exclude_bsdf_lodf_splits,
             bsdf_lodf_batch_size=bsdf_lodf_batch_size,
             clip_to_n_actions=clip_to_n_actions,
+            limit_reassignments=station_specific_reassignment_limits.get(grid_model_id, reassignment_limit),
         )
-        for sub_id in range(sum(network_data.relevant_node_mask))
+        for sub_id, grid_model_id in zip(range(sum(network_data.relevant_node_mask)), relevant_ids, strict=True)
     ]
 
 

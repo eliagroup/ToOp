@@ -102,10 +102,25 @@ def test_kafka(kafka_command_topic: str, kafka_connection_str: str) -> None:
     consumer.subscribe([kafka_command_topic])
     message = consumer.poll(timeout=30.0)
     assert deserialize_message(message.value()) == "Hello world"
+    consumer.close()
+
+
+def test_pydantic_validation() -> None:
+    command = Command(
+        command=StartPreprocessingCommand(
+            preprocess_id="test",
+            importer_parameters=UcteImporterParameters(
+                grid_model_file="not/actually/a/ucte/file", data_folder="not/a/folder"
+            ),
+        )
+    )
+    data = command.model_dump_json()
+    command_decoded = Command.model_validate_json(data)
+    assert command_decoded.command.preprocess_id == "test"
 
 
 @pytest.mark.timeout(100)
-def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> None:
+def test_serialization(kafka_command_topic: str, kafka_connection_str: str, test_consumer: Consumer) -> None:
     command = Command(
         command=StartPreprocessingCommand(
             preprocess_id="test",
@@ -125,16 +140,8 @@ def test_serialization(kafka_command_topic: str, kafka_connection_str: str) -> N
     producer.produce(kafka_command_topic, value=serialize_message(data))
     producer.flush()
 
-    consumer = Consumer(
-        {
-            "bootstrap.servers": kafka_connection_str,
-            "auto.offset.reset": "earliest",
-            "group.id": "test_serialization",
-            "log_level": 2,
-        }
-    )
-    consumer.subscribe([kafka_command_topic])
-    message = consumer.poll(timeout=30.0)
+    test_consumer.subscribe([kafka_command_topic])
+    message = test_consumer.poll(timeout=30.0)
     assert deserialize_message(message.value()) == data
 
     data_decoded = Command.model_validate_json(deserialize_message(message.value()))
@@ -224,6 +231,7 @@ def test_main(
     kafka_connection_str: str,
     ucte_file: Path,
     tmp_path_factory: pytest.TempPathFactory,
+    test_consumer: Consumer,
 ) -> None:
     output_path = tmp_path_factory.mktemp("output")
     loadflow_path = tmp_path_factory.mktemp("loadflow")
@@ -243,15 +251,13 @@ def test_main(
     producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))
     producer.flush()
     # Check that the messages are sent
-    consumer = Consumer(
-        {"bootstrap.servers": kafka_connection_str, "auto.offset.reset": "earliest", "group.id": "test_main", "log_level": 2}
-    )
-    consumer.subscribe([kafka_command_topic])
-    assert consumer.poll(timeout=30.0) is not None
-    assert consumer.poll(timeout=1.0) is not None
+
+    test_consumer.subscribe([kafka_command_topic])
+    assert test_consumer.poll(timeout=30.0) is not None
+    assert test_consumer.poll(timeout=1.0) is not None
     # Subscribe to the results topic
-    consumer.unsubscribe()
-    consumer.subscribe([kafka_results_topic])
+    test_consumer.unsubscribe()
+    test_consumer.subscribe([kafka_results_topic])
     unprocessed_gridfile_fs = DirFileSystem(ucte_file.parent)
     processed_gridfile_fs = DirFileSystem(output_path)
     loadflow_result_fs = DirFileSystem(loadflow_path)
@@ -278,12 +284,12 @@ def test_main(
             ),
         )
 
-    message = consumer.poll(timeout=30.0)
+    message = test_consumer.poll(timeout=30.0)
     assert message is not None
     result = Result.model_validate_json(deserialize_message(message.value()))
     assert isinstance(result.result, PreprocessingStartedResult)
 
-    message = consumer.poll(timeout=1.0)
+    message = test_consumer.poll(timeout=1.0)
     assert message is not None
     result = Result.model_validate_json(deserialize_message(message.value()))
     assert isinstance(result.result, PreprocessingSuccessResult)
@@ -329,6 +335,7 @@ def test_main_idle(
     kafka_heartbeat_topic: str,
     kafka_results_topic: str,
     kafka_connection_str: str,
+    test_consumer: Consumer,
 ) -> None:
     set_start_method("spawn")
     # Create an idling main process
@@ -354,16 +361,9 @@ def test_main_idle(
 
     try:
         # Subscribe to the heartsbeat topic and expect a heartbeat
-        consumer = Consumer(
-            {
-                "bootstrap.servers": kafka_connection_str,
-                "auto.offset.reset": "earliest",
-                "group.id": "test_main_idle",
-                "log_level": 2,
-            }
-        )
-        consumer.subscribe([kafka_heartbeat_topic])
-        message = consumer.poll(timeout=30.0)
+        test_consumer.subscribe([kafka_heartbeat_topic])
+
+        message = test_consumer.poll(timeout=30.0)
         assert message is not None
         heartbeat = PreprocessHeartbeat.model_validate_json(deserialize_message(message.value()))
         assert heartbeat.idle

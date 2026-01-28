@@ -11,7 +11,7 @@ from dataclasses import replace
 
 import logbook
 import numpy as np
-from beartype.typing import Literal
+from beartype.typing import Literal, Optional
 from jaxtyping import Float
 from toop_engine_dc_solver.postprocess.realize_assignment import (
     realise_ba_to_physical_topo_per_station_jax,
@@ -22,6 +22,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_interfaces.asset_topology import Station
 from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = logbook.Logger(__name__)
 
@@ -29,6 +30,7 @@ logger = logbook.Logger(__name__)
 def enumerate_station_realisations(
     network_data: NetworkData,
     choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"] = "least_connected_busbar",
+    reassignment_limits: Optional[ReassignmentLimits] = None,
 ) -> NetworkData:
     """Find a physical station realization for every branch action in the branch action set.
 
@@ -46,6 +48,8 @@ def enumerate_station_realisations(
         An instance of NetworkData containing the asset topology and branch action set.
     choice_heuristic : Literal["first", "least_connected_busbar", "most_connected_busbar"]
         A heuristic to choose the busbar for the action realization.
+    reassignment_limits : Optional[ReassignmentLimits]
+        If given, settings to limit the amount of reassignment during the physical reconfiguration.
 
     Returns
     -------
@@ -88,6 +92,7 @@ def enumerate_station_realisations(
                 station=station,
                 separation_set_info=separation_set_info,
                 choice_heuristic=choice_heuristic,
+                reassignment_limits=reassignment_limits,
                 validate=True,
             )
         )

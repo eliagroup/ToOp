@@ -74,7 +74,7 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
 )
 from toop_engine_interfaces.asset_topology_helpers import order_topology
 from toop_engine_interfaces.backend import BackendInterface
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters, ReassignmentLimits
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,
     empty_status_update_fn,
@@ -813,7 +813,8 @@ def compute_electrical_actions(
     exclude_bridge_lookup_splits: bool = True,
     exclude_bsdf_lodf_splits: bool = False,
     bsdf_lodf_batch_size: int = 8,
-    clip_to_n_actions: int = 2**20,
+    clip_to_n_actions: int = 2**23,
+    reassignment_limits: Optional[ReassignmentLimits] = None,
 ) -> NetworkData:
     """Compute the electrical branch actions for the grid and update the network data accordingly
 
@@ -836,6 +837,8 @@ def compute_electrical_actions(
     clip_to_n_actions : int, optional
         Clip the number of actions to this number. Avoids blowing up for large substations, as the
         number of actions is exponential in the number of branches.
+    reassignment_limits : Optional[ReassignmentLimits], optional
+        Settings to limit the amount of reassignment during the electrical reconfiguration.
 
     Returns
     -------
@@ -843,15 +846,15 @@ def compute_electrical_actions(
         The network data with the branch actions computed
     """
     assert network_data.ptdf_is_extended is False, "Please filter relevant nodes first, before extending the ptdf"
-
+    assert network_data.separation_sets_info is not None, "Please compute separation sets before computing branch actions"
     branch_actions = enumerate_branch_actions(
         network_data=network_data,
         exclude_isolations=True,
-        exclude_inverse=True,
         exclude_bridge_lookup_splits=exclude_bridge_lookup_splits,
         exclude_bsdf_lodf_splits=exclude_bsdf_lodf_splits,
         bsdf_lodf_batch_size=bsdf_lodf_batch_size,
         clip_to_n_actions=clip_to_n_actions,
+        reassignment_limits=reassignment_limits,
     )
 
     network_data = replace(
@@ -1215,7 +1218,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
     return remove_relevant_subs(network_data, np.array(keep_mask, dtype=bool))
 
 
-def compute_separaration_set_for_stations(
+def compute_separation_set_for_stations(
     network_data: NetworkData,
     clip_hamming_distance: int = 0,
     clip_at_size: int = 100,
@@ -1336,7 +1339,7 @@ def preprocess(  # noqa: PLR0915
     network_data = simplify_asset_topology(network_data, close_couplers=parameters.asset_topo_close_couplers)
 
     logging_fn("compute_separation_set", None)
-    network_data = compute_separaration_set_for_stations(
+    network_data = compute_separation_set_for_stations(
         network_data,
         clip_hamming_distance=parameters.separation_set_clip_hamming_distance,
         clip_at_size=parameters.separation_set_clip_at_size,
@@ -1349,6 +1352,7 @@ def preprocess(  # noqa: PLR0915
         exclude_bsdf_lodf_splits=parameters.action_set_filter_bsdf_lodf,
         bsdf_lodf_batch_size=parameters.action_set_filter_bsdf_lodf_batch_size,
         clip_to_n_actions=parameters.action_set_clip,
+        reassignment_limits=parameters.electrical_reassignment_limits,
     )
 
     logging_fn("enumerate_station_realizations", None)

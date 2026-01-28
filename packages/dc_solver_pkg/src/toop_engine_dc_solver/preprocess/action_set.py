@@ -71,6 +71,7 @@ def make_action_repo(
     sub_degree: int,
     separation_set: Bool[np.ndarray, " n_configurations 2 n_assets"],
     exclude_isolations: bool = True,
+    exclude_inverse: bool = True,
     randomly_select: Optional[int] = None,
     limit_reassignments: Optional[int] = None,
 ) -> Bool[np.ndarray, " possible_configurations sub_degree"]:
@@ -87,6 +88,8 @@ def make_action_repo(
         The separation set for the substation.
     exclude_isolations : bool
         Whether to exclude actions that isolate a branch. Defaults to True.
+    exclude_inverse: bool = True,
+        Whether to exclude the inverse of the actions. Defaults to True.
     randomly_select : Optional[int]
         If given, only randomly_select actions will be enumerated, which are randomly drawn. If None,
         all actions will be exhaustively enumerated. Defaults to None.
@@ -119,6 +122,16 @@ def make_action_repo(
     repo = np.zeros((len(action_range), sub_degree), dtype=bool)
     for i in range(sub_degree):
         repo[:, i] = np.bitwise_and(np.right_shift(action_range, i), 1)
+
+    # We only want to keep the inverse that has fewer elements on busbar B
+    # Hence, we invert where there are more than sub_degree / 2 elements on busbar B
+    # If exclude_inverse is False, we also include the inverse by just concatenating them to the
+    # repo
+    if exclude_inverse:
+        inverse_is_better = np.sum(repo, axis=1) > (sub_degree / 2)
+        repo[inverse_is_better, :] = ~repo[inverse_is_better, :]
+    else:
+        repo = np.concatenate([repo, ~repo], axis=0)
 
     # We also exclude all actions that isolate a branch if that's desired
     if exclude_isolations:

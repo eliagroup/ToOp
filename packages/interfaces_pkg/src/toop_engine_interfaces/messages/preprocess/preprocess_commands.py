@@ -265,6 +265,19 @@ class CgmesImporterParameters(BaseImporterParameters):
     """A constant field to indicate that this is a CGMES importer"""
 
 
+class ReassignmentLimits(BaseModel):
+    """Reassignment limits for electrical reconfiguration at substations."""
+
+    max_reassignments_per_sub: int = 1000
+    """The maximum number of reassignments to perform during the electrical reconfiguration.
+    Gets overriden by station_specific_limits if an station id is given."""
+
+    station_specific_limits: dict[str, int] = Field(default_factory=dict)
+    """Specific reassignment limits per station to override the global reassignment limit.
+    Expects a grid model id as key and the maximum number of reassignments as value.
+    Note: the grid model id must match the id in the relevant substation list after import."""
+
+
 class PreprocessParameters(BaseModel):
     """Parameters for the preprocessing procedure which is independent of the data source"""
 
@@ -285,7 +298,7 @@ class PreprocessParameters(BaseModel):
     action_set_filter_bsdf_lodf_batch_size: int = 8
     """If filtering with bsdf/lodf - which batch size to use. Larger will use more memory but be faster."""
 
-    action_set_clip: int = 2**20
+    action_set_clip: int = 2**23
     """After which size to randomly subselect actions at a substation. If a substations has a lot of branches, the action
     space will explode exponentially and a safe-guard is to clip after a certain number of actions."""
 
@@ -309,6 +322,12 @@ class PreprocessParameters(BaseModel):
     The "least_connected_busbar" heuristic is the default and is recommended for most cases, trying to spread the assets
     evenly across the busbars in a station.
     """
+
+    electrical_reassignment_limits: Optional[ReassignmentLimits] = None
+    """If given, limits for the electrical reassignment at substations."""
+
+    physical_reassignment_limits: Optional[ReassignmentLimits] = None
+    """If given, limits for the physical reassignment at substations."""
 
     # ---- Parameters for convert_to_jax ------
 

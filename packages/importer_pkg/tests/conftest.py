@@ -20,6 +20,7 @@ import pandapower as pp
 import pandas as pd
 import pypowsybl
 import pytest
+from confluent_kafka import Consumer
 from docker import DockerClient
 from docker.models.containers import Container
 from toop_engine_grid_helpers.pandapower.example_grids import (
@@ -202,6 +203,19 @@ def kafka_heartbeat_topic(kafka_container: Container) -> str:
     topic = f"heartbeat_topic_{uuid.uuid4().hex[:8]}"
     make_topic(kafka_container, topic)
     return topic
+
+
+@pytest.fixture(scope="function")
+def test_consumer(kafka_connection_str: str) -> Generator[Consumer, None, None]:
+    consumer = Consumer(
+        {
+            "bootstrap.servers": kafka_connection_str,
+            "auto.offset.reset": "earliest",
+            "group.id": "test-group",
+        }
+    )
+    yield consumer
+    consumer.close()
 
 
 @pytest.fixture(scope="session")

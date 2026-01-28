@@ -27,7 +27,6 @@ from toop_engine_dc_solver.preprocess.action_set import (
 )
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess import (
-    add_bus_b_columns_to_ptdf,
     add_missing_asset_topo_info,
     add_nodal_injections_to_network_data,
     assert_network_data,
@@ -38,6 +37,7 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     compute_injection_topology_info,
     compute_psdf_if_not_given,
     compute_ptdf_if_not_given,
+    compute_separation_set_for_stations,
     convert_multi_outages,
     exclude_bridges_from_outage_masks,
     filter_disconnectable_branches_nminus2,
@@ -46,6 +46,7 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     process_injection_outages,
     reduce_branch_dimension,
     remove_relevant_subs_without_actions,
+    simplify_asset_topology,
 )
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import (
     enumerate_spreaded_nodal_injections_for_rel_subs,
@@ -54,9 +55,15 @@ from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
 def test_make_action_repo() -> None:
-    repo = make_action_repo(4)
+    n_branches = 4
+    separation_set = np.array(
+        [
+            [[True] * n_branches, [False] * n_branches],  # Configuration 1: All connected
+        ]
+    )
+    repo = make_action_repo(n_branches, separation_set=separation_set)
 
-    assert repo.shape[1] == 4
+    assert repo.shape[1] == n_branches
 
     # All unique
     assert len(set([tuple(x) for x in repo])) == repo.shape[0]
@@ -71,39 +78,19 @@ def test_make_action_repo() -> None:
     assert not np.any(repo[0])
 
     # Including isolations increases repo size
-    repo2 = make_action_repo(4, exclude_isolations=False)
+    repo2 = make_action_repo(n_branches, separation_set=separation_set, exclude_isolations=False)
     assert repo2.shape[0] > repo.shape[0]
     assert jnp.any(jnp.sum(repo2, axis=1) == 1)
 
-    # Including inverses increases repo size
-    repo3 = make_action_repo(4, exclude_inverse=False)
-    assert repo3.shape[0] == 2 * repo.shape[0]
-
-    assert len(set([tuple(x) for x in repo3])) == repo3.shape[0]
-    assert set([tuple(x) for x in repo3]).intersection(set([tuple(~x) for x in repo3])) != set()
-
-    # With both options set to false, we get all 2**4 binary combinations
-    repo4 = make_action_repo(4, exclude_isolations=False, exclude_inverse=False)
-    assert repo4.shape[0] == 2**4
-    assert len(set([tuple(x) for x in repo4])) == repo4.shape[0]
-
-    # When passing in fixed assignments, these elements are always set to the fixed value
-    repo5 = make_action_repo(7, fixed_assignments=((0, True), (3, False)))
-    assert np.all(repo5[1:, 0] == 1)
-    assert np.all(repo5[1:, 3] == 0)
-    assert repo5.shape[0] == make_action_repo(5).shape[0]
-
-    repo6 = make_action_repo(
-        7,
-        fixed_assignments=((0, True), (3, False)),
-        exclude_isolations=False,
-        exclude_inverse=False,
+    n_branches = 7
+    separation_set = np.array(
+        [
+            [[True] * n_branches, [False] * n_branches],  # Configuration 1: All connected
+        ]
     )
-    assert np.all(repo6[1:, 0] == 1)
-    assert np.all(repo6[1:, 3] == 0)
 
     # When passing a randomly_select threshold, at most this many actions are selected
-    repo = make_action_repo(7, randomly_select=20)
+    repo = make_action_repo(n_branches, separation_set=separation_set, randomly_select=20)
 
     # All unique
     assert len(set([tuple(x) for x in repo])) == repo.shape[0]
@@ -112,11 +99,60 @@ def test_make_action_repo() -> None:
     assert set([tuple(x) for x in repo]).intersection(set([tuple(~x) for x in repo])) == set()
 
 
+def test_make_action_repo_limit_reassignments() -> None:
+    n_branches = 8
+    separation_set = np.array(
+        [
+            [[True] * n_branches, [False] * n_branches],  # Configuration 1: All connected
+        ]
+    )
+    repo = make_action_repo(n_branches, separation_set=separation_set, limit_reassignments=None)
+    starting_configuration = separation_set[0, 1]
+
+    max_reassignments = 0
+    # We start from 1 as the first action is always the unsplit action
+    for row in repo[1:]:
+        n_reassignments = jnp.sum(row != starting_configuration)
+        assert n_reassignments <= n_branches, "Number of reassignments should be less than or equal to number of branches"
+        max_reassignments = max(max_reassignments, n_reassignments)
+
+    assert max_reassignments > 2, "There should be actions with more than 2 reassignments"
+    repo_limited = make_action_repo(n_branches, separation_set=separation_set, limit_reassignments=2)
+    for row in repo_limited[1:]:
+        n_reassignments = jnp.sum(row != starting_configuration)
+        assert n_reassignments <= 2, "Number of reassignments should be limited to 2"
+
+
+def test_make_action_repo_no_reassignment() -> None:
+    n_branches = 8
+    starting_config = np.array([True, False, False, True, False, True, True, False])
+    separation_set = np.array(
+        [
+            [~starting_config, starting_config],  # Bus A ; Bus B
+        ]
+    )
+    max_reassignments = 0
+
+    repo = make_action_repo(n_branches, separation_set=separation_set, limit_reassignments=max_reassignments)
+
+    assert len(repo) == 2, (
+        "There should be only two action possible with zero reassignments: the starting configuration + the unsplit action"
+    )
+    assert all(repo[0] == False), "The first row should be the unsplit action"
+    assert repo[1].tolist() == starting_config.tolist(), "The second row should be the starting configuration"
+
+
 @pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(5)
 def test_make_action_repo_large() -> None:
     # Work sensible even for rather large amount of branches
-    make_action_repo(20)
+    n_branches = 20
+    separation_set = np.array(
+        [
+            [[True] * n_branches, [False] * n_branches],  # Configuration 1: All connected
+        ]
+    )
+    make_action_repo(n_branches, separation_set=separation_set)
 
 
 def test_filter_splits(network_data: NetworkData) -> None:
@@ -141,6 +177,8 @@ def test_filter_splits(network_data: NetworkData) -> None:
     network_data = process_injection_outages(network_data)
     # network_data = add_bus_b_columns_to_ptdf(network_data)
     # network_data = compute_branch_actions(network_data)
+    network_data = simplify_asset_topology(network_data)
+    network_data = compute_separation_set_for_stations(network_data)
 
     # Bus 22 has a lot of stubs, check if the actions on it are filtered properly
     node_idx = network_data.node_names.index("Bus 22")
@@ -148,7 +186,7 @@ def test_filter_splits(network_data: NetworkData) -> None:
     relevant_sub_idx = int(sum(network_data.relevant_node_mask[:node_idx]))
     node_degree = len(network_data.branches_at_nodes[relevant_sub_idx])
 
-    repo = make_action_repo(node_degree)
+    repo = make_action_repo(node_degree, separation_set=network_data.separation_sets_info[relevant_sub_idx].separation_set)
 
     filtered_repo = filter_splits_by_bridge_lookup(
         relevant_sub_idx,
@@ -187,8 +225,17 @@ def test_enumerate_branch_actions(network_data: NetworkData) -> None:
     network_data = filter_disconnectable_branches_nminus2(network_data)
 
     network_data = compute_branch_topology_info(network_data)
+
+    network_data = convert_multi_outages(network_data)
+    network_data = filter_inactive_injections(network_data)
+    network_data = compute_injection_topology_info(network_data)
+    network_data = process_injection_outages(network_data)
     # network_data = compute_branch_actions(network_data)
+    network_data = simplify_asset_topology(network_data)
+    network_data = compute_separation_set_for_stations(network_data)
+
     sub_id = 0
+
     valid_actions = enumerate_branch_actions_for_sub(sub_id, network_data)
 
     degree = len(network_data.branches_at_nodes[sub_id])
@@ -206,7 +253,6 @@ def test_enumerate_branch_actions(network_data: NetworkData) -> None:
     all_valid_actions = enumerate_branch_actions(
         network_data,
         exclude_isolations=False,
-        exclude_inverse=False,
         exclude_bridge_lookup_splits=False,
     )
 
@@ -276,22 +322,27 @@ def test_remove_relevant_subs_without_actions(
 ) -> None:
     # Manually preprocess but without computing branch actions
     network_data = compute_bridging_branches(network_data)
-    # We want to avoid filtering bridges here, so we set the mask to all False
     network_data = replace(network_data, bridging_branch_mask=np.zeros_like(network_data.bridging_branch_mask))
+
     network_data = filter_relevant_nodes_branch_count(network_data)
     network_data = compute_bridging_branches(network_data)
-    assert_network_data(network_data)
-    network_data = compute_ptdf_if_not_given(network_data)
-    network_data = compute_psdf_if_not_given(network_data)
-    network_data = add_nodal_injections_to_network_data(network_data)
-    network_data = combine_phaseshift_and_injection(network_data)
 
+    assert_network_data(network_data)
+
+    network_data = compute_ptdf_if_not_given(network_data)
+    network_data = add_nodal_injections_to_network_data(network_data)
+    network_data = compute_psdf_if_not_given(network_data)
+    network_data = combine_phaseshift_and_injection(network_data)
     network_data = exclude_bridges_from_outage_masks(network_data)
     network_data = reduce_branch_dimension(network_data)
     network_data = filter_disconnectable_branches_nminus2(network_data)
-
     network_data = compute_branch_topology_info(network_data)
-    # network_data = compute_branch_actions(network_data)
+    network_data = filter_inactive_injections(network_data)
+    network_data = compute_injection_topology_info(network_data)
+    network_data = convert_multi_outages(network_data)
+    network_data = add_missing_asset_topo_info(network_data)
+    network_data = simplify_asset_topology(network_data)
+    network_data = compute_separation_set_for_stations(network_data)
 
     actions = enumerate_branch_actions(network_data)
     # We know that bus 22 has only stubs and no sensible actions
@@ -303,12 +354,6 @@ def test_remove_relevant_subs_without_actions(
     network_data = replace(network_data, branch_action_set=actions)
 
     network_data = remove_relevant_subs_without_actions(network_data)
-    network_data = convert_multi_outages(network_data)
-    network_data = filter_inactive_injections(network_data)
-    network_data = compute_injection_topology_info(network_data)
-    network_data = process_injection_outages(network_data)
-    network_data = add_missing_asset_topo_info(network_data)
-    network_data = add_bus_b_columns_to_ptdf(network_data)
 
     assert np.sum(network_data.relevant_node_mask) == n_rel_subs
     assert len(network_data.branches_at_nodes) == n_rel_subs

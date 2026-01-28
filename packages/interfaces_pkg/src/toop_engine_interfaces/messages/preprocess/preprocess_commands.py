@@ -268,11 +268,14 @@ class CgmesImporterParameters(BaseImporterParameters):
 class ReassignmentLimits(BaseModel):
     """Reassignment limits for electrical reconfiguration at substations."""
 
-    global_limit: int = 1000
-    """If given, the maximum number of reassignments to perform during the electrical reconfiguration."""
+    max_reassignments_per_sub: int = 1000
+    """The maximum number of reassignments to perform during the electrical reconfiguration.
+    Gets overriden by station_specific_limits if an station id is given."""
 
     station_specific_limits: dict[str, int] = Field(default_factory=dict)
-    """If given, specific reassignment limits per station to override the global reassignment limit."""
+    """Specific reassignment limits per station to override the global reassignment limit.
+    Expects a grid model id as key and the maximum number of reassignments as value.
+    Note: the grid model id must match the id in the relevant substation list after import."""
 
 
 class PreprocessParameters(BaseModel):

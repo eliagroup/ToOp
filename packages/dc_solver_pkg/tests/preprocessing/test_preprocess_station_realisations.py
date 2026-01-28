@@ -31,7 +31,9 @@ def test_enumerate_station_realisations(network_data_test_grid: NetworkData):
 
 def test_enumerate_station_realisations_limit_physical_reassignments(network_data_test_grid: NetworkData):
     network_data = compute_separation_set_for_stations(network_data_test_grid)
-    network_data_1 = enumerate_station_realisations(network_data, reassignment_limits=ReassignmentLimits(global_limit=2))
+    network_data_1 = enumerate_station_realisations(
+        network_data, reassignment_limits=ReassignmentLimits(max_reassignments_per_sub=2)
+    )
 
     assert network_data_1.branch_action_set is not None, "Branch action set should not be None"
     assert network_data_1.branch_action_set_switching_distance is not None, (
@@ -72,7 +74,7 @@ def test_enumerate_station_realisations_limit_physical_reassignments(network_dat
     network_data_3 = enumerate_station_realisations(
         network_data,
         reassignment_limits=ReassignmentLimits(
-            global_limit=global_limit, station_specific_limits={relevant_ids[0]: limit_for_first_sub}
+            max_reassignments_per_sub=global_limit, station_specific_limits={relevant_ids[0]: limit_for_first_sub}
         ),
     )
     assert np.all(np.array(network_data_3.branch_action_set_switching_distance[0]) <= limit_for_first_sub), (

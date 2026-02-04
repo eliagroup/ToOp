@@ -5,6 +5,8 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from copy import deepcopy
+
 import pandapower as pp
 import pandas as pd
 from toop_engine_contingency_analysis.pandapower import (

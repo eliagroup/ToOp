@@ -38,6 +38,8 @@ MatrixMetric: TypeAlias = Literal[
     "critical_branch_count_n_1",
     "critical_branch_count_limited_n_1",
     "top_k_overloads_n_1",
+    "cumulative_overload_n_0",
+    "cumulative_overload_n_1",
 ]
 
 OperationMetric: TypeAlias = Literal[

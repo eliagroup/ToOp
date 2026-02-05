@@ -221,7 +221,7 @@ def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_re
         )
 
 
-def test_wait_for_first_dc_results_timeout(grid_folder: Path, loadflow_result_folder: Path) -> None:
+def test_wait_for_first_dc_results_timeout() -> None:
     with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
         poll_mock.return_value = []
 

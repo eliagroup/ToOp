@@ -1,4 +1,4 @@
-# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium
 #
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 # If a copy of the MPL was not distributed with this file,
@@ -10,7 +10,7 @@ site_name: Topology Optimizer
 repo_url: https://github.com/eliagroup/ToOp
 repo_name: EliaGroup-OpenSource/ToOp
 
-copyright: Copyright &copy; 2024 <a href="https://www.eliagroup.eu/">Elia Group</a>. Correspondence to <a href="mailto:christian.merz@50hertz.com">christian.merz@50hertz.com</a>.
+copyright: Copyright &copy; 2026 <a href="https://www.eliagroup.eu/">Elia Group</a>. Correspondence to <a href="mailto:toop@eliagroup.eu">toop@eliagroup.eu</a>.
 strict: true
 nav:
   - Getting started:

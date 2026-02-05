@@ -21,7 +21,12 @@ from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
-from toop_engine_topology_optimizer.ac.optimizer import AcNotConvergedError, initialize_optimization, run_epoch
+from toop_engine_topology_optimizer.ac.optimizer import (
+    AcNotConvergedError,
+    initialize_optimization,
+    run_epoch,
+    wait_for_first_dc_results,
+)
 from toop_engine_topology_optimizer.ac.storage import create_session
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
@@ -123,6 +128,9 @@ def optimization_loop(
             loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
         )
+        wait_for_first_dc_results(
+            worker_data.result_consumer, worker_data.db, max_wait_time=ac_params.ga_config.max_initial_wait_seconds
+        )
         send_result_fn(
             OptimizationStartedResult(
                 initial_topology=initial_topology,
@@ -133,6 +141,11 @@ def optimization_loop(
         # to indicate that the optimization cannot be run.
         send_result_fn(OptimizationStoppedResult(reason="ac-not-converged", message=str(e)))
         logger.error(f"AC optimization {optimization_id} did not converge in the base grid: {e}")
+        return
+    except TimeoutError as e:
+        # If the DC results did not arrive in time, we assume a failure on DC side and abandon the optimization
+        send_result_fn(OptimizationStoppedResult(reason="dc-not-started", message=str(e)))
+        logger.error(f"DC results for optimization {optimization_id} did not arrive in time: {e}")
         return
     except Exception as e:
         send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))

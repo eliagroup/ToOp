@@ -8,7 +8,7 @@
 """Implements initialize and run_epoch functions for the AC optimizer"""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Callable, Optional
@@ -371,7 +371,7 @@ def initialize_optimization(
 
     logger.info(
         f"Initialization completed, metrics: {initial_metrics[0].extra_scores}, fitness: {initial_metrics[0].fitness}, "
-        f"worst_k_contingency_cases: {initial_metrics[0].worst_k_contingency_cases}"
+        f"worst_k_contingency_cases: {initial_metrics[0].worst_k_contingency_cases}. Waiting for DC results..."
     )
 
     return (
@@ -390,6 +390,35 @@ def initialize_optimization(
         ),
         initial_strategy_message[0],
     )
+
+
+def wait_for_first_dc_results(results_consumer: LongRunningKafkaConsumer, session: Session, max_wait_time: float) -> None:
+    """Wait an initial period for DC results to arrive before proceeding with the optimization.
+
+    Call this after initialize optimization and before run epoch to ensure that the DC optimizer has started, and avoid the
+    AC optimizer idling while waiting for the first DC results to arrive.
+
+    Parameters
+    ----------
+    results_consumer : LongRunningKafkaConsumer
+        The consumer where to listen for DC results
+    session : Session
+        The database session to use for storing topologies
+    max_wait_time : float
+        The maximum time to wait for DC results, in seconds
+
+    Raises
+    ------
+    TimeoutError
+        If no DC results arrive within the maximum wait time
+    """
+    start_wait = datetime.now()
+    while datetime.now() - start_wait < timedelta(seconds=max_wait_time):
+        added_topos = poll_results_topic(db=session, consumer=results_consumer, first_poll=True)
+        if len(added_topos) > 0:
+            logger.info(f"Received {len(added_topos)} topologies from DC results, proceeding with optimization")
+            return
+    raise TimeoutError(f"Did not receive DC results within {max_wait_time} seconds, cannot proceed with optimization")
 
 
 def run_epoch(

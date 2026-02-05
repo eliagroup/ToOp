@@ -87,6 +87,10 @@ class ACGAParameters(BaseModel):
     """The threshold for the early stopping criterion, i.e. if the percentage of non-converging cases is greater than
     this value, the ac validation will be stopped early."""
 
+    max_initial_wait_seconds: PositiveInt = 60
+    """The maximum amount of seconds to wait for the initial DC results. If no results have arrived within this time, we
+    assume the DC optimizer had some problem and abort the optimization run."""
+
     @model_validator(mode="after")
     def probabilities_sum_to_one(self) -> ACOptimizerParameters:
         """Ensure that the probabilities sum to one"""

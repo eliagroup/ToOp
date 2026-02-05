@@ -307,6 +307,26 @@ def test_optimization_loop_error_handling(
     results = []
     heartbeats = []
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    with patch("toop_engine_topology_optimizer.ac.worker.wait_for_first_dc_results") as run_mock:
+        run_mock.side_effect = TimeoutError("Test error")
+        optimization_loop(
+            ac_params=parameters,
+            grid_files=grid_files,
+            worker_data=worker_data,
+            send_result_fn=send_result_fn,
+            send_heartbeat_fn=send_heartbeat_fn,
+            optimization_id="test",
+            loadflow_result_fs=loadflow_result_fs,
+            processed_gridfile_fs=processed_gridfile_fs,
+        )
+
+    assert len(results) == 1
+    assert isinstance(results[0], OptimizationStoppedResult)
+    assert results[0].reason == "dc-not-started"
+
+    results = []
+    heartbeats = []
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     with patch("toop_engine_topology_optimizer.ac.worker.run_epoch") as run_mock:
         run_mock.side_effect = Exception("Test error")
         optimization_loop(

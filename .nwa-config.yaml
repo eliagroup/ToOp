@@ -1,4 +1,4 @@
-# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
 #
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 # If a copy of the MPL was not distributed with this file,
@@ -10,7 +10,7 @@ nwa:
   # docker run -it -v ${PWD}:/src ghcr.io/b1nary-gr0up/nwa:latest config
   # basic
   cmd: "update"                        # Default: "add"; Can be overwritten by --command (-c) flag; Optional: "add", "check", "remove", "update"
-  holder: "50Hertz Transmission GmbH and Elia Transmission Belgium"          # Default: "<COPYRIGHT HOLDER>"
+  holder: "50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV"          # Default: "<COPYRIGHT HOLDER>"
   year: "2026"                      # Default: Current Year
   spdxids: ""                       # Default: ""
   skip:                             # Default: []

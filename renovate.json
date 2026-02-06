@@ -21,6 +21,12 @@
       "matchPackageNames": ["*"],
       "schedule": ["on monday before 4am", "after 4am"],
       "automerge": true
+    },
+    {
+      "addLabels": ["python"],
+      "description": "Group all python updates into one PR to reduce noise",
+      "matchCategories": ["python"],
+      "groupName": "python dependencies"
     }
   ],
   "rebaseWhen": "conflicted",

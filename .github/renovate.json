@@ -29,7 +29,6 @@
   "rebaseWhen": "conflicted",
   "semanticCommits": "enabled",
   "vulnerabilityAlerts": {
-    "automerge": false,
     "labels": ["security", "dependencies"],
     "minimumReleaseAge": null
   }

@@ -6,7 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
 import pytest
@@ -19,7 +19,13 @@ from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import load_action_set_fs, random_actions
-from toop_engine_topology_optimizer.ac.optimizer import AcNotConvergedError, initialize_optimization, make_runner, run_epoch
+from toop_engine_topology_optimizer.ac.optimizer import (
+    AcNotConvergedError,
+    initialize_optimization,
+    make_runner,
+    run_epoch,
+    wait_for_first_dc_results,
+)
 from toop_engine_topology_optimizer.ac.scoring_functions import compute_loadflow
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
@@ -213,6 +219,16 @@ def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_re
             loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
         )
+
+
+def test_wait_for_first_dc_results_timeout() -> None:
+    with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
+        poll_mock.return_value = []
+
+        with pytest.raises(TimeoutError):
+            wait_for_first_dc_results(
+                results_consumer=MagicMock(), session=MagicMock(), max_wait_time=1, optimization_id="test"
+            )
 
 
 def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:

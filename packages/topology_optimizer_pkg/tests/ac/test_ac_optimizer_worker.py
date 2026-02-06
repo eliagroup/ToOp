@@ -258,21 +258,20 @@ def test_optimization_loop(
     assert len(worker_data.db.exec(select(ACOptimTopology)).all())
 
 
-def test_optimization_loop_error_handling(
+def test_optimization_loop_error_during_initialization(
     grid_folder: Path,
     loadflow_result_folder: Path,
 ) -> None:
+    """Test error handling when initialization fails."""
     grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
     parameters = ACOptimizerParameters()
 
-    # Mock the entire kafka ecosystem
     worker_data = WorkerData(
         db=create_session(),
         command_consumer=Mock(spec=LongRunningKafkaConsumer),
         result_consumer=Mock(spec=LongRunningKafkaConsumer),
         producer=Mock(spec=Producer),
     )
-    # Mock the consumer so the first call to consume() returns topopushresult
     worker_data.result_consumer.consume = Mock(return_value=[])
 
     results = []
@@ -295,7 +294,7 @@ def test_optimization_loop_error_handling(
             worker_data=worker_data,
             send_result_fn=send_result_fn,
             send_heartbeat_fn=send_heartbeat_fn,
-            optimization_id="test",
+            optimization_id="test_init_error",
             loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
         )
@@ -304,21 +303,101 @@ def test_optimization_loop_error_handling(
     assert isinstance(results[0], OptimizationStoppedResult)
     assert results[0].reason == "error"
 
+
+def test_optimization_loop_error_dc_timeout(
+    grid_folder: Path,
+    loadflow_result_folder: Path,
+) -> None:
+    """Test error handling when waiting for DC results times out."""
+    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
+    parameters = ACOptimizerParameters()
+
+    worker_data = WorkerData(
+        db=create_session(),
+        command_consumer=Mock(spec=LongRunningKafkaConsumer),
+        result_consumer=Mock(spec=LongRunningKafkaConsumer),
+        producer=Mock(spec=Producer),
+    )
+    worker_data.result_consumer.consume = Mock(return_value=[])
+
     results = []
+
+    def send_result_fn(result: ResultUnion) -> None:
+        results.append(result)
+
     heartbeats = []
+
+    def send_heartbeat_fn(heartbeat: HeartbeatUnion) -> None:
+        heartbeats.append(heartbeat)
+
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
-    with patch("toop_engine_topology_optimizer.ac.worker.run_epoch") as run_mock:
-        run_mock.side_effect = Exception("Test error")
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
+    with patch("toop_engine_topology_optimizer.ac.worker.wait_for_first_dc_results") as wait_mock:
+        wait_mock.side_effect = TimeoutError("Test error")
         optimization_loop(
             ac_params=parameters,
             grid_files=grid_files,
             worker_data=worker_data,
             send_result_fn=send_result_fn,
             send_heartbeat_fn=send_heartbeat_fn,
-            optimization_id="test",
+            optimization_id="test_dc_timeout",
             loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
         )
+
+    assert len(results) == 1
+    assert isinstance(results[0], OptimizationStoppedResult)
+    assert results[0].reason == "dc-not-started"
+
+
+def test_optimization_loop_error_during_epoch(
+    grid_folder: Path,
+    loadflow_result_folder: Path,
+) -> None:
+    """Test error handling when run_epoch fails.
+
+    This test verifies that errors during epoch execution are properly caught
+    and result in an OptimizationStoppedResult. The wait_for_first_dc_results
+    function must be patched to avoid the actual timeout behavior since no
+    DC results are being sent through the mocked consumer.
+    """
+    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
+    parameters = ACOptimizerParameters()
+
+    worker_data = WorkerData(
+        db=create_session(),
+        command_consumer=Mock(spec=LongRunningKafkaConsumer),
+        result_consumer=Mock(spec=LongRunningKafkaConsumer),
+        producer=Mock(spec=Producer),
+    )
+    worker_data.result_consumer.consume = Mock(return_value=[])
+
+    results = []
+
+    def send_result_fn(result: ResultUnion) -> None:
+        results.append(result)
+
+    heartbeats = []
+
+    def send_heartbeat_fn(heartbeat: HeartbeatUnion) -> None:
+        heartbeats.append(heartbeat)
+
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
+    # Patch wait_for_first_dc_results to avoid timeout since no real DC results are sent
+    with patch("toop_engine_topology_optimizer.ac.worker.wait_for_first_dc_results"):
+        with patch("toop_engine_topology_optimizer.ac.worker.run_epoch") as run_mock:
+            run_mock.side_effect = Exception("Test error")
+            optimization_loop(
+                ac_params=parameters,
+                grid_files=grid_files,
+                worker_data=worker_data,
+                send_result_fn=send_result_fn,
+                send_heartbeat_fn=send_heartbeat_fn,
+                optimization_id="test_epoch_error",
+                loadflow_result_fs=loadflow_result_fs,
+                processed_gridfile_fs=processed_gridfile_fs,
+            )
 
     assert len(results) == 2
     assert isinstance(results[0], OptimizationStartedResult)

@@ -1,4 +1,4 @@
-# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
 #
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 # If a copy of the MPL was not distributed with this file,
@@ -86,6 +86,10 @@ class ACGAParameters(BaseModel):
     early_stopping_non_convergence_percentage_threshold: float = 0.1
     """The threshold for the early stopping criterion, i.e. if the percentage of non-converging cases is greater than
     this value, the ac validation will be stopped early."""
+
+    max_initial_wait_seconds: PositiveInt = 60
+    """The maximum amount of seconds to wait for the initial DC results. If no results have arrived within this time, we
+    assume the DC optimizer had some problem and abort the optimization run."""
 
     @model_validator(mode="after")
     def probabilities_sum_to_one(self) -> ACOptimizerParameters:

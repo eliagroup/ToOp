@@ -1,4 +1,4 @@
-# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
 #
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 # If a copy of the MPL was not distributed with this file,
@@ -7,9 +7,10 @@
 
 """The database models to store topologies in the AC optimizer"""
 
+from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlmodel import Field, Relationship, Session, SQLModel, create_engine
+from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, delete
 from toop_engine_topology_optimizer.interfaces.messages.commons import OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import Strategy, Topology
 from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDBTopology, hash_strategy, is_unsplit_strategy
@@ -135,3 +136,22 @@ def create_session() -> Session:
     SQLModel.metadata.create_all(engine, tables=[ACOptimTopology.__table__])
     session = Session(engine)
     return session
+
+
+def scrub_db(session: Session, max_age_seconds: int = 86400) -> None:
+    """Scrub the database of the worker to prevent memory issues.
+
+    The AC worker has to store topologies from all runs, not only the current one, as it might have to pick up an
+    optimization later. Meaning, the AC worker busily collects all topologies into memory. To prevent memory leak issues,
+    we scrub the database of topologies that are older than a day as we do not expect to ever have to go back to those.
+
+    Parameters
+    ----------
+    session : Session
+        The database session. The session object will be modified in-place
+    max_age_seconds : int
+        The maximum age of topologies to keep in the database, in seconds. Topologies older than this will be removed.
+    """
+    cutoff_time = datetime.now() - timedelta(seconds=max_age_seconds)
+    session.exec(delete(ACOptimTopology).where(ACOptimTopology.created_at < cutoff_time))
+    session.commit()

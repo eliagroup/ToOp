@@ -9,11 +9,7 @@
 
 Currently this holds only the MetricType, a Literal of all possible metrics.
 
-The following metrics are defined:
-TODO document the other metrics
-- non_converging_loadflows: The number of loadflow cases (N-0 or N-1) that did not converge. In the DC optimizer, this
-value is always 0 as either the entire loadflow converges or the solver returns a separate success flag which invalidates
-all other returns. On AC this is not the case, so this metric is useful to track
+The meaning of the metrics is documented in metrics.md in the docs folder.
 """
 
 from beartype.typing import Literal, TypeAlias

@@ -377,6 +377,32 @@ def get_underload_energy_n_1_matrix(
     return jnp.sum(jnp.min(underload_matrix, axis=1))
 
 
+def get_cumulative_overload_n_1_matrix(
+    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
+    max_mw_flow: Float[Array, " n_branches"],
+) -> Float[Array, " "]:
+    """Compute the cumulative oveerload.
+
+    This is defined as the percentage points of overload on each line summed together. While overload energy more heavily
+    penalized big lines, cumulative overload penalizes small lines which are overloaded to a similar percentage similarly
+
+    Parameters
+    ----------
+    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches"]
+        The N-1 matrix, i.e. the relative flows for each timestep and each failure
+    max_mw_flow : Float[Array, " n_branches"]
+        The maximum flow for each branch
+
+    Returns
+    -------
+    Float[Array, " "]
+        The cumulative overload for the given flow
+    """
+    overload_matrix = jnp.clip(jnp.abs(n_1_matrix) - max_mw_flow, min=0, max=None)
+    relative_overload = overload_matrix / max_mw_flow
+    return jnp.sum(jnp.max(relative_overload, axis=1))
+
+
 def get_n0_n1_delta(
     n_0: Float[Array, " n_timesteps n_branches"],
     n_1: Float[Array, " n_timesteps n_failures n_branches"],
@@ -752,6 +778,7 @@ def aggregate_n_1_matrix(
         "underload_energy",
         "transport",
         "exponential_overload_energy",
+        "cumulative_overload",
     ] = "max_flow",
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
@@ -764,13 +791,15 @@ def aggregate_n_1_matrix(
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
-    metric : Literal["max_flow", "median_flow", "overload_energy", "underload_energy", "transport"]
+    metric : Literal["max_flow", "median_flow", "overload_energy", "underload_energy", "transport",
+        "exponential_overload_energy", "cumulative_overload"]
         The metric to use for aggregation. Possible values are:
-        "max_flow", "median_flow", "transport", "overload_energy"
+        "max_flow", "median_flow", "transport", "overload_energy", "cumulative_overload"
         Max_flow will compute the maximum relative flow over all N-1 results.
         Median_flow will compute the median relative flow over all N-1 results.
         Overload_energy will compute the amount of energy that exceeds the maximum flow
         Underload_energy will compute the amount of energy that is below the maximum flow
+        Cumulative_overload will compute the sum of relative overloads across all branches
         Transport will use the get_transport_n_1_matrix function to compute the metric
     overload_weight : Optional[Float[Array, " n_branches"]], defaults to None
         The overload weight for each branch. If not given, all branches are weighted equally
@@ -803,6 +832,8 @@ def aggregate_n_1_matrix(
         )
     elif metric == "critical_branch_count":
         metric = get_critical_branch_count_n_1_matrix(n_1_matrix, max_mw_flow, aggregate_strategy=aggregate_strategy)
+    elif metric == "cumulative_overload":
+        metric = get_cumulative_overload_n_1_matrix(n_1_matrix, max_mw_flow)
     else:
         raise ValueError(f"Unknown metric {metric}")
 

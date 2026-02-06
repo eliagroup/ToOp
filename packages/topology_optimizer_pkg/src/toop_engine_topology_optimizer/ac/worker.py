@@ -129,7 +129,10 @@ def optimization_loop(
             processed_gridfile_fs=processed_gridfile_fs,
         )
         wait_for_first_dc_results(
-            worker_data.result_consumer, worker_data.db, max_wait_time=ac_params.ga_config.max_initial_wait_seconds
+            results_consumer=worker_data.result_consumer,
+            session=worker_data.db,
+            max_wait_time=ac_params.ga_config.max_initial_wait_seconds,
+            optimization_id=optimization_id,
         )
         send_result_fn(
             OptimizationStartedResult(

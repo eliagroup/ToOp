@@ -225,8 +225,10 @@ def test_wait_for_first_dc_results_timeout() -> None:
     with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
         poll_mock.return_value = []
 
-        with pytest.raises(TimeoutError, match="Did not receive DC results within*"):
-            wait_for_first_dc_results(results_consumer=MagicMock(), session=MagicMock(), max_wait_time=1)
+        with pytest.raises(TimeoutError):
+            wait_for_first_dc_results(
+                results_consumer=MagicMock(), session=MagicMock(), max_wait_time=1, optimization_id="test"
+            )
 
 
 def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:

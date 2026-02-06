@@ -19,8 +19,7 @@
     {
       "description": "Only run normal updates once a  week automatically but allow manual runs during office hours.",
       "matchPackageNames": ["*"],
-      "schedule": ["on monday before 4am", "after 4am"],
-      "automerge": true
+      "schedule": ["on monday before 4am", "after 4am"]
     },
     {
       "addLabels": ["python"],

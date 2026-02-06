@@ -41,7 +41,7 @@ jobs:
         with:
           token: ${{ secrets.RENOVATE_TOKEN }}
         env:
-          LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
+          LOG_LEVEL: ${{ github.event.inputs.logLevel || 'info' }}
           RENOVATE_GIT_AUTHOR: "Renovate Bot <ToOp@eliagroup.eu>"
           RENOVATE_ONBOARDING: "false"
           RENOVATE_PLATFORM_COMMIT: "true"

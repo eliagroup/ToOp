@@ -73,4 +73,4 @@ packages/topology_optimizer_pkg/tests/data/oberrhein/nminus1_definition.json
 packages/topology_optimizer_pkg/tests/data/oberrhein/initial_topology/asset_topology.json
 
 # Renovate
-renovate.json
+.github/renovate.json

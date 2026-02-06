@@ -50,21 +50,21 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **n0_n1_delta**: Penalty for exceeding the maximum allowed flow change between N-0 and N-1 cases. Computed as the sum of MW exceeding `n0_n1_max_diff` limits across all branches and timesteps. Useful for operational constraints that limit how much flow can shift during contingencies.
 
-- **cross_coupler_flow**: Penalty for violating maximum cross-coupler flow limits in split substations, summed across all splits and timesteps. Enforces limits on power flow between busbars within a substation.
+- **cross_coupler_flow**: Penalty for violating maximum cross-coupler flow limits in split substations, summed across all splits and timesteps. Enforces limits on power flow between busbars within a substation. A high penalty will incentivize the optimizer towards more symmetric splits as symmetric splits tend to have low cross coupler flows.
 
 - **n_2_penalty**: Penalty value for N-2 contingency violations, if N-2 analysis is enabled. Higher values indicate more severe or more frequent N-2 issues.
 
-- **bb_outage_penalty**: Penalty for busbar outage scenarios. Only relevant when busbar outage analysis is included.
+- **bb_outage_penalty**: Penalty for busbar outage scenarios. Only relevant when busbar outage analysis is included. This is the difference between the busbar outage overload energy before the optimization and after the optimization, meaning it is 0 if the topology is either equal or better under busbar outages.
 
-- **bb_outage_overload**: Maximum overload observed during busbar outage scenarios.
+- **bb_outage_overload**: Maximum overload observed during busbar outage scenarios. This is in case the bb outages are to be counted as normal outages and should be added to the overall overload energy.
 
-- **bb_outage_grid_splits**: Number of grid splits (islands) created during busbar outage scenarios.
+- **bb_outage_grid_splits**: Number of grid splits (islands) created during busbar outage scenarios. These bb cases did not compute anything sensible, if this number is high check the bb outage preprocessing. Ideally it should be 0 at all times.
 
 - **max_va_across_coupler**: Maximum voltage angle difference across couplers in split substations. Only applicable in AC analysis.
 
 - **max_va_diff_n_0** / **max_va_diff_n_1**: Maximum voltage angle difference across any branch. AC analysis only.
 
-- **overload_current_n_0** / **overload_current_n_1**: Total overload measured in amperes (current) rather than MW. AC analysis only.
+- **overload_current_n_0** / **overload_current_n_1**: Total overload measured in amperes (current) rather than MW. While this can be computed in DC, currently only the AC version supports this.
 
 - **non_converging_loadflows**: The number of loadflow cases (N-0 or N-1) that did not converge. In the DC optimizer, this value is always 0 as either the entire loadflow converges or the solver returns a separate success flag which invalidates all other returns. On AC this is not the case, so this metric is useful to track.
 

@@ -24,8 +24,8 @@
     {
       "addLabels": ["python"],
       "description": "Group all python updates into one PR to reduce noise",
-      "matchCategories": ["python"],
-      "groupName": "python dependencies"
+      "groupName": "python dependencies",
+      "matchCategories": ["python"]
     }
   ],
   "rebaseWhen": "conflicted",

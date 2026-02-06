@@ -15,14 +15,19 @@
   ],
   "labels": ["dependencies", "renovate"],
   "minimumReleaseAge": "10 days",
+  "packageRules": [
+    {
+      "description": "Only run normal updates once a  week automatically but allow manual runs during office hours.",
+      "matchPackageNames": ["*"],
+      "schedule": ["on monday before 4am", "after 4am"],
+      "automerge": true
+    }
+  ],
   "rebaseWhen": "conflicted",
   "semanticCommits": "enabled",
-  "schedule": ["after 4am every day"],
-  "timezone": "UTC",
   "vulnerabilityAlerts": {
     "automerge": false,
     "labels": ["security", "dependencies"],
-    "minimumReleaseAge": null,
-    "schedule": ["at any time"]
+    "minimumReleaseAge": null
   }
 }

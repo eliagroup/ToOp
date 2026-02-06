@@ -1,0 +1,28 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    ":automergeDigest",
+    ":automergePr",
+    ":enablePreCommit",
+    ":pinDevDependencies",
+    ":prHourlyLimitNone",
+    "abandonments:recommended",
+    "config:recommended",
+    "docker:pinDigests",
+    "group:allNonMajor",
+    "helpers:pinGitHubActionDigests",
+    "maintainLockFilesWeekly"
+  ],
+  "labels": ["dependencies", "renovate"],
+  "minimumReleaseAge": "10 days",
+  "rebaseWhen": "conflicted",
+  "semanticCommits": "enabled",
+  "schedule": ["after 4am every day"],
+  "timezone": "UTC",
+  "vulnerabilityAlerts": {
+    "automerge": false,
+    "labels": ["security", "dependencies"],
+    "minimumReleaseAge": null,
+    "schedule": ["at any time"]
+  }
+}

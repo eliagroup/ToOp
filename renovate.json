@@ -4,14 +4,14 @@
     ":automergeDigest",
     ":automergePr",
     ":enablePreCommit",
+    ":maintainLockFilesWeekly",
     ":pinDevDependencies",
     ":prHourlyLimitNone",
     "abandonments:recommended",
     "config:recommended",
     "docker:pinDigests",
     "group:allNonMajor",
-    "helpers:pinGitHubActionDigests",
-    "maintainLockFilesWeekly"
+    "helpers:pinGitHubActionDigests"
   ],
   "labels": ["dependencies", "renovate"],
   "minimumReleaseAge": "10 days",

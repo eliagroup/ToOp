@@ -27,7 +27,7 @@ from toop_engine_topology_optimizer.ac.optimizer import (
     run_epoch,
     wait_for_first_dc_results,
 )
-from toop_engine_topology_optimizer.ac.storage import create_session
+from toop_engine_topology_optimizer.ac.storage import create_session, scrub_db
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commands import Command, ShutdownCommand, StartOptimizationCommand
@@ -352,3 +352,4 @@ def main(
             processed_gridfile_fs=processed_gridfile_fs,
         )
         worker_data.command_consumer.stop_processing()
+        scrub_db(worker_data.db)

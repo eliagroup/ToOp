@@ -35,9 +35,7 @@ from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_
 from toop_engine_topology_optimizer.ac.evolution_functions import evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics, evaluate_acceptance, scoring_function
-from toop_engine_topology_optimizer.ac.storage import (
-    ACOptimTopology,
-)
+from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import (
@@ -392,7 +390,9 @@ def initialize_optimization(
     )
 
 
-def wait_for_first_dc_results(results_consumer: LongRunningKafkaConsumer, session: Session, max_wait_time: float) -> None:
+def wait_for_first_dc_results(
+    results_consumer: LongRunningKafkaConsumer, session: Session, max_wait_time: float, optimization_id: str
+) -> None:
     """Wait an initial period for DC results to arrive before proceeding with the optimization.
 
     Call this after initialize optimization and before run epoch to ensure that the DC optimizer has started, and avoid the
@@ -406,6 +406,9 @@ def wait_for_first_dc_results(results_consumer: LongRunningKafkaConsumer, sessio
         The database session to use for storing topologies
     max_wait_time : float
         The maximum time to wait for DC results, in seconds
+    optimization_id : str
+        The ID of the optimization run, used to filter the incoming topologies and only proceed when DC results from
+        the correct optimization run arrive. Note that other DC runs could be active.
 
     Raises
     ------
@@ -415,7 +418,7 @@ def wait_for_first_dc_results(results_consumer: LongRunningKafkaConsumer, sessio
     start_wait = datetime.now()
     while datetime.now() - start_wait < timedelta(seconds=max_wait_time):
         added_topos = poll_results_topic(db=session, consumer=results_consumer, first_poll=True)
-        if len(added_topos) > 0:
+        if len([x for x in added_topos if x.optimization_id == optimization_id]) > 0:
             logger.info(f"Received {len(added_topos)} topologies from DC results, proceeding with optimization")
             return
     raise TimeoutError(f"Did not receive DC results within {max_wait_time} seconds, cannot proceed with optimization")

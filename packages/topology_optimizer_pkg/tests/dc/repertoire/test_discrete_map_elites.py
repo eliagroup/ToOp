@@ -14,8 +14,11 @@ from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.example_grids import three_node_pst_example_folder_powsybl
+from toop_engine_dc_solver.jax.aggregate_results import get_overload_energy_n_1_matrix
+from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.inputs import load_static_information
-from toop_engine_dc_solver.jax.types import StaticInformation
+from toop_engine_dc_solver.jax.topology_computations import default_topology
+from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions, StaticInformation
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
@@ -117,11 +120,45 @@ def create_3_node_pst_example_grid(tmp_path_factory) -> tuple[StaticInformationS
 
 def test_pst_fixture(create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData]) -> None:
     stats, static_information, network_data = create_3_node_pst_example_grid
+    di = static_information.dynamic_information
+    solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
 
-    inj_info = static_information.dynamic_information.nodal_injection_information
+    inj_info = di.nodal_injection_information
     assert jnp.array_equal(
         inj_info.pst_tap_values[jnp.arange(len(inj_info.starting_tap)), inj_info.starting_tap], jnp.array([0.0, 0.0])
     )
+
+    # Default taps should lead to overload, optimization should fix it
+    res, success = compute_symmetric_batch(
+        topology_batch=default_topology(solver_config=solver_config),
+        disconnection_batch=None,
+        injections=None,
+        nodal_inj_start_options=None,
+        dynamic_information=di,
+        solver_config=solver_config,
+    )
+    assert jnp.all(success)
+
+    overload = get_overload_energy_n_1_matrix(n_1_matrix=res.n_1_matrix, max_mw_flow=di.branch_limits.max_mw_flow)
+
+    assert overload > 0
+
+    # PST tap of -12 should fix it (low tap is -30 so -12 turns to 18)
+    res, success = compute_symmetric_batch(
+        topology_batch=default_topology(solver_config=solver_config),
+        disconnection_batch=None,
+        injections=None,
+        nodal_inj_start_options=NodalInjStartOptions(
+            previous_results=NodalInjOptimResults(pst_taps=jnp.array([[18, 18]])), precision_percent=jnp.array([0.0])
+        ),
+        dynamic_information=di,
+        solver_config=solver_config,
+    )
+    assert jnp.all(success)
+
+    overload = get_overload_energy_n_1_matrix(n_1_matrix=res.n_1_matrix, max_mw_flow=di.branch_limits.max_mw_flow)
+
+    assert overload == 0
 
 
 def test_pst_optimization(

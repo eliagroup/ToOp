@@ -261,6 +261,18 @@ class BackendInterface(ABC):
         viable_shifts = self.get_shift_angles()[0, self.get_controllable_phase_shift_mask()]
         return [np.array([shift]) for shift in viable_shifts]
 
+    def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_pst"]:
+        """Get the starting tap position for each controllable PST, given as an integer index into pst_tap_values.
+
+        The outer list has as many entries as there are controllable PSTs (see
+        controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
+        value representing the angle shift for the given tap position. The taps are ordered smallest to largest angle shift.
+
+        If this function is not overloaded, it is assumed that all controllable PSTs start at their lowest tap position
+        (i.e. index 0).
+        """
+        return np.zeros(sum(self.get_controllable_phase_shift_mask()), dtype=int)
+
     @abstractmethod
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get true if a node is part of the relevant nodes

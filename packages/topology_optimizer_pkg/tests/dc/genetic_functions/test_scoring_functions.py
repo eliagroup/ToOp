@@ -44,6 +44,7 @@ def test_translate_topology(static_information_file: str) -> None:
     n_disconnections = 0
     n_psts = 3
     batch_size = 16
+    n_timesteps = static_information.dynamic_information.n_timesteps
 
     # Randomly create some topologies
     topologies = empty_repertoire(
@@ -51,6 +52,7 @@ def test_translate_topology(static_information_file: str) -> None:
         max_num_splits,
         n_disconnections,
         n_psts,
+        n_timesteps,
     )
 
     key = jax.random.PRNGKey(0)
@@ -75,7 +77,7 @@ def test_translate_topology(static_information_file: str) -> None:
     )
 
     # Translate the topologies
-    branch_topo, disconnections = translate_topology(topologies)
+    branch_topo, disconnections, nodal_inj_start = translate_topology(topologies)
 
     assert branch_topo.action.shape == (
         batch_size,
@@ -96,6 +98,7 @@ def test_scoring_function(static_information_file: str) -> None:
     n_disconnections = 0
     n_psts = 0
     batch_size = 128
+    n_timesteps = static_information.dynamic_information.n_timesteps
 
     static_information = replace(
         static_information,
@@ -108,6 +111,7 @@ def test_scoring_function(static_information_file: str) -> None:
         max_num_splits,
         n_disconnections,
         n_psts,
+        n_timesteps,
     )
 
     key = jax.random.PRNGKey(0)
@@ -158,6 +162,7 @@ def test_summarize(static_information_file: str) -> None:
     max_num_splits = 3
     batch_size = 16
     n_cells = 6
+    n_timesteps = static_information.dynamic_information.n_timesteps
 
     static_information = replace(
         static_information,
@@ -165,7 +170,7 @@ def test_summarize(static_information_file: str) -> None:
     )
 
     # Randomly create some topologies
-    topologies = empty_repertoire(batch_size, max_num_splits, 0, 0)
+    topologies = empty_repertoire(batch_size, max_num_splits, 0, 0, n_timesteps)
 
     key = jax.random.PRNGKey(0)
 

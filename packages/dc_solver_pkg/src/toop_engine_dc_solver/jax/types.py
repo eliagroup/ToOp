@@ -1352,3 +1352,6 @@ class NodalInjectionInformation:
     pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
     """Discrete individual taps (in degrees) of controllable PSTs. The array is zero-padded to the maximum number of
     pst_n_taps."""
+
+    starting_tap: Int[Array, " n_controllable_pst"]
+    """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""

@@ -249,6 +249,7 @@ def translate_topology(
 ) -> tuple[
     ActionIndexComputations,
     Int[Array, " batch_size max_num_disconnections"],
+    NodalInjStartOptions,
 ]:
     """Translate the topology into the format used by the solver.
 
@@ -263,6 +264,8 @@ def translate_topology(
         The topology computations
     Int[Array, " batch_size max_num_disconnections"]
         The branch disconnections to apply
+    NodalInjStartOptions
+        The nodal injection optimization start options containing pst taps
     """
     batch_size, _max_num_splits = topology.action_index.shape
 

@@ -108,6 +108,7 @@ def empty_repertoire(
     max_num_splits: int,
     max_num_disconnections: int,
     num_psts: int,
+    n_timesteps: int,
 ) -> Genotype:
     """Create an initial genotype repertoire with all zeros for all entries and int_max for all subs.
 
@@ -118,9 +119,11 @@ def empty_repertoire(
     max_num_splits : int
         The maximum number of splits per topology
     max_num_disconnections : int
-        The maximum number of diconncections as topological measures per topology
+        The maximum number of disconnections as topological measures per topology
     num_psts : int
         The number of controllable PSTs in the grid
+    n_timesteps : int
+        The number of timesteps in the optimization horizon, used for the nodal injection optimization results
 
     Returns
     -------
@@ -130,8 +133,7 @@ def empty_repertoire(
     return Genotype(
         action_index=jnp.full((batch_size, max_num_splits), int_max(), dtype=int),
         disconnections=jnp.full((batch_size, max_num_disconnections), int_max(), dtype=int),
-        # TODO: Why don't we use the n_timesteps here?
-        nodal_injections_optimized=NodalInjOptimResults(pst_taps=jnp.zeros((batch_size, num_psts), dtype=float))
+        nodal_injections_optimized=NodalInjOptimResults(pst_taps=jnp.zeros((batch_size, n_timesteps, num_psts), dtype=float))
         if num_psts > 0
         else None,
     )

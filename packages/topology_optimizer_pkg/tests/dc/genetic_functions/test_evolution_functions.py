@@ -12,7 +12,7 @@ import jax
 from jax import numpy as jnp
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.topology_computations import extract_sub_ids
-from toop_engine_dc_solver.jax.types import int_max
+from toop_engine_dc_solver.jax.types import NodalInjOptimResults, int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
     Genotype,
     crossover,
@@ -21,6 +21,7 @@ from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions imp
     empty_repertoire,
     mutate,
     mutate_disconnections,
+    mutate_nodal_injections,
     mutate_sub,
 )
 
@@ -481,3 +482,42 @@ def test_deduplicate_genotypes_jitted(static_information_file: str) -> None:
     )
     compiled_fun = jax.jit(partial_fun)
     compiled_fun(topologies)
+
+
+def test_mutate_nodal_injections() -> None:
+    batch_size = 4
+    n_timesteps = 10
+    n_taps = jnp.array([35, 35, 35, 20, 20])
+    current_tap = jax.random.uniform(jax.random.PRNGKey(0), shape=(batch_size, n_timesteps, 5), minval=0, maxval=n_taps)
+    nodal_inj_info = NodalInjOptimResults(pst_taps=current_tap)
+
+    res = mutate_nodal_injections(
+        random_key=jax.random.PRNGKey(0),
+        nodal_inj_info=nodal_inj_info,
+        pst_n_taps=n_taps,
+        pst_mutation_sigma=5.0,
+    )
+
+    assert res.pst_taps.shape == (batch_size, n_timesteps, 5)
+    assert jnp.all(res.pst_taps >= 0)
+    assert jnp.all(res.pst_taps[:, :, :3] < 35)
+    assert jnp.all(res.pst_taps[:, :, 3:] < 20)
+    assert not jnp.array_equal(res.pst_taps, current_tap), "PST taps should have mutated"
+
+    assert (
+        mutate_nodal_injections(
+            random_key=jax.random.PRNGKey(0),
+            nodal_inj_info=None,
+            pst_n_taps=n_taps,
+            pst_mutation_sigma=5.0,
+        )
+        is None
+    ), "If nodal_inj_info is None, the result should also be None"
+
+    res_no_mutation = mutate_nodal_injections(
+        random_key=jax.random.PRNGKey(0),
+        nodal_inj_info=nodal_inj_info,
+        pst_n_taps=n_taps,
+        pst_mutation_sigma=0.0,
+    )
+    assert jnp.array_equal(res_no_mutation.pst_taps, current_tap), "The PST taps should not have mutated"

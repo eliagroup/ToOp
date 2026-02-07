@@ -8,10 +8,17 @@
 from functools import partial
 
 import jax
+import jax.numpy as jnp
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from qdax.utils.metrics import default_ga_metrics
+from toop_engine_dc_solver.example_grids import three_node_pst_example_folder_powsybl
 from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.jax.types import StaticInformation
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_dc_solver.preprocess.network_data import NetworkData
+from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
     crossover,
@@ -77,7 +84,8 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
         cell_depth=cell_depth,
     )
 
-    empty_genotypes = empty_repertoire(batch_size, max_num_splits, 0, 0)
+    n_timesteps = static_information.dynamic_information.n_timesteps
+    empty_genotypes = empty_repertoire(batch_size, max_num_splits, 0, 0, n_timesteps)
 
     repertoire, emitter_state, rng_key = me.init(
         genotypes=empty_genotypes,
@@ -95,3 +103,30 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
     )
 
     assert repertoire.fitnesses.shape == (20 * cell_depth,)
+
+
+@pytest.fixture
+def create_3_node_pst_example_grid(tmp_path_factory) -> tuple[StaticInformationStats, StaticInformation, NetworkData]:
+    tmp_path = tmp_path_factory.mktemp("three_node_pst_example_grid")
+
+    three_node_pst_example_folder_powsybl(tmp_path)
+    filesystem_dir = DirFileSystem(str(tmp_path))
+    stats, static_information, network_data = load_grid(filesystem_dir, pandapower=False)
+    return stats, static_information, network_data
+
+
+def test_pst_fixture(create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData]) -> None:
+    stats, static_information, network_data = create_3_node_pst_example_grid
+
+    inj_info = static_information.dynamic_information.nodal_injection_information
+    assert jnp.array_equal(
+        inj_info.pst_tap_values[jnp.arange(len(inj_info.starting_tap)), inj_info.starting_tap], jnp.array([0.0, 0.0])
+    )
+
+
+def test_pst_optimization(
+    create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData],
+) -> None:
+    stats, static_information, network_data = create_3_node_pst_example_grid
+
+    assert static_information

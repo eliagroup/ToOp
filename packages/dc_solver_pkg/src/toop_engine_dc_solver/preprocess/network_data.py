@@ -99,6 +99,9 @@ class NetworkData:
     controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
     value representing the angle shift for the given tap position. The taps are ordered smallest to largest angle shift."""
 
+    phase_shift_starting_tap: Int[np.ndarray, " n_controllable_pst"]
+    """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
+
     monitored_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch is monitored"""
 
@@ -408,6 +411,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         asset_topology=interface.get_asset_topology(),
         controllable_phase_shift_mask=interface.get_controllable_phase_shift_mask(),
         phase_shift_taps=interface.get_phase_shift_taps(),
+        phase_shift_starting_tap=interface.get_phase_shift_starting_taps(),
         busbar_outage_map=interface.get_busbar_outage_map(),
     )
 

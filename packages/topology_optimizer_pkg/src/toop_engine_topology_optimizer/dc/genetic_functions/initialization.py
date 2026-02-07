@@ -372,6 +372,7 @@ def initialize_genetic_algorithm(
         max_num_splits=max_num_splits,
         max_num_disconnections=max_num_disconnections,
         num_psts=dynamic_informations[0].n_controllable_pst,
+        n_timesteps=dynamic_informations[0].n_timesteps,
     )
 
     scoring_function_partial = partial(

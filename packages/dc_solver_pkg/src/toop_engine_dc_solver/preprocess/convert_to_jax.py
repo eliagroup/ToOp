@@ -304,6 +304,7 @@ def convert_to_jax(  # noqa: PLR0913
                 shift_degree_max=shift_degree_max,
                 pst_n_taps=pst_n_taps,
                 pst_tap_values=pst_tap_values,
+                starting_tap=jnp.array(network_data.phase_shift_starting_tap, dtype=int),
             )
             if network_data.controllable_pst_node_mask.any()
             else None,

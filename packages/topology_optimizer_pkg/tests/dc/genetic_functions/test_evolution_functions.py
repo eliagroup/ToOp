@@ -39,9 +39,10 @@ def test_mutate_disconnection(static_information_file: str) -> None:
     max_num_disconnections = 2
     n_pst = 3
     batch_size = 16
+    n_timesteps = static_information.dynamic_information.n_timesteps
 
     # Randomly create some topologies
-    topologies = empty_repertoire(batch_size, max_num_splits, max_num_disconnections, n_pst)
+    topologies = empty_repertoire(batch_size, max_num_splits, max_num_disconnections, n_pst, n_timesteps)
     assert jnp.all(topologies.disconnections == int_max())
 
     key = jax.random.PRNGKey(0)
@@ -101,9 +102,10 @@ def test_mutate_disconnection_multi(static_information_file: str) -> None:
     max_num_disconnections = 2
     n_pst = 3
     batch_size = 16
+    n_timesteps = static_information.dynamic_information.n_timesteps
 
     # Randomly create some topologies
-    topologies = empty_repertoire(batch_size, max_num_splits, max_num_disconnections, n_pst)
+    topologies = empty_repertoire(batch_size, max_num_splits, max_num_disconnections, n_pst, n_timesteps)
     assert jnp.all(topologies.disconnections == int_max())
     key = jax.random.PRNGKey(0)
     # Test with
@@ -166,9 +168,10 @@ def test_mutate(static_information_file: str) -> None:
     max_num_disconnections = 2
     n_pst = 3
     batch_size = 16
+    n_timesteps = static_information.dynamic_information.n_timesteps
 
     # Randomly create some topologies
-    topologies = empty_repertoire(batch_size, max_num_splits, max_num_disconnections, n_pst)
+    topologies = empty_repertoire(batch_size, max_num_splits, max_num_disconnections, n_pst, n_timesteps)
     sub_ids = extract_sub_ids(topologies.action_index, action_set)
     assert jnp.all(sub_ids == int_max())
 
@@ -246,9 +249,10 @@ def test_mutate_multiple_tries(static_information_file: str) -> None:
     max_num_disconnections = 2
     batch_size = 128
     n_pst = 3
+    n_timesteps = static_information.dynamic_information.n_timesteps
 
     # Randomly create some topologies
-    topologies = empty_repertoire(batch_size, max_num_splits, max_num_disconnections, n_pst)
+    topologies = empty_repertoire(batch_size, max_num_splits, max_num_disconnections, n_pst, n_timesteps)
 
     def count_duplicates(genotypes: Genotype) -> tuple[Genotype, jnp.ndarray, jnp.ndarray]:
         """Return unique genotypes, along with counts."""
@@ -349,6 +353,7 @@ def test_crossover(static_information_file: str) -> None:
     n_disconnections = 1
     n_psts = 3
     batch_size = 16
+    n_timesteps = static_information.dynamic_information.n_timesteps
 
     # Randomly create some topologies
     topologies_a = empty_repertoire(
@@ -356,12 +361,14 @@ def test_crossover(static_information_file: str) -> None:
         max_num_splits,
         n_disconnections,
         n_psts,
+        n_timesteps,
     )
     topologies_b = empty_repertoire(
         batch_size,
         max_num_splits,
         n_disconnections,
         n_psts,
+        n_timesteps,
     )
 
     for i in range(10):
@@ -436,6 +443,7 @@ def test_deduplicate_genotypes_jitted(static_information_file: str) -> None:
     max_num_disconnections = 2
     n_psts = 3
     batch_size = 16
+    n_timesteps = static_information.dynamic_information.n_timesteps
 
     # Randomly create some topologies
     topologies = empty_repertoire(
@@ -443,6 +451,7 @@ def test_deduplicate_genotypes_jitted(static_information_file: str) -> None:
         max_num_splits,
         max_num_disconnections,
         n_psts,
+        n_timesteps,
     )
 
     with jax.disable_jit():

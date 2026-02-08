@@ -107,8 +107,8 @@ def empty_repertoire(
     batch_size: int,
     max_num_splits: int,
     max_num_disconnections: int,
-    num_psts: int,
     n_timesteps: int,
+    starting_taps: Optional[Int[Array, " num_psts"]] = None,
 ) -> Genotype:
     """Create an initial genotype repertoire with all zeros for all entries and int_max for all subs.
 
@@ -120,26 +120,32 @@ def empty_repertoire(
         The maximum number of splits per topology
     max_num_disconnections : int
         The maximum number of disconnections as topological measures per topology
-    num_psts : int
-        The number of controllable PSTs in the grid
     n_timesteps : int
         The number of timesteps in the optimization horizon, used for the nodal injection optimization results
+    starting_taps : Optional[Int[Array, " num_psts"]]
+        The starting taps for the psts. If None, no nodal inj optimization will be enabled and nodal_injections_optimized
+        will be set to None. If provided, nodal_injections_optimized will be initialized with these starting taps.
 
     Returns
     -------
     Genotype
         The initial genotype
     """
+    if starting_taps is not None:
+        nodal_injections_optimized = NodalInjOptimResults(
+            pst_taps=jnp.tile(starting_taps[None, None, :], (batch_size, n_timesteps, 1))
+        )
+    else:
+        nodal_injections_optimized = None
+
     return Genotype(
         action_index=jnp.full((batch_size, max_num_splits), int_max(), dtype=int),
         disconnections=jnp.full((batch_size, max_num_disconnections), int_max(), dtype=int),
-        nodal_injections_optimized=NodalInjOptimResults(pst_taps=jnp.zeros((batch_size, n_timesteps, num_psts), dtype=float))
-        if num_psts > 0
-        else None,
+        nodal_injections_optimized=nodal_injections_optimized,
     )
 
 
-def mutate(
+def mutate(  # noqa: PLR0913
     topologies: Genotype,
     random_key: jax.random.PRNGKey,
     substation_split_prob: float,
@@ -149,6 +155,7 @@ def mutate(
     n_subs_mutated_lambda: float,
     disconnect_prob: float,
     reconnect_prob: float,
+    pst_n_taps: Int[Array, " num_psts"],
     mutation_repetition: int = 1,
 ) -> tuple[Genotype, jax.random.PRNGKey]:
     """Mutate the topologies by splitting substations and changing the branch and injection topos.
@@ -181,6 +188,8 @@ def mutate(
         The probability to disconnect a new branch
     reconnect_prob : float
         The probability to reconnect a disconnected branch, will overwrite a possible disconnect
+    pst_n_taps : Int[Array, " num_psts"]
+        The number of taps for each PST, from nodal_injection_information.pst_n_taps.
     mutation_repetition : int
         More chance to get unique mutations by mutating mutation_repetition copies of the repertoire
 
@@ -274,10 +283,17 @@ def mutate(
     )
     random_key = random_keys[0]
 
+    nodal_injections_optimized = mutate_nodal_injections(
+        random_key=random_key,
+        nodal_inj_info=repeated_topologies.nodal_injections_optimized,
+        pst_mutation_sigma=0.5,
+        pst_n_taps=pst_n_taps,
+    )
+
     topologies_mutated = Genotype(
         action_index=action,
         disconnections=disconnections_topo,
-        nodal_injections_optimized=repeated_topologies.nodal_injections_optimized,
+        nodal_injections_optimized=nodal_injections_optimized,
     )
 
     if mutation_repetition > 1:
@@ -460,6 +476,9 @@ def mutate_sub(
     random_key : jax.random.PRNGKey
         The random key used for the mutation
     """
+    if substation_split_prob == 0:
+        return sub_ids, action, random_key
+
     randkeys = jax.random.split(random_key, 7)
 
     n_subs_rel = len(action_set.n_actions_per_sub)

@@ -1355,3 +1355,8 @@ class NodalInjectionInformation:
 
     starting_tap: Int[Array, " n_controllable_pst"]
     """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
+
+    grid_model_low_tap: Int[Array, " n_controllable_pst"]
+    """The lowest tap position for each controllable PST but in the original grid model. If original
+    taps are to be reconstructed from indices into pst_tap_values then tap + grid_model_low_tap gives the actual tap position
+    in the original grid model."""

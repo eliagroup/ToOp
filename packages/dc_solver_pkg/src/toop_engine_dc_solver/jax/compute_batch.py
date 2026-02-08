@@ -733,6 +733,7 @@ def compute_symmetric_batch(
 
     # Apply PST taps from start options if provided (baseline application, independent of optimization)
     if nodal_inj_start_options is not None:
+        assert dynamic_information.nodal_injection_information is not None
         n_0, _n_1_baseline, _nodal_results_baseline = nodal_inj_optimization(
             n_0=n_0,
             nodal_injections=nodal_injections,

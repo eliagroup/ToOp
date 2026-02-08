@@ -26,7 +26,7 @@ from pypowsybl.network import Network
 from toop_engine_contingency_analysis.pypowsybl import (
     run_contingency_analysis_powsybl,
 )
-from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
+from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo, PstSetpointsType
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     apply_node_breaker_topology,
     apply_topology_bus_branch,
@@ -47,13 +47,13 @@ from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Defini
 from toop_engine_interfaces.stored_action_set import ActionSet
 
 
-def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> tuple[Network, AdditionalActionInfo]:
+def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> AdditionalActionInfo:
     """Apply actions to a powsybl network
 
     Parameters
     ----------
     net : Network
-        The powsybl network to modify
+        The powsybl network to modify, will be modified in-place
     actions : list[int]
         A list of actions to apply to the network. This is a list of indices into the action set
         local_actions list.
@@ -62,15 +62,11 @@ def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> t
 
     Returns
     -------
-    Network
-        The modified powsybl network as a copy
     AdditionalActionInfo
         Additional information about the action, either a DataFrame of switch updates or a RealizedTopology
     """
-    net = deepcopy(net)
-
     if not len(actions):
-        return net
+        return None
 
     stations = [action_set.local_actions[action] for action in actions]
     changed_stations_topo = action_set.starting_topology.model_copy(update={"stations": stations})
@@ -80,10 +76,10 @@ def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> t
     else:
         additional_info = apply_topology_bus_branch(net, changed_stations_topo)
 
-    return net, additional_info
+    return additional_info
 
 
-def apply_disconnections(net: Network, disconnections: list[int], action_set: ActionSet) -> Network:
+def apply_disconnections(net: Network, disconnections: list[int], action_set: ActionSet) -> None:
     """Apply static disconnections to a powsybl network.
 
     Works by removing the elements from the network.
@@ -91,17 +87,12 @@ def apply_disconnections(net: Network, disconnections: list[int], action_set: Ac
     Parameters
     ----------
     net : Network
-        The powsybl network to modify
+        The powsybl network to modify. Will be modified in-place.
     disconnections : list[int]
         A list of disconnections to apply to the network. This is a list of indices into the action set
         disconnectable_branches list.
     action_set : ActionSet
         The action set to use for the disconnections
-
-    Returns
-    -------
-    Network
-        The modified powsybl network as a copy
 
     Raises
     ------
@@ -110,13 +101,33 @@ def apply_disconnections(net: Network, disconnections: list[int], action_set: Ac
 
 
     """
-    net = deepcopy(net)
     for disconnection in disconnections:
         assert disconnection < len(action_set.disconnectable_branches), "Disconnection index out of range"
         elem = action_set.disconnectable_branches[disconnection]
         if net.disconnect(elem.id) is False:
             raise RuntimeError(f"Failed to disconnect {elem}")
-    return net
+
+
+def apply_pst_setpoints(net: Network, pst_setpoints: PstSetpointsType, action_set: ActionSet) -> None:
+    """Apply phase shift tap setpoints to a powsybl network.
+
+    Works by setting the tap position of the controllable PSTs in the network to the given setpoints.
+
+    Parameters
+    ----------
+    net : Network
+        The powsybl network to modify. Will be modified in-place.
+    pst_setpoints : PstSetpointsType
+        The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,) and these are
+        assumed to correspond to the range of PSTs in the grid.
+    action_set : ActionSet
+        The action set to use for the controllable PSTs
+    """
+    pst_indices = [pst.id for pst in action_set.pst_ranges]
+    net.update_phase_tap_changers(
+        id=pst_indices,
+        tap=list(pst_setpoints),
+    )
 
 
 def compute_cross_coupler_flows(
@@ -293,9 +304,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
 
     @overrides
     def run_dc_n_0(
-        self,
-        actions: list[int],
-        disconnections: list[int],
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[PstSetpointsType] = None
     ) -> LoadflowResultsPolars:
         """Run a single N-0 analysis.
 
@@ -308,6 +317,9 @@ class PowsyblRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
+        pst_setpoints : Optional[PstSetpointsType]
+            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,) and these are
+            assumed to correspond to the range of PSTs in the grid. If None, no tap changes will be applied.
 
         Returns
         -------
@@ -316,12 +328,14 @@ class PowsyblRunner(AbstractLoadflowRunner):
         """
         assert self.net is not None, "Base grid must be loaded before running loadflow"
 
-        net = self.net
+        net = deepcopy(self.net)
         self.last_action_info = None
         if len(actions):
-            net, self.last_action_info = apply_topology(net, actions, self.action_set)
+            self.last_action_info = apply_topology(net, actions, self.action_set)
         if len(disconnections):
-            net = apply_disconnections(net, disconnections, self.action_set)
+            apply_disconnections(net, disconnections, self.action_set)
+        if pst_setpoints is not None:
+            apply_pst_setpoints(net, pst_setpoints, self.action_set)
 
         # Run a "N-1" loadflow with only the BASECASE outage
         nminus1_definition = self.nminus1_definition.model_copy(
@@ -333,9 +347,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
 
     @overrides
     def run_dc_loadflow(
-        self,
-        actions: list[int],
-        disconnections: list[int],
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[PstSetpointsType] = None
     ) -> LoadflowResultsPolars:
         """Run the DC loadflow on the grid.
 
@@ -351,19 +363,20 @@ class PowsyblRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
+        pst_setpoints : Optional[PstSetpointsType]
+            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
+            and these are assumed to correspond to the range of PSTs in the grid
 
         Returns
         -------
         LoadflowResultsPolars
             The loadflow results with a full N-1 analysis.
         """
-        return self.run_loadflow_single_timestep(actions, disconnections, method="dc")
+        return self.run_loadflow_single_timestep(actions, disconnections, pst_setpoints, method="dc")
 
     @overrides
     def run_ac_loadflow(
-        self,
-        actions: list[int],
-        disconnections: list[int],
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[PstSetpointsType] = None
     ) -> LoadflowResultsPolars:
         """Run the AC loadflow on the grid.
 
@@ -379,18 +392,22 @@ class PowsyblRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
+        pst_setpoints : Optional[PstSetpointsType]
+            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
+            and these are assumed to correspond to the range of PSTs in the grid
 
         Returns
         -------
         LoadflowResultsPolars
-            The loadflow results with a full N-1 analysis
+            The loadflow results with a full N-1 analysis.
         """
-        return self.run_loadflow_single_timestep(actions, disconnections, method="ac")
+        return self.run_loadflow_single_timestep(actions, disconnections, pst_setpoints, method="ac")
 
     def run_loadflow_single_timestep(
         self,
         actions: list[int],
         disconnections: list[int],
+        pst_setpoints: Optional[PstSetpointsType] = None,
         method: Literal["ac", "dc"] = "dc",
     ) -> LoadflowResultsPolars:
         """Run the loadflow for a single timestep with either ac or dc method.
@@ -402,6 +419,9 @@ class PowsyblRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
+        pst_setpoints : Optional[PstSetpointsType]
+            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
+            and these are assumed to correspond to the range of PSTs in the grid
         method : Literal["ac", "dc"], optional
             The method to use for the loadflow, by default "dc"
 
@@ -412,12 +432,14 @@ class PowsyblRunner(AbstractLoadflowRunner):
         """
         assert self.net is not None, "Base grid must be loaded before running loadflow"
 
-        net = self.net
+        net = deepcopy(self.net)
         self.last_action_info = None
         if len(actions):
-            net, self.last_action_info = apply_topology(net, actions, self.action_set)
+            self.last_action_info = apply_topology(net, actions, self.action_set)
         if len(disconnections):
-            net = apply_disconnections(net, disconnections, self.action_set)
+            apply_disconnections(net, disconnections, self.action_set)
+        if pst_setpoints is not None:
+            apply_pst_setpoints(net, pst_setpoints, self.action_set)
 
         return run_contingency_analysis_powsybl(
             net=net,

@@ -23,9 +23,14 @@ from toop_engine_dc_solver.jax.types import (
 
 
 def make_start_options(
-    old_res: NodalInjOptimResults,
-) -> NodalInjStartOptions:
-    """Create start options for nodal injection optimization from previous results."""
+    old_res: NodalInjOptimResults | None,
+) -> NodalInjStartOptions | None:
+    """Create start options for nodal injection optimization from previous results.
+
+    Returns None if old_res is None, indicating no previous results to use as starting point.
+    """
+    if old_res is None:
+        return None
     return NodalInjStartOptions(
         previous_results=old_res,
         precision_percent=jnp.array(1.0),  # TODO
@@ -38,7 +43,7 @@ def nodal_inj_optimization(
     topo_res: TopologyResults,
     start_options: NodalInjStartOptions,
     dynamic_information: DynamicInformation,
-    _solver_config: SolverConfig,
+    solver_config: SolverConfig,  # noqa: ARG001
 ) -> tuple[
     Float[Array, " batch_size n_timesteps n_branches"],
     Float[Array, " batch_size n_timesteps n_outages n_branches_monitored"],
@@ -96,17 +101,18 @@ def nodal_inj_optimization(
     new_shift_angles = jax.vmap(jax.vmap(get_tap_values_single))(pst_tap_indices)
     # Shape: (batch_size, n_timesteps, n_controllable_pst)
 
-    # Get current PST angles from nodal_injections
-    # PST positions are at controllable_pst_indices, which are the first n_controllable_pst positions
-    current_shift_angles = nodal_injections[:, :, :n_controllable_pst]
+    # Get current PST angles from nodal_injections using controllable_pst_indices
+    # controllable_pst_indices maps PST positions to node array indices
+    current_shift_angles = nodal_injections[:, :, nodal_inj_info.controllable_pst_indices]
 
     # Compute the delta in shift angles
     delta_shift_angles = new_shift_angles - current_shift_angles
     # Shape: (batch_size, n_timesteps, n_controllable_pst)
 
-    # Extract PSDF columns (first n_controllable_pst columns of PTDF)
+    # Extract PSDF columns from PTDF using controllable_pst_indices
     # PTDF shape: (batch_size, n_branches, n_buses)
-    psdf_columns = topo_res.ptdf[:, :, :n_controllable_pst]
+    # PSDF columns are at node indices specified by controllable_pst_indices
+    psdf_columns = topo_res.ptdf[:, :, nodal_inj_info.controllable_pst_indices]
     # Shape: (batch_size, n_branches, n_controllable_pst)
 
     # Compute the flow delta using PSDF: delta_flows = PSDF @ delta_angles

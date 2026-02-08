@@ -189,6 +189,7 @@ def write_summary(
         initial_fitness=optimizer_data.initial_fitness,
         initial_metrics=optimizer_data.initial_metrics,
         contingency_ids=contingency_ids,
+        grid_model_low_tap=optimizer_data.jax_data.dynamic_informations[0].nodal_injection_information.grid_model_low_tap,
     )
     summary.update(
         {

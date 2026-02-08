@@ -42,7 +42,6 @@ def test_translate_topology(static_information_file: str) -> None:
 
     max_num_splits = 3
     n_disconnections = 0
-    n_psts = 3
     batch_size = 16
     n_timesteps = static_information.dynamic_information.n_timesteps
 
@@ -51,7 +50,6 @@ def test_translate_topology(static_information_file: str) -> None:
         batch_size,
         max_num_splits,
         n_disconnections,
-        n_psts,
         n_timesteps,
     )
 
@@ -67,6 +65,7 @@ def test_translate_topology(static_information_file: str) -> None:
         n_subs_mutated_lambda=5.0,
         disconnect_prob=0.5,
         reconnect_prob=0.5,
+        pst_n_taps=jnp.array([], dtype=int),
         mutation_repetition=1,
     )
 
@@ -96,7 +95,6 @@ def test_scoring_function(static_information_file: str) -> None:
 
     max_num_splits = 3
     n_disconnections = 0
-    n_psts = 0
     batch_size = 128
     n_timesteps = static_information.dynamic_information.n_timesteps
 
@@ -110,7 +108,6 @@ def test_scoring_function(static_information_file: str) -> None:
         batch_size,
         max_num_splits,
         n_disconnections,
-        n_psts,
         n_timesteps,
     )
 
@@ -126,6 +123,7 @@ def test_scoring_function(static_information_file: str) -> None:
         n_subs_mutated_lambda=20.0,
         disconnect_prob=0.5,
         reconnect_prob=0.5,
+        pst_n_taps=jnp.array([], dtype=int),
         mutation_repetition=1,
     )
 
@@ -170,7 +168,7 @@ def test_summarize(static_information_file: str) -> None:
     )
 
     # Randomly create some topologies
-    topologies = empty_repertoire(batch_size, max_num_splits, 0, 0, n_timesteps)
+    topologies = empty_repertoire(batch_size, max_num_splits, 0, n_timesteps)
 
     key = jax.random.PRNGKey(0)
 
@@ -184,6 +182,7 @@ def test_summarize(static_information_file: str) -> None:
         n_subs_mutated_lambda=20.0,
         disconnect_prob=0.5,
         reconnect_prob=0.5,
+        pst_n_taps=jnp.array([], dtype=int),
         mutation_repetition=1,
     )
 
@@ -198,6 +197,7 @@ def test_summarize(static_information_file: str) -> None:
             n_subs_mutated_lambda=20.0,
             disconnect_prob=0.5,
             reconnect_prob=0.5,
+            pst_n_taps=jnp.array([], dtype=int),
             mutation_repetition=1,
         ),
         lambda topo_a, topo_b, key: crossover(

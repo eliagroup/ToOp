@@ -264,12 +264,25 @@ class BackendInterface(ABC):
     def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_pst"]:
         """Get the starting tap position for each controllable PST, given as an integer index into pst_tap_values.
 
+        Note that taps in the original grid model might not start at zero, while in our optimization we assume taps to always
+        be zero terminated. To translate back into original grid model, add get_phase_shift_low_taps.
+
         The outer list has as many entries as there are controllable PSTs (see
         controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
         value representing the angle shift for the given tap position. The taps are ordered smallest to largest angle shift.
 
         If this function is not overloaded, it is assumed that all controllable PSTs start at their lowest tap position
         (i.e. index 0).
+        """
+        return np.zeros(sum(self.get_controllable_phase_shift_mask()), dtype=int)
+
+    def get_phase_shift_low_taps(self) -> Int[np.ndarray, " n_controllable_psts"]:
+        """Get the lowest tap position in the original grid model
+
+        Original taps are needed so taps as integer indices into tap values
+        can be converted back to the original tap positions by tap + low_tap
+
+        If this function is not overloaded, it is assumed that all controllable PSTs have a low tap of 0.
         """
         return np.zeros(sum(self.get_controllable_phase_shift_mask()), dtype=int)
 

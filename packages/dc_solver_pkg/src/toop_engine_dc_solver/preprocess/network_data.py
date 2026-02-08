@@ -102,6 +102,9 @@ class NetworkData:
     phase_shift_starting_tap: Int[np.ndarray, " n_controllable_pst"]
     """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
 
+    phase_shift_low_tap: Int[np.ndarray, " n_controllable_pst"]
+    """The lowest tap position for each controllable PST but in the original grid model."""
+
     monitored_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch is monitored"""
 
@@ -412,6 +415,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         controllable_phase_shift_mask=interface.get_controllable_phase_shift_mask(),
         phase_shift_taps=interface.get_phase_shift_taps(),
         phase_shift_starting_tap=interface.get_phase_shift_starting_taps(),
+        phase_shift_low_tap=interface.get_phase_shift_low_taps(),
         busbar_outage_map=interface.get_busbar_outage_map(),
     )
 

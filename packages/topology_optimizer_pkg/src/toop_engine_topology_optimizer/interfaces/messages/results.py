@@ -55,11 +55,14 @@ class Topology(BaseModel):
     to avoid duplicates."""
 
     pst_setpoints: list[int]
-    """The setpoints for the PSTs if they have been computed. This is an index into the range of pst taps, i.e. the
-    smallest tap is 0 and the neutral tap somewhere in the middle of the range. The tap range is defined in the action set.
-    The list always has the same length, i.e. the number of controllable PSTs in the system, and each entry corresponds to
-    the PST at the same position in the action set.
-    TODO currently this is just the angle converted to int, will be changed later to be the actual tap position.
+    """The setpoints for the PSTs if they have been computed.
+
+    These are the taps as they are stored in the original grid model, i.e. if a PST has a tap range from -20 to 20 then this
+    can take all these values. Note that inside the dc optimizer, taps are always starting with 0 and have to be converted
+    by adding grid_model_low_tap.
+
+    The list has the length of the number of controllable PSTs in the grid model and the nth entry corresponds to the nth
+    controllable PST in the network data.
     """
 
     metrics: Metrics

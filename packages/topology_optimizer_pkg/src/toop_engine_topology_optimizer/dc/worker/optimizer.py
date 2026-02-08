@@ -359,7 +359,10 @@ def extract_results(optimizer_data: OptimizerData) -> TopologyPushResult:
     # Assuming that contingency_ids stay the same for all timesteps
     contingency_ids = optimizer_data.solver_configs[0].contingency_ids
     topologies = summarize_repo(
-        optimizer_data.jax_data.repertoire, initial_fitness=optimizer_data.initial_fitness, contingency_ids=contingency_ids
+        optimizer_data.jax_data.repertoire,
+        initial_fitness=optimizer_data.initial_fitness,
+        contingency_ids=contingency_ids,
+        grid_model_low_tap=optimizer_data.jax_data.dynamic_informations[0].nodal_injection_information.grid_model_low_tap,
     )
 
     # Convert it to strategies

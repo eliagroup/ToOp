@@ -19,7 +19,7 @@ from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.example_grids import three_node_pst_example_folder_powsybl
 from toop_engine_dc_solver.jax.aggregate_results import get_overload_energy_n_1_matrix
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
-from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.jax.inputs import load_static_information, validate_static_information
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions, StaticInformation
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
@@ -80,6 +80,7 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
                 n_subs_mutated_lambda=5.0,
                 disconnect_prob=0.5,
                 reconnect_prob=0.5,
+                pst_n_taps=jnp.array([], dtype=int),
                 mutation_repetition=1,
             ),
             lambda topo_a, topo_b, key: crossover(topo_a, topo_b, key, action_set=action_set, prob_take_a=0.1),
@@ -92,7 +93,7 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
     )
 
     n_timesteps = static_information.dynamic_information.n_timesteps
-    empty_genotypes = empty_repertoire(batch_size, max_num_splits, 0, 0, n_timesteps)
+    empty_genotypes = empty_repertoire(batch_size, max_num_splits, 0, n_timesteps)
 
     repertoire, emitter_state, rng_key = me.init(
         genotypes=empty_genotypes,
@@ -125,10 +126,11 @@ def create_3_node_pst_example_grid(
     return stats, static_information, network_data, net
 
 
-def test_pst_fixture(
+def test_manual_pst_optimization(
     create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData, Network],
 ) -> None:
     stats, static_information, network_data, net = create_3_node_pst_example_grid
+    validate_static_information(static_information)
     di = static_information.dynamic_information
     solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
 
@@ -138,6 +140,7 @@ def test_pst_fixture(
     )
 
     # Default taps should lead to overload, optimization should fix it
+    # First run the solver without any taps
     res, success = compute_symmetric_batch(
         topology_batch=default_topology(solver_config=solver_config),
         disconnection_batch=None,
@@ -149,10 +152,25 @@ def test_pst_fixture(
     assert jnp.all(success)
 
     overload = get_overload_energy_n_1_matrix(n_1_matrix=res.n_1_matrix, max_mw_flow=di.branch_limits.max_mw_flow)
-
     assert overload > 0
 
-    # PST tap of -0.12° (tap index 18) should match PowerSybl reference
+    # Check if NodalInj with starting taps gives the same result as skipping nodal inj optimization altogether.
+    res2, success = compute_symmetric_batch(
+        topology_batch=default_topology(solver_config=solver_config),
+        disconnection_batch=None,
+        injections=None,
+        nodal_inj_start_options=NodalInjStartOptions(
+            previous_results=NodalInjOptimResults(pst_taps=di.nodal_injection_information.starting_tap[None, None, :]),
+            precision_percent=jnp.array(0.0),
+        ),
+        dynamic_information=di,
+        solver_config=solver_config,
+    )
+    assert jnp.all(success)
+    assert jnp.allclose(res.n_0_matrix, res2.n_0_matrix)
+    assert jnp.allclose(res.n_1_matrix, res2.n_1_matrix)
+
+    # PST tap of -12 (tap index 18) should match PowerSybl reference
     # With corrected sign, this tap eliminates overload
     solution = np.array([18, 18])
     res, success = compute_symmetric_batch(
@@ -182,6 +200,7 @@ def test_pst_fixture(
     pst_indices = ["pst_LINE_BC_1", "pst_LINE_BC_2"]
     low_tap = net.get_phase_tap_changers().loc[pst_indices]["low_tap"]
 
+    # Note that powsybl taps do not start at zero but at low_tap
     net.update_phase_tap_changers(id=pst_indices, tap=(low_tap + solution).tolist())
     pypowsybl.loadflow.run_dc(net)
     n_0_ref = net.get_branches().loc[network_data.branch_ids]["p1"].values
@@ -189,8 +208,70 @@ def test_pst_fixture(
 
 
 def test_pst_optimization(
-    create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData],
+    create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData, Network],
 ) -> None:
-    stats, static_information, network_data = create_3_node_pst_example_grid
+    stats, static_information, network_data, net = create_3_node_pst_example_grid
+    di = static_information.dynamic_information
+    solver_config = replace(static_information.solver_config, batch_size_bsdf=1, enable_nodal_inj_optim=True)
 
-    assert static_information
+    me = DiscreteMapElites(
+        scoring_function=partial(
+            scoring_function,
+            solver_configs=[solver_config],
+            target_metrics=(("overload_energy_n_1", 1.0),),
+            observed_metrics=("overload_energy_n_1", "split_subs"),
+            descriptor_metrics=("split_subs",),
+            n_worst_contingencies=1,
+        ),
+        emitter=TrackingMixingEmitter(
+            lambda topologies, key: mutate(
+                topologies,
+                key,
+                substation_split_prob=0.0,
+                substation_unsplit_prob=0.0,
+                action_set=di.action_set,
+                n_disconnectable_branches=0,
+                n_subs_mutated_lambda=0.0,
+                disconnect_prob=0.0,
+                reconnect_prob=0.0,
+                pst_n_taps=di.nodal_injection_information.pst_n_taps,
+                mutation_repetition=1,
+            ),
+            lambda topo_a, topo_b, key: crossover(topo_a, topo_b, key, action_set=di.action_set, prob_take_a=0.5),
+            0.5,
+            batch_size=1,
+        ),
+        metrics_function=default_ga_metrics,
+        n_cells_per_dim=(20,),
+        cell_depth=1,
+    )
+    rng_key = jax.random.PRNGKey(0)
+    repertoire, emitter_state, rng_key = me.init(
+        genotypes=empty_repertoire(
+            batch_size=1,
+            max_num_splits=1,
+            max_num_disconnections=0,
+            n_timesteps=1,
+            starting_taps=di.nodal_injection_information.starting_tap,
+        ),
+        random_key=rng_key,
+        scoring_data=[di],
+    )
+
+    assert repertoire.genotypes.nodal_injections_optimized is not None
+
+    for _ in range(100):
+        repertoire, emitter_state, _, rng_key = me.update(
+            repertoire=repertoire,
+            emitter_state=emitter_state,
+            random_key=rng_key,
+            scoring_data=[di],
+        )
+
+    assert repertoire.genotypes.nodal_injections_optimized is not None
+    best_fitness = jnp.argmax(repertoire.fitnesses)
+    best_taps = repertoire.genotypes.nodal_injections_optimized[best_fitness]
+    assert not jnp.array_equal(best_taps.pst_taps[0], di.nodal_injection_information.starting_tap)
+    assert jnp.isclose(repertoire.fitnesses[best_fitness], 0)
+    # With corrected sign, optimal tap should be lower than starting tap
+    assert jnp.all(best_taps.pst_taps < di.nodal_injection_information.starting_tap)

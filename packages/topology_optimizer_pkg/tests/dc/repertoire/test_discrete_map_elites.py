@@ -9,9 +9,12 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import numpy as np
+import pypowsybl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
+from pypowsybl.network import Network
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.example_grids import three_node_pst_example_folder_powsybl
 from toop_engine_dc_solver.jax.aggregate_results import get_overload_energy_n_1_matrix
@@ -21,6 +24,7 @@ from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions, StaticInformation
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
+from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
@@ -109,17 +113,22 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
 
 
 @pytest.fixture
-def create_3_node_pst_example_grid(tmp_path_factory) -> tuple[StaticInformationStats, StaticInformation, NetworkData]:
+def create_3_node_pst_example_grid(
+    tmp_path_factory,
+) -> tuple[StaticInformationStats, StaticInformation, NetworkData, Network]:
     tmp_path = tmp_path_factory.mktemp("three_node_pst_example_grid")
 
     three_node_pst_example_folder_powsybl(tmp_path)
     filesystem_dir = DirFileSystem(str(tmp_path))
     stats, static_information, network_data = load_grid(filesystem_dir, pandapower=False)
-    return stats, static_information, network_data
+    net = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    return stats, static_information, network_data, net
 
 
-def test_pst_fixture(create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData]) -> None:
-    stats, static_information, network_data = create_3_node_pst_example_grid
+def test_pst_fixture(
+    create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData, Network],
+) -> None:
+    stats, static_information, network_data, net = create_3_node_pst_example_grid
     di = static_information.dynamic_information
     solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
 
@@ -143,13 +152,16 @@ def test_pst_fixture(create_3_node_pst_example_grid: tuple[StaticInformationStat
 
     assert overload > 0
 
-    # PST tap of -12 should fix it (low tap is -30 so -12 turns to 18)
+    # PST tap of -0.12° (tap index 18) should match PowerSybl reference
+    # With corrected sign, this tap eliminates overload
+    solution = np.array([18, 18])
     res, success = compute_symmetric_batch(
         topology_batch=default_topology(solver_config=solver_config),
         disconnection_batch=None,
         injections=None,
         nodal_inj_start_options=NodalInjStartOptions(
-            previous_results=NodalInjOptimResults(pst_taps=jnp.array([[18, 18]])), precision_percent=jnp.array([0.0])
+            previous_results=NodalInjOptimResults(pst_taps=jnp.array([solution.tolist()])),
+            precision_percent=jnp.array([0.0]),
         ),
         dynamic_information=di,
         solver_config=solver_config,
@@ -159,6 +171,21 @@ def test_pst_fixture(create_3_node_pst_example_grid: tuple[StaticInformationStat
     overload = get_overload_energy_n_1_matrix(n_1_matrix=res.n_1_matrix, max_mw_flow=di.branch_limits.max_mw_flow)
 
     assert overload == 0
+
+    # Cross check with the pypowsybl load flow
+    # First verify the unsplit flow matches
+    pypowsybl.loadflow.run_dc(net)
+    unsplit_n_0 = net.get_branches().loc[network_data.branch_ids]["p1"].values
+    assert jnp.allclose(unsplit_n_0, -di.unsplit_flow[0], atol=1e-2)
+
+    # Now update PST taps in pypowsybl and verify that the flow matches the optimized flow
+    pst_indices = ["pst_LINE_BC_1", "pst_LINE_BC_2"]
+    low_tap = net.get_phase_tap_changers().loc[pst_indices]["low_tap"]
+
+    net.update_phase_tap_changers(id=pst_indices, tap=(low_tap + solution).tolist())
+    pypowsybl.loadflow.run_dc(net)
+    n_0_ref = net.get_branches().loc[network_data.branch_ids]["p1"].values
+    assert jnp.allclose(n_0_ref, -res.n_0_matrix[0, 0], atol=1e-2)
 
 
 def test_pst_optimization(

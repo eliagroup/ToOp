@@ -148,11 +148,10 @@ def initialize_optimization(
             Topology(
                 actions=[],
                 disconnections=[],
-                # TODO store and convert initial pst setpoints
-                pst_setpoints=[0] * static_information_description.n_controllable_psts,
+                pst_setpoints=None,
                 metrics=metrics,
             )
-            for static_information_description in static_information_descriptions
+            for _ in static_information_descriptions
         ]
     )
 

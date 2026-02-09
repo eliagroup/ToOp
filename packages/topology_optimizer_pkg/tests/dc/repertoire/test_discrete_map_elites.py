@@ -33,6 +33,7 @@ from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions imp
     mutate,
 )
 from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import (
+    convert_to_topologies,
     scoring_function,
 )
 from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import DiscreteMapElites
@@ -275,3 +276,16 @@ def test_pst_optimization(
     assert jnp.isclose(repertoire.fitnesses[best_fitness], 0)
     # With corrected sign, optimal tap should be lower than starting tap
     assert jnp.all(best_taps.pst_taps < di.nodal_injection_information.starting_tap)
+
+    # Check if convert_to_topologies would send out the PST taps
+    conv_topos = convert_to_topologies(
+        repertoire,
+        contingency_ids=network_data.contingency_ids,
+        grid_model_low_tap=di.nodal_injection_information.grid_model_low_tap,
+    )
+    assert len(conv_topos)
+    assert conv_topos[0].pst_setpoints is not None
+    assert len(conv_topos[0].pst_setpoints) == di.n_controllable_pst
+    assert conv_topos[0].pst_setpoints == list(
+        repertoire.genotypes.nodal_injections_optimized[0].pst_taps[0] + di.nodal_injection_information.grid_model_low_tap
+    )

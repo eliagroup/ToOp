@@ -475,11 +475,15 @@ def apply_topology_and_save(
     base_net = pypowsybl.network.load(grid_path) if not is_pandapower_grid else pandapower.from_json(grid_path)
 
     # Apply topology and disconnections
-    apply_topology = pandapower_apply_topology if is_pandapower_grid else powsybl_apply_topology
-    apply_disconnections = pandapower_apply_disconnections if is_pandapower_grid else powsybl_apply_disconnections
-
-    modified_net, _ = apply_topology(net=base_net, actions=actions, action_set=action_set)
-    modified_net = apply_disconnections(modified_net, disconnections=disconnections, action_set=action_set)
+    if is_pandapower_grid:
+        # Pandapower version returns (net, realized_topology)
+        modified_net, _ = pandapower_apply_topology(net=base_net, actions=actions, action_set=action_set)
+        modified_net = pandapower_apply_disconnections(modified_net, disconnections=disconnections, action_set=action_set)
+    else:
+        # Powsybl version modifies in-place and returns AdditionalActionInfo
+        _ = powsybl_apply_topology(net=base_net, actions=actions, action_set=action_set)
+        powsybl_apply_disconnections(base_net, disconnections=disconnections, action_set=action_set)
+        modified_net = base_net
 
     modified_net.save(save_path) if not is_pandapower_grid else modified_net.to_json(save_path)
     logger.notice(f"Saved modified network to {save_path}")

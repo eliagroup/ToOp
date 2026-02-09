@@ -71,3 +71,6 @@ packages/topology_optimizer_pkg/tests/data/oberrhein/grid.json
 packages/topology_optimizer_pkg/tests/data/oberrhein/static_information_stats.json
 packages/topology_optimizer_pkg/tests/data/oberrhein/nminus1_definition.json
 packages/topology_optimizer_pkg/tests/data/oberrhein/initial_topology/asset_topology.json
+
+# Renovate
+.github/renovate.json

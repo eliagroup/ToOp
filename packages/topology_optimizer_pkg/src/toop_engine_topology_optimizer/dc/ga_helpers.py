@@ -10,10 +10,10 @@
 import time
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Optional
 
 import jax
 from average import EWMA
+from beartype.typing import Optional
 from jax import numpy as jnp
 from qdax.core.containers.repertoire import Repertoire
 from qdax.core.emitters.standard_emitters import EmitterState, ExtraScores, MixingEmitter

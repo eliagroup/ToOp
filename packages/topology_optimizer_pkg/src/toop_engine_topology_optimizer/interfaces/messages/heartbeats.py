@@ -9,8 +9,8 @@
 
 import uuid
 from datetime import datetime
-from typing import Literal, TypeAlias, Union
 
+from beartype.typing import Literal, TypeAlias, Union
 from pydantic import BaseModel, Field, NonNegativeFloat, NonNegativeInt
 from toop_engine_topology_optimizer.interfaces.messages.commons import OptimizerType
 

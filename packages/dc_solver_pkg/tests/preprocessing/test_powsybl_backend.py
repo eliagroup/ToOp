@@ -29,12 +29,13 @@ from toop_engine_dc_solver.preprocess.helpers.ptdf import compute_ptdf
 from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
     extract_nminus1_definition,
+    load_lf_params,
     load_network_data,
     validate_network_data,
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
@@ -213,6 +214,8 @@ def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:
 def test_injection_outages_match(preprocessed_powsybl_data_folder: Path) -> None:
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+
     static_information = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
     )
@@ -222,7 +225,7 @@ def test_injection_outages_match(preprocessed_powsybl_data_folder: Path) -> None
     outaged_injections = [
         cont for cont in nminus1_def.contingencies if not cont.is_basecase() and cont.elements[0].kind == "injection"
     ]
-    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK if network_data.metadata["distributed_slack"] else SINGLE_SLACK)
+    pypowsybl.loadflow.run_dc(net, lf_params)
 
     assert len(outaged_injections) == dynamic_information.n_inj_failures
     assert (
@@ -254,6 +257,7 @@ def test_injection_outages_match(preprocessed_powsybl_data_folder: Path) -> None
 def test_loadflows_match(preprocessed_powsybl_data_folder: Path) -> None:
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     static_information = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
     )
@@ -270,7 +274,7 @@ def test_loadflows_match(preprocessed_powsybl_data_folder: Path) -> None:
     n_1 = np.abs(n_1[0, 0])
     assert np.all(success)
 
-    runner = PowsyblRunner()
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
     runner.store_action_set(extract_action_set(network_data))
     nminus1_def = extract_nminus1_definition(network_data)
@@ -297,6 +301,7 @@ def test_loadflows_match_bat_hvdc_shunt_svc(complex_grid_battery_hvdc_svc_3w_tra
     preprocessed_powsybl_data_folder = complex_grid_battery_hvdc_svc_3w_trafo_data_folder
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     static_information = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
     )
@@ -314,11 +319,10 @@ def test_loadflows_match_bat_hvdc_shunt_svc(complex_grid_battery_hvdc_svc_3w_tra
     n_1 = np.abs(n_1[0, 0])
     assert np.all(success)
 
-    runner = PowsyblRunner()
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
     runner.store_action_set(extract_action_set(network_data))
     nminus1_def = extract_nminus1_definition(network_data)
-    nminus1_def.loadflow_parameters.contingency_propagation = False
     runner.store_nminus1_definition(nminus1_def)
 
     res_ref = runner.run_dc_loadflow([], [])
@@ -345,6 +349,7 @@ def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
     static_information = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
     )
+    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
 
     (n_0, n_1), success = run_solver_symmetric(
         topologies=default_topology(static_information.solver_config),
@@ -359,11 +364,10 @@ def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
     n_1 = np.abs(n_1[0, 0])
     assert np.all(success)
 
-    runner = PowsyblRunner()
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
     runner.store_action_set(extract_action_set(network_data))
     nminus1_def = extract_nminus1_definition(network_data)
-    nminus1_def.loadflow_parameters.contingency_propagation = False
     runner.store_nminus1_definition(nminus1_def)
 
     res_ref = runner.run_dc_loadflow([], [])

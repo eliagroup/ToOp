@@ -39,6 +39,7 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
 from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
     extract_nminus1_definition,
+    load_lf_params,
     load_network_data,
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
@@ -114,8 +115,9 @@ def test_apply_topology_matches_loadflows(
 
     net = pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     network_data = load_network_data(data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    lf_params = load_lf_params(data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     action_set = extract_action_set(network_data)
-    runner = PowsyblRunner()
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
     runner.store_action_set(action_set)
     nminus1_def = extract_nminus1_definition(network_data)
@@ -162,7 +164,8 @@ def test_apply_disconnections_matches_loadflows(
 ) -> None:
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
-    runner = PowsyblRunner()
+    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
@@ -301,7 +304,7 @@ def test_compute_cross_coupler_flows(preprocessed_powsybl_data_folder: Path) -> 
         res = json.load(f)
     actions = res["best_topos"][0]["actions"]
 
-    cross_coupler_p_ref, _, success = compute_cross_coupler_flows(net, actions, action_set, "dc")
+    cross_coupler_p_ref, _, success = compute_cross_coupler_flows(net, actions, action_set, DISTRIBUTED_SLACK, "dc")
     assert np.all(success)
     assert cross_coupler_p_ref.shape == (len(actions),)
 

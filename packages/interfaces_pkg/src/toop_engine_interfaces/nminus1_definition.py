@@ -20,7 +20,7 @@ from pathlib import Path
 from beartype.typing import Literal, Optional, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 
 # The type of the ids used in the N-1 definition. This changes how the elements are identified in the grid.
@@ -107,27 +107,6 @@ class Contingency(BaseModel):
         return len(self.elements) == 1
 
 
-class LoadflowParameters(BaseModel):
-    """Loadflow parameters for the N-1 computation."""
-
-    distributed_slack: bool = False
-    """Whether to distribute the slack across all injections in the grid. Only relevant for powsybl grids."""
-
-    contingency_propagation: bool = False
-    """Whether to enable powsybl's contingency propagation in the N-1 analysis.
-
-    Powsybl:
-    https://powsybl.readthedocs.io/projects/powsybl-open-loadflow/en/latest/security/parameters.html
-    Security Analysis will determine by topological search the switches with type circuit breakers
-    (i.e. capable of opening fault currents) that must be opened to isolate the fault. Depending on the network structure,
-    this could lead to more equipments to be simulated as tripped, because disconnectors and load break switches
-    (i.e., not capable of opening fault currents) are not considered.
-
-    Pandapower:
-    Currently not supported in pandapower.
-    """
-
-
 class Nminus1Definition(BaseModel):
     """An N-1 definition holds monitored and outaged elements for a grid.
 
@@ -140,9 +119,6 @@ class Nminus1Definition(BaseModel):
 
     contingencies: list[Contingency]
     """A list of contingencies that should be computed during the N-1 computation."""
-
-    loadflow_parameters: LoadflowParameters = Field(default_factory=LoadflowParameters)
-    """Loadflow parameters for the N-1 computation."""
 
     id_type: Optional[ELEMENT_ID_TYPES] = None
     """The type of the ids used in the N-1 definition. This is used to determine how to interpret the ids in the
@@ -180,7 +156,6 @@ class Nminus1Definition(BaseModel):
         return Nminus1Definition(
             monitored_elements=self.monitored_elements,
             contingencies=self.contingencies[index],
-            loadflow_parameters=self.loadflow_parameters,
         )
 
 

@@ -21,10 +21,10 @@ Note: this module ignores generator and load reassignments.
 import json
 import re
 from pathlib import Path
-from typing import Any
 
 import logbook
 import pandas as pd
+from beartype.typing import Any
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
 
 logger = logbook.Logger(__name__)

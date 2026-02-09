@@ -13,10 +13,10 @@ Adapted from QDax (https://github.com/adaptive-intelligent-robotics/QDax)
 from __future__ import annotations
 
 from functools import partial
-from typing import Callable, Optional, Tuple
 
 import jax
 import jax.numpy as jnp
+from beartype.typing import Callable, Optional, Tuple
 from jaxtyping import PyTree
 from pydantic import PositiveInt
 from qdax.core.emitters.emitter import Emitter, EmitterState

@@ -146,6 +146,11 @@ class BaseImporterParameters(BaseModel):
     area_settings: AreaSettings
     """Which areas of the grid are to be imported and how to handle boundaries"""
 
+    fail_on_non_convergence: bool = True
+    """Whether to raise an error if the loadflow does not converge in the basecase.
+    If set to False, the preprocessing will continue and dc-optimization can still happen.
+    Mostly for debugging purposes"""
+
     data_folder: Path
     """The path where the entry point where the timestep data folder structure starts.
 
@@ -379,6 +384,10 @@ class PreprocessParameters(BaseModel):
 
     initial_loadflow_processes: int = 8
     """How many processes to use to compute the initial AC loadflow"""
+
+    fail_on_non_convergence: bool = True
+    """Whether to raise an error if the initial loadflow does not converge.
+    If False, a warning is logged instead and the backend is initialized with the dc loadflow results."""
 
 
 class StartPreprocessingCommand(BaseModel):

@@ -7,12 +7,11 @@
 
 """Outage group computation for pandapower networks."""
 
-from typing import Iterable, List, Optional, Tuple
-
 import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
+from beartype.typing import Iterable, List, Optional, Tuple
 
 
 def elem_node_id(kind: str, idx: int, etype: Optional[str] = None) -> str:

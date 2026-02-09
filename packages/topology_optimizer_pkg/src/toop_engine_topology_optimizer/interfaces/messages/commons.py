@@ -12,8 +12,8 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Optional, TypeAlias, Union
 
+from beartype.typing import Literal, Optional, TypeAlias, Union
 from pydantic import (
     BaseModel,
     PositiveFloat,
@@ -102,6 +102,11 @@ class GridFile(BaseModel):
     def nminus1_definition_file(self) -> Path:
         """The path to the n-1 definition file"""
         return Path(self.grid_folder) / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+
+    @property
+    def loadflow_parameters_file(self) -> Path:
+        """The path to the loadflow parameters file"""
+        return Path(self.grid_folder) / PREPROCESSING_PATHS["loadflow_parameters_file_path"]
 
 
 class DescriptorDef(BaseModel):

@@ -46,12 +46,11 @@ PS- Power switch / Branch switch
 ```
 """
 
-from typing import Optional, Union
-
 import logbook
 import numpy as np
 import pandapower as pp
 import pandas as pd
+from beartype.typing import Optional, Union
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import move_elements_based_on_labels
 
 logger = logbook.Logger(__name__)

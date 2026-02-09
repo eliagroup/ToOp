@@ -12,14 +12,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import pypowsybl
 from beartype.typing import NamedTuple, Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.backend import BackendInterface
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, LoadflowParameters, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
 
 
@@ -478,6 +480,22 @@ def load_network_data(filename: Union[str, Path]) -> NetworkData:
         The loaded network data
     """
     return load_network_data_fs(LocalFileSystem(), filename)
+
+
+def load_lf_params(filename: Union[str, Path]) -> pypowsybl.loadflow.Parameters:
+    """Load the loadflow parameters from a file.
+
+    Parameters
+    ----------
+    filename : Union[str, Path]
+        The filename to load the loadflow parameters from
+
+    Returns
+    -------
+    pypowsybl.loadflow.Parameters
+        The loaded loadflow parameters
+    """
+    return load_lf_params_from_fs(LocalFileSystem(), filename)
 
 
 def assert_network_data(network_data: NetworkData) -> None:
@@ -940,8 +958,6 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         for index in network_data.rel_io_global_inj_index
     ]
 
-    loadflow_parameters = LoadflowParameters(distributed_slack=network_data.metadata.get("distributed_slack", True))
-
     return Nminus1Definition(
         monitored_elements=monitored_branches + monitored_nodes + monitored_switches,
         contingencies=basecase_contingency
@@ -949,5 +965,4 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         + multi_contingencies
         + nonrel_inj_contingencies
         + rel_inj_contingencies,
-        loadflow_parameters=loadflow_parameters,
     )

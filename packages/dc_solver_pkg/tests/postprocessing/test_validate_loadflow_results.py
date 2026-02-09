@@ -26,6 +26,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     extract_action_set,
     extract_nminus1_definition,
+    load_lf_params,
     load_network_data,
 )
 from toop_engine_interfaces.folder_structure import (
@@ -74,6 +75,7 @@ def test_validate_loadflow_results(preprocessed_powsybl_data_folder: Path) -> No
     static_information = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
     )
+    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     post_process_file_path = (
         preprocessed_powsybl_data_folder
         / POSTPROCESSING_PATHS["dc_optimizer_snapshots_path"]
@@ -85,7 +87,7 @@ def test_validate_loadflow_results(preprocessed_powsybl_data_folder: Path) -> No
     action_set = extract_action_set(network_data)
     nminus1_definition = extract_nminus1_definition(network_data)
 
-    runner = PowsyblRunner()
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(nminus1_definition)
@@ -143,8 +145,8 @@ def test_lf_results_for_overlapping_branch_masks(
         pytest.skip("Solver did not converge for all actions")
     n_0_solver = n_0_solver[0, 0]
     n_1_solver = n_1_solver[0, 0]
-
-    runner = PowsyblRunner()
+    lf_params = load_lf_params(powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.load_base_grid(powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     nminus1_def = extract_nminus1_definition(network_data)
     runner.store_nminus1_definition(nminus1_def)
@@ -181,8 +183,8 @@ def test_lf_results_for_non_overlapping_branch_masks(
         pytest.skip("Solver did not converge for all actions")
     n_0_solver = n_0_solver[0, 0]
     n_1_solver = n_1_solver[0, 0]
-
-    runner = PowsyblRunner()
+    lf_params = load_lf_params(powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.load_base_grid(powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     nminus1_def = extract_nminus1_definition(network_data)
     runner.store_nminus1_definition(nminus1_def)
@@ -236,7 +238,8 @@ def test_lf_results_for_overlapping_monitored_and_disconnected_branch_data(
     assert n_0_solver.shape == expected_n_0_shape
     assert n_1_solver.shape == expected_n_1_shape
 
-    runner = PowsyblRunner()
+    lf_params = load_lf_params(powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    runner = PowsyblRunner(lf_params=lf_params)
     runner.load_base_grid(powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     nminus1_def = extract_nminus1_definition(network_data)
     runner.store_nminus1_definition(nminus1_def)

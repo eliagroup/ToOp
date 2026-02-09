@@ -8,8 +8,8 @@
 """The database models to store topologies in the AC optimizer"""
 
 from datetime import datetime, timedelta
-from typing import Optional
 
+from beartype.typing import Optional
 from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, delete
 from toop_engine_topology_optimizer.interfaces.messages.commons import OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import Strategy, Topology

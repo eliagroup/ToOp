@@ -13,24 +13,28 @@ Created: 2024-09-04
 """
 
 import json
+from copy import deepcopy
+from itertools import product
 from pathlib import Path
-from typing import (
+
+import logbook
+import pypowsybl
+from beartype.typing import (
     Any,  # noqa: F401
     Callable,
     Optional,
     Union,
 )
-
-import logbook
-import pypowsybl
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
+from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     DISTRIBUTED_SLACK,
+    POWSYBL_LOADFLOW_PARAM_PF,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_topology
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, save_powsybl_to_fs
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, save_lf_params_to_fs, save_powsybl_to_fs
 from toop_engine_importer.network_graph import powsybl_station_to_graph
 from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
@@ -42,6 +46,7 @@ from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    BaseImporterParameters,
     CgmesImporterParameters,
     UcteImporterParameters,
 )
@@ -50,7 +55,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     empty_status_update_fn,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
-    UcteImportResult,
+    ImportResult,
 )
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 
@@ -248,19 +253,19 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
 
 def convert_file(
-    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    importer_parameters: BaseImporterParameters,
     status_update_fn: Callable[[PreprocessStage, Optional[str]], None] = empty_status_update_fn,
     processed_gridfile_fs: Optional[AbstractFileSystem] = None,
     unprocessed_gridfile_fs: Optional[AbstractFileSystem] = None,
-) -> UcteImportResult:
-    """Convert the UCTE file to a format that can be used by the RL agent.
+) -> ImportResult:
+    """Convert the grid file to a format that can be used by the preprocessing.
 
     Saves data and network to the output folder.
 
     Parameters
     ----------
-    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
-        Parameters that are required to import the data from a UCTE file. This will utilize
+    importer_parameters: BaseImporterParameters
+        Parameters that are required to import the data from a UCTE or CGMES file. This will utilize
         powsybl and the powsybl backend to the loadflow solver
     status_update_fn: Callable[[PreprocessStage, Optional[str]]
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
@@ -272,7 +277,7 @@ def convert_file(
 
     Returns
     -------
-    UcteImportResult
+    tuple[ImportResult, pypowsybl.loadflow.Parameters]
         The result of the import process.
 
     """
@@ -313,8 +318,13 @@ def convert_file(
         trafo3w_lims.index.name = "id"
         network.update_2_windings_transformers(trafo3w_lims)
 
+    # Iterate over Loadflow parameters and voltage initialization methods to find a converging loadflow.
+    # This is necessary because some grid files do not converge with the
+    # default loadflow parameters and voltage initialization method.
+    lf_params, main_result = find_convering_loadflow_params(importer_parameters, network)
+
     statistics = PreProcessingStatistics(
-        import_result=UcteImportResult(data_folder=importer_parameters.data_folder),
+        import_result=ImportResult(data_folder=importer_parameters.data_folder, grid_type=importer_parameters.data_type),
         import_parameter=importer_parameters,
     )
     status_update_fn("apply_cb_list", "Applying Whitelists")
@@ -346,6 +356,13 @@ def convert_file(
         filesystem=processed_gridfile_fs,
         file_path=grid_file_path,
     )
+
+    save_lf_params_to_fs(
+        lf_params=lf_params,
+        filesystem=processed_gridfile_fs,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
+    )
+
     # Reload Network because powsybl likes to change order during save
     network = load_powsybl_from_fs(
         filesystem=processed_gridfile_fs,
@@ -372,9 +389,8 @@ def convert_file(
         or importer_parameters.area_settings.border_line_factors is not None
     ):
         status_update_fn("cross_border_current", "Setting cross border current limit")
-        lf_result = pypowsybl.loadflow.run_ac(network, parameters=DISTRIBUTED_SLACK)
-        if lf_result[0].status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
-            pypowsybl.loadflow.run_dc(network, parameters=DISTRIBUTED_SLACK)
+        if main_result.status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
+            pypowsybl.loadflow.run_dc(network, parameters=lf_params)
         create_new_border_limits(network, network_masks, importer_parameters)
         # save new border limits
         save_powsybl_to_fs(
@@ -400,6 +416,53 @@ def convert_file(
     )
 
     return statistics.import_result
+
+
+def find_convering_loadflow_params(
+    importer_parameters: BaseImporterParameters, network: Network
+) -> tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.Result]:
+    """Iterate over Loadflow parameters and voltage initialization methods to find a converging loadflow.
+
+    This is necessary because some grid files do not converge with
+    the default loadflow parameters and voltage initialization method.
+
+    Parameters
+    ----------
+    importer_parameters: BaseImporterParameters
+        The importer parameters to use for the loadflow parameters.
+    network: Network
+        The network to run the loadflow on.
+
+    Returns
+    -------
+    Tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.Result
+        The loadflow parameters that converged and the result of the loadflow with those parameters.
+    """
+    lf_params_list = [POWSYBL_LOADFLOW_PARAM_PF, DISTRIBUTED_SLACK]
+    voltage_methods = [VoltageInitMode.PREVIOUS_VALUES, VoltageInitMode.DC_VALUES, VoltageInitMode.UNIFORM_VALUES]
+    for lf_params_base, voltage_method in product(lf_params_list, voltage_methods):
+        lf_params = deepcopy(lf_params_base)
+        lf_params.voltage_init_mode = voltage_method
+        try:
+            main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
+        except pypowsybl.PyPowsyblError:
+            continue
+
+        if main_result.status == pypowsybl.loadflow.ComponentStatus.CONVERGED:
+            break
+    else:
+        if importer_parameters.fail_on_non_convergence:
+            raise RuntimeError(
+                "Loadflow did not converge with any voltage initialization method. "
+                "Please check the grid file and the loadflow parameters."
+            )
+        lf_params = DISTRIBUTED_SLACK
+        logger.warning(
+            "Loadflow did not converge with any voltage initialization method. "
+            "Continuing with the DISTRIBUTED SLACK params but the loadflow results should be treated with caution."
+        )
+
+    return lf_params, main_result
 
 
 def get_network_masks(

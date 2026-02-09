@@ -10,9 +10,9 @@
 import time
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable
 
 import jax
+from beartype.typing import Any, Callable
 from fsspec import AbstractFileSystem
 from jax import lax
 from jax_dataclasses import replace

@@ -8,14 +8,13 @@
 """Module containing helper functions to translate Pandapower N-1 definitions and results."""
 
 import dataclasses
-from typing import Any, get_args
 
 import numpy as np
 import pandapower
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
-from beartype.typing import Literal
+from beartype.typing import Any, Literal, get_args
 from networkx.classes import MultiGraph
 from pandapower import pandapowerNet
 from pandapower.toolbox import res_power_columns
@@ -42,7 +41,6 @@ from toop_engine_interfaces.nminus1_definition import (
     PANDAPOWER_SUPPORTED_ID_TYPES,
     Contingency,
     GridElement,
-    LoadflowParameters,
     Nminus1Definition,
 )
 
@@ -1289,8 +1287,5 @@ def get_full_nminus1_definition_pandapower(net: pandapower.pandapowerNet) -> Nmi
         contingencies=[*basecase_contingency, *single_contingencies],
         monitored_elements=monitored_elements,
         id_type="unique_pandapower",  # Default id type for Pandapower
-        loadflow_parameters=LoadflowParameters(
-            distributed_slack=False,  # This is the default for Powsybl
-        ),
     )
     return nminus1_definition

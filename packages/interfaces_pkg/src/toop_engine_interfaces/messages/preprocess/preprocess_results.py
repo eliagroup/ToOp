@@ -17,7 +17,7 @@ from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import
 from toop_engine_interfaces.types import MetricType
 
 
-class UcteImportResult(BaseModel):
+class ImportResult(BaseModel):
     """Statistics and results from an import process of UCTE data"""
 
     data_folder: Path
@@ -88,8 +88,8 @@ class UcteImportResult(BaseModel):
     n_black_list_applied: Optional[NonNegativeInt] = 0
     """The number of elements in the blacklist that were successfully matched and applied"""
 
-    grid_type: Literal["ucte"] = "ucte"
-    """The discriminator for the ImportResult Union"""
+    grid_type: Literal["ucte", "cgmes", "power_factory", "hybrid"] = "cgmes"
+    """The type of grid that was imported, e.g. ucte or cgmes"""
 
 
 class StaticInformationStats(BaseModel):
@@ -175,13 +175,6 @@ class StaticInformationStats(BaseModel):
     """The maximum reassignment distance associated with any action"""
 
 
-class PowerFactoryImportResult(BaseModel):
-    """Statistics and results from an import process of PowerFactory data, TODO fill"""
-
-    grid_type: Literal["power_factory"] = "power_factory"
-    """The discriminator for the ImportResult Union"""
-
-
 class PreprocessingSuccessResult(BaseModel):
     """Results of a preprocessing run, mainly including the static_information and network_data files."""
 
@@ -199,7 +192,7 @@ class PreprocessingSuccessResult(BaseModel):
     static_information_stats: StaticInformationStats
     """Statistics about the static information file that was produced"""
 
-    importer_results: Union[UcteImportResult, PowerFactoryImportResult] = Field(discriminator="grid_type")
+    importer_results: ImportResult
     """The results of the importer process"""
 
     result_type: Literal["preprocessing_success"] = "preprocessing_success"

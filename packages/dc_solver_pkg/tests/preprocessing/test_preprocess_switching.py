@@ -6,12 +6,12 @@
 # Mozilla Public License, version 2.0
 
 from pathlib import Path
-from typing import get_args
 
 import jax.numpy as jnp
 import networkx as nx
 import numpy as np
 import pytest
+from beartype.typing import get_args
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
     add_missing_asset_topology_branch_info,

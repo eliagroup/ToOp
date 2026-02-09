@@ -258,6 +258,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
         self,
         n_processes: int = 1,
         batch_size: Optional[int] = None,
+        lf_params: dict | None = None,
     ) -> None:
         """Create a new PandapowerRunner
 
@@ -267,9 +268,12 @@ class PandapowerRunner(AbstractLoadflowRunner):
             The number of workers to use for parallelization, by default 1 (no parallelization)
         batch_size: Optional[int], optional
             The size of the batches to split the outages into, by default None (automatic)
+        lf_params: dict, optional
+            The loadflow parameters to use for the contingency analysis, by default None (use pandapower defaults)
         """
         self.n_processes = n_processes
         self.batch_size = batch_size
+        self.lf_params = lf_params
         self.net: Optional[pp.pandapowerNet] = None
         self.nminus1_definition: Optional[Nminus1Definition] = None
         self.action_set: Optional[ActionSet] = None
@@ -362,7 +366,13 @@ class PandapowerRunner(AbstractLoadflowRunner):
             update={"contingencies": [Contingency(elements=[], id="BASECASE")]}
         )
         return run_contingency_analysis_pandapower(
-            net=net, n_minus_1_definition=nminus1_definition, job_id="", timestep=0, method="dc", polars=True
+            net=net,
+            n_minus_1_definition=nminus1_definition,
+            job_id="",
+            timestep=0,
+            method="dc",
+            polars=True,
+            runpp_kwargs=self.lf_params,
         )
 
     @overrides
@@ -437,6 +447,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
             method=method,
             n_processes=self.n_processes,
             polars=True,
+            runpp_kwargs=self.lf_params,
         )
 
     def get_last_action_info(self) -> Optional[RealizedTopology]:

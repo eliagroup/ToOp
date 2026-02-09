@@ -13,10 +13,9 @@ handle critical busbars during outages. The calculations leverage JAX for effici
 computations and support batch processing for multiple busbar outages.
 """
 
-from typing import Optional
-
 import jax
 import jax.numpy as jnp
+from beartype.typing import Optional
 from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.jax.aggregate_results import get_overload_energy_n_1_matrix
 from toop_engine_dc_solver.jax.multi_outages import compute_multi_outage

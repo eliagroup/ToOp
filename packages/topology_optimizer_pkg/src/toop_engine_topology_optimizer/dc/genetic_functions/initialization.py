@@ -8,12 +8,12 @@
 """Initialization of the genetic algorithm for branch and injection choice optimization."""
 
 from functools import partial
-from typing import Iterable, Optional
 
 import jax
 import jax.experimental
 import jax.numpy as jnp
 import logbook
+from beartype.typing import Iterable, Optional
 from fsspec import AbstractFileSystem
 from jax_dataclasses import pytree_dataclass, replace
 from jaxtyping import Array, Float, Int

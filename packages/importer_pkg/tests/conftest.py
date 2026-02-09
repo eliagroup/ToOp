@@ -11,7 +11,6 @@ import time
 import uuid
 from copy import deepcopy
 from pathlib import Path
-from typing import Generator
 
 import docker
 import networkx as nx
@@ -20,6 +19,7 @@ import pandapower as pp
 import pandas as pd
 import pypowsybl
 import pytest
+from beartype.typing import Generator
 from confluent_kafka import Consumer
 from docker import DockerClient
 from docker.models.containers import Container
@@ -297,6 +297,7 @@ def imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, uct
     tmp_path = tmp_path_factory.mktemp("imported_ucte_file_data_folder")
     importer_parameters = UcteImporterParameters(
         grid_model_file=ucte_file,
+        fail_on_non_convergence=False,
         data_folder=tmp_path,
         white_list_file=None,
         black_list_file=None,

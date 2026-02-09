@@ -32,10 +32,7 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     apply_topology_bus_branch,
     is_node_breaker_grid,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    DISTRIBUTED_SLACK,
-    SINGLE_SLACK,
-)
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     extract_single_branch_loadflow_result,
     extract_single_injection_loadflow_result,
@@ -123,8 +120,8 @@ def compute_cross_coupler_flows(
     net: Network,
     actions: list[int],
     action_set: ActionSet,
+    lf_params: pypowsybl.loadflow.Parameters,
     method: Literal["ac", "dc"] = "dc",
-    distributed_slack: bool = True,
 ) -> tuple[
     Float[np.ndarray, " n_splits"],
     Float[np.ndarray, " n_splits"],
@@ -141,10 +138,10 @@ def compute_cross_coupler_flows(
         as the return values will be in the same order when opening one switch after the other.
     action_set : ActionSet
         The action set to use for the actions in the form of asset topologies
+    lf_params: pypowsybl.loadflow.Parameters,
+        Loadflow parameters to use for the computation
     method : Literal["ac", "dc"], optional
         Whether to compute the AC or DC power flow, by default "dc"
-    distributed_slack : bool, optional
-        Whether to use the power values of the generators with distributed slack for the N0-computation, by default True
 
     Returns
     -------
@@ -157,16 +154,15 @@ def compute_cross_coupler_flows(
         Whether the power flow was successful for each split
     """
     net = deepcopy(net)
-
     active_power = []
     reactive_power = []
     success = []
 
     for split in actions:
         if method == "ac":
-            res = pypowsybl.loadflow.run_ac(net, DISTRIBUTED_SLACK if distributed_slack else SINGLE_SLACK)
+            res = pypowsybl.loadflow.run_ac(net, lf_params)
         else:
-            res = pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK if distributed_slack else SINGLE_SLACK)
+            res = pypowsybl.loadflow.run_dc(net, lf_params)
         if res[0].status != pypowsybl.loadflow.ComponentStatus.CONVERGED:
             active_power.append(np.nan)
             reactive_power.append(np.nan)
@@ -217,7 +213,9 @@ class PowsyblRunner(AbstractLoadflowRunner):
     It can run in parallel using ray's remote mechanic.
     """
 
-    def __init__(self, n_processes: int = 1, batch_size: Optional[int] = None) -> None:
+    def __init__(
+        self, n_processes: int = 1, batch_size: Optional[int] = None, lf_params: pypowsybl.loadflow.Parameters | None = None
+    ) -> None:
         """Initialize the runner
 
         Parameters
@@ -226,6 +224,8 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The number of processes to use for parallel computation, by default 1
         batch_size : Optional[int], optional
             The batch size to use for parallel computation, by default None (auto-determined)
+        lf_params: Optional[pypowsybl.loadflow.Parameters], optional
+            Loadflow parameters to use for the computation. If None, default parameters are used.
         """
         self.n_processes = n_processes
         self.batch_size = batch_size
@@ -234,6 +234,9 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self.action_set: Optional[ActionSet] = None
         self.nminus1_definition: Optional[Nminus1Definition] = None
         self.last_action_info: Optional[AdditionalActionInfo] = None
+        if lf_params is None:
+            lf_params = DISTRIBUTED_SLACK
+        self.lf_params = deepcopy(lf_params)
 
     @overrides
     def load_base_grid_fs(self, filesystem: AbstractFileSystem, grid_path: Path) -> None:
@@ -328,7 +331,13 @@ class PowsyblRunner(AbstractLoadflowRunner):
             update={"contingencies": [Contingency(elements=[], id="BASECASE")]}
         )
         return run_contingency_analysis_powsybl(
-            net=net, n_minus_1_definition=nminus1_definition, job_id="", timestep=0, method="dc", polars=True
+            net=net,
+            n_minus_1_definition=nminus1_definition,
+            job_id="",
+            timestep=0,
+            method="dc",
+            polars=True,
+            lf_params=self.lf_params,
         )
 
     @overrides
@@ -427,6 +436,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             method=method,
             polars=True,
             n_processes=self.n_processes,
+            lf_params=self.lf_params,
         )
 
     @overrides

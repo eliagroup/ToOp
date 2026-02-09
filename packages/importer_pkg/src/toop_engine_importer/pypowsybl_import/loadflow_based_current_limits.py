@@ -12,10 +12,9 @@ Author:  Leonard Hilfrich
 Created: 2024-12-19
 """
 
-from typing import Literal, Union
-
 import numpy as np
 import pandas as pd
+from beartype.typing import Literal, Union
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
 from toop_engine_interfaces.loadflow_results import BranchSide

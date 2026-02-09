@@ -9,11 +9,11 @@
 
 import time
 from functools import partial
-from typing import Callable
 from uuid import uuid4
 
 import jax
 import logbook
+from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel

@@ -64,9 +64,6 @@ def test_extract_data_compare_to_network_data(network_data_preprocessed: Network
     assert n_monitored_elements == n_expected_monitored_elements, (
         "Number of monitored elements does not match expected count"
     )
-    assert n_minus_1_definition.loadflow_parameters.distributed_slack == network_data_preprocessed.metadata.get(
-        "distributed_slack", True
-    )
 
 
 def test_write_aux_data(network_data_preprocessed: NetworkData, tmp_path_factory: pytest.TempPathFactory) -> None:

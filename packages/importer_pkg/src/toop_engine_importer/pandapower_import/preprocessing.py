@@ -37,11 +37,10 @@ The preprocessing is done in several steps:
 
 """
 
-from typing import Optional
-
 import logbook
 import numpy as np
 import pandapower as pp
+from beartype.typing import Optional
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import (
     drop_elements_connected_to_one_bus,

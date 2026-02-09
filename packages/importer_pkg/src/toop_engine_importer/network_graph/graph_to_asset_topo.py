@@ -7,12 +7,11 @@
 
 """Creates a Asset Topology from a Network Graph."""
 
-from typing import Literal, Optional, Union
-
 import logbook
 import networkx as nx
 import numpy as np
 import pandas as pd
+from beartype.typing import Literal, Optional, Union
 from jaxtyping import Array, Bool
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,

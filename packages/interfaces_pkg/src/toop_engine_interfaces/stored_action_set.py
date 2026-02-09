@@ -50,10 +50,15 @@ class PSTRange(GridElement):
     A PST has a list of taps, each with an angle shift.
     """
 
-    shift_steps: list[float]
-    """The list of possible tap positions, characterized by their angle shift for a given tap position. While there are
-    secondary effects (losses, voltage shifts) when changing the tap, these are modelled in the grid and not in the
-    action set."""
+    starting_tap: int | None = None
+    """The tap the PST was set to before optimization. This is not strictly necessary but can be useful for postprocessing
+    and visualization. Refers to taps in the grid model, i.e. this can be negative."""
+
+    low_tap: int
+    """The lowest tap the PST supports"""
+
+    high_tap: int
+    """The highest tap the PST supports"""
 
 
 class HVDCRange(GridElement):

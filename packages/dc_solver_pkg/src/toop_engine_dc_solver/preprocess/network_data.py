@@ -816,9 +816,13 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             type=network_data.branch_types[index],
             name=network_data.branch_names[index],
             kind="branch",
-            shift_steps=taps.tolist(),
+            starting_tap=start + low,  # Start taps are relative to 0
+            low_tap=low,
+            high_tap=9999,  # TODO add high tap to network data and remove this hardcoded value
         )
-        for (index, taps) in zip(controllable_pst_indices, network_data.phase_shift_taps, strict=True)
+        for (index, start, low) in zip(
+            controllable_pst_indices, network_data.phase_shift_starting_tap, network_data.phase_shift_low_tap, strict=True
+        )
     ]
 
     return ActionSet(

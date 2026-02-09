@@ -26,7 +26,6 @@ from toop_engine_dc_solver.jax.types import (
     SolverConfig,
     int_max,
 )
-from toop_engine_interfaces.stored_action_set import PSTRange
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
     Genotype,
     deduplicate_genotypes,
@@ -310,27 +309,6 @@ def filter_repo(
     repertoire = repertoire[indices]
 
     return repertoire
-
-
-def find_pst_tap(shift_angle: float, pst_setpoints: PSTRange) -> int:
-    """Find the index of the closest PST tap to the shift angle.
-
-    Parameters
-    ----------
-    shift_angle : float
-        The shift angle to find the closest PST tap for
-    pst_setpoints : PSTRange
-        The PST setpoints to use
-
-    Returns
-    -------
-    int
-        The index of the closest PST tap
-    """
-    angles = np.array(pst_setpoints.shift_steps)
-    # Find the index of the closest angle
-    closest_index = np.argmin(np.abs(angles - shift_angle))
-    return closest_index.item()
 
 
 def convert_to_topologies(

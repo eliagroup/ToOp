@@ -26,7 +26,7 @@ from pypowsybl.network import Network
 from toop_engine_contingency_analysis.pypowsybl import (
     run_contingency_analysis_powsybl,
 )
-from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo, PstSetpointsType
+from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     apply_node_breaker_topology,
     apply_topology_bus_branch,
@@ -47,7 +47,7 @@ from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Defini
 from toop_engine_interfaces.stored_action_set import ActionSet
 
 
-def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> AdditionalActionInfo:
+def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> AdditionalActionInfo | None:
     """Apply actions to a powsybl network
 
     Parameters
@@ -62,8 +62,9 @@ def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> A
 
     Returns
     -------
-    AdditionalActionInfo
-        Additional information about the action, either a DataFrame of switch updates or a RealizedTopology
+    AdditionalActionInfo | None
+        Additional information about the action, either a DataFrame of switch updates or a RealizedTopology.
+        Returns None if no actions are provided.
     """
     if not len(actions):
         return None
@@ -108,7 +109,7 @@ def apply_disconnections(net: Network, disconnections: list[int], action_set: Ac
             raise RuntimeError(f"Failed to disconnect {elem}")
 
 
-def apply_pst_setpoints(net: Network, pst_setpoints: PstSetpointsType, action_set: ActionSet) -> None:
+def apply_pst_setpoints(net: Network, pst_setpoints: list[int], action_set: ActionSet) -> None:
     """Apply phase shift tap setpoints to a powsybl network.
 
     Works by setting the tap position of the controllable PSTs in the network to the given setpoints.
@@ -117,13 +118,17 @@ def apply_pst_setpoints(net: Network, pst_setpoints: PstSetpointsType, action_se
     ----------
     net : Network
         The powsybl network to modify. Will be modified in-place.
-    pst_setpoints : PstSetpointsType
+    pst_setpoints : list[int]
         The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,) and these are
         assumed to correspond to the range of PSTs in the grid.
     action_set : ActionSet
         The action set to use for the controllable PSTs
     """
     pst_indices = [pst.id for pst in action_set.pst_ranges]
+    assert len(pst_setpoints) == len(pst_indices), (
+        "Number of PST setpoints must match number of controllable PSTs, "
+        f"got {pst_setpoints} setpoints for {pst_indices} PSTs"
+    )
     net.update_phase_tap_changers(
         id=pst_indices,
         tap=list(pst_setpoints),
@@ -304,7 +309,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
 
     @overrides
     def run_dc_n_0(
-        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[PstSetpointsType] = None
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[list[int]] = None
     ) -> LoadflowResultsPolars:
         """Run a single N-0 analysis.
 
@@ -317,7 +322,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
-        pst_setpoints : Optional[PstSetpointsType]
+        pst_setpoints : Optional[list[int]]
             The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,) and these are
             assumed to correspond to the range of PSTs in the grid. If None, no tap changes will be applied.
 
@@ -334,7 +339,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             self.last_action_info = apply_topology(net, actions, self.action_set)
         if len(disconnections):
             apply_disconnections(net, disconnections, self.action_set)
-        if pst_setpoints is not None:
+        if pst_setpoints is not None and len(pst_setpoints):
             apply_pst_setpoints(net, pst_setpoints, self.action_set)
 
         # Run a "N-1" loadflow with only the BASECASE outage
@@ -347,7 +352,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
 
     @overrides
     def run_dc_loadflow(
-        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[PstSetpointsType] = None
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[list[int]] = None
     ) -> LoadflowResultsPolars:
         """Run the DC loadflow on the grid.
 
@@ -363,7 +368,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
-        pst_setpoints : Optional[PstSetpointsType]
+        pst_setpoints : Optional[list[int]]
             The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
             and these are assumed to correspond to the range of PSTs in the grid
 
@@ -376,7 +381,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
 
     @overrides
     def run_ac_loadflow(
-        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[PstSetpointsType] = None
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[list[int]] = None
     ) -> LoadflowResultsPolars:
         """Run the AC loadflow on the grid.
 
@@ -392,7 +397,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
-        pst_setpoints : Optional[PstSetpointsType]
+        pst_setpoints : Optional[list[int]]
             The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
             and these are assumed to correspond to the range of PSTs in the grid
 
@@ -407,7 +412,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self,
         actions: list[int],
         disconnections: list[int],
-        pst_setpoints: Optional[PstSetpointsType] = None,
+        pst_setpoints: Optional[list[int]] = None,
         method: Literal["ac", "dc"] = "dc",
     ) -> LoadflowResultsPolars:
         """Run the loadflow for a single timestep with either ac or dc method.
@@ -419,7 +424,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
-        pst_setpoints : Optional[PstSetpointsType]
+        pst_setpoints : Optional[list[int]]
             The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
             and these are assumed to correspond to the range of PSTs in the grid
         method : Literal["ac", "dc"], optional
@@ -438,7 +443,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             self.last_action_info = apply_topology(net, actions, self.action_set)
         if len(disconnections):
             apply_disconnections(net, disconnections, self.action_set)
-        if pst_setpoints is not None:
+        if pst_setpoints is not None and len(pst_setpoints):
             apply_pst_setpoints(net, pst_setpoints, self.action_set)
 
         return run_contingency_analysis_powsybl(

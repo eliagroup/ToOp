@@ -54,7 +54,7 @@ class Topology(BaseModel):
     Disconnections will be automatically sorted in ascending order, as the order does not matter and we want
     to avoid duplicates."""
 
-    pst_setpoints: list[int]
+    pst_setpoints: list[int] | None
     """The setpoints for the PSTs if they have been computed.
 
     These are the taps as they are stored in the original grid model, i.e. if a PST has a tap range from -20 to 20 then this
@@ -63,6 +63,9 @@ class Topology(BaseModel):
 
     The list has the length of the number of controllable PSTs in the grid model and the nth entry corresponds to the nth
     controllable PST in the network data.
+
+    If the PST taps were not optimized, then this is None. Empty list is only allowed if there are no controllable PSTs in
+    the grid model.
     """
 
     metrics: Metrics

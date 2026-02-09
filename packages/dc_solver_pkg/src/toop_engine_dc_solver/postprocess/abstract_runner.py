@@ -18,7 +18,7 @@ This includes
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from pathlib import Path
-from typing import Iterable, Optional, TypeAlias, Union
+from typing import Optional, TypeAlias, Union
 
 import pandera.typing as pat
 from fsspec import AbstractFileSystem
@@ -29,7 +29,6 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet
 
 AdditionalActionInfo: TypeAlias = Union[pat.DataFrame[SwitchUpdateSchema], RealizedTopology]
-PstSetpointsType: TypeAlias = Iterable[int]
 
 
 class AbstractLoadflowRunner(ABC):
@@ -94,7 +93,7 @@ class AbstractLoadflowRunner(ABC):
 
     @abstractmethod
     def run_dc_n_0(
-        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[PstSetpointsType] = None
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[list[int]] = None
     ) -> LoadflowResultsPolars:
         """Run only the N-0 analysis, no N-1
 
@@ -105,7 +104,7 @@ class AbstractLoadflowRunner(ABC):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
-        pst_setpoints : Optional[PstSetpointsType]
+        pst_setpoints : Optional[list[int]]
             The list of phase shift tap setpoints to be applied. This is an array setting a tap for each controllable PST
             in the action set. If None, taps will be unchanged.
 
@@ -118,7 +117,7 @@ class AbstractLoadflowRunner(ABC):
 
     @abstractmethod
     def run_dc_loadflow(
-        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[PstSetpointsType] = None
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[list[int]] = None
     ) -> LoadflowResultsPolars:
         """Run the DC loadflow on the grid.
 
@@ -129,9 +128,10 @@ class AbstractLoadflowRunner(ABC):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
-        pst_setpoints : Optional[PstSetpointsType]
-            The list of phase shift tap setpoints to be applied. This is an array setting a tap for each controllable PST
-            in the action set. If None, taps will be unchanged.
+        pst_setpoints : Optional[list[int]]
+            The list of phase shift tap setpoints to be applied. This is a list setting a tap for each controllable PST
+            in the action set. If None, taps will be unchanged. Empty list only applies if there are no controllable PSTs in
+            the grid model.
 
         Returns
         -------
@@ -142,7 +142,7 @@ class AbstractLoadflowRunner(ABC):
 
     @abstractmethod
     def run_ac_loadflow(
-        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[PstSetpointsType] = None
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[list[int]] = None
     ) -> LoadflowResultsPolars:
         """Run the AC loadflow on the grid.
 
@@ -153,7 +153,7 @@ class AbstractLoadflowRunner(ABC):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
-        pst_setpoints : Optional[PstSetpointsType]
+        pst_setpoints : Optional[list[int]]
             The list of phase shift tap setpoints to be applied. This is an array setting a tap for each controllable PST
             in the action set. If None, taps will be unchanged.
 

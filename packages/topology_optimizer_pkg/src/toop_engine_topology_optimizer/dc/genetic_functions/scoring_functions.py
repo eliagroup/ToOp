@@ -364,17 +364,20 @@ def convert_to_topologies(
         action_indices = [int(act) for act in iter_repertoire.genotypes.action_index if act != int_max()]
 
         disconnections = [int(disc) for disc in iter_repertoire.genotypes.disconnections if disc != int_max()]
-        # TODO action set is not yet available, make it available in the optimizer
+
         nodal_inj = iter_repertoire.genotypes.nodal_injections_optimized
-        pst_setpoints = []
+        pst_setpoints = None
         if nodal_inj is not None:
             assert grid_model_low_tap is not None, (
                 "grid_model_low_tap must be provided if nodal_injections_optimized is present"
             )
-            tap_array = nodal_inj.pst_taps + grid_model_low_tap
-            pst_setpoints = [int(pst_taps) for pst_taps in tap_array]
-        # pst_setpoints = [find_pst_tap(shift_angle, pst_range) for (shift_angle, pst_range) in
-        #  zip(iter_repertoire.genotypes.nodal_injections_optimized.pst_taps, action_set.pst_ranges, strict=True)]
+            assert len(nodal_inj.pst_taps.shape) == 2
+            assert nodal_inj.pst_taps.shape[0] == 1, "Only one timestep is supported, but found shape " + str(
+                nodal_inj.pst_taps.shape
+            )
+            tap_array = nodal_inj.pst_taps[0].astype(int) + grid_model_low_tap
+            pst_setpoints = tap_array.tolist()
+
         case_indices = iter_repertoire.extra_scores.pop("case_indices", [])
         case_ids = np.array(contingency_ids)[case_indices].tolist()
         metrics = Metrics(

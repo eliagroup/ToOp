@@ -580,7 +580,7 @@ def test_compare_loadflows_rel_bb_outage(
 
     # Apply branch_action on the powsybl network
     lfs_index = 0
-    net, _ = apply_topology(net, actions=topo_indices.action.tolist(), action_set=nd_action_set)
+    _ = apply_topology(net, actions=topo_indices.action.tolist(), action_set=nd_action_set)
 
     for station in asset_topology.stations:
         if station.grid_model_id not in rel_bb_outage_map:

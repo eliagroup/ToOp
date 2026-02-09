@@ -222,7 +222,7 @@ def compute_cross_coupler_flows(
         reactive_power.append(q_sum)
         success.append(True)
 
-        net, _ = apply_topology(net, [split], action_set)
+        _ = apply_topology(net, [split], action_set)
 
     return np.array(active_power, dtype=float), np.array(reactive_power, dtype=float), np.array(success, dtype=bool)
 

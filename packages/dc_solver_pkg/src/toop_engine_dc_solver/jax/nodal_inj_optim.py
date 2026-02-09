@@ -15,6 +15,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float, Int
 from toop_engine_dc_solver.jax.types import (
     DynamicInformation,
+    NodalInjectionInformation,
     NodalInjOptimResults,
     NodalInjStartOptions,
     SolverConfig,
@@ -37,18 +38,13 @@ def make_start_options(
     )
 
 
-def nodal_inj_optimization(
+def apply_pst_taps(
     n_0: Float[Array, " batch_size n_timesteps n_branches"],
     nodal_injections: Float[Array, " batch_size n_timesteps n_buses"],
+    pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_pst"],
     topo_res: TopologyResults,
-    start_options: NodalInjStartOptions,
-    dynamic_information: DynamicInformation,
-    solver_config: SolverConfig,  # noqa: ARG001
-) -> tuple[
-    Float[Array, " batch_size n_timesteps n_branches"],
-    Float[Array, " batch_size n_timesteps n_outages n_branches_monitored"],
-    NodalInjOptimResults,
-]:
+    nodal_inj_info: NodalInjectionInformation,
+) -> Float[Array, " batch_size n_timesteps n_branches"]:
     """Apply PST taps from start options and update N-0 flows incrementally.
 
     This implementation takes the PST tap settings from the start options and applies
@@ -61,32 +57,18 @@ def nodal_inj_optimization(
         The base case N-0 flows for each topology (with current PST settings)
     nodal_injections : Float[Array, " batch_size n_timesteps n_buses"]
         The nodal injections including current PST angles at the beginning
+    pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_pst"]
+        The tap indices for the controllable PSTs from the start options, which indicate the new tap settings to apply.
     topo_res : TopologyResults
         The topology results containing PTDF matrix (with PSDF prepended)
-    start_options : NodalInjStartOptions
-        Contains previous PST tap results to apply
-    dynamic_information : DynamicInformation
-        Contains PST information and grid data
-    solver_config : SolverConfig
-        Solver configuration
+    nodal_inj_info : NodalInjectionInformation
+        Contains PST information
 
     Returns
     -------
-    n_0_updated : Float[Array, " batch_size n_timesteps n_branches"]
+    n_0_updated : Float[Array, " batch_size n_timesteps n_branches
         The updated N-0 flows after applying PST taps
-    n_1_dummy : Float[Array, " batch_size n_timesteps n_outages n_branches_monitored"]
-        Dummy N-1 matrix (to be properly implemented later)
-    results : NodalInjOptimResults
-        The PST taps that were applied
     """
-    nodal_inj_info = dynamic_information.nodal_injection_information
-    assert nodal_inj_info is not None, "Nodal injection information must be provided for PST optimization"
-
-    # Get PST tap indices from start options (shape: batch_size x n_timesteps x n_controllable_pst)
-    pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_pst"] = (
-        start_options.previous_results.pst_taps.astype(jnp.int32)
-    )
-
     # Convert tap indices to shift angles in degrees using pst_tap_values
     # pst_tap_values shape: (n_controllable_pst, max_n_tap_positions)
     n_controllable_pst = nodal_inj_info.controllable_pst_indices.shape[0]
@@ -124,6 +106,66 @@ def nodal_inj_optimization(
     # Note: PSDF is computed with a negative sign in preprocessing (psdf.py:56),
     # so we subtract the delta to match PowerSybl convention
     n_0_updated = n_0 - delta_flows
+
+    return n_0_updated
+
+
+def nodal_inj_optimization(
+    n_0: Float[Array, " batch_size n_timesteps n_branches"],
+    nodal_injections: Float[Array, " batch_size n_timesteps n_buses"],
+    topo_res: TopologyResults,
+    start_options: NodalInjStartOptions,
+    dynamic_information: DynamicInformation,
+    solver_config: SolverConfig,  # noqa: ARG001
+) -> tuple[
+    Float[Array, " batch_size n_timesteps n_branches"],
+    Float[Array, " batch_size n_timesteps n_outages n_branches_monitored"],
+    NodalInjOptimResults,
+]:
+    """Optimize nodal injections in the loop
+
+    Currently only applies PST taps, in the future this will also perform an HVDC optimization and
+    potentially an easy redispatch.
+
+    Parameters
+    ----------
+    n_0 : Float[Array, " batch_size n_timesteps n_branches"]
+        The base case N-0 flows for each topology (with current PST settings)
+    nodal_injections : Float[Array, " batch_size n_timesteps n_buses"]
+        The nodal injections including current PST angles at the beginning
+    topo_res : TopologyResults
+        The topology results containing PTDF matrix (with PSDF prepended)
+    start_options : NodalInjStartOptions
+        Contains previous PST tap results to apply
+    dynamic_information : DynamicInformation
+        Contains PST information and grid data
+    solver_config : SolverConfig
+        Solver configuration
+
+    Returns
+    -------
+    n_0_updated : Float[Array, " batch_size n_timesteps n_branches"]
+        The updated N-0 flows after applying PST taps
+    n_1_dummy : Float[Array, " batch_size n_timesteps n_outages n_branches_monitored"]
+        Dummy N-1 matrix (to be properly implemented later)
+    results : NodalInjOptimResults
+        The PST taps that were applied
+    """
+    nodal_inj_info = dynamic_information.nodal_injection_information
+    assert nodal_inj_info is not None, "Nodal injection information must be provided for PST optimization"
+
+    # Get PST tap indices from start options (shape: batch_size x n_timesteps x n_controllable_pst)
+    pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_pst"] = (
+        start_options.previous_results.pst_taps.astype(jnp.int32)
+    )
+
+    n_0_updated = apply_pst_taps(
+        n_0=n_0,
+        nodal_injections=nodal_injections,
+        pst_tap_indices=pst_tap_indices,
+        topo_res=topo_res,
+        nodal_inj_info=nodal_inj_info,
+    )
 
     # Create dummy N-1 matrix (will be properly implemented later)
     # Shape should be (batch_size, n_timesteps, n_outages, n_branches_monitored)

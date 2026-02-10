@@ -274,10 +274,10 @@ def test_pst_optimization(
     assert repertoire.genotypes.nodal_injections_optimized is not None
     best_fitness = jnp.argmax(repertoire.fitnesses)
     best_taps = repertoire.genotypes.nodal_injections_optimized[best_fitness]
-    assert not jnp.array_equal(best_taps.pst_taps[0], di.nodal_injection_information.starting_tap_idx)
+    assert not jnp.array_equal(best_taps.pst_tap_idx[0], di.nodal_injection_information.starting_tap_idx)
     assert jnp.isclose(repertoire.fitnesses[best_fitness], 0)
     # With corrected sign, optimal tap should be lower than starting tap
-    assert jnp.all(best_taps.pst_taps < di.nodal_injection_information.starting_tap_idx)
+    assert jnp.all(best_taps.pst_tap_idx < di.nodal_injection_information.starting_tap_idx)
 
     # Check if convert_to_topologies would send out the PST taps
     conv_topos = convert_to_topologies(
@@ -289,5 +289,5 @@ def test_pst_optimization(
     assert conv_topos[0].pst_setpoints is not None
     assert len(conv_topos[0].pst_setpoints) == di.n_controllable_pst
     assert conv_topos[0].pst_setpoints == list(
-        repertoire.genotypes.nodal_injections_optimized[0].pst_taps[0] + di.nodal_injection_information.grid_model_low_tap
+        repertoire.genotypes.nodal_injections_optimized[0].pst_tap_idx[0] + di.nodal_injection_information.grid_model_low_tap
     )

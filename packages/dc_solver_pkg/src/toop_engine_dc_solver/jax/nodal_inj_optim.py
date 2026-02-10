@@ -10,7 +10,6 @@
 Nodal injection optimization includes PST Optimization routines.
 """
 
-import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float, Int
 from toop_engine_dc_solver.jax.types import (
@@ -71,16 +70,14 @@ def apply_pst_taps(
     """
     # Convert tap indices to shift angles in degrees using pst_tap_values
     # pst_tap_values shape: (n_controllable_pst, max_n_tap_positions)
+    # pst_tap_indices shape: (batch_size, n_timesteps, n_controllable_pst)
     n_controllable_pst = nodal_inj_info.controllable_pst_indices.shape[0]
-    pst_indices = jnp.arange(n_controllable_pst)
 
-    # Vectorized gather: for each batch and timestep, get tap values
-    def get_tap_values_single(tap_idx_row: Int[Array, " n_controllable_pst"]) -> Float[Array, " n_controllable_pst"]:
-        """Get tap values for a single batch/timestep combination."""
-        return nodal_inj_info.pst_tap_values[pst_indices, tap_idx_row]
-
-    # Apply vmap over batch dimension, then timestep dimension
-    new_shift_angles = jax.vmap(jax.vmap(get_tap_values_single))(pst_tap_indices)
+    # Use advanced indexing to gather tap values
+    # Create index array for first dimension (PST index)
+    pst_idx = jnp.arange(n_controllable_pst)[None, None, :]  # Shape: (1, 1, n_controllable_pst)
+    # Broadcasting allows: result[b, t, i] = pst_tap_values[i, pst_tap_indices[b, t, i]]
+    new_shift_angles = nodal_inj_info.pst_tap_values[pst_idx, pst_tap_indices]
     # Shape: (batch_size, n_timesteps, n_controllable_pst)
 
     # Get current PST angles from nodal_injections using controllable_pst_indices

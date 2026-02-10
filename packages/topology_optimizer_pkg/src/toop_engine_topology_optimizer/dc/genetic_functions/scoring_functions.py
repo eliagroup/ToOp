@@ -349,11 +349,11 @@ def convert_to_topologies(
             assert grid_model_low_tap is not None, (
                 "grid_model_low_tap must be provided if nodal_injections_optimized is present"
             )
-            assert len(nodal_inj.pst_taps.shape) == 2
-            assert nodal_inj.pst_taps.shape[0] == 1, "Only one timestep is supported, but found shape " + str(
-                nodal_inj.pst_taps.shape
+            assert len(nodal_inj.pst_tap_idx.shape) == 2
+            assert nodal_inj.pst_tap_idx.shape[0] == 1, "Only one timestep is supported, but found shape " + str(
+                nodal_inj.pst_tap_idx.shape
             )
-            tap_array = nodal_inj.pst_taps[0].astype(int) + grid_model_low_tap
+            tap_array = nodal_inj.pst_tap_idx[0].astype(int) + grid_model_low_tap
             pst_setpoints = tap_array.tolist()
 
         case_indices = iter_repertoire.extra_scores.pop("case_indices", [])

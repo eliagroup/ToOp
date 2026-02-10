@@ -818,12 +818,13 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             kind="branch",
             starting_tap=start + low,  # Convert from index to absolute grid model tap position
             low_tap=low,
-            high_tap=9999,  # TODO add high tap to network data and remove this hardcoded value
+            high_tap=low + len(taps),
         )
-        for (index, start, low) in zip(
+        for (index, start, low, taps) in zip(
             controllable_pst_indices,
             network_data.phase_shift_starting_tap_idx,
             network_data.phase_shift_low_tap,
+            network_data.phase_shift_taps,
             strict=True,
         )
     ]

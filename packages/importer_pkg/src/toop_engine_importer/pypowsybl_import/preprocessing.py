@@ -420,7 +420,7 @@ def convert_file(
 
 def find_convering_loadflow_params(
     importer_parameters: BaseImporterParameters, network: Network
-) -> tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.Result]:
+) -> tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]:
     """Iterate over Loadflow parameters and voltage initialization methods to find a converging loadflow.
 
     This is necessary because some grid files do not converge with
@@ -435,7 +435,7 @@ def find_convering_loadflow_params(
 
     Returns
     -------
-    Tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.Result
+    Tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]
         The loadflow parameters that converged and the result of the loadflow with those parameters.
     """
     lf_params_list = [POWSYBL_LOADFLOW_PARAM_PF, DISTRIBUTED_SLACK]

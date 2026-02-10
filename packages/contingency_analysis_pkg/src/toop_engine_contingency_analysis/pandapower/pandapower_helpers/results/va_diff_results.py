@@ -1,4 +1,4 @@
-# Copyright 2025 50Hertz Transmission GmbH and Elia Transmission Belgium
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
 #
 # This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 # If a copy of the MPL was not distributed with this file,
@@ -404,7 +404,7 @@ def get_pst_elements_tabular(net: pandapowerNet) -> list[str]:
         (net.trafo3w.tap_changer_type == "Tabular") & (net.trafo3w.id_characteristic_table.isin(id_with_angle))
     ]
 
-    return _elements_from_index(trafo, "e_trafo_") + _elements_from_index(trafo3w, "e_trafo3w_")
+    return _elements_from_index(trafo, "trafo") + _elements_from_index(trafo3w, "trafo3w")
 
 
 def notna_and_nonzero(s: pd.Series) -> pd.Series:
@@ -453,7 +453,7 @@ def get_pst_elements_symmetrical(net: pandapowerNet) -> list[str]:
         & notna_and_nonzero(net.trafo3w.tap_step_degree)
     ]
 
-    return _elements_from_index(trafo, "e_trafo_") + _elements_from_index(trafo3w, "e_trafo3w_")
+    return _elements_from_index(trafo, "trafo") + _elements_from_index(trafo3w, "trafo3w")
 
 
 def get_pst_elements_ideal(net: pandapowerNet) -> list[str]:
@@ -466,7 +466,7 @@ def get_pst_elements_ideal(net: pandapowerNet) -> list[str]:
     trafo = net.trafo.loc[(net.trafo.tap_changer_type == "Ideal") & notna_and_nonzero(net.trafo.tap_step_degree)]
     trafo3w = net.trafo3w.loc[(net.trafo3w.tap_changer_type == "Ideal") & notna_and_nonzero(net.trafo3w.tap_step_degree)]
 
-    return _elements_from_index(trafo, "e_trafo_") + _elements_from_index(trafo3w, "e_trafo3w_")
+    return _elements_from_index(trafo, "trafo") + _elements_from_index(trafo3w, "trafo3w")
 
 
 def get_elements_with_pst(net: pandapowerNet) -> list[str]:

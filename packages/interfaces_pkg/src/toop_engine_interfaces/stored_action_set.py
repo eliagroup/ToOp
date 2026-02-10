@@ -50,9 +50,9 @@ class PSTRange(GridElement):
     A PST has a list of taps, each with an angle shift.
     """
 
-    starting_tap: int | None = None
-    """The tap the PST was set to before optimization. This is not strictly necessary but can be useful for postprocessing
-    and visualization. Refers to taps in the grid model, i.e. this can be negative."""
+    starting_tap: int
+    """The tap the PST was set to before optimization. To filter out actions that do not change anything in the
+    UI, this is required."""
 
     low_tap: int
     """The lowest tap the PST supports"""

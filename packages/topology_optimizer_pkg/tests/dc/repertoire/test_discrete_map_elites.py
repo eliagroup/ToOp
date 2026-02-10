@@ -137,7 +137,7 @@ def test_manual_pst_optimization(
 
     inj_info = di.nodal_injection_information
     assert jnp.array_equal(
-        inj_info.pst_tap_values[jnp.arange(len(inj_info.starting_tap)), inj_info.starting_tap], jnp.array([0.0, 0.0])
+        inj_info.pst_tap_values[jnp.arange(len(inj_info.starting_tap_idx)), inj_info.starting_tap_idx], jnp.array([0.0, 0.0])
     )
 
     # Default taps should lead to overload, optimization should fix it
@@ -161,7 +161,9 @@ def test_manual_pst_optimization(
         disconnection_batch=None,
         injections=None,
         nodal_inj_start_options=NodalInjStartOptions(
-            previous_results=NodalInjOptimResults(pst_taps=di.nodal_injection_information.starting_tap[None, None, :]),
+            previous_results=NodalInjOptimResults(
+                pst_tap_idx=di.nodal_injection_information.starting_tap_idx[None, None, :]
+            ),
             precision_percent=jnp.array(0.0),
         ),
         dynamic_information=di,
@@ -179,7 +181,7 @@ def test_manual_pst_optimization(
         disconnection_batch=None,
         injections=None,
         nodal_inj_start_options=NodalInjStartOptions(
-            previous_results=NodalInjOptimResults(pst_taps=jnp.array([solution.tolist()])),
+            previous_results=NodalInjOptimResults(pst_tap_idx=jnp.array([solution.tolist()])),
             precision_percent=jnp.array([0.0]),
         ),
         dynamic_information=di,
@@ -253,7 +255,7 @@ def test_pst_optimization(
             max_num_splits=1,
             max_num_disconnections=0,
             n_timesteps=1,
-            starting_taps=di.nodal_injection_information.starting_tap,
+            starting_taps=di.nodal_injection_information.starting_tap_idx,
         ),
         random_key=rng_key,
         scoring_data=[di],
@@ -272,10 +274,10 @@ def test_pst_optimization(
     assert repertoire.genotypes.nodal_injections_optimized is not None
     best_fitness = jnp.argmax(repertoire.fitnesses)
     best_taps = repertoire.genotypes.nodal_injections_optimized[best_fitness]
-    assert not jnp.array_equal(best_taps.pst_taps[0], di.nodal_injection_information.starting_tap)
+    assert not jnp.array_equal(best_taps.pst_taps[0], di.nodal_injection_information.starting_tap_idx)
     assert jnp.isclose(repertoire.fitnesses[best_fitness], 0)
     # With corrected sign, optimal tap should be lower than starting tap
-    assert jnp.all(best_taps.pst_taps < di.nodal_injection_information.starting_tap)
+    assert jnp.all(best_taps.pst_taps < di.nodal_injection_information.starting_tap_idx)
 
     # Check if convert_to_topologies would send out the PST taps
     conv_topos = convert_to_topologies(

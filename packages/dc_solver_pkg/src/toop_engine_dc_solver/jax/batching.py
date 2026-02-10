@@ -254,7 +254,7 @@ def slice_nodal_inj_start_options(
     """
     cur_range = jnp.arange(batch_size_bsdf) + nodal_inj_index * batch_size_bsdf
     previous_results = NodalInjOptimResults(
-        pst_taps=nodal_inj_start_options.previous_results.pst_taps.at[cur_range].get(mode="fill", fill_value=jnp.nan),
+        pst_tap_idx=nodal_inj_start_options.previous_results.pst_tap_idx.at[cur_range].get(mode="fill", fill_value=jnp.nan),
     )
     result = NodalInjStartOptions(
         previous_results=previous_results,

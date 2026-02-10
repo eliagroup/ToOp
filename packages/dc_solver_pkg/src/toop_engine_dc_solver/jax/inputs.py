@@ -323,15 +323,15 @@ def validate_static_information(
         ).all(), "Error in phase shift tap data: Cached maxima do not equal true maxima!"
 
         assert (
-            di.nodal_injection_information.starting_tap.shape
+            di.nodal_injection_information.starting_tap_idx.shape
             == di.nodal_injection_information.controllable_pst_indices.shape
         )
         assert (
             di.nodal_injection_information.grid_model_low_tap.shape
             == di.nodal_injection_information.controllable_pst_indices.shape
         )
-        assert jnp.all(di.nodal_injection_information.starting_tap >= 0)
-        assert jnp.all(di.nodal_injection_information.starting_tap < di.nodal_injection_information.pst_n_taps)
+        assert jnp.all(di.nodal_injection_information.starting_tap_idx >= 0)
+        assert jnp.all(di.nodal_injection_information.starting_tap_idx < di.nodal_injection_information.pst_n_taps)
 
 
 def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:
@@ -562,8 +562,8 @@ def _save_static_information(binaryio: BinaryIO, static_information: StaticInfor
                 data=nodal_inj_opt.pst_tap_values,
             )
             file.create_dataset(
-                "starting_tap",
-                data=nodal_inj_opt.starting_tap,
+                "starting_tap_idx",
+                data=nodal_inj_opt.starting_tap_idx,
             )
             file.create_dataset(
                 "grid_model_low_tap",
@@ -902,7 +902,7 @@ def load_nodal_injection_optimization(
             shift_degree_max=jnp.array(file["shift_degree_max"][:]),
             pst_n_taps=jnp.array(file["pst_n_taps"][:]),
             pst_tap_values=jnp.array(file["pst_tap_values"][:]),
-            starting_tap=jnp.array(file["starting_tap"][:]),
+            starting_tap_idx=jnp.array(file["starting_tap_idx"][:]),
             grid_model_low_tap=jnp.array(file["grid_model_low_tap"][:]),
         )
     return None
@@ -958,7 +958,7 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bo
         and "shift_degree_max" in file
         and "pst_n_taps" in file
         and "pst_tap_values" in file
-        and "starting_tap" in file
+        and "starting_tap_idx" in file
         and "grid_model_low_tap" in file
     )
 

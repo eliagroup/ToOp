@@ -1179,7 +1179,7 @@ def default_nodal_inj_start_options(static_information: StaticInformation):
     batch_size = 1
 
     return NodalInjStartOptions(
-        previous_results=NodalInjOptimResults(pst_taps=jnp.zeros((batch_size, n_timesteps, n_pst), dtype=jnp.float32)),
+        previous_results=NodalInjOptimResults(pst_tap_idx=jnp.zeros((batch_size, n_timesteps, n_pst), dtype=jnp.float32)),
         precision_percent=jnp.array(1.0),
     )
 

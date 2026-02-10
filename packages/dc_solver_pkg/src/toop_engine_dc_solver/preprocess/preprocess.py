@@ -556,7 +556,7 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
     relevant_phase_shift_taps = list(
         [taps for taps, keep in zip(network_data.phase_shift_taps, kept_pst_branches, strict=True) if keep]
     )
-    relevant_phase_shift_starting_tap = network_data.phase_shift_starting_tap[kept_pst_branches]
+    relevant_phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[kept_pst_branches]
     relevant_phase_shift_low_tap = network_data.phase_shift_low_tap[kept_pst_branches]
     # PST branches carry a node injection as well, so we need to adjust the injection indices
     pst_node_indices = np.flatnonzero(network_data.controllable_pst_node_mask)
@@ -589,7 +589,7 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         phase_shift_mask=network_data.phase_shift_mask[relevant_branches],
         controllable_phase_shift_mask=network_data.controllable_phase_shift_mask[relevant_branches],
         phase_shift_taps=relevant_phase_shift_taps,
-        phase_shift_starting_tap=relevant_phase_shift_starting_tap,
+        phase_shift_starting_tap_idx=relevant_phase_shift_starting_tap_idx,
         phase_shift_low_tap=relevant_phase_shift_low_tap,
         controllable_pst_node_mask=kept_controllable_pst_node_mask,
         monitored_branch_mask=network_data.monitored_branch_mask[relevant_branches],

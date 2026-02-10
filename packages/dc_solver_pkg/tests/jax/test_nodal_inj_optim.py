@@ -53,7 +53,7 @@ def test_compare_nodal_inj_to_powsybl(tmp_path: Path) -> None:
     from_node_batched = di.from_node[None, :]  # (1, n_branches)
     to_node_batched = di.to_node[None, :]  # (1, n_branches)
 
-    taps = inj_info.starting_tap
+    taps = inj_info.starting_tap_idx
     n_0_unchanged, n_1_unchanged, results_unchanged = nodal_inj_optimization(
         n_0=n_0_batched,
         nodal_injections=nodal_injections_batched,
@@ -70,7 +70,7 @@ def test_compare_nodal_inj_to_powsybl(tmp_path: Path) -> None:
         ),
         start_options=NodalInjStartOptions(
             previous_results=NodalInjOptimResults(
-                pst_taps=taps[None, None, :],  # Add batch and timestep dimensions
+                pst_tap_idx=taps[None, None, :],  # Add batch and timestep dimensions
             ),
             precision_percent=jnp.array(1.0),
         ),
@@ -101,7 +101,7 @@ def test_compare_nodal_inj_to_powsybl(tmp_path: Path) -> None:
         ),
         start_options=NodalInjStartOptions(
             previous_results=NodalInjOptimResults(
-                pst_taps=new_taps[None, None, :],  # Add batch and timestep dimensions
+                pst_tap_idx=new_taps[None, None, :],  # Add batch and timestep dimensions
             ),
             precision_percent=jnp.array(1.0),
         ),

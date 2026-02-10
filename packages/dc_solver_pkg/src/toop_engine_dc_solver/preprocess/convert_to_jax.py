@@ -60,7 +60,7 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData, save_netw
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import POWSYBL_LOADFLOW_PARAM_PF
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
@@ -687,7 +687,7 @@ def load_grid(
     if parameters is None:
         parameters = PreprocessParameters()
     if lf_params is None and not pandapower:
-        lf_params = POWSYBL_LOADFLOW_PARAM_PF
+        lf_params = DISTRIBUTED_SLACK
     elif lf_params is None and pandapower:
         lf_params = {}
 

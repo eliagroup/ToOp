@@ -133,7 +133,7 @@ def empty_repertoire(
     """
     if starting_taps is not None:
         nodal_injections_optimized = NodalInjOptimResults(
-            pst_taps=jnp.tile(starting_taps[None, None, :], (batch_size, n_timesteps, 1))
+            pst_tap_idx=jnp.tile(starting_taps[None, None, :], (batch_size, n_timesteps, 1))
         )
     else:
         nodal_injections_optimized = None
@@ -550,17 +550,17 @@ def mutate_nodal_injections(
     if pst_mutation_sigma <= 0:
         return nodal_inj_info
 
-    batch_size = nodal_inj_info.pst_taps.shape[0]
-    n_timesteps = nodal_inj_info.pst_taps.shape[1]
+    batch_size = nodal_inj_info.pst_tap_idx.shape[0]
+    n_timesteps = nodal_inj_info.pst_tap_idx.shape[1]
     random_key = jax.random.split(random_key, (batch_size, n_timesteps))
 
     # vmap to mutate the PST taps for each timestep + batch independently
     new_pst_taps = jax.vmap(jax.vmap(partial(mutate_psts, pst_n_taps=pst_n_taps, pst_mutation_sigma=pst_mutation_sigma)))(
         random_key=random_key,
-        pst_taps=nodal_inj_info.pst_taps.astype(int),
+        pst_taps=nodal_inj_info.pst_tap_idx.astype(int),
     )
 
-    return NodalInjOptimResults(pst_taps=new_pst_taps)
+    return NodalInjOptimResults(pst_tap_idx=new_pst_taps)
 
 
 def mutate_psts(

@@ -505,7 +505,7 @@ def test_mutate_nodal_injections() -> None:
     n_timesteps = 10
     n_taps = jnp.array([35, 35, 35, 20, 20])
     current_tap = jax.random.uniform(jax.random.PRNGKey(0), shape=(batch_size, n_timesteps, 5), minval=0, maxval=n_taps)
-    nodal_inj_info = NodalInjOptimResults(pst_taps=current_tap)
+    nodal_inj_info = NodalInjOptimResults(pst_tap_idx=current_tap)
 
     res = mutate_nodal_injections(
         random_key=jax.random.PRNGKey(0),
@@ -514,11 +514,11 @@ def test_mutate_nodal_injections() -> None:
         pst_mutation_sigma=5.0,
     )
 
-    assert res.pst_taps.shape == (batch_size, n_timesteps, 5)
-    assert jnp.all(res.pst_taps >= 0)
-    assert jnp.all(res.pst_taps[:, :, :3] < 35)
-    assert jnp.all(res.pst_taps[:, :, 3:] < 20)
-    assert not jnp.array_equal(res.pst_taps, current_tap), "PST taps should have mutated"
+    assert res.pst_tap_idx.shape == (batch_size, n_timesteps, 5)
+    assert jnp.all(res.pst_tap_idx >= 0)
+    assert jnp.all(res.pst_tap_idx[:, :, :3] < 35)
+    assert jnp.all(res.pst_tap_idx[:, :, 3:] < 20)
+    assert not jnp.array_equal(res.pst_tap_idx, current_tap), "PST taps should have mutated"
 
     assert (
         mutate_nodal_injections(
@@ -536,4 +536,4 @@ def test_mutate_nodal_injections() -> None:
         pst_n_taps=n_taps,
         pst_mutation_sigma=0.0,
     )
-    assert jnp.array_equal(res_no_mutation.pst_taps, current_tap), "The PST taps should not have mutated"
+    assert jnp.array_equal(res_no_mutation.pst_tap_idx, current_tap), "The PST taps should not have mutated"

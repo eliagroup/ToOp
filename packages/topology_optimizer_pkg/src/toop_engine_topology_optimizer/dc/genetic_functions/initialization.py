@@ -372,7 +372,7 @@ def initialize_genetic_algorithm(
         max_num_splits=max_num_splits,
         max_num_disconnections=max_num_disconnections,
         n_timesteps=dynamic_informations[0].n_timesteps,
-        starting_taps=dynamic_informations[0].nodal_injection_information.starting_tap
+        starting_taps=dynamic_informations[0].nodal_injection_information.starting_tap_idx
         if dynamic_informations[0].nodal_injection_information is not None
         else None,
     )

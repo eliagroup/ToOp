@@ -969,8 +969,8 @@ class NodalInjOptimResults:
     Currently this includes only the PST taps, but later this might be extended to HVDCs or even redispatch clusters.
     """
 
-    pst_taps: Float[Array, " ... n_timesteps n_controllable_pst"]
-    """The PST taps as actual tap values after optimization (i.e. not shift degrees).
+    pst_tap_idx: Float[Array, " ... n_timesteps n_controllable_pst"]
+    """The PST taps as indices into the tap values table after optimization (i.e. not shift degrees).
 
     Though this might be discrete if PST optimization should happen discrete, we store it as a float in case continuous
     PST optimization is used.
@@ -979,7 +979,7 @@ class NodalInjOptimResults:
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> NodalInjOptimResults:
         """Access the first batch dimension of the nodal injection optimization results"""
         return NodalInjOptimResults(
-            pst_taps=self.pst_taps[key],
+            pst_tap_idx=self.pst_tap_idx[key],
         )
 
 
@@ -1353,7 +1353,7 @@ class NodalInjectionInformation:
     """Discrete individual taps (in degrees) of controllable PSTs. The array is zero-padded to the maximum number of
     pst_n_taps."""
 
-    starting_tap: Int[Array, " n_controllable_pst"]
+    starting_tap_idx: Int[Array, " n_controllable_pst"]
     """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
 
     grid_model_low_tap: Int[Array, " n_controllable_pst"]

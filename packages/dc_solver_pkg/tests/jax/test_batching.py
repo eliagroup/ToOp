@@ -166,46 +166,46 @@ def test_slice_nodal_inj_start_options() -> None:
     precision_scalar = jnp.array(0.5)
 
     options = NodalInjStartOptions(
-        previous_results=NodalInjOptimResults(pst_taps=pst_taps_data),
+        previous_results=NodalInjOptimResults(pst_tap_idx=pst_taps_data),
         precision_percent=precision_scalar,
     )
 
     # Test slicing at index 0
     sliced_0 = slice_nodal_inj_start_options(options, 0, batch_size_bsdf)
-    assert sliced_0.previous_results.pst_taps.shape == (batch_size_bsdf, n_timesteps, n_pst)
+    assert sliced_0.previous_results.pst_tap_idx.shape == (batch_size_bsdf, n_timesteps, n_pst)
     assert sliced_0.precision_percent.ndim == 0
     assert sliced_0.precision_percent == precision_scalar
     assert jnp.array_equal(
-        sliced_0.previous_results.pst_taps,
+        sliced_0.previous_results.pst_tap_idx,
         pst_taps_data[:batch_size_bsdf],
     )
 
     # Test slicing at index 1
     sliced_1 = slice_nodal_inj_start_options(options, 1, batch_size_bsdf)
-    assert sliced_1.previous_results.pst_taps.shape == (batch_size_bsdf, n_timesteps, n_pst)
+    assert sliced_1.previous_results.pst_tap_idx.shape == (batch_size_bsdf, n_timesteps, n_pst)
     assert sliced_1.precision_percent.ndim == 0
     assert sliced_1.precision_percent == precision_scalar
     assert jnp.array_equal(
-        sliced_1.previous_results.pst_taps,
+        sliced_1.previous_results.pst_tap_idx,
         pst_taps_data[batch_size_bsdf : 2 * batch_size_bsdf],
     )
 
     # Test slicing at index 2 (last batch)
     sliced_2 = slice_nodal_inj_start_options(options, 2, batch_size_bsdf)
-    assert sliced_2.previous_results.pst_taps.shape == (batch_size_bsdf, n_timesteps, n_pst)
+    assert sliced_2.previous_results.pst_tap_idx.shape == (batch_size_bsdf, n_timesteps, n_pst)
     assert sliced_2.precision_percent.ndim == 0
     assert sliced_2.precision_percent == precision_scalar
     assert jnp.array_equal(
-        sliced_2.previous_results.pst_taps,
+        sliced_2.previous_results.pst_tap_idx,
         pst_taps_data[2 * batch_size_bsdf :],
     )
 
     # Test out-of-bounds slicing (index 10) - should fill with nan
     sliced_oob = slice_nodal_inj_start_options(options, 10, batch_size_bsdf)
-    assert sliced_oob.previous_results.pst_taps.shape == (batch_size_bsdf, n_timesteps, n_pst)
+    assert sliced_oob.previous_results.pst_tap_idx.shape == (batch_size_bsdf, n_timesteps, n_pst)
     assert sliced_oob.precision_percent.ndim == 0
     assert sliced_oob.precision_percent == precision_scalar
-    assert jnp.all(jnp.isnan(sliced_oob.previous_results.pst_taps))
+    assert jnp.all(jnp.isnan(sliced_oob.previous_results.pst_tap_idx))
 
 
 def test_slice_nodal_inj_start_options_reconstruction() -> None:
@@ -221,7 +221,7 @@ def test_slice_nodal_inj_start_options_reconstruction() -> None:
     precision_scalar = jnp.array(0.75)
 
     options = NodalInjStartOptions(
-        previous_results=NodalInjOptimResults(pst_taps=pst_taps_data),
+        previous_results=NodalInjOptimResults(pst_tap_idx=pst_taps_data),
         precision_percent=precision_scalar,
     )
 
@@ -237,7 +237,7 @@ def test_slice_nodal_inj_start_options_reconstruction() -> None:
         start_idx = i * batch_size_bsdf
         end_idx = (i + 1) * batch_size_bsdf
         assert jnp.array_equal(
-            sliced.previous_results.pst_taps,
+            sliced.previous_results.pst_tap_idx,
             pst_taps_data[start_idx:end_idx],
         )
 

@@ -156,7 +156,7 @@ def nodal_inj_optimization(
 
     # Get PST tap indices from start options (shape: batch_size x n_timesteps x n_controllable_pst)
     pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_pst"] = (
-        start_options.previous_results.pst_taps.astype(jnp.int32)
+        start_options.previous_results.pst_tap_idx.astype(jnp.int32)
     )
 
     n_0_updated = apply_pst_taps(
@@ -176,6 +176,6 @@ def nodal_inj_optimization(
     n_1_dummy = jnp.zeros((batch_size, n_timesteps, n_outages, n_branches_monitored))
 
     # Return the applied taps
-    results = NodalInjOptimResults(pst_taps=pst_tap_indices)
+    results = NodalInjOptimResults(pst_tap_idx=pst_tap_indices)
 
     return n_0_updated, n_1_dummy, results

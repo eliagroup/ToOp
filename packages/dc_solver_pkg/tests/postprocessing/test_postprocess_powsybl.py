@@ -275,7 +275,7 @@ def test_change_pst_matches_loadflows(
         disconnection_batch=None,
         injections=None,
         nodal_inj_start_options=NodalInjStartOptions(
-            previous_results=NodalInjOptimResults(pst_taps=rel_taps[None, None, :]),
+            previous_results=NodalInjOptimResults(pst_tap_idx=rel_taps[None, None, :]),
             precision_percent=jnp.array(0.0),
         ),
         dynamic_information=di,

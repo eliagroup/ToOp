@@ -448,7 +448,7 @@ class PowsyblBackend(BackendInterface):
     def get_phase_shift_low_taps(self) -> Int[np.ndarray, " n_controllable_psts"]:
         """Get the lowest tap position in the original grid model
 
-        so taps as integer indices into tap values
+        This is needed so taps as integer indices into tap values
         can be converted back to the original tap positions by tap + low_tap
         """
         psts = self._get_branches()[self._get_branches()["pst_controllable"]].index

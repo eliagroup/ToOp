@@ -316,18 +316,19 @@ class FakeConsumer:
         raise FakeConsumerEmptyException("No more messages to consume")
 
     def consume(self, timeout: float | int, num_messages: int) -> list[FakeMessage]:
-        consumed_messages = []
+        consumed_messages: list[FakeMessage] = []
         self._check_empty()
         for topic, msgs in self.messages.items():
+            if len(consumed_messages) >= num_messages:
+                break
             offset = self.offsets[topic]
-            for _ in range(num_messages):
-                if offset < len(msgs):
-                    msg = FakeMessage(msgs[offset])
-                    consumed_messages.append(msg)
-                    offset += 1
-                else:
-                    break
+            while offset < len(msgs) and len(consumed_messages) < num_messages:
+                msg = FakeMessage(msgs[offset])
+                consumed_messages.append(msg)
+                offset += 1
             self.offsets[topic] = offset
+            if len(consumed_messages) >= num_messages:
+                break
         return consumed_messages
 
     def poll(self, timeout: float | int) -> FakeMessage | None:
@@ -356,6 +357,7 @@ class FakeConsumer:
         pass
 
 
+@pytest.mark.timeout(100)
 def test_ac_dc_integration_sequential(grid_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> None:
     grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
     ac_parameters = ACOptimizerParameters(

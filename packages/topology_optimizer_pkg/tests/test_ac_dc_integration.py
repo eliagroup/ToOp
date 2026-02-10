@@ -428,6 +428,8 @@ def test_ac_dc_integration_sequential(grid_folder: Path, tmp_path_factory: pytes
         messages={"commands": [serialize_message(start_command.model_dump_json())]}, kill_on_empty=True
     )
 
+    producer = FakeProducer()
+
     with pytest.raises(FakeConsumerEmptyException):
         ac_main(
             ACArgs(

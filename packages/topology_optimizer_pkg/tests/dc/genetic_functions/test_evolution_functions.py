@@ -212,6 +212,7 @@ def test_mutate(static_information_file: str) -> None:
             n_subs_mutated_lambda=5.0,
             disconnect_prob=0.5,
             reconnect_prob=0.5,
+            pst_mutation_sigma=0.5,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps
             if static_information.dynamic_information.nodal_injection_information is not None
             else None,
@@ -290,6 +291,7 @@ def test_mutate_multiple_tries(static_information_file: str) -> None:
             n_subs_mutated_lambda=5.0,
             disconnect_prob=0.5,
             reconnect_prob=0.5,
+            pst_mutation_sigma=0.5,
             pst_n_taps=jnp.array([], dtype=int),
             mutation_repetition=mutation_repetition,
         )
@@ -306,6 +308,7 @@ def test_mutate_multiple_tries(static_information_file: str) -> None:
             n_subs_mutated_lambda=5.0,
             disconnect_prob=0.5,
             reconnect_prob=0.5,
+            pst_mutation_sigma=0.5,
             pst_n_taps=jnp.array([], dtype=int),
             mutation_repetition=mutation_repetition,
         )
@@ -355,7 +358,6 @@ def test_crossover(static_information_file: str) -> None:
 
     max_num_splits = 3
     n_disconnections = 1
-    n_psts = 3
     batch_size = 16
     n_timesteps = static_information.dynamic_information.n_timesteps
 
@@ -388,6 +390,7 @@ def test_crossover(static_information_file: str) -> None:
             n_subs_mutated_lambda=1.0,
             disconnect_prob=0.5,
             reconnect_prob=0.5,
+            pst_mutation_sigma=0,
             pst_n_taps=jnp.array([], dtype=int),
             mutation_repetition=1,
         )
@@ -402,6 +405,7 @@ def test_crossover(static_information_file: str) -> None:
             n_subs_mutated_lambda=1.0,
             disconnect_prob=0.5,
             reconnect_prob=0.5,
+            pst_mutation_sigma=0,
             pst_n_taps=jnp.array([], dtype=int),
             mutation_repetition=1,
         )
@@ -471,6 +475,7 @@ def test_deduplicate_genotypes_jitted(static_information_file: str) -> None:
             n_subs_mutated_lambda=1.0,
             disconnect_prob=0.5,
             reconnect_prob=0.5,
+            pst_mutation_sigma=0,
             pst_n_taps=jnp.array([], dtype=int),
             mutation_repetition=1,
         )

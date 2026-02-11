@@ -24,6 +24,7 @@ from toop_engine_dc_solver.jax.aggregate_results import (
     compute_n0_n1_max_diff,
     get_critical_branch_count_n_1_matrix,
     get_cross_coupler_flow_penalty,
+    get_cumulative_overload_n_1_matrix,
     get_exponential_overload_energy_n_1_matrix,
     get_max_flow_n_1_matrix,
     get_median_flow_n_1_matrix,
@@ -131,6 +132,29 @@ def test_get_underload_energy_n_1_matrix() -> None:
     flow_max = jnp.max(flow, axis=1)
     flow_max = jnp.clip(1 - flow_max, min=0, max=None)
     assert jnp.allclose(underload, jnp.sum(flow_max))
+
+
+def test_get_cumulative_overload_n_1_matrix() -> None:
+    n_timesteps = 5
+    n_failures = 30
+    n_branch = 50
+
+    keys = jax.random.split(jax.random.PRNGKey(0), 2)
+
+    flow = jax.random.exponential(keys[0], (n_timesteps, n_failures, n_branch))
+    max_mw_flow = jax.random.exponential(keys[1], (n_branch,))
+
+    cumulative = get_cumulative_overload_n_1_matrix(flow, jnp.ones_like(max_mw_flow))
+    overload_matrix = jnp.clip(jnp.abs(flow) - 1, min=0, max=None)
+    relative_overload = overload_matrix / 1
+    cumulative_ref = jnp.sum(jnp.max(relative_overload, axis=1))
+    assert jnp.allclose(cumulative, cumulative_ref)
+
+    cumulative = get_cumulative_overload_n_1_matrix(flow, max_mw_flow)
+    overload_matrix = jnp.clip(jnp.abs(flow) - max_mw_flow, min=0, max=None)
+    relative_overload = overload_matrix / max_mw_flow
+    cumulative_ref = jnp.sum(jnp.max(relative_overload, axis=1))
+    assert jnp.allclose(cumulative, cumulative_ref)
 
 
 def test_get_transport_n_1_matrix() -> None:
@@ -326,6 +350,30 @@ def test_aggregate_to_metric_batched() -> None:
     assert critical_branch_count.shape == (n_batch,)
     assert jnp.allclose(critical_branch_count[0], critical_branch_count_ref)
 
+    cumulative_overload = aggregate_to_metric_batched(
+        lf_res,
+        branch_limits,
+        None,
+        n_subs_rel,
+        metric="cumulative_overload_n_1",
+    )
+    cumulative_overload_ref = get_cumulative_overload_n_1_matrix(flow[0], max_mw_flow)
+
+    assert cumulative_overload.shape == (n_batch,)
+    assert jnp.allclose(cumulative_overload[0], cumulative_overload_ref)
+
+    cumulative_overload = aggregate_to_metric_batched(
+        lf_res,
+        branch_limits,
+        None,
+        n_subs_rel,
+        metric="cumulative_overload_n_0",
+    )
+    cumulative_overload_ref = get_cumulative_overload_n_1_matrix(jnp.expand_dims(flow[0, :, 0, :], axis=1), max_mw_flow)
+
+    assert cumulative_overload.shape == (n_batch,)
+    assert jnp.allclose(cumulative_overload[0], cumulative_overload_ref)
+
     with pytest.raises(ValueError):
         aggregate_to_metric_batched(
             lf_res,
@@ -389,6 +437,7 @@ def test_aggregate_to_metric() -> None:
         "underload_energy_n_0",
         "transport_n_0",
         "exponential_overload_energy_n_0",
+        "cumulative_overload_n_0",
     ]:
         res = aggregate_to_metric(
             lf_res,
@@ -413,6 +462,7 @@ def test_aggregate_to_metric() -> None:
         "underload_energy_n_1",
         "transport_n_1",
         "exponential_overload_energy_n_1",
+        "cumulative_overload_n_1",
     ]:
         res = aggregate_to_metric(
             lf_res,

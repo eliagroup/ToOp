@@ -128,8 +128,6 @@ def convert_to_jax(  # noqa: PLR0913
     bb_outage_more_splits_penalty: float = 2000.0,
     clip_bb_outage_penalty: bool = False,
     ac_dc_interpolation: float = 0.0,
-    enable_nodal_inj_optim: bool = False,
-    precision_percent: float = 0.1,
     logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
 ) -> StaticInformation:
     """Convert the finalized network data into static info for the solver
@@ -182,10 +180,6 @@ def convert_to_jax(  # noqa: PLR0913
         Whether to clip the lower bound of busbar outage penalty to 0.
     ac_dc_interpolation: float, optional
         The interpolation factor for AC/DC mismatch, by default 0.0 (full DC).
-    precision_percent: float, optional
-        The precision to which the nodal injection optimization should run in percent of the maximal precision.
-    enable_nodal_inj_optim: bool, optional
-        Whether to enable nodal injection optimization (PST optimization)
     logging_fn: Callable, optional
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters, by default None
@@ -330,8 +324,6 @@ def convert_to_jax(  # noqa: PLR0913
             bb_outage_as_nminus1=bb_outage_as_nminus1,
             clip_bb_outage_penalty=clip_bb_outage_penalty,
             contingency_ids=network_data.contingency_ids,
-            enable_nodal_inj_optim=enable_nodal_inj_optim,
-            precision_percent=precision_percent,
         ),
     )
 
@@ -702,8 +694,6 @@ def load_grid(
         bb_outage_as_nminus1=parameters.bb_outage_as_nminus1,
         bb_outage_more_splits_penalty=parameters.bb_outage_more_splits_penalty,
         ac_dc_interpolation=parameters.ac_dc_interpolation,
-        enable_nodal_inj_optim=parameters.enable_nodal_inj_optim,
-        precision_percent=parameters.precision_percent,
     )
 
     validate_static_information(static_information)
@@ -837,17 +827,14 @@ def run_initial_loadflow(
 
     # Prepare starting options for nodal injection optimization if enabled
     nodal_inj_start_options = None
-    if (
-        static_information.solver_config.enable_nodal_inj_optim
-        and static_information.dynamic_information.nodal_injection_information is not None
-    ):
+    if static_information.dynamic_information.nodal_injection_information is not None:
         nodal_inj_start_options = NodalInjStartOptions(
             previous_results=NodalInjOptimResults(
                 pst_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx[
                     None, None, :
                 ]
             ),
-            precision_percent=jnp.array(static_information.solver_config.precision_percent),
+            precision_percent=0.0,
         )
 
     lf_res, success = compute_symmetric_batch(

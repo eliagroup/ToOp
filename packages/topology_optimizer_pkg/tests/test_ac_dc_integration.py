@@ -477,7 +477,7 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
     three_node_pst_example_folder_powsybl(grid_folder / "threenode")
     load_grid(
         data_folder_dirfs=DirFileSystem(str(grid_folder / "threenode")),
-        parameters=PreprocessParameters(enable_nodal_inj_optim=True),
+        parameters=PreprocessParameters(),
     )
 
     grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="threenode")]

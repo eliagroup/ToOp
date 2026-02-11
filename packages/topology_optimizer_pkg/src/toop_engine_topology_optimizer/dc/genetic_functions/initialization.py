@@ -294,6 +294,7 @@ def initialize_genetic_algorithm(
     n_subs_mutated_lambda: float,
     disconnect_prob: float,
     reconnect_prob: float,
+    pst_mutation_sigma: float,
     proportion_crossover: float,
     crossover_mutation_ratio: float,
     random_seed: int,
@@ -331,6 +332,8 @@ def initialize_genetic_algorithm(
         The probability to disconnect a new branch
     reconnect_prob : float
         The probability to reconnect a disconnected branch, will overwrite a possible disconnect
+    pst_mutation_sigma : float
+        The sigma to use for the normal distribution to sample the PST tap mutation from.
     proportion_crossover : float
         The proportion of crossover to mutation
     crossover_mutation_ratio : float
@@ -395,6 +398,7 @@ def initialize_genetic_algorithm(
         n_subs_mutated_lambda=n_subs_mutated_lambda,
         disconnect_prob=disconnect_prob,
         reconnect_prob=reconnect_prob,
+        pst_mutation_sigma=pst_mutation_sigma,
         pst_n_taps=dynamic_informations[0].nodal_injection_information.pst_n_taps
         if dynamic_informations[0].nodal_injection_information is not None
         else None,
@@ -619,6 +623,7 @@ def algo_setup(
         n_subs_mutated_lambda=ga_args.n_subs_mutated_lambda,
         disconnect_prob=ga_args.disconnect_prob,
         reconnect_prob=ga_args.reconnect_prob,
+        pst_mutation_sigma=ga_args.pst_mutation_sigma,
         proportion_crossover=ga_args.proportion_crossover,
         crossover_mutation_ratio=ga_args.crossover_mutation_ratio,
         random_seed=ga_args.random_seed,

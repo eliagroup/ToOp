@@ -155,6 +155,7 @@ def mutate(  # noqa: PLR0913
     n_subs_mutated_lambda: float,
     disconnect_prob: float,
     reconnect_prob: float,
+    pst_mutation_sigma: float,
     pst_n_taps: Int[Array, " num_psts"],
     mutation_repetition: int = 1,
 ) -> tuple[Genotype, jax.random.PRNGKey]:
@@ -188,6 +189,8 @@ def mutate(  # noqa: PLR0913
         The probability to disconnect a new branch
     reconnect_prob : float
         The probability to reconnect a disconnected branch, will overwrite a possible disconnect
+    pst_mutation_sigma : float
+        The sigma to use for the normal distribution to sample the PST tap mutation from.
     pst_n_taps : Int[Array, " num_psts"]
         The number of taps for each PST, from nodal_injection_information.pst_n_taps.
     mutation_repetition : int
@@ -286,7 +289,7 @@ def mutate(  # noqa: PLR0913
     nodal_injections_optimized = mutate_nodal_injections(
         random_key=random_key,
         nodal_inj_info=repeated_topologies.nodal_injections_optimized,
-        pst_mutation_sigma=0.5,
+        pst_mutation_sigma=pst_mutation_sigma,
         pst_n_taps=pst_n_taps,
     )
 

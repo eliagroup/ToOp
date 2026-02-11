@@ -65,6 +65,7 @@ def test_translate_topology(static_information_file: str) -> None:
         n_subs_mutated_lambda=5.0,
         disconnect_prob=0.5,
         reconnect_prob=0.5,
+        pst_mutation_sigma=0,
         pst_n_taps=jnp.array([], dtype=int),
         mutation_repetition=1,
     )
@@ -123,6 +124,7 @@ def test_scoring_function(static_information_file: str) -> None:
         n_subs_mutated_lambda=20.0,
         disconnect_prob=0.5,
         reconnect_prob=0.5,
+        pst_mutation_sigma=0,
         pst_n_taps=jnp.array([], dtype=int),
         mutation_repetition=1,
     )
@@ -182,6 +184,7 @@ def test_summarize(static_information_file: str) -> None:
         n_subs_mutated_lambda=20.0,
         disconnect_prob=0.5,
         reconnect_prob=0.5,
+        pst_mutation_sigma=0,
         pst_n_taps=jnp.array([], dtype=int),
         mutation_repetition=1,
     )
@@ -197,6 +200,7 @@ def test_summarize(static_information_file: str) -> None:
             n_subs_mutated_lambda=20.0,
             disconnect_prob=0.5,
             reconnect_prob=0.5,
+            pst_mutation_sigma=0,
             pst_n_taps=jnp.array([], dtype=int),
             mutation_repetition=1,
         ),

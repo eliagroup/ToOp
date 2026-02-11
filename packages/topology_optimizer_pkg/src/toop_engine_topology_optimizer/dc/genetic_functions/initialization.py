@@ -623,6 +623,7 @@ def algo_setup(
         n_subs_mutated_lambda=ga_args.n_subs_mutated_lambda,
         disconnect_prob=ga_args.disconnect_prob,
         reconnect_prob=ga_args.reconnect_prob,
+        pst_mutation_sigma=ga_args.pst_mutation_sigma,
         proportion_crossover=ga_args.proportion_crossover,
         crossover_mutation_ratio=ga_args.crossover_mutation_ratio,
         random_seed=ga_args.random_seed,

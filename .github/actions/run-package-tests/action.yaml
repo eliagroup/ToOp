@@ -16,7 +16,7 @@ runs:
   steps:
     - uses: ./.github/actions/setup-python
       with:
-        sync-args: 'uv sync --all-groups --all-extras --frozen --project packages/${{ inputs.package }}'
+        sync-args: '--all-groups --all-extras --frozen --project packages/${{ inputs.package }}'
 
     - name: Run tests with code coverage report
       shell: bash

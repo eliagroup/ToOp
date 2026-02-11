@@ -157,7 +157,7 @@ def test_create_repertoire_with_cell_depth() -> None:
 
     # Fake data
     nodal_injections_optimized = NodalInjOptimResults(
-        pst_taps=jnp.zeros((batch_size, 1)),
+        pst_tap_idx=jnp.zeros((batch_size, 1)),
     )
     genotypes = Genotype(  # 4 topologies
         action_index=jnp.array([[0], [1], [2], [0]]),
@@ -223,7 +223,7 @@ def test_add_to_repertoire_with_depth():
 
     # Create empty repertoire
     nodal_injections_optimized = NodalInjOptimResults(
-        pst_taps=jnp.zeros(([1])),
+        pst_tap_idx=jnp.zeros(([1])),
     )
     initial_genotype = Genotype(
         action_index=jnp.array([0]),  # must only contain one genotype, not a list of genotype
@@ -245,7 +245,7 @@ def test_add_to_repertoire_with_depth():
     # ___________________________________________
     # Case 0) A new individual needs to be added in the first layer
     nodal_injections_optimized = NodalInjOptimResults(
-        pst_taps=jnp.array([[0.0]]),
+        pst_tap_idx=jnp.array([[0.0]]),
     )
     genotypes_zero = Genotype(  # this time it's a batch, so there is a list of genotypes
         action_index=jnp.array([[1]]),
@@ -286,7 +286,7 @@ def test_add_to_repertoire_with_depth():
     # Case 0-deep) A new individual needs to be added in a deep layer
     """Plan : add a new individual to the same repertoire repertoire_zero but with a fitness that is half of the first one"""
     nodal_injections_optimized = NodalInjOptimResults(
-        pst_taps=jnp.array([[1.0]]),
+        pst_tap_idx=jnp.array([[1.0]]),
     )
     genotypes_zero_deep = Genotype(
         action_index=jnp.array([[2]]),
@@ -331,7 +331,7 @@ def test_add_to_repertoire_with_depth():
     # Case 1) A new individual needs to replace a first layer individual, which needs to be pushed to a deep layer
     """Plan : add a new individual to the repertoire repertoire_zero with a better fitness"""
     nodal_injections_optimized = NodalInjOptimResults(
-        pst_taps=jnp.array([[1.0]]),
+        pst_tap_idx=jnp.array([[1.0]]),
     )
     genotypes_one = Genotype(
         action_index=jnp.array([[3]]),
@@ -444,7 +444,7 @@ def test_add_to_repertoire_with_depth():
     # Case 3) A new individual has worse fitness than the ones in its full cell
     """Plan : add a new individual to the repertoire_zero_deep, which has 2 individuals with better fitnesses"""
     nodal_injections_optimized = NodalInjOptimResults(
-        pst_taps=jnp.array([[5.0]]),
+        pst_tap_idx=jnp.array([[5.0]]),
     )
     genotypes_three = Genotype(
         action_index=jnp.array([[4]]),
@@ -545,7 +545,7 @@ def test_add_to_repertoire_aranged_data():
 
     # Create empty repertoire
     nodal_injections_optimized = NodalInjOptimResults(
-        pst_taps=jnp.zeros((batch_size, 1)),
+        pst_tap_idx=jnp.zeros((batch_size, 1)),
     )
     initial_genotype = Genotype(
         action_index=jnp.array([[0], [1], [2], [3]]),
@@ -568,7 +568,7 @@ def test_add_to_repertoire_aranged_data():
 
     batch_of_fitnesses = jnp.arange(batch_size)
     nodal_injections_optimized = NodalInjOptimResults(
-        pst_taps=(jnp.arange(batch_size) + 4).reshape(-1, 1),
+        pst_tap_idx=(jnp.arange(batch_size) + 4).reshape(-1, 1),
     )
     batch_of_genotypes = Genotype(
         action_index=(jnp.arange(batch_size) + 4).reshape(-1, 1),

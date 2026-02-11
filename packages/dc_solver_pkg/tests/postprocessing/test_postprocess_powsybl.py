@@ -10,6 +10,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
@@ -22,13 +23,15 @@ import ray
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import set_target_values_to_lf_values_incl_distributed_slack
+from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.topology_computations import (
     default_topology,
 )
 from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
-from toop_engine_dc_solver.jax.types import ActionIndexComputations
+from toop_engine_dc_solver.jax.types import ActionIndexComputations, NodalInjOptimResults, NodalInjStartOptions
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
     PowsyblRunner,
     apply_disconnections,
@@ -74,7 +77,7 @@ def test_apply_topology(preprocessed_powsybl_data_folder: Path) -> None:
         # Apply the topology
         net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
         n_buses_before = len(net.get_buses())
-        net, _ = apply_topology(net, action, action_set)
+        _ = apply_topology(net, action, action_set)
         assert len(net.get_buses()) == n_buses_before + len(action)
 
         assert sum(net.get_switches()["open"]) == len(action)
@@ -96,7 +99,7 @@ def test_apply_disconnections(preprocessed_powsybl_data_folder: Path) -> None:
 
     disconnections = [0]
 
-    net = apply_disconnections(net, disconnections, action_set)
+    apply_disconnections(net, disconnections, action_set)
 
     assert not net.get_branches().connected1.iloc[0]
     assert not net.get_branches().connected2.iloc[0]
@@ -226,6 +229,85 @@ def test_apply_disconnections_matches_loadflows(
 
         assert n_0_single.shape == n_0_ref.shape
         assert np.allclose(n_0_single, n_0_ref)
+
+
+@pytest.mark.parametrize(
+    "fixture_name", ["three_node_pst_example_data_folder", "complex_grid_battery_hvdc_svc_3w_trafo_data_folder"]
+)
+def test_change_pst_matches_loadflows(
+    request,
+    fixture_name: str,
+) -> None:
+    if fixture_name == "complex_grid_battery_hvdc_svc_3w_trafo_data_folder":
+        pytest.xfail("PSDF implementation has a bug on complex grids")
+
+    preprocessed_powsybl_data_folder = request.getfixturevalue(fixture_name)
+    net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    runner = PowsyblRunner()
+    runner.replace_grid(net)
+    runner.store_action_set(extract_action_set(network_data))
+    nminus1_definition = extract_nminus1_definition(network_data)
+
+    runner.store_nminus1_definition(nminus1_definition)
+    static_information = load_static_information(
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
+    )
+    di = static_information.dynamic_information
+    solver_config = replace(
+        static_information.solver_config,
+        batch_size_bsdf=1,
+    )
+    assert di.nodal_injection_information is not None, "Grid should have nodal injection information for this test"
+
+    # With random PST tap changes, DC solver and runner should match
+    n_pst = len(di.nodal_injection_information.pst_n_taps)
+    rel_taps = jax.random.randint(
+        jax.random.PRNGKey(42),
+        shape=(n_pst,),
+        minval=0,
+        maxval=di.nodal_injection_information.pst_n_taps,
+    )
+    abs_taps = rel_taps + di.nodal_injection_information.grid_model_low_tap
+
+    solver_res, success_dc = compute_symmetric_batch(
+        topology_batch=default_topology(solver_config),
+        disconnection_batch=None,
+        injections=None,
+        nodal_inj_start_options=NodalInjStartOptions(
+            previous_results=NodalInjOptimResults(pst_tap_idx=rel_taps[None, None, :]),
+            precision_percent=jnp.array(0.0),
+        ),
+        dynamic_information=di,
+        solver_config=solver_config,
+    )
+    assert np.all(success_dc), "DC solver with PST changes should succeed"
+
+    # Get PST branch IDs from the action set (which knows about controllable PSTs)
+    action_set = extract_action_set(network_data)
+    pst_indices = [pst.id for pst in action_set.pst_ranges]
+
+    net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    net.update_phase_tap_changers(id=pst_indices, tap=(abs_taps).tolist())
+    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc")
+    pypowsybl.loadflow.run_dc(net)
+    n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
+
+    runner_res = runner.run_dc_loadflow([], [], np.array(abs_taps).tolist())
+    n_0_runner_pst, n_1_runner_pst, success_ref = extract_solver_matrices_polars(runner_res, nminus1_definition, 0)
+    assert np.all(success_ref), "Pypowsybl runner with PST changes should succeed"
+
+    n_0_with_pst = -solver_res.n_0_matrix[0, 0]
+    n_1_with_pst = -solver_res.n_1_matrix[0, 0]
+
+    # First verify the two powsybl native computations
+    assert np.allclose(n_0_direct, n_0_runner_pst, atol=1e-2)
+
+    # Then verify runner also matches direct computation
+    assert np.allclose(n_0_runner_pst, n_0_with_pst, atol=1e-2), "Runner should match direct pypowsybl computation"
+
+    # Finally verify runner matches DC solver
+    assert np.allclose(np.abs(n_1_runner_pst), np.abs(n_1_with_pst), atol=1e-2), "N-1 with PST changes should match"
 
 
 def test_runner_load_from_fs(preprocessed_powsybl_data_folder: Path) -> None:

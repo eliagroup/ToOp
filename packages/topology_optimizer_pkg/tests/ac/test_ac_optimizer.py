@@ -98,6 +98,7 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     lfs, additional_info = compute_loadflow(
         actions=[[]],
         disconnections=[[]],
+        pst_setpoints=[None],
         runners=runners,
         n_timestep_processes=1,
     )
@@ -257,7 +258,7 @@ def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:
     for _ in range(10):
         actions = random_actions(action_set, np.random.default_rng(42), 2)
 
-        pst_setpoints = [0, 0, 0, 0]
+        pst_setpoints = None
 
         topo_hash = hash_topo_data([(actions, [], pst_setpoints)])
 

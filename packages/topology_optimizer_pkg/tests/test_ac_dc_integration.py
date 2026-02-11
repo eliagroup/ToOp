@@ -16,6 +16,9 @@ import pytest
 import ray
 from confluent_kafka import Consumer, Producer
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_dc_solver.example_grids import three_node_pst_example_folder_powsybl
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
 from toop_engine_topology_optimizer.ac.worker import main as ac_main
@@ -151,7 +154,6 @@ def launch_ac_worker(
 
 # TODO: set to 200, once the xdist_group is run on a dedicated runner
 @pytest.mark.skip(reason="This test is currently flaky, should be fixed and re-enabled")
-@pytest.mark.timeout(400)
 def test_ac_dc_integration(
     kafka_command_topic: str,
     kafka_heartbeat_topic: str,
@@ -416,6 +418,132 @@ def test_ac_dc_integration_sequential(grid_folder: Path, tmp_path_factory: pytes
     assert isinstance(second_msg.result, TopologyPushResult)
     assert len(second_msg.result.strategies) > 0
     assert len(second_msg.result.strategies[0].timesteps) > 0
+
+    last_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][-1]))
+    assert isinstance(last_msg, Result)
+    assert isinstance(last_msg.result, OptimizationStoppedResult)
+    assert last_msg.result.reason == "converged"
+
+    result_consumer = FakeConsumer(
+        messages={
+            "results": producer.messages["results"],
+        }
+    )
+    command_consumer = FakeConsumer(
+        messages={"commands": [serialize_message(start_command.model_dump_json())]}, kill_on_empty=True
+    )
+
+    producer = FakeProducer()
+
+    with pytest.raises(FakeConsumerEmptyException):
+        ac_main(
+            ACArgs(
+                optimizer_command_topic="commands",
+                optimizer_heartbeat_topic="heartbeats",
+                optimizer_results_topic="results",
+            ),
+            loadflow_result_fs=DirFileSystem(str(tmp_path_factory.mktemp("loadflow_results"))),
+            processed_gridfile_fs=DirFileSystem(str(grid_folder)),
+            producer=producer,
+            command_consumer=command_consumer,
+            result_consumer=result_consumer,
+        )
+
+    assert "results" in producer.messages
+    assert len(producer.messages["results"]) > 0
+
+    # First one should be a OptimizationStartedResult
+    first_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][0]))
+    assert isinstance(first_msg, Result)
+    assert isinstance(first_msg.result, OptimizationStartedResult)
+
+    # There should be at least one TopologyPushResult before the OptimizationStoppedResult
+    second_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][1]))
+    assert isinstance(second_msg, Result)
+    assert isinstance(second_msg.result, TopologyPushResult)
+    assert len(second_msg.result.strategies) > 0
+    assert len(second_msg.result.strategies[0].timesteps) > 0
+
+    last_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][-1]))
+    assert isinstance(last_msg, Result)
+    assert isinstance(last_msg.result, OptimizationStoppedResult)
+    assert last_msg.result.reason == "converged"
+
+
+@pytest.mark.timeout(100)
+def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> None:
+    grid_folder = tmp_path_factory.mktemp("grid_folder")
+    (grid_folder / "threenode").mkdir()
+    three_node_pst_example_folder_powsybl(grid_folder / "threenode")
+    load_grid(
+        data_folder_dirfs=DirFileSystem(str(grid_folder / "threenode")),
+        parameters=PreprocessParameters(enable_nodal_inj_optim=True),
+    )
+
+    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="threenode")]
+    ac_parameters = ACOptimizerParameters(
+        ga_config=ACGAParameters(
+            runtime_seconds=20,
+            pull_prob=1.0,
+            reconnect_prob=0.0,
+            close_coupler_prob=0.0,
+            seed=42,
+            enable_ac_rejection=False,
+        )
+    )
+    dc_parameters = DCOptimizerParameters(
+        ga_config=BatchedMEParameters(
+            iterations_per_epoch=2,
+            runtime_seconds=20,
+            substation_split_prob=0,
+            n_worst_contingencies=2,
+        ),
+        loadflow_solver_config=LoadflowSolverParameters(
+            batch_size=16,
+            max_num_splits=1,
+            max_num_disconnections=0,
+        ),
+    )
+    start_command = Command(
+        command=StartOptimizationCommand(
+            ac_params=ac_parameters,
+            dc_params=dc_parameters,
+            grid_files=grid_files,
+            optimization_id="test",
+        )
+    )
+
+    command_consumer = FakeConsumer(
+        messages={"commands": [serialize_message(start_command.model_dump_json())]}, kill_on_empty=True
+    )
+    producer = FakeProducer()
+
+    with pytest.raises(FakeConsumerEmptyException):
+        dc_main(
+            DCArgs(
+                optimizer_command_topic="commands",
+                optimizer_heartbeat_topic="heartbeats",
+                optimizer_results_topic="results",
+            ),
+            processed_gridfile_fs=DirFileSystem(str(grid_folder)),
+            producer=producer,
+            command_consumer=command_consumer,
+        )
+
+    assert "results" in producer.messages
+    assert len(producer.messages["results"]) > 0
+    # First one should be a OptimizationStartedResult
+    first_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][0]))
+    assert isinstance(first_msg, Result)
+    assert isinstance(first_msg.result, OptimizationStartedResult)
+
+    # There should be at least one TopologyPushResult before the OptimizationStoppedResult
+    second_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][1]))
+    assert isinstance(second_msg, Result)
+    assert isinstance(second_msg.result, TopologyPushResult)
+    assert len(second_msg.result.strategies) > 0
+    assert len(second_msg.result.strategies[0].timesteps) > 0
+    assert second_msg.result.strategies[0].timesteps[0].pst_setpoints is not None
 
     last_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][-1]))
     assert isinstance(last_msg, Result)

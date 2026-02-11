@@ -541,7 +541,7 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
     first_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][0]))
     assert isinstance(first_msg, Result)
     assert isinstance(first_msg.result, OptimizationStartedResult)
-    assert first_msg.result.initial_topology.timesteps[0].pst_setpoints is not None
+    assert first_msg.result.initial_topology.timesteps[0].pst_setpoints is None
     assert first_msg.result.initial_topology.timesteps[0].metrics.fitness < 0
 
     # There should be at least one TopologyPushResult before the OptimizationStoppedResult

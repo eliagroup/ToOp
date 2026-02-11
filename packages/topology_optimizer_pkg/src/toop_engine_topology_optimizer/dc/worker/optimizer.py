@@ -148,11 +148,10 @@ def initialize_optimization(
             Topology(
                 actions=[],
                 disconnections=[],
-                # TODO store and convert initial pst setpoints
-                pst_setpoints=[0] * static_information_description.n_controllable_psts,
+                pst_setpoints=None,
                 metrics=metrics,
             )
-            for static_information_description in static_information_descriptions
+            for _ in static_information_descriptions
         ]
     )
 
@@ -358,8 +357,16 @@ def extract_results(optimizer_data: OptimizerData) -> TopologyPushResult:
     """
     # Assuming that contingency_ids stay the same for all timesteps
     contingency_ids = optimizer_data.solver_configs[0].contingency_ids
+
+    # Get grid_model_low_tap if nodal injection information is available
+    nodal_inj_info = optimizer_data.jax_data.dynamic_informations[0].nodal_injection_information
+    grid_model_low_tap = nodal_inj_info.grid_model_low_tap if nodal_inj_info is not None else None
+
     topologies = summarize_repo(
-        optimizer_data.jax_data.repertoire, initial_fitness=optimizer_data.initial_fitness, contingency_ids=contingency_ids
+        optimizer_data.jax_data.repertoire,
+        initial_fitness=optimizer_data.initial_fitness,
+        contingency_ids=contingency_ids,
+        grid_model_low_tap=grid_model_low_tap,
     )
 
     # Convert it to strategies

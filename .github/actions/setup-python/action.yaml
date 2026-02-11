@@ -13,6 +13,10 @@ inputs:
     description: 'Version of uv to install'
     required: false
     default: '0.4.18'
+  python-version-file:
+    description: 'Path to the file containing the Python version'
+    required: false
+    default: 'pyproject.toml'
   sync-args:
     description: 'Additional arguments to pass to uv sync'
     required: false
@@ -29,7 +33,7 @@ runs:
     - name: Set up Python
       uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
       with:
-        python-version-file: pyproject.toml
+        python-version-file: ${{ inputs.python-version-file }}
 
     - name: Install dependencies
       shell: bash

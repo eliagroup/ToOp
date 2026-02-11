@@ -44,6 +44,8 @@ from toop_engine_dc_solver.jax.types import (
     DynamicInformation,
     MetricType,
     NodalInjectionInformation,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
     NonRelBBOutageData,
     RelBBOutageData,
     SolverConfig,
@@ -700,6 +702,8 @@ def load_grid(
         bb_outage_as_nminus1=parameters.bb_outage_as_nminus1,
         bb_outage_more_splits_penalty=parameters.bb_outage_more_splits_penalty,
         ac_dc_interpolation=parameters.ac_dc_interpolation,
+        enable_nodal_inj_optim=parameters.enable_nodal_inj_optim,
+        precision_percent=parameters.precision_percent,
     )
 
     validate_static_information(static_information)
@@ -830,11 +834,27 @@ def run_initial_loadflow(
     )
 
     topo = default_topology(static_information.solver_config)
+
+    # Prepare starting options for nodal injection optimization if enabled
+    nodal_inj_start_options = None
+    if (
+        static_information.solver_config.enable_nodal_inj_optim
+        and static_information.dynamic_information.nodal_injection_information is not None
+    ):
+        nodal_inj_start_options = NodalInjStartOptions(
+            previous_results=NodalInjOptimResults(
+                pst_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx[
+                    None, None, :
+                ]
+            ),
+            precision_percent=jnp.array(static_information.solver_config.precision_percent),
+        )
+
     lf_res, success = compute_symmetric_batch(
         topology_batch=topo,
         disconnection_batch=None,
         injections=None,
-        nodal_inj_start_options=None,
+        nodal_inj_start_options=nodal_inj_start_options,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )

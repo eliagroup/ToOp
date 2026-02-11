@@ -493,10 +493,11 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
     )
     dc_parameters = DCOptimizerParameters(
         ga_config=BatchedMEParameters(
-            iterations_per_epoch=2,
+            iterations_per_epoch=10,
             runtime_seconds=20,
             substation_split_prob=0,
             n_worst_contingencies=2,
+            pst_mutation_sigma=3.0,
         ),
         loadflow_solver_config=LoadflowSolverParameters(
             batch_size=16,

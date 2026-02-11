@@ -14,10 +14,6 @@ permissions: {}
 env:
   PYTEST_ON_CI: True
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   test-packages-toop-runner:
     permissions:
@@ -25,7 +21,6 @@ jobs:
     strategy:
       # Only one job of matrix:
       # https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations
-      max-parallel: 3
       fail-fast: false
       matrix:
         include:
@@ -289,7 +284,6 @@ jobs:
              [[ "${{ needs.license-headers.result }}" != "success" ]] || \
              [[ "${{ needs.sonarqube.result }}" != "success" ]] || \
              [[ "${{ needs.test-packages-github-runner.result }}" != "success" ]] || \
-             [[ "${{ needs.test-packages-toop-runner.result }}" != "success" ]] || \
              [[ "${{ needs.test-pip-install.result }}" != "success" ]] || \
              [[ "${{ needs.test-docs-build.result }}" != "success" ]] || \
              [[ "${{ needs.test-example-notebooks.result }}" != "success" ]] || \

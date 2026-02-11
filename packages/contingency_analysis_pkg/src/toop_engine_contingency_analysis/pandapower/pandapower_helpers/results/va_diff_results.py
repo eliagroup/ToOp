@@ -41,7 +41,6 @@ def _select_monitored_open_cb_bus_bus_switches(
 ) -> pd.DataFrame:
     monitored_switch_ids = monitored_elements.query("kind == 'switch'")["table_id"]
     switches = net.switch.loc[net.switch.index.isin(monitored_switch_ids)]
-
     open_cb = switches.loc[(switches["type"] == "CB") & (~switches["closed"]) & (switches["et"] == "b")]
     return open_cb
 
@@ -65,7 +64,7 @@ def _compute_va_diff_both_ends(
     ----------
     open_cb : pandas.DataFrame
         DataFrame in the same format as ``net.switch`` containing **only
-        open circuit breakers**. The following columns are required:
+        open circuit breakers**.
         The DataFrame index is assumed to be the switch index.
 
     va_deg : pandas.Series
@@ -76,7 +75,7 @@ def _compute_va_diff_both_ends(
     Returns
     -------
     va_diff : pandas.Series
-        Voltage angle difference ``va(bus) - va(element)`` for all open
+        Voltage angle abs difference ``|va(bus) - va(element)|`` for all open
         switches where voltage angle results are available on **both**
         connected buses. The Series is indexed by switch index.
 
@@ -93,74 +92,73 @@ def _compute_va_diff_both_ends(
     else:
         a = va_deg.loc[cb_both["bus"]].to_numpy()
         b = va_deg.loc[cb_both["element"]].to_numpy()
-        va_diff_both = pd.Series(a - b, index=cb_both.index, name="va_diff")
+        va_diff_both = pd.Series((a - b).astype(float), index=cb_both.index, name="va_diff").abs()
 
     open_cb_rest = open_cb.loc[~mask_both]
     return va_diff_both, open_cb_rest
 
 
-def _build_node_to_component_map(connected_components: list) -> dict[str, int]:
-    return {node: comp_idx for comp_idx, component in enumerate(connected_components) for node in component}
-
-
-def _build_side(df: pd.DataFrame, key_from: str, bus_from: str, node_to_component: dict) -> pd.DataFrame:
+def _build_side(df: pd.DataFrame, deenergized_sw_side: str, energized_sw_side: str, node_to_component: dict) -> pd.DataFrame:
     """
-    Build a normalized (component, switch, bus) table for one side of a bus-bus switch.
+    Build a normalized (component, switch, bus, deenergized_sw_side) table for one side of a bus-bus switch.
 
-    This helper maps the *other* end of a bus-bus connection into a connected
-    component, while keeping the known bus on the current side. It is used to
-    construct per-switch connectivity rows in a vectorized manner.
+    This helper maps the de-energized side of a bus-bus connection to the connected
+    component it belongs to. The energized side is the bus where voltage angle results
+    (`va_res`) are available. These values are later used to compute voltage angle
+    differences (`va_diff`) to buses in that component.
+
+    It is used to construct per-switch connectivity rows in a vectorized manner.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Input DataFrame representing one side of bus-bus switches.
-        Must contain columns referenced by `key_from` and `bus_from`.
+        Input DataFrame representing bus-bus switches.
+        Must contain columns referenced by `deenergized_sw_side` and `energized_sw_side`.
         The DataFrame index is assumed to represent the switch identifier.
 
-    key_from : str
-        Name of the column whose values identify the **other-end bus** of the
-        switch. These values are converted into component lookup keys of the
-        form `"b_<bus_id>"` and mapped via `node_to_component`.
+    deenergized_sw_side : str
+        Name of the column identifying the bus on the de-energized side of the switch.
+        Values are converted into component lookup keys of the form `"b_<bus_id>"` and
+        mapped via `node_to_component`.
 
-    bus_from : str
-        Name of the column whose values identify the **known bus on this side**
-        of the switch. These values are used to populate the output `bus` column.
+    energized_sw_side : str
+        Name of the column identifying the bus on the energized side of the switch.
+        Values populate the output `bus` column (the side with available `va_res`).
 
     node_to_component : dict[str, Any]
-        Mapping from node identifiers (e.g. `"b_12"`) to connected component
-        identifiers. Rows whose lookup key is not present in the mapping are
-        dropped.
+        Mapping from node identifiers (e.g. `"b_12"`) to connected component identifiers.
+        Rows whose lookup key is not present in the mapping are dropped.
 
     Returns
     -------
     pd.DataFrame
         A DataFrame with columns:
 
-        - comp: connected component identifier
+        - comp: connected component identifier of the de-energized-side bus
         - switch: switch identifier (copied from `df.index`)
-        - bus: bus index on the current side of the switch
+        - bus: energized-side bus index (where `va_res` is available)
+        - deenergized_sw_side: de-energized-side bus index (opposite side)
 
         Rows without a matching component are excluded.
     """
     out = df.copy()
 
     # build component lookup
-    out["comp_key"] = "b_" + out[key_from].astype(str)
+    out["comp_key"] = "b_" + out[deenergized_sw_side].astype(str)
     out["comp"] = out["comp_key"].map(node_to_component)
 
     # keep switch id from index
     out["switch"] = out.index
 
-    out["another_side"] = out[key_from].astype(int)
+    out["deenergized_sw_side"] = out[deenergized_sw_side].astype(int)
 
     # output bus
-    out["bus"] = out[bus_from].astype(int)
+    out["bus"] = out[energized_sw_side].astype(int)
 
     # drop those without a component match
     out = out.dropna(subset=["comp"])
 
-    return out[["comp", "switch", "bus", "another_side"]]
+    return out[["comp", "switch", "bus", "deenergized_sw_side"]]
 
 
 def get_outage_groups_with_pst(net: pandapowerNet, connected_components: list) -> tuple[list, list[int]]:
@@ -203,7 +201,7 @@ def _make_one_sided_rows(
 
     Output columns: switch, bus (the bus that HAS va), comp (component of the OTHER side).
     """
-    node_to_component = _build_node_to_component_map(connected_components)
+    node_to_component = {node: cmp_idx for cmp_idx, component in enumerate(connected_components) for node in component}
     mask_bus_side = open_cb_rest["bus"].isin(va_deg.index)  # bus side has va
     mask_element_side = open_cb_rest["element"].isin(va_deg.index)  # element side has va
 
@@ -213,16 +211,16 @@ def _make_one_sided_rows(
     # element-side: known va bus is r.element; component from OTHER end r.bus
     cb_element_side = _build_side(
         cb_element_side,
-        key_from="bus",
-        bus_from="element",
+        deenergized_sw_side="bus",
+        energized_sw_side="element",
         node_to_component=node_to_component,
     )
 
     # bus-side: known va bus is r.bus; component from OTHER end r.element
     cb_bus_side = _build_side(
         cb_bus_side,
-        key_from="element",
-        bus_from="bus",
+        deenergized_sw_side="element",
+        energized_sw_side="bus",
         node_to_component=node_to_component,
     )
     _, out_gr_with_pst_ids = get_outage_groups_with_pst(net, connected_components)
@@ -378,6 +376,8 @@ def populate_angle_deg_from_tap(net: pandapowerNet, trafo_df: pd.DataFrame) -> N
     _apply_ideal_angle(trafo_df)
     _apply_ratio_angle(trafo_df)
     _apply_symmetrical_angle(trafo_df)
+
+    trafo_df["angle_deg"] = trafo_df["angle_deg"].fillna(0)
 
 
 def _elements_from_index(df: pd.DataFrame, element_type: str) -> list[str]:
@@ -761,7 +761,7 @@ def _build_va_change_df_for_group(
     # Outer loop: treat each row as a source
     for i_row in rows:
         # Convert "another_side" bus to a graph node id
-        src = elem_node_id(kind="bus", idx=int(i_row.another_side))
+        src = elem_node_id(kind="bus", idx=int(i_row.deenergized_sw_side))
 
         # Compute shortest paths from this source to all reachable nodes once
         # Result: dict[dst_node] -> [path nodes]
@@ -769,7 +769,7 @@ def _build_va_change_df_for_group(
 
         # Inner loop: treat each row as a destination
         for j_row in rows:
-            dst = elem_node_id(kind="bus", idx=int(j_row.another_side))
+            dst = elem_node_id(kind="bus", idx=int(j_row.deenergized_sw_side))
 
             # Skip self-pair
             if src == dst:

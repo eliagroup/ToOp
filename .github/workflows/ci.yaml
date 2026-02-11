@@ -130,8 +130,10 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
 
-      - name: Setup Python and install dependencies
-        uses: ./.github/actions/setup-python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
       - name: Install dependencies
         run: pip install -r requirements.txt

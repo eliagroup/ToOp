@@ -442,7 +442,6 @@ def _save_static_information(binaryio: BinaryIO, static_information: StaticInfor
         file.attrs["enable_bb_outages"] = solver_config.enable_bb_outages
         file.attrs["bb_outage_as_nminus1"] = solver_config.bb_outage_as_nminus1
         file.attrs["clip_bb_outage_penalty"] = solver_config.clip_bb_outage_penalty
-        file.attrs["enable_nodal_inj_optim"] = solver_config.enable_nodal_inj_optim
         file.create_dataset("susceptance", data=dynamic_information.susceptance)
         file.create_dataset("relevant_injections", data=dynamic_information.relevant_injections)
         file.create_dataset(
@@ -792,7 +791,6 @@ def _load_static_information(binaryio: BinaryIO) -> StaticInformation:
                 enable_bb_outages=bool(file.attrs.get("enable_bb_outages", False)),
                 bb_outage_as_nminus1=bool(file.attrs.get("bb_outage_as_nminus1", True)),
                 clip_bb_outage_penalty=bool(file.attrs.get("clip_bb_outage_penalty", False)),
-                enable_nodal_inj_optim=bool(file.attrs.get("enable_nodal_inj_optim", False)),
                 contingency_ids=list(file.attrs.get("contingency_ids", [])),
             ),
         )

@@ -22,7 +22,6 @@ jobs:
   test-packages-toop-runner:
     permissions:
       contents: read
-      pull-requests: read
     strategy:
       # Only one job of matrix:
       # https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations
@@ -48,7 +47,6 @@ jobs:
   test-packages-github-runner:
     permissions:
       contents: read
-      pull-requests: read
     strategy:
       fail-fast: false
       matrix:
@@ -79,7 +77,6 @@ jobs:
     if: success()
     permissions:
       contents: read
-      pull-requests: read
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code

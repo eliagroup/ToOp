@@ -26,7 +26,7 @@ from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
 from toop_engine_topology_optimizer.dc.worker.worker import main as dc_main
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commands import Command, ShutdownCommand, StartOptimizationCommand
-from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
+from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     BatchedMEParameters,
     DCOptimizerParameters,
@@ -498,6 +498,9 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
             substation_split_prob=0,
             n_worst_contingencies=2,
             pst_mutation_sigma=3.0,
+            target_metrics=(("overload_energy_n_1", 1.0),),
+            observed_metrics=("overload_energy_n_1", "split_subs"),
+            me_descriptors=(DescriptorDef(metric="split_subs", num_cells=2),),
         ),
         loadflow_solver_config=LoadflowSolverParameters(
             batch_size=16,
@@ -534,9 +537,12 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
     assert "results" in producer.messages
     assert len(producer.messages["results"]) > 0
     # First one should be a OptimizationStartedResult
+    # And we should have overloads in the grid
     first_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][0]))
     assert isinstance(first_msg, Result)
     assert isinstance(first_msg.result, OptimizationStartedResult)
+    assert first_msg.result.initial_topology.timesteps[0].pst_setpoints is not None
+    assert first_msg.result.initial_topology.timesteps[0].metrics.fitness < 0
 
     # There should be at least one TopologyPushResult before the OptimizationStoppedResult
     second_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][1]))

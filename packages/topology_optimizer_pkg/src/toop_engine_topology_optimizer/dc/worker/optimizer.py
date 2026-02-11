@@ -148,10 +148,12 @@ def initialize_optimization(
             Topology(
                 actions=[],
                 disconnections=[],
-                pst_setpoints=None,
+                pst_setpoints=di.nodal_injection_information.starting_tap_idx.tolist()
+                if di.nodal_injection_information is not None
+                else None,
                 metrics=metrics,
             )
-            for _ in static_information_descriptions
+            for di in jax_data.dynamic_informations
         ]
     )
 

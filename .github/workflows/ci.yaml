@@ -215,7 +215,9 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
-
+        with:
+          fetch-depth: 0
+          
       - name: Setup Python and install dependencies
         uses: ./.github/actions/setup-python
         with:

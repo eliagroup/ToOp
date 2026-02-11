@@ -23,6 +23,7 @@ runs:
   steps:
     - uses: ./.github/actions/setup-python
       with:
+        python-version-file: 'packages/${{ inputs.package }}/pyproject.toml'
         sync-args: '--all-groups --all-extras --frozen --project packages/${{ inputs.package }}'
 
     - name: Run tests with code coverage report

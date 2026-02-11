@@ -259,9 +259,10 @@ jobs:
         fossa-scan,
         license-headers,
         sonarqube,
-        tests,
         test-docs-build,
         test-example-notebooks,
+        test-packages-github-runner,
+        test-packages-toop-runner,
         test-pip-install,
         validate-commits,
       ]
@@ -276,9 +277,10 @@ jobs:
           echo "FOSSA Scan: ${{ needs.fossa-scan.result }}"
           echo "License Headers: ${{ needs.license-headers.result }}"
           echo "SonarQube: ${{ needs.sonarqube.result }}"
-          echo "Tests: ${{ needs.tests.result }}"
           echo "Test Docs Build: ${{ needs.test-docs-build.result }}"
           echo "Test Example Notebooks: ${{ needs.test-example-notebooks.result }}"
+          echo "Test Packages (GitHub Runner): ${{ needs.test-packages-github-runner.result }}"
+          echo "Test Packages (ToOp Runner): ${{ needs.test-packages-toop-runner.result }}"
           echo "Test Pip Install: ${{ needs.test-pip-install.result }}"
           echo "Validate Commits: ${{ needs.validate-commits.result }}"
 
@@ -286,7 +288,8 @@ jobs:
              [[ "${{ needs.fossa-scan.result }}" != "success" ]] || \
              [[ "${{ needs.license-headers.result }}" != "success" ]] || \
              [[ "${{ needs.sonarqube.result }}" != "success" ]] || \
-             [[ "${{ needs.tests.result }}" != "success" ]] || \
+             [[ "${{ needs.test-packages-github-runner.result }}" != "success" ]] || \
+             [[ "${{ needs.test-packages-toop-runner.result }}" != "success" ]] || \
              [[ "${{ needs.test-pip-install.result }}" != "success" ]] || \
              [[ "${{ needs.test-docs-build.result }}" != "success" ]] || \
              [[ "${{ needs.test-example-notebooks.result }}" != "success" ]] || \

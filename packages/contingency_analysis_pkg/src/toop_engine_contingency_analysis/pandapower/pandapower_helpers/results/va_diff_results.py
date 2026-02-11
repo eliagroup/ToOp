@@ -39,6 +39,29 @@ def _select_monitored_open_cb_bus_bus_switches(
     net: pandapowerNet,
     monitored_elements: pd.DataFrame,
 ) -> pd.DataFrame:
+    """
+    Select monitored open circuit breakers connecting bus-to-bus (et == 'b').
+
+    Filters ``net.switch`` to switches that:
+      - are present in ``monitored_elements`` with ``kind == 'switch'``
+      - are circuit breakers (``type == 'CB'``)
+      - are open (``closed == False``)
+      - connect bus-to-bus (``et == 'b'``)
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network containing the ``switch`` table.
+    monitored_elements : pd.DataFrame
+        DataFrame of monitored elements (e.g., ``PandapowerMonitoredElementSchema``) with
+        at least columns ``kind`` and ``table_id``. Switch ids are taken from rows where
+        ``kind == 'switch'``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Subset of ``net.switch`` containing only the monitored, open CB bus-bus switches.
+    """
     monitored_switch_ids = monitored_elements.query("kind == 'switch'")["table_id"]
     switches = net.switch.loc[net.switch.index.isin(monitored_switch_ids)]
     open_cb = switches.loc[(switches["type"] == "CB") & (~switches["closed"]) & (switches["et"] == "b")]
@@ -46,7 +69,23 @@ def _select_monitored_open_cb_bus_bus_switches(
 
 
 def _get_bus_va_series(net: pandapowerNet) -> pd.Series:
-    """Series indexed by bus id with va_degree, dropping NaNs."""
+    """
+    Return a Series of bus voltage angles indexed by bus id.
+
+    Extracts the ``va_degree`` column from ``net.res_bus`` and drops buses
+    without a solved voltage angle (NaN).
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network with loadflow results available in ``net.res_bus``.
+
+    Returns
+    -------
+    pd.Series
+        Series of voltage angles in degrees, indexed by bus id, containing
+        only entries with non-null ``va_degree`` values.
+    """
     res_bus = net.res_bus.dropna(subset=["va_degree"])
     return res_bus["va_degree"]
 
@@ -197,9 +236,39 @@ def _make_one_sided_rows(
     connected_components: list,
 ) -> pd.DataFrame:
     """
-    Build rows for one-sided cases.
+    Build the intermediate row table for "one-sided" VA-diff inference.
 
-    Output columns: switch, bus (the bus that HAS va), comp (component of the OTHER side).
+    A one-sided case is a switch where only one end (bus or element side) has a solved
+    voltage angle available in ``va_deg``. For each such switch, this function produces
+    rows with:
+      - ``switch``: switch id
+      - ``bus``: the energized/known-VA bus id (the side present in ``va_deg``)
+      - ``comp``: connected-component index of the opposite (de-energized) side
+
+    Additionally, the output includes a boolean ``pst`` flag indicating whether the
+    de-energized component contains at least one PST element (as determined by
+    ``get_outage_groups_with_pst``).
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network used to detect PST elements within connected components.
+    open_cb_rest : pd.DataFrame
+        DataFrame of open circuit breakers to consider. Must contain at least the columns:
+        ``bus`` (one switch terminal bus id), ``element`` (the other terminal bus id),
+        and the switch identifier column expected by ``_build_side``.
+    va_deg : pd.Series
+        Bus voltage angles (degrees) indexed by bus id (typically ``net.res_bus["va_degree"]``).
+        Presence in this index determines which side is considered energized/known.
+    connected_components : list
+        List of connected components, where each component is an iterable of node ids.
+        The position in the list is used as the component index (``comp``).
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns ``['switch', 'bus', 'comp', 'pst']`` suitable for subsequent
+        VA-diff computation. ``pst`` is True if the opposite-side component contains a PST.
     """
     node_to_component = {node: cmp_idx for cmp_idx, component in enumerate(connected_components) for node in component}
     mask_bus_side = open_cb_rest["bus"].isin(va_deg.index)  # bus side has va
@@ -231,7 +300,26 @@ def _make_one_sided_rows(
 
 
 def _filter_components_with_enough_va(df_rows: pd.DataFrame) -> pd.DataFrame:
-    """Keep only components where we have >= 2 distinct buses with va."""
+    """
+    Filter rows to components that have at least two distinct buses with voltage-angle data.
+
+    Ensures that voltage-angle differences can be computed within each component by
+    keeping only those connected components (``comp``) that contain two or more unique
+    bus ids.
+
+    Parameters
+    ----------
+    df_rows : pd.DataFrame
+        DataFrame containing at least the columns:
+        - ``comp``: connected-component identifier
+        - ``bus``: bus id associated with each row
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered dataframe containing only rows belonging to components with
+        at least two distinct buses. Returns the input unchanged if empty.
+    """
     if df_rows.empty:
         return df_rows
     valid_comps = df_rows.groupby("comp")["bus"].nunique().loc[lambda s: s >= 2].index
@@ -243,9 +331,25 @@ def _max_abs_diff_per_bus_within_component(
     va_deg: pd.Series,
 ) -> dict[int, float]:
     """
-    For a set of buses (with va), compute for each bus:
+    Compute the maximum absolute voltage-angle difference per bus within a component.
 
-      max_{other bus in set} |va(bus) - va(other)|
+    For a given set of buses, calculates for each bus the maximum absolute difference
+    in voltage angle (degrees) relative to all other buses in the same set:
+
+        max_{other bus in set} |va(bus) - va(other)|
+
+    Parameters
+    ----------
+    buses : np.ndarray
+        Array of bus ids belonging to the same connected component.
+    va_deg : pd.Series
+        Bus voltage angles (in degrees), indexed by bus id (e.g. ``net.res_bus["va_degree"]``).
+
+    Returns
+    -------
+    dict[int, float]
+        Mapping from bus id to the maximum absolute voltage-angle difference (degrees)
+        with any other bus in the provided set.
     """
     va = va_deg.loc[buses].to_numpy()  # (m,)
     diff = np.abs(va[:, None] - va[None, :])  # (m, m)
@@ -258,7 +362,29 @@ def _compute_va_diff_one_side(
     df_rows: pd.DataFrame,
     va_deg: pd.Series,
 ) -> pd.Series:
-    """Return Series indexed by switch id with inferred va_diff for one-sided cases."""
+    """
+    Compute inferred voltage-angle differences for one-sided switch cases.
+
+    Filters component rows to those with sufficient voltage-angle (va) availability, then for each
+    connected component computes a per-bus va-difference metric (via
+    ``_max_abs_diff_per_bus_within_component``) and maps it back to switches.
+
+    Parameters
+    ----------
+    df_rows : pd.DataFrame
+        Rows describing one-sided switch candidates. Must contain at least the columns:
+        - ``comp``: connected-component identifier
+        - ``bus``: bus id associated with the row
+        - ``switch``: switch id used as the output index
+    va_deg : pd.Series
+        Bus voltage angles (degrees), indexed by bus id (typically ``net.res_bus["va_degree"]``).
+
+    Returns
+    -------
+    pd.Series
+        Series named ``"va_diff"`` indexed by switch id, containing the inferred va-diff values.
+        Returns an empty float Series if no valid rows are available.
+    """
     if df_rows.empty:
         return pd.Series(dtype=float, name="va_diff")
 
@@ -276,6 +402,29 @@ def _compute_va_diff_one_side(
 
 
 def _apply_tabular_angle(net: pandapowerNet, trafo_df: pd.DataFrame) -> None:
+    """
+    Apply tabular tap-changer phase shifts to ``trafo_df['angle_deg']`` in-place.
+
+    For transformers with ``tap_changer_type == 'Tabular'``, this function looks up the
+    tap position in ``net.trafo_characteristic_table`` (matching
+    ``id_characteristic_table`` ↔ ``id_characteristic`` and ``tap_pos`` ↔ ``step``)
+    and writes the corresponding ``angle_deg`` into the transformer table.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network containing ``net.trafo_characteristic_table`` with columns
+        ``['id_characteristic', 'step', 'angle_deg']``.
+    trafo_df : pd.DataFrame
+        Transformer table to update (e.g. ``net.trafo`` or ``net.trafo3w``). Must contain
+        ``tap_changer_type``, ``id_characteristic_table`` and ``tap_pos`` columns, and an
+        ``angle_deg`` column (will be assigned).
+
+    Returns
+    -------
+    None
+        Modifies ``trafo_df`` in-place.
+    """
     mask = trafo_df["tap_changer_type"].eq("Tabular")
     if not mask.any():
         return
@@ -293,6 +442,27 @@ def _apply_tabular_angle(net: pandapowerNet, trafo_df: pd.DataFrame) -> None:
 
 
 def _apply_ideal_angle(trafo_df: pd.DataFrame) -> None:
+    """
+    Apply ideal tap-changer phase shifts to ``trafo_df['angle_deg']`` in-place.
+
+    For transformers with ``tap_changer_type == 'Ideal'``, the phase shift is computed as::
+
+        angle_deg = (tap_pos - tap_neutral) * tap_step_degree
+
+    and written to the corresponding rows in ``trafo_df``.
+
+    Parameters
+    ----------
+    trafo_df : pd.DataFrame
+        Transformer table to update (e.g. ``net.trafo`` or ``net.trafo3w``). Must contain
+        the columns ``tap_changer_type``, ``tap_pos``, ``tap_neutral``, and
+        ``tap_step_degree``, as well as an ``angle_deg`` column to be updated.
+
+    Returns
+    -------
+    None
+        Modifies ``trafo_df`` in-place.
+    """
     mask = trafo_df["tap_changer_type"].eq("Ideal")
     if not mask.any():
         return
@@ -306,9 +476,24 @@ def _apply_ideal_angle(trafo_df: pd.DataFrame) -> None:
 
 def _select_vn_kv(df: pd.DataFrame) -> np.ndarray:
     """
-    Select nominal voltage of tapped side (hv/mv/lv).
+    Select the nominal voltage (kV) of the tapped winding side.
 
-    Works for both 2W (no vn_mv_kv) and 3W (vn_mv_kv present).
+    Returns an array containing the nominal voltage corresponding to the
+    transformer tap side specified in ``tap_side`` ("hv", "mv", or "lv").
+    Supports both 2-winding transformers (no ``vn_mv_kv`` column) and
+    3-winding transformers (with ``vn_mv_kv``).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Transformer table containing ``tap_side`` and nominal voltage columns
+        (``vn_hv_kv``, ``vn_lv_kv``, and optionally ``vn_mv_kv``).
+
+    Returns
+    -------
+    np.ndarray
+        Array of nominal voltages (in kV) corresponding to the tapped side for
+        each row; NaN where the tap side is missing or not applicable.
     """
     has_mv = "vn_mv_kv" in df.columns
     mv = df["vn_mv_kv"] if has_mv else np.nan
@@ -321,6 +506,37 @@ def _select_vn_kv(df: pd.DataFrame) -> np.ndarray:
 
 
 def _apply_ratio_angle(trafo_df: pd.DataFrame) -> None:
+    """
+    Apply ratio tap-changer phase shifts to ``trafo_df['angle_deg']`` in-place.
+
+    For transformers with ``tap_changer_type == 'Ratio'``, computes the phase shift
+    introduced by the tap position based on the nominal voltage of the tapped side,
+    tap position offset, tap step percent, and tap step angle. The calculation uses:
+
+        du = vn_kv * (tap_pos - tap_neutral) * (tap_step_percent / 100)
+
+        angle_deg = atan2(
+            du * sin(tap_step_degree),
+            vn_kv + du * cos(tap_step_degree)
+        )  [converted to degrees]
+
+    where ``vn_kv`` is selected from the tapped winding side (hv/mv/lv).
+
+    Parameters
+    ----------
+    trafo_df : pd.DataFrame
+        Transformer table to update (e.g. ``net.trafo`` or ``net.trafo3w``). Must contain:
+        - ``tap_changer_type``, ``tap_pos``, ``tap_neutral``
+        - ``tap_step_percent``, ``tap_step_degree``
+        - ``tap_side``
+        - Nominal voltage columns: ``vn_hv_kv``, ``vn_lv_kv`` (and optionally ``vn_mv_kv``)
+        - ``angle_deg`` column to be updated.
+
+    Returns
+    -------
+    None
+        Modifies ``trafo_df`` in-place.
+    """
     mask = trafo_df["tap_changer_type"].eq("Ratio")
     if not mask.any():
         return
@@ -340,6 +556,37 @@ def _apply_ratio_angle(trafo_df: pd.DataFrame) -> None:
 
 
 def _apply_symmetrical_angle(trafo_df: pd.DataFrame) -> None:
+    """
+    Apply symmetrical tap-changer phase shifts to ``trafo_df['angle_deg']`` in-place.
+
+    For transformers with ``tap_changer_type == 'Symmetrical'``, computes the phase shift
+    introduced by the tap position using the same geometric formulation as the ratio model:
+
+        du = vn_kv * (tap_pos - tap_neutral) * (tap_step_percent / 100)
+
+        angle_deg = atan2(
+            du * sin(tap_step_degree),
+            vn_kv + du * cos(tap_step_degree)
+        )  [converted to degrees]
+
+    where ``vn_kv`` is the nominal voltage of the tapped winding side (hv/mv/lv), selected
+    via :func:`_select_vn_kv`.
+
+    Parameters
+    ----------
+    trafo_df : pd.DataFrame
+        Transformer table to update (e.g. ``net.trafo`` or ``net.trafo3w``). Must contain:
+        - ``tap_changer_type``, ``tap_pos``, ``tap_neutral``
+        - ``tap_step_percent``, ``tap_step_degree``
+        - ``tap_side``
+        - Nominal voltage columns: ``vn_hv_kv``, ``vn_lv_kv`` (and optionally ``vn_mv_kv``)
+        - ``angle_deg`` column to be updated.
+
+    Returns
+    -------
+    None
+        Modifies ``trafo_df`` in-place.
+    """
     mask = trafo_df["tap_changer_type"].eq("Symmetrical")
     if not mask.any():
         return
@@ -360,11 +607,24 @@ def _apply_symmetrical_angle(trafo_df: pd.DataFrame) -> None:
 
 def populate_angle_deg_from_tap(net: pandapowerNet, trafo_df: pd.DataFrame) -> None:
     """
-    Populate `angle_deg` for a transformer table (2-winding or 3-winding) in-place.
+    Populate the ``angle_deg`` column in-place for a transformer table based on tap changer settings.
 
-    Supports both:
-      - net.trafo   (2-winding transformers)
-      - net.trafo3w (3-winding transformers)
+    Computes the effective phase shift introduced by tap changers for both 2-winding
+    (``net.trafo``) and 3-winding (``net.trafo3w``) transformer tables by applying
+    tabular, ideal, ratio, and symmetrical tap models. Missing values are filled with 0°.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network providing characteristic tables and context for tabular taps.
+    trafo_df : pd.DataFrame
+        Transformer table to update (either ``net.trafo`` or ``net.trafo3w``). Must contain
+        tap-related columns used by the applied models.
+
+    Returns
+    -------
+    None
+        The input dataframe is modified in-place; no value is returned.
     """
     if trafo_df.empty:
         return
@@ -381,17 +641,44 @@ def populate_angle_deg_from_tap(net: pandapowerNet, trafo_df: pd.DataFrame) -> N
 
 
 def _elements_from_index(df: pd.DataFrame, element_type: str) -> list[str]:
-    """Build element identifiers from a dataframe index."""
+    """
+    Build globally unique element identifiers from a dataframe index.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame whose index contains the pandapower table ids of the elements.
+    element_type : str
+        Pandapower element type (e.g. "trafo", "trafo3w", "line") used to build the identifier.
+
+    Returns
+    -------
+    list[str]
+        List of element unique ids generated from the index values using ``elem_node_id``.
+    """
     return [elem_node_id("elem", int(idx), element_type) for idx in df.index]
 
 
 def get_pst_elements_tabular(net: pandapowerNet) -> list[str]:
     """
-    Return PST elements with tap_changer_type == 'Tabular' for trafo and trafo3w.
+    Return identifiers of tabular PST elements (2W and 3W) with non-zero tabular angle.
 
-    Logic:
-        - Uses trafo_characteristic_table: selects characteristic IDs where angle_deg != 0
-        - Selects trafos / trafo3w that use those characteristic table IDs
+    Selects characteristic IDs from ``net.trafo_characteristic_table`` where ``angle_deg != 0``,
+    then returns element ids for ``net.trafo`` and ``net.trafo3w`` that have
+    ``tap_changer_type == 'Tabular'`` and reference those characteristic IDs via
+    ``id_characteristic_table``.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network containing ``trafo``, ``trafo3w``, and
+        ``trafo_characteristic_table``.
+
+    Returns
+    -------
+    list[str]
+        List of element identifiers (via ``_elements_from_index``) for matching
+        2-winding and 3-winding transformers.
     """
     id_with_angle = net.trafo_characteristic_table.loc[
         net.trafo_characteristic_table.angle_deg != 0, "id_characteristic"
@@ -408,17 +695,41 @@ def get_pst_elements_tabular(net: pandapowerNet) -> list[str]:
 
 
 def notna_and_nonzero(s: pd.Series) -> pd.Series:
-    """Return a boolean mask where values are not NaN and not equal to 0."""
+    """
+    Return a boolean mask indicating values that are neither NaN nor equal to zero.
+
+    Parameters
+    ----------
+    s : pd.Series
+        Input series to evaluate.
+
+    Returns
+    -------
+    pd.Series
+        Boolean mask with True where values are non-null and non-zero, False otherwise.
+    """
     return s.notna() & (s != 0)
 
 
 def get_pst_elements_ratio(net: pandapowerNet) -> list[str]:
     """
-    Return PST elements with tap_changer_type == 'Ratio' for trafo and trafo3w.
+    Return identifiers of ratio-tap PST elements (2W and 3W) with active angle capability.
 
-    Logic:
-        - tap_step_percent is non-zero OR NaN
-        - tap_step_degree  is non-zero OR NaN
+    Selects transformers from ``net.trafo`` and ``net.trafo3w`` where:
+      - ``tap_changer_type == 'Ratio'``
+      - ``tap_step_percent`` is non-null and non-zero
+      - ``tap_step_degree`` is non-null and non-zero
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network containing ``trafo`` and ``trafo3w`` tables.
+
+    Returns
+    -------
+    list[str]
+        List of element identifiers (via ``_elements_from_index``) for matching
+        2-winding and 3-winding transformers.
     """
     trafo = net.trafo.loc[
         (net.trafo.tap_changer_type == "Ratio")
@@ -436,11 +747,23 @@ def get_pst_elements_ratio(net: pandapowerNet) -> list[str]:
 
 def get_pst_elements_symmetrical(net: pandapowerNet) -> list[str]:
     """
-    Return PST elements with tap_changer_type == 'Symmetrical' for trafo and trafo3w.
+    Return identifiers of symmetrical-tap PST elements (2W and 3W) with active angle capability.
 
-    Logic:
-        - tap_step_percent is non-zero OR NaN
-        - tap_step_degree  is non-zero OR NaN
+    Selects transformers from ``net.trafo`` and ``net.trafo3w`` where:
+      - ``tap_changer_type == 'Symmetrical'``
+      - ``tap_step_percent`` is non-null and non-zero
+      - ``tap_step_degree`` is non-null and non-zero
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network containing ``trafo`` and ``trafo3w`` tables.
+
+    Returns
+    -------
+    list[str]
+        List of element identifiers (via ``_elements_from_index``) for matching
+        2-winding and 3-winding transformers.
     """
     trafo = net.trafo.loc[
         (net.trafo.tap_changer_type == "Symmetrical")
@@ -458,10 +781,22 @@ def get_pst_elements_symmetrical(net: pandapowerNet) -> list[str]:
 
 def get_pst_elements_ideal(net: pandapowerNet) -> list[str]:
     """
-    Return PST elements with tap_changer_type == 'Ideal' for trafo and trafo3w.
+    Return identifiers of ideal-tap PST elements (2W and 3W) with non-zero angle steps.
 
-    Logic:
-        - tap_step_degree is non-zero OR NaN
+    Selects transformers from ``net.trafo`` and ``net.trafo3w`` where:
+      - ``tap_changer_type == 'Ideal'``
+      - ``tap_step_degree`` is non-null and non-zero
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network containing ``trafo`` and ``trafo3w`` tables.
+
+    Returns
+    -------
+    list[str]
+        List of element identifiers (via ``_elements_from_index``) for matching
+        2-winding and 3-winding transformers.
     """
     trafo = net.trafo.loc[(net.trafo.tap_changer_type == "Ideal") & notna_and_nonzero(net.trafo.tap_step_degree)]
     trafo3w = net.trafo3w.loc[(net.trafo3w.tap_changer_type == "Ideal") & notna_and_nonzero(net.trafo3w.tap_step_degree)]
@@ -548,7 +883,31 @@ def get_va_change_for_trafo(net: pandapowerNet, trafo_id: int, from_bus: int) ->
 
 
 def get_va_change_tr3_hv_lv(net: pandapowerNet, trafo3w_id: int, from_bus: int, to_bus: int) -> Optional[float]:
-    """Voltage angle change for 3W transformer when traversing HV ↔ LV (Va_from - Va_to)."""
+    """
+    Compute the voltage-angle change when traversing a 3-winding transformer between HV and LV sides.
+
+    Returns the signed angle difference (Va_from - Va_to) for HV ↔ LV traversal, accounting for
+    the tap position (``angle_deg``), tap location (``tap_side``), and fixed winding phase shift
+    (``shift_lv_degree``). If the provided bus pair does not correspond to an HV-LV connection,
+    returns ``None``.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network containing the ``trafo3w`` table.
+    trafo3w_id : int
+        Index of the 3-winding transformer in ``net.trafo3w``.
+    from_bus : int
+        Bus id where traversal enters the transformer.
+    to_bus : int
+        Bus id where traversal exits the transformer.
+
+    Returns
+    -------
+    Optional[float]
+        Signed voltage-angle difference in degrees for HV ↔ LV traversal, or ``None`` if the
+        bus pair does not match this side combination.
+    """
     trafo3w = net.trafo3w.loc[trafo3w_id]
     va_diff = None
 
@@ -572,7 +931,31 @@ def get_va_change_tr3_hv_lv(net: pandapowerNet, trafo3w_id: int, from_bus: int, 
 
 
 def get_va_change_tr3_hv_mv(net: pandapowerNet, trafo3w_id: int, from_bus: int, to_bus: int) -> Optional[float]:
-    """Voltage angle change for 3W transformer when traversing HV ↔ MV (Va_from - Va_to)."""
+    """
+    Compute the voltage-angle change when traversing a 3-winding transformer between HV and MV sides.
+
+    Returns the signed angle difference (Va_from - Va_to) for HV ↔ MV traversal, accounting for
+    the tap-induced phase shift (``angle_deg``), the tap location (``tap_side``), and the fixed
+    winding phase shift (``shift_mv_degree``). If the provided bus pair does not correspond to
+    an HV-MV connection, returns ``None``.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network containing the ``trafo3w`` table.
+    trafo3w_id : int
+        Index of the 3-winding transformer in ``net.trafo3w``.
+    from_bus : int
+        Bus id where traversal enters the transformer.
+    to_bus : int
+        Bus id where traversal exits the transformer.
+
+    Returns
+    -------
+    Optional[float]
+        Signed voltage-angle difference in degrees for HV ↔ MV traversal, or ``None`` if the
+        bus pair does not match this side combination.
+    """
     trafo3w = net.trafo3w.loc[trafo3w_id]
     va_diff = None
 
@@ -596,7 +979,31 @@ def get_va_change_tr3_hv_mv(net: pandapowerNet, trafo3w_id: int, from_bus: int, 
 
 
 def get_va_change_tr3_mv_lv(net: pandapowerNet, trafo3w_id: int, from_bus: int, to_bus: int) -> Optional[float]:
-    """Voltage angle change for 3W transformer when traversing MV ↔ LV (Va_from - Va_to)."""
+    """
+    Compute the voltage-angle change when traversing a 3-winding transformer between MV and LV sides.
+
+    Returns the signed angle difference (Va_from - Va_to) for MV ↔ LV traversal, accounting for
+    the tap-induced phase shift (``angle_deg``), the tap location (``tap_side``), and the fixed
+    winding phase shifts (``shift_mv_degree`` and ``shift_lv_degree``). If the provided bus pair
+    does not correspond to an MV-LV connection, returns ``None``.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network containing the ``trafo3w`` table.
+    trafo3w_id : int
+        Index of the 3-winding transformer in ``net.trafo3w``.
+    from_bus : int
+        Bus id where traversal enters the transformer.
+    to_bus : int
+        Bus id where traversal exits the transformer.
+
+    Returns
+    -------
+    Optional[float]
+        Signed voltage-angle difference in degrees for MV ↔ LV traversal, or ``None`` if the
+        bus pair does not match this side combination.
+    """
     trafo3w = net.trafo3w.loc[trafo3w_id]
     va_diff = None
 
@@ -885,7 +1292,24 @@ def _compute_va_diff_pst(
 
 
 def _combine_switch_va_diffs(*series: pd.Series) -> pd.Series:
-    """Concat and de-duplicate by switch id (keep first)."""
+    """
+    Combine multiple switch ``va_diff`` Series into one, removing duplicate switch ids.
+
+    Concatenates all provided Series (ignoring ``None``), then de-duplicates by index
+    (switch id), keeping the first occurrence.
+
+    Parameters
+    ----------
+    *series : Optional[pd.Series]
+        Variable number of pandas Series containing va_diff values indexed by switch id.
+        Series may be ``None`` and will be ignored.
+
+    Returns
+    -------
+    pd.Series
+        A single Series named ``"va_diff"`` indexed by switch id. If all inputs are
+        empty or ``None``, returns an empty float Series.
+    """
     s = pd.concat([x for x in series if x is not None], axis=0)
     if s.empty:
         return pd.Series(dtype=float, name="va_diff")
@@ -900,10 +1324,27 @@ def _format_switch_va_diff_output(
     contingency: PandapowerContingency,
 ) -> pd.DataFrame:
     """
-    Shape into schema-compatible multi-index DF with index:
+    Format per-switch VA-diff values into a schema-compatible, multi-index DataFrame.
 
-      (timestep, contingency, element)
-    where element is "{switch_id}%%switch"
+    Converts a Series of voltage-angle differences indexed by switch id into a DataFrame
+    indexed by ``(timestep, contingency, element)``, where ``element`` is the globally
+    unique switch identifier produced by ``get_globally_unique_id_from_index``.
+
+    Parameters
+    ----------
+    va_diff_by_switch : pd.Series
+        Series of VA-diff values indexed by switch id.
+    timestep : int
+        Timestep key to include in the output index.
+    contingency : PandapowerContingency
+        Contingency providing the ``unique_id`` used in the output index.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with a multi-index ``(timestep, contingency, element)`` and a single
+        column ``va_diff``. Returns an empty DataFrame with the correct column if the
+        input Series is empty.
     """
     if va_diff_by_switch.empty:
         out = pd.DataFrame(columns=["va_diff"])
@@ -927,6 +1368,24 @@ def _apply_contingency_va_diff_info(
     Apply explicit per-switch va_diff overrides/additions from contingency.va_diff_info.
 
     Preserves your sign convention (to-side gets -va_diff).
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        Pandapower network with loadflow results available in ``net.res_bus['va_degree']``.
+    va_diff_df : pd.DataFrame
+        Target dataframe to update. Must be indexed by ``(timestep, contingency, element)``
+        where ``element`` is the switch unique id, and contain columns ``['va_diff', 'element_name']``.
+    timestep : int
+        Timestep key used in the multi-index of ``va_diff_df``.
+    contingency : PandapowerContingency
+        Contingency providing ``unique_id`` and optionally ``va_diff_info`` (a list of ``VADiffInfo``),
+        where each entry contains ``from_bus``, ``to_bus``, ``power_switches_from`` and ``power_switches_to``.
+
+    Returns
+    -------
+    pd.DataFrame
+        The updated ``va_diff_df`` with the contingency-specific va-diff values applied.
     """
     if not getattr(contingency, "va_diff_info", None):
         return va_diff_df

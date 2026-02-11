@@ -1561,3 +1561,101 @@ def create_complex_substation_layout_grid() -> Network:
     )
 
     return net
+
+
+def three_node_pst_example() -> Network:
+    """Creates a 3 node example grid with 2 PSTs in it
+
+    If all N-1 branch cases are computed, there is a limit violation on the BC lines in the default setting (tap 0).
+    However, by changing the tap to -12 (AC) or -10 (DC), the violations can be healed.
+
+    This grid can be used to test tap optimization algorithms, which ideally should find a tap that can resolve the problem.
+    """
+    # Create an empty network
+    net = pypowsybl.network.create_empty(network_id="three_node_pst_example")
+
+    # Create substations
+    net.create_substations(id=["SUB_A", "SUB_B", "SUB_C"], country=["BE", "BE", "BE"])
+
+    # Create voltage levels for each substation
+    net.create_voltage_levels(
+        id=["VL_A", "VL_B", "VL_C"],
+        substation_id=["SUB_A", "SUB_B", "SUB_C"],
+        topology_kind=["BUS_BREAKER", "BUS_BREAKER", "BUS_BREAKER"],
+        nominal_v=[380.0, 380.0, 380.0],
+    )
+
+    # Create buses
+    net.create_buses(id=["BUS_A", "BUS_B", "BUS_C"], voltage_level_id=["VL_A", "VL_B", "VL_C"])
+
+    # Add generators at stations A and B
+    net.create_generators(
+        id=["GEN_A", "GEN_B"],
+        voltage_level_id=["VL_A", "VL_B"],
+        bus_id=["BUS_A", "BUS_B"],
+        target_p=[100.0, 100.0],
+        target_v=[400.0, 400.0],
+        min_p=[0.0, 0.0],
+        max_p=[200.0, 200.0],
+        voltage_regulator_on=[True, True],
+    )
+
+    # Add load at station C
+    net.create_loads(id=["LOAD_C"], voltage_level_id=["VL_C"], bus_id=["BUS_C"], p0=[150.0], q0=[50.0])
+
+    # Connect stations with 2 pairs of lines each
+    # A to B: 2 lines
+    net.create_lines(
+        id=["LINE_AB_1", "LINE_AB_2"],
+        voltage_level1_id=["VL_A", "VL_A"],
+        bus1_id=["BUS_A", "BUS_A"],
+        voltage_level2_id=["VL_B", "VL_B"],
+        bus2_id=["BUS_B", "BUS_B"],
+        r=[0.5, 0.5],
+        x=[5.0, 5.0],
+        b1=[0.0, 0.0],
+        b2=[0.0, 0.0],
+    )
+
+    # B to C: 2 lines
+    net.create_lines(
+        id=["LINE_BC_1", "LINE_BC_2"],
+        voltage_level1_id=["VL_B", "VL_B"],
+        bus1_id=["BUS_B", "BUS_B"],
+        voltage_level2_id=["VL_C", "VL_C"],
+        bus2_id=["BUS_C", "BUS_C"],
+        r=[0.5, 0.5],
+        x=[5.0, 5.0],
+        b1=[0.0, 0.0],
+        b2=[0.0, 0.0],
+    )
+
+    # A to C: 2 lines
+    net.create_lines(
+        id=["LINE_AC_1", "LINE_AC_2"],
+        voltage_level1_id=["VL_A", "VL_A"],
+        bus1_id=["BUS_A", "BUS_A"],
+        voltage_level2_id=["VL_C", "VL_C"],
+        bus2_id=["BUS_C", "BUS_C"],
+        r=[0.5, 0.5],
+        x=[5.0, 5.0],
+        b1=[0.0, 0.0],
+        b2=[0.0, 0.0],
+    )
+
+    # Create current limits - AB and AC lines have high capacity (1000 A), BC lines are constrained (150 A)
+    net.create_operational_limits(
+        element_id=["LINE_AB_1", "LINE_AB_2", "LINE_AC_1", "LINE_AC_2", "LINE_BC_1", "LINE_BC_2"],
+        element_type=["LINE", "LINE", "LINE", "LINE", "LINE", "LINE"],
+        side=["ONE", "ONE", "ONE", "ONE", "ONE", "ONE"],
+        name=["permanent_AB1", "permanent_AB2", "permanent_AC1", "permanent_AC2", "permanent_BC1", "permanent_BC2"],
+        type=["CURRENT", "CURRENT", "CURRENT", "CURRENT", "CURRENT", "CURRENT"],
+        value=[1000.0, 1000.0, 1000.0, 1000.0, 50.0, 50.0],
+        acceptable_duration=[-1, -1, -1, -1, -1, -1],
+    )
+
+    add_phaseshift_transformer_to_line_powsybl(net, line_idx="LINE_BC_1", tap_min=-30, tap_max=30, tap_step_degree=0.01)
+
+    add_phaseshift_transformer_to_line_powsybl(net, line_idx="LINE_BC_2", tap_min=-30, tap_max=30, tap_step_degree=0.01)
+
+    return net

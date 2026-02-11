@@ -371,7 +371,10 @@ def initialize_genetic_algorithm(
         batch_size=batch_size * n_devices,
         max_num_splits=max_num_splits,
         max_num_disconnections=max_num_disconnections,
-        num_psts=dynamic_informations[0].n_controllable_pst,
+        n_timesteps=dynamic_informations[0].n_timesteps,
+        starting_taps=dynamic_informations[0].nodal_injection_information.starting_tap_idx
+        if dynamic_informations[0].nodal_injection_information is not None
+        else None,
     )
 
     scoring_function_partial = partial(
@@ -392,6 +395,9 @@ def initialize_genetic_algorithm(
         n_subs_mutated_lambda=n_subs_mutated_lambda,
         disconnect_prob=disconnect_prob,
         reconnect_prob=reconnect_prob,
+        pst_n_taps=dynamic_informations[0].nodal_injection_information.pst_n_taps
+        if dynamic_informations[0].nodal_injection_information is not None
+        else None,
         mutation_repetition=mutation_repetition,
     )
     crossover_partial = partial(crossover, action_set=action_set, prob_take_a=proportion_crossover)

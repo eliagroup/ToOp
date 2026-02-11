@@ -263,14 +263,14 @@ jobs:
   ci-success-check:
     needs:
       [
+        code-quality-checks,
+        fossa-scan,
+        license-headers,
         sonarqube,
         tests,
-        code-quality-checks,
-        test-pip-install,
-        license-headers,
-        fossa-scan,
         test-docs-build,
         test-example-notebooks,
+        test-pip-install,
         validate-commits,
       ]
     if: always()
@@ -280,22 +280,22 @@ jobs:
     steps:
       - name: Check all job results
         run: |
-          echo "Tests: ${{ needs.tests.result }}"
-          echo "SonarQube: ${{ needs.sonarqube.result }}"
           echo "Code Quality: ${{ needs.code-quality-checks.result }}"
-          echo "Test Pip Install: ${{ needs.test-pip-install.result }}"
-          echo "License Headers: ${{ needs.license-headers.result }}"
           echo "FOSSA Scan: ${{ needs.fossa-scan.result }}"
+          echo "License Headers: ${{ needs.license-headers.result }}"
+          echo "SonarQube: ${{ needs.sonarqube.result }}"
+          echo "Tests: ${{ needs.tests.result }}"
           echo "Test Docs Build: ${{ needs.test-docs-build.result }}"
           echo "Test Example Notebooks: ${{ needs.test-example-notebooks.result }}"
+          echo "Test Pip Install: ${{ needs.test-pip-install.result }}"
           echo "Validate Commits: ${{ needs.validate-commits.result }}"
 
-          if [[ "${{ needs.tests.result }}" != "success" ]] || \
-             [[ "${{ needs.sonarqube.result }}" != "success" ]] || \
-             [[ "${{ needs.code-quality-checks.result }}" != "success" ]] || \
-             [[ "${{ needs.test-pip-install.result }}" != "success" ]] || \
-             [[ "${{ needs.license-headers.result }}" != "success" ]] || \
+          if [[ "${{ needs.code-quality-checks.result }}" != "success" ]] || \
              [[ "${{ needs.fossa-scan.result }}" != "success" ]] || \
+             [[ "${{ needs.license-headers.result }}" != "success" ]] || \
+             [[ "${{ needs.sonarqube.result }}" != "success" ]] || \
+             [[ "${{ needs.tests.result }}" != "success" ]] || \
+             [[ "${{ needs.test-pip-install.result }}" != "success" ]] || \
              [[ "${{ needs.test-docs-build.result }}" != "success" ]] || \
              [[ "${{ needs.test-example-notebooks.result }}" != "success" ]] || \
              [[ "${{ needs.validate-commits.result }}" != "success" ]]; then

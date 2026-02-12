@@ -107,16 +107,6 @@ class SolverConfig:
     when we just want to ensure that the busbar outage problems are not exacerbated due to the optimiser, we set
     this to True."""
 
-    enable_nodal_inj_optim: bool = False
-    """Whether to enable an in-the-loop optimization of nodal injections (PST, HVDC, ...). This will add a significant
-    overhead but will yield nodal_optim_results in addition to just topology results"""
-
-    precision_percent: float = 0.1  # TODO: Should this be a starting minimum precision?
-    """The initial precision to which the nodal injection optimization should run in percent of the maximal precision.
-    This is only used if nodal injection optimization is enabled via enable_nodal_inj_optim.
-
-    This option introduces a significant overhead to the solver, as it optimizes a subset of nodal injections."""
-
     def __hash__(self) -> int:
         """Get id as the hash for the static information.
 

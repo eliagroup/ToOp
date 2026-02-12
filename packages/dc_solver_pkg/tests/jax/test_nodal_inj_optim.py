@@ -36,7 +36,7 @@ def test_compare_nodal_inj_to_powsybl(tmp_path: Path) -> None:
     stats, static_information, network_data = load_grid(filesystem_dir, pandapower=False)
 
     di = static_information.dynamic_information
-    solver_config = replace(static_information.solver_config, batch_size_bsdf=1, enable_nodal_inj_optim=True)
+    solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
 
     inj_info = di.nodal_injection_information
     assert inj_info is not None, "Grid should have PSTs"

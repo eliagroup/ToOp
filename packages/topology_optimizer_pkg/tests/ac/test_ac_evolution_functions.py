@@ -314,10 +314,10 @@ def test_evolution_try_accidental_duplicate(session: Session) -> None:
         ACOptimTopology(
             actions=[2],
             disconnections=[],
-            pst_setpoints=[0, 0, 0, 0],
+            pst_setpoints=None,
             unsplit=False,
             timestep=0,
-            strategy_hash=hash_topo_data([([2], [], [0, 0, 0, 0])]),
+            strategy_hash=hash_topo_data([([2], [], None)]),
             optimization_id="test",
             optimizer_type=OptimizerType.AC,
             fitness=0.5,
@@ -326,10 +326,10 @@ def test_evolution_try_accidental_duplicate(session: Session) -> None:
         ACOptimTopology(
             actions=[],
             disconnections=[],
-            pst_setpoints=[0, 0, 0, 0],
+            pst_setpoints=None,
             unsplit=True,
             timestep=0,
-            strategy_hash=hash_topo_data([([], [], [0, 0, 0, 0])]),
+            strategy_hash=hash_topo_data([([], [], None)]),
             optimization_id="test",
             optimizer_type=OptimizerType.AC,
             fitness=0.5,
@@ -341,7 +341,7 @@ def test_evolution_try_accidental_duplicate(session: Session) -> None:
         session.commit()
         session.refresh(topo)
 
-    closed = close_coupler(np.random.default_rng(), repo[0:1])
+    closed = close_coupler(np.random.default_rng(42), repo[0:1])
 
     assert len(closed) == 1
     closed = closed[0]

@@ -8,10 +8,10 @@
 """Module for comparing the postprocessing loadflow results in DC to the solver results."""
 
 from functools import partial
-from typing import Optional
 
 import jax.numpy as jnp
 import numpy as np
+from beartype.typing import Optional
 from pydantic import BaseModel
 from toop_engine_dc_solver.jax import (
     run_solver_symmetric,

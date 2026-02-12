@@ -216,7 +216,7 @@ def test_pst_optimization(
 ) -> None:
     stats, static_information, network_data, net = create_3_node_pst_example_grid
     di = static_information.dynamic_information
-    solver_config = replace(static_information.solver_config, batch_size_bsdf=1, enable_nodal_inj_optim=True)
+    solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
 
     me = DiscreteMapElites(
         scoring_function=partial(

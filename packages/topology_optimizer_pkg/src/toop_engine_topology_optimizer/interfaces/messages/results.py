@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal, Optional, TypeAlias, Union
 
+from beartype.typing import Literal, Optional, TypeAlias, Union
 from pydantic import BaseModel, Field, NonNegativeInt, field_validator
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats

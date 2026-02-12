@@ -34,6 +34,7 @@ PREPROCESSING_PATHS: Final[dict[str, str]] = {
     "ignore_file_path": "ignore_elements.csv",
     "contingency_list_file_path": "contingency_list.csv",
     "static_information_stats_file_path": "static_information_stats.json",
+    "loadflow_parameters_file_path": "loadflow_parameters.json",
 }
 
 # Postprocessing paths that are relative to a snapshot directory. There can be multiple of these

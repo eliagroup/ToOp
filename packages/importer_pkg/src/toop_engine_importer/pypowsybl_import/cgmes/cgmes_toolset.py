@@ -7,9 +7,8 @@
 
 """Additional functions for the pypowsybl library, related to CGMES data."""
 
-from typing import Literal, Optional
-
 import pandas as pd
+from beartype.typing import Literal, Optional
 from pypowsybl.network.impl.network import Network
 
 

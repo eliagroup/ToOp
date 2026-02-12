@@ -82,6 +82,7 @@ def test_extract_branch_results_pandapower_disconnected():
 
 def test_extract_branch_results_pandapower_disconnected():
     net = pp.networks.case14()
+
     net.line.loc[0, "in_service"] = False  # Disconnect the first line
     nminus1_def = Nminus1Definition(
         monitored_elements=[

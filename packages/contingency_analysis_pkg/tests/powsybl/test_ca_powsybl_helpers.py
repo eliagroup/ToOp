@@ -31,7 +31,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResultSchema, VADiffResultSchema
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, LoadflowParameters, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 
 
 def test_powsybl_n_1_definition_slice():
@@ -465,7 +465,6 @@ def test_translate_nminus1_for_powsybl(powsybl_bus_breaker_net: pypowsybl.networ
     nminus1_def = Nminus1Definition(
         monitored_elements=monitored_branches + monitored_buses + monitored_switches,
         contingencies=single_contingencies + multi_contingencies + basecase,
-        loadflow_parameters=LoadflowParameters(distributed_slack=True),
         id_type="powsybl",
     )
     translated_nminus1 = translate_nminus1_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
@@ -515,15 +514,8 @@ def test_translate_nminus1_for_powsybl(powsybl_bus_breaker_net: pypowsybl.networ
     assert not translated_nminus1.branch_limits.empty, "Branch limits should not be empty in the translated N-1 definition"
     assert not translated_nminus1.blank_va_diff.empty, "Blank VA diff should not be empty in the translated N-1 definition"
     assert not translated_nminus1.bus_map.empty, "There should be a busbar mapping in the translated N-1 definition"
-    assert translated_nminus1.distributed_slack is True, (
-        "The distributed slack should be set to True in the translated N-1 definition"
-    )
 
-    nminus1_def.loadflow_parameters.distributed_slack = False
     translated_nminus1 = translate_nminus1_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
-    assert translated_nminus1.distributed_slack is False, (
-        "The distributed slack should be set to False in the translated N-1 definition"
-    )
 
     nminus1_def.id_type = "unique_pandapower"
     with pytest.raises(ValueError):
@@ -974,7 +966,9 @@ def test_set_target_values_to_lf_values_incl_distributed_slack_dc(
         "Make sure the initial target values are different from the loadflow values. Otherwise this test is useless."
     )
 
-    powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(powsybl_bus_breaker_net, "dc")
+    powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(
+        powsybl_bus_breaker_net, "dc", DISTRIBUTED_SLACK
+    )
     lf_result = pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, DISTRIBUTED_SLACK)
     assert lf_result[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED, (
         "Loadflow did not converge after setting the target values."
@@ -1001,7 +995,9 @@ def test_set_target_values_to_lf_values_incl_distributed_slack_ac(
         "Make sure the initial q-target values are different from the loadflow values. Otherwise this test is useless."
     )
 
-    powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(powsybl_bus_breaker_net, "ac")
+    powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(
+        powsybl_bus_breaker_net, "ac", DISTRIBUTED_SLACK
+    )
     lf_result = pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, DISTRIBUTED_SLACK)
     assert lf_result[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED, (
         "Loadflow did not converge after setting the target values."

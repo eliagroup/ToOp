@@ -8,12 +8,12 @@
 """Initialization of the genetic algorithm for branch and injection choice optimization."""
 
 from functools import partial
-from typing import Iterable, Optional
 
 import jax
 import jax.experimental
 import jax.numpy as jnp
 import logbook
+from beartype.typing import Iterable, Optional
 from fsspec import AbstractFileSystem
 from jax_dataclasses import pytree_dataclass, replace
 from jaxtyping import Array, Float, Int
@@ -224,6 +224,7 @@ def verify_static_information(
 def update_static_information(
     static_informations: tuple[StaticInformation, ...],
     batch_size: int,
+    enable_nodal_inj_optim: bool,
 ) -> tuple[StaticInformation, ...]:
     """Perform any necessary preprocessing on the static information.
 
@@ -235,6 +236,9 @@ def update_static_information(
         The list of static informations to preprocess
     batch_size : int
         The batch size to use, will replace the batch size in the solver config
+    enable_nodal_inj_optim: bool
+        Whether to enable the nodal injection optimization, if False, nodal_inj_optim related information will be removed
+        from the dynamic information to save GPU memory.
 
     Returns
     -------
@@ -256,6 +260,7 @@ def update_static_information(
                 if dynamic_information.branch_limits.n0_n1_max_diff is None
                 else dynamic_information.branch_limits.n0_n1_max_diff,
             ),
+            nodal_injection_information=dynamic_information.nodal_injection_information if enable_nodal_inj_optim else None,
         )
         for dynamic_information in dynamic_informations
     ]
@@ -596,7 +601,9 @@ def algo_setup(
 
     verify_static_information(static_informations, lf_args.max_num_disconnections)
 
-    static_informations = update_static_information(static_informations, lf_args.batch_size)
+    static_informations = update_static_information(
+        static_informations, lf_args.batch_size, enable_nodal_inj_optim=ga_args.enable_nodal_inj_optim
+    )
 
     if double_limits is not None:
         logger.info(f"Updating double limits to {double_limits}")

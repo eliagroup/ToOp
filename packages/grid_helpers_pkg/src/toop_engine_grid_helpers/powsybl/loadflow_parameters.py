@@ -8,7 +8,7 @@
 """A collection of Powsybl parameters used in the Loadflow Solver."""
 
 import pypowsybl
-from pypowsybl.loadflow import BalanceType, ConnectedComponentMode, Parameters, VoltageInitMode
+from pypowsybl.loadflow import BalanceType, ComponentMode, Parameters, VoltageInitMode
 
 # see https://powsybl.readthedocs.io/projects/powsybl-open-loadflow/en/latest/
 OPENLOADFLOW_PARAM_PF = {
@@ -28,7 +28,7 @@ OPENLOADFLOW_PARAM_PF = {
 
 POWSYBL_LOADFLOW_PARAM_PF = Parameters(
     balance_type=BalanceType.PROPORTIONAL_TO_GENERATION_P_MAX,  # BalanceType
-    connected_component_mode=ConnectedComponentMode.MAIN,
+    component_mode=ComponentMode.MAIN_CONNECTED,
     countries_to_balance=None,  # Sequence[str]
     dc_power_factor=1.0,
     dc_use_transformer_ratio=True,
@@ -51,11 +51,11 @@ SDL_PARAM = pypowsybl.network.SldParameters(
 
 # for network area diagram svg generation
 NAD_PARAM = pypowsybl.network.NadParameters(edge_info_along_edge=True, substation_description_displayed=True)
-DISTRIBUTED_SLACK = pypowsybl.loadflow.Parameters(
+DISTRIBUTED_SLACK = Parameters(
     distributed_slack=True,
-    balance_type=pypowsybl.loadflow.BalanceType.PROPORTIONAL_TO_GENERATION_P,
-    voltage_init_mode=pypowsybl.loadflow.VoltageInitMode.DC_VALUES,
+    balance_type=BalanceType.PROPORTIONAL_TO_GENERATION_P,
+    voltage_init_mode=VoltageInitMode.DC_VALUES,
     provider_parameters={"slackDistributionFailureBehavior": "LEAVE_ON_SLACK_BUS"},
     dc_use_transformer_ratio=True,
 )
-SINGLE_SLACK = pypowsybl.loadflow.Parameters(distributed_slack=False, dc_use_transformer_ratio=True)
+SINGLE_SLACK = Parameters(distributed_slack=False, dc_use_transformer_ratio=True)

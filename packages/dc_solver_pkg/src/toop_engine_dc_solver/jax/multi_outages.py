@@ -21,9 +21,8 @@ to use based on the specific use case.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import jax
+from beartype.typing import Optional
 from jax import numpy as jnp
 from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.jax.types import MODFMatrix, int_max

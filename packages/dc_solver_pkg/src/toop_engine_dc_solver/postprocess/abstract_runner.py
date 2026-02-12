@@ -18,9 +18,9 @@ This includes
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from pathlib import Path
-from typing import Optional, TypeAlias, Union
 
 import pandera.typing as pat
+from beartype.typing import Optional, TypeAlias, Union
 from fsspec import AbstractFileSystem
 from toop_engine_dc_solver.export.asset_topology_to_dgs import SwitchUpdateSchema
 from toop_engine_interfaces.asset_topology import RealizedTopology

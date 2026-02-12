@@ -15,12 +15,12 @@ Created: 2024-08-13
 from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Union
 
 import logbook
 import numpy as np
 import pandas as pd
 import pypowsybl
+from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network

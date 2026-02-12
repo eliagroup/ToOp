@@ -12,19 +12,18 @@ from pydantic import ValidationError
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ErrorResult,
-    PowerFactoryImportResult,
+    ImportResult,
     PreprocessingStartedResult,
     PreprocessingSuccessResult,
     Result,
     StaticInformationStats,
-    UcteImportResult,
 )
 
 
 def test_ucte_import_result_defaults(tmp_path):
     tmp_path = Path(tmp_path)
-    result = UcteImportResult(data_folder=tmp_path)
-    assert isinstance(result, UcteImportResult)
+    result = ImportResult(data_folder=tmp_path)
+    assert isinstance(result, ImportResult)
     assert result.data_folder == tmp_path
 
 
@@ -33,24 +32,18 @@ def test_static_information_stats_defaults():
     assert isinstance(result, StaticInformationStats)
 
 
-def test_power_factory_import_result_defaults():
-    result = PowerFactoryImportResult()
-    assert isinstance(result, PowerFactoryImportResult)
-    assert result.grid_type == "power_factory"
-
-
 def test_preprocessing_success_result_defaults(tmp_path):
     result = PreprocessingSuccessResult(
         data_folder=tmp_path,
         static_information_stats=StaticInformationStats(),
         initial_loadflow=StoredLoadflowReference(relative_path="does/not/exist"),
         initial_metrics={"max_flow_n_1": 1.5, "overload_energy_n_1": 2.0},
-        importer_results=UcteImportResult(data_folder=tmp_path),
+        importer_results=ImportResult(data_folder=tmp_path),
     )
     assert isinstance(result, PreprocessingSuccessResult)
     assert result.data_folder == tmp_path
     assert isinstance(result.static_information_stats, StaticInformationStats)
-    assert isinstance(result.importer_results, UcteImportResult)
+    assert isinstance(result.importer_results, ImportResult)
 
 
 def test_preprocessing_started_result_defaults():

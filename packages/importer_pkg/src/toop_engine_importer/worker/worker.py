@@ -15,11 +15,11 @@ Created: 2024
 import time
 import traceback
 from functools import partial
-from typing import Callable, Optional
 from uuid import uuid4
 
 import jax
 import logbook
+from beartype.typing import Callable, Optional
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel

@@ -455,13 +455,17 @@ def test_deduplicate_genotypes_jitted(static_information_file: str) -> None:
     batch_size = 16
     n_timesteps = static_information.dynamic_information.n_timesteps
 
+    # Initialize PST setpoints
+    starting_taps = jnp.zeros(n_psts, dtype=int)
+    pst_n_taps = jnp.array([35, 35, 20], dtype=int)
+
     # Randomly create some topologies
     topologies = empty_repertoire(
         batch_size,
         max_num_splits,
         max_num_disconnections,
         n_timesteps,
-        None,
+        starting_taps,
     )
 
     with jax.disable_jit():
@@ -475,8 +479,8 @@ def test_deduplicate_genotypes_jitted(static_information_file: str) -> None:
             n_subs_mutated_lambda=1.0,
             disconnect_prob=0.5,
             reconnect_prob=0.5,
-            pst_mutation_sigma=0,
-            pst_n_taps=jnp.array([], dtype=int),
+            pst_mutation_sigma=1.0,
+            pst_n_taps=pst_n_taps,
             mutation_repetition=1,
         )
 
@@ -487,6 +491,8 @@ def test_deduplicate_genotypes_jitted(static_information_file: str) -> None:
         )
 
         assert deduplicated_topologies.action_index.shape[0] == batch_size * 2
+        assert deduplicated_topologies.nodal_injections_optimized is not None
+        assert deduplicated_topologies.nodal_injections_optimized.pst_tap_idx.shape[0] == batch_size * 2
 
         # Case 2 : desired_size < batch_size
         deduplicated_topologies, indices = deduplicate_genotypes(
@@ -495,6 +501,8 @@ def test_deduplicate_genotypes_jitted(static_information_file: str) -> None:
         )
 
         assert deduplicated_topologies.action_index.shape[0] == batch_size // 2
+        assert deduplicated_topologies.nodal_injections_optimized is not None
+        assert deduplicated_topologies.nodal_injections_optimized.pst_tap_idx.shape[0] == batch_size // 2
 
     # also test jittability
     partial_fun = partial(

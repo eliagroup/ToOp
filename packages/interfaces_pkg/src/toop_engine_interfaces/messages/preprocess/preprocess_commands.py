@@ -146,6 +146,11 @@ class BaseImporterParameters(BaseModel):
     area_settings: AreaSettings
     """Which areas of the grid are to be imported and how to handle boundaries"""
 
+    fail_on_non_convergence: bool = True
+    """Whether to raise an error if the loadflow does not converge in the basecase.
+    If set to False, the preprocessing will continue and dc-optimization can still happen.
+    Mostly for debugging purposes"""
+
     data_folder: Path
     """The path where the entry point where the timestep data folder structure starts.
 
@@ -352,12 +357,6 @@ class PreprocessParameters(BaseModel):
     """How to penalize additional splits in busbar outages that were not there in the unsplit grid. Will be
     added to the overload energy penalty."""
 
-    enable_nodal_inj_optim: bool = False
-    """Whether to enable nodal injection optimization (including PST optimization)"""
-
-    precision_percent: float = 0.0
-    """The precision percent for the nodal injection optimization."""
-
     # TODO: MOve this parameter to optimiser configs
     clip_bb_outage_penalty: bool = False
     """
@@ -379,6 +378,10 @@ class PreprocessParameters(BaseModel):
 
     initial_loadflow_processes: int = 8
     """How many processes to use to compute the initial AC loadflow"""
+
+    fail_on_non_convergence: bool = True
+    """Whether to raise an error if the initial loadflow does not converge.
+    If False, a warning is logged instead and the backend is initialized with the dc loadflow results."""
 
 
 class StartPreprocessingCommand(BaseModel):

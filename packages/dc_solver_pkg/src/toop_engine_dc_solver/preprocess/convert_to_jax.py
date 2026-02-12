@@ -21,6 +21,7 @@ import numpy as np
 from beartype.typing import Callable, Literal, Optional
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
+from pypowsybl.loadflow import Parameters as LoadflowParameters
 from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric,
     compute_double_limits,
@@ -44,6 +45,8 @@ from toop_engine_dc_solver.jax.types import (
     DynamicInformation,
     MetricType,
     NodalInjectionInformation,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
     NonRelBBOutageData,
     RelBBOutageData,
     SolverConfig,
@@ -59,6 +62,7 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData, save_netw
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
@@ -126,8 +130,6 @@ def convert_to_jax(  # noqa: PLR0913
     bb_outage_more_splits_penalty: float = 2000.0,
     clip_bb_outage_penalty: bool = False,
     ac_dc_interpolation: float = 0.0,
-    enable_nodal_inj_optim: bool = False,
-    precision_percent: float = 0.1,
     logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
 ) -> StaticInformation:
     """Convert the finalized network data into static info for the solver
@@ -180,10 +182,6 @@ def convert_to_jax(  # noqa: PLR0913
         Whether to clip the lower bound of busbar outage penalty to 0.
     ac_dc_interpolation: float, optional
         The interpolation factor for AC/DC mismatch, by default 0.0 (full DC).
-    precision_percent: float, optional
-        The precision to which the nodal injection optimization should run in percent of the maximal precision.
-    enable_nodal_inj_optim: bool, optional
-        Whether to enable nodal injection optimization (PST optimization)
     logging_fn: Callable, optional
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters, by default None
@@ -328,8 +326,6 @@ def convert_to_jax(  # noqa: PLR0913
             bb_outage_as_nminus1=bb_outage_as_nminus1,
             clip_bb_outage_penalty=clip_bb_outage_penalty,
             contingency_ids=network_data.contingency_ids,
-            enable_nodal_inj_optim=enable_nodal_inj_optim,
-            precision_percent=precision_percent,
         ),
     )
 
@@ -648,6 +644,7 @@ def load_grid(
     pandapower: bool = False,
     parameters: Optional[PreprocessParameters] = None,
     status_update_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
+    lf_params: Optional[LoadflowParameters | dict] = None,
 ) -> tuple[StaticInformationStats, StaticInformation, NetworkData]:
     """Load the grid and preprocess it
 
@@ -668,6 +665,8 @@ def load_grid(
     status_update_fn : Optional[Callable[[PreprocessStage, Optional[str]], None]], optional
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters, by default None
+    lf_params : Optional[LoadflowParameters], optional
+        The loadflow parameters to use for the initial loadflow calculation. If None, the default parameters are used.
 
     Returns
     -------
@@ -683,13 +682,21 @@ def load_grid(
         status_update_fn = empty_status_update_fn
     if parameters is None:
         parameters = PreprocessParameters()
+    if lf_params is None and not pandapower:
+        lf_params = DISTRIBUTED_SLACK
+    elif lf_params is None and pandapower:
+        lf_params = {}
 
     if pandapower:
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into PandaPower backend")
         backend = PandaPowerBackend(data_folder_dirfs=data_folder_dirfs, chronics_id=chronics_id, chronics_slice=timesteps)
     else:
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into Powsybl backend")
-        backend = PowsyblBackend(data_folder_dirfs=data_folder_dirfs)
+        backend = PowsyblBackend(
+            data_folder_dirfs=data_folder_dirfs,
+            lf_params=lf_params,
+            fail_on_non_convergence=parameters.fail_on_non_convergence,
+        )
     network_data = preprocess(backend, logging_fn=status_update_fn, parameters=parameters)
     static_information = convert_to_jax(
         network_data=network_data,
@@ -830,11 +837,24 @@ def run_initial_loadflow(
     )
 
     topo = default_topology(static_information.solver_config)
+
+    # Prepare starting options for nodal injection optimization if enabled
+    nodal_inj_start_options = None
+    if static_information.dynamic_information.nodal_injection_information is not None:
+        nodal_inj_start_options = NodalInjStartOptions(
+            previous_results=NodalInjOptimResults(
+                pst_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx[
+                    None, None, :
+                ]
+            ),
+            precision_percent=0.0,
+        )
+
     lf_res, success = compute_symmetric_batch(
         topology_batch=topo,
         disconnection_batch=None,
         injections=None,
-        nodal_inj_start_options=None,
+        nodal_inj_start_options=nodal_inj_start_options,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )

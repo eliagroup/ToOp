@@ -70,7 +70,6 @@ def poll_results_topic(
 
         # Push the topologies to the database, ignoring duplicates
         # Duplicates will trigger an IntegrityError
-        added_topos = []
         for topo in topologies:
             try:
                 db.add(topo)

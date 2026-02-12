@@ -143,15 +143,20 @@ def initialize_optimization(
 
     metrics = convert_metrics(initial_fitness, initial_metrics)
 
+    # For now we send None as initial topology PST setpoints, as the AC solver can
+    # not distinguish a topology with taps set to default from a topology without taps.
     initial_topology = Strategy(
         timesteps=[
             Topology(
                 actions=[],
                 disconnections=[],
+                # pst_setpoints=di.nodal_injection_information.starting_tap_idx.tolist()
+                # if di.nodal_injection_information is not None
+                # else None,
                 pst_setpoints=None,
                 metrics=metrics,
             )
-            for _ in static_information_descriptions
+            for _di in jax_data.dynamic_informations
         ]
     )
 

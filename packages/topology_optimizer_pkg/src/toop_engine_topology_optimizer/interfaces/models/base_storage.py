@@ -131,20 +131,20 @@ class BaseDBTopology(SQLModel):
         return self
 
 
-def is_unsplit(data: list[tuple[list[int], list[int]]]) -> bool:
+def is_unsplit(data: list[tuple[list[int], list[int], Optional[list[int]]]]) -> bool:
     """Check if a strategy is completely unsplit
 
     Parameters
     ----------
-    data : list[tuple[list[int], list[int]]]
-        A list of actions and disconnections for all topologies in a strategy
+    data : list[tuple[list[int], list[int], Optional[list[int]]]]
+        A list of actions, disconnections, and pst setpoints for all topologies in a strategy
 
     Returns
     -------
     bool
         True if all topologies in the strategy are unsplit, False otherwise
     """
-    return all((not len(actions) and not len(disc)) for actions, disc in data)
+    return all((not len(actions) and not len(disc) and (pst is None or not len(pst))) for actions, disc, pst in data)
 
 
 def is_unsplit_strategy(strategy: Strategy) -> bool:
@@ -160,7 +160,7 @@ def is_unsplit_strategy(strategy: Strategy) -> bool:
     bool
         True if all topologies in the strategy are unsplit, False otherwise
     """
-    return is_unsplit([(topo.actions, topo.disconnections) for topo in strategy.timesteps])
+    return is_unsplit([(topo.actions, topo.disconnections, topo.pst_setpoints) for topo in strategy.timesteps])
 
 
 def is_unsplit_topologies(topologies: list[BaseDBTopology]) -> bool:
@@ -176,7 +176,7 @@ def is_unsplit_topologies(topologies: list[BaseDBTopology]) -> bool:
     bool
         True if all topologies in the list are unsplit, False otherwise
     """
-    return is_unsplit([(topo.actions, topo.disconnections) for topo in topologies])
+    return is_unsplit([(topo.actions, topo.disconnections, topo.pst_setpoints) for topo in topologies])
 
 
 def hash_topo_data(data: list[tuple[list[int], list[int], list[int]]]) -> bytes:

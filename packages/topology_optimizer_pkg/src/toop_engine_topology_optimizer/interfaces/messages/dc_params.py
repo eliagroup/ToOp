@@ -46,6 +46,10 @@ class BatchedMEParameters(BaseModel):
     """The sigma to use for the normal distribution that mutates the PST taps. The mutation is applied by adding a random
     value drawn from this distribution to the current tap position. A value of 0.0 means no PST mutation."""
 
+    enable_nodal_inj_optim: bool = False
+    """Whether to enable the nodal injection optimization stage. This can optimize PSTs (currently) and soon HVDC and
+    potentially even redispatch clusters. Using this will increase runtime."""
+
     n_subs_mutated_lambda: PositiveFloat = 2.0
     """The number of substations to mutate in a single iteration is drawn from a poisson with this
     lambda"""

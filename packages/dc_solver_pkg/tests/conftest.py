@@ -179,8 +179,6 @@ def _jax_inputs(
         batch_size_injection=16,
         buffer_size_injection=128,
         enable_bb_outage=False,
-        enable_nodal_inj_optim=False,
-        precision_percent=0.1,
     )
     action_set = static_information.dynamic_information.action_set
 
@@ -1166,7 +1164,7 @@ def three_node_pst_example_data_folder(tmp_path_factory: pytest.TempPathFactory)
         data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
-        parameters=PreprocessParameters(enable_nodal_inj_optim=True),
+        parameters=PreprocessParameters(),
     )
     return tmp_path
 

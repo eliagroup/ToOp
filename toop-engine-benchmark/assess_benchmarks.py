@@ -23,7 +23,8 @@ import json
 import statistics as stats
 import sys
 from pathlib import Path
-from typing import Any, Iterable, cast
+
+from beartype.typing import Any, Iterable, cast
 
 # Disable beartype claw for this module to avoid decorating Hydra's generated main wrapper
 __beartype__ = False

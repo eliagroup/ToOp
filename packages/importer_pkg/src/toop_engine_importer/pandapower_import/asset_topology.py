@@ -13,12 +13,12 @@ Created: 2024-10-01
 """
 
 import datetime
-from typing import List, Literal, Optional, Tuple, Union
 
 import logbook
 import numpy as np
 import pandapower as pp
 import pandas as pd
+from beartype.typing import List, Literal, Optional, Tuple, Union
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_asset_switching_table,

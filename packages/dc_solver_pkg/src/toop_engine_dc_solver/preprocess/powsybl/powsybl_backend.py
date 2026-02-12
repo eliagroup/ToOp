@@ -26,7 +26,7 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_tie_lines,
     get_trafos,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.backend import BackendInterface
@@ -71,7 +71,12 @@ class PowsyblBackend(BackendInterface):
     Currently, the backend doesn't accept chronics, i.e. only a single timestep.
     """
 
-    def __init__(self, data_folder_dirfs: AbstractFileSystem, distributed_slack: bool = True) -> None:
+    def __init__(
+        self,
+        data_folder_dirfs: AbstractFileSystem,
+        lf_params: Optional[pp.loadflow.Parameters] = None,
+        fail_on_non_convergence: bool = True,
+    ) -> None:
         """Initiate the powsybl model by a given AbstractFileSystem.
 
         Parameters
@@ -79,8 +84,11 @@ class PowsyblBackend(BackendInterface):
         data_folder_dirfs : AbstractFileSystem
             A filesystem which is assumed to be a dirfs pointing to the root for this import job. I.e. the folder structure
             as defined in toop_engine_interfaces.folder_structure is expected to start at root in this filesystem.
-        distributed_slack: bool
-            Use distributed_slack to initialize the backend.
+        lf_params: Optional[pp.loadflow.Parameters]
+            The loadflow parameters to use for the initial loadflow calculation. If None, the default parameters are used.
+        fail_on_non_convergence: bool
+            Whether to raise an error if the initial loadflow does not converge.
+            If False, a warning is logged instead and the backend is initialized with the dc loadflow results
         """
         super().__init__()
         self.data_folder_dirfs = data_folder_dirfs
@@ -89,12 +97,15 @@ class PowsyblBackend(BackendInterface):
             file_path=Path(PREPROCESSING_PATHS["grid_file_path_powsybl"]),
         )
 
-        self.distributed_slack = distributed_slack
-        lf_params = DISTRIBUTED_SLACK if distributed_slack else SINGLE_SLACK
-
-        ac_results = pp.loadflow.run_ac(net, lf_params)
-        if ac_results[0].status != pp.loadflow.ComponentStatus.CONVERGED:
-            logger.warning("AC loadflow did not converge, can't compute ac-dc-mismatch")
+        if lf_params is None:
+            lf_params = DISTRIBUTED_SLACK
+        self.lf_params = lf_params
+        ac_results, *_ = pp.loadflow.run_ac(net, lf_params)
+        if ac_results.status != pp.loadflow.ComponentStatus.CONVERGED:
+            message = "Initial AC loadflow did not converge"
+            if fail_on_non_convergence:
+                raise RuntimeError(message)
+            logger.warning(message)
             self.ac_p_values = None
         else:
             self.ac_p_values = net.get_branches(attributes=["p1"])["p1"]
@@ -572,5 +583,4 @@ class PowsyblBackend(BackendInterface):
         return {
             "masks_folder": self._get_masks_path(),
             "start_datetime": str(self.net.case_date),
-            "distributed_slack": self.distributed_slack,
         }

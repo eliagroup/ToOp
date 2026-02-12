@@ -50,10 +50,10 @@ Solution:
 """
 
 from itertools import pairwise
-from typing import Literal, Union
 
 import logbook
 import networkx as nx
+from beartype.typing import Literal, Union
 from toop_engine_importer.network_graph.data_classes import EDGE_ID, WeightValues
 from toop_engine_importer.network_graph.filter_strategy.helper_functions import (
     calculate_asset_bay_for_node_assets,

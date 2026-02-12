@@ -8,12 +8,14 @@
 import shutil
 import time
 from functools import partial
-from typing import Optional, get_args
+from pathlib import Path
 
 import logbook
+from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.worker import preprocessor
 from toop_engine_importer.worker.preprocessor import run_initial_loadflow
@@ -31,8 +33,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
+    ImportResult,
     PreprocessingSuccessResult,
-    UcteImportResult,
 )
 
 # Set up logging for the test
@@ -42,6 +44,7 @@ logger = logbook.Logger("test_preprocessor")
 def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_parameters: UcteImporterParameters, tmp_path):
     temp_file = imported_ucte_file_data_folder
     ucte_importer_parameters.data_folder = temp_file
+    ucte_importer_parameters.fail_on_non_convergence = False
     # def parameters for function
 
     logged_messages = []
@@ -64,21 +67,23 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
     )
 
     # Create dummy import result
-    import_result = UcteImportResult(
+    import_result = ImportResult(
         data_folder=ucte_importer_parameters.data_folder,
     )
 
     start_command = StartPreprocessingCommand(
         importer_parameters=ucte_importer_parameters,
-        preprocess_parameters=PreprocessParameters(),
+        preprocess_parameters=PreprocessParameters(fail_on_non_convergence=False),
         preprocess_id="test_ID",
     )
     filesystem_dir = DirFileSystem(str(import_result.data_folder))
+    lf_params = load_lf_params_from_fs(filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
     info, _, _ = load_grid(
         data_folder_dirfs=filesystem_dir,
         pandapower=False,
-        parameters=PreprocessParameters(),
+        parameters=PreprocessParameters(fail_on_non_convergence=False),
         status_update_fn=heartbeat_fn,
+        lf_params=lf_params,
     )
 
     logged_messages = []
@@ -88,6 +93,7 @@ def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_para
         processed_gridfile_dirfs=filesystem_dir,
         status_update_fn=heartbeat_fn,
         loadflow_result_fs=loadflow_result_dirfs,
+        lf_params=lf_params,
     )
 
     assert initial_loadflow is not None
@@ -103,7 +109,7 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
     # def parameters for function
     ucte_importer_parameters.area_settings.dso_trafo_factors = None
     ucte_importer_parameters.area_settings.border_line_factors = None
-
+    ucte_importer_parameters.fail_on_non_convergence = False
     temp_dir = ucte_importer_parameters.data_folder
 
     logged_messages = []
@@ -149,7 +155,7 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         # Remove all files and folders in output_path
         shutil.rmtree(temp_dir)
-        assert isinstance(import_result, UcteImportResult)
+        assert isinstance(import_result, ImportResult)
 
         # Filter and assert logs
         logs = [record for record in caplog.formatted_records]
@@ -166,6 +172,7 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
 def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: UcteImporterParameters, tmp_path):
     temp_file = imported_ucte_file_data_folder
     ucte_importer_parameters.data_folder = temp_file
+    ucte_importer_parameters.fail_on_non_convergence = False
     # def parameters for function
 
     logged_messages = []
@@ -188,7 +195,7 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
     )
 
     # Create dummy import result
-    import_result = UcteImportResult(
+    import_result = ImportResult(
         data_folder=ucte_importer_parameters.data_folder,
     )
 

@@ -13,8 +13,7 @@ the names of the kafka streams) and are included in the command line start param
 
 from __future__ import annotations
 
-from typing import Optional
-
+from beartype.typing import Optional
 from pydantic import (
     BaseModel,
     NonNegativeFloat,

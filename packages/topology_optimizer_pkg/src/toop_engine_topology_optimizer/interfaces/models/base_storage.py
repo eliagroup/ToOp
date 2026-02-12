@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
-from typing import Optional
 
 import pandas as pd
+from beartype.typing import Optional
 from sqlalchemy import UniqueConstraint
 from sqlmodel import JSON, Field, SQLModel
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference

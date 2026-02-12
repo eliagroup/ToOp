@@ -7,6 +7,7 @@
 
 """Get the results of the AC Contingency Analysis for the given network"""
 
+import pypowsybl
 from beartype.typing import Optional
 from pandapower import pandapowerNet as PandapowerNetwork
 from pypowsybl.network import Network as PowsyblNetwork
@@ -27,6 +28,7 @@ def get_ac_loadflow_results(
     job_id: str = "",
     n_processes: int = 1,
     batch_size: Optional[int] = None,
+    lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
 ) -> LoadflowResultsPolars:
     """Get the results of the AC loadflow for the given network
 
@@ -48,6 +50,9 @@ def get_ac_loadflow_results(
         The size of the batches to use for the parallelization.
         This is ignored for Powsybl at the moment.
         If None, the batch size is computed based on the number of contingencies and the number of processes.
+    lf_params: pypowsybl.loadflow.Parameters or dict, optional
+        Loadflow parameters to use for the computation.
+        dict for pandapower, pypowsybl.loadflow.Parameters for powsybl. If None, default parameters are used.
 
     Returns
     -------
@@ -68,6 +73,7 @@ def get_ac_loadflow_results(
             n_processes=n_processes,
             batch_size=batch_size,
             method="ac",
+            runpp_kwargs=lf_params if isinstance(lf_params, dict) else None,
             polars=True,
         )
     elif isinstance(net, PowsyblNetwork):
@@ -79,6 +85,7 @@ def get_ac_loadflow_results(
             n_processes=n_processes,
             method="ac",
             polars=True,
+            lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
         )
     else:
         raise ValueError("net must be a pandapowerNet or powsybl network")

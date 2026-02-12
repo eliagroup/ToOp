@@ -23,7 +23,6 @@ from toop_engine_interfaces.loadflow_results import (
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
-    LoadflowParameters,
     Nminus1Definition,
 )
 
@@ -128,8 +127,5 @@ def get_full_nminus1_definition_pandapower(net: pandapower.pandapowerNet) -> Nmi
         contingencies=[*basecase_contingency, *single_contingencies],
         monitored_elements=monitored_elements,
         id_type="unique_pandapower",  # Default id type for Pandapower
-        loadflow_parameters=LoadflowParameters(
-            distributed_slack=False,  # This is the default for Powsybl
-        ),
     )
     return nminus1_definition

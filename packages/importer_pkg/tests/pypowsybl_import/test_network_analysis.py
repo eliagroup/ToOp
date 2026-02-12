@@ -19,7 +19,7 @@ from toop_engine_importer.pypowsybl_import.network_analysis import (
     remove_branches_with_same_bus,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
-    UcteImportResult,
+    ImportResult,
 )
 
 
@@ -112,7 +112,7 @@ def test_apply_cb_lists(ucte_file, ucte_importer_parameters):
     black_list_df.to_csv(ucte_importer_parameters.data_folder / "CB_Black-Liste.csv", index=False, sep=";")
 
     # test 1 - apply white and black list
-    import_result = UcteImportResult(
+    import_result = ImportResult(
         data_folder=ucte_importer_parameters.data_folder,
     )
 
@@ -140,7 +140,7 @@ def test_apply_cb_lists(ucte_file, ucte_importer_parameters):
     assert statistics.import_result.n_white_list_applied == 1
 
     # test 2 - apply black list only
-    import_result = UcteImportResult(
+    import_result = ImportResult(
         data_folder=ucte_importer_parameters.data_folder,
     )
     statistics = PreProcessingStatistics(
@@ -167,7 +167,7 @@ def test_apply_cb_lists(ucte_file, ucte_importer_parameters):
     assert statistics.import_result.n_white_list_applied == 0
 
     # test 3 - apply no list
-    import_result = UcteImportResult(
+    import_result = ImportResult(
         data_folder=Path(""),
     )
     statistics = PreProcessingStatistics(

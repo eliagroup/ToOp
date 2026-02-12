@@ -43,6 +43,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     three_node_pst_example,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
@@ -428,6 +429,7 @@ def oberrhein_data(folder: Path) -> None:
 
     np.random.seed(0)
     random_topology_info(folder)
+    save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
 def case57_data_pandapower(folder: Path) -> None:
@@ -480,6 +482,7 @@ def case57_data_pandapower(folder: Path) -> None:
 
     np.random.seed(0)
     random_topology_info(folder)
+    save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
 def case57_data_powsybl(folder: Path) -> None:
@@ -487,6 +490,9 @@ def case57_data_powsybl(folder: Path) -> None:
     net = powsybl_extended_case57()
     create_busbar_b_in_ieee(net)
     pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
 
     output_path_grid = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     output_path_grid.parent.mkdir(parents=True, exist_ok=True)
@@ -539,6 +545,9 @@ def case57_data_powsybl(folder: Path) -> None:
         f.write(str(datetime.datetime.now()))
 
     extract_station_info_powsybl(net, folder)
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
 
 
 def case57_non_converging(folder: Path) -> None:
@@ -581,6 +590,7 @@ def case57_non_converging(folder: Path) -> None:
     )
     np.random.seed(0)
     random_topology_info(folder)
+    save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
 def case300_pandapower(folder: Path) -> None:
@@ -612,6 +622,7 @@ def case300_pandapower(folder: Path) -> None:
 
     np.random.seed(0)
     random_topology_info(folder)
+    save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
 def case300_powsybl(folder: Path) -> None:
@@ -642,6 +653,9 @@ def case300_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
     extract_station_info_powsybl(net, folder)
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
 
 
 # ruff: noqa: PLR0915
@@ -751,6 +765,7 @@ def case9241_pandapower(data_folder: Path) -> None:
 
     np.random.seed(0)
     random_topology_info(data_folder)
+    save_lf_params_to_fs({}, DirFileSystem(data_folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
 def generate_region_masks(
@@ -882,6 +897,9 @@ def case9241_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], all_trafos)
 
     extract_station_info_powsybl(net, folder)
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
 
 
 def case14_pandapower(folder: Path) -> None:
@@ -926,6 +944,7 @@ def case14_pandapower(folder: Path) -> None:
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_for_reward)
     random_topology_info(folder)
     np.save(masks_path / NETWORK_MASK_NAMES["generator_for_nminus1"], np.ones(len(net.gen), dtype=bool))
+    save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
 def case30_with_psts(folder: Path) -> None:
@@ -952,6 +971,7 @@ def case30_with_psts(folder: Path) -> None:
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_pst_controllable"], trafo_mask)
     random_topology_info(folder)
+    save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
 def case30_with_psts_powsybl(folder: Path) -> None:
@@ -981,12 +1001,18 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
     extract_station_info_powsybl(net, folder)
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
 
 
 def node_breaker_folder_powsybl(folder: Path) -> None:
     """Copy over all data from the data folder"""
     source = Path(__file__).parent.parent.parent / "tests" / "files" / "test_grid_node_breaker"
     shutil.copytree(source, folder, dirs_exist_ok=True)
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
 
 
 def three_node_pst_example_folder_powsybl(folder: Path) -> None:
@@ -1012,3 +1038,6 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_controllable"], trafo_mask)
 
     extract_station_info_powsybl(net, folder)
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )

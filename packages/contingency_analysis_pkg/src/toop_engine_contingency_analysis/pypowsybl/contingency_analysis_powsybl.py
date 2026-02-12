@@ -7,9 +7,11 @@
 
 """Compute the N-1 AC/DC power flow for the network."""
 
+from copy import deepcopy
+
 import polars as pl
 import pypowsybl
-from beartype.typing import Literal, Union
+from beartype.typing import Literal, Optional, Union
 from pypowsybl.network import Network
 from pypowsybl.security import SecurityAnalysisResult
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
@@ -47,6 +49,7 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 def run_powsybl_analysis(
     net: Network,
     n_minus_1_definition: PowsyblNMinus1Definition,
+    lf_params: pypowsybl.loadflow.Parameters,
     method: Literal["ac", "dc"] = "ac",
     n_processes: int = 1,
 ) -> tuple[SecurityAnalysisResult, str | None]:
@@ -58,6 +61,8 @@ def run_powsybl_analysis(
         The powsybl network to compute the Contingency Analysis for
     n_minus_1_definition : Nminus1Definition
         The N-1 definition to use for the contingency analysis. Contains outages and monitored elements
+    lf_params: pypowsybl.loadflow.Parameters
+        Loadflow parameters to use for the computation.
     method : Literal["ac", "dc"], optional
         The method to use for the contingency analysis. Either "ac" or "dc", by default "ac"
     n_processes : int, optional
@@ -87,19 +92,14 @@ def run_powsybl_analysis(
             basecase_id = contingency.id
         else:
             analysis.add_single_element_contingency(outages[0], contingency_id=contingency.id)
-    if method == "ac" and n_minus_1_definition.distributed_slack:
-        # If we have distributed slack and AC loadflows, we need to set the slack to a single generator
-        # This is done by setting the target values of the generators to the loadflow values
-        lf_params = DISTRIBUTED_SLACK
 
-    else:
-        # The security analysis in DC should always run with a single slack to avoid changing gen values for each N-1 case
-        # This way it matches the current way our N-1 analysis in the GPU-solver is set up
-        lf_params = SINGLE_SLACK
-    contingency_propagation = "true" if n_minus_1_definition.contingency_propagation else "false"
+    if method == "dc":
+        # For DC load flow, we need to set the distributed slack to false, as it is not supported in DC load flow
+        lf_params = deepcopy(lf_params)
+        lf_params.distributed_slack = False
     security_params = pypowsybl.security.impl.parameters.Parameters(
         load_flow_parameters=lf_params,
-        provider_parameters={"threadCount": str(n_processes), "contingencyPropagation": contingency_propagation},
+        provider_parameters={"threadCount": str(n_processes), "contingencyPropagation": "false"},
     )
 
     res = analysis.run_ac(net, security_params) if method == "ac" else analysis.run_dc(net, security_params)
@@ -111,6 +111,7 @@ def run_contingency_analysis_polars(
     pow_n1_definition: PowsyblNMinus1Definition,
     job_id: str,
     timestep: int,
+    lf_params: pypowsybl.loadflow.Parameters,
     method: Literal["ac", "dc"] = "dc",
     n_processes: int = 1,
 ) -> LoadflowResultsPolars:
@@ -126,6 +127,8 @@ def run_contingency_analysis_polars(
         The job id of the current job
     timestep : int
         The timestep to use for the contingency analysis
+    lf_params: pypowsybl.loadflow.Parameters
+        Loadflow parameters to use for the computation.
     method : Literal["ac", "dc"], optional
         Whether to compute the AC or DC power flow, by default "dc"
     n_processes : int, optional
@@ -141,7 +144,9 @@ def run_contingency_analysis_polars(
         The results of the loadflow computation. Invalid or otherwise failed results will be set to NaN.
     """
     monitored_elements = pow_n1_definition.monitored_elements
-    ca_result, basecase_id = run_powsybl_analysis(net, pow_n1_definition, method, n_processes=n_processes)
+    ca_result, basecase_id = run_powsybl_analysis(
+        net, pow_n1_definition, lf_params=lf_params, method=method, n_processes=n_processes
+    )
     bus_results = get_ca_bus_results(ca_result, lazy=True)
     branch_results = get_ca_branch_results(ca_result, lazy=True)
     three_windings_transformer_results = get_ca_three_windings_transformer_results(ca_result, lazy=True)
@@ -238,6 +243,7 @@ def run_contingency_analysis_powsybl(
     method: Literal["ac", "dc"] = "ac",
     n_processes: int = 1,
     polars: bool = False,
+    lf_params: Optional[pypowsybl.loadflow.Parameters] = None,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the Contingency Analysis for the network.
 
@@ -259,15 +265,24 @@ def run_contingency_analysis_powsybl(
         Paralelization is done by splitting the contingencies into chunks and running each chunk in a separate process
     polars: bool
         Whether to use polars for the dataframe operations.
+    lf_params: Optional[pypowsybl.loadflow.Parameters]
+        Loadflow parameters to use for the computation.
+        If None, a standard set will be used
 
     Returns
     -------
     Union[LoadflowResults, LoadflowResultsPolars]
         The results of the loadflow computation.
     """
-    if n_minus_1_definition.loadflow_parameters.distributed_slack:
+    if lf_params is None:
+        if method == "ac":
+            lf_params = DISTRIBUTED_SLACK
+        else:
+            lf_params = SINGLE_SLACK
+
+    if lf_params.distributed_slack:
         # We only do this once, before the first batch. So we dont have to redo it every iteration
-        net = set_target_values_to_lf_values_incl_distributed_slack(net, method)
+        net = set_target_values_to_lf_values_incl_distributed_slack(net, method, lf_params=lf_params)
     pow_n1_definition = translate_nminus1_for_powsybl(n_minus_1_definition, net)
 
     lf_result = run_contingency_analysis_polars(
@@ -277,6 +292,7 @@ def run_contingency_analysis_powsybl(
         timestep=timestep,
         method=method,
         n_processes=n_processes,
+        lf_params=lf_params,
     )
     if not polars:
         lf_result = convert_polars_loadflow_results_to_pandas(lf_result)

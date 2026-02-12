@@ -13,14 +13,16 @@ Created: 2024
 """
 
 from pathlib import Path
-from typing import Callable, Optional, Union
 
+import pypowsybl
+from beartype.typing import Callable, Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.ac_loadflow_service.lf_worker import load_base_grid_fs
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -33,9 +35,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
-    PowerFactoryImportResult,
+    ImportResult,
     PreprocessingSuccessResult,
-    UcteImportResult,
 )
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.types import MetricType
@@ -46,7 +47,7 @@ def import_grid_model(
     unprocessed_gridfile_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
     status_update_fn: Callable[[PreprocessStage, Optional[str]], None],
-) -> UcteImportResult:
+) -> tuple[ImportResult, pypowsybl.loadflow.Parameters]:
     """Run the import procedure.
 
     This only performs the import until there's a grid model, the preprocessing in the loadflow
@@ -72,8 +73,10 @@ def import_grid_model(
 
     Returns
     -------
-    UcteImportResult
+    ImportResult
         A result dataclass from the importer, mainly including the grid folder and some stats
+    pypowsybl.loadflow.Parameters
+        The loadflow parameters that actually converged in the basecase
 
     Raises
     ------
@@ -95,6 +98,7 @@ def run_initial_loadflow(
     processed_gridfile_dirfs: AbstractFileSystem,
     status_update_fn: Callable[[PreprocessStage, Optional[str]], None],
     loadflow_result_fs: AbstractFileSystem,
+    lf_params: Optional[pypowsybl.loadflow.Parameters] = None,
 ) -> tuple[StoredLoadflowReference, dict[MetricType, float]]:
     """Run the initial AC contingency analysis
 
@@ -111,6 +115,10 @@ def run_initial_loadflow(
     loadflow_result_fs: AbstractFileSystem
         A filesystem where the loadflow results are stored - this should be a NFS share together with the backend and
         optimizer. The importer needs this to store the initial loadflows
+    lf_params: Optional[pypowsybl.loadflow.Parameters]
+        The loadflow parameters to use for the runner, if any. This is passed in the preprocessing results
+        and can be used to run the loadflows with the same parameters as the initial loadflow in the preprocessing step.
+        If None, the runner will use default parameters.
 
     Returns
     -------
@@ -133,6 +141,7 @@ def run_initial_loadflow(
         timestep=0,
         job_id=start_command.preprocess_id,
         n_processes=start_command.preprocess_parameters.initial_loadflow_processes,
+        lf_params=lf_params,
     )
     ref_polars = save_loadflow_results_polars(
         loadflow_result_fs, f"initial_loadflow_{start_command.preprocess_id}", timestep_result_polars
@@ -146,7 +155,7 @@ def run_initial_loadflow(
 
 def preprocess(
     start_command: StartPreprocessingCommand,
-    import_results: Union[UcteImportResult, PowerFactoryImportResult],
+    import_results: ImportResult,
     status_update_fn: Callable[[PreprocessStage, Optional[str]], None],
     loadflow_result_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
@@ -159,7 +168,7 @@ def preprocess(
     ----------
     start_command: StartPreprocessingCommand
         The command to start the preprocessing run with
-    import_results: Union[UcteImportResult, PowerFactoryImportResult]
+    import_results: ImportResult
         Results from the import procedure
     status_update_fn: Callable[[PreprocessStage, Optional[str]], None]
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
@@ -189,17 +198,19 @@ def preprocess(
     """
     preprocess_parameters = start_command.preprocess_parameters
     pandapower = False
-    if isinstance(import_results, PowerFactoryImportResult):
+    if import_results.grid_type == "power_factory":
         pandapower = True
 
     # Create a dirfs that points to the data folder, so we can pass around the dirfs instead of the path + fs
     output_dirfs = DirFileSystem(path=str(import_results.data_folder), fs=processed_gridfile_fs)
 
+    lf_params = load_lf_params_from_fs(output_dirfs, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
     info, _, _ = load_grid(
         data_folder_dirfs=output_dirfs,
         pandapower=pandapower,
         parameters=preprocess_parameters,
         status_update_fn=status_update_fn,
+        lf_params=lf_params,
     )
 
     initial_loadflow, lf_metrics = run_initial_loadflow(
@@ -207,6 +218,7 @@ def preprocess(
         processed_gridfile_dirfs=output_dirfs,
         status_update_fn=status_update_fn,
         loadflow_result_fs=loadflow_result_fs,
+        lf_params=lf_params,
     )
 
     preprocessing_results = PreprocessingSuccessResult(

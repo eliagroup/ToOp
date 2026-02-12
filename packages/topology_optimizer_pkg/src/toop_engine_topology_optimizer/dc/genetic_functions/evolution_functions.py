@@ -13,10 +13,10 @@ the substation ids, the branch topology, the injection topology and the disconne
 """
 
 from functools import partial
-from typing import Optional
 
 import jax
 import jax.numpy as jnp
+from beartype.typing import Optional
 from jax_dataclasses import pytree_dataclass
 from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.jax.topology_computations import extract_sub_ids, sample_action_index_from_branch_actions

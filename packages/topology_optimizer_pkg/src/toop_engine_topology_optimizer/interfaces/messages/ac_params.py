@@ -14,8 +14,8 @@ batched, and the parameters are slightly different.
 from __future__ import annotations
 
 import math
-from typing import Optional
 
+from beartype.typing import Optional
 from pydantic import BaseModel, PositiveInt, confloat, model_validator
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, FilterStrategy

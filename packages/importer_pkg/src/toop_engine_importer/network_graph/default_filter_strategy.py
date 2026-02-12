@@ -13,10 +13,9 @@ The default strategy fills:
     - EdgeConnectionInfo
 """
 
-from typing import Union
-
 import logbook
 import networkx as nx
+from beartype.typing import Union
 from toop_engine_importer.network_graph.data_classes import WeightValues
 from toop_engine_importer.network_graph.filter_strategy.empty_bay import set_empty_bay_weights
 from toop_engine_importer.network_graph.filter_strategy.helper_functions import (

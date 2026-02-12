@@ -20,10 +20,9 @@ coupler in all timesteps. The idea is that the DC part might have too many open 
 try to simplify the topology by closing a single coupler.
 """
 
-from typing import Optional
-
 import logbook
 import pandas as pd
+from beartype.typing import Optional
 from numpy.random import Generator as Rng
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select

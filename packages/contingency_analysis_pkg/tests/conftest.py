@@ -9,7 +9,6 @@ import time
 import uuid
 from copy import deepcopy
 from pathlib import Path
-from typing import Generator
 
 import docker
 import numpy as np
@@ -21,6 +20,7 @@ import polars as pl
 import pypowsybl
 import pytest
 import ray
+from beartype.typing import Generator
 from docker.client import DockerClient
 from docker.models.containers import Container
 from toop_engine_grid_helpers.pandapower.example_grids import pandapower_extended_oberrhein

@@ -452,7 +452,7 @@ def run_epoch(
     results_consumer: LongRunningKafkaConsumer,
     send_result_fn: Callable[[ResultUnion], None],
     epoch: int,
-) -> None:
+) -> bool:
     """Run a single epoch of the AC optimizer
 
     This shall send the investigated topology to the result topic upon completion.
@@ -468,13 +468,19 @@ def run_epoch(
     epoch : int
         The current epoch number, used for logging and heartbeat purposes. Also, on epoch 1 the wait time for
         the consumer is longer to allow for dc optim startup.
+
+    Returns
+    -------
+    bool
+        Whether a new strategy was polled, i.e. an AC validation actually happened. The epoch counter will only be increased
+        if this happened.
     """
     poll_results_topic(db=optimizer_data.session, consumer=results_consumer, first_poll=epoch == 1)
     new_strategy = optimizer_data.evolution_fn()
 
     # It is possible that no new strategy was generated
     if not new_strategy:
-        return
+        return False
 
     loadflow_results, metrics = optimizer_data.scoring_fn(new_strategy)
     acceptance = optimizer_data.acceptance_fn(loadflow_results, metrics)
@@ -512,3 +518,4 @@ def run_epoch(
     logger.info(
         f"Epoch {epoch} completed, accept: {acceptance}, metrics: {metrics[0].extra_scores}, fitness: {metrics[0].fitness}"
     )
+    return True

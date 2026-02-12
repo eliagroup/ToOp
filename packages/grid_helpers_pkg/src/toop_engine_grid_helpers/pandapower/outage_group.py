@@ -15,6 +15,55 @@ import pandapower as pp
 import pandas as pd
 
 
+def is_node_of_element_type(node_id: str, element_type: str) -> bool:
+    """
+    Check whether a node_id corresponds to a specific element type.
+
+    The function assumes that element nodes follow the naming pattern:
+    'e_<element_type>_' as part of the node_id string.
+
+    Args:
+        node_id: Full identifier of the node.
+        element_type: Element type to check (e.g., 'line', 'switch', 'trafo').
+
+    Returns
+    -------
+        True if the node_id contains the element type marker, False otherwise.
+
+    Example:
+        >>> is_node_of_element_type("e_switch_123", "switch")
+        True
+        >>> is_node_of_element_type("e_line_45", "switch")
+        False
+    """
+    return f"e_{element_type}_" in node_id
+
+
+def get_node_table_id(node_id: str) -> int:
+    """
+    Extract the numeric table ID from a node identifier.
+
+    The function assumes that the node_id follows a convention where
+    the last underscore-separated part is an integer ID.
+
+    Args:
+        node_id: Full node identifier (e.g., 'e_switch_123').
+
+    Returns
+    -------
+        Integer table ID extracted from the node_id.
+
+    Raises
+    ------
+        ValueError: If the last part of node_id is not a valid integer.
+
+    Example:
+        >>> get_node_table_id("e_switch_123")
+        123
+    """
+    return int(node_id.split("_")[-1])
+
+
 def elem_node_id(kind: str, idx: int, etype: Optional[str] = None) -> str:
     """
     Stable node id format:

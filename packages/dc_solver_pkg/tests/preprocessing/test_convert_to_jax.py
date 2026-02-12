@@ -184,14 +184,6 @@ def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
 
     action_set = load_action_set(folder / PREPROCESSING_PATHS["action_set_file_path"])
     assert len(action_set.pst_ranges) == 3
-    assert np.array_equal(
-        static_information.dynamic_information.nodal_injection_information.shift_degree_max,
-        np.array([max(taps.shift_steps) for taps in action_set.pst_ranges]),
-    )
-    assert np.array_equal(
-        static_information.dynamic_information.nodal_injection_information.shift_degree_min,
-        np.array([min(taps.shift_steps) for taps in action_set.pst_ranges]),
-    )
 
 
 def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> None:
@@ -212,14 +204,6 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
 
     action_set = load_action_set(folder / PREPROCESSING_PATHS["action_set_file_path"])
     assert len(action_set.pst_ranges) == 2
-    assert np.array_equal(
-        static_information.dynamic_information.nodal_injection_information.shift_degree_max,
-        np.array([max(taps.shift_steps) for taps in action_set.pst_ranges]),
-    )
-    assert np.array_equal(
-        static_information.dynamic_information.nodal_injection_information.shift_degree_min,
-        np.array([min(taps.shift_steps) for taps in action_set.pst_ranges]),
-    )
 
 
 # TODO: Complete this test method

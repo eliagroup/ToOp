@@ -731,6 +731,18 @@ def compute_symmetric_batch(
 
     n_0 = jax.vmap(update_n0_flows_after_disconnections)(n_0, topo_res.disconnection_modf)
 
+    # Apply PST taps from start options if provided (baseline application, independent of optimization)
+    if nodal_inj_start_options is not None:
+        assert dynamic_information.nodal_injection_information is not None
+        n_0, _n_1_baseline, _nodal_results_baseline = nodal_inj_optimization(
+            n_0=n_0,
+            nodal_injections=nodal_injections,
+            topo_res=topo_res,
+            start_options=nodal_inj_start_options,
+            dynamic_information=dynamic_information,
+            solver_config=solver_config,
+        )
+
     nodal_injections_optimized = None
     if solver_config.enable_nodal_inj_optim:
         assert nodal_inj_start_options is not None, (

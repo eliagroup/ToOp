@@ -450,6 +450,22 @@ class PowsyblBackend(BackendInterface):
             shift_taps.append(np.sort(taps))
         return shift_taps
 
+    def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_psts"]:
+        """Get the starting setpoint of each controllable PST as an integer index into the tap values"""
+        psts = self._get_branches()[self._get_branches()["pst_controllable"]].index
+        tap_changers = self.net.get_phase_tap_changers().loc[psts]
+        return tap_changers["tap"].values.astype(int) - tap_changers["low_tap"].values.astype(int)
+
+    def get_phase_shift_low_taps(self) -> Int[np.ndarray, " n_controllable_psts"]:
+        """Get the lowest tap position in the original grid model
+
+        This is needed so taps as integer indices into tap values
+        can be converted back to the original tap positions by tap + low_tap
+        """
+        psts = self._get_branches()[self._get_branches()["pst_controllable"]].index
+        tap_changers = self.net.get_phase_tap_changers().loc[psts]
+        return tap_changers["low_tap"].values.astype(int)
+
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get a mask of relevant nodes"""
         return self._get_nodes()["relevant"].values

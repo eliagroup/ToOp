@@ -16,6 +16,7 @@ from __future__ import annotations
 from beartype.typing import Optional
 from pydantic import (
     BaseModel,
+    NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
@@ -40,6 +41,10 @@ class BatchedMEParameters(BaseModel):
 
     reconnect_prob: confloat(ge=0.0, le=1.0) = 0.1
     """The probability to reconnect a disconnected branch, will overwrite a possible disconnect"""
+
+    pst_mutation_sigma: NonNegativeFloat = 0.0
+    """The sigma to use for the normal distribution that mutates the PST taps. The mutation is applied by adding a random
+    value drawn from this distribution to the current tap position. A value of 0.0 means no PST mutation."""
 
     n_subs_mutated_lambda: PositiveFloat = 2.0
     """The number of substations to mutate in a single iteration is drawn from a poisson with this

@@ -11,6 +11,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import docker
+import numpy as np
 import pandapower
 import pandapower as pp
 import pandas as pd
@@ -202,6 +203,36 @@ def _pandapower_net() -> pandapower.pandapowerNet:
 @pytest.fixture(scope="function")
 def pandapower_net(_pandapower_net: pandapower.pandapowerNet) -> pandapower.pandapowerNet:
     # Create a copy of the pandapower network for each test to avoid side effects
+    _pandapower_net.trafo["id_characteristic_table"] = np.nan
+    _pandapower_net.trafo["tap_changer_type"] = "Tabular"
+    _pandapower_net.trafo["tap_pos"] = 0
+    _pandapower_net.trafo["tap_neutral"] = 0
+    _pandapower_net.trafo["tap_step_percent"] = 0
+    _pandapower_net.trafo["tap_step_degree"] = 0
+
+    _pandapower_net.trafo3w["id_characteristic_table"] = np.nan
+    _pandapower_net.trafo3w["tap_changer_type"] = "Tabular"
+    _pandapower_net.trafo3w["tap_pos"] = 0
+    _pandapower_net.trafo3w["tap_neutral"] = 0
+    _pandapower_net.trafo3w["tap_step_percent"] = 0
+    _pandapower_net.trafo3w["tap_step_degree"] = 0
+
+    _pandapower_net.trafo_characteristic_table = pd.DataFrame(
+        columns=[
+            "id_characteristic",
+            "step",
+            "voltage_ratio",
+            "angle_deg",
+            "vk_percent",
+            "vkr_percent",
+            "vkr_hv_percent",
+            "vkr_mv_percent",
+            "vkr_lv_percent",
+            "vk_hv_percent",
+            "vk_mv_percent",
+            "vk_lv_percent",
+        ]
+    )
     return deepcopy(_pandapower_net)
 
 

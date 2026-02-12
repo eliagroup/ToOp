@@ -10,7 +10,6 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import Generator, Literal, Union
 
 import chex
 import docker
@@ -19,6 +18,7 @@ import numpy as np
 import pandera
 import pypowsybl
 import pytest
+from beartype.typing import Generator, Literal, Union
 from confluent_kafka import Consumer, Producer
 from docker import DockerClient
 from docker.models.containers import Container
@@ -39,6 +39,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     create_complex_grid_battery_hvdc_svc_3w_trafo,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
@@ -245,31 +246,31 @@ def grid_folder() -> Path:
         if not oberrhein_path.exists():
             oberrhein_data(oberrhein_path)
             filesystem_dir = DirFileSystem(str(oberrhein_path))
-            load_grid(filesystem_dir, pandapower=True)
+            load_grid(filesystem_dir, pandapower=True, lf_params={})
 
         case14_path = target_path / "case14"
         if not case14_path.exists():
             case14_pandapower(case14_path)
             filesystem_dir = DirFileSystem(str(case14_path))
-            load_grid(filesystem_dir, pandapower=True)
+            load_grid(filesystem_dir, pandapower=True, lf_params={})
 
         case57_path = target_path / "case57"
         if not case57_path.exists():
             case57_data_powsybl(case57_path)
             filesystem_dir = DirFileSystem(str(case57_path))
-            load_grid(filesystem_dir, pandapower=False)
+            load_grid(filesystem_dir, pandapower=False, lf_params=DISTRIBUTED_SLACK)
 
         complex_grid_path = target_path / "complex_grid"
         if not complex_grid_path.exists():
             create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(complex_grid_path)
             filesystem_dir = DirFileSystem(str(complex_grid_path))
-            load_grid(filesystem_dir, pandapower=False)
+            load_grid(filesystem_dir, pandapower=False, lf_params=DISTRIBUTED_SLACK)
 
         case30_path = target_path / "case30"
         if not case30_path.exists():
             case30_with_psts_powsybl(case30_path)
             filesystem_dir = DirFileSystem(str(case30_path))
-            load_grid(filesystem_dir, pandapower=False)
+            load_grid(filesystem_dir, pandapower=False, lf_params=DISTRIBUTED_SLACK)
 
         return target_path
 
@@ -286,8 +287,11 @@ def case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Path
     tmp_path = tmp_path_factory.mktemp("case57_non_converging")
 
     case57_non_converging(tmp_path)
+
     filesystem_dir = DirFileSystem(str(tmp_path))
-    load_grid(filesystem_dir, pandapower=True)
+    save_lf_params_to_fs({}, filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
+
+    load_grid(filesystem_dir, pandapower=True, lf_params={})
     return tmp_path
 
 

@@ -12,18 +12,16 @@ the necessary data from the network, so this only has to happen once.
 """
 
 from copy import deepcopy
-from typing import get_args
 
 import numpy as np
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import pypowsybl
-from beartype.typing import Literal, Optional
+from beartype.typing import Literal, Optional, get_args
 from pydantic import BaseModel
 from pypowsybl._pypowsybl import PostContingencyResult, PreContingencyResult
 from pypowsybl.network import Network
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_result_helpers import get_failed_branch_results, get_failed_node_results
 from toop_engine_interfaces.loadflow_results import (
@@ -41,7 +39,6 @@ from toop_engine_interfaces.nminus1_definition import (
     POWSYBL_SUPPORTED_ID_TYPES,
     Contingency,
     GridElement,
-    LoadflowParameters,
     Nminus1Definition,
 )
 from typing_extensions import TypedDict
@@ -595,10 +592,8 @@ def translate_nminus1_for_powsybl(n_minus_1_definition: Nminus1Definition, net: 
         element_name_mapping=element_name_map,
         contingency_name_mapping=contingency_name_map,
         voltage_levels=voltage_levels,
-        distributed_slack=n_minus_1_definition.loadflow_parameters.distributed_slack,
         missing_elements=missing_elements,
         missing_contingencies=missing_contingencies,
-        contingency_propagation=n_minus_1_definition.loadflow_parameters.contingency_propagation,
     )
 
 
@@ -931,7 +926,9 @@ def add_name_column(
     return result_df
 
 
-def set_target_values_to_lf_values_incl_distributed_slack(net: Network, method: Literal["ac", "dc"]) -> Network:
+def set_target_values_to_lf_values_incl_distributed_slack(
+    net: Network, method: Literal["ac", "dc"], lf_params: pypowsybl.loadflow.Parameters
+) -> Network:
     """Update the target values of generators to include the distributed slack.
 
     This is necessary if you want to run the security analysis for generators without distributed their
@@ -943,6 +940,9 @@ def set_target_values_to_lf_values_incl_distributed_slack(net: Network, method: 
         The powsybl network to update
     method : Literal["ac", "dc"]
         The method to use for the loadflow, either "ac" or "dc"
+    lf_params : pypowsybl.loadflow.Parameters
+        The loadflow parameters to use for the loadflow calculation.
+        This is used to run the loadflow and get the original flows of the network.
 
     Returns
     -------
@@ -950,9 +950,9 @@ def set_target_values_to_lf_values_incl_distributed_slack(net: Network, method: 
         The updated network
     """
     if method == "ac":
-        pypowsybl.loadflow.run_ac(net, DISTRIBUTED_SLACK)
+        pypowsybl.loadflow.run_ac(net, lf_params)
     else:
-        pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+        pypowsybl.loadflow.run_dc(net, lf_params)
     gens = net.get_generators()
     gens["target_p"] = (-gens["p"]).fillna(gens["target_p"])
     if method == "ac":
@@ -1030,8 +1030,5 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
         contingencies=[*basecase_contingency, *single_contingencies],
         monitored_elements=monitored_elements,
         id_type="powsybl",
-        loadflow_parameters=LoadflowParameters(
-            distributed_slack=True,  # This is the default for Powsybl
-        ),
     )
     return nminus1_definition

@@ -21,6 +21,7 @@ import numpy as np
 from beartype.typing import Callable, Literal, Optional
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
+from pypowsybl.loadflow import Parameters as LoadflowParameters
 from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric,
     compute_double_limits,
@@ -61,6 +62,7 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData, save_netw
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
@@ -642,6 +644,7 @@ def load_grid(
     pandapower: bool = False,
     parameters: Optional[PreprocessParameters] = None,
     status_update_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
+    lf_params: Optional[LoadflowParameters | dict] = None,
 ) -> tuple[StaticInformationStats, StaticInformation, NetworkData]:
     """Load the grid and preprocess it
 
@@ -662,6 +665,8 @@ def load_grid(
     status_update_fn : Optional[Callable[[PreprocessStage, Optional[str]], None]], optional
         A function to call to signal progress in the preprocessing pipeline. Takes a stage and an
         optional message as parameters, by default None
+    lf_params : Optional[LoadflowParameters], optional
+        The loadflow parameters to use for the initial loadflow calculation. If None, the default parameters are used.
 
     Returns
     -------
@@ -677,13 +682,21 @@ def load_grid(
         status_update_fn = empty_status_update_fn
     if parameters is None:
         parameters = PreprocessParameters()
+    if lf_params is None and not pandapower:
+        lf_params = DISTRIBUTED_SLACK
+    elif lf_params is None and pandapower:
+        lf_params = {}
 
     if pandapower:
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into PandaPower backend")
         backend = PandaPowerBackend(data_folder_dirfs=data_folder_dirfs, chronics_id=chronics_id, chronics_slice=timesteps)
     else:
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into Powsybl backend")
-        backend = PowsyblBackend(data_folder_dirfs=data_folder_dirfs)
+        backend = PowsyblBackend(
+            data_folder_dirfs=data_folder_dirfs,
+            lf_params=lf_params,
+            fail_on_non_convergence=parameters.fail_on_non_convergence,
+        )
     network_data = preprocess(backend, logging_fn=status_update_fn, parameters=parameters)
     static_information = convert_to_jax(
         network_data=network_data,

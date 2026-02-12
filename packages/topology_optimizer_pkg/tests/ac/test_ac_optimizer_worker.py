@@ -6,12 +6,12 @@
 # Mozilla Public License, version 2.0
 
 from pathlib import Path
-from typing import Callable
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import numpy as np
 import pytest
+from beartype.typing import Callable
 from confluent_kafka import Consumer, Producer
 from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import select

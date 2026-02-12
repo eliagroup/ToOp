@@ -14,8 +14,8 @@ Date: 2025-07-15
 
 import re
 import xml.etree.ElementTree as StdETree
-from typing import Literal, Optional
 
+from beartype.typing import Literal, Optional
 from defusedxml import ElementTree
 from toop_engine_grid_helpers.powsybl.single_line_diagram.constants import (
     BREAKER_STYLE,

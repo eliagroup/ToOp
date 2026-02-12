@@ -11,10 +11,10 @@ import re
 from dataclasses import dataclass
 from functools import partial
 from io import StringIO
-from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from beartype.typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass

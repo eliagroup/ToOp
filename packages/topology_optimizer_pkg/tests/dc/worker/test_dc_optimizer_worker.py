@@ -7,10 +7,10 @@
 
 import logging
 from pathlib import Path
-from typing import Literal, Union
 from unittest.mock import patch
 
 import pytest
+from beartype.typing import Literal, Union
 from confluent_kafka import Consumer, Producer
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer

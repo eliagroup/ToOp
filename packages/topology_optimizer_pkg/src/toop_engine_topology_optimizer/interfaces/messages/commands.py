@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal, Union
 
+from beartype.typing import Annotated, Literal, Union
 from pydantic import AfterValidator, BaseModel, Field
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commons import GridFile

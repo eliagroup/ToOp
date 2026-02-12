@@ -17,6 +17,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     translate_nminus1_for_powsybl,
 )
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import run_contingency_analysis_powsybl
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.loadflow_result_helpers import (
     convert_pandas_loadflow_results_to_polars,
     convert_polars_loadflow_results_to_pandas,
@@ -30,13 +31,13 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
 
     pow_n1_def = translate_nminus1_for_powsybl(nminus1_definition, powsybl_bus_breaker_net)
-    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, "dc")
+    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, DISTRIBUTED_SLACK, "dc")
     assert all(result.branch_results["q1"].isna())
     assert all(result.bus_results["v_mag"].isna())
     assert result is not None
     assert basecase_name == "BASECASE"
 
-    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, "ac")
+    result, basecase_name = run_powsybl_analysis(powsybl_bus_breaker_net, pow_n1_def, DISTRIBUTED_SLACK, "ac")
     assert not all(result.branch_results["q1"].isna())
     assert not all(result.bus_results["v_mag"].isna())
     assert result is not None

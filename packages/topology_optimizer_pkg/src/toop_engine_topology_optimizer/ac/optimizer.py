@@ -312,7 +312,7 @@ def initialize_optimization(
         ACOptimTopology(
             actions=[],
             disconnections=[],
-            pst_setpoints=[0] * n_pst,
+            pst_setpoints=None,
             timestep=i,
             fitness=0,
             unsplit=True,

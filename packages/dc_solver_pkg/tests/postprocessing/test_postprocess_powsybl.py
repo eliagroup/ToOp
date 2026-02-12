@@ -292,7 +292,7 @@ def test_change_pst_matches_loadflows(
 
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     net.update_phase_tap_changers(id=pst_indices, tap=(abs_taps).tolist())
-    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc")
+    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", DISTRIBUTED_SLACK)
     pypowsybl.loadflow.run_dc(net)
     n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
 

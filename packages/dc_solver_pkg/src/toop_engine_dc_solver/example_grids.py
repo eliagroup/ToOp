@@ -1010,6 +1010,9 @@ def node_breaker_folder_powsybl(folder: Path) -> None:
     """Copy over all data from the data folder"""
     source = Path(__file__).parent.parent.parent / "tests" / "files" / "test_grid_node_breaker"
     shutil.copytree(source, folder, dirs_exist_ok=True)
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
 
 
 def three_node_pst_example_folder_powsybl(folder: Path) -> None:

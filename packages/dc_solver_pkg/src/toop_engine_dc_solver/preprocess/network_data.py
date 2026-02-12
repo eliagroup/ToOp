@@ -99,6 +99,12 @@ class NetworkData:
     controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
     value representing the angle shift for the given tap position. The taps are ordered smallest to largest angle shift."""
 
+    phase_shift_starting_tap_idx: Int[np.ndarray, " n_controllable_pst"]
+    """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
+
+    phase_shift_low_tap: Int[np.ndarray, " n_controllable_pst"]
+    """The lowest tap position for each controllable PST but in the original grid model."""
+
     monitored_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch is monitored"""
 
@@ -408,6 +414,8 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         asset_topology=interface.get_asset_topology(),
         controllable_phase_shift_mask=interface.get_controllable_phase_shift_mask(),
         phase_shift_taps=interface.get_phase_shift_taps(),
+        phase_shift_starting_tap_idx=interface.get_phase_shift_starting_taps(),
+        phase_shift_low_tap=interface.get_phase_shift_low_taps(),
         busbar_outage_map=interface.get_busbar_outage_map(),
     )
 
@@ -808,9 +816,17 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             type=network_data.branch_types[index],
             name=network_data.branch_names[index],
             kind="branch",
-            shift_steps=taps.tolist(),
+            starting_tap=start + low,  # Convert from index to absolute grid model tap position
+            low_tap=low,
+            high_tap=low + len(taps),
         )
-        for (index, taps) in zip(controllable_pst_indices, network_data.phase_shift_taps, strict=True)
+        for (index, start, low, taps) in zip(
+            controllable_pst_indices,
+            network_data.phase_shift_starting_tap_idx,
+            network_data.phase_shift_low_tap,
+            network_data.phase_shift_taps,
+            strict=True,
+        )
     ]
 
     return ActionSet(

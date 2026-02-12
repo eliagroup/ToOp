@@ -19,9 +19,7 @@ from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float
 from overrides import overrides
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
-from toop_engine_dc_solver.postprocess.abstract_runner import (
-    AbstractLoadflowRunner,
-)
+from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower import apply_station
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
@@ -333,9 +331,7 @@ class PandapowerRunner(AbstractLoadflowRunner):
 
     @overrides
     def run_dc_n_0(
-        self,
-        actions: list[int],
-        disconnections: list[int],
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[list[int]] = None
     ) -> LoadflowResultsPolars:
         """Run only the N-0 analysis, no N-1
 
@@ -346,12 +342,17 @@ class PandapowerRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
+        pst_setpoints : Optional[list[int]]
+            The list of phase shift tap setpoints to be applied. This is currently not supported and will raise
+            if not None
 
         Returns
         -------
         LoadflowResultsPolars
             The loadflow results with exactly one case, the BASECASE only.
         """
+        if pst_setpoints is not None and len(pst_setpoints) > 0:
+            raise NotImplementedError("Phase shift tap setpoints are not supported in the pandapower runner yet")
         assert self.net is not None, "Base grid must be loaded before running loadflow"
 
         net, self.last_action_info = apply_topology(self.net, actions, self.action_set)
@@ -366,7 +367,9 @@ class PandapowerRunner(AbstractLoadflowRunner):
         )
 
     @overrides
-    def run_dc_loadflow(self, actions: list[int], disconnections: list[int]) -> LoadflowResultsPolars:
+    def run_dc_loadflow(
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[list[int]] = None
+    ) -> LoadflowResultsPolars:
         """Run the DC loadflow on the grid.
 
         Parameters
@@ -376,16 +379,21 @@ class PandapowerRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
+        pst_setpoints : Optional[list[int]]
+            The list of phase shift tap setpoints to be applied. This is currently not supported and will raise
+            if not None
 
         Returns
         -------
         LoadflowResultsPolars
             The loadflow results with a full N-1 analysis.
         """
-        return self.run_loadflow(actions, disconnections, "dc")
+        return self.run_loadflow(actions, disconnections, pst_setpoints, "dc")
 
     @overrides
-    def run_ac_loadflow(self, actions: list[int], disconnections: list[int]) -> LoadflowResultsPolars:
+    def run_ac_loadflow(
+        self, actions: list[int], disconnections: list[int], pst_setpoints: Optional[list[int]] = None
+    ) -> LoadflowResultsPolars:
         """Run the AC loadflow on the grid.
 
         Parameters
@@ -395,19 +403,23 @@ class PandapowerRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
+        pst_setpoints : Optional[list[int]]
+            The list of phase shift tap setpoints to be applied. This is currently not supported and will raise
+            if not None
 
         Returns
         -------
         LoadflowResultsPolars
             The loadflow results with a full N-1 analysis
         """
-        return self.run_loadflow(actions, disconnections, "ac")
+        return self.run_loadflow(actions, disconnections, pst_setpoints, "ac")
 
     def run_loadflow(
         self,
         actions: list[int],
         disconnections: list[int],
-        method: Literal["ac", "dc"],
+        pst_setpoints: Optional[list[int]] = None,
+        method: Literal["ac", "dc"] = "dc",
     ) -> LoadflowResultsPolars:
         """Run the AC/DC loadflow on the grid
 
@@ -418,6 +430,9 @@ class PandapowerRunner(AbstractLoadflowRunner):
         disconnections : list[int]
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
+        pst_setpoints : Optional[list[int]]
+            The list of phase shift tap setpoints to be applied. This is currently not supported and will raise
+            if not None
         method : Literal["ac", "dc"]
             The method to use for the loadflow
 
@@ -426,6 +441,8 @@ class PandapowerRunner(AbstractLoadflowRunner):
         LoadflowResultsPolars
             The results of the loadflow
         """
+        if pst_setpoints is not None and len(pst_setpoints) > 0:
+            raise NotImplementedError("Phase shift tap setpoints are not supported in the pandapower runner yet")
         net, self.last_action_info = apply_topology(self.net, actions, self.action_set)
         net = apply_disconnections(net, disconnections, self.action_set)
 

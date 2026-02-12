@@ -43,6 +43,7 @@ from toop_engine_dc_solver.example_grids import (
     case57_data_powsybl,
     node_breaker_folder_powsybl,
     oberrhein_data,
+    three_node_pst_example_folder_powsybl,
 )
 from toop_engine_dc_solver.jax.injections import (
     convert_action_index_to_numpy,
@@ -1150,6 +1151,20 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
     return tmp_path
 
 
+@pytest.fixture(scope="function")
+def three_node_pst_example_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("three_node_pst_example")
+    three_node_pst_example_folder_powsybl(tmp_path)
+    filesystem_dir = DirFileSystem(str(tmp_path))
+    _info, _static_information, _ = load_grid(
+        data_folder_dirfs=filesystem_dir,
+        pandapower=False,
+        status_update_fn=None,
+        parameters=PreprocessParameters(enable_nodal_inj_optim=True),
+    )
+    return tmp_path
+
+
 @pytest.fixture
 def default_nodal_inj_start_options(static_information: StaticInformation):
     """Create default nodal injection start options for tests.
@@ -1164,7 +1179,7 @@ def default_nodal_inj_start_options(static_information: StaticInformation):
     batch_size = 1
 
     return NodalInjStartOptions(
-        previous_results=NodalInjOptimResults(pst_taps=jnp.zeros((batch_size, n_timesteps, n_pst), dtype=jnp.float32)),
+        previous_results=NodalInjOptimResults(pst_tap_idx=jnp.zeros((batch_size, n_timesteps, n_pst), dtype=jnp.float32)),
         precision_percent=jnp.array(1.0),
     )
 

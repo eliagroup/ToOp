@@ -498,6 +498,7 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
             substation_split_prob=0,
             n_worst_contingencies=2,
             pst_mutation_sigma=3.0,
+            enable_nodal_inj_optim=True,
             target_metrics=(("overload_energy_n_1", 1.0),),
             observed_metrics=("overload_energy_n_1", "split_subs"),
             me_descriptors=(DescriptorDef(metric="split_subs", num_cells=2),),

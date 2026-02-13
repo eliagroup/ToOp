@@ -1,0 +1,87 @@
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+name: docs
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["release"]
+    types:
+      - completed
+
+permissions: {}
+
+env:
+  CHANGELOG_FILE: "docs/changelog.md"
+
+jobs:
+  publish-docs:
+    runs-on: ubuntu-latest
+    environment: docs
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          fetch-depth: 0 # fetch full history
+          fetch-tags: true # ensure tags are fetched
+          persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
+          ssh-key: ${{ secrets.RELEASE_KEY }}
+
+      - name: Configure git profile
+        run: |
+          git config user.name "ToOp Build Service"
+          git config user.email ToOp@eliagroup.eu
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
+
+      - name: "Set up Python"
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Build documentation
+        run: |
+          echo "Getting releases"
+          releases=$(gh release list --json name | jq -r 'reverse | .[].name')
+
+          for release in $releases; do
+              echo "Building documentation for version $release"
+
+              echo "Checking out commit tag"
+              git checkout $release --force
+
+              echo "Adding changelog to mkdocs nav"
+              echo "  - Changelog: changelog.md" >> mkdocs.yml
+
+              echo "Fetching release url"
+              url=$(gh release view $release --json url | jq -r '.url')
+              echo "# [$release]($url)" > $CHANGELOG_FILE   
+              
+              echo "Fetching release body"
+              body=$(gh release view $release --json body | jq -r '.body')
+              echo "$body" >> $CHANGELOG_FILE
+
+              echo "Writing to gh-pages branch"
+              uv run mike deploy --update-aliases $release latest
+          done
+
+      - name: Set default version tag
+        run: |
+          uv run mike set-default latest --allow-empty
+
+      - name: Publish documentation
+        run: |
+          git checkout gh-pages --force
+          git push origin gh-pages --force

@@ -64,8 +64,13 @@ jobs:
           if [ "$isDevRelease" = "true" ]; then
             newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes --devrelease $GITHUB_RUN_ID)
           else
-            newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes)
-          fi 
+            BUMP_TYPE="${{ inputs.bump_type }}"
+            if [ "$BUMP_TYPE" = "auto" ]; then
+              newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes)
+            else
+              newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes --increment "$BUMP_TYPE")
+            fi
+          fi
 
           if [[ -z "$newVersion" ]]; then
             echo "No new version to release. Exiting."

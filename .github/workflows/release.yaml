@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0 # fetch full history
           fetch-tags: true # ensure tags are fetched
-          ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
+          ssh-key: ${{ secrets.RELEASE_KEY }}
           persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
 
       - name: Install uv

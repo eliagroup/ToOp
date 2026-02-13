@@ -64,11 +64,11 @@ jobs:
           if [ "$isDevRelease" = "true" ]; then
             newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes --devrelease $GITHUB_RUN_ID)
           else
-            BUMP_TYPE="${{ inputs.bump_type }}"
-            if [ "$BUMP_TYPE" = "auto" ]; then
+            bumpType="${{ inputs.bump_type }}"
+            if [ "$bumpType" = "auto" ]; then
               newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes)
             else
-              newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes --increment "$BUMP_TYPE")
+              newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes --increment "$bumpType")
             fi
           fi
 

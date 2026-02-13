@@ -52,6 +52,8 @@ jobs:
         run: uv sync --frozen
 
       - name: Build documentation
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           echo "Getting releases"
           releases=$(gh release list --json name | jq -r 'reverse | .[].name')

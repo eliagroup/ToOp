@@ -12,6 +12,83 @@ repo_name: EliaGroup-OpenSource/ToOp
 
 copyright: Copyright &copy; 2026 <a href="https://www.eliagroup.eu/">50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV</a>. Correspondence to <a href="mailto:toop@eliagroup.eu">toop@eliagroup.eu</a>.
 strict: true
+
+theme:
+  name: material
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+      repo: fontawesome/brands/github
+  logo: assets/elia-group-logo.png
+  features:
+    - navigation.instant
+    # - navigation.sections # Collapsible navigation sections
+    - navigation.tabs
+    - navigation.expand: false
+    - navigation.top
+    - content.code.copy # Adds a copy button to code blocks for easy copying
+    # - toc.integrate # Integrates the table of contents into the page for better navigation
+
+plugins:
+  - techdocs-core # Core plugin for MkDocs TechDocs (DeveloperHub configuration)
+  - autorefs # Automatically generates references for links in the documentation
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_root_heading: true
+            show_if_no_docstring: true
+            inherited_members: true
+            members_order: source
+            separate_signature: true
+            unwrap_annotated: true
+            merge_init_into_class: true
+            docstring_section_style: spacy
+            signature_crossrefs: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            docstring_style: numpy
+          paths:
+            - packages/dc_solver_pkg/src
+            - packages/contingency_analysis_pkg/src
+            - packages/interfaces_pkg/src
+            - packages/grid_helpers_pkg/src
+            - packages/topology_optimizer_pkg/src
+            - packages/importer_pkg/src
+            - notebooks/
+            - .
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - toc:
+      permalink: "#"
+
+extra:
+  version:
+    provider: mike
+
 nav:
   - Getting started:
     - Introduction: index.md
@@ -101,79 +178,3 @@ nav:
   - Benchmark:
     - benchmark.md
     - Code Reference: references/reference_benchmark.md
-
-theme:
-  name: material
-  palette:
-    # Palette toggle for light mode
-    - scheme: default
-      primary: custom
-      accent: custom
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    # Palette toggle for dark mode
-    - scheme: slate
-      primary: custom
-      accent: custom
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
-  icon:
-      repo: fontawesome/brands/github
-  logo: assets/elia-group-logo.png
-  features:
-    - navigation.instant
-    # - navigation.sections # Collapsible navigation sections
-    - navigation.tabs
-    - navigation.expand: false
-    - navigation.top
-    - content.code.copy # Adds a copy button to code blocks for easy copying
-    # - toc.integrate # Integrates the table of contents into the page for better navigation
-
-plugins:
-  - techdocs-core # Core plugin for MkDocs TechDocs (DeveloperHub configuration)
-  - autorefs # Automatically generates references for links in the documentation
-  - mkdocstrings:
-      handlers:
-        python:
-          options:
-            show_root_heading: true
-            show_if_no_docstring: true
-            inherited_members: true
-            members_order: source
-            separate_signature: true
-            unwrap_annotated: true
-            merge_init_into_class: true
-            docstring_section_style: spacy
-            signature_crossrefs: true
-            show_symbol_type_heading: true
-            show_symbol_type_toc: true
-            docstring_style: numpy
-          paths:
-            - packages/dc_solver_pkg/src
-            - packages/contingency_analysis_pkg/src
-            - packages/interfaces_pkg/src
-            - packages/grid_helpers_pkg/src
-            - packages/topology_optimizer_pkg/src
-            - packages/importer_pkg/src
-            - notebooks/
-            - .
-extra_css:
-  - stylesheets/extra.css
-
-markdown_extensions:
-  - admonition:
-  - pymdownx.highlight:
-      anchor_linenums: true
-      line_spans: __span
-      pygments_lang_class: true
-  - pymdownx.inlinehilite
-  - pymdownx.snippets
-  - pymdownx.superfences
-  - toc:
-      permalink: "#"
-
-extra:
-  version:
-    provider: mike

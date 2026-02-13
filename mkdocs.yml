@@ -173,3 +173,7 @@ markdown_extensions:
   - pymdownx.superfences
   - toc:
       permalink: "#"
+
+extra:
+  version:
+    provider: mike

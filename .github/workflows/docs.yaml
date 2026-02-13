@@ -63,6 +63,11 @@ jobs:
               git checkout $release --force
 
               echo "Adding changelog to mkdocs nav"
+              # NOTE:
+              # - We are in a detached HEAD after checking out the tag above.
+              # - The change to mkdocs.yml is temporary and only used for this build.
+              # - It is discarded when the workflow checks out the next tag or the gh-pages branch.
+              # - We intentionally mutate mkdocs.yml in-place here instead of maintaining a separate config file.
               echo "  - Changelog: changelog.md" >> mkdocs.yml
 
               echo "Fetching release url"

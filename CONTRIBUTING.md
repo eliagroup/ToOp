@@ -28,61 +28,6 @@ We use [trunk-based development](https://trunkbaseddevelopment.com/):
    - All feature and fix branches should target `main`
    - Ensure your changes are tested and pass all CI checks before requesting review
 
-## Commit Message Standards
-
-We enforce [Conventional Commits](https://www.conventionalcommits.org/) for all commits and Developer Certificate of Origin (DCO). Each commit message must follow this format:
-
-```
-<type>[optional scope]: <description>
-
-[optional body]
-
-[optional footer(s)]
-
-Signed-off-by: FirstName LastName <something@example.org>
-```
-
-### Commit Types
-
-- `feat`: A new feature
-- `fix`: A bug fix
-- `docs`: Documentation only changes
-- `style`: Changes that do not affect the meaning of the code
-- `refactor`: A code change that neither fixes a bug nor adds a feature
-- `perf`: A code change that improves performance
-- `test`: Adding missing tests or correcting existing tests
-- `chore`: Changes to the build process or auxiliary tools
-
-### Developer Certificate of Origin
-
-You can add the sign-off manually, or use Git's `-s` option to include it automatically.
-
-```
-$ git commit -s
-```
-
-According to [Git](https://git-scm.com/docs/git-config#Documentation/git-config.txt-formatsignOff)'s own docs:
-> Adding the Signed-off-by trailer to a patch should be a conscious act and means that you certify you have the rights to submit this work under the same open source license.
-
-### Examples
-
-```bash
-feat: add user authentication system
-
-Signed-off-by: FirstName LastName <something@example.org>
----------------------------------------------------------
-
-fix(api): resolve memory leak in data processing
-
-Signed-off-by: FirstName LastName <something@example.org>
----------------------------------------------------------
-
-docs: update installation instructions
-
-Signed-off-by: FirstName LastName <something@example.org>
-```
-
-
 ## Local Development Setup
 
 We provide a [Development Container](https://containers.dev/) configuration that sets up a complete development environment with all dependencies and tools pre-configured.
@@ -171,19 +116,75 @@ The release process is automated through `.github/workflows/release.yaml`:
 1. **Create a Branch**: Create a new branch from the `main` branch
 2. **Make Changes**: Implement your feature or fix
 3. **Write Tests**: Ensure your changes are covered by tests
-4. **Commit**: Use conventional commit messages
-5. **Push**: Push your branch to the repository
-6. **Open PR**: Create a pull request targeting the `main` branch
+4. **Push**: Push your branch to the repository
+5. **Open PR**: Create a pull request targeting the `main` branch
 
 ### PR Requirements
 
 - Single purpose: Each PR should contain one type of change - either a feature, a bugfix, or a refactor. Avoid mixing different types of changes in a single PR
-- All commits must pass conventional commit validation
+- Title of the pull request must pass conventional commit validation
 - Code must pass all pre-commit hooks
 - Tests must pass.
    - Code coverage must be over 90% and aimed for 100%.
    - Test locally by running `uv run pytest`
 - Documentation should be updated if needed
+
+#### PR Commit Message Standards
+
+We require [Conventional Commits](https://www.conventionalcommits.org/) and Developer Certificate of Origin (DCO) for each commit in the main branch. These commits are created when a pull request is squashed into the main branch.
+
+Each commit message must follow this format:
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+
+Signed-off-by: FirstName LastName <something@example.org>
+```
+
+##### Commit Types
+
+- `feat`: A new feature
+- `fix`: A bug fix
+- `docs`: Documentation only changes
+- `style`: Changes that do not affect the meaning of the code
+- `refactor`: A code change that neither fixes a bug nor adds a feature
+- `perf`: A code change that improves performance
+- `test`: Adding missing tests or correcting existing tests
+- `chore`: Changes to the build process or auxiliary tools
+
+#### Developer Certificate of Origin
+
+You can add the sign-off manually, or use Git's `-s` option to include it automatically.
+
+```
+$ git commit -s
+```
+
+According to [Git](https://git-scm.com/docs/git-config#Documentation/git-config.txt-formatsignOff)'s own docs:
+> Adding the Signed-off-by trailer to a patch should be a conscious act and means that you certify you have the rights to submit this work under the same open source license.
+
+##### Examples
+
+```bash
+feat: add user authentication system
+
+Signed-off-by: FirstName LastName <something@example.org>
+---------------------------------------------------------
+
+fix(api): resolve memory leak in data processing
+
+Signed-off-by: FirstName LastName <something@example.org>
+---------------------------------------------------------
+
+docs: update installation instructions
+
+Signed-off-by: FirstName LastName <something@example.org>
+```
+
 
 ## Getting Help
 

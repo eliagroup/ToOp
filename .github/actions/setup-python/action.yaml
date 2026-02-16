@@ -1,0 +1,40 @@
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+name: 'Setup Python Environment and Install Dependencies'
+description: 'Sets up Python environment and installs dependencies using uv'
+
+inputs:
+  uv-version:
+    description: 'Version of uv to install'
+    required: false
+    default: '0.9.0'
+  python-version-file:
+    description: 'Path to the file containing the Python version'
+    required: false
+    default: 'pyproject.toml'
+  sync-args:
+    description: 'Additional arguments to pass to uv sync'
+    required: false
+    default: '--all-groups --all-extras --frozen'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
+      with:
+        version: ${{ inputs.uv-version }}
+
+    - name: Set up Python
+      uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+      with:
+        python-version-file: ${{ inputs.python-version-file }}
+
+    - name: Install dependencies
+      shell: bash
+      run: uv sync ${{ inputs.sync-args }}

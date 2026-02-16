@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-name: CI - Tests and SonarQube
+name: Continuous Integration
 
 on: push
 
@@ -14,19 +14,13 @@ permissions: {}
 env:
   PYTEST_ON_CI: True
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   test-packages-toop-runner:
     permissions:
       contents: read
-      pull-requests: read
     strategy:
       # Only one job of matrix:
       # https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations
-      max-parallel: 3
       fail-fast: false
       matrix:
         include:
@@ -35,10 +29,9 @@ jobs:
           - package: importer_pkg
     runs-on: Runner-ToOp-Projects
     steps:
-      - name: Find actions
+      - name: Check out repository code
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
-        with:
-          fetch-depth: 1
+
       - name: Run package tests
         uses: ./.github/actions/run-package-tests
         with:
@@ -48,7 +41,6 @@ jobs:
   test-packages-github-runner:
     permissions:
       contents: read
-      pull-requests: read
     strategy:
       fail-fast: false
       matrix:
@@ -61,13 +53,6 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
-
-      - name: "Set up Python"
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
-        with:
-          fetch-depth: 1
       - name: Run package tests
         uses: ./.github/actions/run-package-tests
         with:
@@ -79,7 +64,6 @@ jobs:
     if: success()
     permissions:
       contents: read
-      pull-requests: read
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
@@ -108,18 +92,164 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  code-quality-checks:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Setup Python and install dependencies
+        uses: ./.github/actions/setup-python
+
+      - name: set PY
+        run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
+
+      - name: Configure pre-commit cache
+        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit|${{ env.PY }}|${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Install pre-commit hooks
+        run: uv run pre-commit install
+
+      - name: Run code quality checks
+        run: uv run pre-commit run --all-files
+
+  # Run after ensuring that requirements are up to date
+  test-pip-install:
+    needs: [code-quality-checks]
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Set up Python
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+  license-headers:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: License Header Check
+        uses: B1NARY-GR0UP/nwa@924fd990a1769a8198a3cc5d2a83f72a41a51951
+        with:
+          version: latest # (optional) version of nwa to use; default: latest
+          cmd: check # (optional) command to execute; options: `check`, `add`, `update`, `remove`; default: check
+          path: .nwa-config.yaml # (optional) configuration file path; default: .nwa-config.yaml
+
+  fossa-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - id: fossa-analyze
+        uses: fossas/fossa-action@3ebcea1862c6ffbd5cf1b4d0bd6b3fe7bd6f2cac # Use a specific version if locking is preferred
+        with:
+          api-key: ${{secrets.FOSSA_API_KEY}}
+          run-tests: false # Add another run with run-tests: true if ci should fail on issues
+
+      - id: fossa-test
+        uses: fossas/fossa-action@3ebcea1862c6ffbd5cf1b4d0bd6b3fe7bd6f2cac # Use a specific version if locking is preferred
+        with:
+          api-key: ${{secrets.FOSSA_API_KEY}}
+          run-tests: true # Add another run with run-tests: true if ci should fail on issues
+
+  test-docs-build:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Setup Python and install dependencies
+        uses: ./.github/actions/setup-python
+        with:
+          sync-args: "--only-group doc --frozen"
+
+      - name: Conditional Deployment
+        run: uv run mkdocs build
+
+  test-example-notebooks:
+    permissions:
+      contents: read
+    runs-on:
+      labels: Runner-ToOp-Projects
+    timeout-minutes: 10
+    env:
+      UV_PROJECT: ./
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Setup Python and install dependencies
+        uses: ./.github/actions/setup-python
+
+      - name: Verify jupyter installation
+        run: uv run jupyter --version
+
+      - name: Test example notebooks
+        run: uv run pytest -n auto --dist loadgroup notebooks/tests
+
   ci-success-check:
-    needs: [sonarqube]
+    needs:
+      [
+        code-quality-checks,
+        fossa-scan,
+        license-headers,
+        sonarqube,
+        test-docs-build,
+        test-example-notebooks,
+        test-packages-github-runner,
+        test-packages-toop-runner,
+        test-pip-install,
+      ]
     if: always()
     permissions:
       contents: read
-      pull-requests: read
     runs-on: ubuntu-latest
     steps:
-      - name: Check test results
+      - name: Check all job results
         run: |
-          if [[ "${{ needs.sonarqube.result }}" != "success" ]]; then
-            echo "CI pipeline failed or was cancelled. Marking final job as failed."
+          echo "Code Quality: ${{ needs.code-quality-checks.result }}"
+          echo "FOSSA Scan: ${{ needs.fossa-scan.result }}"
+          echo "License Headers: ${{ needs.license-headers.result }}"
+          echo "SonarQube: ${{ needs.sonarqube.result }}"
+          echo "Test Docs Build: ${{ needs.test-docs-build.result }}"
+          echo "Test Example Notebooks: ${{ needs.test-example-notebooks.result }}"
+          echo "Test Packages (GitHub Runner): ${{ needs.test-packages-github-runner.result }}"
+          echo "Test Packages (ToOp Runner): ${{ needs.test-packages-toop-runner.result }}"
+          echo "Test Pip Install: ${{ needs.test-pip-install.result }}"
+
+          if [[ "${{ needs.code-quality-checks.result }}" != "success" ]] || \
+             [[ "${{ needs.fossa-scan.result }}" != "success" ]] || \
+             [[ "${{ needs.license-headers.result }}" != "success" ]] || \
+             [[ "${{ needs.sonarqube.result }}" != "success" ]] || \
+             [[ "${{ needs.test-docs-build.result }}" != "success" ]] || \
+             [[ "${{ needs.test-example-notebooks.result }}" != "success" ]] || \
+             [[ "${{ needs.test-packages-github-runner.result }}" != "success" ]] || \
+             [[ "${{ needs.test-packages-toop-runner.result }}" != "success" ]] || \
+             [[ "${{ needs.test-pip-install.result }}" != "success" ]]; then
+            echo "One or more CI jobs failed, were cancelled, or skipped. Marking as failed."
             exit 1
           fi
-      
+          echo "All CI jobs succeeded."

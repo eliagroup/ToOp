@@ -161,14 +161,15 @@ def optimization_loop(
     start_time = time.time()
     while running:
         try:
-            run_epoch(optimizer_data, worker_data.result_consumer, send_result_fn, epoch=epoch)
+            epoch_with_work = run_epoch(optimizer_data, worker_data.result_consumer, send_result_fn, epoch=epoch)
+            # Only increase the epoch if there was actually work done, i.e. a new strategy was polled and evaluated
+            epoch += bool(epoch_with_work)
         except Exception as e:
             # Send a stop message to the results
             send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
             logger.error(f"Error during optimization {optimization_id}, epoch {epoch}: {e}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return
-        epoch += 1
 
         if time.time() - start_time > ac_params.ga_config.runtime_seconds:
             logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")

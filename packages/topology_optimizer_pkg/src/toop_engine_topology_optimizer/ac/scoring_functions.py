@@ -7,12 +7,11 @@
 
 """Scoring functions for the AC optimizer - in this case this runs an N-1 and computes metrics for it"""
 
-from typing import Optional
-
 import logbook
 import numpy as np
 import pandas as pd
 import polars as pl
+from beartype.typing import Optional
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics as compute_metrics_lfs
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_interfaces.asset_topology import RealizedTopology
@@ -126,6 +125,7 @@ def compute_loadflow_and_metrics(
     lfs, additional_info = compute_loadflow(
         actions=[topo.actions for topo in strategy],
         disconnections=[topo.disconnections for topo in strategy],
+        pst_setpoints=[topo.pst_setpoints for topo in strategy],
         runners=runners,
         n_timestep_processes=n_timestep_processes,
     )
@@ -250,6 +250,7 @@ def compute_loadflow_and_metrics_with_early_stopping(
         lfs_non_critical, additional_info_non_critical = compute_loadflow(
             actions=[topo.actions for topo in strategy],
             disconnections=[topo.disconnections for topo in strategy],
+            pst_setpoints=[topo.pst_setpoints for topo in strategy],
             runners=runners,
             n_timestep_processes=n_timestep_processes,
         )
@@ -443,6 +444,7 @@ def compute_metrics_single_timestep(
 def compute_loadflow(
     actions: list[list[int]],
     disconnections: list[list[int]],
+    pst_setpoints: list[Optional[list[int]]],
     runners: list[AbstractLoadflowRunner],
     n_timestep_processes: int = 1,  # noqa: ARG001
 ) -> tuple[LoadflowResultsPolars, list[AdditionalActionInfo]]:
@@ -456,6 +458,9 @@ def compute_loadflow(
     disconnections : list[list[int]]
         The disconnections for each timestep, where the outer list is the timestep dimension and
         the inner list the disconnection indices
+    pst_setpoints : list[Optional[list[int]]]
+        The PST setpoints for each timestep, where the outer list is the timestep dimension and the inner list the PST taps
+        if computed.
     runners : list[AbstractLoadflowRunner]
         The loadflow runners to use
     n_timestep_processes : int
@@ -471,8 +476,8 @@ def compute_loadflow(
     """
     lf_results = []
     additional_information = []
-    for action, disconnection, runner in zip(actions, disconnections, runners, strict=True):
-        loadflow = runner.run_ac_loadflow(action, disconnection)
+    for action, disconnection, pst_setpoint, runner in zip(actions, disconnections, pst_setpoints, runners, strict=True):
+        loadflow = runner.run_ac_loadflow(action, disconnection, pst_setpoint)
         lf_results.append(loadflow)
         additional_information.append(runner.get_last_action_info())
 

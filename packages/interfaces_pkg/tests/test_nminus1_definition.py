@@ -103,10 +103,7 @@ def test_slice_n_minus_1_definition(example_nminus1_definition: Nminus1Definitio
     assert len(n_minus_1_definition_slice.monitored_elements) == len(n_minus_1_definition.monitored_elements), (
         "All monitored elements should be included in the slice"
     )
-    assert (
-        n_minus_1_definition_slice.loadflow_parameters.distributed_slack
-        == n_minus_1_definition.loadflow_parameters.distributed_slack
-    ), "Loadflow parameters should match the original definition"
+
     n_minus_1_definition_slice = n_minus_1_definition[0:2]
     assert len(n_minus_1_definition_slice.contingencies) == 2, "Two contingencies should be selected"
     assert n_minus_1_definition_slice.contingencies[0].id == n_minus_1_definition.contingencies[0].id, (
@@ -118,10 +115,6 @@ def test_slice_n_minus_1_definition(example_nminus1_definition: Nminus1Definitio
     assert len(n_minus_1_definition_slice.monitored_elements) == len(n_minus_1_definition.monitored_elements), (
         "All monitored elements should be included in the slice"
     )
-    assert (
-        n_minus_1_definition_slice.loadflow_parameters.distributed_slack
-        == n_minus_1_definition.loadflow_parameters.distributed_slack
-    ), "Loadflow parameters should match the original definition"
 
     pick_by_id = n_minus_1_definition.contingencies[1].id
     n_minus_1_definition_slice = n_minus_1_definition[pick_by_id]
@@ -130,7 +123,3 @@ def test_slice_n_minus_1_definition(example_nminus1_definition: Nminus1Definitio
     assert len(n_minus_1_definition_slice.monitored_elements) == len(n_minus_1_definition.monitored_elements), (
         "All monitored elements should be included in the slice"
     )
-    assert (
-        n_minus_1_definition_slice.loadflow_parameters.distributed_slack
-        == n_minus_1_definition.loadflow_parameters.distributed_slack
-    ), "Loadflow parameters should match the original definition"

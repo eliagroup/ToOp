@@ -11,10 +11,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Callable, Optional
 
 import logbook
 import numpy as np
+import pypowsybl
+from beartype.typing import Callable, Optional
 from fsspec import AbstractFileSystem
 from numpy.random import Generator as Rng
 from sqlmodel import Session
@@ -25,6 +26,7 @@ from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import Lo
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
@@ -148,6 +150,7 @@ def make_runner(
     n_processes: int,
     batch_size: Optional[int],
     processed_gridfile_fs: AbstractFileSystem,
+    lf_params: pypowsybl.loadflow.Parameters | dict | None = None,
 ) -> AbstractLoadflowRunner:
     """Initialize a runner for a gridfile, action set and n-1 def
 
@@ -170,6 +173,11 @@ def make_runner(
         Internally, only the data folder is passed around as a dirfs.
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
+    lf_params: Optional[pypowsybl.loadflow.Parameters | dict]
+        The loadflow parameters to use for the runner, if any. This is passed in the preprocessing results
+        and can be used to run the loadflows with the same parameters
+        as the initial loadflow in the preprocessing step.
+        If None, the runner will use default parameters.
 
     Returns
     -------
@@ -177,10 +185,16 @@ def make_runner(
         The initialized loadflow runner, either Pandapower or Powsybl
     """
     if grid_file.framework == Framework.PANDAPOWER:
-        runner = PandapowerRunner(n_processes=n_processes, batch_size=batch_size)
+        runner = PandapowerRunner(
+            n_processes=n_processes, batch_size=batch_size, lf_params=lf_params if isinstance(lf_params, dict) else None
+        )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     elif grid_file.framework == Framework.PYPOWSYBL:
-        runner = PowsyblRunner(n_processes=n_processes, batch_size=batch_size)
+        runner = PowsyblRunner(
+            n_processes=n_processes,
+            batch_size=batch_size,
+            lf_params=lf_params if isinstance(lf_params, pypowsybl.loadflow.Parameters) else None,
+        )
         grid_file_path = Path(grid_file.grid_folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     else:
         raise ValueError(f"Unknown framework {grid_file.framework}")
@@ -244,6 +258,12 @@ def initialize_optimization(
         )
         for grid_file in grid_files
     ]
+
+    lf_params = [
+        load_lf_params_from_fs(filesystem=processed_gridfile_fs, file_path=grid_file.loadflow_parameters_file)
+        for grid_file in grid_files
+    ]
+
     base_case_ids = [(n1def.base_case.id if n1def.base_case is not None else None) for n1def in nminus1_definitions]
 
     num_psts = [len(action_set.pst_ranges) for action_set in action_sets]
@@ -257,8 +277,11 @@ def initialize_optimization(
             n_processes=ga_config.runner_processes,
             batch_size=ga_config.runner_batchsize,
             processed_gridfile_fs=processed_gridfile_fs,
+            lf_params=lf_param,
         )
-        for action_set, nminus1_definition, grid_file in zip(action_sets, nminus1_definitions, grid_files, strict=True)
+        for action_set, nminus1_definition, grid_file, lf_param in zip(
+            action_sets, nminus1_definitions, grid_files, lf_params, strict=True
+        )
     ]
 
     # Prepare the evolution function
@@ -289,7 +312,7 @@ def initialize_optimization(
         ACOptimTopology(
             actions=[],
             disconnections=[],
-            pst_setpoints=[0] * n_pst,
+            pst_setpoints=None,
             timestep=i,
             fitness=0,
             unsplit=True,

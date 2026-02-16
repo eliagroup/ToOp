@@ -16,10 +16,10 @@ Note: this module currently ignores generator and load reassignments.
 """
 
 from pathlib import Path
-from typing import Optional, Union
 
 import logbook
 import pandas as pd
+from beartype.typing import Optional, Union
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
 from toop_engine_interfaces.asset_topology import BusbarCoupler, Station, Topology
 

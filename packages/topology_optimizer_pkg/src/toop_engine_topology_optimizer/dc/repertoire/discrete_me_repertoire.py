@@ -16,11 +16,11 @@ algorithm as well as several variants. Adapted from QDax
 from __future__ import annotations
 
 from functools import partial
-from typing import Optional, Tuple, Union
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+from beartype.typing import Optional, Tuple, Union
 from jax_dataclasses import Static, pytree_dataclass
 from jaxtyping import Array, Float, Int, PyTree, Shaped
 from qdax.custom_types import Descriptor, ExtraScores, Fitness, Genotype, RNGKey

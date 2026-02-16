@@ -26,7 +26,6 @@ from toop_engine_dc_solver.jax.types import (
     SolverConfig,
     int_max,
 )
-from toop_engine_interfaces.stored_action_set import PSTRange
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
     Genotype,
     deduplicate_genotypes,
@@ -70,7 +69,6 @@ METRICS = {
 # The scoring function runs the loadflow and computes the overload energy
 def compute_overloads(
     topologies: Genotype,
-    nodal_inj_start_options: NodalInjStartOptions,
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
     observed_metrics: tuple[MetricType, ...],
@@ -84,8 +82,6 @@ def compute_overloads(
         The topologies to score, where the first max_num_splits entries are the substations, the
         second max_num_splits entries are the branch topos and the last max_num_splits entries are
         the injection topos
-    nodal_inj_start_options : NodalInjStartOptions
-        The nodal injection optimization start options
     dynamic_information : DynamicInformation
         The dynamic information of the grid
     solver_config : SolverConfig
@@ -104,13 +100,13 @@ def compute_overloads(
     Bool[Array, " batch_size"]
         Whether the topologies were successfully solved
     """
-    topo_comp, disconnections = translate_topology(topologies)
+    topo_comp, disconnections, nodal_inj_start = translate_topology(topologies)
 
     lf_res, success = compute_symmetric_batch(
         topology_batch=topo_comp,
         disconnection_batch=disconnections,
         injections=None,  # Use from action set
-        nodal_inj_start_options=nodal_inj_start_options,
+        nodal_inj_start_options=nodal_inj_start,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
     )
@@ -196,11 +192,9 @@ def scoring_function(
         injection optimization.
     """
     n_topologies = len(topologies.action_index)
-    nodal_inj_start_options = make_start_options(topologies.nodal_injections_optimized)
 
     metrics, nodal_injections_optimized, success = compute_overloads(
         topologies=topologies,
-        nodal_inj_start_options=nodal_inj_start_options,
         dynamic_information=dynamic_informations[0],
         solver_config=solver_configs[0],
         observed_metrics=observed_metrics,
@@ -210,7 +204,6 @@ def scoring_function(
     for dynamic_information, solver_config in zip(dynamic_informations[1:], solver_configs[1:], strict=True):
         metrics_local, _nodal_injections_optimized_local, success_local = compute_overloads(
             topologies=topologies,
-            nodal_inj_start_options=nodal_inj_start_options,
             dynamic_information=dynamic_information,
             solver_config=solver_config,
             observed_metrics=observed_metrics,
@@ -249,6 +242,7 @@ def translate_topology(
 ) -> tuple[
     ActionIndexComputations,
     Int[Array, " batch_size max_num_disconnections"],
+    NodalInjStartOptions | None,
 ]:
     """Translate the topology into the format used by the solver.
 
@@ -263,6 +257,8 @@ def translate_topology(
         The topology computations
     Int[Array, " batch_size max_num_disconnections"]
         The branch disconnections to apply
+    NodalInjStartOptions | None
+        The nodal injection optimization start options containing pst taps, or None if no PST optimization
     """
     batch_size, _max_num_splits = topology.action_index.shape
 
@@ -274,7 +270,9 @@ def translate_topology(
         pad_mask=jnp.ones((batch_size,), dtype=bool),
     )
 
-    return topo_comp, topology.disconnections
+    nodal_inj_start = make_start_options(topology.nodal_injections_optimized)
+
+    return topo_comp, topology.disconnections, nodal_inj_start
 
 
 def filter_repo(
@@ -313,28 +311,11 @@ def filter_repo(
     return repertoire
 
 
-def find_pst_tap(shift_angle: float, pst_setpoints: PSTRange) -> int:
-    """Find the index of the closest PST tap to the shift angle.
-
-    Parameters
-    ----------
-    shift_angle : float
-        The shift angle to find the closest PST tap for
-    pst_setpoints : PSTRange
-        The PST setpoints to use
-
-    Returns
-    -------
-    int
-        The index of the closest PST tap
-    """
-    angles = np.array(pst_setpoints.shift_steps)
-    # Find the index of the closest angle
-    closest_index = np.argmin(np.abs(angles - shift_angle))
-    return closest_index.item()
-
-
-def convert_to_topologies(repertoire: DiscreteMapElitesRepertoire, contingency_ids: list[str]) -> list[Topology]:
+def convert_to_topologies(
+    repertoire: DiscreteMapElitesRepertoire,
+    contingency_ids: list[str],
+    grid_model_low_tap: Int[Array, " n_controllable_psts"] | None = None,
+) -> list[Topology]:
     """Take a repertoire and convert it to a list of kafka-sendable topologies.
 
     Parameters
@@ -343,6 +324,10 @@ def convert_to_topologies(repertoire: DiscreteMapElitesRepertoire, contingency_i
         The repertoire to convert. You might want to filter it using filter_repo first.
     contingency_ids : list[str]
         The contingency IDs for each topology
+    grid_model_low_tap : Int[Array, " n_controllable_psts"] | None
+        The lowest tap value in the grid model, used to convert the relative tap values in the genotype to absolute tap
+        values that can be sent to the kafka topics. This will only be read if nodal_injection results are present
+        in the genotype.
 
     Returns
     -------
@@ -357,13 +342,20 @@ def convert_to_topologies(repertoire: DiscreteMapElitesRepertoire, contingency_i
         action_indices = [int(act) for act in iter_repertoire.genotypes.action_index if act != int_max()]
 
         disconnections = [int(disc) for disc in iter_repertoire.genotypes.disconnections if disc != int_max()]
-        # TODO action set is not yet available, make it available in the optimizer
+
         nodal_inj = iter_repertoire.genotypes.nodal_injections_optimized
-        pst_setpoints = []
+        pst_setpoints = None
         if nodal_inj is not None:
-            pst_setpoints = [int(pst_taps) for pst_taps in nodal_inj.pst_taps]
-        # pst_setpoints = [find_pst_tap(shift_angle, pst_range) for (shift_angle, pst_range) in
-        #  zip(iter_repertoire.genotypes.nodal_injections_optimized.pst_taps, action_set.pst_ranges, strict=True)]
+            assert grid_model_low_tap is not None, (
+                "grid_model_low_tap must be provided if nodal_injections_optimized is present"
+            )
+            assert len(nodal_inj.pst_tap_idx.shape) == 2
+            assert nodal_inj.pst_tap_idx.shape[0] == 1, "Only one timestep is supported, but found shape " + str(
+                nodal_inj.pst_tap_idx.shape
+            )
+            tap_array = nodal_inj.pst_tap_idx[0].astype(int) + grid_model_low_tap
+            pst_setpoints = tap_array.tolist()
+
         case_indices = iter_repertoire.extra_scores.pop("case_indices", [])
         case_ids = np.array(contingency_ids)[case_indices].tolist()
         metrics = Metrics(
@@ -384,7 +376,10 @@ def convert_to_topologies(repertoire: DiscreteMapElitesRepertoire, contingency_i
 
 
 def summarize_repo(
-    repertoire: DiscreteMapElitesRepertoire, initial_fitness: float, contingency_ids: list[str]
+    repertoire: DiscreteMapElitesRepertoire,
+    initial_fitness: float,
+    contingency_ids: list[str],
+    grid_model_low_tap: Int[Array, " n_controllable_psts"] | None = None,
 ) -> list[Topology]:
     """Summarize the repertoire into a list of topologies.
 
@@ -397,8 +392,9 @@ def summarize_repo(
     contingency_ids : list[str]
         The contingency IDs for each topology. Here we assume that this list is common for all the topologies
         in the repertoire.
-        TODO: Fix me to have per topology contingency ids if needed.
-
+        TODO: Fix me to have per topology contingency ids if needed
+    grid_model_low_tap : Int[Array, " n_controllable_psts"] | None
+        The lowest tap value in the grid model, from nodal_injection_information.grid_model_low_tap.
 
     Returns
     -------
@@ -411,7 +407,7 @@ def summarize_repo(
             initial_fitness=initial_fitness,
         )
 
-        topologies = convert_to_topologies(best_repo, contingency_ids)
+        topologies = convert_to_topologies(best_repo, contingency_ids, grid_model_low_tap=grid_model_low_tap)
 
     return topologies
 
@@ -422,6 +418,7 @@ def summarize(
     initial_fitness: float,
     initial_metrics: dict,
     contingency_ids: list[str],
+    grid_model_low_tap: Int[Array, " n_controllable_psts"] | None = None,
 ) -> dict:
     """Summarize the repertoire and emitter state into a serializable dictionary.
 
@@ -437,13 +434,20 @@ def summarize(
         The initial metrics of the grid
     contingency_ids : list[str]
         A list of contingency ids. Here we assume that the list of contingency ids is common for all the topologies
+    grid_model_low_tap : Int[Array, " n_controllable_psts"] | None
+        The lowest tap value in the grid model, from nodal_injection_information.grid_model_low_tap.
 
     Returns
     -------
     dict
         The summarized dictionary, json serializable
     """
-    topologies = summarize_repo(repertoire=repertoire, initial_fitness=initial_fitness, contingency_ids=contingency_ids)
+    topologies = summarize_repo(
+        repertoire=repertoire,
+        initial_fitness=initial_fitness,
+        contingency_ids=contingency_ids,
+        grid_model_low_tap=grid_model_low_tap,
+    )
     max_fitness = max(t.metrics.fitness for t in topologies) if len(topologies) > 0 else initial_fitness
 
     # Store the topologies

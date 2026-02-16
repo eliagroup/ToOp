@@ -8,9 +8,9 @@
 """Helper functions for the filter strategy."""
 
 from itertools import pairwise
-from typing import Any, TypeVar
 
 import networkx as nx
+from beartype.typing import Any, TypeVar
 from toop_engine_importer.network_graph.data_classes import WeightValues
 from toop_engine_importer.network_graph.network_graph import (
     multi_weight_function,

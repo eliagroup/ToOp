@@ -8,10 +8,10 @@
 """Plotting functions for the Map-Elites algorithm."""
 
 import os
-from typing import Optional
 
 import matplotlib.pyplot as plt
 import seaborn as sns
+from beartype.typing import Optional
 from jax import numpy as jnp
 from matplotlib.axes import Axes
 from qdax.custom_types import Fitness

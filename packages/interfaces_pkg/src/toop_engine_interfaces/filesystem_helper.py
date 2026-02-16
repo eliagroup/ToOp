@@ -9,10 +9,9 @@
 
 import shutil
 from pathlib import Path
-from typing import TypeVar
 
 import numpy as np
-from beartype.typing import Union
+from beartype.typing import TypeVar, Union
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 

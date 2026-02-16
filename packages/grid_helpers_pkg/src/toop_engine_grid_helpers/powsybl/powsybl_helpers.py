@@ -11,6 +11,7 @@ These functions are used to extract and manipulate data from pypowsybl networks,
 such as loadflow results, branch limits, and monitored elements.
 """
 
+import json
 import math
 import tempfile
 from pathlib import Path
@@ -331,6 +332,79 @@ def load_powsybl_from_fs(
         )
 
 
+def save_lf_params_to_fs(
+    lf_params: pypowsybl.loadflow.Parameters | dict, filesystem: AbstractFileSystem, file_path: Path, make_dir: bool = True
+) -> None:
+    """Save the loadflow parameters to a filesystem.
+
+    Parameters
+    ----------
+    lf_params : pypowsybl.loadflow.Parameters
+        The loadflow parameters to save.
+    filesystem : AbstractFileSystem
+        The filesystem to save the loadflow parameters to.
+    file_path : Path
+        The path to save the loadflow parameters in the filesystem.
+    make_dir: bool
+        create parent folder if not exists.
+    """
+    if isinstance(lf_params, pypowsybl.loadflow.Parameters):
+        json_str = lf_params.to_json()
+        # This is a hack, as long as the saving/loading bug is not fixed in pypowsybl:
+        # https://github.com/powsybl/pypowsybl/issues/1153
+        _json = json.loads(lf_params.to_json())
+        _json["provider_parameters"] = lf_params.provider_parameters
+        json_str = json.dumps(_json)
+    else:
+        json_str = json.dumps(lf_params)
+
+    if make_dir:
+        filesystem.makedirs(Path(file_path).parent.as_posix(), exist_ok=True)
+    # save json string to filesystem
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        with open(tmp_grid_path, "w") as f:
+            f.write(json_str)
+        filesystem.upload(
+            str(tmp_grid_path),
+            str(file_path),
+        )
+
+
+def load_lf_params_from_fs(
+    filesystem: AbstractFileSystem,
+    file_path: Path,
+) -> pypowsybl.loadflow.Parameters | dict:
+    """Load the loadflow parameters from a filesystem.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The filesystem to load the loadflow parameters from.
+    file_path : Path
+        The path to the loadflow parameters in the filesystem.
+
+    Returns
+    -------
+    pypowsybl.loadflow.Parameters
+        The loaded loadflow parameters.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_grid_path = Path(temp_dir) / file_path.name
+        filesystem.download(
+            str(file_path),
+            str(tmp_grid_path),
+        )
+        with open(tmp_grid_path, "r") as f:
+            json_str = f.read()
+            _json = json.loads(json_str)
+            provider_params = _json.pop("provider_parameters", {})
+            json_str = json.dumps(_json)
+        params = pypowsybl.loadflow.Parameters.from_json(json_str)
+        params.provider_parameters = provider_params
+        return params
+
+
 def save_powsybl_to_fs(
     net: pypowsybl.network.Network,
     filesystem: AbstractFileSystem,
@@ -410,7 +484,7 @@ def select_a_generator_as_slack_and_run_loadflow(network: Network) -> None:
         read_slack_bus=True,
         distributed_slack=True,
         use_reactive_limits=True,
-        connected_component_mode=pypowsybl.loadflow.ConnectedComponentMode.MAIN,  # ConnectedComponentMode
+        component_mode=pypowsybl.loadflow.ComponentMode.MAIN_CONNECTED,  # ConnectedComponentMode
     )
 
     loadflow_res = pypowsybl.loadflow.run_ac(network, parameters=powsybl_loadflow_parameter)[0]

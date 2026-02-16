@@ -14,11 +14,11 @@ Created: 2024-10-02
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
 import logbook
 import numpy as np
 import pandapower as pp
+from beartype.typing import Optional
 from jaxtyping import Array, Bool, Int
 from pandas import Index
 from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker import (

@@ -10,11 +10,11 @@ import sys
 from logging import getLogger
 from multiprocessing import Process, set_start_method
 from pathlib import Path
-from typing import Literal, Union
 from uuid import uuid4
 
 import logbook
 import pytest
+from beartype.typing import Literal, Union
 from confluent_kafka import Consumer, Producer
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -23,6 +23,7 @@ from toop_engine_importer.worker.worker import Args, idle_loop, main
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     Command,
+    PreprocessParameters,
     ShutdownCommand,
     StartPreprocessingCommand,
     UcteImporterParameters,
@@ -241,7 +242,10 @@ def test_main(
     command = Command(
         command=StartPreprocessingCommand(
             preprocess_id="test",
-            importer_parameters=UcteImporterParameters(grid_model_file=ucte_file.name, data_folder=Path("some_timestep")),
+            importer_parameters=UcteImporterParameters(
+                grid_model_file=ucte_file.name, fail_on_non_convergence=False, data_folder=Path("some_timestep")
+            ),
+            preprocess_parameters=PreprocessParameters(fail_on_non_convergence=False),
         )
     )
     producer.produce(kafka_command_topic, value=serialize_message(command.model_dump_json()))

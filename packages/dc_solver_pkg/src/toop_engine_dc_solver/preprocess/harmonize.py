@@ -15,7 +15,7 @@ optimization. This module is commented out until we decide to take up the multi-
 
 # from dataclasses import replace
 # from functools import reduce
-# from typing import Callable, Union
+# from beartype.typing import Callable, Union
 
 # import numpy as np
 # from jaxtyping import Bool, Int

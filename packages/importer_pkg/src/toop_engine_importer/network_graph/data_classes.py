@@ -8,11 +8,11 @@
 """The data_classes module contains the data classes for the network graph model."""
 
 from enum import Enum
-from typing import List, Literal, Optional, Tuple, TypeAlias, Union
 
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
+from beartype.typing import List, Literal, Optional, Tuple, TypeAlias, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
 

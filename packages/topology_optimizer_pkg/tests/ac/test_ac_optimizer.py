@@ -13,6 +13,7 @@ import pytest
 from confluent_kafka import Consumer
 from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import select
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -81,6 +82,10 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
         )
         for grid_file in grid_files
     ]
+    lf_params = [
+        load_lf_params_from_fs(filesystem=processed_gridfile_fs, file_path=grid_file.loadflow_parameters_file)
+        for grid_file in grid_files
+    ]
 
     # Prepare the loadflow runners
     runners = [
@@ -91,13 +96,17 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
             n_processes=1,
             batch_size=None,
             processed_gridfile_fs=processed_gridfile_fs,
+            lf_params=lf_param,
         )
-        for action_set, nminus1_definition, grid_file in zip(action_sets, nminus1_definitions, grid_files, strict=True)
+        for action_set, nminus1_definition, grid_file, lf_param in zip(
+            action_sets, nminus1_definitions, grid_files, lf_params, strict=True
+        )
     ]
 
     lfs, additional_info = compute_loadflow(
         actions=[[]],
         disconnections=[[]],
+        pst_setpoints=[None],
         runners=runners,
         n_timestep_processes=1,
     )
@@ -257,7 +266,7 @@ def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:
     for _ in range(10):
         actions = random_actions(action_set, np.random.default_rng(42), 2)
 
-        pst_setpoints = [0, 0, 0, 0]
+        pst_setpoints = None
 
         topo_hash = hash_topo_data([(actions, [], pst_setpoints)])
 

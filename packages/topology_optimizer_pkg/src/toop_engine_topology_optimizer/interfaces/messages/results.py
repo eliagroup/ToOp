@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal, Optional, TypeAlias, Union
 
+from beartype.typing import Literal, Optional, TypeAlias, Union
 from pydantic import BaseModel, Field, NonNegativeInt, field_validator
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
@@ -54,12 +54,18 @@ class Topology(BaseModel):
     Disconnections will be automatically sorted in ascending order, as the order does not matter and we want
     to avoid duplicates."""
 
-    pst_setpoints: list[int]
-    """The setpoints for the PSTs if they have been computed. This is an index into the range of pst taps, i.e. the
-    smallest tap is 0 and the neutral tap somewhere in the middle of the range. The tap range is defined in the action set.
-    The list always has the same length, i.e. the number of controllable PSTs in the system, and each entry corresponds to
-    the PST at the same position in the action set.
-    TODO currently this is just the angle converted to int, will be changed later to be the actual tap position.
+    pst_setpoints: list[int] | None
+    """The setpoints for the PSTs if they have been computed.
+
+    These are the taps as they are stored in the original grid model, i.e. if a PST has a tap range from -20 to 20 then this
+    can take all these values. Note that inside the dc optimizer, taps are always starting with 0 and have to be converted
+    by adding grid_model_low_tap.
+
+    The list has the length of the number of controllable PSTs in the grid model and the nth entry corresponds to the nth
+    controllable PST in the network data.
+
+    If the PST taps were not optimized, then this is None. Empty list is only allowed if there are no controllable PSTs in
+    the grid model.
     """
 
     metrics: Metrics

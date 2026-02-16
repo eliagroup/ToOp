@@ -63,6 +63,23 @@ def create_test_net_for_va_diff_with_trafo():
 
     pp.create_switch(net, bus=b5, element=b7, et="b", closed=True, type="CB", name="switch_7")
     pp.create_switch(net, bus=b6, element=b8, et="b", closed=True, type="CB", name="switch_8")
+
+    net.trafo_characteristic_table = pd.DataFrame(
+        columns=[
+            "id_characteristic",
+            "step",
+            "voltage_ratio",
+            "angle_deg",
+            "vk_percent",
+            "vkr_percent",
+            "vkr_hv_percent",
+            "vkr_mv_percent",
+            "vkr_lv_percent",
+            "vk_hv_percent",
+            "vk_mv_percent",
+            "vk_lv_percent",
+        ]
+    )
     return net
 
 
@@ -98,6 +115,23 @@ def create_test_net_for_va_diff_with_multiple_els():
 
     b9 = pp.create_bus(net, vn_kv=110, name="bus_9")
     pp.create_switch(net, bus=b8, element=b9, et="b", closed=False, type="CB", name="switch_8")
+    net.trafo_characteristic_table = pd.DataFrame(
+        columns=[
+            "id_characteristic",
+            "step",
+            "voltage_ratio",
+            "angle_deg",
+            "vk_percent",
+            "vkr_percent",
+            "vkr_hv_percent",
+            "vkr_mv_percent",
+            "vkr_lv_percent",
+            "vk_hv_percent",
+            "vk_mv_percent",
+            "vk_lv_percent",
+        ]
+    )
+
     return net
 
 

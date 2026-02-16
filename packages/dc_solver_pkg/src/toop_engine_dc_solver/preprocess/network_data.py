@@ -12,14 +12,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import pypowsybl
 from beartype.typing import NamedTuple, Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.backend import BackendInterface
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, LoadflowParameters, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
 
 
@@ -98,6 +100,12 @@ class NetworkData:
     """The shift angles of the controllable PSTs. The outer list has as many entries as there are controllable PSTs (see
     controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
     value representing the angle shift for the given tap position. The taps are ordered smallest to largest angle shift."""
+
+    phase_shift_starting_tap_idx: Int[np.ndarray, " n_controllable_pst"]
+    """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
+
+    phase_shift_low_tap: Int[np.ndarray, " n_controllable_pst"]
+    """The lowest tap position for each controllable PST but in the original grid model."""
 
     monitored_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch is monitored"""
@@ -408,6 +416,8 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         asset_topology=interface.get_asset_topology(),
         controllable_phase_shift_mask=interface.get_controllable_phase_shift_mask(),
         phase_shift_taps=interface.get_phase_shift_taps(),
+        phase_shift_starting_tap_idx=interface.get_phase_shift_starting_taps(),
+        phase_shift_low_tap=interface.get_phase_shift_low_taps(),
         busbar_outage_map=interface.get_busbar_outage_map(),
     )
 
@@ -478,6 +488,22 @@ def load_network_data(filename: Union[str, Path]) -> NetworkData:
         The loaded network data
     """
     return load_network_data_fs(LocalFileSystem(), filename)
+
+
+def load_lf_params(filename: Union[str, Path]) -> pypowsybl.loadflow.Parameters:
+    """Load the loadflow parameters from a file.
+
+    Parameters
+    ----------
+    filename : Union[str, Path]
+        The filename to load the loadflow parameters from
+
+    Returns
+    -------
+    pypowsybl.loadflow.Parameters
+        The loaded loadflow parameters
+    """
+    return load_lf_params_from_fs(LocalFileSystem(), filename)
 
 
 def assert_network_data(network_data: NetworkData) -> None:
@@ -808,9 +834,17 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             type=network_data.branch_types[index],
             name=network_data.branch_names[index],
             kind="branch",
-            shift_steps=taps.tolist(),
+            starting_tap=start + low,  # Convert from index to absolute grid model tap position
+            low_tap=low,
+            high_tap=low + len(taps),
         )
-        for (index, taps) in zip(controllable_pst_indices, network_data.phase_shift_taps, strict=True)
+        for (index, start, low, taps) in zip(
+            controllable_pst_indices,
+            network_data.phase_shift_starting_tap_idx,
+            network_data.phase_shift_low_tap,
+            network_data.phase_shift_taps,
+            strict=True,
+        )
     ]
 
     return ActionSet(
@@ -940,8 +974,6 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         for index in network_data.rel_io_global_inj_index
     ]
 
-    loadflow_parameters = LoadflowParameters(distributed_slack=network_data.metadata.get("distributed_slack", True))
-
     return Nminus1Definition(
         monitored_elements=monitored_branches + monitored_nodes + monitored_switches,
         contingencies=basecase_contingency
@@ -949,5 +981,4 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         + multi_contingencies
         + nonrel_inj_contingencies
         + rel_inj_contingencies,
-        loadflow_parameters=loadflow_parameters,
     )

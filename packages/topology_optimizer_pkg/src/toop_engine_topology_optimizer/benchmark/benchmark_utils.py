@@ -22,7 +22,6 @@ import warnings
 from dataclasses import dataclass
 from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Literal, Optional, Tuple
 
 import jax
 import logbook
@@ -30,6 +29,7 @@ import pandapower
 
 # Domain-specific imports (may raise if not available in the environment)
 import pypowsybl
+from beartype.typing import Literal, Optional, Tuple
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from omegaconf import DictConfig
@@ -54,6 +54,7 @@ from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
     apply_topology as powsybl_apply_topology,
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_grid_helpers.powsybl.single_line_diagram.get_single_line_diagram_custom import (
     get_single_line_diagram_custom,
 )
@@ -363,13 +364,16 @@ def run_preprocessing(
             f"branches across switch: {import_result.n_branch_across_switch}"
         )
     )
-
+    lf_params = load_lf_params_from_fs(
+        DirFileSystem(data_folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
     jax.clear_caches()
     info, static_information, _ = load_grid(
         data_folder_dirfs=DirFileSystem(data_folder),
         pandapower=is_pandapower_net,
         status_update_fn=empty_status_update_fn,
         parameters=preprocessing_parameters,
+        lf_params=lf_params,
     )
 
     logger.info(", ".join([f"{k}: {v}" for k, v in dict(info).items()]))
@@ -475,11 +479,15 @@ def apply_topology_and_save(
     base_net = pypowsybl.network.load(grid_path) if not is_pandapower_grid else pandapower.from_json(grid_path)
 
     # Apply topology and disconnections
-    apply_topology = pandapower_apply_topology if is_pandapower_grid else powsybl_apply_topology
-    apply_disconnections = pandapower_apply_disconnections if is_pandapower_grid else powsybl_apply_disconnections
-
-    modified_net, _ = apply_topology(net=base_net, actions=actions, action_set=action_set)
-    modified_net = apply_disconnections(modified_net, disconnections=disconnections, action_set=action_set)
+    if is_pandapower_grid:
+        # Pandapower version returns (net, realized_topology)
+        modified_net, _ = pandapower_apply_topology(net=base_net, actions=actions, action_set=action_set)
+        modified_net = pandapower_apply_disconnections(modified_net, disconnections=disconnections, action_set=action_set)
+    else:
+        # Powsybl version modifies in-place and returns AdditionalActionInfo
+        _ = powsybl_apply_topology(net=base_net, actions=actions, action_set=action_set)
+        powsybl_apply_disconnections(base_net, disconnections=disconnections, action_set=action_set)
+        modified_net = base_net
 
     modified_net.save(save_path) if not is_pandapower_grid else modified_net.to_json(save_path)
     logger.notice(f"Saved modified network to {save_path}")

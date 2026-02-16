@@ -7,9 +7,8 @@
 
 """Helper functions for the NetworkGraphData model."""
 
-from typing import Any, Callable, Iterable, Iterator, Literal, Optional, Union
-
 import networkx as nx
+from beartype.typing import Any, Callable, Iterable, Iterator, Literal, Optional, Union
 from toop_engine_importer.network_graph.data_classes import (
     BRANCH_TYPES,
     BranchSchema,

@@ -7,10 +7,8 @@
 
 """Helper functions for the NetworkGraphData model or network_graph (nx.Graph)."""
 
-from typing import Literal, TypeVar
-
 import pandas as pd
-from beartype.typing import get_args
+from beartype.typing import Literal, TypeVar, get_args
 from toop_engine_importer.network_graph.data_classes import DUPLICATED_EDGE_SUFFIX
 from toop_engine_interfaces.asset_topology import SwitchableAsset
 

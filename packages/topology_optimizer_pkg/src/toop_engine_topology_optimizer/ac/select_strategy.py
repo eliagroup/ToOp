@@ -7,11 +7,10 @@
 
 """Selection strategy for AC optimization topologies."""
 
-from typing import Callable, Optional, Tuple, Union
-
 import logbook
 import numpy as np
 import pandas as pd
+from beartype.typing import Callable, Optional, Tuple, Union
 from numpy.random import Generator as Rng
 from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology

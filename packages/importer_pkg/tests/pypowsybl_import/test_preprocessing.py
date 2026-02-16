@@ -9,12 +9,12 @@ import time
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Optional
 
 import logbook
 import pandapower as pp
 import pandas as pd
 import pypowsybl
+from beartype.typing import Optional
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
@@ -36,8 +36,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
+    ImportResult,
     StaticInformationStats,
-    UcteImportResult,
 )
 
 
@@ -56,7 +56,7 @@ def test_save_load_preprocessing_statistics():
     )
 
     # test 1 - apply white and black list
-    import_result = UcteImportResult(
+    import_result = ImportResult(
         data_folder=Path(""),
     )
     statistics = PreProcessingStatistics(
@@ -81,14 +81,14 @@ def test_save_load_preprocessing_statistics():
         assert loaded_statistics.border_current == statistics.border_current
         assert loaded_statistics.network_changes == statistics.network_changes
         assert loaded_statistics.import_parameter == statistics.import_parameter
-        assert isinstance(loaded_statistics.import_result, UcteImportResult)
+        assert isinstance(loaded_statistics.import_result, ImportResult)
         assert isinstance(loaded_statistics.import_parameter, UcteImporterParameters)
 
 
 def test_fill_statistics_for_network_masks(ucte_file, ucte_importer_parameters):
     network = pypowsybl.network.load(ucte_file)
 
-    import_result = UcteImportResult(
+    import_result = ImportResult(
         data_folder=Path(""),
     )
     statistics = PreProcessingStatistics(
@@ -100,7 +100,7 @@ def test_fill_statistics_for_network_masks(ucte_file, ucte_importer_parameters):
     masks = powsybl_masks.create_default_network_masks(network=network)
     preprocessing.fill_statistics_for_network_masks(network=network, statistics=statistics, network_masks=masks)
 
-    assert statistics.import_result == UcteImportResult(
+    assert statistics.import_result == ImportResult(
         data_folder=Path(""),
     )
     assert statistics.border_current == {}
@@ -143,6 +143,7 @@ def test_convert_file(ucte_file):
         )
         importer_parameters = UcteImporterParameters(
             grid_model_file=ucte_file,
+            fail_on_non_convergence=False,
             data_folder=temp_dir,
             white_list_file=None,
             black_list_file=None,
@@ -165,7 +166,7 @@ def test_convert_file(ucte_file):
         assert grid_file_path.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
-        assert isinstance(import_result, UcteImportResult)
+        assert isinstance(import_result, ImportResult)
 
         # test without status_update_fn
         temp_dir_test2 = temp_dir / "test2"
@@ -181,7 +182,7 @@ def test_convert_file(ucte_file):
         assert grid_file_path.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
-        assert isinstance(import_result, UcteImportResult)
+        assert isinstance(import_result, ImportResult)
 
 
 def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_network_graph: pypowsybl.network.Network):
@@ -252,7 +253,7 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_n
         assert grid_file_path.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
-        assert isinstance(import_result, UcteImportResult)
+        assert isinstance(import_result, ImportResult)
 
         # test without status_update_fn
         temp_dir_test2 = temp_dir / "test2"
@@ -268,7 +269,7 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_n
         assert grid_file_path.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
-        assert isinstance(import_result, UcteImportResult)
+        assert isinstance(import_result, ImportResult)
 
         net_loaded = pypowsybl.network.load(grid_file_path)
         assert len(net_loaded.get_static_var_compensators()) == 1

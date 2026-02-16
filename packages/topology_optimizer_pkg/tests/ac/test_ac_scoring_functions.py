@@ -42,6 +42,7 @@ def test_compute_loadflow(grid_folder: Path) -> None:
     res, info = compute_loadflow(
         actions=[[]],
         disconnections=[[]],
+        pst_setpoints=[None],
         runners=[runner],
     )
 
@@ -114,7 +115,7 @@ def test_compute_loadflow_and_metrics_with_early_stopping(grid_folder: Path) -> 
     topo = ACOptimTopology(
         actions=actions,
         disconnections=[],
-        pst_setpoints=[0, 0, 0, 0],
+        pst_setpoints=None,
         unsplit=False,
         timestep=0,
         strategy_hash=bytes.fromhex("deadbeef"),

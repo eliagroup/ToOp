@@ -732,10 +732,7 @@ def compute_symmetric_batch(
     n_0 = jax.vmap(update_n0_flows_after_disconnections)(n_0, topo_res.disconnection_modf)
 
     nodal_injections_optimized = None
-    if solver_config.enable_nodal_inj_optim:
-        assert nodal_inj_start_options is not None, (
-            "nodal injection start options must be provided when nodal injection optimization is enabled."
-        )
+    if nodal_inj_start_options is not None:
         # TODO replace N-1 computation below with the results from optimization as soon as the optimization is halfway stable
         # It might be a good debug aid to have the original code below still available.
         n_0, _n_1, nodal_injections_optimized = nodal_inj_optimization(

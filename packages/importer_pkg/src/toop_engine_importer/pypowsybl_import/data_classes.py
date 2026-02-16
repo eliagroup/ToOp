@@ -12,15 +12,14 @@ Author:  Benjamin Petrick
 Created: 2024-09-04
 """
 
-from typing import Any, Literal, Optional, TypeAlias, Union
-
+from beartype.typing import Any, Literal, Optional, TypeAlias, Union
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     UcteImporterParameters,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
-    UcteImportResult,
+    ImportResult,
 )
 
 PreProcessingIds: TypeAlias = Literal[
@@ -48,7 +47,7 @@ class PreProcessingStatistics(BaseModel):
           load_for_nminus1, switches_for_nminus1
     white_list, black_list"""
 
-    import_result: UcteImportResult
+    import_result: ImportResult
     """ Statistics and results from an import process."""
 
     border_current: dict[str, Any] = Field(default_factory=dict)

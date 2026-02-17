@@ -102,6 +102,83 @@ class Strategy(BaseModel):
     """The topologies for every timestep"""
 
 
+class TopologyRejectionReason(BaseModel):
+    """The reason for rejecting a topology including a criterion that was violated and further data."""
+
+    criterion: Literal[
+        "convergence", "voltage-magnitude", "voltage-angle", "overload-energy", "critical-branch-count", "other"
+    ]
+    """The criterion that was violated for the rejection."""
+
+    description: Optional[str] = None
+    """A more detailed description of the rejection, e.g. which lines were overloaded, etc."""
+
+    value_after: float
+    """The value of the metric that caused the rejection after applying the strategy.
+
+    Depending on the criterion, this has different meanings:
+
+    - For convergence this is the number of non-converging loadflows.
+    - For voltage magnitude this is the maximum voltage violation in p.u.
+    - For voltage angle this is the maximum voltage angle violation in degrees.
+    - For overload energy this is the overload in MW.
+    - For critical branch count this is the number of critical branches, i.e. branches above their operational limit.
+    """
+
+    value_before: float
+    """The value of the metric that caused the rejection before applying the strategy.
+
+    Meaning of the value is similar to value_after dependent on the criterion.
+    """
+
+    threshold: Optional[float] = None
+    """The threshold for rejection that was set in the AC configuration, if applicable."""
+
+
+def get_topology_rejection_message(result: TopologyRejectionReason) -> str:
+    """Condense a TopologyRejectionReason into a human-readable message for logging purposes."""
+    message_map = {
+        "convergence": "Rejecting topology due to insufficient convergence",
+        "overload-energy": "Rejecting topology due to overload energy not improving",
+        "critical-branch-count": "Rejecting topology due to critical branches increasing too much",
+        "voltage-magnitude": "Rejecting topology due to voltage magnitude violation",
+        "voltage-angle": "Rejecting topology due to voltage angle violation",
+        "other": "Rejecting topology due to other reason",
+    }
+
+    base_message = message_map.get(result.criterion, "Rejecting topology due to unknown reason")
+    base_message = f"{base_message} (value before: {result.value_before}, value after: {result.value_after})."
+    if result.description:
+        base_message = f"{base_message} Details: {result.description}"
+    return base_message
+
+
+class TopologyRejectionResult(BaseModel):
+    """A rejection of a topology in a later stage.
+
+    For example if the DC optimizer found a topology as sensible but the AC optimizer rejects it, this will result in a
+    rejection result. For the moment, this is only used in the backend to gather statistics on rejections, however a future
+    version could implement some sort of learning algorithm that uses these rejections to try and extrapolate the reasons.
+    """
+
+    message_type: Literal["topology_rejection"] = "topology_rejection"
+    """The result type, don't change this"""
+
+    strategy: Strategy
+    """The strategy that is rejected. Note that only a single strategy is rejected at a time, if multiple were rejected then
+    send multiple messages."""
+
+    epoch: Optional[int] = None
+    """The epoch of the optimization run. Enables plotting the results over time on backend side."""
+
+    reason: TopologyRejectionReason
+    """The reason for the rejection along with additional data
+
+    This is separated into a different class to make it easier to pass along inside the code, as it turns out often it is
+    not required to read the strategy itself.
+    """
+
+
 class TopologyPushResult(BaseModel):
     """A message that pushes new topology results. These must include the topo-vects
 
@@ -171,6 +248,7 @@ class OptimizationStartedResult(BaseModel):
 
 ResultUnion: TypeAlias = Union[
     TopologyPushResult,
+    TopologyRejectionResult,
     OptimizationStoppedResult,
     OptimizationStartedResult,
 ]

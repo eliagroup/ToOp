@@ -46,6 +46,9 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     Strategy,
     Topology,
     TopologyPushResult,
+    TopologyRejectionReason,
+    TopologyRejectionResult,
+    get_topology_rejection_message,
 )
 from toop_engine_topology_optimizer.interfaces.models.base_storage import convert_db_topo_to_message_topo, hash_topologies
 
@@ -85,10 +88,10 @@ class OptimizerData:
             LoadflowResultsPolars,
             list[Metrics],
         ],
-        bool,
+        Optional[TopologyRejectionReason],
     ]
     """The acceptance function to decide whether a topology is accepted or not. Takes the
-    loadflow results and the metrics of the split topology and returns True/False."""
+    loadflow results and the metrics of the split topology and returns a rejection reason or None."""
 
     rng: Rng
     """The random number generator for the optimizer"""
@@ -483,7 +486,7 @@ def run_epoch(
         return False
 
     loadflow_results, metrics = optimizer_data.scoring_fn(new_strategy)
-    acceptance = optimizer_data.acceptance_fn(loadflow_results, metrics)
+    rejection_reason = optimizer_data.acceptance_fn(loadflow_results, metrics)
     loadflow_result_reference = optimizer_data.store_loadflow_fn(loadflow_results)
 
     # Update the strategy with the new loadflow results
@@ -495,7 +498,7 @@ def run_epoch(
             metric.extra_scores["fitness_dc"] = topology.metrics["fitness_dc"]
         topology.metrics = metric.extra_scores
         topology.fitness = metric.fitness
-        topology.acceptance = acceptance
+        topology.acceptance = rejection_reason is None
         topology.set_loadflow_reference(loadflow_result_reference)
 
         optimizer_data.session.add(topology)
@@ -513,9 +516,18 @@ def run_epoch(
     optimizer_data.session.commit()
 
     # Send the new strategy to the result topic
-    if not optimizer_data.params.ga_config.enable_ac_rejection or acceptance:
+    if not optimizer_data.params.ga_config.enable_ac_rejection or rejection_reason is None:
         send_result_fn(TopologyPushResult(strategies=[Strategy(timesteps=message_topos)], epoch=epoch))
-    logger.info(
-        f"Epoch {epoch} completed, accept: {acceptance}, metrics: {metrics[0].extra_scores}, fitness: {metrics[0].fitness}"
-    )
+        logger.info(
+            f"Epoch {epoch} completed, accept: True, metrics: {metrics[0].extra_scores}, fitness: {metrics[0].fitness}"
+        )
+    else:
+        send_result_fn(
+            TopologyRejectionResult(
+                reason=rejection_reason,
+                rejected_topology=Strategy(timesteps=message_topos),
+                epoch=epoch,
+            )
+        )
+        logger.info(f"Epoch {epoch} completed, accept: False, reason: {get_topology_rejection_message(rejection_reason)}")
     return True

@@ -46,6 +46,10 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
 
+# Constants for timing in test_main
+CONSUMER_READY_WAIT_SECONDS = 2  # Time to wait for Kafka consumer subscription to complete
+MAIN_THREAD_TIMEOUT_SECONDS = 150  # Maximum time to wait for main() to complete
+
 
 @pytest.mark.timeout(60)
 def test_main_simple(
@@ -485,14 +489,14 @@ def test_main(
 
     # Wait for the worker to start and subscribe to the results topic
     # This ensures the consumer is ready before we produce DC results
-    sleep(2)
+    sleep(CONSUMER_READY_WAIT_SECONDS)
 
     # Now produce the DC results after the consumer is ready
     producer.produce(kafka_results_topic, value=serialize_message(topopushresult.model_dump_json()), partition=0)
     producer.flush()
 
     # Wait for main to complete (should exit due to ShutdownCommand)
-    main_thread.join(timeout=150)
+    main_thread.join(timeout=MAIN_THREAD_TIMEOUT_SECONDS)
     if main_thread.is_alive():
         pytest.fail("main() thread did not complete in time")
     consumer = Consumer(

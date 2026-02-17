@@ -6,6 +6,8 @@
 # Mozilla Public License, version 2.0
 
 from pathlib import Path
+from threading import Thread
+from time import sleep
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -440,41 +442,59 @@ def test_main(
             "log_level": 2,
         }
     )
+    # Produce command messages first
     producer.produce(kafka_command_topic, value=serialize_message(start_command.model_dump_json()), partition=0)
     producer.produce(kafka_command_topic, value=serialize_message(shutdown_command.model_dump_json()), partition=0)
-    producer.produce(kafka_results_topic, value=serialize_message(topopushresult.model_dump_json()), partition=0)
     producer.flush()
 
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
     instance_id = str(uuid4())
-    with pytest.raises(SystemExit):
-        main(
-            Args(
+
+    # Start main() in a separate thread
+    main_thread = Thread(
+        target=main,
+        kwargs={
+            "args": Args(
                 optimizer_command_topic=kafka_command_topic,
                 optimizer_heartbeat_topic=kafka_heartbeat_topic,
                 optimizer_results_topic=kafka_results_topic,
                 heartbeat_interval_ms=100,
                 kafka_broker=kafka_connection_str,
             ),
-            processed_gridfile_fs=processed_gridfile_fs,
-            loadflow_result_fs=loadflow_result_fs,
-            producer=create_producer(kafka_connection_str, instance_id, log_level=2),
-            command_consumer=create_consumer(
+            "processed_gridfile_fs": processed_gridfile_fs,
+            "loadflow_result_fs": loadflow_result_fs,
+            "producer": create_producer(kafka_connection_str, instance_id, log_level=2),
+            "command_consumer": create_consumer(
                 "LongRunningKafkaConsumer",
                 topic=kafka_command_topic,
                 group_id="ac_optimizer",
                 bootstrap_servers=kafka_connection_str,
                 client_id=instance_id,
             ),
-            result_consumer=create_consumer(
+            "result_consumer": create_consumer(
                 "LongRunningKafkaConsumer",
                 topic=kafka_results_topic,
                 group_id=f"ac_listener_{instance_id}_{uuid4()}",
                 bootstrap_servers=kafka_connection_str,
                 client_id=instance_id,
             ),
-        )
+        },
+    )
+    main_thread.start()
+
+    # Wait for the worker to start and subscribe to the results topic
+    # This ensures the consumer is ready before we produce DC results
+    sleep(2)
+
+    # Now produce the DC results after the consumer is ready
+    producer.produce(kafka_results_topic, value=serialize_message(topopushresult.model_dump_json()), partition=0)
+    producer.flush()
+
+    # Wait for main to complete (should exit due to ShutdownCommand)
+    main_thread.join(timeout=150)
+    if main_thread.is_alive():
+        pytest.fail("main() thread did not complete in time")
     consumer = Consumer(
         {
             "bootstrap.servers": kafka_connection_str,

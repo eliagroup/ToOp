@@ -525,7 +525,7 @@ def run_epoch(
         send_result_fn(
             TopologyRejectionResult(
                 reason=rejection_reason,
-                rejected_topology=Strategy(timesteps=message_topos),
+                strategy=Strategy(timesteps=message_topos),
                 epoch=epoch,
             )
         )

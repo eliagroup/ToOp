@@ -233,7 +233,7 @@ def kafka_heartbeat_topic(kafka_container: Container) -> Generator[str, None, No
 
 @pytest.fixture(scope="session")
 def grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Grid data directory prepared once and shared across workers.
+    """Grid data directory prepared once for each worker (per session scope).
 
     Returns:
         Path: The path to the grid data directory.

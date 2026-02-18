@@ -322,6 +322,8 @@ def imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, uct
 @pytest.fixture(scope="session")
 def ucte_asset_topology(ucte_file: Path) -> Topology:
     network = pypowsybl.network.load(ucte_file)
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
+
     importer_parameters = UcteImporterParameters(
         grid_model_file=ucte_file,
         data_folder="files_path",
@@ -333,7 +335,9 @@ def ucte_asset_topology(ucte_file: Path) -> Topology:
         ),
     )
 
-    network_masks = powsybl_masks.make_masks(network=network, importer_parameters=importer_parameters)
+    network_masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=importer_parameters
+    )
     topology_model = get_topology(
         network,
         relevant_stations=network_masks.relevant_subs,

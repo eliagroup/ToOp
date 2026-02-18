@@ -133,7 +133,7 @@ The release process is automated through `.github/workflows/release.yaml`:
 
 We require [Conventional Commits](https://www.conventionalcommits.org/) and Developer Certificate of Origin (DCO) for each commit in the main branch. These commits are created when a pull request is squashed into the main branch.
 
-Each commit message must follow this format:
+Such a pull request's commit message must follow this format:
 
 ```
 <type>[optional scope]: <description>
@@ -158,14 +158,8 @@ Signed-off-by: FirstName LastName <something@example.org>
 
 #### Developer Certificate of Origin
 
-You can add the sign-off manually, or use Git's `-s` option to include it automatically.
-
-```
-$ git commit -s
-```
-
-According to [Git](https://git-scm.com/docs/git-config#Documentation/git-config.txt-formatsignOff)'s own docs:
-> Adding the Signed-off-by trailer to a patch should be a conscious act and means that you certify you have the rights to submit this work under the same open source license.
+The last line of the commit message certifies the origin of the code that will be committed.
+This means that you certify you have the rights to submit this work under this project's open source license (see [Git docs](https://git-scm.com/docs/git-config#Documentation/git-config.txt-formatsignOff)).
 
 ##### Examples
 

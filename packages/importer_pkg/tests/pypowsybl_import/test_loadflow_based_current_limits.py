@@ -455,7 +455,7 @@ def test_create_new_border_limits_3wtrf(test_pypowsybl_cgmes_with_3w_trafo, cgme
     cgmes_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
     cgmes_importer_parameters.area_settings.nminus1_area = ["BE"]
     network_masks = powsybl_masks.make_masks(
-        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
     )
     n_cases = 2
     pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
@@ -504,7 +504,7 @@ def test_create_new_border_limits_3wtrf_conversion(test_pypowsybl_cgmes_with_3w_
     cgmes_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
     cgmes_importer_parameters.area_settings.nminus1_area = [""]
     network_masks = powsybl_masks.make_masks(
-        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
     )
     n_cases = 2
     pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)

@@ -117,7 +117,7 @@ jobs:
         run: uv run pre-commit install
 
       - name: Run code quality checks
-        run: uv run pre-commit run --all-files
+        run: SKIP=no-commit-to-branch uv run pre-commit run --all-files
 
   # Run after ensuring that requirements are up to date
   test-pip-install:

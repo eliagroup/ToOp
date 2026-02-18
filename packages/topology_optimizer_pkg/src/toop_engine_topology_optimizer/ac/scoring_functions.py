@@ -545,8 +545,8 @@ def evaluate_acceptance(
     if not convergence_acceptable:
         return TopologyRejectionReason(
             criterion="convergence",
-            value_after=n_non_converged_split.sum(),
-            value_before=n_non_converged_unsplit.sum(),
+            value_after=float(n_non_converged_split.sum()),
+            value_before=float(n_non_converged_unsplit.sum()),
             threshold=reject_convergence_threshold,
         )
 
@@ -556,8 +556,8 @@ def evaluate_acceptance(
     if not overload_improvement:
         return TopologyRejectionReason(
             criterion="overload-energy",
-            value_after=split_overload.sum(),
-            value_before=unsplit_overload.sum(),
+            value_after=float(split_overload.sum()),
+            value_before=float(unsplit_overload.sum()),
             threshold=reject_overload_threshold,
         )
 
@@ -574,8 +574,8 @@ def evaluate_acceptance(
     if not critical_branches_acceptable:
         return TopologyRejectionReason(
             criterion="critical-branch-count",
-            value_after=split_critical_branches.sum(),
-            value_before=unsplit_critical_branches.sum(),
+            value_after=float(split_critical_branches.sum()),
+            value_before=float(unsplit_critical_branches.sum()),
             threshold=reject_critical_branch_threshold,
         )
 

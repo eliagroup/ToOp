@@ -789,10 +789,10 @@ def update_switch_masks(
 
 def make_masks(
     network: Network,
-    slack_id: str,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
     filesystem: AbstractFileSystem = None,
     blacklisted_ids: list[str] | None = None,
+    slack_id: str = "",
 ) -> NetworkMasks:
     """Create all masks for the network, depending on the import parameters.
 

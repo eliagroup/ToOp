@@ -36,7 +36,12 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
 from toop_engine_topology_optimizer.ac.evolution_functions import evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
-from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics, evaluate_acceptance, scoring_function
+from toop_engine_topology_optimizer.ac.scoring_functions import (
+    ACScoringParameters,
+    compute_loadflow_and_metrics,
+    compute_metrics,
+    scoring_and_acceptance,
+)
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
@@ -303,14 +308,6 @@ def initialize_optimization(
         n_minus1_definitions=nminus1_definitions,
         filter_strategy=ga_config.filter_strategy,
     )
-    scoring_fn = partial(
-        scoring_function,
-        runners=runners,
-        base_case_ids=base_case_ids,
-        n_timestep_processes=ga_config.timestep_processes,
-        early_stop_validation=ga_config.early_stop_validation,
-        early_stop_non_converging_threshold=ga_config.early_stopping_non_convergence_percentage_threshold,
-    )
 
     # Prepare the initial strategy
     initial_strategy = [
@@ -342,7 +339,7 @@ def initialize_optimization(
     # This requires a full loadflow computation if the loadflow results are not passed in
     initial_loadflow_reference = params.initial_loadflow
     if initial_loadflow_reference is None:
-        initial_loadflow, initial_metrics = scoring_function(
+        initial_loadflow, _, initial_metrics = compute_loadflow_and_metrics(
             strategy=initial_strategy,
             runners=runners,
             base_case_ids=base_case_ids,
@@ -381,14 +378,21 @@ def initialize_optimization(
         session.add(topo)
     session.commit()
 
-    # As we have the initial loadflows, we can now define an acceptance function
-    acceptance_fn = partial(
-        evaluate_acceptance,
+    # As we have the initial loadflows, we can now define a scoring+acceptance function
+    scoring_fn = partial(
+        scoring_and_acceptance,
+        runners=runners,
         metrics_unsplit=initial_metrics,
         loadflow_results_unsplit=initial_loadflow,
-        reject_convergence_threshold=ga_config.reject_convergence_threshold,
-        reject_overload_threshold=ga_config.reject_overload_threshold,
-        reject_critical_branch_threshold=ga_config.reject_critical_branch_threshold,
+        scoring_params=ACScoringParameters(
+            base_case_ids=base_case_ids,
+            n_timestep_processes=ga_config.timestep_processes,
+            early_stop_validation=ga_config.early_stop_validation,
+            early_stop_non_converging_threshold=ga_config.early_stopping_non_convergence_percentage_threshold,
+            reject_convergence_threshold=ga_config.reject_convergence_threshold,
+            reject_overload_threshold=ga_config.reject_overload_threshold,
+            reject_critical_branch_threshold=ga_config.reject_critical_branch_threshold,
+        ),
     )
 
     # Convert the initial strategy to a message strategy
@@ -408,7 +412,6 @@ def initialize_optimization(
             scoring_fn=scoring_fn,
             store_loadflow_fn=store_loadflow,
             load_loadflow_fn=loadflow_ref,
-            acceptance_fn=acceptance_fn,
             rng=rng,
             framework=grid_files[0].framework,
             runners=runners,

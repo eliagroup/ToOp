@@ -39,14 +39,14 @@ def get_early_stopping_contingency_ids(
 ) -> Optional[list[list[str]]]:
     """Extract the contingency ids for early stopping from a list of ACOptimTopology strategies.
 
-    This function looks for the 'top_k_overloads_n_1' metric in the strategy's metrics and extracts the corresponding
-    worst k contingency case ids for each timestep. These ids are used to determine which contingencies to
-    include in the N-1 analysis for early stopping.
+    This function extracts the worst k contingency case ids from each topology's worst_k_contingency_cases
+    attribute for each timestep. These ids are used to determine which contingencies to include in the N-1
+    analysis for early stopping.
 
     Parameters
     ----------
     strategy : list of ACOptimTopology
-        A list of ACOptimTopology objects, each containing a 'metrics' dictionary with overload thresholds and case ids.
+        A list of ACOptimTopology objects, each containing a worst_k_contingency_cases attribute with contingency case ids.
     add_base_case_ids : Optional[list[str]]
         An optional list of base case ids to include in the early stopping subset. If provided, these will be added to the
         list of contingency case ids for each timestep. The list is expected to have the same length as the strategy

@@ -34,6 +34,7 @@ logger = logbook.Logger(__name__)
 
 def get_early_stopping_contingency_ids(
     strategy: list[ACOptimTopology],
+    add_base_case_ids: Optional[list[str]] = None,
 ) -> Optional[list[list[str]]]:
     """Extract the contingency ids for early stopping from a list of ACOptimTopology strategies.
 
@@ -45,6 +46,10 @@ def get_early_stopping_contingency_ids(
     ----------
     strategy : list of ACOptimTopology
         A list of ACOptimTopology objects, each containing a 'metrics' dictionary with overload thresholds and case ids.
+    add_base_case_ids : Optional[list[str]]
+        An optional list of base case ids to include in the early stopping subset. If provided, these will be added to the
+        list of contingency case ids for each timestep. The list is expected to have the same length as the strategy
+        (number of timesteps), and each element is a string id of the base case.
 
     Returns
     -------
@@ -52,7 +57,7 @@ def get_early_stopping_contingency_ids(
         A list of lists of contingency case IDs for each timestep, or None if any required metric is missing.
     """
     case_ids_all_t = []
-    for topo in strategy:
+    for topo, base_case_id in zip(strategy, add_base_case_ids or [None] * len(strategy), strict=True):
         worst_k_contingency_cases = topo.worst_k_contingency_cases
         if len(worst_k_contingency_cases) == 0:
             logger.warning(
@@ -60,6 +65,8 @@ def get_early_stopping_contingency_ids(
                 f"worst_k_contingency_cases: {worst_k_contingency_cases}"
             )
             return None
+        if base_case_id is not None:
+            worst_k_contingency_cases.append(base_case_id)
         case_ids_all_t.append(worst_k_contingency_cases)
     return case_ids_all_t
 
@@ -445,8 +452,9 @@ def compute_remaining_loadflows(
         all_cases.append([contingency.id for contingency in n_1_def.contingencies])
         original_n_minus1_defs.append(n_1_def)
 
+    # Remove the already computed contingencies so we do not re-compute them
     remaining_cases = [
-        set(all_ids) - set(critical_ids) for all_ids, critical_ids in zip(all_cases, cases_subset, strict=True)
+        set(all_ids) - set(computed_ids) for all_ids, computed_ids in zip(all_cases, cases_subset, strict=True)
     ]
 
     # Update the N-1 definitions in the runners to now include only the non-critical contingencies.
@@ -530,7 +538,11 @@ def scoring_and_acceptance(
     """
     # If early stopping is enabled, we compute and evaluate once on a subset of cases
     if scoring_params.early_stop_validation:
-        cases_subset = get_early_stopping_contingency_ids(strategy)
+        cases_subset = get_early_stopping_contingency_ids(strategy, add_base_case_ids=scoring_params.base_case_ids)
+        assert cases_subset is not None, (
+            "Early stopping enabled but no contingency case ids found for early stopping."
+            "This might happen when the DC optimizer pushes topologies without worst_k entries."
+        )
         lfs_early_stop, _, metrics_early_stop = compute_loadflow_and_metrics(
             runners=runners,
             strategy=strategy,
@@ -538,7 +550,9 @@ def scoring_and_acceptance(
             n_timestep_processes=scoring_params.n_timestep_processes,
             cases_subset=cases_subset,
         )
-        lfs_early_stop_unsplit = subset_contingencies_polars(loadflow_results_unsplit, cases_subset)
+        # Flatten cases_subset for subsetting the unsplit results (which contains all timesteps)
+        flat_cases_subset = [case_id for timestep_cases in cases_subset for case_id in timestep_cases]
+        lfs_early_stop_unsplit = subset_contingencies_polars(loadflow_results_unsplit, flat_cases_subset)
         metrics_early_stop_unsplit = compute_metrics(
             strategy=strategy,
             lfs=lfs_early_stop_unsplit,
@@ -564,7 +578,7 @@ def scoring_and_acceptance(
             n_timestep_processes=scoring_params.n_timestep_processes,
         )
     else:
-        lfs, metrics = compute_loadflow_and_metrics(
+        lfs, _, metrics = compute_loadflow_and_metrics(
             runners=runners,
             strategy=strategy,
             base_case_ids=scoring_params.base_case_ids,

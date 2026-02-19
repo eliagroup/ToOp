@@ -167,7 +167,7 @@ def test_evaluate_acceptance_identical_metrics():
         )
     ]
     # Accepted if thresholds == 1.
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -176,9 +176,9 @@ def test_evaluate_acceptance_identical_metrics():
         reject_overload_threshold=1.0,
         reject_critical_branch_threshold=1.0,
     )
-    assert accepted, "Results rejected although they are the same as before and thresholds is exactly 1."
+    assert reason is None, "Results rejected although they are the same as before and thresholds is exactly 1."
     # Not accepted if any thresholds < 1.
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -187,29 +187,33 @@ def test_evaluate_acceptance_identical_metrics():
         reject_overload_threshold=0.9,
         reject_critical_branch_threshold=0.9,
     )
-    assert not accepted, "Results rejected although they are the same as before and thresholds is below 1."
-    accepted = evaluate_acceptance(
-        loadflow_results_split=empty_lf_results,
-        metrics_split=metrics_split,
-        loadflow_results_unsplit=empty_lf_results,
-        metrics_unsplit=metrics_unsplit,
-        reject_convergence_threshold=0.9,
-        reject_overload_threshold=1.0,
-        reject_critical_branch_threshold=1.0,
-    )
-    assert not accepted, "Results rejected although they are just as good and convergence thresholds below 1."
-    accepted = evaluate_acceptance(
-        loadflow_results_split=empty_lf_results,
-        metrics_split=metrics_split,
-        loadflow_results_unsplit=empty_lf_results,
-        metrics_unsplit=metrics_unsplit,
-        reject_convergence_threshold=1.0,
-        reject_overload_threshold=0.9,
-        reject_critical_branch_threshold=1.0,
-    )
-    assert not accepted, "Results rejected although they are just as good and overload thresholds below 1."
+    assert reason is not None, "Results rejected although they are the same as before and thresholds is below 1."
+    assert reason.criterion == "convergence"
 
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
+        loadflow_results_split=empty_lf_results,
+        metrics_split=metrics_split,
+        loadflow_results_unsplit=empty_lf_results,
+        metrics_unsplit=metrics_unsplit,
+        reject_convergence_threshold=0.9,
+        reject_overload_threshold=1.0,
+        reject_critical_branch_threshold=1.0,
+    )
+    assert reason is not None, "Results rejected although they are just as good and convergence thresholds below 1."
+    assert reason.criterion == "convergence"
+    reason = evaluate_acceptance(
+        loadflow_results_split=empty_lf_results,
+        metrics_split=metrics_split,
+        loadflow_results_unsplit=empty_lf_results,
+        metrics_unsplit=metrics_unsplit,
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=0.9,
+        reject_critical_branch_threshold=1.0,
+    )
+    assert reason is not None, "Results rejected although they are just as good and overload thresholds below 1."
+    assert reason.criterion == "overload-energy"
+
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -218,10 +222,11 @@ def test_evaluate_acceptance_identical_metrics():
         reject_overload_threshold=1.0,
         reject_critical_branch_threshold=0.9,
     )
-    assert not accepted, "Results rejected although they are just as good and crit branch thresholds below 1."
+    assert reason is not None, "Results rejected although they are just as good and crit branch thresholds below 1."
+    assert reason.criterion == "critical-branch-count"
 
     # Accepted if thresholds > 1.
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -230,7 +235,7 @@ def test_evaluate_acceptance_identical_metrics():
         reject_overload_threshold=1.1,
         reject_critical_branch_threshold=1.1,
     )
-    assert accepted, "Results rejected although they are just as good and thresholds above 1."
+    assert reason is None, "Results rejected although they are just as good and thresholds above 1."
 
 
 def test_evaluate_acceptance_improved_metrics():
@@ -257,7 +262,7 @@ def test_evaluate_acceptance_improved_metrics():
         )
     ]
     # Accepted if thresholds == 1.
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -266,9 +271,9 @@ def test_evaluate_acceptance_improved_metrics():
         reject_overload_threshold=1.0,
         reject_critical_branch_threshold=1.0,
     )
-    assert accepted, "Results rejected although they are the same as before and thresholds is exactly 1."
+    assert reason is None, "Results rejected although they are the same as before and thresholds is exactly 1."
     # Accepted if all thresholds=0.9.
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -277,9 +282,9 @@ def test_evaluate_acceptance_improved_metrics():
         reject_overload_threshold=0.9,
         reject_critical_branch_threshold=0.9,
     )
-    assert accepted, "Results not accepted although they improved by exactly 10 percent and thresholds is 0.9."
+    assert reason is None, "Results not accepted although they improved by exactly 10 percent and thresholds is 0.9."
 
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -288,9 +293,10 @@ def test_evaluate_acceptance_improved_metrics():
         reject_overload_threshold=0.8,
         reject_critical_branch_threshold=0.8,
     )
-    assert not accepted, "Results accepted although they only improved by exactly 10 percent and thresholds is 0.8."
+    assert reason is not None, "Results accepted although they only improved by exactly 10 percent and thresholds is 0.8."
+    assert reason.criterion == "convergence"
 
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -299,10 +305,11 @@ def test_evaluate_acceptance_improved_metrics():
         reject_overload_threshold=0.8,
         reject_critical_branch_threshold=0.8,
     )
-    assert not accepted, "Results accepted although they only improved by exactly 10 percent and thresholds is 0.8."
+    assert reason is not None, "Results accepted although they only improved by exactly 10 percent and thresholds is 0.8."
+    assert reason.criterion == "convergence"
 
     # Accepted if thresholds > 1.
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -311,7 +318,7 @@ def test_evaluate_acceptance_improved_metrics():
         reject_overload_threshold=1.1,
         reject_critical_branch_threshold=1.1,
     )
-    assert accepted, "Results rejected although they are just as good and thresholds above 1."
+    assert reason is None, "Results rejected although they are just as good and thresholds above 1."
 
 
 def test_evaluate_acceptance_worse_metrics():
@@ -338,7 +345,7 @@ def test_evaluate_acceptance_worse_metrics():
         )
     ]
     # Dont Accept if thresholds == 1.
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -347,9 +354,11 @@ def test_evaluate_acceptance_worse_metrics():
         reject_overload_threshold=1.0,
         reject_critical_branch_threshold=1.0,
     )
-    assert not accepted, "Results accepted although they are worse as before and thresholds is exactly 1."
+    assert reason is not None, "Results accepted although they are worse as before and thresholds is exactly 1."
+    assert reason.criterion == "convergence"
+
     # Not Accepted if all thresholds=0.9.
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -358,9 +367,10 @@ def test_evaluate_acceptance_worse_metrics():
         reject_overload_threshold=0.9,
         reject_critical_branch_threshold=0.9,
     )
-    assert not accepted, "Results accepted although they got worse by exactly 10 percent and thresholds is 0.9."
+    assert reason is not None, "Results accepted although they got worse by exactly 10 percent and thresholds is 0.9."
+    assert reason.criterion == "convergence"
 
-    accepted = evaluate_acceptance(
+    reason = evaluate_acceptance(
         loadflow_results_split=empty_lf_results,
         metrics_split=metrics_split,
         loadflow_results_unsplit=empty_lf_results,
@@ -369,4 +379,4 @@ def test_evaluate_acceptance_worse_metrics():
         reject_overload_threshold=1.1,
         reject_critical_branch_threshold=1.1,
     )
-    assert accepted, "Results not accepted although they only got worse by exactly 10 percent and thresholds is 1.1."
+    assert reason is None, "Results not accepted although they only got worse by exactly 10 percent and thresholds is 1.1."

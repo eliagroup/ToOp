@@ -19,6 +19,7 @@ from jax import numpy as jnp
 from jaxtyping import Array, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.types import (
     BranchLimits,
+    NodalInjOptimResults,
     SolverLoadflowResults,
     WorstKContingencyResults,
 )
@@ -558,6 +559,54 @@ def get_bb_outage_grid_splits(bb_outage_grid_splits: Optional[Int[Array, " "]]) 
     return bb_outage_grid_splits
 
 
+def get_pst_setpoint_deviation(
+    optimized_taps: Optional[NodalInjOptimResults],
+    initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
+) -> Float[Array, " "]:
+    """Compute the deviation between optimized PST tap positions and initial setpoints.
+
+    This metric measures how much the optimized PST tap positions deviate from the initial
+    setpoints using L1 distance (sum of absolute differences). It is useful for penalizing
+    solutions that require large changes to PST settings.
+
+    Parameters
+    ----------
+    optimized_taps : Optional[NodalInjOptimResults]
+        The optimized PST tap positions from the solver. If None (PST optimization disabled),
+        returns 0.0
+    initial_tap_idx : Optional[Int[Array, " n_controllable_pst"]]
+        The initial tap positions for each controllable PST as indices. If None (no PST info
+        available), returns 0.0
+
+    Returns
+    -------
+    Float[Array, " "]
+        The sum of absolute differences between optimized and initial tap positions across all
+        controllable PSTs. Returns 0.0 if PST optimization is not enabled or data is unavailable.
+    """
+    if optimized_taps is None or initial_tap_idx is None:
+        return jnp.array(0.0)
+
+    # Extract optimized tap indices
+    # Shape: (n_timesteps, n_controllable_pst) or (batch, n_timesteps, n_controllable_pst)
+    optimized_tap_idx = optimized_taps.pst_tap_idx
+
+    # Handle both batched and non-batched cases
+    # If there are timesteps, take the first timestep (index 0)
+    # This assumes we're computing deviation for a single timestep at a time
+    if optimized_tap_idx.ndim == 2:
+        # Shape: (n_timesteps, n_controllable_pst) -> take first timestep
+        optimized_tap_idx_single = optimized_tap_idx[0]
+    else:
+        # Shape: (n_controllable_pst) - already single timestep
+        optimized_tap_idx_single = optimized_tap_idx
+
+    # Compute L1 distance (Manhattan distance)
+    deviation = jnp.sum(jnp.abs(optimized_tap_idx_single.astype(int) - initial_tap_idx.astype(int)))
+
+    return deviation.astype(float)
+
+
 def get_n_2_penalty(
     n_2_penalty: Optional[Float[Array, " "]],
 ) -> Float[Array, " "]:
@@ -618,6 +667,7 @@ def aggregate_to_metric_batched(
     reassignment_distance: Int[Array, " n_branch_actions"],
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
+    initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
 ) -> Float[Array, " batch_size"]:
     """Aggregate the N-0 and N-1 results down to a single metric
 
@@ -636,18 +686,23 @@ def aggregate_to_metric_batched(
         The number of relevant substations in the grid, used for split_subs metric
     metric : MetricType = "max_flow_n_1"
         The metric to use for aggregation.
+    initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
+        The initial tap positions for PSTs. Required for computing pst_setpoint_deviation metric.
+        If None, pst_setpoint_deviation will return 0.0
 
     Returns
     -------
     Float[Array, " batch_size"]
         The aggregated metric
     """
-    return jax.vmap(aggregate_to_metric, in_axes=(0, None, None, None, None))(
+    return jax.vmap(aggregate_to_metric, in_axes=(0, None, None, None, None, None, None))(
         lf_res_batch,
         branch_limits,
         reassignment_distance,
         n_relevant_subs,
         metric,
+        "max",  # aggregate_strategy
+        initial_pst_tap_idx,
     )
 
 
@@ -710,6 +765,7 @@ def aggregate_to_metric(
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
     aggregate_strategy: Optional[AggregateStrategy] = "max",
+    initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
 ) -> Float[Array, " "]:
     """Aggregate the N-0 and N-1 results down to a single metric
 
@@ -734,6 +790,9 @@ def aggregate_to_metric(
         Can be "max" or "nanmax". The "nanmax" will ignore NaN values, while "max" will not.
         This is useful if you want to ignore failures that are not relevant for the metric,
         e.g. if you want to ignore busbar outage failures in the overload energy calculation.
+    initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
+        The initial tap positions for PSTs. Required for computing pst_setpoint_deviation metric.
+        If None, pst_setpoint_deviation will return 0.0
 
     Returns
     -------
@@ -748,6 +807,11 @@ def aggregate_to_metric(
         retval = get_switching_distance(
             branch_action_index=lf_res.branch_action_index,
             reassignment_distance=reassignment_distance,
+        )
+    elif metric == "pst_setpoint_deviation":
+        retval = get_pst_setpoint_deviation(
+            optimized_taps=lf_res.nodal_injections_optimized,
+            initial_tap_idx=initial_pst_tap_idx,
         )
     elif metric == "split_subs":
         retval = get_number_of_splits(lf_res.branch_topology, lf_res.sub_ids, n_relevant_subs)

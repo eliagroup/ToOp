@@ -650,8 +650,11 @@ def node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPath
 
 
 @pytest.fixture(scope="session")
-def test_grid_folder_path() -> Path:
-    return Path(__file__).parent / "files" / "test_grid_node_breaker"
+def test_grid_folder_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create a temporary folder with test grid node breaker data."""
+    tmp_path = tmp_path_factory.mktemp("test_grid_node_breaker")
+    node_breaker_folder_powsybl(tmp_path)
+    return tmp_path
 
 
 @pytest.fixture(scope="session")

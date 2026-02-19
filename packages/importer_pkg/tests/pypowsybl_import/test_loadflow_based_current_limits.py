@@ -394,13 +394,16 @@ def test_get_all_dso_trafo_limits_no_border(limit_update_input):
 
 def test_create_new_border_limits_no_limits_set(ucte_file_with_border, ucte_importer_parameters):
     network = pypowsybl.network.load(ucte_file_with_border)
-    pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
     limits_before = network.get_operational_limits().copy()
 
     ucte_importer_parameters.area_settings.border_line_factors = None
     ucte_importer_parameters.area_settings.dso_trafo_factors = None
     ucte_importer_parameters.area_settings.nminus1_area = ["D8", "0"]
-    network_masks = powsybl_masks.make_masks(network=network, importer_parameters=ucte_importer_parameters)
+
+    network_masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
+    )
     n_border_lines = network_masks.line_tso_border.sum()
     n_border_tie_lines = network_masks.tie_line_tso_border.sum()
     n_border_trafos = network_masks.trafo_dso_border.sum()
@@ -415,12 +418,14 @@ def test_create_new_border_limits_no_limits_set(ucte_file_with_border, ucte_impo
 
 def test_create_new_border_limits(ucte_file_with_border, ucte_importer_parameters):
     network = pypowsybl.network.load(ucte_file_with_border)
-    pypowsybl.loadflow.run_ac(network)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
     limits_before = network.get_operational_limits().copy()
     ucte_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
     ucte_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
     ucte_importer_parameters.area_settings.nminus1_area = ["D8", "0"]
-    network_masks = powsybl_masks.make_masks(network=network, importer_parameters=ucte_importer_parameters)
+    network_masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
+    )
     n_cases = 2
     pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
     branches = network.get_branches()
@@ -444,12 +449,14 @@ def test_create_new_border_limits(ucte_file_with_border, ucte_importer_parameter
 def test_create_new_border_limits_3wtrf(test_pypowsybl_cgmes_with_3w_trafo, cgmes_importer_parameters):
     network = pypowsybl.network.load(test_pypowsybl_cgmes_with_3w_trafo)
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
-    pypowsybl.loadflow.run_ac(network)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
     limits_before = network.get_operational_limits().copy()
     cgmes_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
     cgmes_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
     cgmes_importer_parameters.area_settings.nminus1_area = ["BE"]
-    network_masks = powsybl_masks.make_masks(network=network, importer_parameters=cgmes_importer_parameters)
+    network_masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
+    )
     n_cases = 2
     pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
     branches = network.get_branches()
@@ -491,12 +498,14 @@ def test_create_new_border_limits_3wtrf_conversion(test_pypowsybl_cgmes_with_3w_
         )
         trafo3w_lims.index.name = "id"
         network.update_2_windings_transformers(trafo3w_lims)
-    pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
     limits_before = network.get_operational_limits().copy()
     cgmes_importer_parameters.area_settings.border_line_factors = LimitAdjustmentParameters()
     cgmes_importer_parameters.area_settings.dso_trafo_factors = LimitAdjustmentParameters()
     cgmes_importer_parameters.area_settings.nminus1_area = [""]
-    network_masks = powsybl_masks.make_masks(network=network, importer_parameters=cgmes_importer_parameters)
+    network_masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
+    )
     n_cases = 2
     pypowsybl.loadflow.run_ac(network, DISTRIBUTED_SLACK)
     branches = network.get_branches()

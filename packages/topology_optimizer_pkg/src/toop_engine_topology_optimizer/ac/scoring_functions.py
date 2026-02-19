@@ -21,7 +21,7 @@ from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.evolution_functions import get_contingency_indices_from_ids
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
-from toop_engine_topology_optimizer.interfaces.messages.results import Metrics
+from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, TopologyRejectionReason
 
 logger = logbook.Logger(__name__)
 
@@ -492,7 +492,7 @@ def evaluate_acceptance(
     reject_convergence_threshold: float = 1.0,
     reject_overload_threshold: float = 0.95,
     reject_critical_branch_threshold: float = 1.1,
-) -> bool:
+) -> Optional[TopologyRejectionReason]:
     """Evaluate if the split loadflow results are acceptable compared to the unsplit results.
 
     Compares the unsplit metrics * the thresholds to the split metrics. If all split metrics are better than
@@ -529,8 +529,8 @@ def evaluate_acceptance(
 
     Returns
     -------
-    bool
-        True if the split results are acceptable, False if rejected.
+    Optional[TopologyRejectionReason]
+        A TopologyRejectionReason if the split results are rejected, None if accepted.
     """
     n_non_converged_unsplit = np.array(
         [unsplit.extra_scores.get("non_converging_loadflows", 0) for unsplit in metrics_unsplit]
@@ -543,17 +543,22 @@ def evaluate_acceptance(
     )
     convergence_acceptable = np.all(n_non_converged_split <= n_non_converged_unsplit * reject_convergence_threshold)
     if not convergence_acceptable:
-        logger.info(
-            "Rejecting topology due to insufficient convergence: "
-            f"{n_non_converged_split} vs {n_non_converged_unsplit} before"
+        return TopologyRejectionReason(
+            criterion="convergence",
+            value_after=float(n_non_converged_split.sum()),
+            value_before=float(n_non_converged_unsplit.sum()),
+            threshold=reject_convergence_threshold,
         )
 
     unsplit_overload = np.array([unsplit.extra_scores.get("overload_energy_n_1", 0) for unsplit in metrics_unsplit])
     split_overload = np.array([split.extra_scores.get("overload_energy_n_1", 99999) for split in metrics_split])
     overload_improvement = np.all(split_overload <= unsplit_overload * reject_overload_threshold)
     if not overload_improvement:
-        logger.info(
-            f"Rejecting topology due to overload energy not improving: {split_overload} vs {unsplit_overload} before"
+        return TopologyRejectionReason(
+            criterion="overload-energy",
+            value_after=float(split_overload.sum()),
+            value_before=float(unsplit_overload.sum()),
+            threshold=reject_overload_threshold,
         )
 
     unsplit_critical_branches = np.array(
@@ -567,9 +572,11 @@ def evaluate_acceptance(
         split_critical_branches <= unsplit_critical_branches * reject_critical_branch_threshold
     )
     if not critical_branches_acceptable:
-        logger.info(
-            "Rejecting topology due to critical branches increasing too much: "
-            f"{split_critical_branches} vs {unsplit_critical_branches} before"
+        return TopologyRejectionReason(
+            criterion="critical-branch-count",
+            value_after=float(split_critical_branches.sum()),
+            value_before=float(unsplit_critical_branches.sum()),
+            threshold=reject_critical_branch_threshold,
         )
 
-    return convergence_acceptable and overload_improvement and critical_branches_acceptable
+    return None

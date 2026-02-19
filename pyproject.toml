@@ -69,9 +69,6 @@ toop_engine_importer = { path = "packages/importer_pkg", editable = true }
 toop_engine_topology_optimizer = { path = "packages/topology_optimizer_pkg", editable = true }
 
 [dependency-groups]
-ci = [
-    "commitizen>=4.9.1",
-]
 dev = [
     "pep8-naming",
     "pre-commit",

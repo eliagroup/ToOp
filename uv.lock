@@ -89,15 +89,6 @@ wheels = [
 ]
 
 [[package]]
-name = "argcomplete"
-version = "3.6.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/38/61/0b9ae6399dd4a58d8c1b1dc5a27d6f2808023d0b5dd3104bb99f45a33ff6/argcomplete-3.6.3.tar.gz", hash = "sha256:62e8ed4fd6a45864acc8235409461b72c9a28ee785a2011cc5eb78318786c89c", size = 73754, upload-time = "2025-10-20T03:33:34.741Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/74/f5/9373290775639cb67a2fce7f629a1c240dce9f12fe927bc32b2736e16dfc/argcomplete-3.6.3-py3-none-any.whl", hash = "sha256:f5007b3a600ccac5d25bbce33089211dfd49eab4a7718da3f10e3082525a92ce", size = 43846, upload-time = "2025-10-20T03:33:33.021Z" },
-]
-
-[[package]]
 name = "argon2-cffi"
 version = "25.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -445,29 +436,6 @@ wheels = [
 ]
 
 [[package]]
-name = "commitizen"
-version = "4.12.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "argcomplete" },
-    { name = "charset-normalizer" },
-    { name = "colorama" },
-    { name = "decli" },
-    { name = "deprecated" },
-    { name = "jinja2" },
-    { name = "packaging" },
-    { name = "prompt-toolkit" },
-    { name = "pyyaml" },
-    { name = "questionary" },
-    { name = "termcolor" },
-    { name = "tomlkit" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/57/85/be8346917ead7cd42603122f87eb91a051693419168e3fa1db03137eeeaa/commitizen-4.12.0.tar.gz", hash = "sha256:c273aa679690b6887db7724a11f7adc8f18414740c6a350d00367d17290d8048", size = 63072, upload-time = "2026-01-19T05:25:41.468Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/68/1d/32b35fb7c0f764fc2264f1c4c39f0028073fd7054381cdda7a5e6be319e2/commitizen-4.12.0-py3-none-any.whl", hash = "sha256:9cb4413b32ff95cf1e9e029499574ef543e9fd3e50e6dcc70cf9807dc4c3fb4f", size = 84187, upload-time = "2026-01-19T05:25:39.819Z" },
-]
-
-[[package]]
 name = "confluent-kafka"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -557,15 +525,6 @@ wheels = [
 ]
 
 [[package]]
-name = "decli"
-version = "0.6.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0c/59/d4ffff1dee2c8f6f2dd8f87010962e60f7b7847504d765c91ede5a466730/decli-0.6.3.tar.gz", hash = "sha256:87f9d39361adf7f16b9ca6e3b614badf7519da13092f2db3c80ca223c53c7656", size = 7564, upload-time = "2025-06-01T15:23:41.25Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d8/fa/ec878c28bc7f65b77e7e17af3522c9948a9711b9fa7fc4c5e3140a7e3578/decli-0.6.3-py3-none-any.whl", hash = "sha256:5152347c7bb8e3114ad65db719e5709b28d7f7f45bdb709f70167925e55640f3", size = 7989, upload-time = "2025-06-01T15:23:40.228Z" },
-]
-
-[[package]]
 name = "decorator"
 version = "5.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -593,18 +552,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0f/d5/c66da9b79e5bdb124974bfe172b4daf3c984ebd9c2a06e2b8a4dc7331c72/defusedxml-0.7.1.tar.gz", hash = "sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69", size = 75520, upload-time = "2021-03-08T10:59:26.269Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl", hash = "sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61", size = 25604, upload-time = "2021-03-08T10:59:24.45Z" },
-]
-
-[[package]]
-name = "deprecated"
-version = "1.3.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "wrapt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/49/85/12f0a49a7c4ffb70572b6c2ef13c90c88fd190debda93b23f026b25f9634/deprecated-1.3.1.tar.gz", hash = "sha256:b1b50e0ff0c1fddaa5708a2c6b0a6588bb09b892825ab2b214ac9ea9d92a5223", size = 2932523, upload-time = "2025-10-30T08:19:02.757Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/d0/205d54408c08b13550c733c4b85429e7ead111c7f0014309637425520a9a/deprecated-1.3.1-py2.py3-none-any.whl", hash = "sha256:597bfef186b6f60181535a29fbe44865ce137a5079f295b479886c82729d5f3f", size = 11298, upload-time = "2025-10-30T08:19:00.758Z" },
 ]
 
 [[package]]
@@ -918,6 +865,14 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/02/6e639e90f181dc9127046e00d0528f9f7ad12d428972e3a5378b9aefdb0b/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.p39.p310.p311.p312.p313-none-manylinux_2_28_x86_64.whl", hash = "sha256:7916034efa867927892635733a3b6af8cd95ceb10566fd7f1e0d2763c2ee8b12", size = 243525, upload-time = "2025-09-12T08:54:34.006Z" },
     { url = "https://files.pythonhosted.org/packages/84/06/cb588ca65561defe0fc48d1df4c2ac12569b81231ae4f2b52ab37007d0bd/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.p39.p310.p311.p312.p313-none-win32.whl", hash = "sha256:6c9549da71b93e367b4d71438798daae1da2592039fd14204a80a1a2348ae127", size = 552685, upload-time = "2025-09-12T08:54:35.723Z" },
     { url = "https://files.pythonhosted.org/packages/86/27/00c9c96af18ac0a5eac2ff61cbe306551a2d770d7173f396d0792ee1a59e/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.p39.p310.p311.p312.p313-none-win_amd64.whl", hash = "sha256:6292d5d6634d668cd23d337e6089491d3945a9aa4ac6e1667b0003520d7caa51", size = 559466, upload-time = "2025-09-12T08:54:37.661Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/87/de0b33f6f00687499ca1371f22aa73396341b85bf88f1a284f9da8842493/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.py39.py310.py311.py312.py313.py314-none-macosx_10_6_intel.whl", hash = "sha256:2aab89d2d9535635ba011fc7303390685169a1aa6731ad580d08d043524b8899", size = 105326, upload-time = "2026-01-28T05:57:56.083Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/a6/6ea2f73ad4474896d9e38b3ffbe6ffd5a802c738392269e99e8c6621a461/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.py39.py310.py311.py312.py313.py314-none-macosx_11_0_arm64.whl", hash = "sha256:23936202a107039b5372f0b88ae1d11080746aa1c78910a45d4a0c4cf408cfaa", size = 102180, upload-time = "2026-01-28T05:57:57.787Z" },
+    { url = "https://files.pythonhosted.org/packages/58/19/d81b19e8261b9cb51b81d1402167791fef81088dfe91f0c4e9d136fdc5ca/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.py39.py310.py311.py312.py313.py314-none-manylinux2014_aarch64.whl", hash = "sha256:7be06d0838f61df67bd54cb6266a6193d54083acb3624ff3c3812a6358406fa4", size = 230038, upload-time = "2026-01-28T05:57:59.105Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/fa/b035636cd82198b97b51a93efe9cfc4343d6b15cefbd336a3f2be871d848/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.py39.py310.py311.py312.py313.py314-none-manylinux2014_x86_64.whl", hash = "sha256:91d36b3582a766512eff8e3b5dcc2d3ffcbf10b7cf448551085a08a10f1b8244", size = 241983, upload-time = "2026-01-28T05:58:00.352Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/b4/f7b6cc022dd7c68b6c702d19da5d591f978f89c958b9bd3090615db0c739/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.py39.py310.py311.py312.py313.py314-none-manylinux_2_28_aarch64.whl", hash = "sha256:27c9e9a2d5e1dc3c9e3996171d844d9df9a5a101e797cb94cce217b7afcf8fd9", size = 231053, upload-time = "2026-01-28T05:58:01.683Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/3f/efeb7c6801c46e11bd666a5180f0d615f74f72264212f74f39586c6fda9d/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.py39.py310.py311.py312.py313.py314-none-manylinux_2_28_x86_64.whl", hash = "sha256:ce6724bb7cb3d0543dcba17206dce909f94176e68220b8eafee72e9f92bcf542", size = 243522, upload-time = "2026-01-28T05:58:03.517Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/b9/b04c3aa0aad2870cfe799f32f8b59789c98e1816bbce9e83f4823c5b840b/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.py39.py310.py311.py312.py313.py314-none-win32.whl", hash = "sha256:fca724a21a372731edb290841edd28a9fb1ee490f833392752844ac807c0086a", size = 552682, upload-time = "2026-01-28T05:58:05.649Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/e1/6d6816b296a529ac9b897ad228b1e084eb1f92319e96371880eebdc874a6/glfw-2.10.0-py2.py27.py3.py30.py31.py32.py33.py34.py35.py36.py37.py38.py39.py310.py311.py312.py313.py314-none-win_amd64.whl", hash = "sha256:823c0bd7770977d4b10e0ed0aef2f3682276b7c88b8b65cfc540afce5951392f", size = 559464, upload-time = "2026-01-28T05:58:07.261Z" },
 ]
 
 [[package]]
@@ -3283,18 +3238,6 @@ wheels = [
 ]
 
 [[package]]
-name = "questionary"
-version = "2.1.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "prompt-toolkit" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f6/45/eafb0bba0f9988f6a2520f9ca2df2c82ddfa8d67c95d6625452e97b204a5/questionary-2.1.1.tar.gz", hash = "sha256:3d7e980292bb0107abaa79c68dd3eee3c561b83a0f89ae482860b181c8bd412d", size = 25845, upload-time = "2025-08-28T19:00:20.851Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/26/1062c7ec1b053db9e499b4d2d5bc231743201b74051c973dadeac80a8f43/questionary-2.1.1-py3-none-any.whl", hash = "sha256:a51af13f345f1cdea62347589fbb6df3b290306ab8930713bfae4d475a7d4a59", size = 36753, upload-time = "2025-08-28T19:00:19.56Z" },
-]
-
-[[package]]
 name = "ray"
 version = "2.53.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3727,15 +3670,6 @@ wheels = [
 ]
 
 [[package]]
-name = "termcolor"
-version = "3.3.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/46/79/cf31d7a93a8fdc6aa0fbb665be84426a8c5a557d9240b6239e9e11e35fc5/termcolor-3.3.0.tar.gz", hash = "sha256:348871ca648ec6a9a983a13ab626c0acce02f515b9e1983332b17af7979521c5", size = 14434, upload-time = "2025-12-29T12:55:21.882Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/d1/8bb87d21e9aeb323cc03034f5eaf2c8f69841e40e4853c2627edf8111ed3/termcolor-3.3.0-py3-none-any.whl", hash = "sha256:cf642efadaf0a8ebbbf4bc7a31cec2f9b5f21a9f726f4ccbb08192c9c26f43a5", size = 7734, upload-time = "2025-12-29T12:55:20.718Z" },
-]
-
-[[package]]
 name = "terminado"
 version = "0.18.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3795,15 +3729,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/0d/a22bb6c83f83386b0008425a6cd1fa1c14b5f3dd4bad05e98cf3dbbf4a64/tomli-2.4.0-cp311-cp311-win_amd64.whl", hash = "sha256:d3d1654e11d724760cdb37a3d7691f0be9db5fbdaef59c9f532aabf87006dbaa", size = 107626, upload-time = "2026-01-11T11:21:53.459Z" },
     { url = "https://files.pythonhosted.org/packages/2f/6d/77be674a3485e75cacbf2ddba2b146911477bd887dda9d8c9dfb2f15e871/tomli-2.4.0-cp311-cp311-win_arm64.whl", hash = "sha256:cae9c19ed12d4e8f3ebf46d1a75090e4c0dc16271c5bce1c833ac168f08fb614", size = 94842, upload-time = "2026-01-11T11:21:54.831Z" },
     { url = "https://files.pythonhosted.org/packages/23/d1/136eb2cb77520a31e1f64cbae9d33ec6df0d78bdf4160398e86eec8a8754/tomli-2.4.0-py3-none-any.whl", hash = "sha256:1f776e7d669ebceb01dee46484485f43a4048746235e683bcdffacdf1fb4785a", size = 14477, upload-time = "2026-01-11T11:22:37.446Z" },
-]
-
-[[package]]
-name = "tomlkit"
-version = "0.14.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c3/af/14b24e41977adb296d6bd1fb59402cf7d60ce364f90c890bd2ec65c43b5a/tomlkit-0.14.0.tar.gz", hash = "sha256:cf00efca415dbd57575befb1f6634c4f42d2d87dbba376128adb42c121b87064", size = 187167, upload-time = "2026-01-13T01:14:53.304Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/11/87d6d29fb5d237229d67973a6c9e06e048f01cf4994dee194ab0ea841814/tomlkit-0.14.0-py3-none-any.whl", hash = "sha256:592064ed85b40fa213469f81ac584f67a4f2992509a7c3ea2d632208623a3680", size = 39310, upload-time = "2026-01-13T01:14:51.965Z" },
 ]
 
 [[package]]
@@ -4254,9 +4179,6 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-ci = [
-    { name = "commitizen" },
-]
 dev = [
     { name = "defusedxml" },
     { name = "docker" },
@@ -4302,7 +4224,6 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-ci = [{ name = "commitizen", specifier = ">=4.9.1" }]
 dev = [
     { name = "defusedxml", specifier = ">=0.7.0" },
     { name = "docker", specifier = ">=7.1.0" },

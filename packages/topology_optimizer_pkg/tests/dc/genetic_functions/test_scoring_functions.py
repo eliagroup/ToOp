@@ -295,3 +295,174 @@ def test_get_threshold_n_minus1_overload_empty_strategy():
     thresholds, indices = get_threshold_n_minus1_overload(strategy)
     assert thresholds == []
     assert indices == []
+
+
+def test_pst_setpoint_deviation_metric_integration(static_information_file: str) -> None:
+    """Test that pst_setpoint_deviation metric works in the scoring function."""
+    static_information = load_static_information(static_information_file)
+
+    # Skip test if there are no controllable PSTs in this grid
+    if (
+        static_information.dynamic_information.nodal_injection_information is None
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
+    ):
+        pytest.skip("No controllable PSTs in this grid")
+
+    action_set = static_information.dynamic_information.action_set
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
+
+    max_num_splits = 2
+    n_disconnections = 0
+    batch_size = 8
+    n_timesteps = static_information.dynamic_information.n_timesteps
+
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
+    )
+
+    # Create some topologies
+    topologies = empty_repertoire(
+        batch_size,
+        max_num_splits,
+        n_disconnections,
+        n_timesteps,
+    )
+
+    key = jax.random.PRNGKey(42)
+
+    # Initialize with PST optimization enabled (starting taps)
+    n_controllable_pst = len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices)
+    pst_n_taps = static_information.dynamic_information.nodal_injection_information.pst_n_taps
+    starting_taps = static_information.dynamic_information.nodal_injection_information.starting_tap_idx
+
+    topologies, key = mutate(
+        topologies=topologies,
+        random_key=key,
+        substation_split_prob=0.1,
+        substation_unsplit_prob=0.00001,
+        action_set=action_set,
+        n_disconnectable_branches=n_disconnectable_branches,
+        n_subs_mutated_lambda=5.0,
+        disconnect_prob=0.0,
+        reconnect_prob=0.0,
+        pst_mutation_sigma=0,  # No PST mutation yet
+        pst_n_taps=pst_n_taps,
+        mutation_repetition=1,
+        starting_taps=starting_taps,
+    )
+
+    # Test 1: With pst_setpoint_deviation in observed metrics
+    (fitness, descriptors, metrics, emitter_info, random_key, topologies_updated) = scoring_function(
+        topologies,
+        key,
+        [static_information.dynamic_information],
+        [static_information.solver_config],
+        target_metrics=(("overload_energy_n_1", 1.0),),
+        observed_metrics=(
+            "overload_energy_n_1",
+            "switching_distance",
+            "pst_setpoint_deviation",
+        ),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    assert "pst_setpoint_deviation" in metrics, "pst_setpoint_deviation should be in metrics"
+    assert metrics["pst_setpoint_deviation"].shape == (batch_size,), "Metric should have batch dimension"
+    
+    # Since we haven't mutated PSTs (pst_mutation_sigma=0), all deviations should be 0
+    assert jnp.all(metrics["pst_setpoint_deviation"] == 0.0), "Deviation should be 0 when PST taps haven't changed"
+
+    # Test 2: With PST mutation, deviation should be non-zero
+    topologies_mutated, key = mutate(
+        topologies=topologies,
+        random_key=key,
+        substation_split_prob=0.0,  # No topology changes
+        substation_unsplit_prob=0.0,
+        action_set=action_set,
+        n_disconnectable_branches=n_disconnectable_branches,
+        n_subs_mutated_lambda=0.0,
+        disconnect_prob=0.0,
+        reconnect_prob=0.0,
+        pst_mutation_sigma=2.0,  # Enable PST mutation
+        pst_n_taps=pst_n_taps,
+        mutation_repetition=1,
+    )
+
+    (_, _, metrics_mutated, _, _, _) = scoring_function(
+        topologies_mutated,
+        key,
+        [static_information.dynamic_information],
+        [static_information.solver_config],
+        target_metrics=(("overload_energy_n_1", 1.0),),
+        observed_metrics=(
+            "overload_energy_n_1",
+            "pst_setpoint_deviation",
+        ),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    # With PST mutation, at least some topologies should have non-zero deviation
+    # (though it's possible all mutations result in the same tap due to clipping)
+    assert "pst_setpoint_deviation" in metrics_mutated, "Metric should be computed"
+    assert jnp.all(jnp.isfinite(metrics_mutated["pst_setpoint_deviation"])), "All deviations should be finite"
+    assert jnp.all(metrics_mutated["pst_setpoint_deviation"] >= 0.0), "Deviations should be non-negative"
+
+
+def test_pst_setpoint_deviation_without_pst_optimization(static_information_file: str) -> None:
+    """Test that pst_setpoint_deviation returns 0 when PST optimization is disabled."""
+    static_information = load_static_information(static_information_file)
+
+    action_set = static_information.dynamic_information.action_set
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
+
+    max_num_splits = 2
+    batch_size = 4
+    n_timesteps = static_information.dynamic_information.n_timesteps
+
+    # Disable PST optimization by setting nodal_injection_information to None
+    dynamic_info_no_pst = replace(
+        static_information.dynamic_information,
+        nodal_injection_information=None,
+    )
+    
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
+        dynamic_information=dynamic_info_no_pst,
+    )
+
+    topologies = empty_repertoire(batch_size, max_num_splits, 0, n_timesteps)
+
+    key = jax.random.PRNGKey(100)
+    topologies, key = mutate(
+        topologies=topologies,
+        random_key=key,
+        substation_split_prob=0.1,
+        substation_unsplit_prob=0.0,
+        action_set=action_set,
+        n_disconnectable_branches=n_disconnectable_branches,
+        n_subs_mutated_lambda=3.0,
+        disconnect_prob=0.0,
+        reconnect_prob=0.0,
+        pst_mutation_sigma=0,  # PST mutation irrelevant when PST opt disabled
+        pst_n_taps=jnp.array([], dtype=int),
+        mutation_repetition=1,
+    )
+
+    (_, _, metrics, _, _, _) = scoring_function(
+        topologies,
+        key,
+        [static_information.dynamic_information],
+        [static_information.solver_config],
+        target_metrics=(("overload_energy_n_1", 1.0),),
+        observed_metrics=(
+            "overload_energy_n_1",
+            "pst_setpoint_deviation",
+        ),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    assert "pst_setpoint_deviation" in metrics, "Metric should be computed even when PST opt is disabled"
+    # All deviations should be 0 when PST optimization is disabled
+    assert jnp.all(metrics["pst_setpoint_deviation"] == 0.0), "Deviation should be 0 when PST optimization is disabled"

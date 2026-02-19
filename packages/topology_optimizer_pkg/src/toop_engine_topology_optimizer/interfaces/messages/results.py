@@ -102,12 +102,15 @@ class Strategy(BaseModel):
     """The topologies for every timestep"""
 
 
+RejectionCriterion: TypeAlias = Literal[
+    "convergence", "voltage-magnitude", "voltage-angle", "overload-energy", "critical-branch-count", "other"
+]
+
+
 class TopologyRejectionReason(BaseModel):
     """The reason for rejecting a topology including a criterion that was violated and further data."""
 
-    criterion: Literal[
-        "convergence", "voltage-magnitude", "voltage-angle", "overload-energy", "critical-branch-count", "other"
-    ]
+    criterion: RejectionCriterion
     """The criterion that was violated for the rejection."""
 
     description: Optional[str] = None

@@ -134,6 +134,11 @@ class TopologyRejectionReason(BaseModel):
     threshold: Optional[float] = None
     """The threshold for rejection that was set in the AC configuration, if applicable."""
 
+    early_stopping: bool = False
+    """Whether this rejection was part of an early stopping run, i.e. only a subset of the cases were computed to determine
+    the rejection. In that case, the value_before and value_after are only based on the subset of cases that were computed.
+    """
+
 
 def get_topology_rejection_message(result: TopologyRejectionReason) -> str:
     """Condense a TopologyRejectionReason into a human-readable message for logging purposes."""

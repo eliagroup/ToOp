@@ -7,6 +7,8 @@
 
 """Scoring functions for the AC optimizer - in this case this runs an N-1 and computes metrics for it"""
 
+from dataclasses import dataclass
+
 import logbook
 import numpy as np
 import pandas as pd
@@ -15,7 +17,11 @@ from beartype.typing import Optional
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics as compute_metrics_lfs
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_interfaces.asset_topology import RealizedTopology
-from toop_engine_interfaces.loadflow_result_helpers_polars import concatenate_loadflow_results_polars, select_timestep_polars
+from toop_engine_interfaces.loadflow_result_helpers_polars import (
+    concatenate_loadflow_results_polars,
+    select_timestep_polars,
+    subset_contingencies_polars,
+)
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
@@ -26,44 +32,36 @@ from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, 
 logger = logbook.Logger(__name__)
 
 
-def get_threshold_n_minus1_overload(
+def get_early_stopping_contingency_ids(
     strategy: list[ACOptimTopology],
-) -> tuple[Optional[list[float]], Optional[list[list[int]]]]:
-    """Extract the 'top_k_overloads_n_1' thresholds and corresponding case indices from a list of ACOptimTopology strategies.
+) -> Optional[list[list[str]]]:
+    """Extract the contingency ids for early stopping from a list of ACOptimTopology strategies.
 
-    overload_threshold is defined as the maximum allowed overload energy for the worst k AC N-1 contingency analysis
-    of the split topologies. This threshold is computed using the worst k AC contingencies of the unsplit grid and the
-    worst k DC contingencies of the split grid. Refer to the "pull" method in evolution_functions.py for more details.
+    This function looks for the 'top_k_overloads_n_1' metric in the strategy's metrics and extracts the corresponding
+    worst k contingency case ids for each timestep. These ids are used to determine which contingencies to
+    include in the N-1 analysis for early stopping.
 
     Parameters
     ----------
     strategy : list of ACOptimTopology
-        A list of ACOptimTopology objects, each containing a 'metrics' dictionary with overload thresholds and case indices.
+        A list of ACOptimTopology objects, each containing a 'metrics' dictionary with overload thresholds and case ids.
 
     Returns
     -------
-    tuple of (Optional[list of float], Optional[list of list of int])
-        A tuple containing:
-        - A list of overload thresholds for each topology, or None if any required metric is missing.
-        - A list of lists of case indices for each topology, or None if any required metric is missing.
-
+    Optional[list of list of str]
+        A list of lists of contingency case IDs for each timestep, or None if any required metric is missing.
     """
-    overload_threshold_all_t = []
-    case_indices_all_t = []
+    case_ids_all_t = []
     for topo in strategy:
-        threshold_overload = topo.metrics.get("top_k_overloads_n_1", None)
-        threshold_case_indices = topo.worst_k_contingency_cases
-        if threshold_overload is None or len(threshold_case_indices) == 0:
+        worst_k_contingency_cases = topo.worst_k_contingency_cases
+        if len(worst_k_contingency_cases) == 0:
             logger.warning(
-                f"No overload threshold or case indices found in the strategy"
-                f"threshold_overload: {threshold_overload}, threshold_case_indices: {threshold_case_indices}"
+                f"No overload threshold or case ids found in the strategy"
+                f"worst_k_contingency_cases: {worst_k_contingency_cases}"
             )
-            return None, None
-
-        overload_threshold_all_t.append(threshold_overload)
-        case_indices_all_t.append(threshold_case_indices)
-
-    return overload_threshold_all_t, case_indices_all_t
+            return None
+        case_ids_all_t.append(worst_k_contingency_cases)
+    return case_ids_all_t
 
 
 def update_runner_nminus1(
@@ -96,6 +94,7 @@ def compute_loadflow_and_metrics(
     strategy: list[ACOptimTopology],
     base_case_ids: list[Optional[str]],
     n_timestep_processes: int = 1,
+    cases_subset: Optional[list[list[str]]] = None,
 ) -> tuple[LoadflowResultsPolars, list[Optional[AdditionalActionInfo]], list[Metrics]]:
     """Compute loadflow results and associated metrics for a given set of strategies.
 
@@ -112,6 +111,8 @@ def compute_loadflow_and_metrics(
         List of base case identifiers corresponding to each strategy. Can be None.
     n_timestep_processes : int, optional
         Number of parallel processes to use for timestep simulations (default is 1).
+    cases_subset : list of list of str, optional
+        Subset of contingency cases to use for loadflow computation. If None, all available contingencies are used.
 
     Returns
     -------
@@ -122,6 +123,10 @@ def compute_loadflow_and_metrics(
     metrics : list of Metrics
         Computed metrics for each strategy.
     """
+    original_n_minus1_defs = [runner.get_nminus1_definition() for runner in runners]
+    if cases_subset is not None:
+        update_runner_nminus1(runners, original_n_minus1_defs, cases_subset)
+
     lfs, additional_info = compute_loadflow(
         actions=[topo.actions for topo in strategy],
         disconnections=[topo.disconnections for topo in strategy],
@@ -135,200 +140,13 @@ def compute_loadflow_and_metrics(
         additional_info=additional_info,
         base_case_ids=base_case_ids,
     )
+
+    if cases_subset is not None:
+        # Restore the original N-1 definitions in the runners
+        for runner, original_n1_def in zip(runners, original_n_minus1_defs, strict=True):
+            runner.store_nminus1_definition(original_n1_def)
+
     return lfs, additional_info, metrics
-
-
-def compute_loadflow_and_metrics_with_early_stopping(
-    runners: list[AbstractLoadflowRunner],
-    strategy: list[ACOptimTopology],
-    base_case_ids: list[Optional[str]],
-    threshold_overload_all_t: list[float],
-    threshold_case_ids_all_t: list[list[str]],
-    n_timestep_processes: int = 1,
-    early_stop_non_converging_threshold: float = 0.1,
-) -> tuple[LoadflowResultsPolars, list[Metrics]]:
-    """Run N-1 loadflow analysis with early stopping based on overload thresholds.
-
-    This function first runs loadflow analysis for the worst k contingencies, checking if overload energy
-    exceeds the specified thresholds. If so, it stops further analysis and returns the results.
-    If overload energy is within thresholds, it continues to run loadflow for non-critical contingencies.
-
-    This optimizes loadflow analysis by focusing on critical contingencies first, defined by the provided thresholds.
-    Early stopping avoids unnecessary computations if overload energy exceeds the specified thresholds.
-
-    Parameters
-    ----------
-    runners : list of AbstractLoadflowRunner
-        Loadflow runner instances for each timestep.
-    strategy : list of ACOptimTopology
-        AC optimization topologies for each timestep.
-    base_case_ids : list of Optional[str]
-        Base case identifiers for each timestep. If None, N-0 analysis is skipped.
-    threshold_overload_all_t : list of float
-        Overload energy thresholds for early stopping at each timestep.
-    threshold_case_ids_all_t : list of list of str
-        Case IDs of critical contingencies for each timestep.
-    n_timestep_processes : int, optional
-        Number of parallel processes for loadflow computation (default is 1).
-    early_stop_non_converging_threshold : float, optional
-        The threshold for the early stopping criterion, i.e. if the percentage of non-converging cases is greater than
-        this value, the ac validation will be stopped early.
-
-    Returns
-    -------
-    lfs : LoadflowResultsPolars
-        Concatenated loadflow results for critical and non-critical contingencies.
-    metrics : list of Metrics
-        Computed metrics for the strategy and loadflow results.
-
-    Notes
-    -----
-    - Early stopping is triggered if overload energy for any timestep exceeds the threshold.
-    - Critical contingencies are processed first; if early stopping is triggered, non-critical contingencies are skipped.
-    - Runner definitions are updated to focus on critical or non-critical contingencies as needed.
-
-    """
-    logger.info("Running N-1 analysis with early stopping.")
-
-    contingency_ids_all_t = []
-    original_n_minus1_defs = []
-    for runner in runners:
-        n_1_def = runner.get_nminus1_definition()
-        contingency_ids_all_t.append([contingency.id for contingency in n_1_def.contingencies])
-        original_n_minus1_defs.append(n_1_def)
-
-    # Update the N-1 definitions in the runners to only include the critical contingencies
-    n_critical_contingencies = len(threshold_case_ids_all_t[0])
-    update_runner_nminus1(runners, original_n_minus1_defs, threshold_case_ids_all_t)
-    logger.info(f"Running N-1 analysis with {n_critical_contingencies} critical contingencies per timestep.")
-
-    # We pass the base case IDs to None to prevent N-0 analysis in the runners
-    # Compute the loadflow and metrics with only critical contingencies included in the N-1 analysis. Critical contingencies
-    # are defined by the threshold_case_ids_all_t.
-    lfs_critical, _, metrics_critical = compute_loadflow_and_metrics(
-        runners, strategy, [None] * len(threshold_case_ids_all_t), n_timestep_processes
-    )
-
-    # Early stopping: check if overload_energy_n_1 exceed thresholds
-    stop_early = False
-    for metric, overload_th in zip(metrics_critical, threshold_overload_all_t, strict=True):
-        overload = metric.extra_scores.get("overload_energy_n_1", 0)
-        logger.info(f"Checking overload for N-1 analysis: overload = {overload}, (overload_worst_k_unsplit)={overload_th}")
-
-        n_nonconverging_cases = metric.extra_scores.get("non_converging_loadflows", 0)
-        logger.info(f"Number of non converging cases = {n_nonconverging_cases}")
-
-        # if overload is greater than overload_th or n_nonconverging_cases is greater than
-        # early_stop_non_converging_threshold(10%) of all critical cases, we stop
-        if overload > overload_th or n_nonconverging_cases > int(
-            early_stop_non_converging_threshold * n_critical_contingencies
-        ):
-            logger.info(
-                f"Early stopping N-1 analysis "
-                f" overload: {overload}, threshold_overload: {overload_th}, "
-                f"n_nonconverging_cases: {n_nonconverging_cases}, "
-                f"threshold_n_non_converging_cases: {int(early_stop_non_converging_threshold * n_critical_contingencies)}"
-            )
-            stop_early = True
-            metric.fitness = -99999999  # Set fitness to a very low value to indicate failure
-            metric.extra_scores["overload_energy_n_1"] = 9999999
-            break
-
-    if not stop_early:
-        # Determine non-critical contingencies by excluding critical ones from all contingencies
-        non_critical_contingencies_all_t = [
-            set(all_ids) - set(critical_ids)
-            for all_ids, critical_ids in zip(contingency_ids_all_t, threshold_case_ids_all_t, strict=True)
-        ]
-
-        # Update the N-1 definitions in the runners to now include only the non-critical contingencies.
-        logger.info(
-            f"Running N-1 analysis with {len(non_critical_contingencies_all_t[0])} non-critical contingencies per timestep."
-        )
-        update_runner_nminus1(runners, original_n_minus1_defs, non_critical_contingencies_all_t)
-
-        lfs_non_critical, additional_info_non_critical = compute_loadflow(
-            actions=[topo.actions for topo in strategy],
-            disconnections=[topo.disconnections for topo in strategy],
-            pst_setpoints=[topo.pst_setpoints for topo in strategy],
-            runners=runners,
-            n_timestep_processes=n_timestep_processes,
-        )
-
-        lfs = concatenate_loadflow_results_polars([lfs_critical, lfs_non_critical])
-
-        # We can pass the additional info from either critical or non critical contingencies as they are the same
-        metrics = compute_metrics(
-            strategy=strategy,
-            lfs=lfs,
-            additional_info=additional_info_non_critical,
-            base_case_ids=base_case_ids,
-        )
-    else:
-        lfs = lfs_critical
-        metrics = metrics_critical
-
-    # Restore the original N-1 definitions in the runners
-    for runner, original_n1_def in zip(runners, original_n_minus1_defs, strict=True):
-        runner.store_nminus1_definition(original_n1_def)
-
-    return lfs, metrics
-
-
-def scoring_function(
-    strategy: list[ACOptimTopology],
-    runners: list[AbstractLoadflowRunner],
-    base_case_ids: list[Optional[str]],
-    n_timestep_processes: int = 1,
-    early_stop_validation: bool = True,
-    early_stop_non_converging_threshold: float = 0.1,
-) -> tuple[LoadflowResultsPolars, list[Metrics]]:
-    """Compute loadflows and metrics for a given strategy
-
-    Parameters
-    ----------
-    strategy : list[ACOptimTopology]
-        The strategy to score, length n_timesteps
-    runners : list[AbstractLoadflowRunner]
-        The loadflow runners to use, length n_timesteps.
-    base_case_ids : list[Optional[str]]
-        The base case ids for the loadflow runners, length n_timesteps (used to separately compute the N-0 flows)
-    n_timestep_processes : int, optional
-        The number of processes to use for computing timesteps in parallel, by default 1
-    early_stop_validation : bool, optional
-        Whether to enable early stopping during the optimization process, by default True
-    early_stop_non_converging_threshold : float = 0.1
-        The threshold for the early stopping criterion, i.e. if the percentage of non-converging cases is greater than
-        this value, the ac validation will be stopped early.
-
-    Returns
-    -------
-    LoadflowResultsPolars
-        The loadflow results for the strategy
-    list[Metrics]
-        The metrics for the strategy
-    """
-    # overload_threshold is defined as the maximum allowed overload energy for the worst k N-1 contingencies
-    # of split topologies. This threshold is computed using the worst k contingencies of the unsplit grid.
-    # The thresholds are available only when the strategy has been pulled from the repertoire using the
-    # pull method. This means that early stopping can be used only for AC validation and not for AC optimization.
-    threshold_overload_all_t, threshold_case_ids_all_t = get_threshold_n_minus1_overload(strategy)
-    overload_threshold_available = threshold_overload_all_t is not None and threshold_case_ids_all_t is not None
-
-    if overload_threshold_available and early_stop_validation:
-        lfs, metrics = compute_loadflow_and_metrics_with_early_stopping(
-            runners,
-            strategy,
-            base_case_ids,
-            threshold_overload_all_t=threshold_overload_all_t,
-            threshold_case_ids_all_t=threshold_case_ids_all_t,
-            n_timestep_processes=n_timestep_processes,
-            early_stop_non_converging_threshold=early_stop_non_converging_threshold,
-        )
-    else:
-        logger.info("No overload thresholds available, running full N-1 analysis.")
-        lfs, _additional_info, metrics = compute_loadflow_and_metrics(runners, strategy, base_case_ids, n_timestep_processes)
-    return lfs, metrics
 
 
 def compute_metrics(
@@ -485,13 +303,12 @@ def compute_loadflow(
 
 
 def evaluate_acceptance(
-    loadflow_results_split: LoadflowResultsPolars,  # noqa: ARG001
     metrics_split: list[Metrics],
-    loadflow_results_unsplit: LoadflowResultsPolars,  # noqa: ARG001
     metrics_unsplit: list[Metrics],
     reject_convergence_threshold: float = 1.0,
     reject_overload_threshold: float = 0.95,
     reject_critical_branch_threshold: float = 1.1,
+    early_stopping: bool = False,
 ) -> Optional[TopologyRejectionReason]:
     """Evaluate if the split loadflow results are acceptable compared to the unsplit results.
 
@@ -509,12 +326,8 @@ def evaluate_acceptance(
 
     Parameters
     ----------
-    loadflow_results_split : LoadflowResultsPolars
-        The loadflow results for the split case.
     metrics_split : list[Metrics]
         The metrics for the split case.
-    loadflow_results_unsplit : LoadflowResultsPolars
-        The loadflow results for the unsplit case.
     metrics_unsplit : list[Metrics]
         The metrics for the unsplit case.
     reject_convergence_threshold : float, optional
@@ -526,6 +339,9 @@ def evaluate_acceptance(
     reject_critical_branch_threshold : float, optional
         The threshold for the critical branches increase, by default 1.1
         (i.e. the split case must not have more than 110 % of the critical branches in the unsplit case).
+    early_stopping : bool, optional
+        Whether the acceptance is computed as part of an early stopping criterion, will set the early_stopping field in the
+        TopologyRejectionReason
 
     Returns
     -------
@@ -548,6 +364,7 @@ def evaluate_acceptance(
             value_after=float(n_non_converged_split.sum()),
             value_before=float(n_non_converged_unsplit.sum()),
             threshold=reject_convergence_threshold,
+            early_stopping=early_stopping,
         )
 
     unsplit_overload = np.array([unsplit.extra_scores.get("overload_energy_n_1", 0) for unsplit in metrics_unsplit])
@@ -559,6 +376,7 @@ def evaluate_acceptance(
             value_after=float(split_overload.sum()),
             value_before=float(unsplit_overload.sum()),
             threshold=reject_overload_threshold,
+            early_stopping=early_stopping,
         )
 
     unsplit_critical_branches = np.array(
@@ -577,6 +395,188 @@ def evaluate_acceptance(
             value_after=float(split_critical_branches.sum()),
             value_before=float(unsplit_critical_branches.sum()),
             threshold=reject_critical_branch_threshold,
+            early_stopping=early_stopping,
         )
 
     return None
+
+
+def compute_remaining_loadflows(
+    runners: list[AbstractLoadflowRunner],
+    strategy: list[ACOptimTopology],
+    base_case_ids: list[Optional[str]],
+    loadflows_subset: LoadflowResultsPolars,
+    cases_subset: list[list[str]],
+    n_timestep_processes: int = 1,
+) -> tuple[LoadflowResultsPolars, list[Metrics]]:
+    """Compute the loadflows for the remaining contingencies that were not included in the early stopping subset.
+
+    This function is called after the early stopping loadflows have been computed and accepted. It computes the loadflows
+    for the remaining contingencies that were not included in the early stopping subset, and then computes the metrics for
+    the full set of loadflows.
+
+    Parameters
+    ----------
+    runners : list[AbstractLoadflowRunner]
+        The loadflow runners to use, length n_timesteps.
+    strategy : list[ACOptimTopology]
+        The strategy to score, length n_timesteps
+    base_case_ids : list[Optional[str]]
+        The base case ids for the loadflow runners, length n_timesteps (used to separately compute the N-0 flows)
+    loadflows_subset : LoadflowResultsPolars
+        The loadflow results for the early stopping subset, used to avoid recomputing these loadflows.
+    cases_subset : list[list[str]]
+        The contingency case ids that were included in the early stopping subset for each timestep. This could be extracted
+        from the loadflows_subset but as it is available it is faster to pass it in.
+    n_timestep_processes : int
+        The number of processes to use for computing timesteps in parallel.
+
+    Returns
+    -------
+    LoadflowResultsPolars
+        The loadflow results for all contingencies, including those from the early stopping subset.
+    list[Metrics]
+        The metrics for the full set of loadflows.
+    """
+    all_cases = []
+    original_n_minus1_defs = []
+    for runner in runners:
+        n_1_def = runner.get_nminus1_definition()
+        all_cases.append([contingency.id for contingency in n_1_def.contingencies])
+        original_n_minus1_defs.append(n_1_def)
+
+    remaining_cases = [
+        set(all_ids) - set(critical_ids) for all_ids, critical_ids in zip(all_cases, cases_subset, strict=True)
+    ]
+
+    # Update the N-1 definitions in the runners to now include only the non-critical contingencies.
+    logger.info(f"Running N-1 analysis with {len(remaining_cases[0])} non-critical contingencies per timestep.")
+    update_runner_nminus1(runners, original_n_minus1_defs, remaining_cases)
+
+    lfs_remaining, additional_info_remaining = compute_loadflow(
+        actions=[topo.actions for topo in strategy],
+        disconnections=[topo.disconnections for topo in strategy],
+        pst_setpoints=[topo.pst_setpoints for topo in strategy],
+        runners=runners,
+        n_timestep_processes=n_timestep_processes,
+    )
+
+    lfs = concatenate_loadflow_results_polars([loadflows_subset, lfs_remaining])
+
+    # We can pass the additional info from either critical or non critical contingencies as they are the same
+    metrics = compute_metrics(
+        strategy=strategy,
+        lfs=lfs,
+        additional_info=additional_info_remaining,
+        base_case_ids=base_case_ids,
+    )
+
+    return lfs, metrics
+
+
+@dataclass
+class ACScoringParameters:
+    """Parameters for ac scoring
+
+    This is a subset of all ac parameters and grouped to shorten the signature of the
+    scoring_and_acceptance function.
+    """
+
+    # --- Thresholds for acceptance criteria --- #
+    reject_convergence_threshold: float
+    reject_overload_threshold: float
+    reject_critical_branch_threshold: float
+
+    # --- Parameters for early stopping during N-1 analysis --- #
+    base_case_ids: list[Optional[str]]
+    n_timestep_processes: int
+    early_stop_validation: bool
+    early_stop_non_converging_threshold: float
+
+
+def scoring_and_acceptance(
+    strategy: list[ACOptimTopology],
+    runners: list[AbstractLoadflowRunner],
+    loadflow_results_unsplit: LoadflowResultsPolars,
+    metrics_unsplit: list[Metrics],
+    scoring_params: ACScoringParameters,
+) -> tuple[LoadflowResultsPolars, list[Metrics], Optional[TopologyRejectionReason]]:
+    """Compute the scoring and acceptance for a given strategy
+
+    This function computes the loadflow results and metrics for the given strategy, and then evaluates the acceptance
+    of the strategy based on the computed metrics and the unsplit metrics.
+
+    Parameters
+    ----------
+    strategy : list[ACOptimTopology]
+        The strategy to score, length n_timesteps
+    runners : list[AbstractLoadflowRunner]
+        The loadflow runners to use, length n_timesteps.
+    loadflow_results_unsplit : LoadflowResultsPolars
+        The loadflow results for the unsplit case.
+    metrics_unsplit : list[Metrics]
+        The metrics for the unsplit case.
+    scoring_params : ACScoringParameters
+        The parameters for scoring and acceptance evaluation.
+
+    Returns
+    -------
+    LoadflowResultsPolars
+        The loadflow results for the strategy
+    list[Metrics]
+        The metrics for the strategy
+    Optional[TopologyRejectionReason]
+        A TopologyRejectionReason if the strategy is rejected, None if accepted.
+    """
+    # If early stopping is enabled, we compute and evaluate once on a subset of cases
+    if scoring_params.early_stop_validation:
+        cases_subset = get_early_stopping_contingency_ids(strategy)
+        lfs_early_stop, _, metrics_early_stop = compute_loadflow_and_metrics(
+            runners=runners,
+            strategy=strategy,
+            base_case_ids=scoring_params.base_case_ids,
+            n_timestep_processes=scoring_params.n_timestep_processes,
+            cases_subset=cases_subset,
+        )
+        lfs_early_stop_unsplit = subset_contingencies_polars(loadflow_results_unsplit, cases_subset)
+        metrics_early_stop_unsplit = compute_metrics(
+            strategy=strategy,
+            lfs=lfs_early_stop_unsplit,
+            additional_info=[None] * len(strategy),  # We do not pass any additional info - no switching distance available
+            base_case_ids=scoring_params.base_case_ids,
+        )
+        rejection_reason = evaluate_acceptance(
+            metrics_split=metrics_early_stop,
+            metrics_unsplit=metrics_early_stop_unsplit,
+            reject_convergence_threshold=scoring_params.reject_convergence_threshold,
+            reject_overload_threshold=scoring_params.reject_overload_threshold,
+            reject_critical_branch_threshold=scoring_params.reject_critical_branch_threshold,
+            early_stopping=True,
+        )
+        if rejection_reason is not None:
+            return lfs_early_stop, metrics_early_stop, rejection_reason
+        lfs, metrics = compute_remaining_loadflows(
+            runners=runners,
+            strategy=strategy,
+            base_case_ids=scoring_params.base_case_ids,
+            loadflows_subset=lfs_early_stop,
+            cases_subset=cases_subset,
+            n_timestep_processes=scoring_params.n_timestep_processes,
+        )
+    else:
+        lfs, metrics = compute_loadflow_and_metrics(
+            runners=runners,
+            strategy=strategy,
+            base_case_ids=scoring_params.base_case_ids,
+            n_timestep_processes=scoring_params.n_timestep_processes,
+        )
+
+    rejection_reason = evaluate_acceptance(
+        metrics_split=metrics,
+        metrics_unsplit=metrics_unsplit,
+        reject_convergence_threshold=scoring_params.reject_convergence_threshold,
+        reject_overload_threshold=scoring_params.reject_overload_threshold,
+        reject_critical_branch_threshold=scoring_params.reject_critical_branch_threshold,
+        early_stopping=False,
+    )
+    return lfs, metrics, rejection_reason

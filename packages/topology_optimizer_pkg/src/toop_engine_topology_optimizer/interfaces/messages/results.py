@@ -155,7 +155,10 @@ def get_topology_rejection_message(result: TopologyRejectionReason) -> str:
     }
 
     base_message = message_map.get(result.criterion, "Rejecting topology due to unknown reason")
-    base_message = f"{base_message} (value before: {result.value_before}, value after: {result.value_after})."
+    base_message = (
+        f"{base_message} (value before: {result.value_before}, "
+        f"value after: {result.value_after}, early_stopping: {result.early_stopping})."
+    )
     if result.description:
         base_message = f"{base_message} Details: {result.description}"
     return base_message

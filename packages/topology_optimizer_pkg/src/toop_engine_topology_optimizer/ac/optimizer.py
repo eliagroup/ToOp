@@ -74,24 +74,24 @@ class OptimizerData:
     evolution_fn: Callable[[], list[ACOptimTopology]]
     """The curried evolution function"""
 
-    scoring_fn: Callable[[list[ACOptimTopology]], tuple[LoadflowResultsPolars, list[Metrics]]]
-    """The curried scoring function"""
+    scoring_fn: Callable[
+        [list[ACOptimTopology]], tuple[LoadflowResultsPolars, list[Metrics], Optional[TopologyRejectionReason]]
+    ]
+    """The curried scoring function. Given a strategy, this does three things:
+    1. It computes the loadflow results for the given strategy.
+    2. It computes the metrics for the given strategy.
+    3. It determines if there is a rejection reason for the strategy.
+
+    This will also include an early stopping mechanism where potentially after a small number of computed loadflows a
+    rejection is computed. In this case, the returned loadflow results and metrics will be based only on the subset of
+    N-1 cases that were presented by the dc optimizer as the most relevant ones.
+    """
 
     store_loadflow_fn: Callable[[LoadflowResultsPolars], StoredLoadflowReference]
     """The function to store loadflow results"""
 
     load_loadflow_fn: Callable[[StoredLoadflowReference], LoadflowResultsPolars]
     """The function to load loadflow results"""
-
-    acceptance_fn: Callable[
-        [
-            LoadflowResultsPolars,
-            list[Metrics],
-        ],
-        Optional[TopologyRejectionReason],
-    ]
-    """The acceptance function to decide whether a topology is accepted or not. Takes the
-    loadflow results and the metrics of the split topology and returns a rejection reason or None."""
 
     rng: Rng
     """The random number generator for the optimizer"""
@@ -115,6 +115,8 @@ def update_initial_metrics_with_worst_k_contingencies(
 
     This function computes the worst k contingencies for each timestep in the initial loadflow results
     and updates the initial metrics with the case ids and the top k overloads.
+    This way, a baseline for the worst k contingencies to compare to is established, i.e. in the initial loadflow results
+    these are the reference, disregarding the worst k for the specific strategy.
 
     Parameters
     ----------
@@ -485,8 +487,7 @@ def run_epoch(
     if not new_strategy:
         return False
 
-    loadflow_results, metrics = optimizer_data.scoring_fn(new_strategy)
-    rejection_reason = optimizer_data.acceptance_fn(loadflow_results, metrics)
+    loadflow_results, metrics, rejection_reason = optimizer_data.scoring_fn(new_strategy)
     loadflow_result_reference = optimizer_data.store_loadflow_fn(loadflow_results)
 
     # Update the strategy with the new loadflow results

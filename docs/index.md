@@ -2,7 +2,7 @@
 
 Welcome to our ToOp (engine) repository at Elia Group.
 
-![ToOp Features and Roadmap](./illustrations/ToOp_LQ.png)
+<img src="./illustrations/ToOp_LQ.png" alt="ToOp Features and Roadmap" width="70%">
 
 
 
@@ -14,8 +14,8 @@ ToOp is short for Topology Optimization and describes the approach to reduce gri
 This repository builds the engine behind the topology optimization product ToOp at Elia Group. ToOp provides tools to perform topology optimization on a grid file including import, DC optimization and AC validation. It also includes the gpu-based DC load flow solver.  At the current stage it considers transmission line switching, busbar splitting and busbar reassignments.
 
 
-![ToOp Features and Roadmap](./illustrations/TopoActions.jpg)
 
+<img src="./illustrations/TopoActions.jpg" alt="ToOp Features and Roadmap" width="70%"> 
 
 ## About this repository
 This repo builds the engine behind the topology optimization project ToOp at Elia Group. This provides a tool to perform topology optimization on a grid file including import, DC optimization and AC validation. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2501.17529) for a high level academic introduction.
@@ -24,20 +24,20 @@ Please check out our [full documentation](https://eliagroup.github.io/ToOp).
 
 ## Getting Started
 
-If you want to get started with the engine, we highly recommend checking out our [example notebooks](../notebooks).
+If you want to get started with the engine, we highly recommend checking out our [example notebooks](./../notebooks/).
 
 ### Prerequisites
 
 If you want to contribute to this repository, we recommend using VS Code's Devcontainer Environment. This allows the developers to use the same environment to develop in.
 
-For this setup, you need to install:
-1. `uv`
-2. `Microsoft VS Code`
-3. `Docker`
+For this setup, you need to install:  
+1. `uv`  
+2. `Microsoft VS Code`  
+3. `Docker`  
 
 ### Installation
 
-You can follow our installation guide on our [Contributing page](../CONTRIBUTING.md#local-development-setup).
+You can follow our installation guide on our [Contributing page](./contribution_guide.md#local-development-setup).
 
 ### Usage
 
@@ -105,19 +105,17 @@ If you require help with using this package, your first point of contact is <a h
 
 ## Contributing
 
-Please have a look at our [CONTRIBUTING.md](../CONTRIBUTING.md).
+Please have a look at our [Contribution Guide](contribution_guide.md).
 
----
 
 ## License
 
-Distributed under MPL 2.0. See [LICENSE](../LICENSE).
+Distributed under MPL 2.0. See [LICENSE](./../LICENSE).
 
 ## Citation
 
 If you use our work in scientific research, please cite [our paper on load flow solving](https://arxiv.org/abs/2501.17529) and soon also the work on the optimizer architecture, which is to be released soon.
 
----
 
 ## Contact
 

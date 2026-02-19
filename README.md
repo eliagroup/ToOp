@@ -16,20 +16,19 @@
 
 Welcome to our ToOp (engine) repository at Elia Group.
 
-![ToOp Features and Roadmap](./docs/illustrations/ToOp_LQ.png)
+<img src="./docs/illustrations/ToOp_LQ.png" alt="ToOp Features and Roadmap" width="80%">
+
 
 
 
 ## A short intro - what is ToOp about?
-
+ToOp is short for Topology Optimization and describes the approach to reduce grid congestion by topological actions. Topological actions are non-costly actions that can be applied to the grid to "steer" the electricity flow.   
 ToOp is short for Topology Optimization and describes the approach to reduce grid congestion by topological actions. Topological actions are non-costly actions that can be applied to the grid to "steer" the electrcitiy flow.   
  Our goal is to propose (potentially) new topology strategies to the operators with the goal to lower redispatch costs and carbon emissions.  
 
 This repository builds the engine behind the topology optimization product ToOp at Elia Group. ToOp provides tools to perform topology optimization on a grid file including import, DC optimization and AC validation. It also includes the gpu-based DC load flow solver.  At the current stage it considers transmission line switching, busbar splitting and busbar reassignments.
 
-
-![ToOp Features and Roadmap](./docs/illustrations/TopoActions.jpg)
-
+<img src="./docs/illustrations/TopoActions.jpg" alt="ToOp Features and Roadmap" width="80%">
 
 ## About this repository
 This repo builds the engine behind the topology optimization project ToOp at Elia Group. This provides a tool to perform topology optimization on a grid file including import, DC optimization and AC validation. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2501.17529) for a high level academic introduction.
@@ -83,20 +82,20 @@ You are expected to interact with the module through either python or kafka comm
 
 ## High-level architecture
 ![ToOp Features and Roadmap](docs/illustrations/ToOp_HL_Architecture.svg) 
+![ToOp Features and Roadmap](docs/illustrations/ToOp_HL_Architecture.svg)
 
-The topology optimizer takes as an input operational grid files (e.g. UCT, CGMES) which are imported by open-source libraries (PowSyBl, pandapower) and pre-processed. The pre-processed files are then optimized in a gpu-native set-up (optimizer + gpu-based load flow solver). The optimal results are stored as a pareto-front, so a set of all solutions that are "Pareto optimal". This means that no other solution exists that improves at least one objective without worsening another one. These results are then validated and filtered using an AC power flow. In the end the results are displayed in a frontend where an end user can review and evaluate the proposed actions. The proposed topological actions can then be exported to other systems.  
+The topology optimizer takes as an input operational grid files (e.g. UCT, CGMES) which are imported by open-source libraries (PowSyBl, pandapower) and pre-processed. The pre-processed files are then optimized in a gpu-native set-up (optimizer + gpu-based load flow solver). The optimal results are stored as a pareto-front, so a set of all solutions that are "Pareto optimal". This means that no other solution exists that improves at least one objective without worsening another one. These results are then validated and filtered using an AC power flow. In the end the results are displayed in a frontend where an end user can review and evaluate the proposed actions. The proposed topological actions can then be exported to other systems.
 
 
-#### Description the GPU-based DC load Flow solver  
-The GPU-based DC Load Flow solver serves the purpose of computing a large number of similar DC load flows in an 
-accelerated fashion. Currently the solver supports the following batch dimensions, i.e. the workload must not change 
-in anything other than these dimensions:  
-• Branch topology (assignment of branches to busbar A or B)  
-• Injection topology (assignment of injections to busbar A or B)  
-• Branch outages  
+#### Description the GPU-based DC load Flow solver
+The GPU-based DC Load Flow solver serves the purpose of computing a large number of similar DC load flows in an
+accelerated fashion. Currently the solver supports the following batch dimensions, i.e. the workload must not change
+in anything other than these dimensions:
+• Branch topology (assignment of branches to busbar A or B)
+• Injection topology (assignment of injections to busbar A or B)
+• Branch outages
 
-Under the hood, it is using PTDF/(G)LODF/BSDF approaches to achieve this.  
-If your workflow suits these requirements like it is the case for topology optimization, this solver can help you out.
+Under the hood, it is using PTDF/(G)LODF/BSDF approaches to achieve this.
 
 
 ## Roadmap
@@ -108,8 +107,8 @@ Next to some smaller improvements, we currently plan to integrate PST into the o
 
 We strongly believe that through joint development,  collaboration and integration into other tools, we can jointly build an open-source topology optimizer that is fast, provides accurate recommendations and can be used by different TSOs to reduce grid congestion. Topology optimization works best when holistically applied to the grid and the different operational constraints from different TSOs are considered. This is why we invite you to share your feedback, constraints and your approaches so that we can jointly improve ToOp.
 
-In addition, we also see the opportunity that ToOp can be combined with other open-source tools. If you have ideas, reach out us.
-
+In addition, we also see the opportunity that ToOp can be combined with other open-source tools. If you have ideas, reach out to us.
+In addition, we also see the opportunity that ToOp can be combined with other open-source tools. If you have ideas, reach out to us.
 We invite you to test it, ask questions and provide feedback to us. And if you like it, we invite you to contribute to the development. We are looking forward to hearing from you.
 
 ## Finding help

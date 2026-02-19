@@ -122,7 +122,8 @@ The release process is automated through `.github/workflows/release.yaml`:
 ### PR Requirements
 
 - Single purpose: Each PR should contain one type of change - either a feature, a bugfix, or a refactor. Avoid mixing different types of changes in a single PR
-- Title of the pull request must pass conventional commit validation
+- Title of the pull request must conform to the conventional commit specification (see below). It will be used for pull request squash commit message. 
+- Pull request squash commit message has to include Developer Certificate of Origin (see below). Under some circumstances GitHub automatically adds author's signature, but in some cases it has to be added manually.
 - Code must pass all pre-commit hooks
 - Tests must pass.
    - Code coverage must be over 90% and aimed for 100%.

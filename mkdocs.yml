@@ -48,6 +48,7 @@ nav:
     - dc_solver/preprocessing.md
     - dc_solver/busbar_outage.md
     - dc_solver/install_time.md
+    - dc_solver/loadflow_parameters.md
     - Code Reference:
       - Importer: references/reference_importer.md
       - DC Solver: references/reference_dc_solver.md
@@ -59,6 +60,7 @@ nav:
     - topology_optimizer/intro.md
     - topology_optimizer/structure.md
     - topology_optimizer/deepdive.md
+    - topology_optimizer/metrics.md
     - AC Validation:
       - topology_optimizer/ac/select_strategy.md
       - topology_optimizer/ac/early_stopping.md

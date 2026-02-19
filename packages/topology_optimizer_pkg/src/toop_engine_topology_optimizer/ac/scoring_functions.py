@@ -7,6 +7,7 @@
 
 """Scoring functions for the AC optimizer - in this case this runs an N-1 and computes metrics for it"""
 
+from copy import deepcopy
 from dataclasses import dataclass
 
 import logbook
@@ -58,7 +59,7 @@ def get_early_stopping_contingency_ids(
     """
     case_ids_all_t = []
     for topo, base_case_id in zip(strategy, add_base_case_ids or [None] * len(strategy), strict=True):
-        worst_k_contingency_cases = topo.worst_k_contingency_cases
+        worst_k_contingency_cases = deepcopy(topo.worst_k_contingency_cases)
         if len(worst_k_contingency_cases) == 0:
             logger.warning(
                 f"No overload threshold or case ids found in the strategy"

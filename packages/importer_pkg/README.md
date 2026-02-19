@@ -16,8 +16,8 @@ At its core, the package leverages two Python libraries as backends:
 
 The Importer package is organized into several focused modules, each addressing specific aspects of the grid import process:
 
-- **[Pandapower Import](https://eliagroup.github.io/ToOp/importer/pandapower/)**: Utilities for importing grid models into the PandaPower format, providing traditional power system analysis capabilities
-- **[PyPowSyBl Import](https://eliagroup.github.io/ToOp/importer/pypowsybl/)**: Advanced grid import functionality using the PyPowSyBl library for modern grid modeling standards
+- **[Pandapower Import](https://eliagroup.github.io/ToOp/importer/pandapower/)**: Utilities for importing grid models into the PandaPower format
+- **[PyPowSyBl Import](https://eliagroup.github.io/ToOp/importer/pypowsybl/)**: Utilities for importing grid models into the PowSyBl format
 - **[Network Graph Processing](https://eliagroup.github.io/ToOp/importer/network_graph/)**: Tool to create an [Asset Topology](https://eliagroup.github.io/ToOp/interfaces/asset_topology/)
 - **[PowerFactory Contingency Import](https://eliagroup.github.io/ToOp/importer/contingency_from_power_factory/)**: Specialized functionality for importing contingency definitions from PowerFactory projects
 - **[Worker Processes](https://eliagroup.github.io/ToOp/importer/worker/worker/)**: A Kafka worker for deploying the importer as a service

@@ -19,15 +19,10 @@ from pathlib import Path
 import logbook
 import numpy as np
 import pandas as pd
-import pypowsybl
 from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network.impl.network import Network
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    DISTRIBUTED_SLACK,
-    SINGLE_SLACK,
-)
 from toop_engine_importer.contingency_from_power_factory.contingency_from_file import (
     get_contingencies_from_file,
     match_contingencies,
@@ -794,6 +789,7 @@ def update_switch_masks(
 
 def make_masks(
     network: Network,
+    slack_id: str,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
     filesystem: AbstractFileSystem = None,
     blacklisted_ids: list[str] | None = None,
@@ -804,6 +800,8 @@ def make_masks(
     ----------
     network: Network
         The network to get the masks for.
+    slack_id: str
+        The id of the slack bus in the network. This is needed to exclude the slack bus from the relevant_subs mask.
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters including control_area, nminus1_area, cutoff_voltage
         Optional: border_line_factors, border_line_weight, dso_trafo_factors, dso_trafo_weight
@@ -840,7 +838,7 @@ def make_masks(
     network_masks = update_switch_masks(network_masks, network, importer_parameters)
     network_masks = update_bus_masks(network_masks, network, importer_parameters, filesystem=filesystem)
     network_masks = update_reward_masks_to_include_border_branches(network_masks, importer_parameters)
-    network_masks = remove_slack_from_relevant_subs(network, network_masks, distributed_slack=True)
+    network_masks = remove_slack_from_relevant_subs(network_masks, network, slack_id=slack_id)
 
     if importer_parameters.contingency_list_file is not None:
         if importer_parameters.schema_format == "ContingencyImportSchemaPowerFactory":
@@ -922,29 +920,26 @@ def save_masks_to_filesystem(network_masks: NetworkMasks, data_folder: Path, fil
         save_numpy_filesystem(filesystem=filesystem, file_path=masks_folder / NETWORK_MASK_NAMES[mask_key], numpy_array=mask)
 
 
-def remove_slack_from_relevant_subs(
-    network: Network, network_masks: NetworkMasks, distributed_slack: bool = True
-) -> NetworkMasks:
+def remove_slack_from_relevant_subs(network_masks: NetworkMasks, network: Network, slack_id: str) -> NetworkMasks:
     """Remove the slack bus from the relevant_subs mask.
 
     Parameters
     ----------
-    network: Network
-        The powsybl network.
     network_masks: NetworkMasks
         The network masks to update.
-    distributed_slack: bool
-        If the slack bus is distributed
+    network: Network
+        The network to get the bus information from.
+    slack_id: str
+        The id of the slack bus.
 
     Returns
     -------
     network_masks: NetworkMasks
         The updated network masks without the slack bus in the relevant_subs mask.
     """
-    dc_results = pypowsybl.loadflow.run_dc(network, DISTRIBUTED_SLACK if distributed_slack else SINGLE_SLACK)
-    slack_id = dc_results[0].reference_bus_id
-
-    return replace(network_masks, relevant_subs=network_masks.relevant_subs & ~network.get_buses().index.isin([slack_id]))
+    return replace(
+        network_masks, relevant_subs=network_masks.relevant_subs & ~network.get_buses(attributes=[]).index.isin([slack_id])
+    )
 
 
 def update_masks_from_power_factory_contingency_list_file(

@@ -131,11 +131,6 @@ repos:
             --output-file=requirements.txt,
             --quiet,
           ]
-  - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.9.1
-    hooks:
-      - id: commitizen
-        stages: [commit-msg]
   # - repo: https://github.com/owenlamont/uv-secure
   #   rev: 0.14.4
   #   hooks:

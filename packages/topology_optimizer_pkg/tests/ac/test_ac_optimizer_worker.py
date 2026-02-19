@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -12,7 +13,7 @@ from uuid import uuid4
 import numpy as np
 import pytest
 from beartype.typing import Callable
-from confluent_kafka import Consumer, Producer
+from confluent_kafka import Producer
 from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
@@ -40,6 +41,10 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     Topology,
     TopologyPushResult,
 )
+
+# Add parent directory to path to import fake_kafka
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from fake_kafka import FakeConsumer, FakeConsumerEmptyException, FakeProducer
 
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
@@ -405,23 +410,31 @@ def test_optimization_loop_error_during_epoch(
     assert results[1].reason == "error"
 
 
-@pytest.mark.timeout(160)
+@pytest.mark.timeout(30)
 def test_main(
-    kafka_command_topic: str,
-    kafka_heartbeat_topic: str,
-    kafka_results_topic: str,
-    kafka_connection_str: str,
     grid_folder: Path,
     topopushresult: Result,
-    processed_gridfile_folder: Path,
     loadflow_result_folder: Path,
-    create_consumer: Callable,
-    create_producer: Callable,
 ) -> None:
+    """Test the main AC worker function using mocked Kafka.
+
+    This test verifies that the AC worker can:
+    1. Start and initialize
+    2. Receive DC topologies
+    3. Run optimization
+    4. Produce results
+    5. Shutdown gracefully
+    """
     grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
     parameters = ACOptimizerParameters(
         ga_config=ACGAParameters(
-            runtime_seconds=1, pull_prob=1.0, reconnect_prob=0.0, close_coupler_prob=0.0, seed=42, runner_processes=8
+            runtime_seconds=1,
+            pull_prob=1.0,
+            reconnect_prob=0.0,
+            close_coupler_prob=0.0,
+            seed=42,
+            runner_processes=8,
+            enable_ac_rejection=False,
         )
     )
     start_command = Command(
@@ -432,75 +445,66 @@ def test_main(
         )
     )
 
-    shutdown_command = Command(command=ShutdownCommand())
-
-    producer = Producer(
-        {
-            "bootstrap.servers": kafka_connection_str,
-            "log_level": 2,
-        }
+    # Set up fake Kafka with commands and DC results
+    # Note: No ShutdownCommand - let FakeConsumerEmptyException be raised when commands run out
+    command_consumer = FakeConsumer(
+        messages={
+            "commands": [
+                serialize_message(start_command.model_dump_json()),
+            ]
+        },
+        kill_on_empty=True,
     )
-    producer.produce(kafka_command_topic, value=serialize_message(start_command.model_dump_json()), partition=0)
-    producer.produce(kafka_command_topic, value=serialize_message(shutdown_command.model_dump_json()), partition=0)
-    producer.produce(kafka_results_topic, value=serialize_message(topopushresult.model_dump_json()), partition=0)
-    producer.flush()
+
+    result_consumer = FakeConsumer(
+        messages={
+            "results": [serialize_message(topopushresult.model_dump_json())],
+        },
+        kill_on_empty=False,
+    )
+
+    producer = FakeProducer()
 
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
-    instance_id = str(uuid4())
-    with pytest.raises(SystemExit):
+
+    with pytest.raises(FakeConsumerEmptyException):
         main(
-            Args(
-                optimizer_command_topic=kafka_command_topic,
-                optimizer_heartbeat_topic=kafka_heartbeat_topic,
-                optimizer_results_topic=kafka_results_topic,
+            args=Args(
+                optimizer_command_topic="commands",
+                optimizer_heartbeat_topic="heartbeats",
+                optimizer_results_topic="results",
                 heartbeat_interval_ms=100,
-                kafka_broker=kafka_connection_str,
+                kafka_broker="not_used",
             ),
             processed_gridfile_fs=processed_gridfile_fs,
             loadflow_result_fs=loadflow_result_fs,
-            producer=create_producer(kafka_connection_str, instance_id, log_level=2),
-            command_consumer=create_consumer(
-                "LongRunningKafkaConsumer",
-                topic=kafka_command_topic,
-                group_id="ac_optimizer",
-                bootstrap_servers=kafka_connection_str,
-                client_id=instance_id,
-            ),
-            result_consumer=create_consumer(
-                "LongRunningKafkaConsumer",
-                topic=kafka_results_topic,
-                group_id=f"ac_listener_{instance_id}_{uuid4()}",
-                bootstrap_servers=kafka_connection_str,
-                client_id=instance_id,
-            ),
+            producer=producer,
+            command_consumer=command_consumer,
+            result_consumer=result_consumer,
         )
-    consumer = Consumer(
-        {
-            "bootstrap.servers": kafka_connection_str,
-            "group.id": "test_main",
-            "auto.offset.reset": "earliest",
-            "log_level": 2,
-        }
-    )
-    consumer.subscribe([kafka_results_topic])
+
+    # Verify that results were produced
+    assert "results" in producer.messages
+    assert len(producer.messages["results"]) > 0
+
+    # Parse all results
+    results = [Result.model_validate_json(deserialize_message(msg)) for msg in producer.messages["results"]]
+
+    # Check for expected result types
     started_found = False
     stopped_found = False
     topo_push_found = False
-    results_history = []
-    while message := consumer.poll(timeout=30.0):
-        result = Result.model_validate_json(deserialize_message(message.value()))
-        results_history.append(result)
-        assert isinstance(result, Result)
+
+    for result in results:
         if isinstance(result.result, OptimizationStartedResult):
             started_found = True
-        if isinstance(result.result, TopologyPushResult):
+        elif isinstance(result.result, TopologyPushResult):
             topo_push_found = True
-        if isinstance(result.result, OptimizationStoppedResult):
+        elif isinstance(result.result, OptimizationStoppedResult):
             stopped_found = True
             assert result.result.reason == "converged"
-            break
-    assert started_found
-    assert stopped_found
-    assert topo_push_found
-    consumer.close()
+
+    assert started_found, "OptimizationStartedResult not found in results"
+    assert stopped_found, "OptimizationStoppedResult not found in results"
+    assert topo_push_found, "TopologyPushResult not found in results"

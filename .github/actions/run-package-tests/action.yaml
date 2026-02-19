@@ -29,7 +29,8 @@ runs:
     - name: Run tests with code coverage report
       shell: bash
       run: |
-        uv run pytest packages/${{ inputs.package }}/tests \
+        uv run pytest -n ${{ inputs.workers }} packages/${{ inputs.package }}/tests \
+          --dist loadgroup \
           --cov=packages/${{ inputs.package }}/src \
           --cov-config=.coveragerc \
           --cov-report term-missing \

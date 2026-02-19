@@ -242,7 +242,10 @@ def compute_metrics_single_timestep(
         The metrics for the timestep
     """
     metrics = compute_metrics_lfs(loadflow_results=loadflow, base_case_id=base_case_id)
-    metrics = {key: np.nan_to_num(value, nan=0, posinf=99999999, neginf=-99999999).item() for key, value in metrics.items()}
+    metrics = {
+        key: (0.0 if value is None else np.nan_to_num(value, nan=0, posinf=99999999, neginf=-99999999).item())
+        for key, value in metrics.items()
+    }
     non_successful_states = [
         ConvergenceStatus.FAILED.value,
         ConvergenceStatus.MAX_ITERATION_REACHED.value,
@@ -478,6 +481,10 @@ def compute_remaining_loadflows(
         additional_info=additional_info_remaining,
         base_case_ids=base_case_ids,
     )
+
+    # Restore the original N-1 definitions in the runners
+    for runner, original_n1_def in zip(runners, original_n_minus1_defs, strict=True):
+        runner.store_nminus1_definition(original_n1_def)
 
     return lfs, metrics
 

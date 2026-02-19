@@ -24,7 +24,7 @@ Please check out our [full documentation](https://eliagroup.github.io/ToOp).
 
 ## Getting Started
 
-If you want to get started with the engine, we highly recommend checking out our [example notebooks](./../notebooks/).
+If you want to get started with the engine, we highly recommend checking out our <!-- markdown-link-check-disable --> [example notebooks](https://github.com/eliagroup/ToOp/tree/main/notebooks). <!-- markdown-link-check-enable -->
 
 ### Prerequisites
 
@@ -110,7 +110,7 @@ Please have a look at our [Contribution Guide](contribution_guide.md).
 
 ## License
 
-Distributed under MPL 2.0. See [LICENSE](./../LICENSE).
+Distributed under MPL 2.0.<!-- markdown-link-check-disable --> See [LICENSE](https://github.com/eliagroup/ToOp/blob/main/LICENSE).<!-- markdown-link-check-enable -->
 
 ## Citation
 

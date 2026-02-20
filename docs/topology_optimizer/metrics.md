@@ -46,6 +46,8 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **disconnected_branches**: Number of branches (lines/transformers) that have been intentionally disconnected in the topology.
 
+- **pst_setpoint_deviation**: Absolute distance from the initial PST setpoints to the current optimized ones.
+
 ## Other Metrics
 
 - **n0_n1_delta**: Penalty for exceeding the maximum allowed flow change between N-0 and N-1 cases. Computed as the sum of MW exceeding `n0_n1_max_diff` limits across all branches and timesteps. Useful for operational constraints that limit how much flow can shift during contingencies.

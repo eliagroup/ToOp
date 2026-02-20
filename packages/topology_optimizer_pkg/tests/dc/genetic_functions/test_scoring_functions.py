@@ -369,7 +369,7 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file: str)
 
     assert "pst_setpoint_deviation" in metrics, "pst_setpoint_deviation should be in metrics"
     assert metrics["pst_setpoint_deviation"].shape == (batch_size,), "Metric should have batch dimension"
-    
+
     # Since we haven't mutated PSTs (pst_mutation_sigma=0), all deviations should be 0
     assert jnp.all(metrics["pst_setpoint_deviation"] == 0.0), "Deviation should be 0 when PST taps haven't changed"
 
@@ -426,7 +426,7 @@ def test_pst_setpoint_deviation_without_pst_optimization(static_information_file
         static_information.dynamic_information,
         nodal_injection_information=None,
     )
-    
+
     static_information = replace(
         static_information,
         solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),

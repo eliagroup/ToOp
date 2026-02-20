@@ -916,9 +916,9 @@ def test_get_pst_setpoint_deviation() -> None:
 
     initial_tap_idx = jnp.array([1, 2, 3], dtype=int)
     optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[2, 3, 4]], dtype=float))
-    
+
     deviation_jitted = jitted_deviation(optimized_taps, initial_tap_idx)
     deviation_normal = get_pst_setpoint_deviation(optimized_taps, initial_tap_idx)
-    
+
     assert jnp.allclose(deviation_jitted, deviation_normal), "JIT and non-JIT versions should produce same result"
     assert deviation_jitted == 3.0, f"Expected deviation 3.0, got {deviation_jitted}"

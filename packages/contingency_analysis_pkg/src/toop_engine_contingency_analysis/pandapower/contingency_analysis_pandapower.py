@@ -408,7 +408,7 @@ def _run_base_case_loadflow(
     """
     elements_ids = []
     if base_case is not None:
-        elements_ids = ([element.unique_id for element in base_case.elements],)
+        elements_ids = [element.unique_id for element in base_case.elements]
     assign_slack_per_island(
         net=net,
         net_graph=slack_allocation_config.net_graph,

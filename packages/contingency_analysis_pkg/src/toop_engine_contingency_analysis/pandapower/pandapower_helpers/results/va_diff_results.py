@@ -21,6 +21,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     PandapowerMonitoredElementSchema,
 )
 from toop_engine_grid_helpers.pandapower.outage_group import (
+    OUTAGE_GROUP_SEPARATOR,
     build_connectivity_graph_for_contingency,
     elem_node_id,
     get_node_table_id,
@@ -183,7 +184,7 @@ def _build_side(df: pd.DataFrame, deenergized_sw_side: str, energized_sw_side: s
     out = df.copy()
 
     # build component lookup
-    out["comp_key"] = "b_" + out[deenergized_sw_side].astype(str)
+    out["comp_key"] = "b" + OUTAGE_GROUP_SEPARATOR + out[deenergized_sw_side].astype(str)
     out["comp"] = out["comp_key"].map(node_to_component)
 
     # keep switch id from index

@@ -12,6 +12,7 @@ import pytest
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
 from toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower import run_contingency_analysis_pandapower
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import ContingencyAnalysisConfig
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.loadflow_result_helpers import (
     extract_branch_results,
@@ -61,9 +62,13 @@ def test_extract_branch_results_pandapower_disconnected():
             for index, row in net.line.iterrows()
         ],
     )
-
+    cfg = ContingencyAnalysisConfig(method="dc")
     res = run_contingency_analysis_pandapower(
-        net=net, n_minus_1_definition=nminus1_def, job_id="test_job", timestep=0, method="dc"
+        net=net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=cfg,
     )
     contingencies = [contingency.id for contingency in nminus1_def.contingencies if not contingency.is_basecase()]
     _, matrix = extract_branch_results(
@@ -100,8 +105,13 @@ def test_extract_branch_results_pandapower_disconnected():
         ],
     )
 
+    cfg = ContingencyAnalysisConfig(method="dc")
     res = run_contingency_analysis_pandapower(
-        net=net, n_minus_1_definition=nminus1_def, job_id="test_job", timestep=0, method="dc"
+        net=net,
+        n_minus_1_definition=nminus1_def,
+        job_id="test_job",
+        timestep=0,
+        cfg=cfg,
     )
     _, matrix = extract_branch_results(
         branch_results=res.branch_results,

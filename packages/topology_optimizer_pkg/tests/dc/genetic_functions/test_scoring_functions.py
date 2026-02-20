@@ -398,6 +398,7 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file: str)
         observed_metrics=(
             "overload_energy_n_1",
             "pst_setpoint_deviation",
+            "switching_distance",
         ),
         descriptor_metrics=("switching_distance",),
     )
@@ -459,6 +460,7 @@ def test_pst_setpoint_deviation_without_pst_optimization(static_information_file
         observed_metrics=(
             "overload_energy_n_1",
             "pst_setpoint_deviation",
+            "switching_distance",
         ),
         descriptor_metrics=("switching_distance",),
     )

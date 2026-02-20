@@ -758,6 +758,67 @@ def aggregate_matrix_to_metric(
     )
 
 
+def _compute_simple_metric(
+    metric: str,
+    lf_res: SolverLoadflowResults,
+    branch_limits: BranchLimits,
+    reassignment_distance: Int[Array, " n_branch_actions"],
+    n_relevant_subs: int,
+    initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
+) -> Optional[Float[Array, " "]]:
+    """Compute simple (non-matrix) metrics.
+
+    Returns None if the metric is not a simple metric and should be handled elsewhere.
+
+    Parameters
+    ----------
+    metric : str
+        The metric name
+    lf_res : SolverLoadflowResults
+        The loadflow results
+    branch_limits : BranchLimits
+        Branch limits
+    reassignment_distance : Int[Array, " n_branch_actions"]
+        Reassignment distance for switching distance metric
+    n_relevant_subs : int
+        Number of relevant substations
+    initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]]
+        Initial PST tap indices
+
+    Returns
+    -------
+    Optional[Float[Array, " "]]
+        The metric value, or None if this is not a simple metric
+    """
+    if metric == "n0_n1_delta":
+        return get_n0_n1_delta_penalty(lf_res.n_0_matrix, lf_res.n_1_matrix, branch_limits.n0_n1_max_diff)
+    if metric == "cross_coupler_flow":
+        return get_cross_coupler_flow_penalty(lf_res.cross_coupler_flows, lf_res.sub_ids, branch_limits.coupler_limits)
+    if metric == "switching_distance":
+        return get_switching_distance(
+            branch_action_index=lf_res.branch_action_index,
+            reassignment_distance=reassignment_distance,
+        )
+    if metric == "pst_setpoint_deviation":
+        return get_pst_setpoint_deviation(
+            optimized_taps=lf_res.nodal_injections_optimized,
+            initial_tap_idx=initial_pst_tap_idx,
+        )
+    if metric == "split_subs":
+        return get_number_of_splits(lf_res.branch_topology, lf_res.sub_ids, n_relevant_subs)
+    if metric == "disconnected_branches":
+        return get_number_of_disconnections(lf_res.disconnections, branch_limits.max_mw_flow.shape[0])
+    if metric == "n_2_penalty":
+        return get_n_2_penalty(lf_res.n_2_penalty)
+    if metric == "bb_outage_penalty":
+        return get_bb_outage_penalty(lf_res.bb_outage_penalty)
+    if metric == "bb_outage_overload":
+        return get_bb_outage_overload(lf_res.bb_outage_overload)
+    if metric == "bb_outage_grid_splits":
+        return get_bb_outage_grid_splits(lf_res.bb_outage_splits)
+    return None
+
+
 def aggregate_to_metric(
     lf_res: SolverLoadflowResults,
     branch_limits: BranchLimits,
@@ -799,37 +860,17 @@ def aggregate_to_metric(
     Float[Array, " "]
         The aggregated metric
     """
-    if metric == "n0_n1_delta":
-        retval = get_n0_n1_delta_penalty(lf_res.n_0_matrix, lf_res.n_1_matrix, branch_limits.n0_n1_max_diff)
-    elif metric == "cross_coupler_flow":
-        retval = get_cross_coupler_flow_penalty(lf_res.cross_coupler_flows, lf_res.sub_ids, branch_limits.coupler_limits)
-    elif metric == "switching_distance":
-        retval = get_switching_distance(
-            branch_action_index=lf_res.branch_action_index,
-            reassignment_distance=reassignment_distance,
-        )
-    elif metric == "pst_setpoint_deviation":
-        retval = get_pst_setpoint_deviation(
-            optimized_taps=lf_res.nodal_injections_optimized,
-            initial_tap_idx=initial_pst_tap_idx,
-        )
-    elif metric == "split_subs":
-        retval = get_number_of_splits(lf_res.branch_topology, lf_res.sub_ids, n_relevant_subs)
-    elif metric == "disconnected_branches":
-        retval = get_number_of_disconnections(lf_res.disconnections, branch_limits.max_mw_flow.shape[0])
-    elif metric == "n_2_penalty":
-        retval = get_n_2_penalty(lf_res.n_2_penalty)
-    elif metric == "bb_outage_penalty":
-        retval = get_bb_outage_penalty(lf_res.bb_outage_penalty)
-    elif metric == "bb_outage_overload":
-        retval = get_bb_outage_overload(lf_res.bb_outage_overload)
-    elif metric == "bb_outage_grid_splits":
-        retval = get_bb_outage_grid_splits(lf_res.bb_outage_splits)
-    else:
-        retval = aggregate_matrix_to_metric(
-            lf_res=lf_res, branch_limits=branch_limits, metric=metric, aggregate_strategy=aggregate_strategy
-        )
-    return retval
+    # Try simple metrics first
+    retval = _compute_simple_metric(
+        metric, lf_res, branch_limits, reassignment_distance, n_relevant_subs, initial_pst_tap_idx
+    )
+    if retval is not None:
+        return retval
+
+    # Fall back to matrix-based metrics
+    return aggregate_matrix_to_metric(
+        lf_res=lf_res, branch_limits=branch_limits, metric=metric, aggregate_strategy=aggregate_strategy
+    )
 
 
 def aggregate_n_1_matrix(

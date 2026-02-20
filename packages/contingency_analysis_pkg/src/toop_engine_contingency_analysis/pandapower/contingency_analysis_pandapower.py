@@ -374,7 +374,7 @@ def run_contingency_analysis_parallel(
 
 def _run_base_case_loadflow(
     net: pp.pandapowerNet,
-    base_case: PandapowerContingency,
+    base_case: Optional[PandapowerContingency],
     slack_allocation_config: SlackAllocationConfig,
     cfg: ContingencyAnalysisConfig,
 ) -> None:
@@ -406,11 +406,14 @@ def _run_base_case_loadflow(
         RuntimeError:
             If the base case load flow does not converge.
     """
+    elements_ids = []
+    if base_case is not None:
+        elements_ids = ([element.unique_id for element in base_case.elements],)
     assign_slack_per_island(
         net=net,
         net_graph=slack_allocation_config.net_graph,
         bus_lookup=slack_allocation_config.bus_lookup,
-        elements_ids=[element.unique_id for element in base_case.elements],
+        elements_ids=elements_ids,
         min_island_size=slack_allocation_config.min_island_size,
     )
 

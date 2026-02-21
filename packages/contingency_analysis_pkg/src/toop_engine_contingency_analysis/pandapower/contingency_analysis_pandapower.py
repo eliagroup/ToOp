@@ -425,8 +425,8 @@ def _run_base_case_loadflow(
         else:
             pp.runpp(net, **runpp_kwargs)
 
-    except pp.LoadflowNotConverged as err:
-        raise RuntimeError("Base case load flow did not converge") from err
+    except pp.LoadflowNotConverged:
+        pass
 
 
 def run_contingency_analysis_pandapower(

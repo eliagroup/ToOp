@@ -81,6 +81,7 @@ def select_strategy(
         return []
 
     strategies = group.sum("score")
+    strategies.score = np.abs(strategies.score)
     sum_scores = strategies.score.sum()
     if not np.isclose(sum_scores, 0):
         strategies.score /= sum_scores

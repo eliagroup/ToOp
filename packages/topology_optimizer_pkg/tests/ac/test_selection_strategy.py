@@ -8,7 +8,7 @@
 import numpy as np
 import pandas as pd
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 from toop_engine_topology_optimizer.ac.evolution_functions import (
     default_scorer,
 )
@@ -23,7 +23,7 @@ from toop_engine_topology_optimizer.ac.select_strategy import (
 )
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, OptimizerType
-from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDBTopology
+from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDBTopology, hash_topo_data
 
 
 def test_select_strategy(dc_repertoire: list[BaseDBTopology]) -> None:
@@ -558,3 +558,126 @@ def test_get_discriminator_df_empty_metrics_df():
     metrics_df = pd.DataFrame()
     result = get_discriminator_df(metrics_df, target_metrics)
     assert result.empty
+
+
+def test_select_strategy_positive_negative_metrics(session: Session) -> None:
+    """Test select_strategy with one strategy having positive metrics and another having negative metrics.
+
+    This test verifies that the selection mechanism correctly handles strategies with different
+    score polarities. The absolute value operation should ensure both strategies have a chance
+    to be selected based on the magnitude of their scores.
+    """
+    # Create strategy 1 with positive metric values
+    strategy1_assignments = []
+    for timestep in range(5):
+        strategy1_assignments.append(
+            (
+                [1000 + timestep],  # actions
+                [],  # disconnections
+                [10, 20, 30],  # pst_setpoints
+            )
+        )
+    strategy1_hash = hash_topo_data(strategy1_assignments)
+
+    # Create strategy 2 with different actions
+    strategy2_assignments = []
+    for timestep in range(5):
+        strategy2_assignments.append(
+            (
+                [2000 + timestep],  # actions
+                [],  # disconnections
+                [15, 25, 35],  # pst_setpoints
+            )
+        )
+    strategy2_hash = hash_topo_data(strategy2_assignments)
+
+    # Add strategy 1 topologies with positive metric values
+    for timestep, (actions, disconnections, pst_setpoints) in enumerate(strategy1_assignments):
+        session.add(
+            ACOptimTopology(
+                actions=actions,
+                disconnections=disconnections,
+                pst_setpoints=pst_setpoints,
+                unsplit=False,
+                timestep=timestep,
+                strategy_hash=strategy1_hash,
+                optimization_id="test_pos_neg",
+                optimizer_type=OptimizerType.DC,
+                fitness=-100.0,
+                metrics={
+                    "overload_energy_n_1": 24.0,  # Positive metric (8 + 16)
+                    "switching_distance": 8,
+                    "split_subs": 16,
+                    "disconnections": 0,
+                },
+            )
+        )
+
+    # Add strategy 2 topologies with negative metric values
+    for timestep, (actions, disconnections, pst_setpoints) in enumerate(strategy2_assignments):
+        session.add(
+            ACOptimTopology(
+                actions=actions,
+                disconnections=disconnections,
+                pst_setpoints=pst_setpoints,
+                unsplit=False,
+                timestep=timestep,
+                strategy_hash=strategy2_hash,
+                optimization_id="test_pos_neg",
+                optimizer_type=OptimizerType.DC,
+                fitness=-100.0,
+                metrics={
+                    "overload_energy_n_1": -66.0,  # Negative metric (-10 - 56)
+                    "switching_distance": -10,
+                    "split_subs": -56,
+                    "disconnections": 2,
+                },
+            )
+        )
+
+    session.commit()
+
+    # Get all topologies
+    all_topologies = session.exec(select(ACOptimTopology).where(ACOptimTopology.optimization_id == "test_pos_neg")).all()
+
+    assert len(all_topologies) == 10
+
+    # Use a simple scorer that returns the overload_energy_n_1 metric directly
+    def metric_scorer(metrics: pd.DataFrame) -> pd.Series:
+        """Score based on overload_energy_n_1 metric which has different signs."""
+        return metrics["overload_energy_n_1"]
+
+    # Strategy 1 scores: 24.0 * 5 = 120 (positive sum)
+    # Strategy 2 scores: -66.0 * 5 = -330 (negative sum)
+
+    # Run select_strategy multiple times to check both strategies can be selected
+    rng = np.random.default_rng(42)
+    selected_strategies = []
+
+    for _ in range(100):
+        strategy = select_strategy(rng, all_topologies, metric_scorer)
+        assert isinstance(strategy, list)
+        assert len(strategy) > 0
+        assert isinstance(strategy[0], ACOptimTopology)
+
+        # All topologies in selected strategy should have the same strategy_hash
+        strategy_hashes = set(t.strategy_hash for t in strategy)
+        assert len(strategy_hashes) == 1
+        selected_strategies.append(list(strategy_hashes)[0])
+
+    # Check that the absolute value operation makes both strategies selectable
+    # After abs(), strategy 1 has score 120, strategy 2 has score 330
+    # Normalized: strategy 1 = 120/450 ≈ 0.267, strategy 2 = 330/450 ≈ 0.733
+    # So strategy 2 (with negative metrics -> higher abs) should be selected more often
+    strategy1_count = selected_strategies.count(strategy1_hash)
+    strategy2_count = selected_strategies.count(strategy2_hash)
+
+    assert strategy1_count > 0, "Strategy 1 (positive metrics) should be selected at least once"
+    assert strategy2_count > 0, "Strategy 2 (negative metrics) should be selected at least once"
+
+    # Strategy 2 should be selected more often (roughly 73% of the time)
+    # Allow some variance due to randomness
+    assert strategy2_count > strategy1_count, (
+        f"Strategy 2 (negative metrics -> higher abs) should be selected more often. "
+        f"Got strategy1={strategy1_count}, strategy2={strategy2_count}"
+    )

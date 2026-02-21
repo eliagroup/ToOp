@@ -500,14 +500,31 @@ class ACScoringParameters:
 
     # --- Thresholds for acceptance criteria --- #
     reject_convergence_threshold: float
+    """The rejection threshold for the convergence rate, i.e. the split case must have at most the same amount of
+    non converging loadflows as the unsplit case or it will be rejected."""
+
     reject_overload_threshold: float
+    """The rejection threshold for the overload energy improvement, i.e. the split case must have at least 5% lower
+    overload energy than the unsplit case or it will be rejected."""
+
     reject_critical_branch_threshold: float
+    """The rejection threshold for the critical branches increase, i.e. the split case must have less than 10% more
+    critical branches than the unsplit case or it will be rejected."""
 
     # --- Parameters for early stopping during N-1 analysis --- #
     base_case_ids: list[Optional[str]]
+    """The base case ids for the loadflow runners, length n_timesteps (used to separately
+    compute the N-0 flows)"""
+
     n_timestep_processes: int
+    """How many processes to spawn for computing the timesteps in parallel"""
+
     early_stop_validation: bool
+    """Whether to enable early stopping during the optimization process."""
+
     early_stop_non_converging_threshold: float
+    """The threshold for the early stopping criterion, i.e. if the percentage of non-converging cases is greater than
+    this value, the ac validation will be stopped early."""
 
 
 def scoring_and_acceptance(

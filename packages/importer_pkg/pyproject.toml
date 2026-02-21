@@ -89,11 +89,5 @@ toop_engine_grid_helpers = { path = "../grid_helpers_pkg", editable = true }
 toop_engine_contingency_analysis = { path = "../contingency_analysis_pkg", editable = true }
 toop_engine_dc_solver = { path = "../dc_solver_pkg", editable = true }
 
-[[tool.uv.index]]
-name = "MCCS"
-url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/simple/"
-publish-url = "https://pkgs.dev.azure.com/elia-digitization/b6a96fa0-abf9-45e4-8e6a-781e239ec47e/_packaging/MCCS/pypi/upload/"
-explicit = true
-
 [tool.uv-secure.ignore_packages]
 ray = [] # Ignore issues with all versions of the ray package

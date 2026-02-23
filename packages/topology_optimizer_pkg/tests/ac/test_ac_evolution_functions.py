@@ -29,7 +29,7 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDB
 
 
 def test_pull(dc_repertoire: list[BaseDBTopology]) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
     pulled = pull(strategy)
     for new, old in zip(pulled, strategy):
         assert isinstance(new, ACOptimTopology)
@@ -49,7 +49,7 @@ def test_pull_with_worst_k_contingencies(
 ):
     repo, session = unsplit_ac_dc_repertoire
 
-    strategy = select_strategy(np.random.default_rng(0), repo, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), repo, repo, default_scorer)
     # Create a copy of the strategy to avoid mutating the original during pull
     strategy_copy = [copy.deepcopy(t) for t in strategy]
 
@@ -85,7 +85,7 @@ def test_pull_with_worst_k_contingencies(
 
 
 def test_reconnect(dc_repertoire: list[BaseDBTopology]) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
     reconnected = reconnect(np.random.default_rng(0), strategy)
 
     assert len(reconnected) == len(strategy)

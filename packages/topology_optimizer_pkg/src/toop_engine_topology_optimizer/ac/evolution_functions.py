@@ -471,34 +471,67 @@ def evolution_try(
     action_choice = rng.choice(["pull", "reconnect", "close_coupler"], p=[pull_prob, reconnect_prob, close_coupler_prob])
     if action_choice == "pull":
         old_strategy = select_strategy(
-            rng,
-            select_repertoire(optimization_id, [OptimizerType.DC, OptimizerType.AC], [], session),
-            default_scorer,
+            rng=rng,
+            repertoire=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+                without_parent_on=[],
+                session=session,
+            ),
+            candidates=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC],
+                without_parent_on=[OptimizerType.AC],
+                session=session,
+            ),
+            interest_scorer=default_scorer,
             filter_strategy=filter_strategy,
         )
-        new_strategy = pull(old_strategy, session=session, n_minus1_definitions=n_minus1_definition)
+        new_strategy = pull(selected_strategy=old_strategy, session=session, n_minus1_definitions=n_minus1_definition)
     elif action_choice == "reconnect":
         old_strategy = select_strategy(
-            rng,
-            select_repertoire(optimization_id, [OptimizerType.DC, OptimizerType.AC], [], session),
-            default_scorer,
+            rng=rng,
+            repertoire=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+                without_parent_on=[],
+                session=session,
+            ),
+            candidates=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+                without_parent_on=[OptimizerType.AC],
+                session=session,
+            ),
+            interest_scorer=default_scorer,
             filter_strategy=None,
         )
 
         new_strategy = reconnect(
-            rng,
-            old_strategy,
+            rng=rng,
+            selected_strategy=old_strategy,
         )
     elif action_choice == "close_coupler":
         old_strategy = select_strategy(
-            rng,
-            select_repertoire(optimization_id, [OptimizerType.DC, OptimizerType.AC], [], session),
-            default_scorer,
+            rng=rng,
+            repertoire=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+                without_parent_on=[],
+                session=session,
+            ),
+            candidates=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+                without_parent_on=[OptimizerType.AC],
+                session=session,
+            ),
+            interest_scorer=default_scorer,
             filter_strategy=None,
         )
         new_strategy = close_coupler(
-            rng,
-            old_strategy,
+            rng=rng,
+            selected_strategy=old_strategy,
         )
     else:
         raise RuntimeError("np.random.choice returned an unexpected value")

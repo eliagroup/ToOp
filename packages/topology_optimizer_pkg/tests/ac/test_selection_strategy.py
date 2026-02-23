@@ -27,7 +27,7 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDB
 
 
 def test_select_strategy(dc_repertoire: list[BaseDBTopology]) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
     assert isinstance(strategy, list)
     assert len(strategy)
     assert isinstance(strategy[0], ACOptimTopology)
@@ -40,7 +40,7 @@ def test_select_strategy(dc_repertoire: list[BaseDBTopology]) -> None:
         if topo.strategy_hash == strategy[0].strategy_hash:
             assert topo in strategy
 
-    assert select_strategy(np.random.default_rng(0), [], default_scorer) == []
+    assert select_strategy(np.random.default_rng(0), [], [], default_scorer) == []
 
 
 def test_select_stategy_ac_dc_mix(dc_repertoire: list[BaseDBTopology], session: Session) -> None:
@@ -68,7 +68,7 @@ def test_select_stategy_ac_dc_mix(dc_repertoire: list[BaseDBTopology], session: 
         mixed_topologies.append(topology)
 
     # Select a strategy
-    strategy = select_strategy(np.random.default_rng(0), mixed_topologies, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), mixed_topologies, mixed_topologies, default_scorer)
     assert isinstance(strategy, list)
     assert len(strategy)
     assert isinstance(strategy[0], ACOptimTopology)

@@ -26,6 +26,7 @@ logger = logbook.Logger(__name__)
 def select_strategy(
     rng: Rng,
     repertoire: list[BaseDBTopology],
+    candidates: list[BaseDBTopology],  # noqa: ARG001
     interest_scorer: Callable[[pd.DataFrame], pd.Series],
     filter_strategy: Optional[FilterStrategy] = None,
 ) -> Union[list[ACOptimTopology], Tuple[list[ACOptimTopology], list[ACOptimTopology]]]:
@@ -39,7 +40,10 @@ def select_strategy(
     rng : Rng
         The random number generator to use
     repertoire : list[BaseDBTopology]
-        The filtered repertoire to select from
+        The filtered repertoire with all individuals of the optimization in all optimizer types
+    candidates : list[BaseDBTopology]
+        Candidates which have not yet been evaluated. For a pull operation this will only include DC candidates without an
+        AC parent.
     interest_scorer : Callable[[pd.DataFrame], pd.Series]
         The function to score the topologies in the repertoire. The higher the score, the more
         interesting the topology is. Eventually, the topology will be selected with a probability

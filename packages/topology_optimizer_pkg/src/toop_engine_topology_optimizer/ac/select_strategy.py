@@ -73,6 +73,8 @@ def select_strategy(
             discriminator_df=discriminator_df,
             filter_strategy=filter_strategy,
         )
+    else:
+        metrics = metrics[metrics["optimizer_type"] == OptimizerType.DC.value]
 
     # Score them according to some function
     metrics["score"] = interest_scorer(metrics)
@@ -81,13 +83,6 @@ def select_strategy(
         return []
 
     strategies = group.sum("score")
-    min_score = strategies.score.min()
-    max_score = strategies.score.max()
-    # Ensure all scores are positive
-    strategies.score += min_score
-    # Ensure the worst strategy has a residual chance of being selected of 1%
-    strategies.score += 0.01 * (max_score - min_score)
-
     sum_scores = strategies.score.sum()
     if not np.isclose(sum_scores, 0):
         strategies.score /= sum_scores

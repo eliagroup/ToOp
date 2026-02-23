@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from jaxtyping import Int
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session
+from sqlmodel import Session, select
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.evolution_functions import (
     close_coupler,
@@ -118,15 +118,88 @@ def test_select_repertoire(dc_repertoire: list[ACOptimTopology], session: Sessio
         session.add(topo)
     session.commit()
 
-    pulled = select_repertoire("test", [OptimizerType.DC], session)
+    pulled = select_repertoire("test", [OptimizerType.DC], [], session)
     assert len(pulled) == len(dc_repertoire)
     assert set(p.id for p in pulled) == set(p.id for p in dc_repertoire)
 
-    pulled = select_repertoire("test", [], session)
+    pulled = select_repertoire("test", [], [], session)
     assert len(pulled) == 0
 
-    pulled = select_repertoire("nottest", [OptimizerType.DC], session)
+    pulled = select_repertoire("nottest", [OptimizerType.DC], [], session)
     assert len(pulled) == 0
+
+
+def test_select_repertoire_without_parent_on(session: Session) -> None:
+    # Create a repertoire with one topology that has a parent on DC and one that doesn't have a parent
+    repertoire = [
+        ACOptimTopology(
+            actions=[1],
+            disconnections=[],
+            pst_setpoints=None,
+            unsplit=False,
+            timestep=0,
+            strategy_hash=hash_topo_data([([1], [], None)]),
+            optimization_id="test",
+            optimizer_type=OptimizerType.AC,
+            fitness=0.5,
+            parent=ACOptimTopology(
+                actions=[1],
+                disconnections=[],
+                pst_setpoints=None,
+                unsplit=False,
+                timestep=0,
+                strategy_hash=hash_topo_data([([1], [], None)]),
+                optimization_id="test",
+                optimizer_type=OptimizerType.DC,
+                fitness=0.5,
+            ),
+        ),
+        ACOptimTopology(
+            actions=[2],
+            disconnections=[],
+            pst_setpoints=None,
+            unsplit=False,
+            timestep=0,
+            strategy_hash=hash_topo_data([([2], [], None)]),
+            optimization_id="test",
+            optimizer_type=OptimizerType.DC,
+            fitness=0.5,
+            parent=None,
+        ),
+        ACOptimTopology(
+            actions=[2],
+            disconnections=[],
+            pst_setpoints=None,
+            unsplit=False,
+            timestep=0,
+            strategy_hash=hash_topo_data([([2], [], None)]),
+            optimization_id="nottest",
+            optimizer_type=OptimizerType.DC,
+            fitness=0.5,
+            parent=None,
+        ),
+    ]
+    session.add_all(repertoire)
+    session.commit()
+    assert len(session.exec(select(ACOptimTopology)).all()) == 4
+
+    filtered = select_repertoire(
+        optimization_id="test",
+        optimizer_type=[OptimizerType.DC],
+        without_parent_on=[OptimizerType.AC],
+        session=session,
+    )
+    assert len(filtered) == 1
+    assert filtered[0].strategy_hash == hash_topo_data([([2], [], None)])
+    assert filtered[0].parent is None
+
+    unfiltered = select_repertoire(
+        optimization_id="test",
+        optimizer_type=[OptimizerType.DC],
+        without_parent_on=[],
+        session=session,
+    )
+    assert len(unfiltered) == 2
 
 
 def test_close_coupler(

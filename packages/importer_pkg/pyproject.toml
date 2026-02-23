@@ -89,11 +89,5 @@ toop_engine_grid_helpers = { path = "../grid_helpers_pkg", editable = true }
 toop_engine_contingency_analysis = { path = "../contingency_analysis_pkg", editable = true }
 toop_engine_dc_solver = { path = "../dc_solver_pkg", editable = true }
 
-[[tool.uv.index]]
-name = "MCCS"
-url = "***REMOVED***"
-publish-url = "***REMOVED***"
-explicit = true
-
 [tool.uv-secure.ignore_packages]
 ray = [] # Ignore issues with all versions of the ray package

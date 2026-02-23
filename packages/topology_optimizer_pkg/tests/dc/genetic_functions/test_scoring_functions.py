@@ -338,19 +338,20 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file_compl
             static_information.solver_config, batch_size_bsdf=batch_size),
     )
 
+    # Initialize with PST optimization enabled (starting taps)
+    pst_n_taps = static_information.dynamic_information.nodal_injection_information.pst_n_taps
+    starting_taps = static_information.dynamic_information.nodal_injection_information.starting_tap_idx
+
     # Create some topologies
     topologies = empty_repertoire(
         batch_size,
         max_num_splits,
         n_disconnections,
         n_timesteps,
+        starting_taps,
     )
 
     key = jax.random.PRNGKey(42)
-
-    # Initialize with PST optimization enabled (starting taps)
-    pst_n_taps = static_information.dynamic_information.nodal_injection_information.pst_n_taps
-    starting_taps = static_information.dynamic_information.nodal_injection_information.starting_tap_idx
 
     topologies, key = mutate(
         topologies=topologies,
@@ -365,7 +366,6 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file_compl
         pst_mutation_sigma=0,  # No PST mutation yet
         pst_n_taps=pst_n_taps,
         mutation_repetition=1,
-        starting_taps=starting_taps,
     )
 
     # Test 1: With pst_setpoint_deviation in observed metrics
@@ -456,19 +456,20 @@ def test_pst_setpoint_deviation_in_target_metrics(static_information_file_comple
             static_information.solver_config, batch_size_bsdf=batch_size),
     )
 
+    # Initialize with PST optimization enabled (starting taps)
+    pst_n_taps = static_information.dynamic_information.nodal_injection_information.pst_n_taps
+    starting_taps = static_information.dynamic_information.nodal_injection_information.starting_tap_idx
+
     # Create some topologies
     topologies = empty_repertoire(
         batch_size,
         max_num_splits,
         n_disconnections,
         n_timesteps,
+        starting_taps,
     )
 
     key = jax.random.PRNGKey(42)
-
-    # Initialize with PST optimization enabled (starting taps)
-    pst_n_taps = static_information.dynamic_information.nodal_injection_information.pst_n_taps
-    starting_taps = static_information.dynamic_information.nodal_injection_information.starting_tap_idx
 
     topologies, key = mutate(
         topologies=topologies,
@@ -480,10 +481,9 @@ def test_pst_setpoint_deviation_in_target_metrics(static_information_file_comple
         n_subs_mutated_lambda=5.0,
         disconnect_prob=0.0,
         reconnect_prob=0.0,
-        pst_mutation_sigma=2.0,  # No PST mutation yet
+        pst_mutation_sigma=2.0,  # Enable PST mutation
         pst_n_taps=pst_n_taps,
         mutation_repetition=1,
-        starting_taps=starting_taps,
     )
 
     # Test 1: With small cost for pst_setpoint_deviation in target metrics
@@ -507,24 +507,8 @@ def test_pst_setpoint_deviation_in_target_metrics(static_information_file_comple
     assert jnp.greater_equal(metrics["pst_setpoint_deviation"], 0.0).any(
     ), "Metric should be greater 0 for some topologies due to PST mutation"
 
-    # Test 2: With PST mutation, deviation should be non-zero
-    topologies_mutated, key = mutate(
-        topologies=topologies,
-        random_key=key,
-        substation_split_prob=0.0,  # No topology changes
-        substation_unsplit_prob=0.0,
-        action_set=action_set,
-        n_disconnectable_branches=n_disconnectable_branches,
-        n_subs_mutated_lambda=0.0,
-        disconnect_prob=0.0,
-        reconnect_prob=0.0,
-        pst_mutation_sigma=2.0,  # Enable PST mutation
-        pst_n_taps=pst_n_taps,
-        mutation_repetition=1,
-    )
-
     (fitness, _, metrics, _, _, _) = scoring_function(
-        topologies_mutated,
+        topologies,
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),

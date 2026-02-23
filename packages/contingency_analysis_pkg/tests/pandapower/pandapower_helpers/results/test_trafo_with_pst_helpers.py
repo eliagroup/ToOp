@@ -91,7 +91,7 @@ def net_pp():
 def test_returns_trafo_and_trafo3w_when_tabular_and_characteristic_has_nonzero_angle(net_pp):
     res = get_pst_elements_tabular(net_pp)
     # created net has exactly one of each with characteristic 1 (non-zero angle)
-    assert res == ["e_trafo_0", "e_trafo3w_0"]
+    assert res == ["e&&trafo&&0", "e&&trafo3w&&0"]
 
 
 def test_excludes_characteristic_with_zero_angle_tabular(net_pp):
@@ -116,7 +116,7 @@ def test_excludes_characteristic_with_zero_angle_tabular(net_pp):
 
     res = get_pst_elements_tabular(net_pp)
     assert "trafo:1" not in res
-    assert res == ["e_trafo_0", "e_trafo3w_0"]
+    assert res == ["e&&trafo&&0", "e&&trafo3w&&0"]
 
 
 def test_excludes_non_tabular_even_if_characteristic_has_nonzero_angle_tabular(net_pp):
@@ -124,8 +124,8 @@ def test_excludes_non_tabular_even_if_characteristic_has_nonzero_angle_tabular(n
     net_pp.trafo.loc[0, "tap_changer_type"] = "Ratio"
 
     res = get_pst_elements_tabular(net_pp)
-    assert "e_trafo_0" not in res
-    assert res == ["e_trafo3w_0"]
+    assert "e&&trafo&&0" not in res
+    assert res == ["e&&trafo3w&&0"]
 
 
 def test_empty_when_no_characteristic_has_nonzero_angle_tabular(net_pp):
@@ -147,7 +147,7 @@ def test_returns_trafo_and_trafo3w_when_ratio_and_steps_nonzero_tabular(net_pp):
     net_pp.trafo3w.loc[0, "tap_step_degree"] = 2.0
 
     res = get_pst_elements_ratio(net_pp)
-    assert res == ["e_trafo_0", "e_trafo3w_0"]
+    assert res == ["e&&trafo&&0", "e&&trafo3w&&0"]
 
 
 def test_excludes_non_ratio_even_if_steps_nonzero_tabular(net_pp):
@@ -257,8 +257,8 @@ def test_excludes_added_ratio_trafo_when_steps_both_zero_or_invalid_tabular(net_
     net_pp.trafo3w.loc[0, "tap_step_degree"] = 2.0
 
     res = get_pst_elements_ratio(net_pp)
-    assert "e_trafo_1" not in res
-    assert res == ["e_trafo_0", "e_trafo3w_0"]
+    assert "e&&trafo&&1" not in res
+    assert res == ["e&&trafo&&0", "e&&trafo3w&&0"]
 
 
 def test_returns_trafo_and_trafo3w_when_symmetrical_and_steps_nonzero_symmetrical(net_pp):
@@ -272,7 +272,8 @@ def test_returns_trafo_and_trafo3w_when_symmetrical_and_steps_nonzero_symmetrica
     net_pp.trafo3w.loc[0, "tap_step_degree"] = 2.0
 
     res = get_pst_elements_symmetrical(net_pp)
-    assert res == ["e_trafo_0", "e_trafo3w_0"]
+
+    assert res == ["e&&trafo&&0", "e&&trafo3w&&0"]
 
 
 def test_excludes_non_symmetrical_even_if_steps_nonzero_symmetrical(net_pp):
@@ -361,8 +362,8 @@ def test_order_is_trafo_then_trafo3w_symmetrical(net_pp):
     net_pp.trafo3w.loc[0, "tap_step_degree"] = 2.0
 
     res = get_pst_elements_symmetrical(net_pp)
-    assert res[:1] == ["e_trafo_0"]
-    assert res[1:] == ["e_trafo3w_0"]
+    assert res[:1] == ["e&&trafo&&0"]
+    assert res[1:] == ["e&&trafo3w&&0"]
 
 
 def test_excludes_added_symmetrical_trafo_when_steps_both_zero_or_invalid_symmetrical(net_pp):
@@ -396,8 +397,8 @@ def test_excludes_added_symmetrical_trafo_when_steps_both_zero_or_invalid_symmet
     net_pp.trafo3w.loc[0, "tap_step_degree"] = 2.0
 
     res = get_pst_elements_symmetrical(net_pp)
-    assert "e_trafo_1" not in res
-    assert res == ["e_trafo_0", "e_trafo3w_0"]
+    assert "e&&trafo&&1" not in res
+    assert res == ["e&&trafo&&0", "e&&trafo3w&&0"]
 
 
 def test_returns_trafo_and_trafo3w_when_ideal_and_tap_step_degree_nonzero_ideal(net_pp):
@@ -408,7 +409,8 @@ def test_returns_trafo_and_trafo3w_when_ideal_and_tap_step_degree_nonzero_ideal(
     net_pp.trafo3w.loc[0, "tap_step_degree"] = 5.0
 
     res = get_pst_elements_ideal(net_pp)
-    assert res == ["e_trafo_0", "e_trafo3w_0"]
+
+    assert res == ["e&&trafo&&0", "e&&trafo3w&&0"]
 
 
 def test_excludes_non_ideal_even_if_tap_step_degree_nonzero_ideal(net_pp):
@@ -458,8 +460,8 @@ def test_order_is_trafo_then_trafo3w_ideal(net_pp):
     net_pp.trafo3w.loc[0, "tap_step_degree"] = 5.0
 
     res = get_pst_elements_ideal(net_pp)
-    assert res[:1] == ["e_trafo_0"]
-    assert res[1:] == ["e_trafo3w_0"]
+    assert res[:1] == ["e&&trafo&&0"]
+    assert res[1:] == ["e&&trafo3w&&0"]
 
 
 def test_excludes_added_ideal_trafo_when_tap_step_degree_zero_ideal(net_pp):
@@ -490,5 +492,5 @@ def test_excludes_added_ideal_trafo_when_tap_step_degree_zero_ideal(net_pp):
     net_pp.trafo3w.loc[0, "tap_step_degree"] = 5.0
 
     res = get_pst_elements_ideal(net_pp)
-    assert "e_trafo_1" not in res
-    assert res == ["e_trafo_0", "e_trafo3w_0"]
+    assert "e&&trafo&&1" not in res
+    assert res == ["e&&trafo&&0", "e&&trafo3w&&0"]

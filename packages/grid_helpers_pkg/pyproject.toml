@@ -76,9 +76,3 @@ dev = [
 
 [tool.uv.sources]
 toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }
-
-[[tool.uv.index]]
-name = "MCCS"
-url = "***REMOVED***"
-publish-url = "***REMOVED***"
-explicit = true

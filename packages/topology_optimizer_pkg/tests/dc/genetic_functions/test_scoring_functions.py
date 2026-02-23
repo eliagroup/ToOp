@@ -35,8 +35,7 @@ from packages.topology_optimizer_pkg.tests.dc.test_main import assert_topology
 def test_translate_topology(static_information_file: str) -> None:
     static_information = load_static_information(static_information_file)
 
-    n_disconnectable_branches = len(
-        static_information.dynamic_information.disconnectable_branches)
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
 
     action_set = static_information.dynamic_information.action_set
     assert action_set is not None
@@ -78,8 +77,7 @@ def test_translate_topology(static_information_file: str) -> None:
     )
 
     # Translate the topologies
-    branch_topo, disconnections, nodal_inj_start = translate_topology(
-        topologies)
+    branch_topo, disconnections, nodal_inj_start = translate_topology(topologies)
 
     assert branch_topo.action.shape == (
         batch_size,
@@ -94,8 +92,7 @@ def test_scoring_function(static_information_file: str) -> None:
     static_information = load_static_information(static_information_file)
 
     action_set = static_information.dynamic_information.action_set
-    n_disconnectable_branches = len(
-        static_information.dynamic_information.disconnectable_branches)
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
 
     max_num_splits = 3
     n_disconnections = 0
@@ -104,8 +101,7 @@ def test_scoring_function(static_information_file: str) -> None:
 
     static_information = replace(
         static_information,
-        solver_config=replace(
-            static_information.solver_config, batch_size_bsdf=batch_size),
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
     )
 
     # Randomly create some topologies
@@ -170,8 +166,7 @@ def test_summarize(static_information_file: str) -> None:
 
     static_information = replace(
         static_information,
-        solver_config=replace(
-            static_information.solver_config, batch_size_bsdf=batch_size),
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
     )
 
     # Randomly create some topologies
@@ -235,23 +230,20 @@ def test_summarize(static_information_file: str) -> None:
     )
 
     repertoire, emitter_state, random_key = algo.init(
-        topologies, jax.random.PRNGKey(
-            0), [static_information.dynamic_information]
+        topologies, jax.random.PRNGKey(0), [static_information.dynamic_information]
     )
     contingency_ids = static_information.solver_config.contingency_ids
     stats = summarize(
         repertoire=repertoire,
         emitter_state=emitter_state,
         initial_fitness=-np.inf,
-        initial_metrics={"overload_energy_n_1": 0.0,
-                         "underload_energy_n_1": 0.0},
+        initial_metrics={"overload_energy_n_1": 0.0, "underload_energy_n_1": 0.0},
         contingency_ids=contingency_ids,
     )
 
     assert stats["max_fitness"] is not None
     assert stats["initial_fitness"] is not None
-    assert stats["initial_metrics"] == {
-        "overload_energy_n_1": 0.0, "underload_energy_n_1": 0.0}
+    assert stats["initial_metrics"] == {"overload_energy_n_1": 0.0, "underload_energy_n_1": 0.0}
     assert np.isfinite(stats["max_fitness"])
     assert stats["best_topos"] is not None
 
@@ -269,10 +261,8 @@ class DummyACOptimTopology:
 
 def test_get_threshold_n_minus1_overload_all_present():
     strategy = [
-        DummyACOptimTopology(
-            metrics={"top_k_overloads_n_1": 10.5}, worst_k_contingency_cases=[1, 2, 3]),
-        DummyACOptimTopology(
-            metrics={"top_k_overloads_n_1": 20.0}, worst_k_contingency_cases=[0, 4]),
+        DummyACOptimTopology(metrics={"top_k_overloads_n_1": 10.5}, worst_k_contingency_cases=[1, 2, 3]),
+        DummyACOptimTopology(metrics={"top_k_overloads_n_1": 20.0}, worst_k_contingency_cases=[0, 4]),
     ]
     thresholds, indices = get_threshold_n_minus1_overload(strategy)
     assert thresholds == [10.5, 20.0]
@@ -282,25 +272,20 @@ def test_get_threshold_n_minus1_overload_all_present():
 def test_get_threshold_n_minus1_overload_missing_threshold():
     strategy = [
         DummyACOptimTopology(metrics={}, worst_k_contingency_cases=[1, 2, 3]),
-        DummyACOptimTopology(
-            metrics={"top_k_overloads_n_1": 20.0}, worst_k_contingency_cases=[0, 4]),
+        DummyACOptimTopology(metrics={"top_k_overloads_n_1": 20.0}, worst_k_contingency_cases=[0, 4]),
     ]
-    overload_threshold_all_t, case_indices_all_t = get_threshold_n_minus1_overload(
-        strategy)
+    overload_threshold_all_t, case_indices_all_t = get_threshold_n_minus1_overload(strategy)
     assert overload_threshold_all_t is None
     assert case_indices_all_t is None
 
 
 def test_get_threshold_n_minus1_overload_missing_case_indices():
     strategy = [
-        DummyACOptimTopology(
-            metrics={"top_k_overloads_n_1": 10.5}, worst_k_contingency_cases=[]),
-        DummyACOptimTopology(
-            metrics={"top_k_overloads_n_1": 20.0}, worst_k_contingency_cases=[0, 5]),
+        DummyACOptimTopology(metrics={"top_k_overloads_n_1": 10.5}, worst_k_contingency_cases=[]),
+        DummyACOptimTopology(metrics={"top_k_overloads_n_1": 20.0}, worst_k_contingency_cases=[0, 5]),
     ]
 
-    overload_threshold_all_t, case_indices_all_t = get_threshold_n_minus1_overload(
-        strategy)
+    overload_threshold_all_t, case_indices_all_t = get_threshold_n_minus1_overload(strategy)
     assert overload_threshold_all_t is None
     assert case_indices_all_t is None
 
@@ -324,8 +309,7 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file_compl
         pytest.skip("No controllable PSTs in this grid")
 
     action_set = static_information.dynamic_information.action_set
-    n_disconnectable_branches = len(
-        static_information.dynamic_information.disconnectable_branches)
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
 
     max_num_splits = 2
     n_disconnections = 0
@@ -334,8 +318,7 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file_compl
 
     static_information = replace(
         static_information,
-        solver_config=replace(
-            static_information.solver_config, batch_size_bsdf=batch_size),
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
     )
 
     # Initialize with PST optimization enabled (starting taps)
@@ -384,12 +367,10 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file_compl
     )
 
     assert "pst_setpoint_deviation" in metrics, "pst_setpoint_deviation should be in metrics"
-    assert metrics["pst_setpoint_deviation"].shape == (
-        batch_size,), "Metric should have batch dimension"
+    assert metrics["pst_setpoint_deviation"].shape == (batch_size,), "Metric should have batch dimension"
 
     # Since we haven't mutated PSTs (pst_mutation_sigma=0), all deviations should be 0
-    assert jnp.all(metrics["pst_setpoint_deviation"] ==
-                   0.0), "Deviation should be 0 when PST taps haven't changed"
+    assert jnp.all(metrics["pst_setpoint_deviation"] == 0.0), "Deviation should be 0 when PST taps haven't changed"
 
     # Test 2: With PST mutation, deviation should be non-zero
     topologies_mutated, key = mutate(
@@ -424,10 +405,8 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file_compl
     # With PST mutation, at least some topologies should have non-zero deviation
     # (though it's possible all mutations result in the same tap due to clipping)
     assert "pst_setpoint_deviation" in metrics_mutated, "Metric should be computed"
-    assert jnp.all(jnp.isfinite(
-        metrics_mutated["pst_setpoint_deviation"])), "All deviations should be finite"
-    assert jnp.all(metrics_mutated["pst_setpoint_deviation"]
-                   >= 0.0), "Deviations should be non-negative"
+    assert jnp.all(jnp.isfinite(metrics_mutated["pst_setpoint_deviation"])), "All deviations should be finite"
+    assert jnp.all(metrics_mutated["pst_setpoint_deviation"] >= 0.0), "Deviations should be non-negative"
 
 
 def test_pst_setpoint_deviation_in_target_metrics(static_information_file_complex: str) -> None:
@@ -442,8 +421,7 @@ def test_pst_setpoint_deviation_in_target_metrics(static_information_file_comple
         pytest.skip("No controllable PSTs in this grid")
 
     action_set = static_information.dynamic_information.action_set
-    n_disconnectable_branches = len(
-        static_information.dynamic_information.disconnectable_branches)
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
 
     max_num_splits = 2
     n_disconnections = 0
@@ -452,8 +430,7 @@ def test_pst_setpoint_deviation_in_target_metrics(static_information_file_comple
 
     static_information = replace(
         static_information,
-        solver_config=replace(
-            static_information.solver_config, batch_size_bsdf=batch_size),
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
     )
 
     # Initialize with PST optimization enabled (starting taps)
@@ -492,8 +469,7 @@ def test_pst_setpoint_deviation_in_target_metrics(static_information_file_comple
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0),
-                        ("pst_setpoint_deviation", 0.1)),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_setpoint_deviation", 0.1)),
         observed_metrics=(
             "overload_energy_n_1",
             "switching_distance",
@@ -502,18 +478,17 @@ def test_pst_setpoint_deviation_in_target_metrics(static_information_file_comple
         descriptor_metrics=("switching_distance",),
     )
 
-    assert jnp.less_equal(fitness_small_weight, 0.0).all(
-    ), "Fitness should be non-positive"
-    assert jnp.greater_equal(metrics["pst_setpoint_deviation"], 0.0).any(
-    ), "Metric should be greater 0 for some topologies due to PST mutation"
+    assert jnp.less_equal(fitness_small_weight, 0.0).all(), "Fitness should be non-positive"
+    assert jnp.greater_equal(metrics["pst_setpoint_deviation"], 0.0).any(), (
+        "Metric should be greater 0 for some topologies due to PST mutation"
+    )
 
     (fitness, _, metrics, _, _, _) = scoring_function(
         topologies,
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0),
-                        ("pst_setpoint_deviation", 10.0)),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_setpoint_deviation", 10.0)),
         observed_metrics=(
             "overload_energy_n_1",
             "pst_setpoint_deviation",
@@ -523,8 +498,9 @@ def test_pst_setpoint_deviation_in_target_metrics(static_information_file_comple
     )
 
     # The fitness should be worse as the pst_setpoint_deviation weight is higher, even if overload_energy_n_1 is the same
-    assert jnp.less_equal(fitness, fitness_small_weight).all(
-    ), "Fitness should be worse with higher weight on pst_setpoint_deviation"
+    assert jnp.less_equal(fitness, fitness_small_weight).all(), (
+        "Fitness should be worse with higher weight on pst_setpoint_deviation"
+    )
 
 
 def test_pst_setpoint_deviation_without_pst_optimization(static_information_file: str) -> None:
@@ -532,8 +508,7 @@ def test_pst_setpoint_deviation_without_pst_optimization(static_information_file
     static_information = load_static_information(static_information_file)
 
     action_set = static_information.dynamic_information.action_set
-    n_disconnectable_branches = len(
-        static_information.dynamic_information.disconnectable_branches)
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
 
     max_num_splits = 2
     batch_size = 4
@@ -547,8 +522,7 @@ def test_pst_setpoint_deviation_without_pst_optimization(static_information_file
 
     static_information = replace(
         static_information,
-        solver_config=replace(
-            static_information.solver_config, batch_size_bsdf=batch_size),
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
         dynamic_information=dynamic_info_no_pst,
     )
 
@@ -586,5 +560,4 @@ def test_pst_setpoint_deviation_without_pst_optimization(static_information_file
 
     assert "pst_setpoint_deviation" in metrics, "Metric should be computed even when PST opt is disabled"
     # All deviations should be 0 when PST optimization is disabled
-    assert jnp.all(metrics["pst_setpoint_deviation"] ==
-                   0.0), "Deviation should be 0 when PST optimization is disabled"
+    assert jnp.all(metrics["pst_setpoint_deviation"] == 0.0), "Deviation should be 0 when PST optimization is disabled"

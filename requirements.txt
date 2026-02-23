@@ -31,7 +31,7 @@
     #   toop-loadflow-solver
 -e ./packages/topology_optimizer_pkg
     # via toop-loadflow-solver
-absl-py==2.3.1
+absl-py==2.4.0
     # via
     #   brax
     #   chex
@@ -46,8 +46,10 @@ absl-py==2.3.1
     #   tensorflow-probability
 aiofiles==25.1.0
     # via orbax-checkpoint
-alembic==1.18.1
+alembic==1.18.4
     # via optuna
+annotated-doc==0.0.4
+    # via typer
 annotated-types==0.7.0
     # via pydantic
 antlr4-python3-runtime==4.9.3
@@ -70,7 +72,7 @@ arrow==1.4.0
     # via isoduration
 asttokens==3.0.1
     # via stack-data
-async-lru==2.1.0
+async-lru==2.2.0
     # via jupyterlab
 attrs==25.4.0
     # via
@@ -79,7 +81,7 @@ attrs==25.4.0
     #   referencing
 average==1.0
     # via toop-engine-topology-optimizer
-babel==2.17.0
+babel==2.18.0
     # via jupyterlab-server
 beartype==0.22.9
     # via
@@ -95,9 +97,9 @@ bleach==6.3.0 ; sys_platform == 'never'
     # via nbconvert
 blinker==1.9.0
     # via flask
-blosc2==3.12.2
+blosc2==4.0.0
     # via tables
-brax==0.14.0
+brax==0.14.1
     # via qdax
 certifi==2026.1.4
     # via
@@ -117,7 +119,6 @@ chex==0.1.90
     #   esquilax
     #   jax-tqdm
     #   jumanji
-    #   optax
     #   qdax
     #   toop-engine-dc-solver
     #   toop-engine-topology-optimizer
@@ -125,7 +126,7 @@ click==8.3.1
     # via
     #   flask
     #   ray
-    #   typer-slim
+    #   typer
 cloudpickle==3.1.2
     # via
     #   gymnasium
@@ -152,11 +153,11 @@ confluent-kafka==2.13.0
     #   toop-engine-topology-optimizer
 contourpy==1.3.3
     # via matplotlib
-coverage==7.13.1
+coverage==7.13.4
     # via pytest-cov
 cycler==0.12.1
     # via matplotlib
-debugpy==1.8.19
+debugpy==1.8.20
     # via ipykernel
 decorator==5.2.1
     # via
@@ -197,14 +198,14 @@ farama-notifications==0.0.4
     # via gymnasium
 fastjsonschema==2.21.2
     # via nbformat
-filelock==3.20.3
+filelock==3.24.3
     # via
     #   huggingface-hub
     #   ray
     #   virtualenv
 flake8==7.3.0
     # via pep8-naming
-flask==3.1.2
+flask==3.1.3
     # via
     #   brax
     #   flask-cors
@@ -220,7 +221,7 @@ fonttools==4.61.1
     #   toop-engine-interfaces
 fqdn==1.5.1
     # via jsonschema
-fsspec==2026.1.0
+fsspec==2026.2.0
     # via
     #   etils
     #   huggingface-hub
@@ -232,7 +233,7 @@ geojson==3.2.0
     # via pandapower
 glfw==2.10.0
     # via mujoco
-greenlet==3.3.0 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'
+greenlet==3.3.2 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'
     # via sqlalchemy
 gymnasium==1.2.3
     # via jumanji
@@ -250,7 +251,7 @@ httpx==0.28.1
     # via
     #   huggingface-hub
     #   jupyterlab
-huggingface-hub==1.3.2
+huggingface-hub==1.4.1
     # via jumanji
 humanize==4.15.0
     # via orbax-checkpoint
@@ -268,13 +269,13 @@ importlib-resources==6.5.2
     # via etils
 iniconfig==2.3.0
     # via pytest
-ipykernel==7.1.0
+ipykernel==7.2.0
     # via
     #   jupyter
     #   jupyter-console
     #   jupyterlab
 ipympl==0.10.0
-ipython==9.9.0
+ipython==9.10.0
     # via
     #   ipykernel
     #   ipympl
@@ -391,7 +392,7 @@ jupyter-server==2.17.0
     #   notebook-shim
 jupyter-server-terminals==0.5.4
     # via jupyter-server
-jupyterlab==4.5.2
+jupyterlab==4.5.4
     # via
     #   jupyter
     #   notebook
@@ -464,11 +465,11 @@ msgpack==1.1.2
     #   flax
     #   orbax-checkpoint
     #   ray
-mujoco==3.4.0
+mujoco==3.5.0
     # via
     #   brax
     #   mujoco-mjx
-mujoco-mjx==3.4.0
+mujoco-mjx==3.5.0
     # via brax
 mypy-extensions==1.1.0
     # via typing-inspect
@@ -476,7 +477,7 @@ mypy-protobuf==5.0.0
     # via toop-engine-interfaces
 nbclient==0.10.4
     # via nbconvert
-nbconvert==7.16.6 ; sys_platform == 'never'
+nbconvert==7.17.0 ; sys_platform == 'never'
     # via
     #   jupyter
     #   jupyter-server
@@ -499,7 +500,7 @@ networkx==3.6.1
     #   toop-engine-interfaces
 nodeenv==1.10.0
     # via pre-commit
-notebook==7.5.2
+notebook==7.5.3
     # via jupyter
 notebook-shim==0.2.4
     # via
@@ -567,7 +568,7 @@ openpyxl==3.1.5
     # via toop-engine-importer
 opt-einsum==3.4.0
     # via jax
-optax==0.2.6
+optax==0.2.7
     # via
     #   brax
     #   flax
@@ -580,7 +581,7 @@ orbax-checkpoint==0.11.24
     #   flax
 orderly-set==5.5.0
     # via deepdiff
-orjson==3.11.5
+orjson==3.11.7
     # via
     #   toop-engine-contingency-analysis
     #   toop-engine-grid-helpers
@@ -632,20 +633,19 @@ pandera==0.22.1
     #   toop-engine-interfaces
 pandocfilters==1.5.1 ; sys_platform == 'never'
     # via nbconvert
-parso==0.8.5
+parso==0.8.6
     # via jedi
 pep8-naming==0.15.1
 pexpect==4.9.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
     # via ipython
-pillow==12.1.0
+pillow==12.1.1
     # via
     #   brax
     #   ipympl
     #   jumanji
     #   matplotlib
-platformdirs==4.5.1
+platformdirs==4.9.2
     # via
-    #   blosc2
     #   jupyter-core
     #   virtualenv
 plotly==5.24.1
@@ -654,14 +654,14 @@ pluggy==1.6.0
     # via
     #   pytest
     #   pytest-cov
-polars==1.37.1
+polars==1.38.1
     # via
     #   pandera
     #   toop-engine-contingency-analysis
     #   toop-engine-grid-helpers
     #   toop-engine-interfaces
     #   toop-engine-topology-optimizer
-polars-runtime-32==1.37.1
+polars-runtime-32==1.38.1
     # via polars
 pre-commit==4.5.1
 pre-commit-hooks==6.0.0
@@ -673,14 +673,14 @@ prompt-toolkit==3.0.51
     # via
     #   ipython
     #   jupyter-console
-protobuf==5.29.5
+protobuf==5.29.6
     # via
     #   mypy-protobuf
     #   orbax-checkpoint
     #   ray
     #   tensorboardx
     #   toop-engine-interfaces
-psutil==7.2.1
+psutil==7.2.2
     # via ipykernel
 psygnal==0.15.1
     # via anywidget
@@ -691,10 +691,8 @@ ptyprocess==0.7.0 ; os_name != 'nt' or (sys_platform != 'emscripten' and sys_pla
 pure-eval==0.2.3
     # via stack-data
 py-cpuinfo==9.0.0
-    # via
-    #   blosc2
-    #   tables
-pyarrow==23.0.0
+    # via tables
+pyarrow==23.0.1
     # via
     #   ray
     #   toop-engine-contingency-analysis
@@ -766,7 +764,7 @@ pytz==2025.2
     # via pandas
 pywin32==311 ; sys_platform == 'win32'
     # via docker
-pywinpty==3.0.2 ; os_name == 'nt'
+pywinpty==3.0.3 ; os_name == 'nt'
     # via
     #   jupyter-server
     #   jupyter-server-terminals
@@ -790,7 +788,7 @@ pyzmq==27.1.0
     #   jupyter-server
 qdax==0.4.1
     # via toop-engine-topology-optimizer
-ray==2.53.0
+ray==2.54.0
     # via
     #   toop-engine-contingency-analysis
     #   toop-engine-dc-solver
@@ -816,9 +814,10 @@ rfc3986-validator==0.1.1
     #   jupyter-events
 rfc3987-syntax==1.1.0
     # via jsonschema
-rich==14.2.0
+rich==14.3.3
     # via
     #   flax
+    #   typer
     #   tyro
 rpds-py==0.30.0
     # via
@@ -826,10 +825,10 @@ rpds-py==0.30.0
     #   referencing
 ruamel-yaml==0.19.1
     # via pre-commit-hooks
-ruff==0.14.13
+ruff==0.15.2
 scikit-learn==1.8.0
     # via qdax
-scipy==1.17.0
+scipy==1.17.1
     # via
     #   brax
     #   jax
@@ -844,10 +843,12 @@ seaborn==0.13.2
     # via toop-engine-topology-optimizer
 send2trash==2.1.0
     # via jupyter-server
-setuptools==80.10.1
+setuptools==82.0.0
     # via jupyterlab
 shellingham==1.5.4
-    # via huggingface-hub
+    # via
+    #   huggingface-hub
+    #   typer
 shtab==1.8.0
     # via tyro
 simplejson==3.20.2
@@ -869,9 +870,9 @@ sqlmodel==0.0.24
     # via toop-engine-topology-optimizer
 stack-data==0.6.3
     # via ipython
-tables==3.10.2
+tables==3.11.0
     # via pandas
-tenacity==9.1.2
+tenacity==9.1.4
     # via plotly
 tensorboardx==2.6.4
     # via
@@ -880,7 +881,7 @@ tensorboardx==2.6.4
     #   toop-engine-topology-optimizer
 tensorflow-probability==0.25.0
     # via qdax
-tensorstore==0.1.80
+tensorstore==0.1.81
     # via
     #   flax
     #   orbax-checkpoint
@@ -904,7 +905,7 @@ tornado==6.5.4
     #   jupyterlab
     #   notebook
     #   terminado
-tqdm==4.67.1
+tqdm==4.67.3
     # via
     #   huggingface-hub
     #   jax-tqdm
@@ -929,16 +930,18 @@ traitlets==5.14.3
     #   nbformat
 treescope==0.1.10
     # via flax
-trimesh==4.11.1
+trimesh==4.11.2
     # via
     #   brax
     #   mujoco-mjx
-typeguard==4.4.4
+typeguard==4.5.1
     # via pandera
-typer-slim==0.21.1
+typer==0.24.1
+    # via typer-slim
+typer-slim==0.24.0
     # via huggingface-hub
 types-confluent-kafka==1.4.0
-types-protobuf==6.32.1.20251210
+types-protobuf==6.32.1.20260221
     # via mypy-protobuf
 typing-extensions==4.15.0
     # via
@@ -962,9 +965,7 @@ typing-extensions==4.15.0
     #   pydantic-core
     #   referencing
     #   sqlalchemy
-    #   tables
     #   typeguard
-    #   typer-slim
     #   typing-inspect
     #   typing-inspection
     #   tyro
@@ -988,13 +989,13 @@ urllib3==2.6.3
     # via
     #   docker
     #   requests
-virtualenv==20.36.1
+virtualenv==20.38.0
     # via pre-commit
 wadler-lindig==0.1.7
     # via
     #   equinox
     #   jaxtyping
-wcwidth==0.3.0
+wcwidth==0.6.0
     # via
     #   prettytable
     #   prompt-toolkit
@@ -1006,14 +1007,14 @@ webencodings==0.5.1 ; sys_platform == 'never'
     #   tinycss2
 websocket-client==1.9.0
     # via jupyter-server
-werkzeug==3.1.5
+werkzeug==3.1.6
     # via
     #   flask
     #   flask-cors
     #   toop-engine-topology-optimizer
 widgetsnbextension==4.0.15
     # via ipywidgets
-wrapt==2.0.1
+wrapt==2.1.1
     # via dm-tree
 zipp==3.23.0
     # via etils

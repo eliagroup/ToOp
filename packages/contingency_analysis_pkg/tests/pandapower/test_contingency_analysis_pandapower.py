@@ -11,9 +11,7 @@ import pandera as pa
 import pytest
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
-from toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower import (
-    run_contingency_analysis_pandapower
-)
+from toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower import run_contingency_analysis_pandapower
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import ContingencyAnalysisConfig
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.loadflow_result_helpers import (
@@ -42,8 +40,7 @@ def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet
 def test_run_ac_contingency_analysis_pandapower_mt(pandapower_net: pp.pandapowerNet, init_ray) -> None:
     nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
 
-    lf_result_parallel_polars = get_ac_loadflow_results(pandapower_net, nminus1_definition, job_id="test_job",
-                                                        n_processes=2)
+    lf_result_parallel_polars = get_ac_loadflow_results(pandapower_net, nminus1_definition, job_id="test_job", n_processes=2)
     assert lf_result_parallel_polars is not None
 
 
@@ -59,8 +56,7 @@ def test_extract_branch_results_pandapower_disconnected():
             Contingency(
                 id=str(index),
                 elements=[
-                    GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch",
-                                type="line")
+                    GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
                 ],
             )
             for index, row in net.line.iterrows()
@@ -86,8 +82,7 @@ def test_extract_branch_results_pandapower_disconnected():
     assert matrix.dtype == float
     assert np.all(np.isfinite(matrix))
     assert np.all(matrix[0, :] == 0.0)  # Check that the disconnected branch has a loading of 0.0 in all contingencies
-    assert np.all(
-        matrix[:, 0] == 0.0)  # Check that the first monitored branch has a loading of 0.0 in all contingencies
+    assert np.all(matrix[:, 0] == 0.0)  # Check that the first monitored branch has a loading of 0.0 in all contingencies
 
 
 def test_extract_branch_results_pandapower_disconnected():
@@ -103,8 +98,7 @@ def test_extract_branch_results_pandapower_disconnected():
             Contingency(
                 id=str(index),
                 elements=[
-                    GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch",
-                                type="line")
+                    GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
                 ],
             )
             for index, row in net.line.iterrows()
@@ -130,8 +124,7 @@ def test_extract_branch_results_pandapower_disconnected():
     assert matrix.dtype == float
     assert np.all(np.isfinite(matrix))
     assert np.all(matrix[0, :] == 0.0)  # Check that the disconnected branch has a loading of 0.0 in all contingencies
-    assert np.all(
-        matrix[:, 0] == 0.0)  # Check that the first monitored branch has a loading of 0.0 in all contingencies
+    assert np.all(matrix[:, 0] == 0.0)  # Check that the first monitored branch has a loading of 0.0 in all contingencies
 
 
 def test_outage_grouping_combines_connected_elements_into_single_contingency():
@@ -166,7 +159,9 @@ def test_outage_grouping_combines_connected_elements_into_single_contingency():
 
     # Lines
     l1 = pp.create_line_from_parameters(
-        net, b0, b1,
+        net,
+        b0,
+        b1,
         length_km=1,
         r_ohm_per_km=0.1,
         x_ohm_per_km=0.1,
@@ -179,7 +174,9 @@ def test_outage_grouping_combines_connected_elements_into_single_contingency():
     pp.create_switch(net, b1, b2, et="b", closed=True, type="DS", name="switch0")
 
     l2 = pp.create_line_from_parameters(
-        net, b2, b3,
+        net,
+        b2,
+        b3,
         length_km=1,
         r_ohm_per_km=0.1,
         x_ohm_per_km=0.1,
@@ -232,16 +229,12 @@ def test_outage_grouping_combines_connected_elements_into_single_contingency():
     branch_results = res.branch_results.reset_index()
 
     # line0 should still be energized
-    l1_loading = branch_results.loc[
-        branch_results.element == f"{l1}%%line", "loading"
-    ]
+    l1_loading = branch_results.loc[branch_results.element == f"{l1}%%line", "loading"]
     assert not l1_loading.empty
     assert l1_loading.notna().all()
 
     # line1 is the outage -> loading must be NaN
-    l2_loading = branch_results.loc[
-        branch_results.element == f"{l2}%%line", "loading"
-    ]
+    l2_loading = branch_results.loc[branch_results.element == f"{l2}%%line", "loading"]
     assert not l2_loading.empty
     assert l2_loading.isna().all()
 
@@ -261,12 +254,8 @@ def test_outage_grouping_combines_connected_elements_into_single_contingency():
     branch_results = res.branch_results.reset_index()
 
     # both lines belong to the same connected outage group
-    l1_loading = branch_results.loc[
-        branch_results.element == f"{l1}%%line", "loading"
-    ]
-    l2_loading = branch_results.loc[
-        branch_results.element == f"{l2}%%line", "loading"
-    ]
+    l1_loading = branch_results.loc[branch_results.element == f"{l1}%%line", "loading"]
+    l2_loading = branch_results.loc[branch_results.element == f"{l2}%%line", "loading"]
 
     assert l1_loading.isna().all()
     assert l2_loading.isna().all()
@@ -291,7 +280,9 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
 
     # Normal line
     pp.create_line_from_parameters(
-        net, b0, b1,
+        net,
+        b0,
+        b1,
         length_km=1,
         r_ohm_per_km=0.05,
         x_ohm_per_km=0.20,
@@ -302,7 +293,9 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
 
     # Problematic near-zero impedance tie
     l2 = pp.create_line_from_parameters(
-        net, b1, b2,
+        net,
+        b1,
+        b2,
         length_km=1,
         r_ohm_per_km=1e-9,
         x_ohm_per_km=1e-9,

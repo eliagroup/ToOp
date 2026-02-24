@@ -266,6 +266,7 @@ def get_failed_node_results(
     # fill in empty columns to match the schema
     failed_node_results["p"] = np.nan
     failed_node_results["q"] = np.nan
+    failed_node_results["basecase_deviation"] = np.nan
     failed_node_results["element_name"] = ""
     failed_node_results["contingency_name"] = ""
     return failed_node_results

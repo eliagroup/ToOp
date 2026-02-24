@@ -1,11 +1,18 @@
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 import pandapower as pp
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
     PandapowerElements,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_outage_group import (
-    get_grid_element,
     _elements_in_component,
+    get_grid_element,
     get_outage_group_for_contingency,
 )
 from toop_engine_grid_helpers.pandapower.outage_group import (
@@ -31,7 +38,9 @@ def build_simple_net():
     b3 = pp.create_bus(net, vn_kv=110, name="bus3")
 
     pp.create_line_from_parameters(
-        net, b0, b1,
+        net,
+        b0,
+        b1,
         length_km=1,
         r_ohm_per_km=0.1,
         x_ohm_per_km=0.1,
@@ -42,7 +51,9 @@ def build_simple_net():
     pp.create_switch(net, b1, b2, et="b", closed=True, type="DS", name="switch0")
 
     pp.create_line_from_parameters(
-        net, b2, b3,
+        net,
+        b2,
+        b3,
         length_km=1,
         r_ohm_per_km=0.1,
         x_ohm_per_km=0.1,
@@ -56,7 +67,9 @@ def build_simple_net():
 
     b5 = pp.create_bus(net, vn_kv=110, name="bus5")
     pp.create_line_from_parameters(
-        net, b4, b5,
+        net,
+        b4,
+        b5,
         length_km=1,
         r_ohm_per_km=0.1,
         x_ohm_per_km=0.1,

@@ -44,7 +44,7 @@ def test_pull(dc_repertoire: list[BaseDBTopology]) -> None:
 
 
 def test_pull_with_worst_k_contingencies(
-    unsplit_ac_dc_repertoire: list[BaseDBTopology],
+    unsplit_ac_dc_repertoire: tuple[list[ACOptimTopology], Session],
     n_minus1_definitions_case_57: list[Nminus1Definition],
 ):
     repo, session = unsplit_ac_dc_repertoire
@@ -205,7 +205,7 @@ def test_select_repertoire_without_parent_on(session: Session) -> None:
 def test_close_coupler(
     dc_repertoire: list[ACOptimTopology],
 ) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
 
     closed = close_coupler(
         rng=np.random.default_rng(0),
@@ -237,7 +237,7 @@ def test_close_coupler(
 def test_close_coupler_no_coupler(
     dc_repertoire: list[ACOptimTopology],
 ) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
     # If a strategy completely without splits is fed in, no coupler can be closed
     no_coupler_open = [
         ACOptimTopology(
@@ -269,7 +269,7 @@ def test_evolution_try_close_coupler(
     # for select_strategy and close coupler
     # Thus, the results should match exactly
     rng.choice(["pull", "reconnect", "close_coupler"], p=[0, 0, 1])
-    strategy = select_strategy(rng, dc_repertoire, default_scorer)
+    strategy = select_strategy(rng, dc_repertoire, dc_repertoire, default_scorer)
     # Repeat elements per sub to match strategy timestep dimension
     branches_per_sub = np.repeat(branches_per_sub[None], len(strategy), axis=0)
     injections_per_sub = np.repeat(injections_per_sub[None], len(strategy), axis=0)
@@ -310,7 +310,7 @@ def test_evolution_try_reconnect(session: Session, dc_repertoire: list[ACOptimTo
     # for select_strategy and close coupler
     # Thus, the results should match exactly
     rng.choice(["pull", "reconnect", "close_coupler"], p=[0, 1, 0])
-    strategy = select_strategy(rng, dc_repertoire, default_scorer)
+    strategy = select_strategy(rng, dc_repertoire, dc_repertoire, default_scorer)
     reference = reconnect(
         rng,
         selected_strategy=strategy,
@@ -347,7 +347,7 @@ def test_evolution_try_pull(session: Session, dc_repertoire: list[ACOptimTopolog
     # for select_strategy and close coupler
     # Thus, the results should match exactly
     rng.choice(["pull", "reconnect", "close_coupler"], p=[1, 0, 0])
-    strategy = select_strategy(rng, dc_repertoire, default_scorer)
+    strategy = select_strategy(rng, dc_repertoire, dc_repertoire, default_scorer)
     reference = pull(
         selected_strategy=strategy,
     )

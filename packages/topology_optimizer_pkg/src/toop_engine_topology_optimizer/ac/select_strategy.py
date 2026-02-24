@@ -10,13 +10,12 @@
 import logbook
 import numpy as np
 import pandas as pd
-from beartype.typing import Callable, Optional, Tuple, Union
+from beartype.typing import Callable, Optional
 from numpy.random import Generator as Rng
 from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, Fitness, OptimizerType
 from toop_engine_topology_optimizer.interfaces.models.base_storage import (
-    BaseDBTopology,
     metrics_dataframe,
 )
 
@@ -25,11 +24,11 @@ logger = logbook.Logger(__name__)
 
 def select_strategy(
     rng: Rng,
-    repertoire: list[BaseDBTopology],
-    candidates: list[BaseDBTopology],  # noqa: ARG001
+    repertoire: list[ACOptimTopology],
+    candidates: list[ACOptimTopology],  # noqa: ARG001
     interest_scorer: Callable[[pd.DataFrame], pd.Series],
     filter_strategy: Optional[FilterStrategy] = None,
-) -> Union[list[ACOptimTopology], Tuple[list[ACOptimTopology], list[ACOptimTopology]]]:
+) -> list[ACOptimTopology]:
     """Select a promising strategy from the repertoire
 
     Make sure the repertoire only contains topologies with the right optimizer type and optimization id
@@ -39,9 +38,9 @@ def select_strategy(
     ----------
     rng : Rng
         The random number generator to use
-    repertoire : list[BaseDBTopology]
+    repertoire : list[ACOptimTopology]
         The filtered repertoire with all individuals of the optimization in all optimizer types
-    candidates : list[BaseDBTopology]
+    candidates : list[ACOptimTopology]
         Candidates which have not yet been evaluated. For a pull operation this will only include DC candidates without an
         AC parent.
     interest_scorer : Callable[[pd.DataFrame], pd.Series]
@@ -53,10 +52,9 @@ def select_strategy(
 
     Returns
     -------
-    Union[list[ACOptimTopology], Tuple[list[ACOptimTopology], list[ACOptimTopology]]]
+    list[ACOptimTopology]
         The selected strategy which is represented as a list of topologies with similar strategy_hash and
-        optimizer type..
-        If two is True, a tuple of two lists is returned with two different strategy_hashes.
+        optimizer type.
         If no strategy could be selected because the repertoire wasn't containing enough strategies,
         return an empty list
     """

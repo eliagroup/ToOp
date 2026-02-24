@@ -140,6 +140,7 @@ def get_node_results_polars(
     node_results = node_results.with_columns(
         p=pl.lit(float("nan")),  # TODO
         q=pl.lit(float("nan")),  # TODO
+        basecase_deviation=pl.lit(float("nan")),  # TODO
         element_name=pl.lit(""),  # will be filled later
         contingency_name=pl.lit(""),  # will be filled later
     )
@@ -154,6 +155,7 @@ def get_node_results_polars(
             "vm_loading",
             "p",
             "q",
+            "basecase_deviation",
             "element_name",
             "contingency_name",
         ]

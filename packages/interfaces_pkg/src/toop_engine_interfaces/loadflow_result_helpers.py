@@ -262,8 +262,16 @@ def get_failed_node_results(
             [[timestep], failed_outages, monitored_nodes],
             names=["timestep", "contingency", "element"],
         )
-    ).assign(vm=np.nan, va=np.nan, vm_loading=np.nan, p=np.nan, q=np.nan, basecase_deviation=np.nan,
-             element_name="", contingency_name="")
+    ).assign(
+        vm=np.nan,
+        va=np.nan,
+        vm_loading=np.nan,
+        p=np.nan,
+        q=np.nan,
+        basecase_deviation=np.nan,
+        element_name="",
+        contingency_name="",
+    )
     # fill in empty columns to match the schema
     failed_node_results["p"] = np.nan
     failed_node_results["q"] = np.nan

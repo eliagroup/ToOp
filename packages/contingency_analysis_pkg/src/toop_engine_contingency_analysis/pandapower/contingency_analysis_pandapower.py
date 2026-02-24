@@ -30,6 +30,10 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     get_va_diff_results,
     translate_nminus1_for_pandapower,
 )
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_outage_group import (
+    get_outage_group_for_contingency,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import ContingencyAnalysisConfig
 from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
 from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
 from toop_engine_interfaces.loadflow_result_helpers import (
@@ -56,6 +60,7 @@ def run_single_outage(
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     timestep: int,
     job_id: str,
+    basecase_voltage: pat.Series[float],
     method: Literal["ac", "dc"],
     runpp_kwargs: Optional[dict] = None,
 ) -> LoadflowResults:
@@ -77,6 +82,8 @@ def run_single_outage(
         The method to use for the loadflow. Either "ac" or "dc"
     runpp_kwargs : Optional[dict], optional
         Additional keyword arguments to pass to runpp/rundcpp functions, by default None
+    basecase_voltage: pat.Series[float]
+            The basecase voltage results
 
     Returns
     -------
@@ -101,7 +108,7 @@ def run_single_outage(
     regulating_elements_df = get_regulating_element_results(timestep, monitored_elements, contingency)
 
     branch_results_df, node_results_df, va_diff_results = get_element_results_df(
-        net, contingency, monitored_elements, timestep, status
+        net, contingency, monitored_elements, timestep, status, basecase_voltage
     )
 
     restore_elements_to_service(net, outaged_elements, were_in_service)
@@ -148,6 +155,7 @@ def get_element_results_df(
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     timestep: int,
     status: ConvergenceStatus,
+    basecase_voltage: pat.Series[float],
 ) -> tuple[pat.DataFrame[BranchResultSchema], pat.DataFrame[NodeResultSchema], pat.DataFrame[VADiffResultSchema]]:
     """Get the element results dataframes for the given contingency and monitored elements.
 
@@ -163,6 +171,8 @@ def get_element_results_df(
         The timestep of the results
     status : ConvergenceStatus
         The convergence status of the loadflow computation
+    basecase_voltage: pat.Series[float]
+        The basecase voltage results
 
     Returns
     -------
@@ -171,7 +181,7 @@ def get_element_results_df(
     """
     if status == ConvergenceStatus.CONVERGED:
         branch_results_df = get_branch_results(net, contingency, monitored_elements, timestep)
-        node_results_df = get_node_result_df(net, contingency, monitored_elements, timestep)
+        node_results_df = get_node_result_df(net, contingency, monitored_elements, timestep, basecase_voltage)
         va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
     else:
         monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()
@@ -219,6 +229,7 @@ def run_contingency_analysis_sequential(
     n_minus_1_definition: PandapowerNMinus1Definition,
     job_id: str,
     timestep: int,
+    basecase_voltage: pat.Series[float],
     slack_allocation_config: SlackAllocationConfig,
     method: Literal["ac", "dc"] = "dc",
     runpp_kwargs: Optional[dict] = None,
@@ -241,6 +252,8 @@ def run_contingency_analysis_sequential(
         The method to use for the loadflow, by default "dc"
     runpp_kwargs : Optional[dict], optional
         Additional keyword arguments to pass to runpp/rundcpp functions, by default None
+    basecase_voltage: pat.Series[float]
+        The basecase voltage results
 
     Returns
     -------
@@ -268,6 +281,7 @@ def run_contingency_analysis_sequential(
             job_id=job_id,
             method=method,
             runpp_kwargs=runpp_kwargs,
+            basecase_voltage=basecase_voltage,
         )
 
         results.append(single_res)
@@ -282,6 +296,7 @@ def run_contingency_analysis_parallel(
     job_id: str,
     timestep: int,
     slack_allocation_config: SlackAllocationConfig,
+    basecase_voltage: pat.Series[float],
     method: Literal["ac", "dc"] = "dc",
     n_processes: int = 1,
     batch_size: Optional[int] = None,
@@ -314,6 +329,8 @@ def run_contingency_analysis_parallel(
         contingencies divided by the number of processes, rounded up. This is used to avoid too many handles in
     runpp_kwargs : Optional[dict], optional
         Additional keyword arguments to pass to runpp/rundcpp functions, by default None
+    basecase_voltage: pat.Series[float]
+        The basecase voltage results
 
     Returns
     -------
@@ -339,6 +356,7 @@ def run_contingency_analysis_parallel(
                 slack_allocation_config=slack_allocation_config,
                 method=method,
                 runpp_kwargs=runpp_kwargs,
+                basecase_voltage=basecase_voltage,
             )
         )
         if len(handles) >= n_processes:
@@ -354,46 +372,84 @@ def run_contingency_analysis_parallel(
     return results
 
 
+def _run_base_case_loadflow(
+    net: pp.pandapowerNet,
+    base_case: Optional[PandapowerContingency],
+    slack_allocation_config: SlackAllocationConfig,
+    cfg: ContingencyAnalysisConfig,
+) -> None:
+    """
+    Run load flow calculation for the contingency analysis base case.
+
+    This function performs two main steps:
+
+    1. Assign slack buses for each electrical island based on the
+       provided slack allocation configuration.
+    2. Execute a power flow calculation (AC or DC) depending on the
+       contingency analysis configuration.
+
+    Args:
+        net:
+            Pandapower network to be modified and solved.
+        base_case:
+            Contingency definition representing the base system state.
+            Its elements are used to determine affected islands.
+        slack_allocation_config:
+            Configuration used for selecting and assigning slack buses
+            per electrical island.
+        cfg:
+            Global contingency analysis configuration containing
+            load-flow method and optional runpp arguments.
+
+    Raises
+    ------
+        RuntimeError:
+            If the base case load flow does not converge.
+    """
+    elements_ids = []
+    if base_case is not None:
+        elements_ids = [element.unique_id for element in base_case.elements]
+    assign_slack_per_island(
+        net=net,
+        net_graph=slack_allocation_config.net_graph,
+        bus_lookup=slack_allocation_config.bus_lookup,
+        elements_ids=elements_ids,
+        min_island_size=slack_allocation_config.min_island_size,
+    )
+
+    try:
+        runpp_kwargs = cfg.runpp_kwargs or {}
+
+        if cfg.method == "dc":
+            pp.rundcpp(net, **runpp_kwargs)
+        else:
+            pp.runpp(net, **runpp_kwargs)
+
+    except pp.LoadflowNotConverged:
+        pass
+
+
 def run_contingency_analysis_pandapower(
     net: pp.pandapowerNet,
     n_minus_1_definition: Nminus1Definition,
     job_id: str,
     timestep: int,
-    min_island_size: int = 11,
-    method: Literal["ac", "dc"] = "ac",
-    n_processes: int = 1,
-    batch_size: Optional[int] = None,
-    runpp_kwargs: Optional[dict] = None,
-    polars: bool = False,
+    cfg: ContingencyAnalysisConfig,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the N-1 AC/DC power flow for the network.
 
     Parameters
     ----------
     net : pp.pandapowerNet
-        The pandapower network to compute the N-1 power flow for, with the topology already applied.
+        Pandapower network with topology already applied.
     n_minus_1_definition : Nminus1Definition
-        The N-1 definition to use for the analysis. Contains outages and monitored elements
+        N-1 definition containing contingencies and monitored elements.
     job_id : str
-        The job id of the current job
+        Identifier of the current job.
     timestep : int
-        The timestep of the results
-    min_island_size: int
-        The minimum island size to consider
-    method : Literal["ac", "dc"], optional
-        The method to use for the loadflow, by default "ac"
-    n_processes : int, optional
-        The number of processes to use for the contingency analysis. If 1, the analysis is run sequentially.
-        If > 1, the analysis is run in parallel. Paralelization is done by splitting the contingencies into
-        chunks and running each chunk in a separate process
-    batch_size : Optional[int]
-        The size of the batches to use for the parallelization. If None, the batch size is set to the number of
-        contingencies divided by the number of processes, rounded up.
-    runpp_kwargs : Optional[dict], optional
-        Additional keyword arguments to pass to runpp/rundcpp functions, by default None
-    polars: bool, default=False
-        Whether to return the results as a LoadflowResultsPolars object. If False, returns a LoadflowResults
-        object. Note that this only affects the type of the returned object, the computations are the same.
+        Timestep associated with the computed results.
+    cfg : ContingencyAnalysisConfig
+        Execution configuration (method, islanding/slack settings, parallelization, etc.).
 
     Returns
     -------
@@ -401,23 +457,37 @@ def run_contingency_analysis_pandapower(
         The results of the loadflow computation
     """
     pp_n1_definition = translate_nminus1_for_pandapower(n_minus_1_definition, net)
+    if cfg.apply_outage_grouping:
+        pp_n1_definition.contingencies = get_outage_group_for_contingency(
+            net=net,
+            contingencies=pp_n1_definition.contingencies,
+        )
+
     net_graph = top.create_nxgraph(net)
     bus_lookup, _ = create_bus_lookup_simple(net)
     slack_allocation_config = SlackAllocationConfig(
         net_graph=net_graph,
         bus_lookup=bus_lookup,
-        min_island_size=min_island_size,
+        min_island_size=cfg.min_island_size,
     )
 
-    if n_processes == 1 and batch_size is None:
+    _run_base_case_loadflow(
+        net=net,
+        base_case=pp_n1_definition.base_case,
+        cfg=cfg,
+        slack_allocation_config=slack_allocation_config,
+    )
+
+    if cfg.parallel.n_processes == 1 and cfg.parallel.batch_size is None:
         results = run_contingency_analysis_sequential(
             net=net,
             n_minus_1_definition=pp_n1_definition,
             job_id=job_id,
             timestep=timestep,
             slack_allocation_config=slack_allocation_config,
-            method=method,
-            runpp_kwargs=runpp_kwargs,
+            method=cfg.method,
+            runpp_kwargs=cfg.runpp_kwargs,
+            basecase_voltage=net.res_bus.vm_pu.copy(),
         )
     else:
         results = run_contingency_analysis_parallel(
@@ -426,10 +496,11 @@ def run_contingency_analysis_pandapower(
             job_id=job_id,
             timestep=timestep,
             slack_allocation_config=slack_allocation_config,
-            method=method,
-            n_processes=n_processes,
-            batch_size=batch_size,
-            runpp_kwargs=runpp_kwargs,
+            method=cfg.method,
+            n_processes=cfg.parallel.n_processes,
+            batch_size=cfg.parallel.batch_size,
+            runpp_kwargs=cfg.runpp_kwargs,
+            basecase_voltage=net.res_bus.vm_pu.copy(),
         )
     lf_result = concatenate_loadflow_results(results)
 
@@ -450,6 +521,6 @@ def run_contingency_analysis_pandapower(
         *missing_contingency_warnings,
         *lf_result.warnings,
     ]
-    if not polars:
+    if not cfg.polars:
         return lf_result
     return convert_pandas_loadflow_results_to_polars(lf_result)

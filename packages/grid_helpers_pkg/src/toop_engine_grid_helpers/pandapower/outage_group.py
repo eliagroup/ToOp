@@ -13,6 +13,8 @@ import pandapower as pp
 import pandas as pd
 from beartype.typing import Iterable, List, Optional, Tuple
 
+OUTAGE_GROUP_SEPARATOR = "&&"
+
 
 def is_node_of_element_type(node_id: str, element_type: str) -> bool:
     """
@@ -30,12 +32,12 @@ def is_node_of_element_type(node_id: str, element_type: str) -> bool:
         True if the node_id contains the element type marker, False otherwise.
 
     Example:
-        >>> is_node_of_element_type("e_switch_123", "switch")
+        >>> is_node_of_element_type("e&&switch&&123", "switch")
         True
-        >>> is_node_of_element_type("e_line_45", "switch")
+        >>> is_node_of_element_type("e&&line&&45", "switch")
         False
     """
-    return f"e_{element_type}_" in node_id
+    return f"e{OUTAGE_GROUP_SEPARATOR}{element_type}{OUTAGE_GROUP_SEPARATOR}" in node_id
 
 
 def get_node_table_id(node_id: str) -> int:
@@ -57,25 +59,25 @@ def get_node_table_id(node_id: str) -> int:
         ValueError: If the last part of node_id is not a valid integer.
 
     Example:
-        >>> get_node_table_id("e_switch_123")
+        >>> get_node_table_id("e&&switch&&123")
         123
     """
-    return int(node_id.split("_")[-1])
+    return int(node_id.split(OUTAGE_GROUP_SEPARATOR)[-1])
 
 
 def elem_node_id(kind: str, idx: int, etype: Optional[str] = None) -> str:
     """
     Stable node id format:
 
-      - buses:  "b_{bus}"
-      - elems:  "e_{etype}_{idx}"
+      - buses:  "b&&{bus}"
+      - elems:  "e&&{etype}&&{idx}"
     """
     if kind == "bus":
-        return f"b_{int(idx)}"
+        return f"b{OUTAGE_GROUP_SEPARATOR}{int(idx)}"
     if kind == "elem":
         if not etype:
             raise ValueError("etype required for element node ids")
-        return f"e_{etype!s}_{int(idx)}"
+        return f"e{OUTAGE_GROUP_SEPARATOR}{etype!s}{OUTAGE_GROUP_SEPARATOR}{int(idx)}"
     raise ValueError(f"Unknown kind={kind}")
 
 

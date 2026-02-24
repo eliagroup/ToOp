@@ -7,11 +7,12 @@
 
 """Utility functions for selecting and assigning slack generators."""
 
+from typing import Optional, Union
+
 import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
-from beartype.typing import Optional, Union
 from pandapower.create import create_gen
 from pandapower.toolbox.grid_modification import (
     _adapt_profiles_in_replace_functions,
@@ -53,7 +54,7 @@ def _slack_allocation_tie_break(df_min: pd.DataFrame) -> tuple[int, str]:
     return int(tied_df.index[0]), str(tied_df["etype"].iloc[0])
 
 
-def _get_vm_pu_for_bus(net: pp.pandapowerNet, bus: np.int64) -> float:
+def _get_vm_pu_for_bus(net: pp.pandapowerNet, bus: np.int64, bus_lookup: list[int]) -> float:
     """
     Determine the vm_pu setpoint for a given bus.
 
@@ -63,24 +64,50 @@ def _get_vm_pu_for_bus(net: pp.pandapowerNet, bus: np.int64) -> float:
         The pandapower network.
     bus : int
         The bus index whose vm_pu value should be retrieved.
+    bus_lookup : list[int]
+        A list mapping graph node indices to pandapower bus indices.
 
     Returns
     -------
     float
-        The vm_pu setpoint. Taken from res_bus if present, otherwise from
+        The vm_pu setpoint. Taken from measurement table if populated with load flow results
+        from CGMES SV profile, otherwise from res_bus table if present, otherwise from
         gen or ext_grid entries on the same bus. Falls back to 1.0 pu.
     """
-    # res_bus has priority
-    if bus in net.res_bus.index:
-        return float(net.res_bus.at[bus, "vm_pu"])
+    # load flow results from CGMES SV profile
+    if hasattr(net, "measurement") and not net.measurement.empty:
+        required_cols = {"measurement_type", "element_type", "source", "element", "value"}
+        if required_cols.issubset(net.measurement.columns):
+            mask = (
+                (net.measurement.measurement_type == "v")
+                & (net.measurement.element_type == "bus")
+                & (net.measurement.source == "SV")
+                & (net.measurement.element == bus)
+            )
+            vals = net.measurement.loc[mask, "value"].unique()
+            if len(vals) == 1:
+                return float(vals[0])
+
+    # load flow result from res_bus
+    if bus in net.res_bus.index and net.converged:
+        vm = net.res_bus.at[bus, "vm_pu"]
+        if not np.isnan(vm):
+            return float(vm)
+
+    ppci_id = bus_lookup[bus]
+    all_buses = [b_id for b_id, pp_id in enumerate(bus_lookup) if pp_id == ppci_id]
 
     # generator-defined setpoint
     if bus in net.gen.bus.values:
-        return float(net.gen.vm_pu.loc[net.gen.bus == bus].values[0])
+        vm = net.gen.loc[net.gen.bus.isin(all_buses), "vm_pu"].dropna()
+        if not vm.empty:
+            return float(vm.iloc[0])
 
     # external grid setpoint
     if bus in net.ext_grid.bus.values:
-        return float(net.ext_grid.vm_pu.loc[net.ext_grid.bus == bus].values[0])
+        vm = net.ext_grid.loc[net.ext_grid.bus.isin(all_buses), "vm_pu"].dropna()
+        if not vm.empty:
+            return float(vm.iloc[0])
 
     # fallback
     return 1.0
@@ -114,6 +141,7 @@ def _handle_replaced_sgen(net: pp.pandapowerNet, sgen: int, retain_sgen_elm: boo
 def replace_sgen_by_gen(
     net: pp.pandapowerNet,
     sgen: int,
+    bus_lookup: list[int],
     cols_to_keep: Optional[list[str]] = None,
     retain_sgen_elm: bool = True,
 ) -> int:
@@ -130,6 +158,9 @@ def replace_sgen_by_gen(
         The pandapower network object.
     sgen : int
         sgen index to be replaced by gen
+    bus_lookup : list[int]
+        A list mapping graph node indices to pandapower bus indices.
+
     cols_to_keep : Optional[list[str]]
         List of column names which should be kept while replacing sgen. If None, these columns
         are kept if values exist: "max_p_mw", "min_p_mw", "max_q_mvar", "min_q_mvar". However,
@@ -188,7 +219,7 @@ def replace_sgen_by_gen(
     sgen_row = net.sgen.loc[sgen]
     bus = sgen_row.bus
 
-    vm_pu = _get_vm_pu_for_bus(net, bus)
+    vm_pu = _get_vm_pu_for_bus(net, bus, bus_lookup)
 
     controllable = False if "controllable" not in net.sgen.columns else sgen_row.controllable
 
@@ -402,7 +433,7 @@ def assign_slack_per_island(
     for cc in valid_components:
         chosen_idx, element_type = assign_slack_gen_by_weight(net, cc)
         if element_type == "sgen":
-            chosen_idx = replace_sgen_by_gen(net, sgen=chosen_idx, retain_sgen_elm=True)
+            chosen_idx = replace_sgen_by_gen(net, sgen=chosen_idx, bus_lookup=bus_lookup, retain_sgen_elm=True)
 
         net.gen.at[chosen_idx, "slack"] = True
 

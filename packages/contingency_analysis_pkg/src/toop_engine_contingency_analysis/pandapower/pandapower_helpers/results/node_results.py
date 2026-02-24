@@ -8,6 +8,7 @@
 
 """Utilities for extracting pandapower bus (node) simulation results per contingency."""
 
+import numpy as np
 import pandera as pa
 import pandera.typing as pat
 from pandapower import pandapowerNet
@@ -27,6 +28,7 @@ def get_node_result_df(
     contingency: PandapowerContingency,
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     timestep: int,
+    basecase_voltage: pat.Series[float],
 ) -> pat.DataFrame[NodeResultSchema]:
     """Get the node results for the given network and contingency
 
@@ -40,6 +42,8 @@ def get_node_result_df(
         The list of monitored elements including buses
     timestep : int
         The timestep of the results
+    basecase_voltage: pat.DataFrame[float]
+        The basecase voltage results
 
     Returns
     -------
@@ -52,6 +56,10 @@ def get_node_result_df(
         return get_empty_dataframe_from_model(NodeResultSchema)
     table_ids = monitored_buses.table_id.to_list()
     unique_ids = monitored_buses.index.to_list()
+    # Add logic for 5% ΔV voltage limit
+    net.res_bus["basecase_deviation"] = (
+        abs(net.res_bus["vm_pu"] - basecase_voltage) / basecase_voltage.replace(0, np.nan)
+    ) * 100
     node_results_df = net.res_bus.reindex(table_ids)
     node_results_df = node_results_df.assign(timestep=timestep, contingency=contingency.unique_id, element=unique_ids)
     node_results_df.set_index(["timestep", "contingency", "element"], inplace=True)

@@ -517,7 +517,7 @@ def test_select_stategy_ac_dc_mix_filter_applied(
 
     # Select a strategy
     strategy = select_strategy(
-        np.random.default_rng(0), mixed_topologies, default_scorer, filter_strategy=default_filter_strategy
+        np.random.default_rng(0), mixed_topologies, mixed_topologies, default_scorer, filter_strategy=default_filter_strategy
     )
     assert isinstance(strategy, list)
     assert len(strategy)
@@ -603,12 +603,9 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
                 strategy_hash=strategy1_hash,
                 optimization_id="test_pos_neg",
                 optimizer_type=OptimizerType.DC,
-                fitness=-100.0,
+                fitness=0.0,
                 metrics={
-                    "overload_energy_n_1": 24.0,  # Positive metric (8 + 16)
-                    "switching_distance": 8,
-                    "split_subs": 16,
-                    "disconnections": 0,
+                    "overload_energy_n_1": 24.0,  # Positive metric
                 },
             )
         )
@@ -625,12 +622,9 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
                 strategy_hash=strategy2_hash,
                 optimization_id="test_pos_neg",
                 optimizer_type=OptimizerType.DC,
-                fitness=-100.0,
+                fitness=0.0,
                 metrics={
-                    "overload_energy_n_1": -66.0,  # Negative metric (-10 - 56)
-                    "switching_distance": -10,
-                    "split_subs": -56,
-                    "disconnections": 2,
+                    "overload_energy_n_1": -66.0,  # Negative metrics
                 },
             )
         )
@@ -655,7 +649,7 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
     selected_strategies = []
 
     for _ in range(100):
-        strategy = select_strategy(rng, all_topologies, metric_scorer)
+        strategy = select_strategy(rng, all_topologies, all_topologies, metric_scorer)
         assert isinstance(strategy, list)
         assert len(strategy) > 0
         assert isinstance(strategy[0], ACOptimTopology)

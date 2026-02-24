@@ -13,7 +13,7 @@ import pandas as pd
 from beartype.typing import Callable, Optional
 from numpy.random import Generator as Rng
 from toop_engine_interfaces.types import MetricType
-from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
+from toop_engine_topology_optimizer.ac.storage import BaseDBTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, Fitness, OptimizerType
 from toop_engine_topology_optimizer.interfaces.models.base_storage import (
     metrics_dataframe,
@@ -24,11 +24,11 @@ logger = logbook.Logger(__name__)
 
 def select_strategy(
     rng: Rng,
-    repertoire: list[ACOptimTopology],
-    candidates: list[ACOptimTopology],  # noqa: ARG001
+    repertoire: list[BaseDBTopology],
+    candidates: list[BaseDBTopology],
     interest_scorer: Callable[[pd.DataFrame], pd.Series],
     filter_strategy: Optional[FilterStrategy] = None,
-) -> list[ACOptimTopology]:
+) -> list[BaseDBTopology]:
     """Select a promising strategy from the repertoire
 
     Make sure the repertoire only contains topologies with the right optimizer type and optimization id
@@ -38,9 +38,9 @@ def select_strategy(
     ----------
     rng : Rng
         The random number generator to use
-    repertoire : list[ACOptimTopology]
+    repertoire : list[BaseDBTopology]
         The filtered repertoire with all individuals of the optimization in all optimizer types
-    candidates : list[ACOptimTopology]
+    candidates : list[BaseDBTopology]
         Candidates which have not yet been evaluated. For a pull operation this will only include DC candidates without an
         AC parent.
     interest_scorer : Callable[[pd.DataFrame], pd.Series]
@@ -52,7 +52,7 @@ def select_strategy(
 
     Returns
     -------
-    list[ACOptimTopology]
+    list[BaseDBTopology]
         The selected strategy which is represented as a list of topologies with similar strategy_hash and
         optimizer type.
         If no strategy could be selected because the repertoire wasn't containing enough strategies,
@@ -60,23 +60,22 @@ def select_strategy(
     """
     if len(repertoire) == 0:
         return []
-    # Extract only the metrics in a nice format
-    metrics = metrics_dataframe(repertoire)
 
+    metrics = metrics_dataframe(candidates)
     if filter_strategy is not None:
         if filter_strategy.filter_dominator_metrics_target is not None:
+            repo_metrics = metrics_dataframe(repertoire)
             discriminator_df = get_discriminator_df(
-                metrics[metrics["optimizer_type"] == OptimizerType.AC.value], filter_strategy.filter_dominator_metrics_target
+                repo_metrics[repo_metrics["optimizer_type"] == OptimizerType.AC.value],
+                filter_strategy.filter_dominator_metrics_target,
             )
         else:
             discriminator_df = pd.DataFrame()
         metrics = filter_metrics_df(
-            metrics_df=metrics[metrics["optimizer_type"] == OptimizerType.DC.value],
+            metrics_df=metrics,
             discriminator_df=discriminator_df,
             filter_strategy=filter_strategy,
         )
-    else:
-        metrics = metrics[metrics["optimizer_type"] == OptimizerType.DC.value]
 
     # Score them according to some function
     metrics["score"] = interest_scorer(metrics)
@@ -85,6 +84,10 @@ def select_strategy(
         return []
 
     strategies = group.sum("score")
+    min_score = strategies.score.min()
+    max_score = strategies.score.max()
+    # Make sure all scores are positive and add a small value to give residual probability to strategies with a score of 0
+    strategies.score += min_score + (max_score - min_score) * 0.1
     sum_scores = strategies.score.sum()
     if not np.isclose(sum_scores, 0):
         strategies.score /= sum_scores

@@ -199,6 +199,13 @@ class NodeResultSchema(pa.DataFrameModel):
     If the engine does not support the computation of this value, the column can be omitted.
     """
 
+    basecase_deviation: Series[float] = pa.Field(nullable=True)
+    """Voltage magnitude deviation from the basecase (N-0) in percent.
+        Computed as:
+            abs(vm_contingency - vm_basecase) / vm_basecase * 100
+        NaN if no valid basecase voltage exists.
+    """
+
     element_name: Series[str] = pa.Field(default="", nullable=True)
     """The name of the node, if available. This is not used for the loadflow computation, but can be used for display
     purposes. If no name is available, this should be set to an empty string.

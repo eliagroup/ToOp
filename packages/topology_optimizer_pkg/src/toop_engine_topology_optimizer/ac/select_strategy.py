@@ -87,7 +87,8 @@ def select_strategy(
     min_score = strategies.score.min()
     max_score = strategies.score.max()
     # Make sure all scores are positive and add a small value to give residual probability to strategies with a score of 0
-    strategies.score += min_score + (max_score - min_score) * 0.1
+    strategies.score += -min_score + np.abs(max_score - min_score) * 0.1
+
     sum_scores = strategies.score.sum()
     if not np.isclose(sum_scores, 0):
         strategies.score /= sum_scores

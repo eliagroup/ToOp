@@ -659,10 +659,7 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
         assert len(strategy_hashes) == 1
         selected_strategies.append(list(strategy_hashes)[0])
 
-    # Check that the absolute value operation makes both strategies selectable
-    # After abs(), strategy 1 has score 120, strategy 2 has score 330
-    # Normalized: strategy 1 = 120/450 ≈ 0.267, strategy 2 = 330/450 ≈ 0.733
-    # So strategy 2 (with negative metrics -> higher abs) should be selected more often
+    # Check that the value (including sign) is larger for strategy 1 (positive metrics) than strategy 2 (negative metrics)
     strategy1_count = selected_strategies.count(strategy1_hash)
     strategy2_count = selected_strategies.count(strategy2_hash)
 
@@ -671,7 +668,7 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
 
     # Strategy 2 should be selected more often (roughly 73% of the time)
     # Allow some variance due to randomness
-    assert strategy2_count > strategy1_count, (
-        f"Strategy 2 (negative metrics -> higher abs) should be selected more often. "
+    assert strategy1_count > strategy2_count, (
+        f"Strategy 1 (negative metrics) should be selected less often. "
         f"Got strategy1={strategy1_count}, strategy2={strategy2_count}"
     )

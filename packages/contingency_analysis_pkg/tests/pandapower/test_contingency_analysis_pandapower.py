@@ -360,7 +360,7 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
     node_results = res.node_results.reset_index()
 
     assert not node_results.empty
-    assert node_results["basecase_deviation"].isna().all()
+    assert node_results["vm_basecase_deviation"].isna().all()
 
     # ------------------------------------------------------------------
     # Case 2: make network numerically stable
@@ -380,4 +380,4 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
     node_results = res.node_results.reset_index()
 
     assert not node_results.empty
-    assert node_results["basecase_deviation"].notna().all()
+    assert node_results["vm_basecase_deviation"].notna().all()

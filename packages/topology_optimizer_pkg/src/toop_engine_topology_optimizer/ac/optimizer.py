@@ -36,7 +36,12 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
 from toop_engine_topology_optimizer.ac.evolution_functions import evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
-from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics, evaluate_acceptance, scoring_function
+from toop_engine_topology_optimizer.ac.scoring_functions import (
+    ACScoringParameters,
+    compute_loadflow_and_metrics,
+    compute_metrics,
+    scoring_and_acceptance,
+)
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
@@ -74,24 +79,24 @@ class OptimizerData:
     evolution_fn: Callable[[], list[ACOptimTopology]]
     """The curried evolution function"""
 
-    scoring_fn: Callable[[list[ACOptimTopology]], tuple[LoadflowResultsPolars, list[Metrics]]]
-    """The curried scoring function"""
+    scoring_fn: Callable[
+        [list[ACOptimTopology]], tuple[LoadflowResultsPolars, list[Metrics], Optional[TopologyRejectionReason]]
+    ]
+    """The curried scoring function. Given a strategy, this does three things:
+    1. It computes the loadflow results for the given strategy.
+    2. It computes the metrics for the given strategy.
+    3. It determines if there is a rejection reason for the strategy.
+
+    This will also include an early stopping mechanism where potentially after a small number of computed loadflows a
+    rejection is computed. In this case, the returned loadflow results and metrics will be based only on the subset of
+    N-1 cases that were presented by the dc optimizer as the most relevant ones.
+    """
 
     store_loadflow_fn: Callable[[LoadflowResultsPolars], StoredLoadflowReference]
     """The function to store loadflow results"""
 
     load_loadflow_fn: Callable[[StoredLoadflowReference], LoadflowResultsPolars]
     """The function to load loadflow results"""
-
-    acceptance_fn: Callable[
-        [
-            LoadflowResultsPolars,
-            list[Metrics],
-        ],
-        Optional[TopologyRejectionReason],
-    ]
-    """The acceptance function to decide whether a topology is accepted or not. Takes the
-    loadflow results and the metrics of the split topology and returns a rejection reason or None."""
 
     rng: Rng
     """The random number generator for the optimizer"""
@@ -115,6 +120,8 @@ def update_initial_metrics_with_worst_k_contingencies(
 
     This function computes the worst k contingencies for each timestep in the initial loadflow results
     and updates the initial metrics with the case ids and the top k overloads.
+    This way, a baseline for the worst k contingencies to compare to is established, i.e. in the initial loadflow results
+    these are the reference, disregarding the worst k for the specific strategy.
 
     Parameters
     ----------
@@ -301,14 +308,6 @@ def initialize_optimization(
         n_minus1_definitions=nminus1_definitions,
         filter_strategy=ga_config.filter_strategy,
     )
-    scoring_fn = partial(
-        scoring_function,
-        runners=runners,
-        base_case_ids=base_case_ids,
-        n_timestep_processes=ga_config.timestep_processes,
-        early_stop_validation=ga_config.early_stop_validation,
-        early_stop_non_converging_threshold=ga_config.early_stopping_non_convergence_percentage_threshold,
-    )
 
     # Prepare the initial strategy
     initial_strategy = [
@@ -340,7 +339,7 @@ def initialize_optimization(
     # This requires a full loadflow computation if the loadflow results are not passed in
     initial_loadflow_reference = params.initial_loadflow
     if initial_loadflow_reference is None:
-        initial_loadflow, initial_metrics = scoring_function(
+        initial_loadflow, _, initial_metrics = compute_loadflow_and_metrics(
             strategy=initial_strategy,
             runners=runners,
             base_case_ids=base_case_ids,
@@ -379,14 +378,21 @@ def initialize_optimization(
         session.add(topo)
     session.commit()
 
-    # As we have the initial loadflows, we can now define an acceptance function
-    acceptance_fn = partial(
-        evaluate_acceptance,
+    # As we have the initial loadflows, we can now define a scoring+acceptance function
+    scoring_fn = partial(
+        scoring_and_acceptance,
+        runners=runners,
         metrics_unsplit=initial_metrics,
         loadflow_results_unsplit=initial_loadflow,
-        reject_convergence_threshold=ga_config.reject_convergence_threshold,
-        reject_overload_threshold=ga_config.reject_overload_threshold,
-        reject_critical_branch_threshold=ga_config.reject_critical_branch_threshold,
+        scoring_params=ACScoringParameters(
+            base_case_ids=base_case_ids,
+            n_timestep_processes=ga_config.timestep_processes,
+            early_stop_validation=ga_config.early_stop_validation,
+            early_stop_non_converging_threshold=ga_config.early_stopping_non_convergence_percentage_threshold,
+            reject_convergence_threshold=ga_config.reject_convergence_threshold,
+            reject_overload_threshold=ga_config.reject_overload_threshold,
+            reject_critical_branch_threshold=ga_config.reject_critical_branch_threshold,
+        ),
     )
 
     # Convert the initial strategy to a message strategy
@@ -406,7 +412,6 @@ def initialize_optimization(
             scoring_fn=scoring_fn,
             store_loadflow_fn=store_loadflow,
             load_loadflow_fn=loadflow_ref,
-            acceptance_fn=acceptance_fn,
             rng=rng,
             framework=grid_files[0].framework,
             runners=runners,
@@ -485,8 +490,7 @@ def run_epoch(
     if not new_strategy:
         return False
 
-    loadflow_results, metrics = optimizer_data.scoring_fn(new_strategy)
-    rejection_reason = optimizer_data.acceptance_fn(loadflow_results, metrics)
+    loadflow_results, metrics, rejection_reason = optimizer_data.scoring_fn(new_strategy)
     loadflow_result_reference = optimizer_data.store_loadflow_fn(loadflow_results)
 
     # Update the strategy with the new loadflow results

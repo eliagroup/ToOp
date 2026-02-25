@@ -199,7 +199,7 @@ class NodeResultSchema(pa.DataFrameModel):
     If the engine does not support the computation of this value, the column can be omitted.
     """
 
-    basecase_deviation: Series[float] = pa.Field(nullable=True)
+    vm_basecase_deviation: Series[float] = pa.Field(nullable=True)
     """Voltage magnitude deviation from the basecase (N-0) in percent.
         Computed as:
             abs(vm_contingency - vm_basecase) / vm_basecase * 100

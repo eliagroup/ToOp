@@ -83,7 +83,9 @@ def run_single_outage(
     runpp_kwargs : Optional[dict], optional
         Additional keyword arguments to pass to runpp/rundcpp functions, by default None
     basecase_voltage: pat.Series[float]
-            The basecase voltage results
+        The voltage results from the basecase run.
+        Contains computed voltages if the basecase converged,
+        otherwise a series of NaN values.
 
     Returns
     -------
@@ -172,7 +174,9 @@ def get_element_results_df(
     status : ConvergenceStatus
         The convergence status of the loadflow computation
     basecase_voltage: pat.Series[float]
-        The basecase voltage results
+        The voltage results from the basecase run.
+        Contains computed voltages if the basecase converged,
+        otherwise a series of NaN values.
 
     Returns
     -------
@@ -253,7 +257,9 @@ def run_contingency_analysis_sequential(
     runpp_kwargs : Optional[dict], optional
         Additional keyword arguments to pass to runpp/rundcpp functions, by default None
     basecase_voltage: pat.Series[float]
-        The basecase voltage results
+        The voltage results from the basecase run.
+        Contains computed voltages if the basecase converged,
+        otherwise a series of NaN values.
 
     Returns
     -------

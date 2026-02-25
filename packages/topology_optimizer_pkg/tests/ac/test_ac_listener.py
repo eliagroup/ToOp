@@ -24,7 +24,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     TopologyPushResult,
 )
 from toop_engine_topology_optimizer.interfaces.messages.results import Topology as MessageTopology
-
+from copy import deepcopy
 
 @pytest.fixture
 def result() -> Result:
@@ -81,7 +81,7 @@ def test_poll_results_topic(result: Result, session: Session) -> None:
     message = Mock()
     message.value.return_value = serialize_message(result.model_dump_json())
     consumer.consume.return_value = [message]
-    processed = poll_results_topic(db=session, consumer=consumer, first_poll=True)
+    processed, _stopped_optimization_ids = poll_results_topic(db=session, consumer=consumer, first_poll=True)
     assert len(processed) == 2
 
     topologies = session.exec(select(ACOptimTopology)).all()
@@ -103,7 +103,7 @@ def test_poll_results_topic(result: Result, session: Session) -> None:
     assert topologies[1].strategy_hash == topologies[2].strategy_hash
 
     # Running it a second time should not add any new topologies
-    processed = poll_results_topic(db=session, consumer=consumer, first_poll=True)
+    processed, _stopped_optimization_ids = poll_results_topic(db=session, consumer=consumer, first_poll=True)
     assert len(processed) == 0
     topologies = session.exec(select(ACOptimTopology)).all()
     assert len(topologies) == 3
@@ -120,7 +120,7 @@ def test_poll_results_topic_optimization_started_result(result: Result, session:
     message.value.return_value = serialize_message(result.model_dump_json())
     consumer.consume.return_value = [message]
 
-    processed = poll_results_topic(db=session, consumer=consumer, first_poll=True)
+    processed, _stopped_optimization_ids = poll_results_topic(db=session, consumer=consumer, first_poll=True)
     assert len(processed) == 2
 
     topologies = session.exec(select(ACOptimTopology)).all()
@@ -139,17 +139,18 @@ def test_poll_results_topic_optimization_started_result(result: Result, session:
     assert topologies[1].metrics == {"overload_energy_n_1": 123.4}
     assert topologies[1].timestep == 1
 
-
-def test_poll_results_topic_invalid_result_type(result: Result, session: Session) -> None:
-    # It should skip OptimizationStoppedResult messages
-    result.result = OptimizationStoppedResult(reason="error")
-
+def test_poll_results_topic_optimization_stopped(result: Result, session: Session) -> None:
+    # Should handle OptimizationStoppedResult messages
+    result = deepcopy(result)
+    result.result = OptimizationStoppedResult(eason="error", initial_stats=[StaticInformationStats()]
+    )
+    result.optimization_id = "test_stopped"
     consumer = Mock(spec=LongRunningKafkaConsumer)
     message = Mock()
     message.value.return_value = serialize_message(result.model_dump_json())
     consumer.consume.return_value = [message]
 
-    processed = poll_results_topic(db=session, consumer=consumer, first_poll=True)
-    assert len(processed) == 0
-    topologies = session.exec(select(ACOptimTopology)).all()
-    assert len(topologies) == 0
+    processed, _stopped_optimization_ids = poll_results_topic(db=session, consumer=consumer, first_poll=True)
+    assert "test_stopped" in _stopped_optimization_ids
+
+

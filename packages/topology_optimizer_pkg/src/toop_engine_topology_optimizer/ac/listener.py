@@ -22,7 +22,7 @@ from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, convert_message_topo_to_db_topo
-from toop_engine_topology_optimizer.interfaces.messages.results import OptimizationStartedResult, Result, TopologyPushResult
+from toop_engine_topology_optimizer.interfaces.messages.results import OptimizationStartedResult, Result, TopologyPushResult, OptimizationStoppedResult
 
 logger = logbook.Logger(__name__)
 
@@ -31,7 +31,7 @@ def poll_results_topic(
     db: Session,
     consumer: LongRunningKafkaConsumer,
     first_poll: bool = True,
-) -> list[ACOptimTopology]:
+) -> tuple[list[ACOptimTopology], list[str]]:
     """Poll the results topic for new topologies to store in the DB
 
     We store topologies from all optimization jobs, as it could be that we will later optimize the same job in this worker.
@@ -52,8 +52,11 @@ def poll_results_topic(
     -------
     list[ACOptimTopology]
         A list of topologies that were added to the database
+    list[str]
+        A list of optimization IDs for which a stop optimization result was received. 
     """
     added_topos = []
+    finished_optimizations = []
     messages = consumer.consume(timeout=30.0 if first_poll else 0.1, num_messages=10000)
     for message in messages:
         result = Result.model_validate_json(deserialize_message(message.value()))
@@ -63,6 +66,9 @@ def poll_results_topic(
             strategies = result.result.strategies
         elif isinstance(result.result, OptimizationStartedResult):
             strategies = [result.result.initial_topology]
+        elif isinstance(result.result, OptimizationStoppedResult):
+            finished_optimizations.append(result.optimization_id)
+            continue
         else:
             continue
 
@@ -79,4 +85,4 @@ def poll_results_topic(
                 db.rollback()
                 pass
 
-    return added_topos
+    return added_topos, finished_optimizations

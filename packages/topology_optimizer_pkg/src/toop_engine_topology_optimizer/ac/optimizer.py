@@ -422,7 +422,11 @@ def initialize_optimization(
 
 
 def wait_for_first_dc_results(
-    results_consumer: LongRunningKafkaConsumer, session: Session, max_wait_time: float, optimization_id: str
+    results_consumer: LongRunningKafkaConsumer,
+    session: Session,
+    max_wait_time: float,
+    optimization_id: str,
+    heartbeat_fn: Callable[[], None],
 ) -> None:
     """Wait an initial period for DC results to arrive before proceeding with the optimization.
 
@@ -440,6 +444,8 @@ def wait_for_first_dc_results(
     optimization_id : str
         The ID of the optimization run, used to filter the incoming topologies and only proceed when DC results from
         the correct optimization run arrive. Note that other DC runs could be active.
+    heartbeat_fn : Callable[[], None]
+        A function to send heartbeats while waiting for DC results, as this wait time can be relatively long.
 
     Raises
     ------
@@ -452,6 +458,7 @@ def wait_for_first_dc_results(
         if len([x for x in added_topos if x.optimization_id == optimization_id]) > 0:
             logger.info(f"Received {len(added_topos)} topologies from DC results, proceeding with optimization")
             return
+        heartbeat_fn()
     raise TimeoutError(f"Did not receive DC results within {max_wait_time} seconds, cannot proceed with optimization")
 
 

@@ -10,11 +10,12 @@ import json
 import jax
 import numpy as np
 import pytest
+from beartype.typing import Optional
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.inputs import load_static_information
-from toop_engine_topology_optimizer.ac.scoring_functions import get_threshold_n_minus1_overload
+from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
     crossover,
@@ -30,6 +31,42 @@ from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import Dis
 from toop_engine_topology_optimizer.interfaces.messages.results import Topology
 
 from packages.topology_optimizer_pkg.tests.dc.test_main import assert_topology
+
+
+def get_threshold_n_minus1_overload(
+    strategy: list[ACOptimTopology],
+) -> tuple[Optional[list[float]], Optional[list[list[int]]]]:
+    """Extract the 'top_k_overloads_n_1' thresholds and corresponding case indices from a list of ACOptimTopology strategies.
+
+    overload_threshold is defined as the maximum allowed overload energy for the worst k AC N-1 contingency analysis
+    of the split topologies. This threshold is computed using the worst k AC contingencies of the unsplit grid and the
+    worst k DC contingencies of the split grid. Refer to the "pull" method in evolution_functions.py for more details.
+
+    Parameters
+    ----------
+    strategy : list of ACOptimTopology
+        A list of ACOptimTopology objects, each containing a 'metrics' dictionary with overload thresholds and case indices.
+
+    Returns
+    -------
+    tuple of (Optional[list of float], Optional[list of list of int])
+        A tuple containing:
+        - A list of overload thresholds for each topology, or None if any required metric is missing.
+        - A list of lists of case indices for each topology, or None if any required metric is missing.
+
+    """
+    overload_threshold_all_t = []
+    case_indices_all_t = []
+    for topo in strategy:
+        threshold_overload = topo.metrics.get("top_k_overloads_n_1", None)
+        threshold_case_indices = topo.worst_k_contingency_cases
+        if threshold_overload is None or len(threshold_case_indices) == 0:
+            return None, None
+
+        overload_threshold_all_t.append(threshold_overload)
+        case_indices_all_t.append(threshold_case_indices)
+
+    return overload_threshold_all_t, case_indices_all_t
 
 
 def test_translate_topology(static_information_file: str) -> None:

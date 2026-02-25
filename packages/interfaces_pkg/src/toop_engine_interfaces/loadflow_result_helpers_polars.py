@@ -225,6 +225,35 @@ def select_timestep_polars(loadflow_results: LoadflowResultsPolars, timestep: in
     )
 
 
+def subset_contingencies_polars(loadflow_results: LoadflowResultsPolars, contingencies: list[str]) -> LoadflowResultsPolars:
+    """Subset the loadflow results to a list of contingencies.
+
+    Parameters
+    ----------
+    loadflow_results : LoadflowResultsPolars
+        The loadflow results to subset.
+    contingencies : list[str]
+        The list of contingencies to subset to.
+
+    Returns
+    -------
+    LoadflowResultsPolars
+        The loadflow results for the selected contingencies.
+    """
+    return LoadflowResultsPolars(
+        job_id=loadflow_results.job_id,
+        branch_results=loadflow_results.branch_results.filter(pl.col("contingency").is_in(contingencies)),
+        node_results=loadflow_results.node_results.filter(pl.col("contingency").is_in(contingencies)),
+        regulating_element_results=loadflow_results.regulating_element_results.filter(
+            pl.col("contingency").is_in(contingencies)
+        ),
+        converged=loadflow_results.converged.filter(pl.col("contingency").is_in(contingencies)),
+        va_diff_results=loadflow_results.va_diff_results.filter(pl.col("contingency").is_in(contingencies)),
+        warnings=loadflow_results.warnings,
+        additional_information=loadflow_results.additional_information,
+    )
+
+
 def extract_branch_results_polars(
     branch_results: BranchResultSchemaPolars,
     timestep: int,

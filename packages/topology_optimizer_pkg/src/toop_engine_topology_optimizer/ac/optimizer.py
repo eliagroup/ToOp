@@ -450,7 +450,6 @@ def initialize_optimization(
     )
 
 
-
 def wait_for_first_dc_results(
     results_consumer: LongRunningKafkaConsumer, session: Session, max_wait_time: float, optimization_id: str
 ) -> None:
@@ -498,7 +497,9 @@ def wait_for_first_dc_results(
         )
         new_topos_for_optimization = [topo for topo in added_topos if topo.optimization_id == optimization_id]
         if len(new_topos_for_optimization) > 0:
-            logger.info(f"Received {len(new_topos_for_optimization)} topologies from DC results, proceeding with optimization")
+            logger.info(
+                f"Received {len(new_topos_for_optimization)} topologies from DC results, proceeding with optimization"
+            )
             return
         if optimization_id in stopped_optimization_ids:
             logger.warning("Received DC optimization stopped message before receiving any DC results, stop optimization")
@@ -535,7 +536,9 @@ def run_epoch(
         if this happened.
     """
     logger.info(f"Starting AC epoch={epoch}")
-    added_topos, _stopped_opimization_ids = poll_results_topic(db=optimizer_data.session, consumer=results_consumer, first_poll=epoch == 1)
+    added_topos, _stopped_opimization_ids = poll_results_topic(
+        db=optimizer_data.session, consumer=results_consumer, first_poll=epoch == 1
+    )
     logger.debug(f"Epoch {epoch}: imported {len(added_topos)} topology/ies from result stream")
     new_strategy = optimizer_data.evolution_fn()
 
@@ -546,9 +549,7 @@ def run_epoch(
 
     logger.debug(f"Epoch {epoch}: evaluating strategy with {len(new_strategy)} timestep topology/ies")
     loadflow_results, metrics, rejection_reason = optimizer_data.scoring_fn(new_strategy)
-    logger.debug(
-        f"Epoch {epoch}: scoring finished, rejection_reason={rejection_reason}, n_metrics={len(metrics)}"
-    )
+    logger.debug(f"Epoch {epoch}: scoring finished, rejection_reason={rejection_reason}, n_metrics={len(metrics)}")
     loadflow_result_reference = optimizer_data.store_loadflow_fn(loadflow_results)
     logger.debug(f"Epoch {epoch}: stored loadflow reference={loadflow_result_reference}")
 

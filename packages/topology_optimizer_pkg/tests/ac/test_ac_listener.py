@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from copy import deepcopy
 from unittest.mock import Mock
 
 import pytest
@@ -24,7 +25,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     TopologyPushResult,
 )
 from toop_engine_topology_optimizer.interfaces.messages.results import Topology as MessageTopology
-from copy import deepcopy
+
 
 @pytest.fixture
 def result() -> Result:
@@ -139,11 +140,11 @@ def test_poll_results_topic_optimization_started_result(result: Result, session:
     assert topologies[1].metrics == {"overload_energy_n_1": 123.4}
     assert topologies[1].timestep == 1
 
+
 def test_poll_results_topic_optimization_stopped(result: Result, session: Session) -> None:
     # Should handle OptimizationStoppedResult messages
     result = deepcopy(result)
-    result.result = OptimizationStoppedResult(eason="error", initial_stats=[StaticInformationStats()]
-    )
+    result.result = OptimizationStoppedResult(reason="error", initial_stats=[StaticInformationStats()])
     result.optimization_id = "test_stopped"
     consumer = Mock(spec=LongRunningKafkaConsumer)
     message = Mock()
@@ -152,5 +153,3 @@ def test_poll_results_topic_optimization_stopped(result: Result, session: Sessio
 
     processed, _stopped_optimization_ids = poll_results_topic(db=session, consumer=consumer, first_poll=True)
     assert "test_stopped" in _stopped_optimization_ids
-
-

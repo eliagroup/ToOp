@@ -22,7 +22,12 @@ from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, convert_message_topo_to_db_topo
-from toop_engine_topology_optimizer.interfaces.messages.results import OptimizationStartedResult, Result, TopologyPushResult, OptimizationStoppedResult
+from toop_engine_topology_optimizer.interfaces.messages.results import (
+    OptimizationStartedResult,
+    OptimizationStoppedResult,
+    Result,
+    TopologyPushResult,
+)
 
 logger = logbook.Logger(__name__)
 
@@ -53,7 +58,7 @@ def poll_results_topic(
     list[ACOptimTopology]
         A list of topologies that were added to the database
     list[str]
-        A list of optimization IDs for which a stop optimization result was received. 
+        A list of optimization IDs for which a stop optimization result was received.
     """
     added_topos = []
     finished_optimizations = []

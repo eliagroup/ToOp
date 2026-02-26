@@ -8,6 +8,7 @@
 [![Duplicated Lines (%)](https://sonarqube.consumercentricity.io/api/project_badges/measure?project=gras-gridanalysis-toop-engine&metric=duplicated_lines_density&token=sqb_ef169a74b3d4e0c7da3da0aa2ca3e4db85aafe3c)](https://sonarqube.consumercentricity.io/dashboard?id=gras-gridanalysis-toop-engine)
 
 word
+another word
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)

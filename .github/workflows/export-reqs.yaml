@@ -10,7 +10,7 @@ name: Export requirements.txt
 on:
   push:
     branches:
-      - ci/remove-reqs-export
+      - ci/export-reqs
 
 permissions: {}
 

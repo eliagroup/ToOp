@@ -133,6 +133,16 @@ def optimization_loop(
             session=worker_data.db,
             max_wait_time=ac_params.ga_config.max_initial_wait_seconds,
             optimization_id=optimization_id,
+            heartbeat_fn=partial(
+                send_heartbeat_fn,
+                OptimizationStatsHeartbeat(
+                    optimization_id=optimization_id,
+                    wall_time=0,
+                    iteration=0,
+                    num_branch_topologies_tried=0,
+                    num_injection_topologies_tried=0,
+                ),
+            ),
         )
         send_result_fn(
             OptimizationStartedResult(

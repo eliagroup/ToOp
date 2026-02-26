@@ -8,8 +8,9 @@
 name: Export requirements.txt
 
 on:
-  branches:
-    - ci/remove-reqs-export
+  push:
+    branches:
+      - ci/remove-reqs-export
 
 permissions: {}
 

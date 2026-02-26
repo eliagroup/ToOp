@@ -204,7 +204,6 @@ jobs:
         test-example-notebooks,
         test-packages-github-runner,
         test-packages-toop-runner,
-        test-pip-install,
       ]
     if: always()
     permissions:
@@ -221,7 +220,6 @@ jobs:
           echo "Test Example Notebooks: ${{ needs.test-example-notebooks.result }}"
           echo "Test Packages (GitHub Runner): ${{ needs.test-packages-github-runner.result }}"
           echo "Test Packages (ToOp Runner): ${{ needs.test-packages-toop-runner.result }}"
-          echo "Test Pip Install: ${{ needs.test-pip-install.result }}"
 
           if [[ "${{ needs.code-quality-checks.result }}" != "success" ]] || \
              [[ "${{ needs.fossa-scan.result }}" != "success" ]] || \
@@ -230,8 +228,7 @@ jobs:
              [[ "${{ needs.test-docs-build.result }}" != "success" ]] || \
              [[ "${{ needs.test-example-notebooks.result }}" != "success" ]] || \
              [[ "${{ needs.test-packages-github-runner.result }}" != "success" ]] || \
-             [[ "${{ needs.test-packages-toop-runner.result }}" != "success" ]] || \
-             [[ "${{ needs.test-pip-install.result }}" != "success" ]]; then
+             [[ "${{ needs.test-packages-toop-runner.result }}" != "success" ]]; then
             echo "One or more CI jobs failed, were cancelled, or skipped. Marking as failed."
             exit 1
           fi

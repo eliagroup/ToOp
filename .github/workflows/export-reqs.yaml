@@ -1,0 +1,50 @@
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
+name: Export requirements.txt
+
+on:
+  push:
+    branches:
+      - ci/export-reqs
+
+permissions: {}
+
+jobs:
+  export-requirements:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+
+      - name: Check out repository code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
+
+      - uses: ./.github/actions/install-uv
+
+      - name: Create branch for requirements update
+        run: |
+          git checkout -b main-with-reqs
+
+      - name: Export requirements.txt
+        shell: bash
+        run: uv export --no-hashes --frozen --format=requirements.txt --output-file=requirements.txt --quiet
+
+      - name: Configure git profile
+        run: |
+          git config user.name "ToOp Build Service"
+          git config user.email ToOp@eliagroup.eu
+
+      - name: Commit and push changes
+        run: |
+          git add requirements.txt
+          git commit -m "Update requirements.txt"
+          git push origin main-with-reqs --force
+

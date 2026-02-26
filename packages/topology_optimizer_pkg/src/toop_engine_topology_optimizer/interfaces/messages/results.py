@@ -102,12 +102,15 @@ class Strategy(BaseModel):
     """The topologies for every timestep"""
 
 
+RejectionCriterion: TypeAlias = Literal[
+    "convergence", "voltage-magnitude", "voltage-angle", "overload-energy", "critical-branch-count", "other"
+]
+
+
 class TopologyRejectionReason(BaseModel):
     """The reason for rejecting a topology including a criterion that was violated and further data."""
 
-    criterion: Literal[
-        "convergence", "voltage-magnitude", "voltage-angle", "overload-energy", "critical-branch-count", "other"
-    ]
+    criterion: RejectionCriterion
     """The criterion that was violated for the rejection."""
 
     description: Optional[str] = None
@@ -134,6 +137,11 @@ class TopologyRejectionReason(BaseModel):
     threshold: Optional[float] = None
     """The threshold for rejection that was set in the AC configuration, if applicable."""
 
+    early_stopping: bool = False
+    """Whether this rejection was part of an early stopping run, i.e. only a subset of the cases were computed to determine
+    the rejection. In that case, the value_before and value_after are only based on the subset of cases that were computed.
+    """
+
 
 def get_topology_rejection_message(result: TopologyRejectionReason) -> str:
     """Condense a TopologyRejectionReason into a human-readable message for logging purposes."""
@@ -147,7 +155,10 @@ def get_topology_rejection_message(result: TopologyRejectionReason) -> str:
     }
 
     base_message = message_map.get(result.criterion, "Rejecting topology due to unknown reason")
-    base_message = f"{base_message} (value before: {result.value_before}, value after: {result.value_after})."
+    base_message = (
+        f"{base_message} (value before: {result.value_before}, "
+        f"value after: {result.value_after}, early_stopping: {result.early_stopping})."
+    )
     if result.description:
         base_message = f"{base_message} Details: {result.description}"
     return base_message

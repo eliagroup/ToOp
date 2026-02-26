@@ -50,7 +50,7 @@ def compute_overload_column(
 
 
 @pa.check_types
-def compute_max_load(branch_results: patpl.LazyFrame[BranchResultSchemaPolars]) -> float:
+def compute_max_load(branch_results: patpl.LazyFrame[BranchResultSchemaPolars]) -> float | None:
     """Compute the highest loading of the branches in the results.
 
     This is just a max operation
@@ -62,8 +62,9 @@ def compute_max_load(branch_results: patpl.LazyFrame[BranchResultSchemaPolars]) 
 
     Returns
     -------
-    float
+    float | None
         The maximum loading in factor of maximum rated current (percent / 100) of any branch in the results.
+        None if the loading column is missing or if there are no valid loading values (e.g., all NaN).
     """
     max_loading = branch_results.select(pl.col("loading").max()).collect().item()
     return max_loading
@@ -72,7 +73,7 @@ def compute_max_load(branch_results: patpl.LazyFrame[BranchResultSchemaPolars]) 
 @pa.check_types
 def compute_overload_energy(
     branch_results: patpl.LazyFrame[BranchResultSchemaPolars], field: Literal["p", "i"] = "i"
-) -> float:
+) -> float | None:
     """Compute the maximum overload current of the branches in the results.
 
     This is just a max operation
@@ -86,8 +87,8 @@ def compute_overload_energy(
 
     Returns
     -------
-    float
-        The maximum overload total current or power
+    float | None
+        The maximum overload total current or power, or None if there are no valid overload values.
     """
     branch_results_with_overload = compute_overload_column(branch_results, field=field)
     overload = (
@@ -108,7 +109,7 @@ def compute_overload_energy(
 @pa.check_types
 def count_critical_branches(
     branch_results: patpl.LazyFrame[BranchResultSchemaPolars], critical_threshold: float = 1.0
-) -> int:
+) -> int | None:
     """Count how many branches are above 100% in any side/contingency
 
     Parameters
@@ -120,8 +121,8 @@ def count_critical_branches(
 
     Returns
     -------
-    int
-        The number of branches that are overloaded in any side/contingency.
+    int | None
+        The number of branches that are overloaded in any side/contingency, or None if there are no valid loading values.
     """
     # Do an any-aggregation across branch sides and contingencies (group by timestep/element)
     # This will return a boolean series with True for each branch that is overloaded in any contingency/side
@@ -136,7 +137,7 @@ def count_critical_branches(
     )
 
 
-def compute_max_va_diff(va_diff_results: patpl.LazyFrame[VADiffResultSchemaPolars]) -> float:
+def compute_max_va_diff(va_diff_results: patpl.LazyFrame[VADiffResultSchemaPolars]) -> float | None:
     """Compute the maximum voltage angle difference.
 
     Parameters
@@ -146,12 +147,12 @@ def compute_max_va_diff(va_diff_results: patpl.LazyFrame[VADiffResultSchemaPolar
 
     Returns
     -------
-    float
-        The maximum voltage angle difference in degrees.
+    float | None
+        The maximum voltage angle difference in degrees, or None if there are no valid values.
     """
     max_va_diff = va_diff_results.select(pl.col("va_diff").max()).collect().item()
     if max_va_diff is None or pd.isna(max_va_diff):
-        return 0.0
+        return None
     return float(max_va_diff)
 
 
@@ -244,13 +245,19 @@ def compute_metrics(
         # Va diff may not contain the base case; filtering will yield an empty frame if absent.
         # compute_max_va_diff already returns 0.0 if empty/None, so no explicit fallback needed.
         n_0_va_diff = loadflow_results.va_diff_results.filter(pl.col("contingency") == base_case_id)
-        metrics.update(
-            {
-                "max_flow_n_0": compute_max_load(n_0_branch_res),
-                "overload_energy_n_0": compute_overload_energy(n_0_branch_res, field="p"),
-                "max_va_diff_n_0": compute_max_va_diff(n_0_va_diff),
-                "overload_current_n_0": compute_overload_energy(n_0_branch_res, field="i"),
-                "critical_branch_count_n_0": count_critical_branches(n_0_branch_res),
-            }
-        )
+
+        new_metrics = {
+            "max_flow_n_0": compute_max_load(n_0_branch_res),
+            "overload_energy_n_0": compute_overload_energy(n_0_branch_res, field="p"),
+            "max_va_diff_n_0": compute_max_va_diff(n_0_va_diff) or 0.0,  # Default to 0.0 if no valid va_diff values for n-0
+            "overload_current_n_0": compute_overload_energy(n_0_branch_res, field="i"),
+            "critical_branch_count_n_0": count_critical_branches(n_0_branch_res),
+        }
+
+        for metric_name, value in new_metrics.items():
+            assert value is not None, (
+                f"{metric_name} could not be computed, possibly due to missing or invalid base case results."
+            )
+
+        metrics.update(new_metrics)
     return metrics

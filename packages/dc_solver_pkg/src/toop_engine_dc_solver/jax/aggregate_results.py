@@ -566,8 +566,8 @@ def get_pst_setpoint_deviation(
     """Compute the deviation between optimized PST tap positions and initial setpoints.
 
     This metric measures how much the optimized PST tap positions deviate from the initial
-    setpoints using L1 distance (sum of absolute differences). It is useful for penalizing
-    solutions that require large changes to PST settings.
+    setpoints using squared L2 distance (sum of squared differences). It is useful for penalizing
+    solutions that require large changes to PST settings, with quadratic penalty for larger deviations.
 
     Parameters
     ----------
@@ -581,7 +581,7 @@ def get_pst_setpoint_deviation(
     Returns
     -------
     Float[Array, " "]
-        The sum of absolute differences between optimized and initial tap positions across all
+        The sum of squared differences between optimized and initial tap positions across all
         controllable PSTs. Returns 0.0 if PST optimization is not enabled or data is unavailable.
     """
     if optimized_taps is None or initial_tap_idx is None:
@@ -601,8 +601,9 @@ def get_pst_setpoint_deviation(
         # Shape: (n_controllable_pst) - already single timestep
         optimized_tap_idx_single = optimized_tap_idx
 
-    # Compute L1 distance (Manhattan distance)
-    deviation = jnp.sum(jnp.abs(optimized_tap_idx_single.astype(int) - initial_tap_idx.astype(int)))
+    # Compute squared L2 distance (Euclidean distance squared)
+    diff = optimized_tap_idx_single.astype(int) - initial_tap_idx.astype(int)
+    deviation = jnp.sum(diff * diff)
 
     return deviation.astype(float)
 

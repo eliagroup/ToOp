@@ -881,7 +881,7 @@ def test_get_pst_setpoint_deviation() -> None:
         pst_tap_idx=jnp.array([[3, 4, 5, 6, 7]], dtype=float)  # All shifted by +1
     )
     deviation = get_pst_setpoint_deviation(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_deviation = 5.0  # Sum of |3-2| + |4-3| + |5-4| + |6-5| + |7-6| = 5
+    expected_deviation = 5.0  # Sum of (3-2)^2 + (4-3)^2 + (5-4)^2 + (6-5)^2 + (7-6)^2 = 1+1+1+1+1 = 5
     assert deviation == expected_deviation, f"Expected deviation {expected_deviation}, got {deviation}"
 
     # Case 5: Mixed positive and negative deviations
@@ -890,7 +890,7 @@ def test_get_pst_setpoint_deviation() -> None:
         pst_tap_idx=jnp.array([[3, 7, 5, 4, 8]], dtype=float)  # Deviations: -2, +2, 0, -1, +3
     )
     deviation = get_pst_setpoint_deviation(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_deviation = 2.0 + 2.0 + 0.0 + 1.0 + 3.0  # L1 distance = 8.0
+    expected_deviation = 4.0 + 4.0 + 0.0 + 1.0 + 9.0  # Squared L2 distance = (-2)^2 + 2^2 + 0^2 + (-1)^2 + 3^2 = 18.0
     assert deviation == expected_deviation, f"Expected deviation {expected_deviation}, got {deviation}"
 
     # Case 6: Multiple timesteps - should use first timestep only
@@ -898,7 +898,7 @@ def test_get_pst_setpoint_deviation() -> None:
     optimized_taps = NodalInjOptimResults(
         pst_tap_idx=jnp.array(
             [
-                [3, 4, 5, 6, 7],  # First timestep: deviation = 5
+                [3, 4, 5, 6, 7],  # First timestep: deviation = 5 (squared)
                 [10, 10, 10, 10, 10],  # Second timestep: would be higher deviation
                 [0, 0, 0, 0, 0],  # Third timestep: would be different deviation
             ],
@@ -906,7 +906,7 @@ def test_get_pst_setpoint_deviation() -> None:
         )  # shape: (n_timesteps=3, n_controllable_pst=5)
     )
     deviation = get_pst_setpoint_deviation(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_deviation = 5.0  # Only first timestep should be used
+    expected_deviation = 5.0  # Only first timestep should be used: 1^2 + 1^2 + 1^2 + 1^2 + 1^2 = 5
     assert deviation == expected_deviation, f"Expected deviation {expected_deviation}, got {deviation}"
 
     # Case 7: Verify JAX compatibility (can be JIT compiled)

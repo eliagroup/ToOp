@@ -8,7 +8,7 @@
 import numpy as np
 import pandas as pd
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 from toop_engine_topology_optimizer.ac.evolution_functions import (
     default_scorer,
 )
@@ -23,11 +23,11 @@ from toop_engine_topology_optimizer.ac.select_strategy import (
 )
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, OptimizerType
-from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDBTopology
+from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDBTopology, hash_topo_data
 
 
 def test_select_strategy(dc_repertoire: list[BaseDBTopology]) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
     assert isinstance(strategy, list)
     assert len(strategy)
     assert isinstance(strategy[0], ACOptimTopology)
@@ -40,7 +40,7 @@ def test_select_strategy(dc_repertoire: list[BaseDBTopology]) -> None:
         if topo.strategy_hash == strategy[0].strategy_hash:
             assert topo in strategy
 
-    assert select_strategy(np.random.default_rng(0), [], default_scorer) == []
+    assert select_strategy(np.random.default_rng(0), [], [], default_scorer) == []
 
 
 def test_select_stategy_ac_dc_mix(dc_repertoire: list[BaseDBTopology], session: Session) -> None:
@@ -68,7 +68,7 @@ def test_select_stategy_ac_dc_mix(dc_repertoire: list[BaseDBTopology], session: 
         mixed_topologies.append(topology)
 
     # Select a strategy
-    strategy = select_strategy(np.random.default_rng(0), mixed_topologies, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), mixed_topologies, mixed_topologies, default_scorer)
     assert isinstance(strategy, list)
     assert len(strategy)
     assert isinstance(strategy[0], ACOptimTopology)
@@ -517,7 +517,7 @@ def test_select_stategy_ac_dc_mix_filter_applied(
 
     # Select a strategy
     strategy = select_strategy(
-        np.random.default_rng(0), mixed_topologies, default_scorer, filter_strategy=default_filter_strategy
+        np.random.default_rng(0), mixed_topologies, mixed_topologies, default_scorer, filter_strategy=default_filter_strategy
     )
     assert isinstance(strategy, list)
     assert len(strategy)
@@ -558,3 +558,117 @@ def test_get_discriminator_df_empty_metrics_df():
     metrics_df = pd.DataFrame()
     result = get_discriminator_df(metrics_df, target_metrics)
     assert result.empty
+
+
+def test_select_strategy_positive_negative_metrics(session: Session) -> None:
+    """Test select_strategy with one strategy having positive metrics and another having negative metrics.
+
+    This test verifies that the selection mechanism correctly handles strategies with different
+    score polarities. The absolute value operation should ensure both strategies have a chance
+    to be selected based on the magnitude of their scores.
+    """
+    # Create strategy 1 with positive metric values
+    strategy1_assignments = []
+    for timestep in range(5):
+        strategy1_assignments.append(
+            (
+                [1000 + timestep],  # actions
+                [],  # disconnections
+                [10, 20, 30],  # pst_setpoints
+            )
+        )
+    strategy1_hash = hash_topo_data(strategy1_assignments)
+
+    # Create strategy 2 with different actions
+    strategy2_assignments = []
+    for timestep in range(5):
+        strategy2_assignments.append(
+            (
+                [2000 + timestep],  # actions
+                [],  # disconnections
+                [15, 25, 35],  # pst_setpoints
+            )
+        )
+    strategy2_hash = hash_topo_data(strategy2_assignments)
+
+    # Add strategy 1 topologies with positive metric values
+    for timestep, (actions, disconnections, pst_setpoints) in enumerate(strategy1_assignments):
+        session.add(
+            ACOptimTopology(
+                actions=actions,
+                disconnections=disconnections,
+                pst_setpoints=pst_setpoints,
+                unsplit=False,
+                timestep=timestep,
+                strategy_hash=strategy1_hash,
+                optimization_id="test_pos_neg",
+                optimizer_type=OptimizerType.DC,
+                fitness=0.0,
+                metrics={
+                    "overload_energy_n_1": 24.0,  # Positive metric
+                },
+            )
+        )
+
+    # Add strategy 2 topologies with negative metric values
+    for timestep, (actions, disconnections, pst_setpoints) in enumerate(strategy2_assignments):
+        session.add(
+            ACOptimTopology(
+                actions=actions,
+                disconnections=disconnections,
+                pst_setpoints=pst_setpoints,
+                unsplit=False,
+                timestep=timestep,
+                strategy_hash=strategy2_hash,
+                optimization_id="test_pos_neg",
+                optimizer_type=OptimizerType.DC,
+                fitness=0.0,
+                metrics={
+                    "overload_energy_n_1": -66.0,  # Negative metrics
+                },
+            )
+        )
+
+    session.commit()
+
+    # Get all topologies
+    all_topologies = session.exec(select(ACOptimTopology).where(ACOptimTopology.optimization_id == "test_pos_neg")).all()
+
+    assert len(all_topologies) == 10
+
+    # Use a simple scorer that returns the overload_energy_n_1 metric directly
+    def metric_scorer(metrics: pd.DataFrame) -> pd.Series:
+        """Score based on overload_energy_n_1 metric which has different signs."""
+        return metrics["overload_energy_n_1"]
+
+    # Strategy 1 scores: 24.0 * 5 = 120 (positive sum)
+    # Strategy 2 scores: -66.0 * 5 = -330 (negative sum)
+
+    # Run select_strategy multiple times to check both strategies can be selected
+    rng = np.random.default_rng(42)
+    selected_strategies = []
+
+    for _ in range(100):
+        strategy = select_strategy(rng, all_topologies, all_topologies, metric_scorer)
+        assert isinstance(strategy, list)
+        assert len(strategy) > 0
+        assert isinstance(strategy[0], ACOptimTopology)
+
+        # All topologies in selected strategy should have the same strategy_hash
+        strategy_hashes = set(t.strategy_hash for t in strategy)
+        assert len(strategy_hashes) == 1
+        selected_strategies.append(list(strategy_hashes)[0])
+
+    # Check that the value (including sign) is larger for strategy 1 (positive metrics) than strategy 2 (negative metrics)
+    strategy1_count = selected_strategies.count(strategy1_hash)
+    strategy2_count = selected_strategies.count(strategy2_hash)
+
+    assert strategy1_count > 0, "Strategy 1 (positive metrics) should be selected at least once"
+    assert strategy2_count > 0, "Strategy 2 (negative metrics) should be selected at least once"
+
+    # Strategy 2 should be selected more often (roughly 73% of the time)
+    # Allow some variance due to randomness
+    assert strategy1_count > strategy2_count, (
+        f"Strategy 1 (negative metrics) should be selected less often. "
+        f"Got strategy1={strategy1_count}, strategy2={strategy2_count}"
+    )

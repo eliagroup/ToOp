@@ -203,7 +203,8 @@ class NodeResultSchema(pa.DataFrameModel):
     """Voltage magnitude deviation from the basecase (N-0) in percent.
         Computed as:
             abs(vm_contingency - vm_basecase) / vm_basecase * 100
-        NaN if no valid basecase voltage exists.
+        For basecase contingency, the deviation will be 0.0 (basecase vs basecase).
+        NaN if no valid basecase voltage exists(basecase not converged).
     """
 
     element_name: Series[str] = pa.Field(default="", nullable=True)

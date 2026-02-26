@@ -334,8 +334,8 @@ def test_get_threshold_n_minus1_overload_empty_strategy():
     assert indices == []
 
 
-def test_pst_setpoint_deviation_metric_integration(static_information_file_complex: str) -> None:
-    """Test that pst_setpoint_deviation metric works in the scoring function."""
+def test_pst_switching_distance_metric_integration(static_information_file_complex: str) -> None:
+    """Test that pst_switching_distance metric works in the scoring function."""
     static_information = load_static_information(static_information_file_complex)
 
     # Skip test if there are no controllable PSTs in this grid
@@ -388,7 +388,7 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file_compl
         mutation_repetition=1,
     )
 
-    # Test 1: With pst_setpoint_deviation in observed metrics
+    # Test 1: With pst_switching_distance in observed metrics
     (_, _, metrics, _, _, _) = scoring_function(
         topologies,
         key,
@@ -398,16 +398,16 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file_compl
         observed_metrics=(
             "overload_energy_n_1",
             "switching_distance",
-            "pst_setpoint_deviation",
+            "pst_switching_distance",
         ),
         descriptor_metrics=("switching_distance",),
     )
 
-    assert "pst_setpoint_deviation" in metrics, "pst_setpoint_deviation should be in metrics"
-    assert metrics["pst_setpoint_deviation"].shape == (batch_size,), "Metric should have batch dimension"
+    assert "pst_switching_distance" in metrics, "pst_switching_distance should be in metrics"
+    assert metrics["pst_switching_distance"].shape == (batch_size,), "Metric should have batch dimension"
 
     # Since we haven't mutated PSTs (pst_mutation_sigma=0), all deviations should be 0
-    assert jnp.all(metrics["pst_setpoint_deviation"] == 0.0), "Deviation should be 0 when PST taps haven't changed"
+    assert jnp.all(metrics["pst_switching_distance"] == 0.0), "Deviation should be 0 when PST taps haven't changed"
 
     # Test 2: With PST mutation, deviation should be non-zero
     topologies_mutated, key = mutate(
@@ -433,7 +433,7 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file_compl
         target_metrics=(("overload_energy_n_1", 1.0),),
         observed_metrics=(
             "overload_energy_n_1",
-            "pst_setpoint_deviation",
+            "pst_switching_distance",
             "switching_distance",
         ),
         descriptor_metrics=("switching_distance",),
@@ -441,13 +441,13 @@ def test_pst_setpoint_deviation_metric_integration(static_information_file_compl
 
     # With PST mutation, at least some topologies should have non-zero deviation
     # (though it's possible all mutations result in the same tap due to clipping)
-    assert "pst_setpoint_deviation" in metrics_mutated, "Metric should be computed"
-    assert jnp.all(jnp.isfinite(metrics_mutated["pst_setpoint_deviation"])), "All deviations should be finite"
-    assert jnp.all(metrics_mutated["pst_setpoint_deviation"] >= 0.0), "Deviations should be non-negative"
+    assert "pst_switching_distance" in metrics_mutated, "Metric should be computed"
+    assert jnp.all(jnp.isfinite(metrics_mutated["pst_switching_distance"])), "All deviations should be finite"
+    assert jnp.all(metrics_mutated["pst_switching_distance"] >= 0.0), "Deviations should be non-negative"
 
 
-def test_pst_setpoint_deviation_in_target_metrics(static_information_file_complex: str) -> None:
-    """Test that pst_setpoint_deviation metric used as a target metric."""
+def test_pst_switching_distance_in_target_metrics(static_information_file_complex: str) -> None:
+    """Test that pst_switching_distance metric used as a target metric."""
     static_information = load_static_information(static_information_file_complex)
 
     # Skip test if there are no controllable PSTs in this grid
@@ -500,23 +500,23 @@ def test_pst_setpoint_deviation_in_target_metrics(static_information_file_comple
         mutation_repetition=1,
     )
 
-    # Test 1: With small cost for pst_setpoint_deviation in target metrics
+    # Test 1: With small cost for pst_switching_distance in target metrics
     (fitness_small_weight, _, metrics, _, _, _) = scoring_function(
         topologies,
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_setpoint_deviation", 0.1)),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance", 0.1)),
         observed_metrics=(
             "overload_energy_n_1",
             "switching_distance",
-            "pst_setpoint_deviation",
+            "pst_switching_distance",
         ),
         descriptor_metrics=("switching_distance",),
     )
 
     assert jnp.less_equal(fitness_small_weight, 0.0).all(), "Fitness should be non-positive"
-    assert jnp.greater_equal(metrics["pst_setpoint_deviation"], 0.0).any(), (
+    assert jnp.greater_equal(metrics["pst_switching_distance"], 0.0).any(), (
         "Metric should be greater 0 for some topologies due to PST mutation"
     )
 
@@ -525,23 +525,23 @@ def test_pst_setpoint_deviation_in_target_metrics(static_information_file_comple
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_setpoint_deviation", 10.0)),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance", 10.0)),
         observed_metrics=(
             "overload_energy_n_1",
-            "pst_setpoint_deviation",
+            "pst_switching_distance",
             "switching_distance",
         ),
         descriptor_metrics=("switching_distance",),
     )
 
-    # The fitness should be worse as the pst_setpoint_deviation weight is higher, even if overload_energy_n_1 is the same
+    # The fitness should be worse as the pst_switching_distance weight is higher, even if overload_energy_n_1 is the same
     assert jnp.less_equal(fitness, fitness_small_weight).all(), (
-        "Fitness should be worse with higher weight on pst_setpoint_deviation"
+        "Fitness should be worse with higher weight on pst_switching_distance"
     )
 
 
-def test_pst_setpoint_deviation_without_pst_optimization(static_information_file: str) -> None:
-    """Test that pst_setpoint_deviation returns 0 when PST optimization is disabled."""
+def test_pst_switching_distance_without_pst_optimization(static_information_file: str) -> None:
+    """Test that pst_switching_distance returns 0 when PST optimization is disabled."""
     static_information = load_static_information(static_information_file)
 
     action_set = static_information.dynamic_information.action_set
@@ -589,12 +589,12 @@ def test_pst_setpoint_deviation_without_pst_optimization(static_information_file
         target_metrics=(("overload_energy_n_1", 1.0),),
         observed_metrics=(
             "overload_energy_n_1",
-            "pst_setpoint_deviation",
+            "pst_switching_distance",
             "switching_distance",
         ),
         descriptor_metrics=("switching_distance",),
     )
 
-    assert "pst_setpoint_deviation" in metrics, "Metric should be computed even when PST opt is disabled"
+    assert "pst_switching_distance" in metrics, "Metric should be computed even when PST opt is disabled"
     # All deviations should be 0 when PST optimization is disabled
-    assert jnp.all(metrics["pst_setpoint_deviation"] == 0.0), "Deviation should be 0 when PST optimization is disabled"
+    assert jnp.all(metrics["pst_switching_distance"] == 0.0), "Deviation should be 0 when PST optimization is disabled"

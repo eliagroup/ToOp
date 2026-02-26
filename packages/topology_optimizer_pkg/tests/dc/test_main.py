@@ -302,9 +302,9 @@ def test_main_mapelites_2D_pst_opt(tmp_path: str, static_information_file: str) 
                 "overload_energy_n_1",
                 "switching_distance",
                 "split_subs",
-                "pst_setpoint_deviation",
+                "pst_switching_distance",
             ),
-            target_metrics=(("overload_energy_n_1", 1.0), ("pst_setpoint_deviation", 1.0)),
+            target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance", 1.0)),
             iterations_per_epoch=10,
             runtime_seconds=10,
             # MapElites specifics

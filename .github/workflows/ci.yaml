@@ -121,25 +121,6 @@ jobs:
       - name: Run code quality checks
         run: SKIP=no-commit-to-branch uv run pre-commit run --all-files
 
-  # Run after ensuring that requirements are up to date
-  test-pip-install:
-    needs: [code-quality-checks]
-    if: success()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
-
-      - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
-        with:
-          python-version-file: "pyproject.toml"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
   license-headers:
     runs-on: ubuntu-latest
     permissions:

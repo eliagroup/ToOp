@@ -22,6 +22,7 @@ runs:
   using: "composite"
   steps:
     - name: Configure git profile
+      shell: bash
       run: |
         git config user.name "${{ inputs.username }}"
         git config user.email "${{ inputs.email }}"

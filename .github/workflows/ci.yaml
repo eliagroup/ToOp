@@ -110,7 +110,7 @@ jobs:
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
       - name: Configure pre-commit cache
-        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb
+        uses: actions/cache@565629816435f6c0b50676926c9b05c254113c0c
         with:
           path: ~/.cache/pre-commit
           key: pre-commit|${{ env.PY }}|${{ hashFiles('.pre-commit-config.yaml') }}

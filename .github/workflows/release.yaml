@@ -64,10 +64,8 @@ jobs:
           fi
 
       - name: Configure git profile
-        run: |
-          git config user.name "ToOp Build Service"
-          git config user.email ToOp@eliagroup.eu
-
+        uses: ./.github/actions/configure-git-profile
+        
       - name: Create release tag
         run: |
           echo "Creating git tag"
@@ -91,9 +89,7 @@ jobs:
           ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
 
       - name: Configure git profile
-        run: |
-          git config user.name "ToOp Build Service"
-          git config user.email ToOp@eliagroup.eu
+        uses: ./.github/actions/configure-git-profile
 
       - name: Install uv
         uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867

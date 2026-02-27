@@ -26,16 +26,9 @@ jobs:
           ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
           persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
-
-      - name: "Set up Python"
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+      - uses: ./.github/actions/setup-python
         with:
-          python-version-file: "pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --frozen --only-group ci
+          sync-args: '--frozen --only-group ci'
 
       - name: Set development release flag
         run: |
@@ -95,16 +88,9 @@ jobs:
           git config user.name "ToOp Build Service"
           git config user.email ToOp@eliagroup.eu
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
-
-      - name: "Set up Python"
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+      - uses: ./.github/actions/setup-python
         with:
-          python-version-file: "pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --only-group doc --frozen
+          sync-args: '--frozen --only-group doc'
 
       - name: Conditional Deployment
         run: uv run mkdocs gh-deploy --force

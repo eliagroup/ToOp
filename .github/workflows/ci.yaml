@@ -31,7 +31,7 @@ jobs:
     runs-on: Runner-ToOp-Projects
     steps:
       - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - name: Run package tests
         uses: ./.github/actions/run-package-tests
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - name: Run package tests
         uses: ./.github/actions/run-package-tests
@@ -69,26 +69,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 0
 
       - name: Download all coverage reports
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3
         with:
           pattern: coverage-*
           merge-multiple: true
           path: .
 
       - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
+        uses: sonarsource/sonarqube-scan-action@dcc5211de53084482f1c6779dda263459f5274f6
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       # Check the Quality Gate status.
       - name: SonarQube Quality Gate check
         id: sonarqube-quality-gate-check
-        uses: sonarsource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b
+        uses: sonarsource/sonarqube-quality-gate-action@cb3ed20f9fec62b4c3b8ad9e77656c6adaade913
         with:
           pollingTimeoutSec: 600
         env:
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - name: Setup Python and install dependencies
         uses: ./.github/actions/setup-python
@@ -110,7 +110,7 @@ jobs:
         run: echo "PY=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
 
       - name: Configure pre-commit cache
-        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb
+        uses: actions/cache@565629816435f6c0b50676926c9b05c254113c0c
         with:
           path: ~/.cache/pre-commit
           key: pre-commit|${{ env.PY }}|${{ hashFiles('.pre-commit-config.yaml') }}
@@ -127,7 +127,7 @@ jobs:
       contents: read
     steps:
       - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - name: License Header Check
         uses: B1NARY-GR0UP/nwa@924fd990a1769a8198a3cc5d2a83f72a41a51951
@@ -142,16 +142,16 @@ jobs:
       contents: read
     steps:
       - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - id: fossa-analyze
-        uses: fossas/fossa-action@3ebcea1862c6ffbd5cf1b4d0bd6b3fe7bd6f2cac # Use a specific version if locking is preferred
+        uses: fossas/fossa-action@c414b9ad82eaad041e47a7cf62a4f02411f427a0 # Use a specific version if locking is preferred
         with:
           api-key: ${{secrets.FOSSA_API_KEY}}
           run-tests: false # Add another run with run-tests: true if ci should fail on issues
 
       - id: fossa-test
-        uses: fossas/fossa-action@3ebcea1862c6ffbd5cf1b4d0bd6b3fe7bd6f2cac # Use a specific version if locking is preferred
+        uses: fossas/fossa-action@c414b9ad82eaad041e47a7cf62a4f02411f427a0 # Use a specific version if locking is preferred
         with:
           api-key: ${{secrets.FOSSA_API_KEY}}
           run-tests: true # Add another run with run-tests: true if ci should fail on issues
@@ -162,7 +162,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - name: Setup Python and install dependencies
         uses: ./.github/actions/setup-python
@@ -182,7 +182,7 @@ jobs:
       UV_PROJECT: ./
     steps:
       - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - name: Setup Python and install dependencies
         uses: ./.github/actions/setup-python

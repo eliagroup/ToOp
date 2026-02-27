@@ -19,7 +19,7 @@ jobs:
       contents: write
     steps:
       - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 0 # fetch full history
           fetch-tags: true # ensure tags are fetched
@@ -27,10 +27,10 @@ jobs:
           persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
 
       - name: Install uv
-        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
+        uses: astral-sh/setup-uv@0098a7571ce5c86752e28c0868b41650866a8f4c
 
       - name: "Set up Python"
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version-file: "pyproject.toml"
 
@@ -86,7 +86,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
 
@@ -96,10 +96,10 @@ jobs:
           git config user.email ToOp@eliagroup.eu
 
       - name: Install uv
-        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
+        uses: astral-sh/setup-uv@0098a7571ce5c86752e28c0868b41650866a8f4c
 
       - name: "Set up Python"
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version-file: "pyproject.toml"
 

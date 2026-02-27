@@ -18,6 +18,6 @@ runs:
   using: "composite"
   steps:
     - name: Install uv
-      uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
+      uses: astral-sh/setup-uv@0098a7571ce5c86752e28c0868b41650866a8f4c
       with:
         version: ${{ inputs.uv-version }}

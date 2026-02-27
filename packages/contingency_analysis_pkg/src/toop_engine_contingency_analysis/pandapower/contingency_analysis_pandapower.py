@@ -140,7 +140,7 @@ def update_results_with_names(
     branch_results_df: pat.DataFrame[BranchResultSchema],
     node_results_df: pat.DataFrame[NodeResultSchema],
     va_diff_results: pat.DataFrame[VADiffResultSchema],
-    element_name_map: dict,
+    element_name_map: dict[str, str],
 ) -> tuple[
     pat.DataFrame[RegulatingElementResultSchema],
     pat.DataFrame[BranchResultSchema],

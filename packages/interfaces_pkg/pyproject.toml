@@ -29,8 +29,8 @@ requires-python = ">=3.11,<3.12"
 dependencies = [
     "pandera (>=0.22.1,<0.23.0)",
     "beartype (>=0.22.0,<0.23.0)",
-    "numpy (>=1.26.0,<2.0.0)",
-    "pandas (>=2.2.3,<3.0.0)",
+    "numpy (>=2.4.2,<2.5.0)",
+    "pandas (>=3.0.0,<3.1.0)",
     "pydantic (>=1.10.3,<3.0.0)",
     "logbook (>=1.8.1,<1.9.0)",
     "h5py>=3.0.0",
@@ -40,7 +40,7 @@ dependencies = [
     "polars>=1.33.0",
     "pyarrow>=21.0.0",
     "fsspec>=2024.0.0",
-    "protobuf (>=5,<6)",
+    "protobuf (>=6,<7)",
     "mypy-protobuf>=3.7.0",
     "fonttools>=4.60.2"
 ]

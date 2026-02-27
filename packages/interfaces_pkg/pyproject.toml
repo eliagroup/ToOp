@@ -25,17 +25,17 @@ classifiers=[
 ]
 
 readme = "README.md"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.14,<3.15"
 dependencies = [
-    "pandera (>=0.22.1,<0.23.0)",
+    "pandera (>=0.29.0,<0.30.0)",
     "beartype (>=0.22.0,<0.23.0)",
     "numpy (>=1.26.0,<2.0.0)",
     "pandas (>=2.2.3,<3.0.0)",
     "pydantic (>=1.10.3,<3.0.0)",
-    "logbook (>=1.8.1,<1.9.0)",
+    "logbook (>=1.9.2,<1.10.0)",
     "h5py>=3.0.0",
     "numpydantic (>=1.6.4,<2.0.0)",
-    "jaxtyping (>=0.2.22,<0.3.0)",
+    "jaxtyping (>=0.3.9,<0.4.0)",
     "networkx>=2.5.0",
     "polars>=1.33.0",
     "pyarrow>=21.0.0",

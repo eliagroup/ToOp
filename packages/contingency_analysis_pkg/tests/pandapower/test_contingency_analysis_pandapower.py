@@ -30,11 +30,11 @@ def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet
     nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
     with pa.config.config_context(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA):
         lf_result_sequential_polars = get_ac_loadflow_results(
-            pandapower_net, nminus1_definition, job_id="test_job", n_processes=10
+            pandapower_net, nminus1_definition, job_id="test_job", n_processes=1
         )
     with pa.config.config_context(validation_enabled=False):
         lf_result_sequential_polars_no_val = get_ac_loadflow_results(
-            pandapower_net, nminus1_definition, job_id="test_job", n_processes=10
+            pandapower_net, nminus1_definition, job_id="test_job", n_processes=1
         )
     assert lf_result_sequential_polars is not None
     assert lf_result_sequential_polars_no_val == lf_result_sequential_polars

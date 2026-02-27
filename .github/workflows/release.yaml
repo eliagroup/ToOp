@@ -65,7 +65,6 @@ jobs:
 
       - name: Configure git profile
         uses: ./.github/actions/configure-git-profile
-        
       - name: Create release tag
         run: |
           echo "Creating git tag"

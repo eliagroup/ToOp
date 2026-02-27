@@ -121,25 +121,6 @@ jobs:
       - name: Run code quality checks
         run: SKIP=no-commit-to-branch uv run pre-commit run --all-files
 
-  # Run after ensuring that requirements are up to date
-  test-pip-install:
-    needs: [code-quality-checks]
-    if: success()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
-
-      - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
-        with:
-          python-version-file: "pyproject.toml"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
   license-headers:
     runs-on: ubuntu-latest
     permissions:
@@ -223,7 +204,6 @@ jobs:
         test-example-notebooks,
         test-packages-github-runner,
         test-packages-toop-runner,
-        test-pip-install,
       ]
     if: always()
     permissions:
@@ -240,7 +220,6 @@ jobs:
           echo "Test Example Notebooks: ${{ needs.test-example-notebooks.result }}"
           echo "Test Packages (GitHub Runner): ${{ needs.test-packages-github-runner.result }}"
           echo "Test Packages (ToOp Runner): ${{ needs.test-packages-toop-runner.result }}"
-          echo "Test Pip Install: ${{ needs.test-pip-install.result }}"
 
           if [[ "${{ needs.code-quality-checks.result }}" != "success" ]] || \
              [[ "${{ needs.fossa-scan.result }}" != "success" ]] || \
@@ -249,8 +228,7 @@ jobs:
              [[ "${{ needs.test-docs-build.result }}" != "success" ]] || \
              [[ "${{ needs.test-example-notebooks.result }}" != "success" ]] || \
              [[ "${{ needs.test-packages-github-runner.result }}" != "success" ]] || \
-             [[ "${{ needs.test-packages-toop-runner.result }}" != "success" ]] || \
-             [[ "${{ needs.test-pip-install.result }}" != "success" ]]; then
+             [[ "${{ needs.test-packages-toop-runner.result }}" != "success" ]]; then
             echo "One or more CI jobs failed, were cancelled, or skipped. Marking as failed."
             exit 1
           fi

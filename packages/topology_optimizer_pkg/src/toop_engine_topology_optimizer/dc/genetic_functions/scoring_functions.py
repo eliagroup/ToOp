@@ -63,6 +63,7 @@ METRICS = {
     "switching_distance": jnp.maximum,
     "split_subs": jnp.maximum,
     "n_2_penalty": jnp.add,
+    "pst_setpoint_deviation": jnp.maximum,
 }
 
 
@@ -111,6 +112,11 @@ def compute_overloads(
         solver_config=solver_config,
     )
 
+    # Extract initial PST tap indices if PST optimization is enabled
+    initial_pst_tap_idx = None
+    if dynamic_information.nodal_injection_information is not None:
+        initial_pst_tap_idx = dynamic_information.nodal_injection_information.starting_tap_idx
+
     aggregates = {}
     for metric_name in observed_metrics:
         metric = aggregate_to_metric_batched(
@@ -119,6 +125,7 @@ def compute_overloads(
             reassignment_distance=dynamic_information.action_set.reassignment_distance,
             n_relevant_subs=dynamic_information.n_sub_relevant,
             metric=metric_name,
+            initial_pst_tap_idx=initial_pst_tap_idx,
         )
         metric = jnp.where(success, metric, jnp.inf)
         aggregates[metric_name] = metric

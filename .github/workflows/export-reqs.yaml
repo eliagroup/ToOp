@@ -38,12 +38,10 @@ jobs:
         run: uv export --no-hashes --frozen --format=requirements.txt --output-file=requirements.txt --quiet
 
       - name: Configure git profile
-        run: |
-          git config user.name "ToOp Build Service"
-          git config user.email ToOp@eliagroup.eu
+        uses: ./.github/actions/configure-git-profile
 
       - name: Commit and push changes
         run: |
           git add requirements.txt
-          git commit -m "Update requirements.txt"
+          git commit -m "chore: Export requirements.txt"
           git push origin main-with-reqs --force

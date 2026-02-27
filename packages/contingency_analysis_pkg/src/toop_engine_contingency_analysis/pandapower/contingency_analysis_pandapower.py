@@ -47,6 +47,7 @@ from toop_engine_interfaces.loadflow_results import (
     ConvergenceStatus,
     LoadflowResults,
     NodeResultSchema,
+    RegulatingElementResultSchema,
     VADiffResultSchema,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -116,10 +117,10 @@ def run_single_outage(
     restore_elements_to_service(net, outaged_elements, were_in_service)
 
     element_name_map = monitored_elements["name"].to_dict()
-    for df in [branch_results_df, node_results_df, regulating_elements_df, va_diff_results]:
-        no_name_yet = df["element_name"] == ""
-        df.loc[no_name_yet, "element_name"] = df.loc[no_name_yet].index.get_level_values("element").map(element_name_map)
-        df["contingency_name"] = contingency.name
+
+    regulating_elements_df, branch_results_df, node_results_df, va_diff_results = update_results_with_names(
+        contingency, regulating_elements_df, branch_results_df, node_results_df, va_diff_results, element_name_map
+    )
     lf_result = LoadflowResults(
         job_id=job_id,
         branch_results=branch_results_df,
@@ -130,6 +131,51 @@ def run_single_outage(
         warnings=[],
     )
     return lf_result
+
+
+@pa.check_types
+def update_results_with_names(
+    contingency: PandapowerContingency,
+    regulating_elements_df: pat.DataFrame[RegulatingElementResultSchema],
+    branch_results_df: pat.DataFrame[BranchResultSchema],
+    node_results_df: pat.DataFrame[NodeResultSchema],
+    va_diff_results: pat.DataFrame[VADiffResultSchema],
+    element_name_map: dict,
+) -> tuple[
+    pat.DataFrame[RegulatingElementResultSchema],
+    pat.DataFrame[BranchResultSchema],
+    pat.DataFrame[NodeResultSchema],
+    pat.DataFrame[VADiffResultSchema],
+]:
+    """Update the results dataframes with the element names from the monitored elements dataframe.
+
+    Parameters
+    ----------
+    contingency: PandapowerContingency
+        The contingency for which the results were computed. Used to set the contingency name in the results dataframes.
+    regulating_elements_df: pat.DataFrame[RegulatingElementResultSchema]
+        The regulating elements results dataframe to update with element names
+    branch_results_df: pat.DataFrame[BranchResultSchema]
+        The branch results dataframe to update with element names
+    node_results_df: pat.DataFrame[NodeResultSchema]
+        The node results dataframe to update with element names
+    va_diff_results: pat.DataFrame[VADiffResultSchema]
+        The VA diff results dataframe to update with element names
+    element_name_map: dict
+        A dictionary mapping element indices to element names
+
+    Returns
+    -------
+    tuple[pat.DataFrame[RegulatingElementResultSchema], pat.DataFrame[BranchResultSchema],
+          pat.DataFrame[NodeResultSchema], pat.DataFrame[VADiffResultSchema]]
+        The updated regulating elements results dataframe, branch results dataframe, node results dataframe
+        and VA diff results dataframe
+    """
+    for df in [branch_results_df, node_results_df, regulating_elements_df, va_diff_results]:
+        no_name_yet = (df["element_name"] == "") | (df["element_name"].isna())
+        df.loc[no_name_yet, "element_name"] = df.loc[no_name_yet].index.get_level_values("element").map(element_name_map)
+        df["contingency_name"] = contingency.name
+    return regulating_elements_df, branch_results_df, node_results_df, va_diff_results
 
 
 def restore_elements_to_service(

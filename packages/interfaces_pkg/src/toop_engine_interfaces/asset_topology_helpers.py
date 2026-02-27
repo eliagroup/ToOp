@@ -303,9 +303,9 @@ def filter_duplicate_couplers(
             # Sort the couplers by their type in the hierarchy, if the type is not in the hierarchy, it will be at the end
             sorted_couplers = sorted(
                 (station.couplers[i] for i in index),
-                key=lambda c: retain_type_hierarchy.index(c.type)
-                if c.type in retain_type_hierarchy
-                else len(retain_type_hierarchy),
+                key=lambda c: (
+                    retain_type_hierarchy.index(c.type) if c.type in retain_type_hierarchy else len(retain_type_hierarchy)
+                ),
             )
         # Keep the first coupler and remove the others
         kept_couplers.append(sorted_couplers[0])

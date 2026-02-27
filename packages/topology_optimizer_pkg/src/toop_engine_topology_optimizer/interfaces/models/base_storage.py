@@ -179,14 +179,14 @@ def is_unsplit_topologies(topologies: list[BaseDBTopology]) -> bool:
     return is_unsplit([(topo.actions, topo.disconnections, topo.pst_setpoints) for topo in topologies])
 
 
-def hash_topo_data(data: list[tuple[list[int], list[int], list[int]]]) -> bytes:
+def hash_topo_data(data: list[tuple[list[int], list[int], list[int] | None]]) -> bytes:
     """Hash a list of actions, disconnections and pst taps to a bytes digest directly
 
     Sorts the actions and disconnections to avoid duplicates in the hash.
 
     Parameters
     ----------
-    data : list[tuple[list[int], list[int], list[int]]]
+    data : list[tuple[list[int], list[int], list[int] | None]]
         A list of actions, disconnections and pst setpoints for all topologies in a strategy
 
     Returns

@@ -7,7 +7,6 @@
 
 import jax
 import numpy as np
-import pytest
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from tests.numpy_reference import run_solver as run_solver_ref
@@ -143,7 +142,7 @@ def test_run_solver_random_topo(
         solver_config=solver_config,
         aggregate_output_fn=lambda x: x.n_1_matrix,
     )
-    # Some might fail
+    # Some random topologies can be numerically unstable. Compare only successful solver runs.
     assert jnp.sum(success) > 0
 
     outage_branches = np.flatnonzero(nd.outaged_branch_mask)
@@ -153,9 +152,11 @@ def test_run_solver_random_topo(
             topologies.sub_ids[topo_id],
             branches_per_sub=solver_config.branches_per_sub,
         )
-        if not success[topo_id]:
-            with pytest.raises(ValueError):
-                _, success = run_solver_ref(
+
+        if not bool(success[topo_id]):
+            ref_deemed_unsuccessful = False
+            try:
+                _, success_ref = run_solver_ref(
                     branch_topo_vect=topo_vect,
                     relevant_nodes=nd.relevant_nodes,
                     slack=nd.slack,
@@ -169,27 +170,31 @@ def test_run_solver_random_topo(
                     branches_to_outage=outage_branches,
                     nodal_injections=nd.nodal_injection[0],
                 )
-                if not np.all(success):
-                    raise ValueError()
-        else:
-            n_1_ref, success_ref = run_solver_ref(
-                branch_topo_vect=topo_vect,
-                relevant_nodes=nd.relevant_nodes,
-                slack=nd.slack,
-                n_stat=nd.n_original_nodes,
-                ptdf=nd.ptdf,
-                susceptance=nd.susceptances,
-                from_node=nd.from_nodes,
-                to_node=nd.to_nodes,
-                branches_at_nodes=nd.branches_at_nodes,
-                branch_direction=nd.branch_direction,
-                branches_to_outage=outage_branches,
-                nodal_injections=nd.nodal_injection[0],
-            )
-            assert np.all(success_ref)
-            n_1_solver = n_1_flows[topo_id, 0, : len(outage_branches)]
-            assert n_1_solver.shape == n_1_ref.shape
-            assert jnp.allclose(n_1_solver, n_1_ref)
+                ref_deemed_unsuccessful = not np.all(success_ref)
+            except ValueError:
+                ref_deemed_unsuccessful = True
+
+            assert ref_deemed_unsuccessful
+            continue
+
+        n_1_ref, success_ref = run_solver_ref(
+            branch_topo_vect=topo_vect,
+            relevant_nodes=nd.relevant_nodes,
+            slack=nd.slack,
+            n_stat=nd.n_original_nodes,
+            ptdf=nd.ptdf,
+            susceptance=nd.susceptances,
+            from_node=nd.from_nodes,
+            to_node=nd.to_nodes,
+            branches_at_nodes=nd.branches_at_nodes,
+            branch_direction=nd.branch_direction,
+            branches_to_outage=outage_branches,
+            nodal_injections=nd.nodal_injection[0],
+        )
+        assert np.all(success_ref)
+        n_1_solver = n_1_flows[topo_id, 0, : len(outage_branches)]
+        assert n_1_solver.shape == n_1_ref.shape
+        assert jnp.allclose(n_1_solver, n_1_ref)
 
 
 def test_run_solver_multiple_timesteps(

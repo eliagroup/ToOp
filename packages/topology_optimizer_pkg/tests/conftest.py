@@ -282,7 +282,7 @@ def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="function")
 def grid_folder(_grid_folder: Path, tmp_path: Path) -> Path:
-    """Grid data directory copied from
+    """Copy the content of the _grid_folder fixture to a per-test temporary directory.
 
     Returns:
         Path: The path to the grid data directory.

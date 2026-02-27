@@ -21,7 +21,7 @@
     },
     {
       "addLabels": ["stability-days"],
-      "description": "Label PRs that are still waiting for minimum release age",
+      "description": "Label PRs that are still within the 10-day minimum release age",
       "matchJsonata": ["$exists(newVersionAgeInDays) and newVersionAgeInDays < 10"]
     },
     {

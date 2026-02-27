@@ -172,7 +172,6 @@ def case14_network_data(_case14_data_folder: Path) -> NetworkData:
     return network_data
 
 
-
 @pytest.fixture(scope="session")
 def _jax_inputs(
     case14_network_data: NetworkData,
@@ -701,7 +700,6 @@ def _node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPat
             f,
         )
     return tmp_path
-
 
 
 @pytest.fixture(scope="function")

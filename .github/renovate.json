@@ -35,13 +35,13 @@
       "description": "Group all GitHub Actions updates into one PR",
       "groupName": "github actions",
       "matchManagers": ["github-actions"],
-      "separateMajorMinor": true,
-      "separateMultipleMajor": true
+      "separateMajorMinor": false,
+      "separateMultipleMajor": false
     }
   ],
   "rebaseWhen": "conflicted",
   "semanticCommits": "enabled",
   "vulnerabilityAlerts": {
     "labels": ["security", "dependencies"]
-  }
+  } 
 }

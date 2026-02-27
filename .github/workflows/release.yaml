@@ -26,16 +26,10 @@ jobs:
           ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
           persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@0098a7571ce5c86752e28c0868b41650866a8f4c
-
-      - name: "Set up Python"
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+      - name: Setup Python and install dependencies
+        uses: ./.github/actions/setup-python
         with:
-          python-version-file: "pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --frozen --only-group ci
+          sync-args: '--frozen --only-group ci'
 
       - name: Set development release flag
         run: |
@@ -90,16 +84,10 @@ jobs:
       - name: Configure git profile
         uses: ./.github/actions/configure-git-profile
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@0098a7571ce5c86752e28c0868b41650866a8f4c
-
-      - name: "Set up Python"
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+      - name: Setup Python and install dependencies
+        uses: ./.github/actions/setup-python
         with:
-          python-version-file: "pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --only-group doc --frozen
+          sync-args: '--frozen --only-group doc'
 
       - name: Conditional Deployment
         run: uv run mkdocs gh-deploy --force

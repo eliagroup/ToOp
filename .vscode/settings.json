@@ -2,6 +2,10 @@
     "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+        "-n",
+        "auto"
+    ],
     "python.analysis.extraPaths": [
         "packages/interfaces_pkg/src",
         "packages/grid_helpers_pkg/src",
@@ -9,5 +13,5 @@
         "packages/contingency_analysis_pkg/src",
         "packages/importer_pkg/src",
         "packages/topology_optimizer_pkg/src"
-    ],
+    ]
 }

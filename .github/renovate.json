@@ -24,6 +24,14 @@
       "description": "Group all python updates into one PR to reduce noise",
       "groupName": "python dependencies",
       "matchCategories": ["python"]
+    },
+    {
+      "addLabels": ["github-actions"],
+      "description": "Group all GitHub Actions updates into one PR",
+      "groupName": "github actions",
+      "matchManagers": ["github-actions"],
+      "separateMajorMinor": true,
+      "separateMultipleMajor": true
     }
   ],
   "rebaseWhen": "conflicted",

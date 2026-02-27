@@ -110,19 +110,12 @@ def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Res
     network_data = load_network_data(grid_folder / "case57" / PREPROCESSING_PATHS["network_data_file_path"])
     assert network_data.branch_action_set is not None
 
-    rng = np.random.default_rng(42)
-    contingency_ids_sorted = sorted(contingency_ids_case_57)
-
     topos = []
     for _ in range(10):
-        action = random_actions(action_set, rng, n_split_subs=2)
+        action = random_actions(action_set, np.random.default_rng(42), n_split_subs=2)
 
         # Create a random integer array for worst_k_contingency_cases
-        worst_k_contingency_cases = rng.choice(
-            contingency_ids_sorted,
-            size=min(5, len(contingency_ids_sorted)),
-            replace=False,
-        ).tolist()
+        worst_k_contingency_cases = np.random.choice(contingency_ids_case_57, size=5, replace=False).tolist()
 
         topology = Topology(
             actions=action,
@@ -132,7 +125,7 @@ def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Res
                 fitness=-42,
                 extra_scores={
                     "overload_energy_n_1": 123.4,
-                    "top_k_overloads_n_1": float(rng.random()),
+                    "top_k_overloads_n_1": float(np.random.rand()),
                 },
                 worst_k_contingency_cases=worst_k_contingency_cases,
             ),

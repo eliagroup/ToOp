@@ -176,7 +176,6 @@ def random_actions(action_set: ActionSet, rng: np.random.Generator, n_split_subs
     """
     # First sample the substations to split
     substations = list(set(station.grid_model_id for station in action_set.local_actions))
-    substations.sort()  # Sort to make sure the order is deterministic for the same random seed
     sub_choice = rng.choice(substations, size=min(n_split_subs, len(substations)), replace=False).tolist()
 
     # Then sample an action for each substation

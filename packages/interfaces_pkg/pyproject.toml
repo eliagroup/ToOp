@@ -79,7 +79,7 @@ dev = [
     "pytest-logbook>=1.2.0",
     "pypowsybl-jupyter>=1.0.0",
     "docker>=7.1.0",
-    "ray"
+    "ray (>=2.42.1,<3.0.0)",
 ]
 
 

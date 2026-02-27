@@ -141,9 +141,15 @@ def shutdown_ray():
 
 
 @pytest.fixture(scope="session")
-def case14_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _case14_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("case14")
     case14_pandapower(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def case14_data_folder(_case14_data_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_case14_data_folder, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 
@@ -158,12 +164,13 @@ def case14_topologies() -> np.ndarray:
 
 
 @pytest.fixture(scope="session")
-def case14_network_data(case14_data_folder: Path) -> NetworkData:
-    fs_dir = DirFileSystem(str(case14_data_folder))
+def case14_network_data(_case14_data_folder: Path) -> NetworkData:
+    fs_dir = DirFileSystem(str(_case14_data_folder))
     backend = PandaPowerBackend(fs_dir)
     network_data = preprocess(backend)
 
     return network_data
+
 
 
 @pytest.fixture(scope="session")
@@ -297,20 +304,32 @@ def save_timestep_data(
 
 
 @pytest.fixture(scope="session")
-def oberrhein_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _oberrhein_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("grid_oberrhein_data")
     oberrhein_data(tmp_path)
     return tmp_path
 
 
 @pytest.fixture(scope="session")
-def data_folder(oberrhein_data_folder: Path) -> Path:
-    return oberrhein_data_folder
+def _data_folder(_oberrhein_data_folder: Path) -> Path:
+    return _oberrhein_data_folder
+
+
+@pytest.fixture(scope="function")
+def oberrhein_data_folder(_oberrhein_data_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_oberrhein_data_folder, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def data_folder(_data_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_data_folder, tmp_path, dirs_exist_ok=True)
+    return tmp_path
 
 
 @pytest.fixture(scope="session")
-def network_data(data_folder: Path) -> NetworkData:
-    fs_dir = DirFileSystem(str(data_folder))
+def network_data(_data_folder: Path) -> NetworkData:
+    fs_dir = DirFileSystem(str(_data_folder))
     backend = PandaPowerBackend(fs_dir)
     network_data = extract_network_data_from_interface(backend)
     return network_data
@@ -331,19 +350,19 @@ def network_data_filled(network_data_with_ptdf: NetworkData) -> NetworkData:
 
 
 @pytest.fixture(scope="session")
-def network_data_preprocessed(data_folder: Path, oberrhein_outage_station_busbars_map: dict) -> NetworkData:
+def network_data_preprocessed(_data_folder: Path, oberrhein_outage_station_busbars_map: dict) -> NetworkData:
     class TestBackend(PandaPowerBackend):
         def get_busbar_outage_map(self):
             return oberrhein_outage_station_busbars_map
 
-    fs_dir = DirFileSystem(str(data_folder))
+    fs_dir = DirFileSystem(str(_data_folder))
     backend = TestBackend(fs_dir)
     network_data = preprocess(backend, parameters=PreprocessParameters(enable_bb_outage=True))
     return network_data
 
 
 @pytest.fixture(scope="session")
-def preprocessed_data_folder(data_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _preprocessed_data_folder(_data_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("result")
     tmp_grid_file_path_pandapower = tmp_path / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     tmp_grid_file_path_pandapower.parent.mkdir(parents=True, exist_ok=True)
@@ -354,18 +373,18 @@ def preprocessed_data_folder(data_folder: Path, tmp_path_factory: pytest.TempPat
 
     # Copy over the grid file
     shutil.copy(
-        data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"],
+        _data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"],
         tmp_grid_file_path_pandapower,
     )
 
     # Extract data from the backend, run preprocessing
-    fs_dir = DirFileSystem(str(data_folder))
+    fs_dir = DirFileSystem(str(_data_folder))
     backend = PandaPowerBackend(fs_dir)
     network_data = preprocess(backend)
     save_network_data(temp_network_data_file_path, network_data)
     static_information = convert_to_jax(network_data, enable_bb_outage=False)
     save_static_information(temp_static_information_file_path, static_information)
-    write_aux_data(data_folder=data_folder, network_data=network_data)
+    write_aux_data(data_folder=_data_folder, network_data=network_data)
 
     # Generate random "optimization results"
     static_information = replace(
@@ -422,9 +441,15 @@ def preprocessed_data_folder(data_folder: Path, tmp_path_factory: pytest.TempPat
     return tmp_path
 
 
+@pytest.fixture(scope="function")
+def preprocessed_data_folder(_preprocessed_data_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_preprocessed_data_folder, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
 @pytest.fixture(scope="session")
-def loaded_net(data_folder: Path) -> pp.pandapowerNet:
-    grid_file_path = data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
+def loaded_net(_data_folder: Path) -> pp.pandapowerNet:
+    grid_file_path = _data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     net = pp.from_json(grid_file_path)
     pp.rundcpp(net)
     return net
@@ -461,14 +486,14 @@ def benchmark_config(benchmark_config_file: Path) -> dict:
 
 
 @pytest.fixture(scope="session")
-def data_folder_with_more_branches(
-    data_folder: Path,
+def _data_folder_with_more_branches(
+    _data_folder: Path,
     network_data_preprocessed: NetworkData,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Path:
     temp_dir = tmp_path_factory.mktemp("more_branches")
     # Copy everything over
-    shutil.copytree(data_folder, temp_dir, dirs_exist_ok=True)
+    shutil.copytree(_data_folder, temp_dir, dirs_exist_ok=True)
     grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     mask_path = temp_dir / PREPROCESSING_PATHS["masks_path"]
 
@@ -507,28 +532,46 @@ def data_folder_with_more_branches(
     return temp_dir
 
 
+@pytest.fixture(scope="function")
+def data_folder_with_more_branches(_data_folder_with_more_branches: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_data_folder_with_more_branches, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
 @pytest.fixture(scope="session")
-def powsybl_case57_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _powsybl_case57_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     temp_dir = tmp_path_factory.mktemp("powsybl_case57")
     case57_data_powsybl(temp_dir)
     return temp_dir
 
 
 @pytest.fixture(scope="session")
-def powsybl_data_folder(powsybl_case57_folder: Path) -> Path:
-    return powsybl_case57_folder
+def _powsybl_data_folder(_powsybl_case57_folder: Path) -> Path:
+    return _powsybl_case57_folder
+
+
+@pytest.fixture(scope="function")
+def powsybl_case57_folder(_powsybl_case57_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_powsybl_case57_folder, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def powsybl_data_folder(_powsybl_data_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_powsybl_data_folder, tmp_path, dirs_exist_ok=True)
+    return tmp_path
 
 
 @pytest.fixture(scope="session")
-def loaded_powsybl_net(powsybl_data_folder: Path) -> pypowsybl.network.Network:
-    grid_file_path = powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+def loaded_powsybl_net(_powsybl_data_folder: Path) -> pypowsybl.network.Network:
+    grid_file_path = _powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     net = pypowsybl.network.load(grid_file_path)
     pypowsybl.loadflow.run_ac(net)
     return net
 
 
 @pytest.fixture(scope="session")
-def preprocessed_powsybl_data_folder(powsybl_data_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _preprocessed_powsybl_data_folder(_powsybl_data_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("powsybl_result")
     tmp_grid_file_path = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -540,12 +583,12 @@ def preprocessed_powsybl_data_folder(powsybl_data_folder: Path, tmp_path_factory
     temp_lf_parameters_file_path.parent.mkdir(parents=True, exist_ok=True)
     # Copy over the grid file
     shutil.copy(
-        powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        _powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         tmp_grid_file_path,
     )
 
     # Extract data from the backend, run preprocessing
-    fs_dir = DirFileSystem(str(powsybl_data_folder))
+    fs_dir = DirFileSystem(str(_powsybl_data_folder))
     save_lf_params_to_fs(
         DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -576,11 +619,17 @@ def preprocessed_powsybl_data_folder(powsybl_data_folder: Path, tmp_path_factory
     return tmp_path
 
 
+@pytest.fixture(scope="function")
+def preprocessed_powsybl_data_folder(_preprocessed_powsybl_data_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_preprocessed_powsybl_data_folder, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
 @pytest.fixture(scope="session")
-def oberrhein_outage_station_busbars_map(oberrhein_data_folder: Path) -> dict:
+def oberrhein_outage_station_busbars_map(_oberrhein_data_folder: Path) -> dict:
     stations_desired = ["71%%bus", "98%%bus", "130%%bus", "8%%bus", "58%%bus", "157%%bus", "165%%bus"]
 
-    asset_topo = load_asset_topology(oberrhein_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"])
+    asset_topo = load_asset_topology(_oberrhein_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"])
     retval = {}
     for station in asset_topo.stations:
         if station.grid_model_id in stations_desired:
@@ -594,9 +643,15 @@ def oberrhein_outage_station_busbars_map(oberrhein_data_folder: Path) -> dict:
 
 
 @pytest.fixture(scope="session")
-def case30_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _case30_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("case30_with_psts")
     case30_with_psts(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def case30_data_folder(_case30_data_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_case30_data_folder, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 
@@ -606,7 +661,7 @@ def basic_node_breaker_grid_v1() -> Network:
 
 
 @pytest.fixture(scope="session")
-def node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("node_breaker_grid_preprocessed")
     node_breaker_folder_powsybl(tmp_path)
     filesystem_dir = DirFileSystem(str(tmp_path))
@@ -645,25 +700,37 @@ def node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPath
             {"best_topos": best, "initial_metrics": {"n_failures": 0, "fitness": 234}},
             f,
         )
+    return tmp_path
 
+
+
+@pytest.fixture(scope="function")
+def node_breaker_grid_preprocessed_data_folder(_node_breaker_grid_preprocessed_data_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_node_breaker_grid_preprocessed_data_folder, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 
 @pytest.fixture(scope="session")
-def test_grid_folder_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _test_grid_folder_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a temporary folder with test grid node breaker data."""
     tmp_path = tmp_path_factory.mktemp("test_grid_node_breaker")
     node_breaker_folder_powsybl(tmp_path)
     return tmp_path
 
 
+@pytest.fixture(scope="function")
+def test_grid_folder_path(_test_grid_folder_path: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_test_grid_folder_path, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
 @pytest.fixture(scope="session")
-def network_data_test_grid(test_grid_folder_path: Path, outage_map_test_grid: dict) -> NetworkData:
+def network_data_test_grid(_test_grid_folder_path: Path, outage_map_test_grid: dict) -> NetworkData:
     class TestBackend(PowsyblBackend):
         def get_busbar_outage_map(self):
             return outage_map_test_grid
 
-    fs_dir = DirFileSystem(str(test_grid_folder_path))
+    fs_dir = DirFileSystem(str(_test_grid_folder_path))
     backend = TestBackend(fs_dir, lf_params=SINGLE_SLACK)
     network_data = preprocess(backend, parameters=PreprocessParameters(enable_bb_outage=True))
     return network_data
@@ -716,9 +783,15 @@ def ucte_file() -> Path:
 
 
 @pytest.fixture(scope="session")
-def create_ucte_data_path(ucte_file: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _create_ucte_data_path(ucte_file: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("ucte_grid")
     create_ucte_data_folder(tmp_path, ucte_file=ucte_file)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def create_ucte_data_path(_create_ucte_data_path: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_create_ucte_data_path, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 
@@ -738,10 +811,16 @@ def basic_ucte_data_folder(create_ucte_data_path: Path, tmp_path_factory: pytest
 
 
 @pytest.fixture(scope="session")
-def case14_data_with_asset_topo_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _case14_data_with_asset_topo_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Fixture to create a temporary folder for the case14 test."""
     tmp_path = tmp_path_factory.mktemp("case14")
     case14_matching_asset_topo_powsybl(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def case14_data_with_asset_topo_path(_case14_data_with_asset_topo_path: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_case14_data_with_asset_topo_path, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 
@@ -1003,12 +1082,12 @@ def kafka_connection_str(kafka_container: Container) -> str:
 
 @pytest.fixture(scope="module")
 def overlapping_branch_data(
-    preprocessed_powsybl_data_folder: Path,
+    _preprocessed_powsybl_data_folder: Path,
 ) -> tuple[NetworkData, StaticInformation, list[dict]]:
     """
     Fixture to load the network data for testing non-overlapping branch masks.
     """
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(_preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
     outage_mask = network_data.outaged_branch_mask
     # Make sure all branch masks are identical
     updated_outage_mask = outage_mask
@@ -1048,12 +1127,12 @@ def check_branches_match_between_network_data_and_static_info(network_data, stat
 
 @pytest.fixture(scope="module")
 def non_overlapping_branch_data(
-    preprocessed_powsybl_data_folder: Path,
+    _preprocessed_powsybl_data_folder: Path,
 ) -> tuple[NetworkData, StaticInformation, list[dict]]:
     """
     Fixture to load the network data for testing non-overlapping branch masks.
     """
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(_preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
     monitored_branch_mask = network_data.monitored_branch_mask
@@ -1092,12 +1171,12 @@ def non_overlapping_branch_data(
 
 @pytest.fixture(scope="module")
 def overlapping_monitored_and_disconnected_branch_data(
-    preprocessed_powsybl_data_folder: Path,
+    _preprocessed_powsybl_data_folder: Path,
 ) -> tuple[NetworkData, StaticInformation, list[dict]]:
     """
     Fixture to load the network data for testing partially overlapping branch masks.
     """
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(_preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
     monitored_branch_mask = network_data.monitored_branch_mask
@@ -1135,9 +1214,17 @@ def overlapping_monitored_and_disconnected_branch_data(
 
 
 @pytest.fixture(scope="session")
-def create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid")
     create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(
+    _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path: Path, tmp_path: Path
+) -> Path:
+    shutil.copytree(_create_complex_grid_battery_hvdc_svc_3w_trafo_data_path, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 

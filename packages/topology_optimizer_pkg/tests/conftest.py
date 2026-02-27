@@ -232,7 +232,7 @@ def kafka_heartbeat_topic(kafka_container: Container) -> Generator[str, None, No
 
 
 @pytest.fixture(scope="session")
-def grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Grid data directory prepared once for each worker (per session scope).
 
     Returns:
@@ -280,8 +280,25 @@ def grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return target_path
 
 
+@pytest.fixture(scope="function")
+def grid_folder(_grid_folder: Path, tmp_path: Path) -> Path:
+    """Copy the content of the _grid_folder fixture to a per-test temporary directory.
+
+    Returns:
+        Path: The path to the grid data directory.
+    """
+    # Copy all contents of grid folder into the tmp_path
+    for item in _grid_folder.iterdir():
+        dest = tmp_path / item.name
+        if item.is_dir():
+            shutil.copytree(item, dest)
+        else:
+            shutil.copy2(item, dest)
+    return tmp_path
+
+
 @pytest.fixture(scope="session")
-def case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Path to the case57 non-converging grid file"""
     tmp_path = tmp_path_factory.mktemp("case57_non_converging")
 
@@ -294,14 +311,21 @@ def case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Path
     return tmp_path
 
 
-@pytest.fixture(scope="session")
-def static_information_file(grid_folder: Path) -> Path:
-    return grid_folder / "oberrhein" / PREPROCESSING_PATHS["static_information_file_path"]
+@pytest.fixture(scope="function")
+def case57_non_converging_path(_case57_non_converging_path: Path, tmp_path: Path) -> Path:
+    """Path to a per-test copy of the case57 non-converging grid file directory."""
+    shutil.copytree(_case57_non_converging_path, tmp_path, dirs_exist_ok=True)
+    return tmp_path
 
 
 @pytest.fixture(scope="session")
-def static_information_file_complex(grid_folder: Path) -> Path:
-    return grid_folder / "complex_grid" / PREPROCESSING_PATHS["static_information_file_path"]
+def static_information_file(_grid_folder: Path) -> Path:
+    return _grid_folder / "oberrhein" / PREPROCESSING_PATHS["static_information_file_path"]
+
+
+@pytest.fixture(scope="session")
+def static_information_file_complex(_grid_folder: Path) -> Path:
+    return _grid_folder / "complex_grid" / PREPROCESSING_PATHS["static_information_file_path"]
 
 
 def build_dc_config(base_path: str, static_info_file: Path) -> DictConfig:
@@ -371,12 +395,12 @@ def build_pipeline_cfg(complex_grid_dst: Path, iteration_name: str, file_name: s
 
 @pytest.fixture(scope="session")
 def pipeline_and_configs(
-    tmp_path_factory: pytest.TempPathFactory, grid_folder: Path
+    tmp_path_factory: pytest.TempPathFactory, _grid_folder: Path
 ) -> tuple[DictConfig, DictConfig, DictConfig]:
     """Configuration for the end-to-end pipeline tests"""
     tmp_grid_folder = tmp_path_factory.mktemp("pipeline_grid")
     # Copy complex grid data to temporary folder
-    complex_grid_src = grid_folder / "complex_grid"
+    complex_grid_src = _grid_folder / "complex_grid"
     complex_grid_dst = tmp_grid_folder / "complex_grid"
     os.makedirs(complex_grid_dst, exist_ok=True)
     shutil.copytree(str(complex_grid_src), str(complex_grid_dst), dirs_exist_ok=True)

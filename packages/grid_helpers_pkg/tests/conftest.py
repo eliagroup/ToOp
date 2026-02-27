@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import os
+import shutil
 from pathlib import Path
 
 import pandapower
@@ -55,10 +56,17 @@ def ieee14_json() -> Path:
 
 
 @pytest.fixture(scope="session")
-def case14_data_with_asset_topo_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _case14_data_with_asset_topo_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Fixture to create a temporary folder for the case14 test."""
     tmp_path = tmp_path_factory.mktemp("case14")
     case14_matching_asset_topo_powsybl(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def case14_data_with_asset_topo_path(_case14_data_with_asset_topo_path: Path, tmp_path: Path) -> Path:
+    """Per-test copy of case14 test directory."""
+    shutil.copytree(_case14_data_with_asset_topo_path, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 

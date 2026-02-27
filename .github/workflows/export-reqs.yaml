@@ -43,5 +43,5 @@ jobs:
       - name: Commit and push changes
         run: |
           git add requirements.txt
-          git commit -m "Update requirements.txt"
+          git commit -m "chore: Export requirements.txt"
           git push origin main-with-reqs --force

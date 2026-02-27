@@ -26,7 +26,8 @@ jobs:
           ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
           persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
 
-      - uses: ./.github/actions/setup-python
+      - name: Setup Python and install dependencies
+        uses: ./.github/actions/setup-python
         with:
           sync-args: '--frozen --only-group ci'
 
@@ -88,7 +89,8 @@ jobs:
           git config user.name "ToOp Build Service"
           git config user.email ToOp@eliagroup.eu
 
-      - uses: ./.github/actions/setup-python
+      - name: Setup Python and install dependencies
+        uses: ./.github/actions/setup-python
         with:
           sync-args: '--frozen --only-group doc'
 

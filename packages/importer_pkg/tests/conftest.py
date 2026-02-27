@@ -7,6 +7,7 @@
 
 # import os
 import os
+import shutil
 import time
 import uuid
 from copy import deepcopy
@@ -293,7 +294,7 @@ def cgmes_importer_parameters(tmp_path_factory: pytest.TempPathFactory, test_pyp
 
 
 @pytest.fixture(scope="session")
-def imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, ucte_file) -> Path:
+def _imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, ucte_file) -> Path:
     tmp_path = tmp_path_factory.mktemp("imported_ucte_file_data_folder")
     importer_parameters = UcteImporterParameters(
         grid_model_file=ucte_file,
@@ -316,6 +317,12 @@ def imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, uct
     temp_network_data_file_path.parent.mkdir(parents=True, exist_ok=True)
     # network, network_masks, statistics = network_analysis.convert_file(file, black_white_list_path, output_folder, white_list=True, black_list=True, cross_border_current=False)
     preprocessing.convert_file(importer_parameters=importer_parameters)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def imported_ucte_file_data_folder(_imported_ucte_file_data_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_imported_ucte_file_data_folder, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 

@@ -43,5 +43,5 @@
   "semanticCommits": "enabled",
   "vulnerabilityAlerts": {
     "labels": ["security", "dependencies"]
-  } 
+  }
 }

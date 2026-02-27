@@ -1,4 +1,4 @@
-FROM python:3.11.4-bullseye@sha256:4b3c9c338fdf1db596eb1ccf83597b879098aecf30479a9f01839ab1f1cf0772
+FROM python:3.13.6-bullseye@sha256:f58f33e0563f2ba81c7afe6259cd912f0c33413da93c75cc3a70a941c17afa8c
 
 # Declare environment variables
 ENV PATH="/root/.local/bin:$PATH"

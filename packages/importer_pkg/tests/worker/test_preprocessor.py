@@ -206,7 +206,7 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
     )
 
     processed_gridfile_fs = LocalFileSystem()
-    loadflow_result_fs = LocalFileSystem()
+    loadflow_result_fs = DirFileSystem(str(tmp_path))
     with logbook.handlers.TestHandler() as caplog:
         preprocess_result = preprocessor.preprocess(
             start_command=start_command,

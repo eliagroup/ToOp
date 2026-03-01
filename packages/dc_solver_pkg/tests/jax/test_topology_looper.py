@@ -294,6 +294,27 @@ def test_run_solver_with_disconnections(
     assert res is not None
 
 
+def test_run_solver_with_disconnections_and_injections(
+    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
+) -> None:
+    topologies, candidates, static_information = jax_inputs
+
+    action_index_topo, _ = convert_topo_to_action_set_index(
+        topologies, static_information.dynamic_information.action_set, True
+    )
+
+    disconnections = jnp.repeat(jnp.array([[8, 999]]), topologies.topologies.shape[0], axis=0)
+
+    res = run_solver(
+        topologies=action_index_topo,
+        disconnections=disconnections,
+        injections=candidates,
+        dynamic_information=static_information.dynamic_information,
+        solver_config=static_information.solver_config,
+    )
+    assert res is not None
+
+
 def test_run_solver_inj_candidates(
     jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
 ) -> None:

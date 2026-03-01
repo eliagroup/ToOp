@@ -19,10 +19,12 @@ outaging trafo3ws.
 
 import jax
 import jax.numpy as jnp
+from beartype import beartype as typechecker
 from beartype.typing import Union
-from jaxtyping import Array, Bool, Float
+from jaxtyping import Array, Bool, Float, jaxtyped
 
 
+@jaxtyped(typechecker=typechecker)
 def solve_and_check_det(
     a: Float[Array, " n n"], b: Union[Float[Array, " n"], Float[Array, " n k"]]
 ) -> tuple[Union[Float[Array, " n"], Float[Array, " n k"]], Bool[Array, " "]]:

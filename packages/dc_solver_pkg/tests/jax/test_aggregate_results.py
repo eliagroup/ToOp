@@ -8,14 +8,17 @@
 from dataclasses import replace
 from pathlib import Path
 
+import beartype
 import jax
 import jax.numpy as jnp
+import jaxtyping
 import numpy as np
 import pypowsybl
 import pytest
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_dc_solver.jax.aggregate_results import (
+    aggregate_matrix_to_metric,
     aggregate_n_1_matrix,
     aggregate_to_metric,
     aggregate_to_metric_batched,
@@ -98,22 +101,22 @@ def test_get_exponential_overload_energy_n_1_matrix() -> None:
 
     overload = get_overload_energy_n_1_matrix(flow, max_mw_flow)
 
-    exponential_overload = get_exponential_overload_energy_n_1_matrix(flow, max_mw_flow, alpha=1)
+    exponential_overload = get_exponential_overload_energy_n_1_matrix(flow, max_mw_flow, alpha=1.0)
     assert exponential_overload.shape == overload.shape
     assert jnp.allclose(exponential_overload, overload)
 
-    exponential_overload = get_exponential_overload_energy_n_1_matrix(flow, max_mw_flow, alpha=5)
+    exponential_overload = get_exponential_overload_energy_n_1_matrix(flow, max_mw_flow, alpha=5.0)
     assert exponential_overload >= overload
 
     overload = get_overload_energy_n_1_matrix(flow, max_mw_flow, overload_weight=overload_weights)
 
     exponential_overload = get_exponential_overload_energy_n_1_matrix(
-        flow, max_mw_flow, alpha=1, overload_weight=overload_weights
+        flow, max_mw_flow, alpha=1.0, overload_weight=overload_weights
     )
     assert jnp.allclose(exponential_overload, overload)
 
     exponential_overload = get_exponential_overload_energy_n_1_matrix(
-        flow, max_mw_flow, alpha=5, overload_weight=overload_weights
+        flow, max_mw_flow, alpha=5.0, overload_weight=overload_weights
     )
     assert exponential_overload >= overload
 
@@ -189,7 +192,7 @@ def test_get_median_flow_n_1_matrix() -> None:
     assert jnp.allclose(median_flow, jnp.median(jnp.max(flow, axis=1)))
 
 
-def test_aggregate_to_metric_batched() -> None:
+def test_aggregate_to_metric_batched(mocker) -> None:
     n_batch = 8
     n_timesteps = 5
     n_failures = 30
@@ -374,7 +377,7 @@ def test_aggregate_to_metric_batched() -> None:
     assert cumulative_overload.shape == (n_batch,)
     assert jnp.allclose(cumulative_overload[0], cumulative_overload_ref)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(beartype.roar.BeartypeCallHintParamViolation):
         aggregate_to_metric_batched(
             lf_res,
             branch_limits,
@@ -383,8 +386,29 @@ def test_aggregate_to_metric_batched() -> None:
             metric="unknown_metric",
         )
 
+    # Call non-beartyped versions to make sure there is still an error
+    mocker.patch(
+        "toop_engine_dc_solver.jax.aggregate_results.aggregate_matrix_to_metric",
+        side_effect=aggregate_matrix_to_metric.__wrapped__,
+    )
+    mocker.patch(
+        "toop_engine_dc_solver.jax.aggregate_results.aggregate_to_metric", side_effect=aggregate_to_metric.__wrapped__
+    )
+    mocker.patch(
+        "toop_engine_dc_solver.jax.aggregate_results.choose_max_mw_flow", side_effect=choose_max_mw_flow.__wrapped__
+    )
 
-def test_aggregate_to_metric() -> None:
+    with pytest.raises(ValueError):
+        aggregate_to_metric_batched.__wrapped__(
+            lf_res,
+            branch_limits,
+            None,
+            n_subs_rel,
+            metric="unknown_metric",
+        )
+
+
+def test_aggregate_to_metric(mocker) -> None:
     n_timesteps = 5
     n_failures = 30
     n_branch = 50
@@ -517,15 +541,6 @@ def test_aggregate_to_metric() -> None:
 
     with pytest.raises(ValueError):
         aggregate_to_metric(
-            lf_res=lf_res,
-            branch_limits=branch_limits,
-            reassignment_distance=reassignment_distance,
-            n_relevant_subs=n_subs_rel,
-            metric="unknown_metric",
-        )
-
-    with pytest.raises(ValueError):
-        aggregate_to_metric(
             lf_res=replace(lf_res, n_2_penalty=None),
             branch_limits=branch_limits,
             reassignment_distance=reassignment_distance,
@@ -549,6 +564,32 @@ def test_aggregate_to_metric() -> None:
             reassignment_distance=reassignment_distance,
             n_relevant_subs=n_subs_rel,
             metric="cross_coupler_flow",
+        )
+
+    with pytest.raises(jaxtyping.TypeCheckError):
+        aggregate_to_metric(
+            lf_res=lf_res,
+            branch_limits=branch_limits,
+            reassignment_distance=reassignment_distance,
+            n_relevant_subs=n_subs_rel,
+            metric="unknown_metric",
+        )
+
+    # Call non-beartyped versions to make sure there is still an error
+    mocker.patch(
+        "toop_engine_dc_solver.jax.aggregate_results.choose_max_mw_flow", side_effect=choose_max_mw_flow.__wrapped__
+    )
+    mocker.patch(
+        "toop_engine_dc_solver.jax.aggregate_results.aggregate_matrix_to_metric",
+        side_effect=aggregate_matrix_to_metric.__wrapped__,
+    )
+    with pytest.raises(ValueError):
+        aggregate_to_metric.__wrapped__(
+            lf_res=lf_res,
+            branch_limits=branch_limits,
+            reassignment_distance=reassignment_distance,
+            n_relevant_subs=n_subs_rel,
+            metric="unknown_metric",
         )
 
 
@@ -621,7 +662,7 @@ def test_n0_n1_delta() -> None:
         get_n0_n1_delta_penalty(
             jnp.array([[20.0]]),
             jnp.array([[[10.0], [15.0], [20.0], [23.0]]]),
-            jnp.array([-2]),
+            jnp.array([-2.0]),
         ).item()
         == 0.0
     )
@@ -773,16 +814,16 @@ def test_get_number_of_disconnections() -> None:
     assert get_number_of_disconnections(disconnections, n_branches) == max_n_disconnections
 
     # Case 3: Some disconnections out of range
-    disconnections = jnp.array([0, 10, 20, 50, 60, -1, 30])
+    disconnections = jnp.array([0, 10, 20, 50, 60, -1, 30], dtype=int)
     expected_count = jnp.sum((disconnections >= 0) & (disconnections < n_branches))
     assert get_number_of_disconnections(disconnections, n_branches) == expected_count
 
     # Case 4: All disconnections out of range
-    disconnections = jnp.array([n_branches, n_branches + 1, -5, -10])
+    disconnections = jnp.array([n_branches, n_branches + 1, -5, -10], dtype=int)
     assert get_number_of_disconnections(disconnections, n_branches) == 0
 
     # Case 5: Empty disconnections array
-    disconnections = jnp.array([])
+    disconnections = jnp.array([], dtype=int)
     assert get_number_of_disconnections(disconnections, n_branches) == 0
 
 

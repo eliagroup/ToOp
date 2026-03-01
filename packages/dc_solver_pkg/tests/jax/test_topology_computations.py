@@ -196,7 +196,7 @@ def test_random_topology(
         rng_key=jax.random.PRNGKey(0),
         branch_action_set=static_information.dynamic_information.action_set,
         limit_n_subs=None,
-        unsplit_prob=0,
+        unsplit_prob=0.0,
         batch_size=16,
         topo_vect_format=True,
     )
@@ -217,7 +217,7 @@ def test_random_topology(
         branch_action_set=static_information.dynamic_information.action_set,
         limit_n_subs=2,
         batch_size=16,
-        unsplit_prob=0,
+        unsplit_prob=0.0,
         topo_vect_format=True,
     )
     # The sub ids should not be equal

@@ -14,11 +14,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import equinox as eqx
 import jax
+from beartype import beartype as typechecker
 from beartype.typing import Optional, Protocol, Union
 from jax import numpy as jnp
-from jax_dataclasses import Static, pytree_dataclass
-from jaxtyping import Array, Bool, Float, Int, PyTree
+from jax_dataclasses import Static
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree, jaxtyped
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
 from toop_engine_interfaces.types import MetricType
 
@@ -146,8 +148,8 @@ class SolverConfig:
         return self.branches_per_sub.val.max().item()
 
 
-@pytree_dataclass
-class DynamicInformation:
+@jaxtyped(typechecker=typechecker)
+class DynamicInformation(eqx.Module):
     """Holds the dynamic information for the solver.
 
     A dataclass holding all the information that is needed for the solver and that is ok to be
@@ -382,8 +384,8 @@ class DynamicInformation:
         )
 
 
-@pytree_dataclass
-class StaticInformation:
+@jaxtyped(typechecker=typechecker)
+class StaticInformation(eqx.Module):
     """Holds the static information for the solver.
 
     The static information comprises a set of data that is not changing during the computation
@@ -405,7 +407,7 @@ class StaticInformation:
         """
         return id(self)
 
-    def __eq__(self, other: object) -> Bool:
+    def __eq__(self, other: object) -> bool:
         """Test for equality.
 
         Parameters
@@ -471,8 +473,8 @@ class StaticInformation:
         return self.dynamic_information.n_actions
 
 
-@pytree_dataclass
-class BranchLimits:
+@jaxtyped(typechecker=typechecker)
+class BranchLimits(eqx.Module):
     """A dataclass holding the different branch limits.
 
     As there are many slightly different types of limits, we introduce a dataclass to encapsulate them.
@@ -511,8 +513,8 @@ class BranchLimits:
     """Optionally, a limit on the flow on the couplers for each relevant substation."""
 
 
-@pytree_dataclass
-class ActionSet:
+@jaxtyped(typechecker=typechecker)
+class ActionSet(eqx.Module):
     """Holds the information for an ActionSet.
 
     Instead of allowing all reassignments, it is required to constrain the optimizer
@@ -551,7 +553,7 @@ class ActionSet:
     This is used to avoid sampling the unsplit action in the random_topology generator. This is True where
     the unsplit action is stored."""
 
-    reassignment_distance: Int[Array, " n_actions"]
+    reassignment_distance: Int[ArrayLike, " n_actions"]
     """The number of reassignments that were necessary to get from the starting topology in that station to the topology
     described by the action in the action set."""
 
@@ -577,7 +579,7 @@ class ActionSet:
         """
         if not isinstance(other, ActionSet):
             return False
-        return (
+        return bool(
             jnp.array_equal(self.branch_actions, other.branch_actions)
             and jnp.array_equal(self.n_actions_per_sub, other.n_actions_per_sub)
             and jnp.array_equal(self.substation_correspondence, other.substation_correspondence)
@@ -622,8 +624,8 @@ class ActionSet:
         return self.branch_actions.shape[0]
 
 
-@pytree_dataclass
-class ActionIndexComputations:
+@jaxtyped(typechecker=typechecker)
+class ActionIndexComputations(eqx.Module):
     """Holds branch+injection topology computations in the form of indices into the action set.
 
     Each action consist of a set of splits, where each split is determined by an index into the ActionSet.
@@ -635,13 +637,13 @@ class ActionIndexComputations:
     substation_correspondence
     """
 
-    action: Int[Array, " ... n_topologies n_splits"]
+    action: Int[Array, " *topo_batch n_splits"]
     """An index into the action set, determining the reconfiguration and the substation that was split. Each split
     must refer to a different substation, otherwise the action is invalid. If an action wants to represent less than
     n_split splits, the remaining slots are to be filled with invalid indices, e.g. int_max. Consequently, passing only
     int_max will result in the unsplit configuration."""
 
-    pad_mask: Bool[Array, "... n_topologies"]
+    pad_mask: Bool[Array, " *topo_batch"]
     """In case the computations are padded to a common batch size, mark which computations are
     valid (True) and which are just padding (False)."""
 
@@ -657,15 +659,15 @@ class ActionIndexComputations:
         return self.action.shape[0]
 
 
-@pytree_dataclass
-class TopoVectBranchComputations:
+@jaxtyped(typechecker=typechecker)
+class TopoVectBranchComputations(eqx.Module):
     """Stores branch topology computations in topo-vect form.
 
     This is a padded topo vect with an entry per split, showing the busbar assignment
     for each branch in the station. The station is identified via the sub_ids array.
     """
 
-    topologies: Bool[Array, " ... n_topologies n_splits max_branch_per_sub"]
+    topologies: Bool[Array, " *batch n_splits max_branch_per_sub"]
     """An array of topologies that we want to have computed. The topologies are stored as topo-vects
     for the substation that's being reconfigured, where each entry is a boolean value indicating
     whether the line is on bus 0 (False) or on bus 1 (True). Note that loads and generators are not
@@ -681,12 +683,12 @@ class TopoVectBranchComputations:
     have seen a topology change.
     """
 
-    sub_ids: Int[Array, " ... n_topologies n_splits"]
+    sub_ids: Int[Array, " *topo_batch n_splits"]
     """The substation id that is affected by the currently computed bus split. This indexes into
     relevant substations only, as the others can't be split.
     """
 
-    pad_mask: Bool[Array, "... n_topologies"]
+    pad_mask: Bool[Array, " *topo_batch"]
     """In case the computations are padded to a common batch size, mark which computations are
     valid (True) and which are just padding (False)."""
 
@@ -703,14 +705,14 @@ class TopoVectBranchComputations:
         return self.topologies.shape[0]
 
 
-@pytree_dataclass
-class InjectionComputations:
+@jaxtyped(typechecker=typechecker)
+class InjectionComputations(eqx.Module):
     """Injection combinations can be either used from the action set or overwritten with custom injection combinations.
 
     If this is passed, that means the the injection actions from the set shall be overwritten.
     """
 
-    corresponding_topology: Int[Array, " ... n_injection_combinations"]
+    corresponding_topology: Int[Array, " *injection_batch"]
     """An index into either ActionIndexComputations, telling for which branch topology this injection combination
     is computed. The injection action associated with the action set will be overwritten by the injection combination
     in this topo-vect. Entries are sorted by corresponding_topology to make
@@ -718,14 +720,14 @@ class InjectionComputations:
     one or more injection combinations per branch action. If a branch action is never mentioned, this entails undefined
     behaviour for that branch action. The number of injection combinations per branch action is not fixed and can vary."""
 
-    injection_topology: Bool[Array, " ... n_injection_combinations n_splits max_inj_per_sub"]
+    injection_topology: Bool[Array, " *injection_batch n_splits max_inj_per_sub"]
     """The injection topology for each substation. This is a topo vect which holds whether an
     injection is on busbar A (False) or busbar B (True). The last dimension is padded to max_inj_per_sub.
     It holds an entry for every substation that is split in the corresponding branch topology, as injection
     reassignments on unsplit stations do not make sense. The substations ids are the same as in the
     corresponding branch topology."""
 
-    pad_mask: Bool[Array, "... n_injection_combinations"]
+    pad_mask: Bool[ArrayLike, " *injection_batch"] | Int[ArrayLike, " *injection_batch"]
     """In case the computations are padded to a common batch size, mark which computations are
     valid (True) and which are just padding (False)."""
 
@@ -738,14 +740,14 @@ class InjectionComputations:
         )
 
 
-@pytree_dataclass
-class SparseNMinus0:
+@jaxtyped(typechecker=typechecker)
+class SparseNMinus0(eqx.Module):
     """A dataclass for tracking maximum N-0 results in a sparse fashion."""
 
-    pf_n_0_max: Float[Array, " ... n_timesteps number_most_affected"]
+    pf_n_0_max: Float[Array, " ... *timestep_batch number_most_affected"]
     """The maximum rho values encountered"""
 
-    hist_mon: Int[Array, " ... n_timesteps number_most_affected"]
+    hist_mon: Int[Array, " ... *timestep_batch number_most_affected"]
     """The index of the overloaded branch, indexing into only monitored lines"""
 
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> SparseNMinus0:
@@ -756,8 +758,8 @@ class SparseNMinus0:
         )
 
 
-@pytree_dataclass
-class SparseNMinus1:
+@jaxtyped(typechecker=typechecker)
+class SparseNMinus1(eqx.Module):
     """A dataclass for tracking maximum N-1 results in a sparse fashion.
 
     Very similar to a COO sparse matrix, this tracks the values (pf_n_1_max) and the row and column
@@ -767,13 +769,13 @@ class SparseNMinus1:
 
     # TODO maybe just use jax.experimental.sparse.BCOO?
 
-    pf_n_1_max: Float[Array, " ... n_timesteps number_most_affected"]
+    pf_n_1_max: Float[Array, " ... *timestep_batch number_most_affected"]
     """The maximum rho values encountered"""
 
-    hist_mon: Int[Array, " ... n_timesteps number_most_affected"]
+    hist_mon: Int[Array, " ... *timestep_batch number_most_affected"]
     """The index of the overloaded branch"""
 
-    hist_out: Int[Array, " ... n_timesteps number_most_affected"]
+    hist_out: Int[Array, " ... *timestep_batch number_most_affected"]
     """The index of the outaged branch that caused the overload, i.e. the N-1 case"""
 
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> SparseNMinus1:
@@ -785,8 +787,8 @@ class SparseNMinus1:
         )
 
 
-@pytree_dataclass
-class BSDFResults:
+@jaxtyped(typechecker=typechecker)
+class BSDFResults(eqx.Module):
     """A dataclass encapsulating the data that is updated within the bsdf computation.
 
     This holds only the changing parts, information from the StaticInformation dataclass and the to-
@@ -814,8 +816,8 @@ class BSDFResults:
     """The BSDF vectors for each split, used in the cross-coupler flow updates."""
 
 
-@pytree_dataclass
-class DisconnectionResults:
+@jaxtyped(typechecker=typechecker)
+class DisconnectionResults(eqx.Module):
     """A dataclass encapsulating the results of the disconnection computations.
 
     This holds only the changing parts, information from the StaticInformation dataclass and the to-
@@ -839,18 +841,20 @@ class DisconnectionResults:
     """The MODF matrices for the disconnections to apply the loadflow update"""
 
 
-@pytree_dataclass
-class SparseSolverOutput:
+# @jaxtyped(typechecker=typechecker)
+class SparseSolverOutput(eqx.Module):
     """Store the results of the loadflow computations on a per-topology basis."""
 
     n_0_results: SparseNMinus0
     n_1_results: SparseNMinus1
-    best_inj_combi: Int[Array, " ... n_sub_relevant"]
     success: Bool[Array, " ..."]
+    # best_inj_combi: Optional[Bool[ArrayLike, " ... n_splits max_inj_per_sub"] | Int[ArrayLike, " ... n_sub_relevant"]] = None # TODO Why is this like this
+    # best_inj_combi: Optional[Bool[ArrayLike, " ... n_splits max_inj_per_sub"]]
+    best_inj_combi: str  # Int[ArrayLike, " ... n_sub_relevant"]
 
 
-@pytree_dataclass
-class MODFMatrix:
+@jaxtyped(typechecker=typechecker)
+class MODFMatrix(eqx.Module):
     """A MODF matrix for a single batch of multi-outages."""
 
     modf: Float[Array, " ... n_branches n_outaged_branches"]
@@ -879,8 +883,8 @@ class MODFMatrix:
         )
 
 
-@pytree_dataclass
-class TopologyResults:
+@jaxtyped(typechecker=typechecker)
+class TopologyResults(eqx.Module):
     """Stores the results of the BSDF, LODF and static flow computations.
 
     All computations that happen over topology batches.
@@ -916,8 +920,8 @@ class TopologyResults:
     """If disconnections are applied, this holds the MODF matrices for the disconnections."""
 
 
-@pytree_dataclass
-class N2BaselineAnalysis:
+@jaxtyped(typechecker=typechecker)
+class N2BaselineAnalysis(eqx.Module):
     """The output of the N-2 baseline analysis, used to compare the split n-2 analysis against."""
 
     l1_branches: Int[Array, " n_l1_outages"]
@@ -952,14 +956,16 @@ class N2BaselineAnalysis:
     split analysis will always use the same weights."""
 
 
-@pytree_dataclass
-class NodalInjOptimResults:
+@jaxtyped(typechecker=typechecker)
+class NodalInjOptimResults(eqx.Module):
     """A container for the results of the nodal injection optimization.
 
     Currently this includes only the PST taps, but later this might be extended to HVDCs or even redispatch clusters.
     """
 
-    pst_tap_idx: Float[Array, " ... n_timesteps n_controllable_pst"]
+    pst_tap_idx: (
+        Float[ArrayLike, " ... n_timesteps n_controllable_pst"] | Int[ArrayLike, " ... n_timesteps n_controllable_pst"]
+    )
     """The PST taps as indices into the tap values table after optimization (i.e. not shift degrees).
 
     Though this might be discrete if PST optimization should happen discrete, we store it as a float in case continuous
@@ -973,15 +979,15 @@ class NodalInjOptimResults:
         )
 
 
-@pytree_dataclass
-class NodalInjStartOptions:
+@jaxtyped(typechecker=typechecker)
+class NodalInjStartOptions(eqx.Module):
     """Options for the starting point of the nodal injection optimization."""
 
     previous_results: NodalInjOptimResults
     """The results from a previous optimization to use as a starting point, e.g. from a previous topology that only has
     a small mutation distance."""
 
-    precision_percent: Float[Array, " "]
+    precision_percent: Float[ArrayLike, " "] | float
     """The precision to which the optimization should run in percent of the maximal precision.
 
     This is a scalar (0-D array) that applies uniformly to all topologies in the batch.
@@ -993,8 +999,8 @@ class NodalInjStartOptions:
     """
 
 
-@pytree_dataclass
-class SolverLoadflowResults:
+@jaxtyped(typechecker=typechecker)
+class SolverLoadflowResults(eqx.Module):
     """The loadflow results without any preprocessing in matrix form.
 
     This is the primary input for the aggregate_output and aggregate_metrics functions,
@@ -1055,8 +1061,8 @@ class SolverLoadflowResults:
         return SolverLoadflowResults(
             n_0_matrix=self.n_0_matrix[key],
             n_1_matrix=self.n_1_matrix[key],
-            cross_coupler_flows=self.cross_coupler_flows[key],
-            branch_action_index=self.branch_action_index[key],
+            cross_coupler_flows=(self.cross_coupler_flows[key] if self.cross_coupler_flows is not None else None),
+            branch_action_index=(self.branch_action_index[key] if self.branch_action_index is not None else None),
             branch_topology=self.branch_topology[key],
             sub_ids=self.sub_ids[key],
             injection_topology=self.injection_topology[key],
@@ -1071,8 +1077,8 @@ class SolverLoadflowResults:
         )
 
 
-@pytree_dataclass
-class WorstKContingencyResults:
+@jaxtyped(typechecker=typechecker)
+class WorstKContingencyResults(eqx.Module):
     """Stores the worst K contingency cases so the AC optimizer can focus on those first."""
 
     top_k_overloads: Float[Array, " n_timesteps"]
@@ -1204,8 +1210,8 @@ class AggregateOutputProtocol(Protocol):
         return hash(self) == hash(other)
 
 
-@pytree_dataclass
-class RelBBOutageData:
+@jaxtyped(typechecker=typechecker)
+class RelBBOutageData(eqx.Module):
     """Holds the relevant busbar outage data."""
 
     branch_outage_set: Int[Array, " n_actions n_max_bb_to_outage_per_sub max_branches_per_sub"]
@@ -1267,8 +1273,8 @@ class RelBBOutageData:
         )
 
 
-@pytree_dataclass
-class NonRelBBOutageData:
+@jaxtyped(typechecker=typechecker)
+class NonRelBBOutageData(eqx.Module):
     """Holds the non-relevant busbar outage data."""
 
     branch_outages: Int[Array, " n_non_rel_bb_outages max_n_branches_failed"]
@@ -1290,8 +1296,8 @@ def int_max() -> int:
     return int(jnp.iinfo(jnp.int64).max) if jax.config.read("jax_enable_x64") else int(jnp.iinfo(jnp.int32).max)
 
 
-@pytree_dataclass
-class BBOutageBaselineAnalysis:
+@jaxtyped(typechecker=typechecker)
+class BBOutageBaselineAnalysis(eqx.Module):
     """The output of the busbar outage analysis for unsplit grid.
 
     This is used as a baseline to compare against the split busbar outage analysis. This baseline data is used when we
@@ -1322,8 +1328,8 @@ class BBOutageBaselineAnalysis:
     split analysis will always use the same weights."""
 
 
-@pytree_dataclass
-class NodalInjectionInformation:
+@jaxtyped(typechecker=typechecker)
+class NodalInjectionInformation(eqx.Module):
     """Holds the nodal injection optimization data required by the DC solver."""
 
     controllable_pst_indices: Int[Array, " n_controllable_pst"]

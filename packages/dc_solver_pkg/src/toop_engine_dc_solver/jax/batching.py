@@ -20,7 +20,7 @@ import equinox
 import jax
 from beartype.typing import Optional
 from jax import numpy as jnp
-from jaxtyping import Array, Float, Int
+from jaxtyping import Array, ArrayLike, Float, Int
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     InjectionComputations,
@@ -161,7 +161,7 @@ def batch_topologies(all_topologies: TopoVectBranchComputations, batch_size_bsdf
 
 def slice_topologies(
     topologies: TopoVectBranchComputations,
-    topo_index: Int[Array, " "],
+    topo_index: Int[ArrayLike, " "],
     batch_size_bsdf: int,
 ) -> TopoVectBranchComputations:
     """Get a slice of the topologies by batch_size_bsdf.
@@ -195,7 +195,7 @@ def slice_topologies(
 
 def slice_topologies_action_index(
     topologies: ActionIndexComputations,
-    topo_index: Int[Array, " "],
+    topo_index: Int[ArrayLike, " "],
     batch_size_bsdf: int,
 ) -> ActionIndexComputations:
     """Get a slice of the topologies by batch_size_bsdf.
@@ -228,7 +228,7 @@ def slice_topologies_action_index(
 
 def slice_nodal_inj_start_options(
     nodal_inj_start_options: NodalInjStartOptions,
-    nodal_inj_index: Int[Array, " "],
+    nodal_inj_index: Int[ArrayLike, ""],
     batch_size_bsdf: int,
 ) -> NodalInjStartOptions:
     """Get a slice of the topologies by batch_size_bsdf.
@@ -314,7 +314,7 @@ def batch_injection_selection(
 
 def get_injections_for_topo_range(
     all_injections: InjectionComputations,
-    topo_index: Int[Array, " "],
+    topo_index: Int[ArrayLike, " "],
     batch_size_bsdf: int,
     batch_size_injection: int,
     buffer_size_injection: int,
@@ -365,7 +365,7 @@ def get_injections_for_topo_range(
 
 def get_injections_for_topo_range_flat(
     all_injections: InjectionComputations,
-    topo_index: Int[Array, " "],
+    topo_index: Int[ArrayLike, " "],
     batch_size_bsdf: int,
     packet_size_injection: int,
     return_relative_index: bool = False,
@@ -433,7 +433,7 @@ def get_injections_for_topo_range_flat(
 
 def slice_injections(
     injections: InjectionComputations,
-    topo_index: Int[Array, " "],
+    topo_index: Int[ArrayLike, " "],
     batch_size: int,
 ) -> InjectionComputations:
     """Slices the injections.

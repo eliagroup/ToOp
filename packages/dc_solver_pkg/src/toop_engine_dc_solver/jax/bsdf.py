@@ -19,7 +19,7 @@ from functools import partial
 
 import jax
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
-from jaxtyping import Array, Bool, Float, Int
+from jaxtyping import Array, ArrayLike, Bool, Float, Int
 from toop_engine_dc_solver.jax.types import BSDFResults, HashableArrayWrapper
 
 
@@ -137,16 +137,16 @@ def get_bus_data_other(
 def calc_bsdf(  # noqa: PLR0913
     substation_topology: Bool[Array, " max_branch_per_sub"],
     ptdf: Float[Array, " n_branches n_bus"],
-    i_stat: Int[Array, ""],
-    i_stat_rel: Int[Array, ""],
+    i_stat: Int[ArrayLike, ""],
+    i_stat_rel: Int[ArrayLike, ""],
     tot_stat: Int[Array, " max_branch_per_sub"],
     from_stat_bool: Bool[Array, " max_branch_per_sub"],
     to_node: Int[Array, " n_branches"],
     from_node: Int[Array, " n_branches"],
     # Static parameters
     susceptance: Float[Array, " n_branches"],
-    slack: Int[Array, ""],
-    n_stat: Int[Array, ""],
+    slack: Int[ArrayLike, ""],
+    n_stat: Int[ArrayLike, ""],
 ) -> tuple[Float[Array, " n_branches"], Float[Array, " n_bus"], Bool[Array, " "]]:
     """Calculate the bsdf vector and the ptdf_th_sw vector for a bus split.
 
@@ -287,10 +287,10 @@ def update_from_to_node(
     substation_topology: Bool[Array, " max_branch_per_sub"],
     tot_stat: Int[Array, " max_branch_per_sub"],
     from_stat_bool: Bool[Array, " max_branch_per_sub"],
-    i_stat_rel_id: Int[Array, ""],
+    i_stat_rel_id: Int[ArrayLike, ""],
     to_node: Int[Array, " n_branches"],
     from_node: Int[Array, " n_branches"],
-    n_stat: Int[Array, ""],
+    n_stat: Int[ArrayLike, ""],
 ) -> tuple[Int[Array, " n_branches"], Int[Array, " n_branches"]]:
     """Compute updated from and to node vectors for a bus split.
 

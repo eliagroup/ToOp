@@ -14,6 +14,7 @@ import jax
 import jax.numpy as jnp
 import logbook
 from jax_dataclasses import replace
+from jaxtyping import PRNGKeyArray
 from toop_engine_dc_solver.jax.disconnections import random_disconnections
 from toop_engine_dc_solver.jax.injections import (
     random_injection,
@@ -88,7 +89,7 @@ def run_benchmark(config: dict) -> dict:
 
 
 def bench_symmetric(
-    rng_key: jax.random.PRNGKey,
+    rng_key: PRNGKeyArray,
     static_information: StaticInformation,
     n_topologies_per_run: int,
     n_disconnections_per_topology: int,
@@ -178,7 +179,7 @@ def bench_symmetric(
 
 
 def bench_inj_ratio(
-    rng_key: jax.random.PRNGKey,
+    rng_key: PRNGKeyArray,
     static_information: StaticInformation,
     n_topologies_per_run: int,
     n_disconnections_per_topology: int,
@@ -193,7 +194,7 @@ def bench_inj_ratio(
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : jaxtyping.PRNGKeyArray
         The random key to use for generating the topologies
     static_information : StaticInformation
         The static information to run the benchmark with.

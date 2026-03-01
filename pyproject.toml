@@ -139,7 +139,6 @@ addopts = [
   "--new-first",
   "--show-capture=all",
   "--verbosity=4",
-  "--jaxtyping-packages=dc_solver",
 ]
 junit_family = "legacy"
 testpaths = [

@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from beartype.typing import List, Optional, Union
-from jaxtyping import Array, Bool, Int
+from jaxtyping import Array, ArrayLike, Bool, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.branch_action_set import merge_topologies
 from toop_engine_dc_solver.jax.injections import convert_action_index_to_numpy
 from toop_engine_dc_solver.jax.types import (
@@ -369,8 +369,8 @@ def extract_sub_ids(
 
 
 def convert_topo_sel_sorted(
-    topo_sel_sorted: Bool[np.ndarray, " n_topologies len_topo_vect"],
-    branches_per_sub: HashableArrayWrapper[Int[Array, " n_sub_relevant"]],
+    topo_sel_sorted: Bool[ArrayLike, " n_topologies len_topo_vect"],
+    branches_per_sub: HashableArrayWrapper[Int[ArrayLike, " n_sub_relevant"]],
     pad_to_size: Optional[int] = None,
 ) -> TopoVectBranchComputations:
     """Convert the topo_sel_sorted array holding the computations to TopoVectBranchComputations format.
@@ -381,11 +381,11 @@ def convert_topo_sel_sorted(
 
     Parameters
     ----------
-    topo_sel_sorted : Bool[Array, " n_topologies len_topo_vect"]
+    topo_sel_sorted : Bool[ArrayLike, " n_topologies len_topo_vect"]
         The topology computations to be converted. This holds a boolean for every branch that is at a relevant substation
         anywhere in the grid. The len_topo_vect dimension is hence the total number of branch ends connected to the relevant
         subs. The substations are ordered as in the rel_stat_map.
-    branches_per_sub : HashableArrayWrapper[Int[Array, " n_sub_relevant"]]
+    branches_per_sub : HashableArrayWrapper[Int[ArrayLike, " n_sub_relevant"]]
         The number of branches per substation. You can use static_information.solver_config.branches_per_sub
     pad_to_size : Optional[int]
         The size to which the computations should be padded. If None, the computations will have
@@ -558,7 +558,7 @@ def convert_branch_topo_vect(
 def split_topology_computations(
     computations: TopoVectBranchComputations,
     n_splits: int,
-    key: Optional[jax.random.PRNGKey] = None,
+    key: Optional[PRNGKeyArray] = None,
 ) -> list[TopoVectBranchComputations]:
     """Split a set of topology computations into n_splits equal sized parts
 
@@ -642,9 +642,7 @@ def default_topology(
     )
 
 
-def limit_n_nonzeros(
-    rng_key: jax.random.PRNGKey, vector: Int[Array, " n_rel_subs"], limit: int
-) -> Int[Array, " n_rel_subs"]:
+def limit_n_nonzeros(rng_key: PRNGKeyArray, vector: Int[Array, " n_rel_subs"], limit: int) -> Int[Array, " n_rel_subs"]:
     """Limit the number of nonzero elements in a vector.
 
     Sets some of them randomly to zero.
@@ -674,7 +672,7 @@ def limit_n_nonzeros(
 
 
 def sample_action_index_from_branch_actions(
-    rng_key: jax.random.PRNGKey,
+    rng_key: PRNGKeyArray,
     sub_id: Int[Array, " "],
     branch_action_set: ActionSet,
 ) -> Int[Array, " "]:
@@ -711,7 +709,7 @@ def sample_action_index_from_branch_actions(
 
 
 def sample_from_branch_actions(
-    rng_key: jax.random.PRNGKey,
+    rng_key: PRNGKeyArray,
     sub_id: Int[Array, " "],
     branch_action_set: ActionSet,
 ) -> Bool[Array, " max_branches_per_sub"]:
@@ -741,7 +739,7 @@ def sample_from_branch_actions(
 
 
 def random_topology(
-    rng_key: jax.random.PRNGKey,
+    rng_key: PRNGKeyArray,
     branch_action_set: ActionSet,
     limit_n_subs: Optional[int],
     batch_size: int,
@@ -1079,7 +1077,7 @@ def get_random_topology_results(static_information: StaticInformation, random_se
         branch_action_set=static_information.dynamic_information.action_set,
         limit_n_subs=static_information.solver_config.limit_n_subs,
         batch_size=static_information.solver_config.batch_size_bsdf,
-        unsplit_prob=0,
+        unsplit_prob=0.0,
         topo_vect_format=False,
     )
     best_branch = convert_action_set_index_to_topo(

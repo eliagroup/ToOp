@@ -24,7 +24,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-from beartype.typing import BinaryIO, Iterator, Optional
+from beartype.typing import Iterator, Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
@@ -73,7 +73,7 @@ def convert_tot_stat(
     for sub_id in range(c_l.shape[0]):
         tot_stat_jax = tot_stat_jax.at[sub_id, : c_l[sub_id]].set(tot_stat[sub_id])
 
-    return tot_stat_jax
+    return jnp.asarray(tot_stat_jax)
 
 
 def convert_from_stat_bool(
@@ -371,7 +371,7 @@ def save_static_information(filename: str | Path, static_information: StaticInfo
 
 # ruff: noqa: PLR0915, PLR0912, C901
 # sonar: noqa: S3776
-def _save_static_information(binaryio: BinaryIO, static_information: StaticInformation) -> None:
+def _save_static_information(binaryio: io.IOBase, static_information: StaticInformation) -> None:
     """Save the static information to a hdf5 file, given an open file-like object.
 
     Parameters
@@ -679,7 +679,7 @@ def load_static_information(filename: str | Path) -> StaticInformation:
     return load_static_information_fs(filesystem=LocalFileSystem(), filename=str(filename))
 
 
-def _load_static_information(binaryio: BinaryIO) -> StaticInformation:
+def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
     """Load the static information from a hdf5 file in jax format, given an open file
 
     Parameters

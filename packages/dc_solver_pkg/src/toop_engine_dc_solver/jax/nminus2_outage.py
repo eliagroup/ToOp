@@ -18,7 +18,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 from beartype.typing import Optional, Protocol
-from jaxtyping import Array, Bool, Float, Int, PyTree, Shaped
+from jaxtyping import Array, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.aggregate_results import get_overload_energy_n_1_matrix
 from toop_engine_dc_solver.jax.contingency_analysis import calc_n_1_matrix
 from toop_engine_dc_solver.jax.disconnections import apply_single_disconnection_lodf
@@ -159,7 +159,7 @@ def n_2_analysis(
     l2_outages: Int[Array, " n_l2_outages"],
     branches_monitored: Int[Array, " n_branches_monitored"],
     aggregator: N2AggregateProtocol,
-) -> tuple[Shaped[PyTree, " n_l1_outages ..."], Bool[Array, " n_l1_outages"]]:
+) -> tuple[PyTree, Bool[Array, " n_l1_outages"]]:
     """
     Calculate the N-2 outages sequentially for each L1 case
 
@@ -190,7 +190,7 @@ def n_2_analysis(
 
     Returns
     -------
-    Shaped[PyTree, " n_l1_outages ..."]
+    PyTree
         The aggregated data for each N-2 case, will be the output of the aggregator function with one
         leading dimension for each L1 disconnection. For ignored cases, the output will be zero.
     Bool[Array, " n_l1_outages"]
@@ -230,8 +230,8 @@ def n_2_analysis(
     buffer = jax.tree_util.tree_map(lambda x: jnp.zeros((n_l1_outages, *x.shape), dtype=x.dtype), results_dtype)
 
     def body_fun(
-        val_tuple: tuple[Int[Array, ""], Shaped[PyTree, " n_l1_outages ..."]],
-    ) -> tuple[Int[Array, ""], Shaped[PyTree, " n_l1_outages ..."]]:
+        val_tuple: tuple[Int[Array, ""], PyTree],
+    ) -> tuple[Int[Array, ""], PyTree]:
         i, buffer = val_tuple
         l1_branch = l1_outages[i]
         storage_index = sorting_indices[i]
@@ -334,7 +334,7 @@ def gather_l1_cases(
     sub_ids: Int[Array, " n_subs_split"],
     tot_stat: Int[Array, " n_subs_relevant max_branch_per_sub"],
     topological_disconnections: Optional[Int[Array, " n_disconnections"]],
-) -> Int[Array, " n_subs_split*max_branch_per_sub"]:
+) -> Int[Array, " n_l1_candidates"]:
     """Gathers the L1 cases for all relevant substations
 
     To make this jit compatible, this returns a flattened array with the worst-case shape, but it
@@ -404,8 +404,8 @@ def retrieve_baseline_case(
     int_max = jnp.iinfo(l1_branch.dtype).max
     index = jnp.flatnonzero(baseline.l1_branches == l1_branch, size=1, fill_value=int_max)
 
-    success_count = baseline.n_2_success_count.at[index].get(mode="fill", fill_value=int_max)
-    overload = baseline.n_2_overloads.at[index].get(mode="fill", fill_value=jnp.nan)
+    success_count = baseline.n_2_success_count.at[index].get(mode="fill", fill_value=int_max)[0]
+    overload = baseline.n_2_overloads.at[index].get(mode="fill", fill_value=jnp.nan)[0]
 
     return success_count, overload
 

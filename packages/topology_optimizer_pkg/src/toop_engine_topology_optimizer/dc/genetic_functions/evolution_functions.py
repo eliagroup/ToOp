@@ -14,17 +14,16 @@ the substation ids, the branch topology, the injection topology and the disconne
 
 from functools import partial
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 from beartype.typing import Optional
-from jax_dataclasses import pytree_dataclass
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.topology_computations import extract_sub_ids, sample_action_index_from_branch_actions
 from toop_engine_dc_solver.jax.types import ActionSet, NodalInjOptimResults, int_max
 
 
-@pytree_dataclass
-class Genotype:
+class Genotype(eqx.Module):
     """A single genome in the repertoire representing a topology."""
 
     action_index: Int[Array, " *batch_size max_num_splits"]
@@ -165,7 +164,7 @@ def mutate(  # noqa: PLR0913
     pst_mutation_sigma: float,
     pst_n_taps: Int[Array, " num_psts"],
     mutation_repetition: int = 1,
-) -> tuple[Genotype, jax.random.PRNGKey]:
+) -> tuple[Genotype, PRNGKeyArray]:
     """Mutate the topologies by splitting substations and changing the branch and injection topos.
 
     Makes sure that at all times, a substation is split at most once and that all branch and
@@ -207,7 +206,7 @@ def mutate(  # noqa: PLR0913
     -------
     Genotype
         The mutated topologies
-    jax.random.PRNGKey
+    PRNGKeyArray
         The new random key
     """
     max_num_splits = topologies.action_index.shape[1]
@@ -221,7 +220,7 @@ def mutate(  # noqa: PLR0913
         Int[Array, " max_num_splits"],
         Int[Array, " max_num_splits"],
         Int[Array, " max_num_disconnections"],
-        jax.random.PRNGKey,
+        PRNGKeyArray,
     ]:
         """Mutates a single topology n_subs_mutated times and adds disconnections."""
         # Sample number of subs mutated from a poisson
@@ -454,7 +453,7 @@ def mutate_sub(
 ) -> tuple[
     Int[Array, " max_num_splits"],
     Int[Array, " max_num_splits"],
-    jax.random.PRNGKey,
+    PRNGKeyArray,
 ]:
     """Mutate a single substation, changing the sub_ids, branch and inj topos.
 
@@ -683,7 +682,7 @@ def crossover_unbatched(
     random_key: PRNGKeyArray,
     action_set: ActionSet,
     prob_take_a: float,
-) -> tuple[Genotype, jax.random.PRNGKey]:
+) -> tuple[Genotype, PRNGKeyArray]:
     """Crossover two topologies while making sure that no substation is present twice.
 
     This version is unbatched, i.e. it only works on a single topology. Use crossover for batched
@@ -708,7 +707,7 @@ def crossover_unbatched(
     -------
     Genotype
         The new topology
-    jax.random.PRNGKey
+    PRNGKeyArray
         The new random key
     """
     # The tricky part in the crossover is that both topologies could have the same sub-id on
@@ -772,7 +771,7 @@ def crossover(
     random_key: PRNGKeyArray,
     action_set: ActionSet,
     prob_take_a: float,
-) -> tuple[Genotype, jax.random.PRNGKey]:
+) -> tuple[Genotype, PRNGKeyArray]:
     """Crossover two topologies while making sure that no substation is present twice.
 
     Parameters
@@ -793,7 +792,7 @@ def crossover(
     -------
     Genotype
         The new topology
-    jax.random.PRNGKey
+    PRNGKeyArray
         The new random key
     """
     batch_size = topologies_a.action_index.shape[0]

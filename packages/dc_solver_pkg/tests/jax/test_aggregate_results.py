@@ -7,7 +7,6 @@
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable
 
 import jax
 import jax.numpy as jnp
@@ -15,6 +14,7 @@ import jaxtyping
 import numpy as np
 import pypowsybl
 import pytest
+from beartype.typing import Callable
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_dc_solver.jax.aggregate_results import (

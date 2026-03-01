@@ -15,11 +15,12 @@ algorithm as well as several variants. Adapted from QDax
 
 from functools import partial
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 from beartype.typing import Optional, Tuple, Union
-from jax_dataclasses import Static, pytree_dataclass
+from jax_dataclasses import Static
 from jaxtyping import Array, Float, Int, PyTree, Shaped
 from qdax.custom_types import Descriptor, ExtraScores, Fitness, Genotype, RNGKey
 
@@ -71,8 +72,7 @@ def get_cell_index(
     )  # jittable thanks to clip mode
 
 
-@pytree_dataclass
-class DiscreteMapElitesRepertoire:
+class DiscreteMapElitesRepertoire(eqx.Module):
     """A class to store the MAP-Elites repertoire."""
 
     genotypes: PyTree[Shaped[Array, " repertoire_size *feature_dims"]]

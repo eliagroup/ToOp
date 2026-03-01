@@ -150,7 +150,7 @@ def scoring_function(
     Int[Array, " batch_size n_dims"],
     dict,
     dict,
-    jax.random.PRNGKey,
+    PRNGKeyArray,
     Genotype,
 ]:
     """Create scoring function for the genetic algorithm.
@@ -185,7 +185,7 @@ def scoring_function(
         The extra scores
     dict
         Emitter Information
-    jax.random.PRNGKey
+    PRNGKeyArray
         The random key that was passed in, unused
     Genotype
         The genotypes that were passed in, but updated to account for in-the-loop optimizations such as the nodal

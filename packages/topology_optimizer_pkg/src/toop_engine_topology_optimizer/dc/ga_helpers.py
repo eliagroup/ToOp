@@ -28,7 +28,7 @@ class TrackingMixingEmitter(MixingEmitter):
         self,
         random_key: PRNGKeyArray,
         init_genotypes: Optional[Genotype],  # noqa: ARG002
-    ) -> tuple[EmitterState, jax.random.PRNGKey]:
+    ) -> tuple[EmitterState, PRNGKeyArray]:
         """Overwrite the Emitter.init function to seed an EmitterState."""
         return {
             "total_branch_combis": jnp.array(0, dtype=int),

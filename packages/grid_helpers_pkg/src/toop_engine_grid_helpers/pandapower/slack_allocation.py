@@ -7,12 +7,11 @@
 
 """Utility functions for selecting and assigning slack generators."""
 
-from typing import Optional, Union
-
 import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
+from beartype.typing import Optional, Union
 from pandapower.create import create_gen
 from pandapower.toolbox.grid_modification import (
     _adapt_profiles_in_replace_functions,

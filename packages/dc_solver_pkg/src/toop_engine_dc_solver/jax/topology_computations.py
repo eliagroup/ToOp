@@ -649,7 +649,7 @@ def limit_n_nonzeros(rng_key: PRNGKeyArray, vector: Int[Array, " n_rel_subs"], l
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : PRNGKeyArray
         The random key to use for sampling
     vector : Int[Array, " n_rel_subs"]
         The vector to limit
@@ -682,7 +682,7 @@ def sample_action_index_from_branch_actions(
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : PRNGKeyArray
         The random key to use for sampling
     sub_id : Int[Array, " "]
         The substation ids to sample the branch actions for. If an invalid sub-id is passed, int_max is returned
@@ -720,7 +720,7 @@ def sample_from_branch_actions(
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : PRNGKeyArray
         The random key to use for sampling
     sub_id : Int[Array, " "]
         The substation id to sample the branch action for. If an invalid sub-id is passed, all zeros
@@ -753,7 +753,7 @@ def random_topology(
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : PRNGKeyArray
         The random key to use for sampling
     branch_action_set : ActionSet
         The action set to sample from

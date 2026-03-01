@@ -7,8 +7,8 @@
 
 from dataclasses import replace
 from pathlib import Path
+from typing import Callable
 
-import beartype
 import jax
 import jax.numpy as jnp
 import jaxtyping
@@ -190,6 +190,23 @@ def test_get_median_flow_n_1_matrix() -> None:
     median_flow = get_median_flow_n_1_matrix(flow, jnp.ones(n_branch))
 
     assert jnp.allclose(median_flow, jnp.median(jnp.max(flow, axis=1)))
+
+
+def get_unwrapped_function(func: Callable) -> Callable:
+    """Utility function to get the original function from a beartype and jaxtyping decorated function, by unwrapping all layers of decoration.
+
+    Parameters
+    ----------
+    func : Callable
+        The decorated function.
+
+    Returns
+    -------
+     Callable
+         The original function, with all layers of decoration removed."""
+    while hasattr(func, "__wrapped__"):
+        func = func.__wrapped__
+    return func
 
 
 def test_aggregate_to_metric_batched(mocker) -> None:
@@ -377,7 +394,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
     assert cumulative_overload.shape == (n_batch,)
     assert jnp.allclose(cumulative_overload[0], cumulative_overload_ref)
 
-    with pytest.raises(beartype.roar.BeartypeCallHintParamViolation):
+    with pytest.raises(jaxtyping.TypeCheckError):
         aggregate_to_metric_batched(
             lf_res,
             branch_limits,
@@ -386,20 +403,22 @@ def test_aggregate_to_metric_batched(mocker) -> None:
             metric="unknown_metric",
         )
 
-    # Call non-beartyped versions to make sure there is still an error
+    # Call non-beartyped/jaxtyped versions to make sure there is still an error
     mocker.patch(
         "toop_engine_dc_solver.jax.aggregate_results.aggregate_matrix_to_metric",
-        side_effect=aggregate_matrix_to_metric.__wrapped__,
+        side_effect=get_unwrapped_function(aggregate_matrix_to_metric),
     )
     mocker.patch(
-        "toop_engine_dc_solver.jax.aggregate_results.aggregate_to_metric", side_effect=aggregate_to_metric.__wrapped__
+        "toop_engine_dc_solver.jax.aggregate_results.aggregate_to_metric",
+        side_effect=get_unwrapped_function(aggregate_to_metric),
     )
     mocker.patch(
-        "toop_engine_dc_solver.jax.aggregate_results.choose_max_mw_flow", side_effect=choose_max_mw_flow.__wrapped__
+        "toop_engine_dc_solver.jax.aggregate_results.choose_max_mw_flow",
+        side_effect=get_unwrapped_function(choose_max_mw_flow),
     )
 
     with pytest.raises(ValueError):
-        aggregate_to_metric_batched.__wrapped__(
+        get_unwrapped_function(aggregate_to_metric_batched)(
             lf_res,
             branch_limits,
             None,
@@ -577,14 +596,15 @@ def test_aggregate_to_metric(mocker) -> None:
 
     # Call non-beartyped versions to make sure there is still an error
     mocker.patch(
-        "toop_engine_dc_solver.jax.aggregate_results.choose_max_mw_flow", side_effect=choose_max_mw_flow.__wrapped__
+        "toop_engine_dc_solver.jax.aggregate_results.choose_max_mw_flow",
+        side_effect=get_unwrapped_function(choose_max_mw_flow),
     )
     mocker.patch(
         "toop_engine_dc_solver.jax.aggregate_results.aggregate_matrix_to_metric",
-        side_effect=aggregate_matrix_to_metric.__wrapped__,
+        side_effect=get_unwrapped_function(aggregate_matrix_to_metric),
     )
     with pytest.raises(ValueError):
-        aggregate_to_metric.__wrapped__(
+        get_unwrapped_function(aggregate_to_metric)(
             lf_res=lf_res,
             branch_limits=branch_limits,
             reassignment_distance=reassignment_distance,

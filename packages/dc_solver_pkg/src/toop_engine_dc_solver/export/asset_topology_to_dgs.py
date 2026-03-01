@@ -290,7 +290,7 @@ def get_asset_switch_states_from_station(
     return switch_reassignment_df, switch_disconnection_df
 
 
-def get_asset_bay_grid_model_id_list(station: Station) -> list[dict[str, str]]:
+def get_asset_bay_grid_model_id_list(station: Station) -> list[dict[str, str] | None]:
     """Get the list of asset bay grid_model_ids for the given station.
 
     Note: This list only contains busbars where there is a switch.

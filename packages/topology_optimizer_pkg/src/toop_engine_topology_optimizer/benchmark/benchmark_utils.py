@@ -11,8 +11,6 @@ A module that contains methods to run the full end-to-end pipeline from grid fil
 Note that these methods are simply wrappers to use existing functionality in a sequence.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import shutil

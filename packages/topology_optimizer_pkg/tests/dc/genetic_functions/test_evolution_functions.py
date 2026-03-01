@@ -517,7 +517,9 @@ def test_mutate_nodal_injections() -> None:
     batch_size = 4
     n_timesteps = 10
     n_taps = jnp.array([35, 35, 35, 20, 20])
-    current_tap = jax.random.uniform(jax.random.PRNGKey(0), shape=(batch_size, n_timesteps, 5), minval=0, maxval=n_taps)
+    current_tap = jax.random.uniform(
+        jax.random.PRNGKey(0), shape=(batch_size, n_timesteps, 5), minval=0, maxval=n_taps
+    ).astype(int)
     nodal_inj_info = NodalInjOptimResults(pst_tap_idx=current_tap)
 
     res = mutate_nodal_injections(

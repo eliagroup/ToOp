@@ -7,8 +7,6 @@
 
 """Some small definitions that are common to both AC and DC optimizations"""
 
-from __future__ import annotations
-
 from datetime import datetime
 from enum import Enum
 from pathlib import Path

@@ -157,8 +157,8 @@ def merge_topologies(
     fake_action_set = ActionSet(
         branch_actions=topologies.reshape((-1, max_branch_per_sub)),
         substation_correspondence=sub_ids.reshape(-1),
-        n_actions_per_sub=jnp.zeros(action_set.n_actions_per_sub.shape),  # Not actually needed for merge
-        unsplit_action_mask=jnp.array([]),  # Not actually needed for merge
+        n_actions_per_sub=jnp.zeros(action_set.n_actions_per_sub.shape, dtype=int),  # Not actually needed for merge
+        unsplit_action_mask=jnp.array([], dtype=bool),  # Not actually needed for merge
         reassignment_distance=jnp.full(topologies.shape[0], reassignment_distance_fill, dtype=int),
         inj_actions=jnp.full((topologies.shape[0], max_inj_per_sub), injection_fill, dtype=bool),
     )

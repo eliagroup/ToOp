@@ -6,5 +6,7 @@
 # Mozilla Public License, version 2.0
 
 from beartype.claw import beartype_this_package
+from jaxtyping import install_import_hook
 
 beartype_this_package()
+install_import_hook("toop_engine_topology_optimizer.dc", "beartype.beartype")

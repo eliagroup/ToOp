@@ -10,8 +10,6 @@
 Adapted from QDax (https://github.com/adaptive-intelligent-robotics/QDax)
 """
 
-from __future__ import annotations
-
 from functools import partial
 
 import jax

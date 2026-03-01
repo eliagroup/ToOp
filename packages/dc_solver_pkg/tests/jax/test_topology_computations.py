@@ -432,12 +432,13 @@ def test_product_action_set() -> None:
                 [0, 0, 0, 0],
                 [1, 1, 0, 0],
                 [0, 1, 0, 1],
-            ]
+            ],
+            dtype=bool,
         ),
-        n_actions_per_sub=jnp.array([3, 4, 3]),
-        substation_correspondence=jnp.array([0, 0, 0, 1, 1, 1, 1, 2, 2, 2]),
-        unsplit_action_mask=jnp.array([True, False, False, True, False, False, False, True, False, False]),
-        reassignment_distance=jnp.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+        n_actions_per_sub=jnp.array([3, 4, 3], dtype=int),
+        substation_correspondence=jnp.array([0, 0, 0, 1, 1, 1, 1, 2, 2, 2], dtype=int),
+        unsplit_action_mask=jnp.array([True, False, False, True, False, False, False, True, False, False], dtype=bool),
+        reassignment_distance=jnp.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=int),
         inj_actions=jnp.zeros((10, 5), dtype=bool),
     )
 
@@ -578,12 +579,13 @@ def test_pad_action_with_unsplit_action_indices() -> None:
                 [0, 0, 0, 0],
                 [1, 1, 0, 0],
                 [0, 1, 0, 1],
-            ]
+            ],
+            dtype=bool,
         ),
-        n_actions_per_sub=jnp.array([3, 4, 3]),
-        substation_correspondence=jnp.array([0, 0, 0, 1, 1, 1, 1, 2, 2, 2]),
-        unsplit_action_mask=jnp.array([True, False, False, True, False, False, False, True, False, False]),
-        reassignment_distance=jnp.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+        n_actions_per_sub=jnp.array([3, 4, 3], dtype=int),
+        substation_correspondence=jnp.array([0, 0, 0, 1, 1, 1, 1, 2, 2, 2], dtype=int),
+        unsplit_action_mask=jnp.array([True, False, False, True, False, False, False, True, False, False], dtype=bool),
+        reassignment_distance=jnp.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=int),
         inj_actions=jnp.zeros((10, 5), dtype=bool),
         rel_bb_outage_data=None,
     )

@@ -16,8 +16,6 @@ limited (up to 10) and the bsdf computation is quite fast, so recomputing it is 
 
 # pylint: disable=too-many-lines
 
-from __future__ import annotations
-
 import io
 from importlib.metadata import version
 from pathlib import Path
@@ -28,7 +26,7 @@ from beartype.typing import Iterator, Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
-from jaxtyping import Array, Bool, Int
+from jaxtyping import Array, ArrayLike, Bool, Int
 from toop_engine_dc_solver.jax.types import (
     ActionSet,
     BBOutageBaselineAnalysis,
@@ -45,8 +43,8 @@ from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
 
 
 def convert_tot_stat(
-    tot_stat: list[Int[np.ndarray, " n_branches_at_sub"]],
-) -> Int[Array, " n_sub_relevant max_branch_per_sub"]:
+    tot_stat: list[Int[ArrayLike, " ..."]],
+) -> Int[Array, " n_sub_relevant n_branches_at_sub_max"]:
     """Convert the tot_stat arrays from the numpy code to the format used in the jax code.
 
     Parameters
@@ -56,7 +54,7 @@ def convert_tot_stat(
 
     Returns
     -------
-    Int[Array, " n_sub_relevant max_branch_per_sub"]
+    Int[Array, " n_sub_relevant n_branches_at_sub_max"]
         The converted tot_stat array
     """
     # Find out int max, int could be both 32 or 64 bits
@@ -77,8 +75,8 @@ def convert_tot_stat(
 
 
 def convert_from_stat_bool(
-    from_stat_bool: list[Bool[np.ndarray, " n_branches_at_sub"]],
-) -> Bool[Array, " n_sub_relevant max_branch_per_sub"]:
+    from_stat_bool: list[Bool[ArrayLike, " ..."]],
+) -> Bool[Array, " n_sub_relevant n_branches_at_sub_max"]:
     """Convert the from_stat_bool array from the numpy code to the format used in the jax code
 
     Parameters
@@ -88,7 +86,7 @@ def convert_from_stat_bool(
 
     Returns
     -------
-    Bool[Array, " n_sub_relevant max_branch_per_sub"]
+    Bool[Array, " n_sub_relevant n_branches_at_sub_max"]
         The converted from_stat_bool array
     """
     c_l = np.array([len(x) for x in from_stat_bool])

@@ -15,6 +15,7 @@ import jax
 from average import EWMA
 from beartype.typing import Optional
 from jax import numpy as jnp
+from jaxtyping import PRNGKeyArray
 from qdax.core.containers.repertoire import Repertoire
 from qdax.core.emitters.standard_emitters import EmitterState, ExtraScores, MixingEmitter
 from qdax.custom_types import Descriptor, Fitness, Genotype
@@ -25,7 +26,7 @@ class TrackingMixingEmitter(MixingEmitter):
 
     def init(
         self,
-        random_key: jax.random.PRNGKey,
+        random_key: PRNGKeyArray,
         init_genotypes: Optional[Genotype],  # noqa: ARG002
     ) -> tuple[EmitterState, jax.random.PRNGKey]:
         """Overwrite the Emitter.init function to seed an EmitterState."""

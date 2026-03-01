@@ -11,8 +11,6 @@ This is not a Table model yet, as an implementation might want to store extra da
 the topology
 """
 
-from __future__ import annotations
-
 import hashlib
 from datetime import datetime
 
@@ -116,7 +114,7 @@ class BaseDBTopology(SQLModel):
             return None
         return StoredLoadflowReference.model_validate_json(self.stored_loadflow_reference)
 
-    def set_loadflow_reference(self, loadflow_reference: Optional[StoredLoadflowReference]) -> BaseDBTopology:
+    def set_loadflow_reference(self, loadflow_reference: Optional[StoredLoadflowReference]) -> "BaseDBTopology":
         """Set the loadflow reference from a StoredLoadflowReference object
 
         Parameters

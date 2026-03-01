@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 from beartype.typing import Optional
 from jax_dataclasses import pytree_dataclass
-from jaxtyping import Array, Bool, Float, Int
+from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.topology_computations import extract_sub_ids, sample_action_index_from_branch_actions
 from toop_engine_dc_solver.jax.types import ActionSet, NodalInjOptimResults, int_max
 
@@ -154,7 +154,7 @@ def empty_repertoire(
 
 def mutate(  # noqa: PLR0913
     topologies: Genotype,
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     substation_split_prob: float,
     substation_unsplit_prob: float,
     action_set: ActionSet,
@@ -179,7 +179,7 @@ def mutate(  # noqa: PLR0913
     ----------
     topologies : Genotype
         The topologies to mutate
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the mutation
     substation_split_prob : float
         The probability to split a substation. In case all substations are already split, this
@@ -216,7 +216,7 @@ def mutate(  # noqa: PLR0913
         sub_ids: Int[Array, " max_num_splits"],
         action: Int[Array, " max_num_splits"],
         disconnections_topo: Int[Array, " max_num_disconnections"],
-        random_key: jax.random.PRNGKey,
+        random_key: PRNGKeyArray,
     ) -> tuple[
         Int[Array, " max_num_splits"],
         Int[Array, " max_num_splits"],
@@ -316,7 +316,7 @@ def mutate(  # noqa: PLR0913
 
 
 def mutate_sub_id(
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     sub_ids: Int[Array, " max_num_splits"],
     n_subs_rel: int,
     substation_split_prob: float,
@@ -325,7 +325,7 @@ def mutate_sub_id(
 
     Parameters
     ----------
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the mutation
     sub_ids : Int[Array, " max_num_splits"]
         The substation ids before mutation
@@ -385,7 +385,7 @@ def mutate_sub_id(
 
 
 def mutate_disconnections(
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     disconnections: Int[Array, " max_num_disconnections"],
     n_disconnectable_branches: int,
     disconnect_prob: float,
@@ -395,7 +395,7 @@ def mutate_disconnections(
 
     Parameters
     ----------
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the mutation
     disconnections : Int[Array, " max_num_disconnections"]
         The disconnections before mutation of one individual
@@ -447,7 +447,7 @@ def mutate_disconnections(
 def mutate_sub(
     sub_ids: Int[Array, " max_num_splits"],
     action: Int[Array, " max_num_splits"],
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     substation_split_prob: float,
     substation_unsplit_prob: float,
     action_set: ActionSet,
@@ -467,7 +467,7 @@ def mutate_sub(
         The substation ids before mutation
     action : Int[Array, " max_num_splits"]
         The branch topology before mutation
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the mutation
     substation_split_prob : float
         The probability to split a substation
@@ -483,7 +483,7 @@ def mutate_sub(
         The substation ids after mutation
     action : Int[Array, " max_num_splits"]
         The branch topology after mutation
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key used for the mutation
     """
     if substation_split_prob == 0:
@@ -529,7 +529,7 @@ def mutate_sub(
 
 
 def mutate_nodal_injections(
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     nodal_inj_info: Optional[NodalInjOptimResults],
     pst_mutation_sigma: float,
     pst_n_taps: Int[Array, " num_psts"],
@@ -538,7 +538,7 @@ def mutate_nodal_injections(
 
     Parameters
     ----------
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the mutation
     nodal_inj_info : Optional[NodalInjOptimResults]
         The nodal injection optimization results before mutation. If None, no mutation is performed and None is returned.
@@ -574,7 +574,7 @@ def mutate_nodal_injections(
 
 
 def mutate_psts(
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     pst_taps: Int[Array, " num_psts"],
     pst_n_taps: Int[Array, " num_psts"],
     pst_mutation_sigma: float,
@@ -583,7 +583,7 @@ def mutate_psts(
 
     Parameters
     ----------
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the mutation
     pst_taps : Int[Array, " num_psts"]
         The PST tap positions before mutation
@@ -607,7 +607,7 @@ def mutate_psts(
 
 
 def sample_unique_from_array(
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     sample_pool: Int[Array, " n"],
     sample_probs: Float[Array, " n"],
     n_samples: int,
@@ -616,7 +616,7 @@ def sample_unique_from_array(
 
     Parameters
     ----------
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the sampling
     sample_pool : Int[Array, " n"]
         The array to sample from. Only unique elements are sampled, however int_max entries are
@@ -680,7 +680,7 @@ def sample_unique_from_array(
 def crossover_unbatched(
     topologies_a: Genotype,
     topologies_b: Genotype,
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     action_set: ActionSet,
     prob_take_a: float,
 ) -> tuple[Genotype, jax.random.PRNGKey]:
@@ -695,7 +695,7 @@ def crossover_unbatched(
         The first topology
     topologies_b : Genotype
         The second topology
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the crossover
     action_set : ActionSet
         The branch action set containing available actions on a per-substation basis.
@@ -769,7 +769,7 @@ def crossover_unbatched(
 def crossover(
     topologies_a: Genotype,
     topologies_b: Genotype,
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     action_set: ActionSet,
     prob_take_a: float,
 ) -> tuple[Genotype, jax.random.PRNGKey]:
@@ -781,7 +781,7 @@ def crossover(
         The first topology
     topologies_b : Genotype
         The second topology
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the crossover
     action_set : ActionSet
         The branch action set containing available actions on a per-substation basis.
@@ -805,7 +805,7 @@ def crossover(
 
 
 def unsplit_substation(
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     sub_ids: Int[Array, " max_num_splits"],
     action: Int[Array, " max_num_splits"],
     split_idx: Int[Array, " "],
@@ -818,7 +818,7 @@ def unsplit_substation(
 
     Parameters
     ----------
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the reset
     sub_ids : Int[Array, " max_num_splits"]
         The substation ids before the reset

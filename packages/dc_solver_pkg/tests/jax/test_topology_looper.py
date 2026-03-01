@@ -6,7 +6,9 @@
 # Mozilla Public License, version 2.0
 
 import jax
+import jaxtyping
 import numpy as np
+import pytest
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from tests.numpy_reference import run_solver as run_solver_ref
@@ -34,6 +36,7 @@ from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     InjectionComputations,
     SolverLoadflowResults,
+    SparseSolverOutput,
     StaticInformation,
     TopoVectBranchComputations,
 )
@@ -292,6 +295,11 @@ def test_run_solver_with_disconnections(
         solver_config=static_information.solver_config,
     )
     assert res is not None
+
+
+def test_typecheck():
+    with pytest.raises(jaxtyping.TypeCheckError):
+        SparseSolverOutput(n_0_results=123, n_1_results=123, best_inj_combi=True, success="True")
 
 
 def test_run_solver_with_disconnections_and_injections(

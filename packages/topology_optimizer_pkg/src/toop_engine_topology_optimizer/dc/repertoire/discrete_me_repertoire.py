@@ -13,8 +13,6 @@ algorithm as well as several variants. Adapted from QDax
 (https://github.com/adaptive-intelligent-robotics/QDax)
 """
 
-from __future__ import annotations
-
 from functools import partial
 
 import jax
@@ -99,7 +97,7 @@ class DiscreteMapElitesRepertoire:
     """Each cell contains cell_depth unique individuals"""
 
     @partial(jax.jit, static_argnames=("num_samples",))
-    def sample(self: DiscreteMapElitesRepertoire, random_key: RNGKey, num_samples: int) -> Tuple[Genotype, RNGKey]:
+    def sample(self: "DiscreteMapElitesRepertoire", random_key: RNGKey, num_samples: int) -> Tuple[Genotype, RNGKey]:
         """Sample elements in the repertoire.
 
         Parameters
@@ -127,7 +125,7 @@ class DiscreteMapElitesRepertoire:
 
         return samples, random_key
 
-    def __getitem__(self, index: Union[int, slice, jnp.ndarray]) -> DiscreteMapElitesRepertoire:
+    def __getitem__(self, index: Union[int, slice, jnp.ndarray]) -> "DiscreteMapElitesRepertoire":
         """Get a slice of the repertoire.
 
         Parameters

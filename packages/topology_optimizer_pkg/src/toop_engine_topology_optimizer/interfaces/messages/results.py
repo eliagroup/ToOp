@@ -10,8 +10,6 @@
 The optimizer will push results to a results topic.
 """
 
-from __future__ import annotations
-
 import uuid
 from datetime import datetime
 

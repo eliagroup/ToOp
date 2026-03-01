@@ -10,7 +10,7 @@ class FakeProducer:
     def __init__(self):
         self.messages = {}
 
-    def produce(self, topic: str, value: bytes, key: str | None = None):
+    def produce(self, topic: str, value: bytes, key: str | bytes | None = None):
         if topic not in self.messages:
             self.messages[topic] = []
         self.messages[topic].append(value)

@@ -335,7 +335,7 @@ def get_single_outaged_injection_node_after_reassignment(
     nonrel_injection_outage_node: Int[Array, " n_nonrel_inj_failures"],
     rel_stat_map: Int[Array, " n_relevant_subs"],
     n_stat: Int[Array, " "],
-) -> Int[Array, " n_rel_inj_failures"]:
+) -> Int[Array, " n_inj_failures"]:
     """Get the assigned node of all injection outages post-split.
 
     Takes into account the injection assignment and potentially moves injection outages to bus B
@@ -646,7 +646,7 @@ def random_injection_for_topology(
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : PRNGKeyArray
         The random key to use for sampling
     branch_topology : Bool[Array, " batch_size n_splits max_branch_per_sub"]
         The branch topology to sample injections for
@@ -683,7 +683,7 @@ def random_injection_for_topology(
     # Subselect only the injections where the branch has a split
     def _take_sampled_injection(
         si: Int[Array, " n_inj_per_topology n_rel_subs"], sub_ids: Int[Array, " n_splits"]
-    ) -> Int[Array, " n_inj_per_topology n_splits"]:
+    ) -> Int[Array, " n_splits n_inj_per_topology"]:
         return jax.vmap(lambda sub_id: si.at[:, sub_id].get(mode="fill", fill_value=False))(sub_ids)
 
     sampled_injections = jax.vmap(_take_sampled_injection)(sampled_injections, sub_ids)
@@ -704,7 +704,7 @@ def random_injection(
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : PRNGKeyArray
         The random key to use for sampling
     n_generators_per_sub : Int[Array, " n_subs_relevant"]
         The number of generators per substation

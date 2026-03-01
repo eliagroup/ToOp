@@ -60,9 +60,9 @@ def get_max_flow_n_1_matrix(
 
 
 def get_overload_energy_n_1_matrix(
-    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
-    max_mw_flow: Float[Array, " n_branches"],
-    overload_weight: Optional[Float[Array, " n_branches"]] = None,
+    n_1_matrix: Float[ArrayLike, " *batch_size n_timesteps n_failures n_branches"],
+    max_mw_flow: Float[ArrayLike, " n_branches"],
+    overload_weight: Optional[Float[ArrayLike, " n_branches"]] = None,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " "]:
     """Compute the overload energy for an N-1 matrix
@@ -71,7 +71,7 @@ def get_overload_energy_n_1_matrix(
 
     Parameters
     ----------
-    n_1_matrix : Float[ArrayLike, " n_timesteps n_failures n_branches"]
+    n_1_matrix : Float[ArrayLike, " *batch_size n_timesteps n_failures n_branches"]
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
@@ -103,7 +103,7 @@ def get_overload_energy_n_1_matrix(
         max_fn = jnp.max
     elif aggregate_strategy == "nanmax":
         max_fn = jnp.nanmax
-    return jnp.sum(max_fn(overload_matrix, axis=1))
+    return jnp.sum(max_fn(overload_matrix, axis=-2))
 
 
 def get_exponential_overload_energy_n_1_matrix(
@@ -705,7 +705,7 @@ def aggregate_matrix_to_metric(
 
 
 @jaxtyped(typechecker=beartype.beartype)
-def aggregate_to_metric(
+def aggregate_to_metric(  # noqa: C901
     lf_res: SolverLoadflowResults,
     branch_limits: BranchLimits,
     reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
@@ -943,19 +943,19 @@ def compute_double_limits(
 
 
 def get_worst_k_contingencies(
-    k: Int[ArrayLike, ""],
+    k: int,
     n_1_matrix: Float[Array, " n_timesteps n_failures n_branches_monitored"],
-    max_mw_flow: Float[Array, " n_branches"],
+    max_mw_flow: Float[Array, " n_branches_monitored"],
 ) -> WorstKContingencyResults:
     """Get the worst k contingencies from the n-1 matrix.
 
     Parameters
     ----------
-    k : Int[Array, " "]
+    k : int
         The number of worst contingencies to select.
     n_1_matrix : Float[Array, " n_timesteps n_failures n_branches_monitored"]
         The n-1 contingency matrix.
-    max_mw_flow : Float[Array, " n_branches"]
+    max_mw_flow : Float[Array, " n_branches_monitored"]
         The maximum allowed flow for each branch.
 
     Returns
@@ -965,7 +965,6 @@ def get_worst_k_contingencies(
     Int[Array, " n_timesteps k"]
         The indices of the worst k contingencies for each timestep.
     """
-    k = int(jnp.asarray(k).item())
     overload_matrix = jnp.clip(jnp.abs(n_1_matrix) - max_mw_flow, min=0, max=None)
 
     # get worst k contingencies after removing nan values

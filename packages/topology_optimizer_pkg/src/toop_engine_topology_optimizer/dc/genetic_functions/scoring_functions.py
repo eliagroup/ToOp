@@ -12,7 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 from beartype.typing import Optional
 from jax_dataclasses import replace
-from jaxtyping import Array, Bool, Float, Int
+from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from qdax.core.emitters.standard_emitters import EmitterState
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric_batched, get_worst_k_contingencies
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
@@ -138,7 +138,7 @@ def compute_overloads(
 
 def scoring_function(
     topologies: Genotype,
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     dynamic_informations: tuple[DynamicInformation, ...],
     solver_configs: tuple[SolverConfig, ...],
     target_metrics: tuple[tuple[MetricType, float], ...],
@@ -159,7 +159,7 @@ def scoring_function(
     ----------
     topologies : Genotype
         The topologies to score
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the scoring (currently not used)
     dynamic_informations : tuple[DynamicInformation, ...]
         The dynamic information of the grid for every timestep

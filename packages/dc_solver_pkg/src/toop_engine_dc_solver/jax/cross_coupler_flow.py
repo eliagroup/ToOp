@@ -7,8 +7,6 @@
 
 """Compute cross-coupler related flows using BSDF formulations."""
 
-from __future__ import annotations
-
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, ArrayLike, Bool, Float, Int

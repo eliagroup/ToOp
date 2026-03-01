@@ -29,6 +29,7 @@ from toop_engine_dc_solver.jax.types import (
     NodalInjStartOptions,
     StaticInformation,
     TopoVectBranchComputations,
+    int_max,
 )
 
 
@@ -162,7 +163,7 @@ def test_slice_nodal_inj_start_options() -> None:
     n_pst = 5
 
     # Create test data with distinct values per batch
-    pst_taps_data = jnp.arange(total_size * n_timesteps * n_pst, dtype=jnp.float32).reshape(total_size, n_timesteps, n_pst)
+    pst_taps_data = jnp.arange(total_size * n_timesteps * n_pst, dtype=int).reshape(total_size, n_timesteps, n_pst)
     precision_scalar = jnp.array(0.5)
 
     options = NodalInjStartOptions(
@@ -205,7 +206,7 @@ def test_slice_nodal_inj_start_options() -> None:
     assert sliced_oob.previous_results.pst_tap_idx.shape == (batch_size_bsdf, n_timesteps, n_pst)
     assert sliced_oob.precision_percent.ndim == 0
     assert sliced_oob.precision_percent == precision_scalar
-    assert jnp.all(jnp.isnan(sliced_oob.previous_results.pst_tap_idx))
+    assert jnp.all(sliced_oob.previous_results.pst_tap_idx == int_max())
 
 
 def test_slice_nodal_inj_start_options_reconstruction() -> None:
@@ -217,7 +218,7 @@ def test_slice_nodal_inj_start_options_reconstruction() -> None:
     n_pst = 5
 
     # Create test data
-    pst_taps_data = jnp.arange(total_size * n_timesteps * n_pst, dtype=jnp.float32).reshape(total_size, n_timesteps, n_pst)
+    pst_taps_data = jnp.arange(total_size * n_timesteps * n_pst, dtype=int).reshape(total_size, n_timesteps, n_pst)
     precision_scalar = jnp.array(0.75)
 
     options = NodalInjStartOptions(

@@ -99,7 +99,7 @@ def bench_symmetric(
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : PRNGKeyArray
         The random key to use for generating the topologies
     static_information : StaticInformation
         The static information to run the benchmark with. The batch_size_bsdf will be used, which

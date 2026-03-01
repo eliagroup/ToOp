@@ -17,8 +17,6 @@ Usage (Hydra from repo root):
 Hydra config file: toop-engine-benchmark/configs/assess.yaml
 """
 
-from __future__ import annotations
-
 import json
 import statistics as stats
 import sys

@@ -9,14 +9,15 @@
 
 from functools import partial
 
+import equinox as eqx
 import jax
 import jax.experimental
 import jax.numpy as jnp
 import logbook
 from beartype.typing import Iterable, Optional
 from fsspec import AbstractFileSystem
-from jax_dataclasses import pytree_dataclass, replace
-from jaxtyping import Array, Float, Int
+from jax_dataclasses import replace
+from jaxtyping import Array, Float, Int, PRNGKeyArray
 from qdax.core.emitters.standard_emitters import EmitterState
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.aggregate_results import compute_double_limits
@@ -53,8 +54,7 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
 logger = logbook.Logger(__name__)
 
 
-@pytree_dataclass
-class JaxOptimizerData:
+class JaxOptimizerData(eqx.Module):
     """The part of the optimizer data that lives on GPU.
 
     If distributed is enabled, every item will have a leading device dimension.
@@ -69,7 +69,7 @@ class JaxOptimizerData:
     dynamic_informations: tuple[DynamicInformation, ...]
     """The list containing the dynamic information objects"""
 
-    random_key: jax.random.PRNGKey
+    random_key: PRNGKeyArray
     """The random key"""
 
     latest_iteration: Int[Array, ""]

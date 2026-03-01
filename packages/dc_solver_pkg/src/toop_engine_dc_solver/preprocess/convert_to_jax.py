@@ -255,12 +255,14 @@ def convert_to_jax(  # noqa: PLR0913
         action_set = replace(action_set, rel_bb_outage_data=convert_rel_bb_outage_data(network_data))
 
     logging_fn("create_static_information", None)
+    ptdf = jnp.array(network_data.ptdf)
+    nodal_injection = jnp.array(network_data.nodal_injection, dtype=float)
     static_information = StaticInformation(
         dynamic_information=DynamicInformation(
             # Network Data arguments
             from_node=jnp.array(network_data.from_nodes, dtype=int),
             to_node=jnp.array(network_data.to_nodes, dtype=int),
-            ptdf=jnp.array(network_data.ptdf),
+            ptdf=ptdf,
             generators_per_sub=jnp.array(network_data.num_injections_per_node, dtype=int),
             branch_limits=BranchLimits(
                 max_mw_flow=max_mw_flows,
@@ -275,7 +277,7 @@ def convert_to_jax(  # noqa: PLR0913
             from_stat_bool=branch_direction,
             susceptance=susceptance,
             relevant_injections=relevant_injections,
-            nodal_injections=jnp.array(network_data.nodal_injection, dtype=float),
+            nodal_injections=nodal_injection,
             branches_to_fail=branches_to_fail,
             disconnectable_branches=disconnectable_branches,
             # Solver arguments
@@ -287,8 +289,8 @@ def convert_to_jax(  # noqa: PLR0913
             relevant_injection_outage_idx=jnp.array(network_data.rel_io_local_inj_index, dtype=int),
             relevant_injection_outage_sub=jnp.array(network_data.rel_io_sub, dtype=int),
             unsplit_flow=get_unsplit_flows(
-                ptdf=network_data.ptdf,
-                nodal_injections=network_data.nodal_injection,
+                ptdf=ptdf,
+                nodal_injections=nodal_injection,
                 ac_dc_mismatch=network_data.ac_dc_mismatch,
                 ac_dc_interpolation=ac_dc_interpolation,
             ),

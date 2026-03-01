@@ -15,6 +15,7 @@ import os
 import shutil
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from numbers import Integral
 from pathlib import Path
 
 import networkx as nx
@@ -76,9 +77,9 @@ def compress_bz2(source_file: str) -> None:
 
 def save_timestep_data(
     timestep_nets: list[pp.pandapowerNet],
-    folder: str,
+    folder: str | Path,
     filename_without_ext: str,
-    element_type: Literal["gen", "sgen", "load"],
+    element_type: Literal["gen", "sgen", "load", "dcline"],
     attribute: Literal["p_mw", "q_mvar", "vm_pu"],
     save_grid2op_compatible: bool = False,
 ) -> None:
@@ -88,7 +89,7 @@ def save_timestep_data(
     ----------
     timestep_nets : list[pp.pandapowerNet]
         The list of pandapower networks to extract the data from
-    folder : str
+    folder : str | Path
         The folder to save the data to, should be the grid path / chronics / xxxx where xxxx is the
         timestep number with 4 digits
     filename_without_ext : str
@@ -144,7 +145,7 @@ class PandapowerCounters:
 
 
 def random_station_info_backend(
-    backend: BackendInterface, node_idx: int, pp_counters: Optional[PandapowerCounters]
+    backend: BackendInterface, node_idx: Integral, pp_counters: Optional[PandapowerCounters]
 ) -> tuple[Station, Optional[PandapowerCounters]]:
     """Generate a random station for any backend
 
@@ -155,7 +156,7 @@ def random_station_info_backend(
     ----------
     backend : BackendInterface
         The backend to generate the topology for
-    node_idx : int
+    node_idx : Integral
         The bus to generate the station for, indexing into all nodes of the backend
     pp_counters : Optional[PandapowerCounters]
         The pandapower counters to generate valid IDs for the pandapower backend. If given, it will generate the bus B ids

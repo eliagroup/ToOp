@@ -13,10 +13,11 @@ the injection combination that yields the minimal worst N-1 case. However, we al
 selection criterium based on overload energy
 """
 
+import beartype
 import jax
 from beartype.typing import Literal, Optional, TypeAlias
 from jax import numpy as jnp
-from jaxtyping import Array, Bool, Float, Int, PyTree
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree, jaxtyped
 from toop_engine_dc_solver.jax.types import (
     BranchLimits,
     SolverLoadflowResults,
@@ -31,8 +32,8 @@ AggregateStrategy: TypeAlias = Literal["max", "nanmax"]
 
 
 def get_max_flow_n_1_matrix(
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
-    max_mw_flow: Float[Array, " n_branches"],
+    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
+    max_mw_flow: Float[ArrayLike, " n_branches"],
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " "]:
     """Compute the maximum flow for an N-1 matrix
@@ -59,7 +60,7 @@ def get_max_flow_n_1_matrix(
 
 
 def get_overload_energy_n_1_matrix(
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
+    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
@@ -70,7 +71,7 @@ def get_overload_energy_n_1_matrix(
 
     Parameters
     ----------
-    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches"]
+    n_1_matrix : Float[ArrayLike, " n_timesteps n_failures n_branches"]
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
@@ -106,7 +107,7 @@ def get_overload_energy_n_1_matrix(
 
 
 def get_exponential_overload_energy_n_1_matrix(
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
+    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
     alpha: float = 1.5,
@@ -116,7 +117,7 @@ def get_exponential_overload_energy_n_1_matrix(
 
     Parameters
     ----------
-    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches"]
+    n_1_matrix : Float[ArrayLike, " n_timesteps n_failures n_branches"]
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
@@ -157,7 +158,7 @@ def get_exponential_overload_energy_n_1_matrix(
 
 
 def get_critical_branch_count_n_1_matrix(
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
+    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Int[Array, " "]:
@@ -168,7 +169,7 @@ def get_critical_branch_count_n_1_matrix(
 
     Parameters
     ----------
-    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches"]
+    n_1_matrix : Float[ArrayLike, " n_timesteps n_failures n_branches"]
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
@@ -274,7 +275,7 @@ def get_number_of_disconnections(
         The number of disconnections in the disconnections vector
     """
     if disconnections is None:
-        return 0
+        return jnp.array(0, dtype=int)
     # Only count the disconnections that are valid
     return jnp.sum((disconnections >= 0) & (disconnections < n_branches))
 
@@ -437,7 +438,7 @@ def get_n0_n1_delta(
         return max_fn(delta, axis=1)
 
     highest_delta = jnp.argmax(jnp.abs(delta), axis=1)
-    return delta[jnp.arange(delta.shape[0]), highest_delta]
+    return delta[jnp.arange(delta.shape[0])[:, None], highest_delta, jnp.arange(delta.shape[2])[None, :]]
 
 
 def compute_n0_n1_max_diff(
@@ -481,7 +482,7 @@ def compute_n0_n1_max_diff(
 def get_n0_n1_delta_penalty(
     n_0: Float[Array, " n_timesteps n_branches"],
     n_1: Float[Array, " n_timesteps n_failures n_branches"],
-    n0_n1_max_diff: Optional[Float[Array, " n_branches"]],
+    n0_n1_max_diff: Optional[Float[ArrayLike, " n_branches"]],
 ) -> Float[Array, " "]:
     """Compute the penalty for violating maximum N-0 to N-1 delta
 
@@ -615,10 +616,10 @@ def choose_max_mw_flow(
 def aggregate_to_metric_batched(
     lf_res_batch: SolverLoadflowResults,
     branch_limits: BranchLimits,
-    reassignment_distance: Int[Array, " n_branch_actions"],
+    reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
-) -> Float[Array, " batch_size"]:
+) -> Float[Array, " batch_size"] | Int[Array, " batch_size"]:
     """Aggregate the N-0 and N-1 results down to a single metric
 
     This is a batched version of aggregate_to_metric and can be used to aggregate multiple results,
@@ -656,7 +657,7 @@ def aggregate_matrix_to_metric(
     branch_limits: BranchLimits,
     metric: MatrixMetric,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
-) -> Float[Array, " "]:
+) -> Float[Array, " "] | Int[Array, " "]:
     """Aggregate a metric that needs the N-1/N-0 matrices
 
     This chooses the correct max_mw_flow and calls aggregate_n_1_matrix
@@ -703,14 +704,15 @@ def aggregate_matrix_to_metric(
     )
 
 
+@jaxtyped(typechecker=beartype.beartype)
 def aggregate_to_metric(
     lf_res: SolverLoadflowResults,
     branch_limits: BranchLimits,
-    reassignment_distance: Int[Array, " n_branch_actions"],
+    reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
     aggregate_strategy: Optional[AggregateStrategy] = "max",
-) -> Float[Array, " "]:
+) -> Float[Array, " "] | Int[Array, " "]:
     """Aggregate the N-0 and N-1 results down to a single metric
 
     This gives several options for commonly used aggregation metrics
@@ -745,6 +747,8 @@ def aggregate_to_metric(
     elif metric == "cross_coupler_flow":
         retval = get_cross_coupler_flow_penalty(lf_res.cross_coupler_flows, lf_res.sub_ids, branch_limits.coupler_limits)
     elif metric == "switching_distance":
+        if reassignment_distance is None:
+            raise ValueError("No reassignment_distance given for switching_distance metric")
         retval = get_switching_distance(
             branch_action_index=lf_res.branch_action_index,
             reassignment_distance=reassignment_distance,
@@ -778,11 +782,12 @@ def aggregate_n_1_matrix(
         "underload_energy",
         "transport",
         "exponential_overload_energy",
+        "critical_branch_count",
         "cumulative_overload",
     ] = "max_flow",
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
-) -> Float[Array, " "]:
+) -> Float[Array, " "] | Int[Array, " "]:
     """Aggregate the N-1 matrix down to a single metric
 
     Parameters
@@ -938,7 +943,7 @@ def compute_double_limits(
 
 
 def get_worst_k_contingencies(
-    k: Int[Array, " "],
+    k: Int[ArrayLike, ""],
     n_1_matrix: Float[Array, " n_timesteps n_failures n_branches_monitored"],
     max_mw_flow: Float[Array, " n_branches"],
 ) -> WorstKContingencyResults:
@@ -960,6 +965,7 @@ def get_worst_k_contingencies(
     Int[Array, " n_timesteps k"]
         The indices of the worst k contingencies for each timestep.
     """
+    k = int(jnp.asarray(k).item())
     overload_matrix = jnp.clip(jnp.abs(n_1_matrix) - max_mw_flow, min=0, max=None)
 
     # get worst k contingencies after removing nan values

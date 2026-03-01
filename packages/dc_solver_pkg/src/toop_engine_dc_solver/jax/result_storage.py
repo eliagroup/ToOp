@@ -16,7 +16,7 @@ from functools import partial
 import jax
 from beartype.typing import Optional
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
-from jaxtyping import Array, Bool, Float, Int, PyTree, Shaped
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.types import (
     AggregateOutputProtocol,
     SolverLoadflowResults,
@@ -40,7 +40,7 @@ def prepare_result_storage(  # noqa: PLR0913
     nminus2: bool,
     bb_outage: bool,
     size: int,
-) -> PyTree[Shaped, " size ..."]:
+) -> PyTree:
     """Prepare the result storage for the solver
 
     This invokes aggregate_output_fn with zeros to determine the shape of the output
@@ -100,7 +100,7 @@ def prepare_result_storage(  # noqa: PLR0913
         sub_ids=jnp.zeros(sub_ids_shape, dtype=int),
         injection_topology=jnp.zeros(injections_shape, dtype=bool),
         n_2_penalty=jnp.array(0.0, dtype=float) if nminus2 else None,
-        disconnections=jnp.zeros(n_disconnections, dtype=bool) if n_disconnections else None,
+        disconnections=jnp.zeros(n_disconnections, dtype=int) if n_disconnections else None,
         bb_outage_penalty=jnp.array(0.0, dtype=float) if bb_outage else None,
     )
 
@@ -178,14 +178,15 @@ def get_best_for_topologies(
 def update_aggregate_results(
     injections: Bool[Array, " batch_size_injection n_split max_inj_per_sub"],
     corresponding_topology: Int[Array, " batch_size_injection"],
-    results_cur: PyTree[Shaped, " batch_size_injection ..."],
+    results_cur: PyTree,
     metrics_cur: Float[Array, " batch_size_injection"],
     pad_mask: Bool[Array, " batch_size_injection"],
-    results_acc: PyTree[Shaped, " batch_size_bsdf ..."],
-    best_inj_acc: Bool[Array, " batch_size_bsdf n_split max_inj_per_sub"],
+    results_acc: PyTree,
+    best_inj_acc: Bool[ArrayLike, " batch_size_bsdf n_split max_inj_per_sub"]
+    | Float[ArrayLike, " batch_size_bsdf n_split max_inj_per_sub"],
     metrics_acc: Float[Array, " batch_size_bsdf"],
 ) -> tuple[
-    PyTree[Shaped, " batch_size_bsdf ..."],
+    PyTree,
     Bool[Array, " batch_size_bsdf n_split max_inj_per_sub"],
     Float[Array, " batch_size_bsdf"],
 ]:
@@ -253,7 +254,7 @@ def update_aggregate_results(
         jnp.expand_dims(jnp.expand_dims(replace_res, axis=-1), axis=-1),
         injections.at[injection_index].get(mode="fill", fill_value=0),
         best_inj_acc,
-    )
+    ).astype(bool)
 
     metrics_acc = jnp.where(
         replace_res,
@@ -265,12 +266,14 @@ def update_aggregate_results(
 
 
 def update_aggregate_metrics(
-    injections: Bool[Array, " batch_size_injection n_splits max_inj_per_sub"],
+    injections: Bool[ArrayLike, " batch_size_injection n_splits max_inj_per_sub"]
+    | Float[ArrayLike, " batch_size_injection n_splits max_inj_per_sub"],
     corresponding_topology: Int[Array, " batch_size_injections"],
-    metric: Float[Array, " batch_size_injections"],
-    pad_mask: Bool[Array, " batch_size_injections"],
+    metric: Float[ArrayLike, " batch_size_injections"] | Int[ArrayLike, " batch_size_injections"],
+    pad_mask: Bool[ArrayLike, " batch_size_injections"] | Int[ArrayLike, " batch_size_injections"],
     metrics_acc: Float[Array, " batch_size_bsdf"],
-    best_inj_acc: Bool[Array, " batch_size_bsdf n_splits max_inj_per_sub"],
+    best_inj_acc: Bool[ArrayLike, " batch_size_bsdf n_splits max_inj_per_sub"]
+    | Float[ArrayLike, " batch_size_bsdf n_splits max_inj_per_sub"],
 ) -> tuple[Float[Array, " batch_size_bsdf"], Bool[Array, " batch_size_bsdf n_splits max_inj_per_sub"]]:
     """Aggregate the results for a single injection batch, keeping a running min
 
@@ -318,7 +321,7 @@ def update_aggregate_metrics(
         replace_res[:, None, None],
         injections.at[injection_index].get(mode="fill", fill_value=False),
         best_inj_acc,
-    )
+    ).astype(bool)
 
     return metrics_acc, best_inj_acc
 

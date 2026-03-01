@@ -9,11 +9,13 @@
 
 from __future__ import annotations
 
+import beartype
+import equinox as eqx
 import jax
 from beartype.typing import Optional
 from jax import numpy as jnp
 from jax_dataclasses import Static, pytree_dataclass
-from jaxtyping import Array, Float, Int
+from jaxtyping import Array, ArrayLike, Float, Int, jaxtyped
 from toop_engine_dc_solver.jax.busbar_outage import perform_non_rel_bb_outages, perform_rel_bb_outage_single_topo
 from toop_engine_dc_solver.jax.multi_outages import MODFMatrix, apply_modf_matrices
 from toop_engine_dc_solver.jax.topology_computations import pad_action_with_unsplit_action_indices
@@ -41,62 +43,62 @@ class UnBatchedContingencyAnalysisParams:
     Whether to enable busbar outages in the contingency analysis. If True, the
     contingency analysis will include the effects of busbar outages.
     """
-    action_set: ActionSet = None
+    action_set: Optional[ActionSet] = None
     """
     The action set of the topology."""
 
-    non_rel_bb_outage_data: NonRelBBOutageData = None
+    non_rel_bb_outage_data: Optional[NonRelBBOutageData] = None
     """
     The non-rel busbar outage data for the contingency analysis. The RelBBOutageData
     can be found in the action_set.
     """
 
 
-@pytree_dataclass
-class BatchedContingencyAnalysisParams:
+@jaxtyped(typechecker=beartype.beartype)
+class BatchedContingencyAnalysisParams(eqx.Module):
     """Batched parameters for the contingency analysis, containing matrices and other data.
 
     Note that the batched parameters is per-topology while the unbatched parameters is per-grid
     and hence the unbatched parameters can be broadcasted.
     """
 
-    lodf: Float[Array, " ... n_failures n_branches_monitored"]
+    lodf: Float[ArrayLike, " n_failures n_branches_monitored"]
     """
     The Line Outage Distribution Factors (LODF) matrix, representing the impact of line outages on monitored branches.
     """
-    ptdf: Float[Array, " ... n_branches n_bus"]
+    ptdf: Float[ArrayLike, " n_branches n_bus"]
     """
     The Power Transfer Distribution Factors (PTDF) matrix, representing the sensitivity of branch flows to nodal injections.
     """
-    modf: list[MODFMatrix]
+    modf: MODFMatrix
     """
     Multi-Outage Distribution Factor (MODF) matrices for handling multiple simultaneous outages.
     """
-    nodal_injections: Float[Array, " ... n_timesteps n_bus"]
+    nodal_injections: Float[ArrayLike, " n_timesteps n_bus"]
     """
     Nodal power injections for each timestep, representing the power injected at each node.
     """
-    n_0_flow: Float[Array, " ... n_timesteps n_branches"]
+    n_0_flow: Float[ArrayLike, " n_timesteps n_branches"]
     """
     Base case branch flows for each timestep, representing the initial power flow before any outages.
     """
-    injection_outage_node: Int[Array, " ... n_inj_failures"]
+    injection_outage_node: Int[ArrayLike, " n_inj_failures"]
     """
     Indices of nodes where injection outages occur.
     """
-    action_indices: Optional[Int[Array, " ... n_split_subs"]] = None
+    action_indices: Optional[Int[ArrayLike, " n_split_subs"]] = None
     """
     Indices of the topolgical actions
     """
-    from_nodes: Optional[Int[Array, " ... n_branches"]] = None
+    from_nodes: Optional[Int[ArrayLike, " n_branches"]] = None
     """
     Indices of "from" nodes for each branch, used to identify the starting point of each branch.
     """
-    to_nodes: Optional[Int[Array, " ... n_branches"]] = None
+    to_nodes: Optional[Int[ArrayLike, " n_branches"]] = None
     """
     Indices of "to" nodes for each branch, used to identify the endpoint of each branch.
     """
-    disconnections: Optional[Int[Array, " ... n_disconnections"]] = None
+    disconnections: Optional[Int[ArrayLike, " n_disconnections"]] = None
     """
     Indices of branches that are disconnected as part of topological actions, used to apply specific disconnection actions.
     """
@@ -105,7 +107,7 @@ class BatchedContingencyAnalysisParams:
 def contingency_analysis_matrix(
     unbatched_params: UnBatchedContingencyAnalysisParams,
     batched_params: BatchedContingencyAnalysisParams,
-) -> Float[Array, " n_timesteps n_branch_failures+n_multi_failures+n_inj_failures+n_bb_outages n_branches_monitored"]:
+) -> Float[Array, " n_timesteps n_failures_total n_branches_monitored"]:
     """
     Perform a n-0 and n-1 analysis and returns the full n-0 loads and n-1 matrix.
 
@@ -186,7 +188,7 @@ def calc_bb_outage_contingency(
     to_nodes: Int[Array, " n_branches"],
     action_set: ActionSet,
     branches_monitored: Int[Array, " n_branches_monitored"],
-    non_rel_bb_outage_data: NonRelBBOutageData,
+    non_rel_bb_outage_data: Optional[NonRelBBOutageData],
     disconnections: Optional[Int[Array, " n_disconnections"]] = None,
 ) -> Float[
     Array,
@@ -237,7 +239,7 @@ def calc_bb_outage_contingency(
     )
     bb_outage_flows = jnp.transpose(bb_outage_flows, (1, 0, 2))
 
-    if non_rel_bb_outage_data.branch_outages.shape[0] > 0:
+    if non_rel_bb_outage_data is not None and non_rel_bb_outage_data.branch_outages.shape[0] > 0:
         bb_outage_flows_non_rel_bbs, _success_non_rel_bbs = perform_non_rel_bb_outages(
             n_0_flows=n_0_flows,
             ptdf=ptdf,
@@ -327,7 +329,7 @@ def calc_injection_outage(
     ptdf: Float[Array, " n_branches n_bus"],
     n_0_flow: Float[Array, " n_timesteps n_branches"],
     delta_p: Float[Array, " n_timesteps"],
-    outage_node: Int[Array, " "],
+    outage_node: Int[ArrayLike, " "],
     branches_monitored: Int[Array, " n_branches_monitored"],
 ) -> Float[Array, " n_timesteps n_branches_monitored"]:
     """Compute the post-outage flow after taking out a single injection.

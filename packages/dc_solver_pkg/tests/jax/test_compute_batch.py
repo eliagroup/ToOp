@@ -66,7 +66,7 @@ def test_compute_bsdf_lodf_static_flows(
         ),
         solver_config=replace(
             static_information.solver_config,
-            aggregation_metric="overload_energy",
+            aggregation_metric="overload_energy_n_1",
             number_most_affected=n_branches * n_failures,
             number_most_affected_n_0=n_branches,
             number_max_out_in_most_affected=n_branches,

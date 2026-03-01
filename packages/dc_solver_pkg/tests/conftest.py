@@ -395,7 +395,7 @@ def _preprocessed_data_folder(_data_folder: Path, tmp_path_factory: pytest.TempP
         branch_action_set=static_information.dynamic_information.action_set,
         limit_n_subs=2,
         batch_size=10,
-        unsplit_prob=0,
+        unsplit_prob=0.0,
         topo_vect_format=False,
     )
     best_branch = convert_action_set_index_to_topo(
@@ -672,7 +672,7 @@ def _node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPat
         branch_action_set=static_information.dynamic_information.action_set,
         limit_n_subs=1,
         batch_size=10,
-        unsplit_prob=0,
+        unsplit_prob=0.0,
         topo_vect_format=False,
     )
     best_disconnections = jax.random.choice(

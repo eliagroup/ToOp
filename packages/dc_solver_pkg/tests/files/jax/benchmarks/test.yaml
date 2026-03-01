@@ -20,7 +20,7 @@ benchmarks:
     random_seed: 0
     hyperparameters:
       limit_n_subs: 3
-      aggregation_metric: max_flow
+      aggregation_metric: max_flow_n_1
       number_most_affected_n_0: 10
       number_most_affected: 10
       number_max_out_in_most_affected: 5
@@ -46,7 +46,7 @@ benchmarks:
     random_seed: 0
     hyperparameters:
       limit_n_subs: 3
-      aggregation_metric: max_flow
+      aggregation_metric: max_flow_n_1
       number_most_affected_n_0: 10
       number_most_affected: 10
       number_max_out_in_most_affected: 5

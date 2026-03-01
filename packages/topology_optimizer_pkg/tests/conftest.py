@@ -232,7 +232,7 @@ def kafka_heartbeat_topic(kafka_container: Container) -> Generator[str, None, No
 
 
 @pytest.fixture(scope="session")
-def grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Grid data directory prepared once for each worker (per session scope).
 
     Returns:
@@ -280,8 +280,25 @@ def grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return target_path
 
 
+@pytest.fixture(scope="function")
+def grid_folder(_grid_folder: Path, tmp_path: Path) -> Path:
+    """Copy the content of the _grid_folder fixture to a per-test temporary directory.
+
+    Returns:
+        Path: The path to the grid data directory.
+    """
+    # Copy all contents of grid folder into the tmp_path
+    for item in _grid_folder.iterdir():
+        dest = tmp_path / item.name
+        if item.is_dir():
+            shutil.copytree(item, dest)
+        else:
+            shutil.copy2(item, dest)
+    return tmp_path
+
+
 @pytest.fixture(scope="session")
-def case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Path to the case57 non-converging grid file"""
     tmp_path = tmp_path_factory.mktemp("case57_non_converging")
 
@@ -294,14 +311,21 @@ def case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Path
     return tmp_path
 
 
-@pytest.fixture(scope="session")
-def static_information_file(grid_folder: Path) -> Path:
-    return grid_folder / "oberrhein" / PREPROCESSING_PATHS["static_information_file_path"]
+@pytest.fixture(scope="function")
+def case57_non_converging_path(_case57_non_converging_path: Path, tmp_path: Path) -> Path:
+    """Path to a per-test copy of the case57 non-converging grid file directory."""
+    shutil.copytree(_case57_non_converging_path, tmp_path, dirs_exist_ok=True)
+    return tmp_path
 
 
 @pytest.fixture(scope="session")
-def static_information_file_complex(grid_folder: Path) -> Path:
-    return grid_folder / "complex_grid" / PREPROCESSING_PATHS["static_information_file_path"]
+def static_information_file(_grid_folder: Path) -> Path:
+    return _grid_folder / "oberrhein" / PREPROCESSING_PATHS["static_information_file_path"]
+
+
+@pytest.fixture(scope="session")
+def static_information_file_complex(_grid_folder: Path) -> Path:
+    return _grid_folder / "complex_grid" / PREPROCESSING_PATHS["static_information_file_path"]
 
 
 def build_dc_config(base_path: str, static_info_file: Path) -> DictConfig:
@@ -371,12 +395,12 @@ def build_pipeline_cfg(complex_grid_dst: Path, iteration_name: str, file_name: s
 
 @pytest.fixture(scope="session")
 def pipeline_and_configs(
-    tmp_path_factory: pytest.TempPathFactory, grid_folder: Path
+    tmp_path_factory: pytest.TempPathFactory, _grid_folder: Path
 ) -> tuple[DictConfig, DictConfig, DictConfig]:
     """Configuration for the end-to-end pipeline tests"""
     tmp_grid_folder = tmp_path_factory.mktemp("pipeline_grid")
     # Copy complex grid data to temporary folder
-    complex_grid_src = grid_folder / "complex_grid"
+    complex_grid_src = _grid_folder / "complex_grid"
     complex_grid_dst = tmp_grid_folder / "complex_grid"
     os.makedirs(complex_grid_dst, exist_ok=True)
     shutil.copytree(str(complex_grid_src), str(complex_grid_dst), dirs_exist_ok=True)
@@ -415,19 +439,20 @@ def dc_repertoire_elements_per_sub() -> tuple[Int[np.ndarray, " n_relevant_subs"
 @pytest.fixture
 def dc_repertoire(session: Session) -> list[ACOptimTopology]:
     """Populate the database with three strategies of 10 random timesteps each"""
+    rng = np.random.default_rng(42)
     for _strategy in range(3):
         assignments = []
         for _timestep in range(10):
             # Generate random assignments
-            n_splits = np.random.randint(1, 6)
-            n_disconnections = np.random.randint(0, 3)
+            n_splits = int(rng.integers(1, 6))
+            n_disconnections = int(rng.integers(0, 3))
             n_psts = 5
 
             assignments.append(
                 (
-                    np.random.choice(a=5000, size=n_splits, replace=False).tolist(),  # actions
-                    np.random.choice(a=10, size=n_disconnections, replace=False).tolist(),  # disconnections
-                    np.random.randint(low=0, high=60, size=n_psts).tolist(),  # pst_setpoints
+                    rng.choice(a=5000, size=n_splits, replace=False).tolist(),  # actions
+                    rng.choice(a=10, size=n_disconnections, replace=False).tolist(),  # disconnections
+                    rng.integers(low=0, high=60, size=n_psts).tolist(),  # pst_setpoints
                 )
             )
         strategy_hash = hash_topo_data(assignments)
@@ -442,12 +467,12 @@ def dc_repertoire(session: Session) -> list[ACOptimTopology]:
                     strategy_hash=strategy_hash,
                     optimization_id="test",
                     optimizer_type=OptimizerType.DC,
-                    fitness=np.random.rand() * -3000,
+                    fitness=float(rng.random()) * -3000,
                     metrics={
-                        "overload_energy_n_1": np.random.rand(),
-                        "switching_distance": np.random.randint(0, 30),
-                        "split_subs": np.random.randint(0, 5),
-                        "disconnections": np.random.randint(0, 10),
+                        "overload_energy_n_1": float(rng.random()),
+                        "switching_distance": int(rng.integers(0, 30)),
+                        "split_subs": int(rng.integers(0, 5)),
+                        "disconnections": int(rng.integers(0, 10)),
                     },
                 )
             )
@@ -475,24 +500,26 @@ def contingency_ids_case_57(n_minus1_definitions_case_57: list[Nminus1Definition
 @pytest.fixture
 def unsplit_ac_dc_repertoire(session: Session, contingency_ids_case_57: list[str]) -> tuple[list[ACOptimTopology], Session]:
     """Populate the database with three strategies of 10 random timesteps each"""
+    rng = np.random.default_rng(43)
+    contingency_ids_sorted = sorted(contingency_ids_case_57)
     for _strategy in range(3):
         assignments = []
         for _timestep in range(10):
             # Generate random assignments
-            n_splits = np.random.randint(1, 6)
-            n_disconnections = np.random.randint(0, 3)
+            n_splits = int(rng.integers(1, 6))
+            n_disconnections = int(rng.integers(0, 3))
             n_psts = 5
 
             assignments.append(
                 (
-                    np.random.choice(a=5000, size=n_splits, replace=False).tolist(),  # actions
-                    np.random.choice(a=10, size=n_disconnections, replace=False).tolist(),  # disconnections
-                    np.random.randint(low=0, high=60, size=n_psts).tolist(),  # pst_setpoints
+                    rng.choice(a=5000, size=n_splits, replace=False).tolist(),  # actions
+                    rng.choice(a=10, size=n_disconnections, replace=False).tolist(),  # disconnections
+                    rng.integers(low=0, high=60, size=n_psts).tolist(),  # pst_setpoints
                 )
             )
         strategy_hash = hash_topo_data(assignments)
         for timestep, (actions, disconnections, pst_setpoints) in enumerate(assignments):
-            case_ids = np.random.choice(contingency_ids_case_57, size=5, replace=False).tolist()
+            case_ids = rng.choice(contingency_ids_sorted, size=min(5, len(contingency_ids_sorted)), replace=False).tolist()
             session.add(
                 ACOptimTopology(
                     actions=actions,
@@ -503,10 +530,10 @@ def unsplit_ac_dc_repertoire(session: Session, contingency_ids_case_57: list[str
                     strategy_hash=strategy_hash,
                     optimization_id="test",
                     optimizer_type=OptimizerType.DC,
-                    fitness=np.random.rand(),
+                    fitness=float(rng.random()),
                     metrics={
-                        "overload_energy_n_1": np.random.rand(),
-                        "top_k_overloads_n_1": np.random.rand(),
+                        "overload_energy_n_1": float(rng.random()),
+                        "top_k_overloads_n_1": float(rng.random()),
                     },
                     worst_k_contingency_cases=case_ids,
                 )
@@ -515,7 +542,7 @@ def unsplit_ac_dc_repertoire(session: Session, contingency_ids_case_57: list[str
     # Add unsplit topology AC topology
     unsplit_strategy_hash = hash_topo_data([([], [], [])])  # Unique hash for unsplit topology
     # Generate unique case_ids for the unsplit topology
-    case_ids = np.random.choice(contingency_ids_case_57, size=5, replace=False).tolist()
+    case_ids = rng.choice(contingency_ids_sorted, size=min(5, len(contingency_ids_sorted)), replace=False).tolist()
     unsplit_topology = ACOptimTopology(
         actions=[],
         disconnections=[],
@@ -525,10 +552,10 @@ def unsplit_ac_dc_repertoire(session: Session, contingency_ids_case_57: list[str
         strategy_hash=unsplit_strategy_hash,
         optimization_id="test",
         optimizer_type=OptimizerType.AC,
-        fitness=np.random.rand(),
+        fitness=float(rng.random()),
         metrics={
-            "overload_energy_n_1": np.random.rand(),
-            "top_k_overloads_n_1": np.random.rand(),
+            "overload_energy_n_1": float(rng.random()),
+            "top_k_overloads_n_1": float(rng.random()),
         },
         worst_k_contingency_cases=case_ids,
     )

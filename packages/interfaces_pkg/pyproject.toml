@@ -25,11 +25,11 @@ classifiers=[
 ]
 
 readme = "README.md"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     "pandera (>=0.22.1,<0.23.0)",
     "beartype (>=0.22.0,<0.23.0)",
-    "numpy (>=1.26.0,<2.0.0)",
+    "numpy (>=1.26.0,<2.4.2)",
     "pandas (>=2.2.3,<3.0.0)",
     "pydantic (>=1.10.3,<3.0.0)",
     "logbook (>=1.8.1,<1.9.0)",

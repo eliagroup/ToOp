@@ -29,12 +29,12 @@ classifiers=[
         'Programming Language :: Python :: 3.11'
 ]
 
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11,<3.14"
 
 [tool.hatch.metadata.hooks.uv-dynamic-versioning]
 dependencies = [
     "pandapower (>=3.0.0,<4.0.0)",
-    "numba (>=0.58.1)",
+    "numba (>=0.59.0,<=0.64.0)",
     "sqlalchemy (>=1.4.17)",
     "openpyxl (>=3.1.2,<4.0.0)",
     "plotly (>=3.0.0,<6.0.0)",

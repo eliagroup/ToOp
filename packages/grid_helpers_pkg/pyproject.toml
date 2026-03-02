@@ -23,11 +23,11 @@ classifiers=[
         'Programming Language :: Python :: 3.11'
 ]
 
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11,<3.14"
 
 [tool.hatch.metadata.hooks.uv-dynamic-versioning]
 dependencies = [
-    "numpy (>=1.26.0,<2.0.0)",
+    "numpy (>=1.26.0,<2.4.2)",
     "pandas[hdf5] (>=2.2.3,<3.0.0)",
     "jaxtyping (>=0.2.22,<0.3.0)",
     "beartype (>=0.22.0,<0.23.0)",

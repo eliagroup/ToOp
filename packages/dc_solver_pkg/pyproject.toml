@@ -28,11 +28,11 @@ classifiers=[
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11'
 ]
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11,<3.14"
 
 [tool.hatch.metadata.hooks.uv-dynamic-versioning]
 dependencies = [
-    "numpy (>=1.26.0,<2.0.0)",
+    "numpy (>=1.26.0,<2.4.2)",
     "pandas[hdf5] (>=2.2.3,<3.0.0)",
     "scipy (>=1.11.3,<2.0.0)",
     "h5py (==3.12.1)",
@@ -43,7 +43,7 @@ dependencies = [
     "equinox (>=0.11.0,<0.12.0)",
     "jax-dataclasses (>=1.5.1,<2.0.0)",
     "tqdm (>=4.66.1,<5.0.0)",
-    "numba (>=0.58.1,<0.59.0)",
+    "numba (>=0.59.0,<=0.64.0)",
     "overrides (>=7.7.0,<8.0.0)",
     "pypowsybl (>=1.13.0,<2.0.0)",
     "pydantic (>=1.10.3,<3.0.0)",

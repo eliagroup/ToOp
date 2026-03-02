@@ -8,6 +8,7 @@
 from pathlib import Path
 
 import pytest
+from beartype.typing import Callable
 from pydantic import ValidationError
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
@@ -20,6 +21,23 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     StartPreprocessingCommand,
     UcteImporterParameters,
 )
+
+
+def get_unwrapped_function(func: Callable) -> Callable:
+    """Utility function to get the original function from a beartype and jaxtyping decorated function, by unwrapping all layers of decoration.
+
+    Parameters
+    ----------
+    func : Callable
+        The decorated function.
+
+    Returns
+    -------
+     Callable
+         The original function, with all layers of decoration removed."""
+    while hasattr(func, "__wrapped__"):
+        func = func.__wrapped__
+    return func
 
 
 def test_limit_adjustment_parameters():
@@ -41,7 +59,7 @@ def test_limit_adjustment_parameters():
     assert n1_params == (1.4, 0.05)
 
     with pytest.raises(ValueError):
-        params.get_parameters_for_case.__wrapped__(params, "invalid_case")
+        get_unwrapped_function(params.get_parameters_for_case)(params, "invalid_case")
 
     with pytest.raises(ValidationError):
         LimitAdjustmentParameters(

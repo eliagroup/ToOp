@@ -65,7 +65,7 @@ dev = [
     "pre-commit-hooks",
     "pytest",
     "pytest-cov",
-    "pytest-dotenv",
+    "pytest-env",
     "pytest-mock",
     "pytest-timeout",
     "pytest-xdist>=3.8.0",
@@ -82,6 +82,8 @@ dev = [
     "ray (>=2.42.1,<3.0.0)",
 ]
 
+[tool.pytest_env]
+DEBUG="true"
 
 [tool.uv-secure.ignore_packages]
 ray = [] # Ignore issues with all versions of the ray package

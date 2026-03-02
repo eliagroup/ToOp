@@ -9,10 +9,6 @@ name: 'Setup Python Environment and Install Dependencies'
 description: 'Sets up Python environment and installs dependencies using uv'
 
 inputs:
-  uv-version:
-    description: 'Version of uv to install'
-    required: false
-    default: '0.9.0'
   python-version-file:
     description: 'Path to the file containing the Python version'
     required: false
@@ -25,10 +21,7 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Install uv
-      uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
-      with:
-        version: ${{ inputs.uv-version }}
+    - uses: ./.github/actions/install-uv
 
     - name: Set up Python
       uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548

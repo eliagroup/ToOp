@@ -62,7 +62,7 @@ def get_node_table_id(node_id: str) -> int:
         >>> get_node_table_id("e&&switch&&123")
         123
     """
-    return int(node_id.split(OUTAGE_GROUP_SEPARATOR)[-1])
+    return int(node_id.rsplit(OUTAGE_GROUP_SEPARATOR, maxsplit=1)[-1])
 
 
 def elem_node_id(kind: str, idx: int, etype: Optional[str] = None) -> str:

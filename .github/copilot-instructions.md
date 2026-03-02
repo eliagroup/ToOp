@@ -88,7 +88,7 @@ import equinox as eqx
 
 class MyData(eqx.Module):
     traced_array: Float[Array, " n"]      # JAX will trace this
-    static_config: Static[int]            # JAX won't trace this
+    static_config: Static[int] = eqx.field(static=True)      # JAX won't trace this
 ```
 
 **HDF5 Persistence**: Large matrices stored in `.hdf5` via `h5py`. See `dc_solver_pkg/jax/inputs.py` for save/load patterns. Paths in `interfaces_pkg/folder_structure.py`.

@@ -36,7 +36,7 @@ class UnBatchedContingencyAnalysisParams(eqx.Module):
     """
     The branches that are monitored in the contingency analysis.
     """
-    enable_bb_outages: Static[bool]
+    enable_bb_outages: Static[bool] = eqx.field(static=True)
     """
     Whether to enable busbar outages in the contingency analysis. If True, the
     contingency analysis will include the effects of busbar outages.

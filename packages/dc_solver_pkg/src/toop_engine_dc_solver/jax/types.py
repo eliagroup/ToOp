@@ -394,7 +394,7 @@ class StaticInformation(eqx.Module):
     dynamic_information: DynamicInformation
     """The dynamic information that is used for the computation"""
 
-    solver_config: Static[SolverConfig]
+    solver_config: Static[SolverConfig] = eqx.field(static=True)
     """The static configuration that is used for the computation"""
 
     def __hash__(self) -> int:

@@ -18,7 +18,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 from beartype.typing import Optional
-from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.topology_computations import extract_sub_ids, sample_action_index_from_branch_actions
 from toop_engine_dc_solver.jax.types import ActionSet, NodalInjOptimResults, int_max
 
@@ -161,8 +161,8 @@ def mutate(  # noqa: PLR0913
     n_subs_mutated_lambda: float,
     disconnect_prob: float,
     reconnect_prob: float,
-    pst_mutation_sigma: float,
-    pst_n_taps: Int[Array, " num_psts"],
+    pst_mutation_sigma: float | int,
+    pst_n_taps: Optional[Int[Array, " num_psts"]],
     mutation_repetition: int = 1,
 ) -> tuple[Genotype, PRNGKeyArray]:
     """Mutate the topologies by splitting substations and changing the branch and injection topos.
@@ -530,8 +530,8 @@ def mutate_sub(
 def mutate_nodal_injections(
     random_key: PRNGKeyArray,
     nodal_inj_info: Optional[NodalInjOptimResults],
-    pst_mutation_sigma: float,
-    pst_n_taps: Int[Array, " num_psts"],
+    pst_mutation_sigma: float | int,
+    pst_n_taps: Optional[Int[Array, " num_psts"]],
 ) -> Optional[NodalInjOptimResults]:
     """Mutate the nodal injection optimization results, currently only the PST taps.
 
@@ -553,7 +553,7 @@ def mutate_nodal_injections(
     Optional[NodalInjOptimResults]
         The mutated nodal injection optimization results. If nodal_inj_info was None, returns None.
     """
-    if nodal_inj_info is None:
+    if nodal_inj_info is None or pst_n_taps is None:
         return None
 
     if pst_mutation_sigma <= 0:
@@ -576,7 +576,7 @@ def mutate_psts(
     random_key: PRNGKeyArray,
     pst_taps: Int[Array, " num_psts"],
     pst_n_taps: Int[Array, " num_psts"],
-    pst_mutation_sigma: float,
+    pst_mutation_sigma: float | int,
 ) -> Int[Array, " num_psts"]:
     """Mutate the PST taps of a single topology.
 
@@ -634,7 +634,7 @@ def sample_unique_from_array(
     subkeys = jax.random.split(random_key, n_samples)
 
     def _body_fn(
-        i: Int,
+        i: Int[ArrayLike, " "],
         entries_sampled: tuple[Int[Array, " max_num_splits"], Bool[Array, " n_subs_rel"]],
     ) -> tuple[Int[Array, " max_num_splits"], Bool[Array, " n_subs_rel"]]:
         indices_sampled, choice_mask = entries_sampled

@@ -157,7 +157,7 @@ def shortest_paths_to_target_ids(
     target_node_ids: list[int],
     start_node_id: int,
     weight: Union[str, Callable] = "station_weight",
-    cutoff: int = int(WeightValues.high.value),
+    cutoff: int | float = int(WeightValues.high.value),
 ) -> dict[int, list[int]]:
     """Find the shortest paths from one busbar to a list of busbars in the NetworkX graph.
 
@@ -277,7 +277,7 @@ def multi_weight_function(weight_list: list[str], weight_multiplier: Optional[di
             weight_multiplier[weight] = 1.0
 
     # ruff: noqa: ARG001
-    def multi_weight_function(from_id: int, to_id: int, data: dict[str, Any]) -> int:
+    def multi_weight_function(from_id: int, to_id: int, data: dict[str, Any]) -> int | float:
         """Return the sum of the weights in the weight_list."""
         return sum(data.get(weight, 0) * weight_multiplier[weight] for weight in weight_list)
 
@@ -353,7 +353,7 @@ def get_busbar_connection_info(
 
 def get_edge_connection_info(
     graph: nx.Graph, edge_grid_model_ids: Optional[list[str]] = None
-) -> dict[str, BusbarConnectionInfo]:
+) -> dict[str, EdgeConnectionInfo]:
     """Return the EdgeConnectionInfo of the edges in the NetworkGraphData model.
 
     Parameters
@@ -367,7 +367,7 @@ def get_edge_connection_info(
     Returns
     -------
     edge_connection_info : dict
-        A dictionary containing the EdgeConnectionInfo for each busbar.
+        A dictionary containing the EdgeConnectionInfo for each edge.
             Key: grid_model_id
             Value: EdgeConnectionInfo
         Note: always returns a dict. Dict is empty if no edge is found.
@@ -478,7 +478,7 @@ def get_edge_list_by_attribute(graph: nx.Graph, attribute: str, value: list[Any]
 
 def get_busbar_connection_info_attribute(
     graph: nx.Graph, attribute: str, node_type: Optional[Literal["busbar", "node"]] = None
-) -> dict[int, list[int]]:
+) -> dict[int, list[int | str]]:
     """Get an attribute from the BusbarConnectionInfo from graph.nodes.
 
     Parameters
@@ -585,7 +585,7 @@ def update_busbar_connection_info(
 
 
 def validate_update_dict_for_connection_info(
-    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[int, dict[str, Any]]
+    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[str, str | list[str]]
 ) -> bool:
     """Test if the keys in the update_dict are in the connection_info.
 

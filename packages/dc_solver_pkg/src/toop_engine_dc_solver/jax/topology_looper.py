@@ -20,10 +20,9 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-from beartype import beartype as typechecker
 from beartype.typing import Optional
 from jax_dataclasses import replace
-from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree, jaxtyped
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric
 from toop_engine_dc_solver.jax.batching import (
     count_injection_combinations_from_corresponding_topology,
@@ -227,8 +226,6 @@ class DefaultAggregateOutputFn(AggregateOutputProtocol):
         return hash(self) == hash(other)
 
 
-@jaxtyped(typechecker=typechecker)
-@typechecker
 def run_solver(
     topologies: ActionIndexComputations,
     disconnections: Optional[Int[Array, " n_topologies n_disconnections"]],

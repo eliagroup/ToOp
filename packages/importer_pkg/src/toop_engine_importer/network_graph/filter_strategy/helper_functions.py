@@ -100,7 +100,7 @@ def calculate_asset_bay_for_node_assets(
 def set_single_bay_weight(
     graph: nx.Graph,
     edge_id: tuple[int, int],
-    bay_weight: WeightValues,
+    bay_weight: int,
 ) -> None:
     """Set the bay weight for a single edge in the nx.Graph.
 
@@ -111,7 +111,7 @@ def set_single_bay_weight(
         Note: The graph is modified in place.
     edge_id : tuple[int, int]
         The edge id (a tuple of node_ids).
-    bay_weight : float
+    bay_weight : int
         The bay weight to set.
     """
     content_dict = {

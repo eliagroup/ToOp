@@ -41,7 +41,7 @@ def test_limit_adjustment_parameters():
     assert n1_params == (1.4, 0.05)
 
     with pytest.raises(ValueError):
-        params.get_parameters_for_case("invalid_case")
+        params.get_parameters_for_case.__wrapped__(params, "invalid_case")
 
     with pytest.raises(ValidationError):
         LimitAdjustmentParameters(

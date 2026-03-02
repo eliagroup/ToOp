@@ -116,7 +116,7 @@ def set_switch_busbar_connection_info(graph: nx.Graph) -> None:
     update_edge_connection_info(graph=graph, update_edge_dict=update_edge_dict)
 
 
-def set_bay_weights(graph: nx.Graph) -> dict[int, list[int]]:
+def set_bay_weights(graph: nx.Graph) -> None:
     """Set the bay weights in the NetworkGraphData model for asset_nodes and branches.
 
     The bay weight is used to categorize paths in the network and assign a bay to an asset.
@@ -174,7 +174,7 @@ def get_asset_bay_update_dict(
 def get_asset_bay_node_asset_dict(
     graph: nx.Graph,
     node_ids_with_node_assets: list[int],
-) -> tuple[dict[int, list[str]], dict[str, dict[int, list[int]]]]:
+) -> tuple[dict[int, list[str | int]], dict[str, dict[int, list[int]]]]:
     """Get the asset bay node asset dictionary for the nx.Graph (based on NetworkGraphData model).
 
     The asset bay node asset dictionary is used to categorize the asset nodes in the network graph.

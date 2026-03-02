@@ -13,11 +13,10 @@ the injection combination that yields the minimal worst N-1 case. However, we al
 selection criterium based on overload energy
 """
 
-import beartype
 import jax
 from beartype.typing import Literal, Optional, TypeAlias
 from jax import numpy as jnp
-from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree, jaxtyped
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.types import (
     BranchLimits,
     SolverLoadflowResults,
@@ -704,7 +703,6 @@ def aggregate_matrix_to_metric(
     )
 
 
-@jaxtyped(typechecker=beartype.beartype)
 def aggregate_to_metric(  # noqa: C901
     lf_res: SolverLoadflowResults,
     branch_limits: BranchLimits,

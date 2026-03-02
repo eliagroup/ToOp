@@ -275,7 +275,7 @@ def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
         return target_path
 
     data_path = tmp_path_factory.mktemp("data")
-    target_path = initialize_grid_dirs(Path())
+    target_path = initialize_grid_dirs(data_path)
 
     return target_path
 

@@ -208,13 +208,13 @@ class WeightValues(Enum):
     max_coupler: A max value, counting switches in a busbar coupler path.
     """
 
-    high = 100.0
-    half = 50.0
-    low = 0.0
-    step = 1.0
-    max_step = 10.0
-    over_step = 11.0
-    max_coupler = 5.0
+    high = 100
+    half = 50
+    low = 0
+    step = 1
+    max_step = 10
+    over_step = 11
+    max_coupler = 5
 
 
 class NodeSchema(pa.DataFrameModel):

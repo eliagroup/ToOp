@@ -79,7 +79,7 @@ def get_switchable_buses_cgmes(
 
 
 def get_most_connected_bus_at_voltage_level(
-    voltage_level_id: int,
+    voltage_level_id: int | str,
     net: Network,
     relevant_station_rules: RelevantStationRules,
     allowed_branch_types: list[str],
@@ -89,7 +89,7 @@ def get_most_connected_bus_at_voltage_level(
 
     Parameters
     ----------
-    voltage_level_id: int
+    voltage_level_id: int | str
         The voltage level to analyze.
     net: Network
         The network to analyze.

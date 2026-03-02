@@ -9,6 +9,7 @@
 
 import json
 from itertools import product
+from numbers import Integral
 from pathlib import Path
 
 import numpy as np
@@ -477,14 +478,14 @@ def extract_solver_matrices(
     return n_0_vector, n1_matrix, success
 
 
-def select_timestep(loadflow_results: LoadflowResults, timestep: int) -> LoadflowResults:
+def select_timestep(loadflow_results: LoadflowResults, timestep: Integral) -> LoadflowResults:
     """Select a specific timestep from the loadflow results.
 
     Parameters
     ----------
     loadflow_results : LoadflowResults
         The loadflow results to select the timestep from.
-    timestep : int
+    timestep : Integral
         The timestep to select.
 
     Returns

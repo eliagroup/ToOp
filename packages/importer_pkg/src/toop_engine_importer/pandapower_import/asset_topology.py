@@ -709,7 +709,7 @@ def get_asset_connection_path_to_busbars(  # noqa: PLR0915
 def get_branch_from_bus_ids(
     branch_df: pd.DataFrame,
     branch_type: str,
-    bus_ids: List[int],
+    bus_ids: List[int] | pd.Index,
     bus_types: List[Tuple[str, Optional[str], str]],
 ) -> pd.DataFrame:
     """Get the branches based on branch_type and bus_ids.

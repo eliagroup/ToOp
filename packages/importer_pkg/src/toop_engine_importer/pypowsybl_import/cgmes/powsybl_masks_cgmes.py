@@ -21,7 +21,7 @@ def get_switchable_buses_cgmes(
     net: Network,
     area_codes: list[RegionType],
     cutoff_voltage: int = 220,
-    select_by_voltage_level_id_list: Optional[list[int]] = None,
+    select_by_voltage_level_id_list: Optional[list[str]] = None,
     relevant_station_rules: Optional[RelevantStationRules] = None,
 ) -> list[str]:
     """Return the buses in the given voltage level and area, if they have more than one busbar and connected switches.
@@ -138,8 +138,8 @@ def get_potentially_relevant_voltage_levels(
     net: Network,
     area_codes: list[RegionType],
     cutoff_voltage: int,
-    select_by_voltage_level_id_list: Optional[list[int]] = None,
-) -> list[int]:
+    select_by_voltage_level_id_list: Optional[list[str]] = None,
+) -> list[str]:
     """Get the voltage levels in the given area and above the cutoff voltage.
 
     Parameters

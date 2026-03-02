@@ -345,7 +345,7 @@ def get_dangling_lines_creation_schema(
     return new_dangling_df
 
 
-def set_and_validate_connection_status(new_dangling_df: pd.DataFrame, index: int, row: pd.Series) -> pd.DataFrame:
+def set_and_validate_connection_status(new_dangling_df: pd.DataFrame, index: int | str, row: pd.Series) -> pd.DataFrame:
     """Validate that the connection status of the dangling line is consistent.
 
     Parameters
@@ -376,7 +376,7 @@ def set_and_validate_connection_status(new_dangling_df: pd.DataFrame, index: int
 
 
 def add_voltage_level_infos(
-    dangling_voltage_level: str, new_dangling_df: pd.DataFrame, index: int, row: pd.Series
+    dangling_voltage_level: str, new_dangling_df: pd.DataFrame, index: int | str, row: pd.Series
 ) -> pd.DataFrame:
     """Add the voltage level information to the new dangling line dataframe.
 
@@ -496,7 +496,9 @@ def replace_voltage_level_with_tie_line(network: Network, voltage_level_id: str,
     network.remove_elements(voltage_level_id)
 
 
-def get_dangling_voltage_levels(network: Network, external_border_mask: np.ndarray, area_codes: list[str]) -> list[str]:
+def get_dangling_voltage_levels(
+    network: Network, external_border_mask: np.ndarray | pd.Series, area_codes: list[str]
+) -> list[str]:
     """Get the dangling voltage levels from the network.
 
     Get the dangling voltage levels from the network that are connected to the external border.

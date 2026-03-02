@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
 # 150420_quality_of_datasets_and_calculations_3rd_edition.pdf
 UCTERegionType: TypeAlias = Literal[
         "A","B","C","D","D1","D2","D4","D6","D7","D8","E","F","G","H","I","J","K","L",
-        "M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","0","2","_"
+        "M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","0","2","_", "S3"
     ]
 
 # As defined by CGMES: ISO 3166

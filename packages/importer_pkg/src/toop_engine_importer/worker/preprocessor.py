@@ -47,7 +47,7 @@ def import_grid_model(
     unprocessed_gridfile_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
     status_update_fn: Callable[[PreprocessStage, Optional[str]], None],
-) -> tuple[ImportResult, pypowsybl.loadflow.Parameters]:
+) -> ImportResult:
     """Run the import procedure.
 
     This only performs the import until there's a grid model, the preprocessing in the loadflow

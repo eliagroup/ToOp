@@ -12,6 +12,8 @@ Author: Nico Westerbeck, Benjamin Petrick
 Created: 2024-Q1
 """
 
+from pathlib import Path
+
 import logbook
 import pandas as pd
 from fsspec import AbstractFileSystem
@@ -134,8 +136,8 @@ def get_branches_df_with_element_name(network: Network) -> pd.DataFrame:
 def apply_cb_lists(
     network: Network,
     statistics: PreProcessingStatistics,
-    white_list_file: str | None,
-    black_list_file: str | None,
+    white_list_file: str | Path | None,
+    black_list_file: str | Path | None,
     fs: AbstractFileSystem,
 ) -> PreProcessingStatistics:
     """Run the black or white list to the powsybl network.
@@ -147,9 +149,9 @@ def apply_cb_lists(
     statistics : ProcessingStatistics
         The statistics to fill with the id lists of the black and white list
         Note: The statistics are modified in place.
-    white_list_file : str | None
+    white_list_file : str | Path | None
         The path to the white list file, if None, no white list is applied.
-    black_list_file : str | None
+    black_list_file : str | Path | None
         The path to the black list file, if None, no black list is applied.
     fs : AbstractFileSystem
         The filesystem to use to read the files.

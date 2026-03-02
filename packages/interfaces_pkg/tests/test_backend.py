@@ -18,19 +18,19 @@ class TestBackend(BackendInterface):
         return 0
 
     def get_max_mw_flows(self) -> Float[np.ndarray, " n_timestep n_branch"]:
-        return np.array([[100, 200], [100, 200]])
+        return np.array([[100, 200], [100, 200]], dtype=float)
 
     def get_susceptances(self) -> Float[np.ndarray, " n_branch"]:
-        return np.array([0.1, 0.2])
+        return np.array([0.1, 0.2], dtype=float)
 
     def get_from_nodes(self) -> Int[np.ndarray, " n_branch"]:
-        return np.array([0, 1])
+        return np.array([0, 1], dtype=int)
 
     def get_to_nodes(self) -> Int[np.ndarray, " n_branch"]:
-        return np.array([1, 2])
+        return np.array([1, 2], dtype=int)
 
     def get_shift_angles(self) -> Float[np.ndarray, " n_timestep n_branch"]:
-        return np.array([[0, 0], [0, 0]])
+        return np.array([[0, 0], [0, 0]], dtype=float)
 
     def get_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         return np.array([True, False])

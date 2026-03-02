@@ -81,10 +81,11 @@ def test_get_cells_indices() -> None:
 
 def test_create_repertoire() -> None:
     batch_size = 4
-    genotypes = {
-        "bla": jax.random.normal(jax.random.PRNGKey(0), (batch_size, 10)),
-        "blu": jax.random.normal(jax.random.PRNGKey(0), (batch_size, 42)),
-    }
+    genotypes = Genotype(
+        action_index=jax.random.normal(jax.random.PRNGKey(0), (batch_size, 10)).astype(int),
+        disconnections=jax.random.normal(jax.random.PRNGKey(0), (batch_size, 42)).astype(int),
+        nodal_injections_optimized=None,
+    )
     n_cells_per_dim = (4, 20, 10)
     descriptors = jnp.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 15, 8]], dtype=int)
     fitnesses = jax.random.normal(jax.random.PRNGKey(0), (batch_size,))
@@ -104,16 +105,17 @@ def test_create_repertoire() -> None:
     for i, index in enumerate(cell_indices):
         assert repertoire.fitnesses[index] == fitnesses[i]
         assert repertoire.descriptors[index].tolist() == descriptors[i].tolist()
-        assert repertoire.genotypes["bla"][index].tolist() == genotypes["bla"][i].tolist()
-        assert repertoire.genotypes["blu"][index].tolist() == genotypes["blu"][i].tolist()
+        assert repertoire.genotypes.action_index[index].tolist() == genotypes.action_index[i].tolist()
+        assert repertoire.genotypes.disconnections[index].tolist() == genotypes.disconnections[i].tolist()
 
 
 def test_create_repertoire_with_extra_scores() -> None:
     batch_size = 4
-    genotypes = {
-        "bla": jax.random.normal(jax.random.PRNGKey(0), (batch_size, 10)),
-        "blu": jax.random.normal(jax.random.PRNGKey(0), (batch_size, 42)),
-    }
+    initial_genotype = Genotype(
+        action_index=jnp.array([0], dtype=int),  # must only contain one genotype, not a list of genotype
+        disconnections=jnp.array([0], dtype=int),
+        nodal_injections_optimized=None,
+    )
     n_cells_per_dim = (4, 20, 10)
     descriptors = jnp.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], dtype=int)
     fitnesses = jax.random.normal(jax.random.PRNGKey(0), (batch_size,))
@@ -123,7 +125,7 @@ def test_create_repertoire_with_extra_scores() -> None:
     }
 
     repertoire = init_repertoire(
-        genotypes=genotypes,
+        genotypes=initial_genotype,
         n_cells_per_dim=n_cells_per_dim,
         descriptors=descriptors,
         fitnesses=fitnesses,
@@ -138,8 +140,8 @@ def test_create_repertoire_with_extra_scores() -> None:
     for i, index in enumerate(cell_indices):
         assert repertoire.fitnesses[index] == fitnesses[i]
         assert repertoire.descriptors[index].tolist() == descriptors[i].tolist()
-        assert repertoire.genotypes["bla"][index].tolist() == genotypes["bla"][i].tolist()
-        assert repertoire.genotypes["blu"][index].tolist() == genotypes["blu"][i].tolist()
+        assert repertoire.genotypes.disconnections[index].tolist() == initial_genotype.disconnections[i].tolist()
+        assert repertoire.genotypes.action_index[index].tolist() == initial_genotype.action_index[i].tolist()
         assert repertoire.extra_scores["score1"][index].tolist() == extra_scores["score1"][i].tolist()
         assert repertoire.extra_scores["score2"][index].tolist() == extra_scores["score2"][i].tolist()
 
@@ -567,7 +569,7 @@ def test_add_to_repertoire_aranged_data():
         cell_depth=cell_depth,
     )
 
-    batch_of_fitnesses = jnp.arange(batch_size)
+    batch_of_fitnesses = jnp.arange(batch_size, dtype=float)
     nodal_injections_optimized = NodalInjOptimResults(
         pst_tap_idx=(jnp.arange(batch_size) + 4).reshape(-1, 1),
     )
@@ -578,9 +580,8 @@ def test_add_to_repertoire_aranged_data():
     )
     batch_of_descriptors = jnp.arange(batch_size).reshape(-1, 1)
     batch_of_extra_scores = {
-        "score": jnp.arange(batch_size) + 4.0,
+        "score": jnp.arange(batch_size).reshape(-1, 1) + 4.0,
     }
-    batch_of_extra_scores = None
 
     with jax.disable_jit():
         repertoire: DiscreteMapElitesRepertoire = add_to_repertoire(

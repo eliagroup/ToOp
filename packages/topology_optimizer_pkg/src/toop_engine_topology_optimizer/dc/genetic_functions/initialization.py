@@ -8,17 +8,19 @@
 """Initialization of the genetic algorithm for branch and injection choice optimization."""
 
 from functools import partial
+from pathlib import Path
 
 import equinox as eqx
 import jax
 import jax.experimental
 import jax.numpy as jnp
 import logbook
-from beartype.typing import Iterable, Optional
+from beartype.typing import Iterable, Optional, Sequence
 from fsspec import AbstractFileSystem
 from jax_dataclasses import replace
-from jaxtyping import Array, Float, Int, PRNGKeyArray
+from jaxtyping import Array, ArrayLike, Float, Int
 from qdax.core.emitters.standard_emitters import EmitterState
+from qdax.custom_types import RNGKey
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.aggregate_results import compute_double_limits
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
@@ -69,16 +71,16 @@ class JaxOptimizerData(eqx.Module):
     dynamic_informations: tuple[DynamicInformation, ...]
     """The list containing the dynamic information objects"""
 
-    random_key: PRNGKeyArray
+    random_key: RNGKey
     """The random key"""
 
-    latest_iteration: Int[Array, ""]
+    latest_iteration: Int[ArrayLike, " *devices"]
     """The iteration that this emitter_state/repertoire belong to"""
 
 
 def update_max_mw_flows_according_to_double_limits(
-    dynamic_informations: tuple[DynamicInformation, ...],
-    solver_configs: tuple[SolverConfig, ...],
+    dynamic_informations: Sequence[DynamicInformation],
+    solver_configs: Sequence[SolverConfig],
     lower_limit: float,
     upper_limit: float,
 ) -> tuple[DynamicInformation, ...]:
@@ -222,10 +224,10 @@ def verify_static_information(
 
 
 def update_static_information(
-    static_informations: tuple[StaticInformation, ...],
+    static_informations: Sequence[StaticInformation],
     batch_size: int,
     enable_nodal_inj_optim: bool,
-) -> tuple[StaticInformation, ...]:
+) -> list[StaticInformation]:
     """Perform any necessary preprocessing on the static information.
 
     This harmonizes the static informations and makes sure some information that is optional in the solver is always there.
@@ -291,20 +293,20 @@ def initialize_genetic_algorithm(
     batch_size: int,
     max_num_splits: int,
     max_num_disconnections: int,
-    static_informations: tuple[StaticInformation, ...],
-    target_metrics: tuple[tuple[MetricType, float], ...],
+    static_informations: Sequence[StaticInformation],
+    target_metrics: Sequence[tuple[MetricType, float]],
     substation_split_prob: float,
     substation_unsplit_prob: float,
     action_set: ActionSet,
     n_subs_mutated_lambda: float,
     disconnect_prob: float,
     reconnect_prob: float,
-    pst_mutation_sigma: float,
+    pst_mutation_sigma: float | int,
     proportion_crossover: float,
     crossover_mutation_ratio: float,
     random_seed: int,
-    observed_metrics: tuple[MetricType, ...],
-    me_descriptors: tuple[DescriptorDef, ...],
+    observed_metrics: Sequence[MetricType],
+    me_descriptors: Sequence[DescriptorDef],
     distributed: bool,
     devices: Optional[list[jax.Device]] = None,
     cell_depth: int = 1,
@@ -504,8 +506,8 @@ def flatten_fitnesses_if_distributed(
 
 
 def get_repertoire_metrics(
-    repertoire: DiscreteMapElitesRepertoire, observed_metrics: tuple[MetricType, ...]
-) -> tuple[float, dict[MetricType, float], Float[Array, " ... n_cells_per_dim"]]:
+    repertoire: DiscreteMapElitesRepertoire, observed_metrics: Sequence[MetricType]
+) -> tuple[float, dict[MetricType, float | int]]:
     """Get the metrics of the best individual in the Mapelites repertoire.
 
     Parameters
@@ -513,7 +515,7 @@ def get_repertoire_metrics(
     repertoire : DiscreteMapElitesRepertoire
         The repertoire
 
-    observed_metrics : tuple[MetricType, ...]
+    observed_metrics : Sequence[MetricType]
         The metrics to observe (max_flow_n_0, median_flow_n_0 ...)
 
     Returns
@@ -545,12 +547,12 @@ def algo_setup(
     ga_args: BatchedMEParameters,
     lf_args: LoadflowSolverParameters,
     double_limits: Optional[tuple[float, float]],
-    static_information_files: list[str],
+    static_information_files: Sequence[str | Path],
     processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[
     DiscreteMapElites,
     JaxOptimizerData,
-    tuple[SolverConfig, ...],
+    Sequence[SolverConfig],
     float,
     dict,
     list[StaticInformationStats],
@@ -565,7 +567,7 @@ def algo_setup(
         The loadflow solver parameters
     double_limits: Optional[tuple[float, float]]
         The lower and upper limit for the relative max mw flow if double limits are used
-    static_information_files : list[str]
+    static_information_files : Sequence[str | Path]
         A list of files with static information to load
     processed_gridfile_fs: AbstractFileSystem
         The target filesystem for the preprocessing worker. This contains all processed grid files.

@@ -61,6 +61,7 @@ OtherMetric: TypeAlias = Literal[
     "non_converging_loadflows",
     # TODO: FIXME: remove fitness_dc when "Topology" is refactored and accepts different stages like "dc", "dc+" and "ac"
     "fitness_dc",
+    "fitness",
 ]
 
 MetricType: TypeAlias = Literal[MatrixMetric, OperationMetric, OtherMetric]

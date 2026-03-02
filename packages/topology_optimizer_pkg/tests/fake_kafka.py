@@ -4,9 +4,11 @@
 # If a copy of the MPL was not distributed with this file,
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
+from confluent_kafka import Producer
+from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 
 
-class FakeProducer:
+class FakeProducer(Producer):
     def __init__(self):
         self.messages = {}
 
@@ -33,7 +35,7 @@ class FakeMessage:
         return self._value
 
 
-class FakeConsumer:
+class FakeConsumer(LongRunningKafkaConsumer):
     def __init__(self, messages: dict[str, list[bytes]], kill_on_empty: bool = False):
         self.messages = messages
         self.offsets = {topic: 0 for topic in messages}

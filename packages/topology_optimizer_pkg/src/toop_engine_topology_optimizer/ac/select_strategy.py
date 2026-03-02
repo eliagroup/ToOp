@@ -10,7 +10,7 @@
 import logbook
 import numpy as np
 import pandas as pd
-from beartype.typing import Callable, Optional
+from beartype.typing import Callable, Optional, Sequence
 from numpy.random import Generator as Rng
 from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.ac.storage import BaseDBTopology
@@ -105,7 +105,7 @@ def filter_metrics_df(
     metrics_df: pd.DataFrame,
     discriminator_df: pd.DataFrame,
     filter_strategy: FilterStrategy,
-) -> np.ndarray:
+) -> pd.DataFrame:
     """Get a mask for the metrics DataFrame that filters out rows based on discriminator and median masks.
 
     This function applies a discriminator, median and dominator mask.
@@ -217,7 +217,7 @@ def get_repertoire_filter_mask(
 
 
 def get_median_mask(
-    metrics_df: pd.DataFrame, target_metrics: list[MetricType], fitness_col: Optional[Fitness] = "fitness"
+    metrics_df: pd.DataFrame, target_metrics: Sequence[MetricType], fitness_col: Optional[Fitness] = "fitness"
 ) -> np.ndarray:
     """Get a mask for fitness values below the median for each discrete value of the target metrics.
 
@@ -227,10 +227,10 @@ def get_median_mask(
     ----------
     metrics_df : pd.DataFrame
         The DataFrame containing the metrics to filter.
-    target_metrics : list[MetricType]
+    target_metrics : Sequence[MetricType]
         A list of metrics with discrete values to consider for filtering.
         example: ["split_subs"].
-    fitness_col : Optional[str], optional
+    fitness_col : Optional[Fitness], optional
         The column name that contains the fitness values. Defaults to "fitness".
 
     Returns
@@ -253,8 +253,8 @@ def get_median_mask(
 
 def get_dominator_mask(
     metrics_df: pd.DataFrame,
-    target_metrics: list[MetricType],
-    observed_metrics: list[MetricType],
+    target_metrics: Sequence[MetricType],
+    observed_metrics: Sequence[MetricType],
     fitness_col: Optional[Fitness] = "fitness",
 ) -> np.ndarray:
     """Get a mask for rows from a DataFrame that are dominated by other rows based on specified metrics.
@@ -275,14 +275,14 @@ def get_dominator_mask(
     ----------
     metrics_df : pd.DataFrame
         The DataFrame to filter.
-    target_metrics : list[MetricType]
+    target_metrics : Sequence[MetricType]
         A list of metrics to consider for dominance.
         A target metric is expected to have discrete values (e.g. not fitness, overload_energy, or max_flow)
         If None, defaults to ["switching_distance", "split_subs"].
-    observed_metrics : list[MetricType]
+    observed_metrics : Sequence[MetricType]
         A list of metrics to observe for dominance.
         If None, defaults to ["switching_distance", "split_subs"].
-    fitness_col : Optional[str], optional
+    fitness_col : Optional[Fitness], optional
         The column name that contains the fitness values. Defaults to "fitness".
         Note: the values are expected to be negative, best fitness converges to zero.
 
@@ -315,14 +315,14 @@ def get_dominator_mask(
     # retrun the filter mask, that removes dominated rows
     filter_mask = ~filter_mask
 
-    return filter_mask
+    return np.asarray(filter_mask)
 
 
 def get_discriminator_mask(
     metrics_df: pd.DataFrame,
     discriminator_df: pd.DataFrame,
-    metric_distances: dict[str, set[float]],
-    metric_multiplier: Optional[dict[str, set[float]]] = None,
+    metric_distances: dict[str, set[float | int]],
+    metric_multiplier: Optional[dict[str, float | int]] = None,
 ) -> np.ndarray:
     """Get a mask for rows in metrics_df that are within a certain distance from the discriminator_df.
 
@@ -338,7 +338,7 @@ def get_discriminator_mask(
         The DataFrame containing the metrics to filter.
     discriminator_df : pd.DataFrame
         The DataFrame containing the discriminator metrics.
-    metric_distances : dict[str, set[float]]
+    metric_distances : dict[str, set[float | int]]
         A dictionary defining the metric distances for filtering.
         The keys are metric names and the values are sets of distances.
         example:
@@ -348,9 +348,9 @@ def get_discriminator_mask(
             "fitness": {-0.1, 0.1},
         }
         Note: the fitness is treated as a percentage.
-    metric_multiplier : Optional[dict[str, set[float]]], optional
+    metric_multiplier : Optional[dict[str, float | int]], optional
         A dictionary defining multiplier for the metric distances.
-        The keys are metric names and the values are sets of distances.
+        The keys are metric names and the values are multipliers.
         If None, defaults to an empty dictionary.
         Multiple values are added by:
         distance_multiplier = (
@@ -429,10 +429,10 @@ def get_discriminator_mask(
     # return the filter mask, that removes discriminated rows
     filter_mask = ~filter_mask
 
-    return filter_mask
+    return np.asarray(filter_mask)
 
 
-def get_discriminator_df(metrics_df: pd.DataFrame, target_metrics: list[str]) -> pd.DataFrame:
+def get_discriminator_df(metrics_df: pd.DataFrame, target_metrics: Sequence[str]) -> pd.DataFrame:
     """Get a discriminator DataFrame from the metrics DataFrame.
 
     The discriminator DataFrame is a subset of the metrics DataFrame that contains only the target metrics.

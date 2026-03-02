@@ -20,7 +20,7 @@ from pydantic import (
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.types import MetricType
 
-Fitness: TypeAlias = Literal["fitness"]
+Fitness: TypeAlias = Literal["fitness", "disconnected_branches", "switching_distance", "split_subs"]
 
 
 class Framework(str, Enum):

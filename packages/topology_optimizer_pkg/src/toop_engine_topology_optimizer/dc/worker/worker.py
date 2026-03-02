@@ -229,8 +229,8 @@ def optimization_loop(
                 optimization_id=optimization_id,
                 wall_time=time.time() - start_time,
                 iteration=epoch,
-                num_branch_topologies_tried=optimizer_data.jax_data.emitter_state["total_branch_combis"].sum().item(),
-                num_injection_topologies_tried=optimizer_data.jax_data.emitter_state["total_inj_combis"].sum().item(),
+                num_branch_topologies_tried=optimizer_data.jax_data.emitter_state.total_branch_combis.sum().item(),
+                num_injection_topologies_tried=optimizer_data.jax_data.emitter_state.total_inj_combis.sum().item(),
             )
         )
 

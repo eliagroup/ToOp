@@ -200,7 +200,7 @@ def shortest_paths_to_target_ids(
 
 
 def flatten_list_of_mixed_entries(
-    stacked_list: list[Iterable[str | int] | str | int],
+    stacked_list: list[Iterable | str | int],
 ) -> Iterator[str | int]:
     """Generate flattened entries from a list of iterables and non-iterables.
 
@@ -319,7 +319,7 @@ def get_busbar_true_nodes(graph: nx.Graph) -> tuple[list[int], list[int]]:
 
 
 def get_busbar_connection_info(
-    graph: nx.Graph, busbar_grid_model_id: Optional[list[str]] = None
+    graph: nx.Graph, busbar_grid_model_id: Optional[str | list[str]] = None
 ) -> dict[str, BusbarConnectionInfo]:
     """Return the BusbarConnectionInfo of the busbars in the NetworkGraphData model.
 
@@ -453,7 +453,7 @@ def get_nodes_ids_with_a_connected_asset(graph: nx.Graph) -> list[int]:
     return asset_node_ids
 
 
-def get_edge_list_by_attribute(graph: nx.Graph, attribute: str, value: list[Any]) -> list[tuple[int, int]]:
+def get_edge_list_by_attribute(graph: nx.Graph, attribute: str, value: list[Any]) -> list[set[int] | tuple[int, int]]:
     """Get a list of edge ids by an attribute value.
 
     Parameters
@@ -511,7 +511,7 @@ def get_busbar_connection_info_attribute(
     return connectable_busbars_dict
 
 
-def get_branch_ids_by_type_list(graph: nx.Graph, branch_types: Optional[list[str]] = None) -> list[int]:
+def get_branch_ids_by_type_list(graph: nx.Graph, branch_types: Optional[list[str]] = None) -> list[int | set[int]]:
     """Get the branch ids by the branch types.
 
     Returns the branch ids of the branch types in the NetworkX graph.
@@ -528,7 +528,7 @@ def get_branch_ids_by_type_list(graph: nx.Graph, branch_types: Optional[list[str
 
     Returns
     -------
-    branch_ids : list[int]
+    branch_ids : list[int | set[int]]
         A list of branch ids.
     """
     if branch_types is None:
@@ -585,7 +585,7 @@ def update_busbar_connection_info(
 
 
 def validate_update_dict_for_connection_info(
-    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[str, str | list[str]]
+    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[str, Any]
 ) -> bool:
     """Test if the keys in the update_dict are in the connection_info.
 
@@ -609,7 +609,7 @@ def validate_update_dict_for_connection_info(
 
 
 def append_connection_info(
-    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[int, dict[str, Any]]
+    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[int | str, Any]
 ) -> Union[BusbarConnectionInfo, EdgeConnectionInfo]:
     """Append the ConnectionInfo in the graph model.
 

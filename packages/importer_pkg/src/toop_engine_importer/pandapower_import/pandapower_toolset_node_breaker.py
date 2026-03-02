@@ -50,21 +50,25 @@ import logbook
 import numpy as np
 import pandapower as pp
 import pandas as pd
-from beartype.typing import Optional, Union
+from beartype.typing import Iterable, Optional, Union
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import move_elements_based_on_labels
 
 logger = logbook.Logger(__name__)
 
 
-def get_type_b_nodes(network: pp.pandapowerNet, substation_bus_list: Optional[list[int]] = None) -> pd.DataFrame:
+def get_type_b_nodes(
+    network: pp.pandapowerNet, substation_bus_list: Optional[list[int] | pd.Index] = None, substation_column: str = "substat"
+) -> pd.DataFrame:
     """Get all nodes of type 'b' (busbar) in a network or substation.
 
     Parameters
     ----------
     network: pp.pandapowerNet
         The pandapower network to get the busbars from.
-    substation_bus_list: Optional[list[int]]
+    substation_bus_list: Optional[list[int] | pd.Index]
         The bus ids of the substation.
+    substation_column: str
+        The column containing the substation.
 
     Returns
     -------
@@ -75,6 +79,10 @@ def get_type_b_nodes(network: pp.pandapowerNet, substation_bus_list: Optional[li
         substation_bus_list = network.bus.index
     substation_buses = network.bus.loc[substation_bus_list]
     bus_type_b = substation_buses[substation_buses.type == "b"]
+    if substation_column not in bus_type_b.columns:
+        bus_type_b[substation_column] = np.nan
+    no_substations_name = bus_type_b[substation_column].isna() | (bus_type_b[substation_column] == "")
+    bus_type_b.loc[no_substations_name, substation_column] = bus_type_b.loc[no_substations_name].index.astype(str)
     return bus_type_b
 
 
@@ -85,7 +93,7 @@ def get_indirect_connected_switch(
     bus_2: int,
     only_closed_switches: bool = True,
     consider_three_buses: bool = False,
-    exclude_buses: Optional[list[int]] = None,
+    exclude_buses: Optional[list[int] | pd.Index] = None,
 ) -> dict[str, list[int]]:
     """Get a switch, that is indirectly connected by two buses and only by two buses.
 
@@ -180,7 +188,7 @@ def get_indirect_connected_switches_three_buses(
     bus_1_connected: list[int],
     bus_2_connected: list[int],
     only_closed_switches: bool = True,
-    exclude_buses: Optional[list[int]] = None,
+    exclude_buses: Optional[list[int] | pd.Index] = None,
 ) -> dict[str, list[int]]:
     """Get both switches that indirectly connect two buses with exactly three buses in between.
 
@@ -239,7 +247,7 @@ def get_indirect_connected_switches_three_buses(
 
 
 def get_all_switches_from_bus_ids(
-    network: pp.pandapowerNet, bus_ids: list[int], only_closed_switches: bool = True
+    network: pp.pandapowerNet, bus_ids: list[int] | pd.Index, only_closed_switches: bool = True
 ) -> pd.DataFrame:
     """Get all switches connected to a list of buses.
 
@@ -267,7 +275,9 @@ def get_all_switches_from_bus_ids(
     return station_switches
 
 
-def get_closed_switch(switches: pd.DataFrame, column: str, column_ids: list[Union[str, int, float]]) -> pd.DataFrame:
+def get_closed_switch(
+    switches: pd.DataFrame, column: str, column_ids: Iterable[Union[str, int, float, None]]
+) -> pd.DataFrame:
     """Get the closed switch based on the column and column_ids.
 
     Parameters
@@ -349,7 +359,9 @@ def fuse_closed_switches_by_bus_ids(network: pp.pandapowerNet, switch_bus_ids: l
 
 
 # TODO: replace by networkX_logic_modules
-def get_vertical_connected_busbars(network: pp.pandapowerNet, substation_bus_list: list[int]) -> dict[int, list[int]]:
+def get_vertical_connected_busbars(
+    network: pp.pandapowerNet, substation_bus_list: list[int] | pd.Index
+) -> dict[int, list[int]]:
     """Get all vertical busbars combinations.
 
     respect_switches = False, because we want to get the horizontal busbars.
@@ -400,9 +412,9 @@ def get_connection_between_busbars(
     network: pp.pandapowerNet,
     bus_1: int,
     bus_2: int,
-    exlcude_ids: list[int],
+    exlcude_ids: list[int] | pd.Index,
     only_closed_switches: bool = True,
-) -> tuple[list[int], dict[str, set[int]]]:
+) -> tuple[list[int], dict[str, list[int] | set[int]]]:
     """Get the connection between two busbars.
 
     This function will return the connection between two busbars.
@@ -476,9 +488,9 @@ def get_connection_between_busbars(
 # TODO: replace by networkX_logic_modules
 def get_coupler_types_of_substation(
     network: pp.pandapowerNet,
-    substation_bus_list: list[int],
+    substation_bus_list: list[int] | pd.Index,
     only_closed_switches: bool = True,
-) -> dict[str, list[list[int]]]:
+) -> dict[str, list[list[int | np.integer]]]:
     """Get the cross coupler (German: Querkuppler),  busbar coupler and a cross connector of a substation.
 
     A busbar coupler is a connection between two busbars, where assets can be connected to both busbars.
@@ -692,7 +704,7 @@ def add_substation_column_to_bus(
         name_list.append(station_name)
 
 
-def get_station_id_list(bus_df: pd.DataFrame, substation_col: str = "substat") -> list[int]:
+def get_station_id_list(bus_df: pd.DataFrame, substation_col: str = "substat") -> list[pd.Index]:
     """Get all station ids from the network.
 
     This function will return all unique station ids from the network.

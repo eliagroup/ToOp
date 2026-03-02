@@ -19,6 +19,7 @@ from pathlib import Path
 import logbook
 import numpy as np
 import pandas as pd
+import pandera.typing as pat
 from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -1083,7 +1084,7 @@ def update_masks_from_contingency_list_file(
     assert trafo3ws.empty, "3-winding transformers should have been converted to 2w-trafos."
 
     with filesystem.open(str(importer_parameters.contingency_list_file), mode="r") as f:
-        contingency_analysis_df: ContingencyImportSchema = pd.read_csv(f, index_col=0, header=0)
+        contingency_analysis_df: pat.DataFrame[ContingencyImportSchema] = pd.read_csv(f, index_col=0, header=0)
 
     monitored_ids = contingency_analysis_df.query("observe_std").index.to_list()
     contingency_ids = contingency_analysis_df.query("contingency_case").index.to_list()

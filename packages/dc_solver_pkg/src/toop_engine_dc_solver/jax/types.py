@@ -1229,7 +1229,7 @@ class RelBBOutageData(eqx.Module):
         """
         if not isinstance(other, RelBBOutageData):
             return False
-        return (
+        return bool(
             jnp.array_equal(self.branch_outage_set, other.branch_outage_set)
             and jnp.array_equal(self.deltap_set, other.deltap_set)
             and jnp.array_equal(self.nodal_indices, other.nodal_indices)

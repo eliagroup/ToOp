@@ -64,7 +64,7 @@ def create_current_limits_df(
         index=new_limit_series.index,
         data={
             "element_type": np.full(n_elements, element_type),
-            "side": np.full(n_elements, side),
+            "side": np.full(n_elements, side.name),
             "name": np.full(n_elements, limit_name),
             "type": np.full(n_elements, "CURRENT"),
             "value": new_limit_series.values,
@@ -193,7 +193,7 @@ def get_loadflow_based_line_limits(
             create_current_limits_df(
                 new_limit[~old_limit.isna()],
                 element_type="LINE",
-                side=side.name,
+                side=side,
                 limit_name=f"loadflow_based_{case}",
                 acceptable_duration=100 if case == "n0" else 200,
                 group_names=group_names[~old_limit.isna()],
@@ -240,7 +240,7 @@ def get_loadflow_based_tie_line_limits(
         dangling_limit_df = create_current_limits_df(
             new_limit[~old_limit.isna()],
             element_type="DANGLING_LINE",
-            side="NONE",
+            side=BranchSide.NONE,
             limit_name=f"loadflow_based_{case}",
             acceptable_duration=100 if case == "n0" else 200,
             group_names=group_names[~old_limit.isna()],
@@ -286,7 +286,7 @@ def get_loadflow_based_trafo_limits(
         side_limits = create_current_limits_df(
             new_limit[~old_limit.isna()],
             element_type="TWO_WINDINGS_TRANSFORMER",
-            side=side.name,
+            side=side,
             limit_name=f"loadflow_based_{case}",
             acceptable_duration=100 if case == "n0" else 200,
             group_names=group_names[~old_limit.isna()],

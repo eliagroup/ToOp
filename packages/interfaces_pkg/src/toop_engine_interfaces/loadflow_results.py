@@ -22,7 +22,7 @@ from enum import Enum
 
 import pandera as pa
 import pandera.typing as pat
-from beartype.typing import Any, Optional, Self, Union
+from beartype.typing import Any, Optional, Union
 from pandera.typing import DataFrame, Index, Series
 from pydantic import BaseModel, Field
 
@@ -48,6 +48,9 @@ class BranchSide(Enum):
 
     THREE = 3
     """Only valid for 3 winding transformers, representing the low voltage side."""
+
+    NONE = "NONE"
+    """No side specified."""
 
 
 class RegulatingElementType(Enum):
@@ -354,7 +357,7 @@ class LoadflowResults(BaseModel):
     """Additional information that the loadflow solver wants to convey to the user. There is no limitation what can
     be put in here except that it needs to be json serializable."""
 
-    def __eq__(self, lf_result: Self) -> bool:
+    def __eq__(self, lf_result: object) -> bool:
         """Compare two LoadflowResults objects for equality.
 
         Rounds floats to 6 decimal places for comparison.

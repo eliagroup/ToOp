@@ -4,7 +4,6 @@ import dataclasses
 import importlib
 import inspect
 
-import equinox as eqx
 import pytest
 from beartype.typing import Iterable
 
@@ -20,7 +19,7 @@ def _iter_target_classes() -> Iterable[type]:
         for _, obj in inspect.getmembers(module, inspect.isclass):
             if obj.__module__ != module_name:
                 continue
-            if dataclasses.is_dataclass(obj) or (isinstance(obj, type) and issubclass(obj, eqx.Module)):
+            if dataclasses.is_dataclass(obj):
                 yield obj
 
 

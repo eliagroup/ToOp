@@ -43,6 +43,7 @@
     }
   ],
   "rebaseWhen": "conflicted",
+  "recreateWhen": "always",
   "semanticCommits": "enabled",
   "vulnerabilityAlerts": {
     "labels": ["security", "dependencies"]

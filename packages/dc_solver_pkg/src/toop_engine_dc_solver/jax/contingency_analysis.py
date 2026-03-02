@@ -7,20 +7,18 @@
 
 """The contingency analysis module, holding the methods n_0_analysis and n_1_analysis and helpers"""
 
-import beartype
 import equinox as eqx
 import jax
 from beartype.typing import Optional
 from jax import numpy as jnp
 from jax_dataclasses import Static
-from jaxtyping import Array, ArrayLike, Float, Int, jaxtyped
+from jaxtyping import Array, ArrayLike, Float, Int
 from toop_engine_dc_solver.jax.busbar_outage import perform_non_rel_bb_outages, perform_rel_bb_outage_single_topo
 from toop_engine_dc_solver.jax.multi_outages import MODFMatrix, apply_modf_matrices
 from toop_engine_dc_solver.jax.topology_computations import pad_action_with_unsplit_action_indices
 from toop_engine_dc_solver.jax.types import ActionSet, NonRelBBOutageData
 
 
-@jaxtyped(typechecker=beartype.beartype)
 class UnBatchedContingencyAnalysisParams(eqx.Module):
     """Parameters for the contingency analysis which do not have a batch axis."""
 
@@ -52,7 +50,6 @@ class UnBatchedContingencyAnalysisParams(eqx.Module):
     """
 
 
-@jaxtyped(typechecker=beartype.beartype)
 class BatchedContingencyAnalysisParams(eqx.Module):
     """Batched parameters for the contingency analysis, containing matrices and other data.
 

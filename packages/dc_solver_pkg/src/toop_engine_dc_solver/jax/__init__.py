@@ -18,13 +18,6 @@ Unified algebraic deviation of distribution factors in linear power flow
 https://doi.org/10.48550/arXiv.2412.16164
 """
 
-from jaxtyping import install_import_hook
-
-_JAXTYPING_IMPORT_HOOK = install_import_hook(
-    "toop_engine_dc_solver.jax",
-    "beartype.beartype",
-)
-
 from .aggregate_results import (
     aggregate_to_metric,
     aggregate_to_metric_batched,

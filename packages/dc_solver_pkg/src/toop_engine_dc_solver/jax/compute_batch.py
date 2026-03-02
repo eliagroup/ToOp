@@ -12,13 +12,12 @@ If you want to compute any number of batches, use the topology_looper module ins
 
 from functools import partial
 
-import beartype
 import equinox as eqx
 import jax
 from beartype.typing import Optional
 from jax import numpy as jnp
 from jax_dataclasses import replace
-from jaxtyping import Array, Bool, Float, Int, PyTree, jaxtyped
+from jaxtyping import Array, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
 from toop_engine_dc_solver.jax.busbar_outage import get_busbar_outage_penalty_batched
 from toop_engine_dc_solver.jax.contingency_analysis import (
@@ -61,7 +60,6 @@ from toop_engine_dc_solver.jax.types import (
 )
 
 
-@jaxtyped(typechecker=beartype.beartype)
 class InjectionIter(eqx.Module):
     """Holds the data for a injection/contingency computation iteration results and the iterator int.
 
@@ -75,7 +73,6 @@ class InjectionIter(eqx.Module):
     metrics: Float[Array, " batch_size_bsdf"]
 
 
-@jaxtyped(typechecker=beartype.beartype)
 class InjectionIterMetrics(eqx.Module):
     """Holds the injection iteration results for the metrics based injection computation.
 

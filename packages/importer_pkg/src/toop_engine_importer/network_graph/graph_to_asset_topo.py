@@ -12,7 +12,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from beartype.typing import Literal, Optional, Union
-from jaxtyping import Array, Bool
+from jaxtyping import Array, ArrayLike, Bool
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     BusbarConnectionInfo,
@@ -155,7 +155,7 @@ def get_coupler_df(switches_df: SwitchSchema, busbar_df: pd.DataFrame, substatio
 
 
 def select_one_busbar_for_coupler_side(
-    coupler_index: pd.Index,
+    coupler_index: pd.Index | int | str,
     bay_df: pd.DataFrame,
     side: Literal["from", "to"],
     out_of_service_busbar_ids: list[str],
@@ -170,7 +170,7 @@ def select_one_busbar_for_coupler_side(
 
     Parameters
     ----------
-    coupler_index: Index
+    coupler_index: pd.Index | int | str
         Index of the coupler in the dataframe.
     bay_df: pd.DataFrame
         Dataframe with the asset bay switches.
@@ -222,7 +222,7 @@ def select_one_busbar_for_coupler_side(
     return default_busbar_grid_model_id
 
 
-def get_state_of_coupler_based_on_bay(coupler_index: pd.Index, bay_df: pd.DataFrame) -> bool:
+def get_state_of_coupler_based_on_bay(coupler_index: pd.Index | int | str, bay_df: pd.DataFrame) -> bool:
     """Get the state of the coupler, based on the state of the bay.
 
     This function checks if the coupler is open or closed, based on the state of the switches in the bay_df.
@@ -230,7 +230,7 @@ def get_state_of_coupler_based_on_bay(coupler_index: pd.Index, bay_df: pd.DataFr
 
     Parameters
     ----------
-    coupler_index: int
+    coupler_index: pd.Index | int | str
         Index of the coupler in the dataframe.
     bay_df: pd.DataFrame
         Dataframe with the asset bay switches.
@@ -431,7 +431,7 @@ def get_sl_switch(asset_bays_df: pd.DataFrame) -> tuple[Optional[str], list[str]
     return sl_switch_id, logs, n_sl_sw_found
 
 
-def get_dv_switch(asset_bays_df: pd.DataFrame, asset_grid_model_id: str) -> str:
+def get_dv_switch(asset_bays_df: pd.DataFrame, asset_grid_model_id: str) -> tuple[str, list[str], int]:
     """Get the dv_switch from the asset bay.
 
     Parameters
@@ -518,7 +518,7 @@ def get_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
     }
 
 
-def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
+def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> tuple[dict[str, str], list[str]]:
     """Get the dv_sr_switch from the asset bay.
 
     This function exists due to data quality issues.
@@ -538,6 +538,8 @@ def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
     dv_sr_dict: dict[str, str]
         dv_sr_switch of the asset bay.
         or {} if no dv_sr_switch is found.
+    logs: list[str]
+        List of logs that are created during the process.
     """
     logs = []
     dv_sr_sw = asset_bays_df[
@@ -708,9 +710,9 @@ def get_station_connection_tables(
 
 
 def remove_double_connections(
-    switching_table: Bool[Array, " n_bus n_asset"],
+    switching_table: Bool[ArrayLike, " n_bus n_asset"],
     substation_id: Optional[str] = None,
-) -> Bool[Array, " n_bus n_asset"]:
+) -> Bool[ArrayLike, " n_bus n_asset"]:
     """Remove double connections from the switching table.
 
     An Asset can be connected to multiple busbars.

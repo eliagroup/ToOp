@@ -581,7 +581,7 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         The loadflow results in polars format.
     """
 
-    def pandas_to_polars(df: Optional[pd.DataFrame], lazy: bool) -> Optional[pl.DataFrame]:
+    def pandas_to_polars(df: Optional[pd.DataFrame], lazy: bool) -> Optional[pl.DataFrame | pl.LazyFrame]:
         """Convert a pandas DataFrame to a polars DataFrame.
 
         Parameters

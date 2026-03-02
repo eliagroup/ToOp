@@ -14,11 +14,10 @@ from dataclasses import dataclass
 
 import equinox as eqx
 import jax
-from beartype import beartype as typechecker
 from beartype.typing import Optional, Protocol, Union
 from jax import numpy as jnp
 from jax_dataclasses import Static
-from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree, jaxtyped
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
 from toop_engine_interfaces.types import MetricType
 
@@ -146,7 +145,6 @@ class SolverConfig:
         return self.branches_per_sub.val.max().item()
 
 
-@jaxtyped(typechecker=typechecker)
 class DynamicInformation(eqx.Module):
     """Holds the dynamic information for the solver.
 
@@ -382,7 +380,6 @@ class DynamicInformation(eqx.Module):
         )
 
 
-@jaxtyped(typechecker=typechecker)
 class StaticInformation(eqx.Module):
     """Holds the static information for the solver.
 
@@ -471,7 +468,6 @@ class StaticInformation(eqx.Module):
         return self.dynamic_information.n_actions
 
 
-@jaxtyped(typechecker=typechecker)
 class BranchLimits(eqx.Module):
     """A dataclass holding the different branch limits.
 
@@ -511,7 +507,6 @@ class BranchLimits(eqx.Module):
     """Optionally, a limit on the flow on the couplers for each relevant substation."""
 
 
-@jaxtyped(typechecker=typechecker)
 class ActionSet(eqx.Module):
     """Holds the information for an ActionSet.
 
@@ -622,7 +617,6 @@ class ActionSet(eqx.Module):
         return self.branch_actions.shape[0]
 
 
-@jaxtyped(typechecker=typechecker)
 class ActionIndexComputations(eqx.Module):
     """Holds branch+injection topology computations in the form of indices into the action set.
 
@@ -657,7 +651,6 @@ class ActionIndexComputations(eqx.Module):
         return self.action.shape[0]
 
 
-@jaxtyped(typechecker=typechecker)
 class TopoVectBranchComputations(eqx.Module):
     """Stores branch topology computations in topo-vect form.
 
@@ -703,7 +696,6 @@ class TopoVectBranchComputations(eqx.Module):
         return self.topologies.shape[0]
 
 
-@jaxtyped(typechecker=typechecker)
 class InjectionComputations(eqx.Module):
     """Injection combinations can be either used from the action set or overwritten with custom injection combinations.
 
@@ -738,7 +730,6 @@ class InjectionComputations(eqx.Module):
         )
 
 
-@jaxtyped(typechecker=typechecker)
 class SparseNMinus0(eqx.Module):
     """A dataclass for tracking maximum N-0 results in a sparse fashion."""
 
@@ -756,7 +747,6 @@ class SparseNMinus0(eqx.Module):
         )
 
 
-@jaxtyped(typechecker=typechecker)
 class SparseNMinus1(eqx.Module):
     """A dataclass for tracking maximum N-1 results in a sparse fashion.
 
@@ -785,7 +775,6 @@ class SparseNMinus1(eqx.Module):
         )
 
 
-@jaxtyped(typechecker=typechecker)
 class BSDFResults(eqx.Module):
     """A dataclass encapsulating the data that is updated within the bsdf computation.
 
@@ -814,7 +803,6 @@ class BSDFResults(eqx.Module):
     """The BSDF vectors for each split, used in the cross-coupler flow updates."""
 
 
-@jaxtyped(typechecker=typechecker)
 class DisconnectionResults(eqx.Module):
     """A dataclass encapsulating the results of the disconnection computations.
 
@@ -839,7 +827,6 @@ class DisconnectionResults(eqx.Module):
     """The MODF matrices for the disconnections to apply the loadflow update"""
 
 
-@jaxtyped(typechecker=typechecker)
 class SparseSolverOutput(eqx.Module):
     """Store the results of the loadflow computations on a per-topology basis."""
 
@@ -849,7 +836,6 @@ class SparseSolverOutput(eqx.Module):
     best_inj_combi: Optional[Bool[ArrayLike, " ... n_splits max_inj_per_sub"]] = None
 
 
-@jaxtyped(typechecker=typechecker)
 class MODFMatrix(eqx.Module):
     """A MODF matrix for a single batch of multi-outages."""
 
@@ -879,7 +865,6 @@ class MODFMatrix(eqx.Module):
         )
 
 
-@jaxtyped(typechecker=typechecker)
 class TopologyResults(eqx.Module):
     """Stores the results of the BSDF, LODF and static flow computations.
 
@@ -916,7 +901,6 @@ class TopologyResults(eqx.Module):
     """If disconnections are applied, this holds the MODF matrices for the disconnections."""
 
 
-@jaxtyped(typechecker=typechecker)
 class N2BaselineAnalysis(eqx.Module):
     """The output of the N-2 baseline analysis, used to compare the split n-2 analysis against."""
 
@@ -952,7 +936,6 @@ class N2BaselineAnalysis(eqx.Module):
     split analysis will always use the same weights."""
 
 
-@jaxtyped(typechecker=typechecker)
 class NodalInjOptimResults(eqx.Module):
     """A container for the results of the nodal injection optimization.
 
@@ -973,7 +956,6 @@ class NodalInjOptimResults(eqx.Module):
         )
 
 
-@jaxtyped(typechecker=typechecker)
 class NodalInjStartOptions(eqx.Module):
     """Options for the starting point of the nodal injection optimization."""
 
@@ -993,7 +975,6 @@ class NodalInjStartOptions(eqx.Module):
     """
 
 
-@jaxtyped(typechecker=typechecker)
 class SolverLoadflowResults(eqx.Module):
     """The loadflow results without any preprocessing in matrix form.
 
@@ -1071,7 +1052,6 @@ class SolverLoadflowResults(eqx.Module):
         )
 
 
-@jaxtyped(typechecker=typechecker)
 class WorstKContingencyResults(eqx.Module):
     """Stores the worst K contingency cases so the AC optimizer can focus on those first."""
 
@@ -1204,7 +1184,6 @@ class AggregateOutputProtocol(Protocol):
         return hash(self) == hash(other)
 
 
-@jaxtyped(typechecker=typechecker)
 class RelBBOutageData(eqx.Module):
     """Holds the relevant busbar outage data."""
 
@@ -1267,7 +1246,6 @@ class RelBBOutageData(eqx.Module):
         )
 
 
-@jaxtyped(typechecker=typechecker)
 class NonRelBBOutageData(eqx.Module):
     """Holds the non-relevant busbar outage data."""
 
@@ -1290,7 +1268,6 @@ def int_max() -> int:
     return int(jnp.iinfo(jnp.int64).max) if jax.config.read("jax_enable_x64") else int(jnp.iinfo(jnp.int32).max)
 
 
-@jaxtyped(typechecker=typechecker)
 class BBOutageBaselineAnalysis(eqx.Module):
     """The output of the busbar outage analysis for unsplit grid.
 
@@ -1322,7 +1299,6 @@ class BBOutageBaselineAnalysis(eqx.Module):
     split analysis will always use the same weights."""
 
 
-@jaxtyped(typechecker=typechecker)
 class NodalInjectionInformation(eqx.Module):
     """Holds the nodal injection optimization data required by the DC solver."""
 

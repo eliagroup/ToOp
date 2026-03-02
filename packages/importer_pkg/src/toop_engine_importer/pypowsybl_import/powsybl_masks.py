@@ -281,7 +281,7 @@ def get_border_line_mask(
     side_2_in_area: np.ndarray,
     hv_line_mask: np.ndarray,
     area_codes: list[str],
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """Filter border lines in UCTE.
 
     Usually these are modeled as tie-lines,

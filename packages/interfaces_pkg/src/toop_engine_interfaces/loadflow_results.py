@@ -49,7 +49,7 @@ class BranchSide(Enum):
     THREE = 3
     """Only valid for 3 winding transformers, representing the low voltage side."""
 
-    NONE = "NONE"
+    NONE = 4
     """No side specified."""
 
 

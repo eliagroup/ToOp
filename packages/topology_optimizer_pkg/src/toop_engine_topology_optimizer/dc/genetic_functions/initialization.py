@@ -640,6 +640,15 @@ def algo_setup(
             for static_information, dynamic_info in zip(static_informations, dynamic_infos, strict=True)
         ]
 
+    if not ga_args.enable_nodal_inj_optim and "pst_switching_distance" in [metric for metric, _ in ga_args.target_metrics]:
+        logger.warning(
+            (
+                "The target metrics include pst_switching_distance but nodal injection optimization is disabled.",
+                "This will lead to pst_switching_distance being always 0 and not optimized for.",
+                "Consider enabling nodal injection optimization or removing pst_switching_distance from the target metrics.",
+            )
+        )
+
     algo, jax_data = initialize_genetic_algorithm(
         batch_size=lf_args.batch_size,
         max_num_splits=lf_args.max_num_splits,

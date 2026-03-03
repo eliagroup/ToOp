@@ -10,10 +10,10 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
-from beartype.typing import Optional, Sequence
+from beartype.typing import Optional
 from jax_dataclasses import replace
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
-from qdax.core.emitters.standard_emitters import EmitterState
+from qdax.core.emitters.standard_emitters import EmitterState, ExtraScores
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric_batched, get_worst_k_contingencies
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.nodal_inj_optim import make_start_options
@@ -25,6 +25,7 @@ from toop_engine_dc_solver.jax.types import (
     SolverConfig,
     int_max,
 )
+from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
     Genotype,
     deduplicate_genotypes,
@@ -70,7 +71,7 @@ def compute_overloads(
     topologies: Genotype,
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
-    observed_metrics: Sequence[str],
+    observed_metrics: tuple[MetricType, ...],
     n_worst_contingencies: int = 10,
 ) -> tuple[dict[str, Float[Array, " batch_size"]], Optional[NodalInjOptimResults], Bool[Array, " batch_size"]]:
     """Compute the overloads for a single timestep by invoking the solver and aggregating the results.
@@ -85,7 +86,7 @@ def compute_overloads(
         The dynamic information of the grid
     solver_config : SolverConfig
         The static solver configuration
-    observed_metrics : Sequence[str]
+    observed_metrics : tuple[MetricType, ...]
         The metrics to observe
     n_worst_contingencies : int, optional
         The number of worst contingencies to return, by default 10
@@ -138,17 +139,17 @@ def compute_overloads(
 def scoring_function(
     topologies: Genotype,
     random_key: PRNGKeyArray,
-    dynamic_informations: Sequence[DynamicInformation],
-    solver_configs: Sequence[SolverConfig],
-    target_metrics: Sequence[tuple[str, float]],
-    observed_metrics: Sequence[str],
-    descriptor_metrics: Sequence[str],
+    dynamic_informations: tuple[DynamicInformation, ...],
+    solver_configs: tuple[SolverConfig, ...],
+    target_metrics: tuple[tuple[MetricType, float], ...],
+    observed_metrics: tuple[MetricType, ...],
+    descriptor_metrics: tuple[MetricType, ...],
     n_worst_contingencies: int = 10,
 ) -> tuple[
     Float[Array, " batch_size"],
     Int[Array, " batch_size n_dims"],
     dict,
-    dict,
+    ExtraScores,
     PRNGKeyArray,
     Genotype,
 ]:
@@ -164,11 +165,11 @@ def scoring_function(
         The dynamic information of the grid for every timestep
     solver_configs : tuple[SolverConfig, ...]
         The solver configuration for every timestep
-    target_metrics : Sequence[tuple[str, float]]
+    target_metrics : tuple[tuple[MetricType, float], ...]
         The list of metrics to optimize for with their weights
-    observed_metrics : Sequence[str]
+    observed_metrics : tuple[MetricType, ...]
         The observed metrics
-    descriptor_metrics : Sequence[str]
+    descriptor_metrics : tuple[MetricType, ...]
         The metrics to use as descriptors
     n_worst_contingencies : int, optional
         The number of worst contingencies to consider for calculating
@@ -177,12 +178,12 @@ def scoring_function(
     Returns
     -------
     Float[Array, " batch_size"]
-        The metrics of the topologies
+        The fitness of the topologies, calculated as the weighted sum of the target metrics
     Int[Array, " batch_size n_dims"]
         The descriptors of the topologies
     dict
-        The extra scores
-    dict
+        The metrics of the topologies, including the target metrics and any other observed metrics
+    ExtraScores
         Emitter Information
     PRNGKeyArray
         The random key that was passed in, unused

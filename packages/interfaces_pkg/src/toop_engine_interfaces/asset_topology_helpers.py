@@ -725,9 +725,7 @@ def merge_stations(
 
 
 # TODO: refactor due to C901
-def merge_station(
-    original: Station, new: Station
-) -> tuple[Station, list[BusbarCoupler], list[tuple[int, int, bool | np.bool_]]]:
+def merge_station(original: Station, new: Station) -> tuple[Station, list[BusbarCoupler], list[tuple[int, int, bool]]]:
     """Merge all the changes from the new station into the original station
 
     This will overwrite all assets, couplers and busbars in the original station with the ones from
@@ -756,7 +754,7 @@ def merge_station(
         The modified original station, with all the changes from the new station merged in
     list[BusbarCoupler]
         The coupler diff that has been switched
-    list[tuple[int, int, bool | np.bool_]]
+    list[tuple[int, int, bool]]
         The asset diff that has been switched. Each tuple contains the asset index that was
         affected, which busbar index was affected and whether the asset was connected (True) or
         disconnected (False) to that bus
@@ -774,10 +772,9 @@ def merge_station(
     )
 
     # Loop through the switching table and copy the values over for which there is a mapping
-    asset_diff = []
     new_asset_switching_table = original.asset_switching_table.copy()
-    station = update_asset_switching_table(
-        original, new, busbar_mapping, asset_mapping, new_couplers, asset_diff, new_asset_switching_table
+    station, asset_diff = update_asset_switching_table(
+        original, new, busbar_mapping, asset_mapping, new_couplers, new_asset_switching_table
     )
     return station, coupler_diff, asset_diff
 
@@ -788,9 +785,8 @@ def update_asset_switching_table(
     busbar_mapping: dict[int, int],
     asset_mapping: dict[int, int],
     new_couplers: list[BusbarCoupler],
-    asset_diff: list[tuple[int, int, bool | np.bool_]],
     new_asset_switching_table: np.ndarray,
-) -> Station:
+) -> tuple[Station, list[tuple[int, int, bool]]]:
     """Update the asset switching table of the original station with the values from the new station.
 
     This is a separate function to reduce the complexity of merge_station.
@@ -808,10 +804,6 @@ def update_asset_switching_table(
         The mapping from the original asset indices to the new asset indices
     new_couplers : list[BusbarCoupler]
         The new list of couplers that should be merged into the original station
-    asset_diff : list[tuple[int, int, bool | np.bool_]]
-        The list to which the asset diff should be appended. Each tuple contains the asset index that was
-        affected, which busbar index was affected and whether the asset was connected (True) or
-        disconnected (False) to that bus
     new_asset_switching_table : np.ndarray
         The new asset switching table that should be updated with the values from the new station. This
         is modified in place and returned as part of the new station object.
@@ -820,7 +812,12 @@ def update_asset_switching_table(
     -------
     Station
         The modified original station, with the updated asset switching table and couplers
+    list[tuple[int, int, bool]]
+        The asset diff that has been switched. Each tuple contains the asset index that was
+        affected, which busbar index was affected and whether the asset was connected (True) or
+        disconnected (False) to that bus
     """
+    asset_diff = []
     for busbar_idx in range(original_station.asset_switching_table.shape[0]):
         if busbar_idx in busbar_mapping:
             mapped_busbar_idx = busbar_mapping[busbar_idx]
@@ -836,7 +833,7 @@ def update_asset_switching_table(
                             (
                                 asset_idx,
                                 busbar_idx,
-                                new_station.asset_switching_table[mapped_busbar_idx, mapped_asset_idx],
+                                bool(new_station.asset_switching_table[mapped_busbar_idx, mapped_asset_idx]),
                             )
                         )
 
@@ -847,7 +844,7 @@ def update_asset_switching_table(
     original_station = original_station.model_copy(
         update={"couplers": new_couplers, "asset_switching_table": new_asset_switching_table}
     )
-    return original_station
+    return original_station, asset_diff
 
 
 def map_busbars_and_assets(

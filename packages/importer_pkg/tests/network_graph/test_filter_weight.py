@@ -11,6 +11,7 @@ from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     HelperBranchSchema,
     SwitchSchema,
+    WeightValues,
 )
 from toop_engine_importer.network_graph.filter_weights import (
     set_all_weights,
@@ -63,7 +64,7 @@ def test_set_weights_for_edges(get_graph_input_dicts):
     helper_branches_df = pd.DataFrame(switches_dict)
 
     weight_name = "test_weight"
-    weights = [1.0, 2.0, 3.0]
+    weights = (WeightValues.low.value, WeightValues.step.value, WeightValues.high.value)
     assert weight_name not in switches_df.columns
     assert weight_name not in branches_df.columns
     assert weight_name not in helper_branches_df.columns
@@ -82,8 +83,8 @@ def test_set_weights_for_edges(get_graph_input_dicts):
     assert helper_branches_df[weight_name].unique()[0] == weights[2]
 
     with pytest.raises(ValueError):
-        weights = [1.0, 2.0, 3.0, 4.0]
-        set_weights_for_edges(
+        weights = (WeightValues.low.value, WeightValues.step.value, WeightValues.high.value, WeightValues.low.value)
+        set_weights_for_edges.__wrapped__(
             branches_df=branches_df,
             switches_df=switches_df,
             helper_branches_df=helper_branches_df,
@@ -91,8 +92,8 @@ def test_set_weights_for_edges(get_graph_input_dicts):
             weight_name=weight_name,
         )
     with pytest.raises(ValueError):
-        weights = [1.0, 2.0]
-        set_weights_for_edges(
+        weights = (WeightValues.low.value, WeightValues.step.value)
+        set_weights_for_edges.__wrapped__(
             branches_df=branches_df,
             switches_df=switches_df,
             helper_branches_df=helper_branches_df,

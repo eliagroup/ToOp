@@ -7,7 +7,7 @@
 import os
 import sys
 
-if os.getenv("DEBUG"):
+if os.getenv("ENABLE_BEARTYPE"):
     from beartype.claw import beartype_this_package
     from jaxtyping import install_import_hook
 

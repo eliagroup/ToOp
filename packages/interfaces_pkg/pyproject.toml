@@ -83,7 +83,7 @@ dev = [
 ]
 
 [tool.pytest_env]
-DEBUG="true"
+ENABLE_BEARTYPE="true"
 
 [tool.uv-secure.ignore_packages]
 ray = [] # Ignore issues with all versions of the ray package

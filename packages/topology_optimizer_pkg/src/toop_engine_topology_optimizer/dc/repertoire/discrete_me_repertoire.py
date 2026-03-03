@@ -21,8 +21,8 @@ import jax.numpy as jnp
 import numpy as np
 from beartype.typing import Optional, Tuple, Union
 from jax_dataclasses import Static
-from jaxtyping import Array, Float, Int
-from qdax.custom_types import Descriptor, ExtraScores, Fitness, RNGKey
+from jaxtyping import Array, Float, Int, PRNGKeyArray
+from qdax.custom_types import Descriptor, ExtraScores, Fitness
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import Genotype
 
 
@@ -98,7 +98,9 @@ class DiscreteMapElitesRepertoire(eqx.Module):
     """Each cell contains cell_depth unique individuals"""
 
     @partial(jax.jit, static_argnames=("num_samples",))
-    def sample(self: "DiscreteMapElitesRepertoire", random_key: RNGKey, num_samples: int) -> Tuple[Genotype, RNGKey]:
+    def sample(
+        self: "DiscreteMapElitesRepertoire", random_key: PRNGKeyArray, num_samples: int
+    ) -> Tuple[Genotype, PRNGKeyArray]:
         """Sample elements in the repertoire.
 
         Parameters
@@ -207,13 +209,13 @@ def add_to_repertoire_without_cell_depth(
     ----------
     repertoire: DiscreteMapElitesRepertoire
         the MAP-Elites repertoire to which the elements will be added.
-    batch_of_genotypes: PyTree[Shaped[Array, " batch_size *feature_dims"]]
+    batch_of_genotypes: Genotype
         a batch of genotypes to be added to the repertoire.
     batch_of_descriptors: Int[Array, " batch_size n_dims"]
         an array that contains the descriptors of the genotypes.
     batch_of_fitnesses: Float[Array, " batch_size"]
         an array that contains the fitnesses of the genotypes.
-    batch_of_extra_scores: Optional[PyTree[Shaped[Array, " batch_size *extra_dims"]]]
+    batch_of_extra_scores: Optional[ExtraScores]
         tree that contains the extra_scores of genotypes.
 
     Returns
@@ -297,13 +299,13 @@ def add_to_repertoire_with_cell_depth(
     ----------
     repertoire: DiscreteMapElitesRepertoire
         the MAP-Elites repertoire to which the elements will be added.
-    batch_of_genotypes: PyTree[Shaped[Array, " batch_size *feature_dims"]]
+    batch_of_genotypes: Genotype
         a batch of genotypes to be added to the repertoire.
     batch_of_descriptors: Int[Array, " batch_size n_dims"]
         an array that contains the descriptors of the genotypes.
     batch_of_fitnesses: Float[Array, " batch_size"]
         an array that contains the fitnesses of the genotypes.
-    batch_of_extra_scores: Optional[PyTree[Shaped[Array, " batch_size *extra_dims"]]]
+    batch_of_extra_scores: Optional[ExtraScores]
         tree that contains the extra_scores of genotypes.
 
     Returns

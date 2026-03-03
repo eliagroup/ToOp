@@ -12,7 +12,7 @@ from enum import Enum
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
-from beartype.typing import List, Literal, Optional, Tuple, TypeAlias, Union
+from beartype.typing import List, Literal, Optional, Tuple, Type, TypeAlias, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
 
@@ -208,13 +208,13 @@ class WeightValues(Enum):
     max_coupler: A max value, counting switches in a busbar coupler path.
     """
 
-    high = 100
-    half = 50
-    low = 0
-    step = 1
-    max_step = 10
-    over_step = 11
-    max_coupler = 5
+    high = 100.0
+    half = 50.0
+    low = 0.0
+    step = 1.0
+    max_step = 10.0
+    over_step = 11.0
+    max_coupler = 5.0
 
 
 class NodeSchema(pa.DataFrameModel):
@@ -379,7 +379,7 @@ class SwitchableAssetSchema(pa.DataFrameModel):
     """The in_service information of the asset."""
 
 
-def get_empty_dataframe_from_df_model(df_model: pa.DataFrameModel) -> pd.DataFrame:
+def get_empty_dataframe_from_df_model(df_model: Type[pa.DataFrameModel]) -> pd.DataFrame:
     """Get an empty DataFrame from a DataFrameModel.
 
     This functions creates an empty DataFrame with the columns and correct dtype of the DataFrameModel.

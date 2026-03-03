@@ -298,7 +298,7 @@ def get_closed_switch(
     return closed_switch
 
 
-def fuse_closed_switches_by_bus_ids(network: pp.pandapowerNet, switch_bus_ids: list[int]) -> np.array:
+def fuse_closed_switches_by_bus_ids(network: pp.pandapowerNet, switch_bus_ids: list[int]) -> np.ndarray:
     """Fuse a series of closed switches in the network by merging busbars (type b).
 
     ```
@@ -490,7 +490,7 @@ def get_coupler_types_of_substation(
     network: pp.pandapowerNet,
     substation_bus_list: list[int] | pd.Index,
     only_closed_switches: bool = True,
-) -> dict[str, list[list[int | np.integer]]]:
+) -> dict[str, list[list[int]]]:
     """Get the cross coupler (German: Querkuppler),  busbar coupler and a cross connector of a substation.
 
     A busbar coupler is a connection between two busbars, where assets can be connected to both busbars.
@@ -583,11 +583,11 @@ def get_coupler_types_of_substation(
                 bus_res = [
                     bus_1,
                     bus_2,
-                    power_switch.element.values[0],
-                    power_switch.bus.values[0],
+                    int(power_switch.element.values[0]),
+                    int(power_switch.bus.values[0]),
                 ]
                 switch_res = [
-                    cb_switch_id_list[0],
+                    int(cb_switch_id_list[0]),
                     int(list(ds_switch_1["switch"])[0]),  # noqa: RUF015
                     int(list(ds_switch_2["switch"])[0]),  # noqa: RUF015
                 ]

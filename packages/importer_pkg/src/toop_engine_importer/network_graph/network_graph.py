@@ -8,6 +8,7 @@
 """Helper functions for the NetworkGraphData model."""
 
 import networkx as nx
+import pandera.typing as pat
 from beartype.typing import Any, Callable, Iterable, Iterator, Literal, Optional, Union
 from toop_engine_importer.network_graph.data_classes import (
     BRANCH_TYPES,
@@ -58,14 +59,14 @@ def generate_graph(network_graph_data: NetworkGraphData) -> nx.Graph:
     return graph
 
 
-def graph_creation_nodes_helper(nodes_df: NodeSchema, graph: nx.Graph) -> None:
+def graph_creation_nodes_helper(nodes_df: pat.DataFrame[NodeSchema], graph: nx.Graph) -> None:
     """Create nodes in the NetworkX graph from the node DataFrame.
 
     Adds BusbarConnectionInfo to the nodes
 
     Parameters
     ----------
-    nodes_df : NodeSchema
+    nodes_df : pat.DataFrame[NodeSchema]
         The DataFrame containing the nodes.
     graph : nx.Graph
         The NetworkX graph to which the nodes will be added.
@@ -77,12 +78,14 @@ def graph_creation_nodes_helper(nodes_df: NodeSchema, graph: nx.Graph) -> None:
         graph.add_node(_index, **row_dict)
 
 
-def graph_creation_edge_helper(edge_df: Union[BranchSchema, SwitchSchema], graph: nx.Graph) -> None:
+def graph_creation_edge_helper(
+    edge_df: Union[pat.DataFrame[BranchSchema], pat.DataFrame[SwitchSchema]], graph: nx.Graph
+) -> None:
     """Create edges in the NetworkX graph from the edge DataFrame.
 
     Parameters
     ----------
-    edge_df : Union[BranchSchema, SwitchSchema]
+    edge_df : Union[pat.DataFrame[BranchSchema], pat.DataFrame[SwitchSchema]]
         The DataFrame containing the edges.
     graph : nx.Graph
         The NetworkX graph to which the edges will be added.
@@ -101,12 +104,12 @@ def graph_creation_edge_helper(edge_df: Union[BranchSchema, SwitchSchema], graph
         graph.add_edge(row["from_node"], row["to_node"], **row_dict)
 
 
-def graph_creation_node_assets_helper(node_assets_df: NodeAssetSchema, graph: nx.Graph) -> None:
+def graph_creation_node_assets_helper(node_assets_df: pat.DataFrame[NodeAssetSchema], graph: nx.Graph) -> None:
     """Create node assets_list from node_assets_df in the nodes_df.
 
     Parameters
     ----------
-    node_assets_df : NodeAssetSchema
+    node_assets_df : pat.DataFrame[NodeAssetSchema]
         The DataFrame containing the node_assets.
     graph : nx.Graph
         The NetworkX graph to which the nodes will be added.
@@ -118,7 +121,7 @@ def graph_creation_node_assets_helper(node_assets_df: NodeAssetSchema, graph: nx
         graph.nodes[node]["busbar_connection_info"].node_assets_ids = node_content.index.to_list()
 
 
-def get_branch_node_asset_update_dict(branch_df: BranchSchema) -> dict[int, dict[str, Any]]:
+def get_branch_node_asset_update_dict(branch_df: pat.DataFrame[BranchSchema]) -> dict[int, dict[str, Any]]:
     """Get the update dict for the node assets from the branches.
 
     Gets an update for BusbarConnectionInfo.node_assets and
@@ -126,7 +129,7 @@ def get_branch_node_asset_update_dict(branch_df: BranchSchema) -> dict[int, dict
 
     Parameters
     ----------
-    branch_df : BranchSchema
+    branch_df : pat.DataFrame[BranchSchema]
         The DataFrame containing the branches.
 
     Returns
@@ -157,7 +160,7 @@ def shortest_paths_to_target_ids(
     target_node_ids: list[int],
     start_node_id: int,
     weight: Union[str, Callable] = "station_weight",
-    cutoff: int | float = int(WeightValues.high.value),
+    cutoff: float = WeightValues.high.value,
 ) -> dict[int, list[int]]:
     """Find the shortest paths from one busbar to a list of busbars in the NetworkX graph.
 
@@ -182,7 +185,7 @@ def shortest_paths_to_target_ids(
         positional arguments: the two endpoints of an edge and the
         dictionary of edge attributes for that edge. The function must
         return a number or None to indicate a hidden edge.
-    cutoff : int, optional
+    cutoff : WeightValues, optional
         The cutoff value for the shortest path.
 
     Returns

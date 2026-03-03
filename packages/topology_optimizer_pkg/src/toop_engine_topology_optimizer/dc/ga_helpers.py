@@ -57,15 +57,18 @@ class TrackingMixingEmitter(MixingEmitter):
         genotypes: Optional[Genotype],  # noqa: ARG002
         fitnesses: Optional[Fitness],  # noqa: ARG002
         descriptors: Optional[Descriptor],  # noqa: ARG002
-        extra_scores: Optional[ExtraScores],
+        extra_scores: ExtraScores,
     ) -> EmitterState:
         """Overwrite the state update to store information for the running means."""
         assert emitter_state is not None
         assert extra_scores is not None
         return MixingEmitterState(
-            total_branch_combis=emitter_state.total_branch_combis + extra_scores.get("n_branch_combis", 0).astype(int),
-            total_inj_combis=emitter_state.total_inj_combis + extra_scores.get("n_inj_combis", 0).astype(int),
-            total_num_splits=emitter_state.total_num_splits + extra_scores.get("n_split_grids", 0).astype(int),
+            total_branch_combis=emitter_state.total_branch_combis
+            + extra_scores.get("n_branch_combis", jnp.array(0, dtype=int)).astype(int),
+            total_inj_combis=emitter_state.total_inj_combis
+            + extra_scores.get("n_inj_combis", jnp.array(0, dtype=int)).astype(int),
+            total_num_splits=emitter_state.total_num_splits
+            + extra_scores.get("n_split_grids", jnp.array(0, dtype=int)).astype(int),
         )
 
 

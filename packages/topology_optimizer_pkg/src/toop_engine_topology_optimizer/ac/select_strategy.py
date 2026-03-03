@@ -12,9 +12,9 @@ import numpy as np
 import pandas as pd
 from beartype.typing import Callable, Optional, Sequence
 from numpy.random import Generator as Rng
-from toop_engine_interfaces.types import MetricType
+from toop_engine_interfaces.types import MetricType, OperationMetric
 from toop_engine_topology_optimizer.ac.storage import BaseDBTopology
-from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, Fitness, OptimizerType
+from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, OptimizerType
 from toop_engine_topology_optimizer.interfaces.models.base_storage import (
     metrics_dataframe,
 )
@@ -217,7 +217,7 @@ def get_repertoire_filter_mask(
 
 
 def get_median_mask(
-    metrics_df: pd.DataFrame, target_metrics: Sequence[MetricType], fitness_col: Optional[Fitness] = "fitness"
+    metrics_df: pd.DataFrame, target_metrics: Sequence[MetricType], fitness_col: Optional[OperationMetric] = "fitness"
 ) -> np.ndarray:
     """Get a mask for fitness values below the median for each discrete value of the target metrics.
 
@@ -230,7 +230,7 @@ def get_median_mask(
     target_metrics : Sequence[MetricType]
         A list of metrics with discrete values to consider for filtering.
         example: ["split_subs"].
-    fitness_col : Optional[Fitness], optional
+    fitness_col : Optional[OperationMetric], optional
         The column name that contains the fitness values. Defaults to "fitness".
 
     Returns
@@ -255,7 +255,7 @@ def get_dominator_mask(
     metrics_df: pd.DataFrame,
     target_metrics: Sequence[MetricType],
     observed_metrics: Sequence[MetricType],
-    fitness_col: Optional[Fitness] = "fitness",
+    fitness_col: Optional[OperationMetric] = "fitness",
 ) -> np.ndarray:
     """Get a mask for rows from a DataFrame that are dominated by other rows based on specified metrics.
 
@@ -282,7 +282,7 @@ def get_dominator_mask(
     observed_metrics : Sequence[MetricType]
         A list of metrics to observe for dominance.
         If None, defaults to ["switching_distance", "split_subs"].
-    fitness_col : Optional[Fitness], optional
+    fitness_col : Optional[OperationMetric], optional
         The column name that contains the fitness values. Defaults to "fitness".
         Note: the values are expected to be negative, best fitness converges to zero.
 

@@ -405,9 +405,15 @@ def perform_rel_bb_outage_single_topo(
         action_set.rel_bb_outage_data, action_indices
     )
     # Note: branch_indices with value -1 or int_max are automatically ignored in the  build_modf_matrix  function
-    branch_outages: Int[Array, " n_bb_outages max_branches_per_sub"] = jnp.concatenate(branch_outages, axis=0)
-    deltap_outages: Float[Array, " n_bb_outages n_timesteps"] = jnp.concatenate(deltap_outages, axis=0)
-    nodal_indices_outages: Int[Array, " n_bb_outages "] = jnp.concatenate(nodal_indices_outages, axis=0)
+    branch_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub max_branches_per_sub"] = jnp.concatenate(
+        branch_outages, axis=0
+    )
+    deltap_outages: Float[Array, " n_rel_subs*max_n_physical_bb_per_sub n_timesteps"] = jnp.concatenate(
+        deltap_outages, axis=0
+    )
+    nodal_indices_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub "] = jnp.concatenate(
+        nodal_indices_outages, axis=0
+    )
 
     lfs_list, success = perform_outage_multi_busbars(
         branch_outages,

@@ -17,7 +17,7 @@ import jax
 from beartype.typing import Optional
 from jax import numpy as jnp
 from jax_dataclasses import replace
-from jaxtyping import Array, Bool, Float, Int, PyTree
+from jaxtyping import Array, Bool, Float, Int, PyTree, Shaped
 from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
 from toop_engine_dc_solver.jax.busbar_outage import get_busbar_outage_penalty_batched
 from toop_engine_dc_solver.jax.contingency_analysis import (
@@ -296,7 +296,7 @@ def compute_batch(
     aggregate_metric_fn: AggregateMetricProtocol,
     aggregate_output_fn: AggregateOutputProtocol,
 ) -> tuple[
-    PyTree,
+    PyTree[Shaped[Array, " batch_size_bsdf ..."]],
     Bool[Array, " batch_size_bsdf n_splits max_inj_per_sub"],
     Bool[Array, " batch_size_bsdf"],
 ]:
@@ -329,7 +329,7 @@ def compute_batch(
 
     Returns
     -------
-    PyTree
+    PyTree[Shaped[Array, " batch_size_bsdf ..."]]
         The results object for this batch according to aggregate_output_fn
     Bool[Array, " batch_size_bsdf n_splits max_inj_per_sub"]
         The best injection combination for each topology
@@ -704,7 +704,7 @@ def compute_symmetric_batch(
         branches_monitored=dynamic_information.branches_monitored,
         action_set=dynamic_information.action_set,
         non_rel_bb_outage_data=dynamic_information.non_rel_bb_outage_data,
-        enable_bb_outages=(solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1),
+        enable_bb_outages=solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1,
     )
 
     nodal_injections = compute_injections(

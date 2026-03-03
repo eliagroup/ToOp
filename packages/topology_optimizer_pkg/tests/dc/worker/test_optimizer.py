@@ -5,6 +5,8 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import jax
+import jax.numpy as jnp
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
@@ -50,3 +52,29 @@ def test_extract_results(
     optimizer_data = run_epoch(optimizer_data)
     res = extract_results(optimizer_data)
     assert isinstance(res, TopologyPushResult)
+
+
+def test_jax_jit_does_not_recompile_every_iteration() -> None:
+    jax.clear_caches()
+
+    def increment(x: jax.Array) -> jax.Array:
+        return x + 1
+
+    increment_jit = jax.jit(increment)
+
+    cache_size_before = increment_jit._cache_size()
+
+    result = jnp.array(0, dtype=jnp.int32)
+    for _ in range(10):
+        result = increment_jit(result)
+
+    cache_size_after_first_loop = increment_jit._cache_size()
+
+    for _ in range(10):
+        result = increment_jit(result)
+
+    cache_size_after_second_loop = increment_jit._cache_size()
+
+    assert int(result) == 20
+    assert cache_size_after_first_loop >= cache_size_before
+    assert cache_size_after_second_loop == cache_size_after_first_loop

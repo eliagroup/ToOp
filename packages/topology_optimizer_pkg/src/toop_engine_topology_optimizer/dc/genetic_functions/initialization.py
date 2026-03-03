@@ -18,9 +18,8 @@ import logbook
 from beartype.typing import Iterable, Optional, Sequence
 from fsspec import AbstractFileSystem
 from jax_dataclasses import replace
-from jaxtyping import Array, ArrayLike, Float, Int
+from jaxtyping import Array, ArrayLike, Float, Int, PRNGKeyArray, Shaped
 from qdax.core.emitters.standard_emitters import EmitterState
-from qdax.custom_types import RNGKey
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.aggregate_results import compute_double_limits
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
@@ -71,7 +70,7 @@ class JaxOptimizerData(eqx.Module):
     dynamic_informations: tuple[DynamicInformation, ...]
     """The list containing the dynamic information objects"""
 
-    random_key: RNGKey
+    random_key: Shaped[PRNGKeyArray, " *devices"]
     """The random key"""
 
     latest_iteration: Int[ArrayLike, " *devices"]
@@ -79,8 +78,8 @@ class JaxOptimizerData(eqx.Module):
 
 
 def update_max_mw_flows_according_to_double_limits(
-    dynamic_informations: Sequence[DynamicInformation],
-    solver_configs: Sequence[SolverConfig],
+    dynamic_informations: tuple[DynamicInformation, ...],
+    solver_configs: tuple[SolverConfig, ...],
     lower_limit: float,
     upper_limit: float,
 ) -> tuple[DynamicInformation, ...]:
@@ -224,10 +223,10 @@ def verify_static_information(
 
 
 def update_static_information(
-    static_informations: Sequence[StaticInformation],
+    static_informations: tuple[StaticInformation, ...],
     batch_size: int,
     enable_nodal_inj_optim: bool,
-) -> list[StaticInformation]:
+) -> tuple[StaticInformation, ...]:
     """Perform any necessary preprocessing on the static information.
 
     This harmonizes the static informations and makes sure some information that is optional in the solver is always there.
@@ -285,7 +284,7 @@ def update_static_information(
         )
     ]
 
-    return static_informations
+    return tuple(static_informations)
 
 
 # ruff: noqa: PLR0913
@@ -293,8 +292,8 @@ def initialize_genetic_algorithm(
     batch_size: int,
     max_num_splits: int,
     max_num_disconnections: int,
-    static_informations: Sequence[StaticInformation],
-    target_metrics: Sequence[tuple[MetricType, float]],
+    static_informations: tuple[StaticInformation, ...],
+    target_metrics: tuple[tuple[MetricType, float], ...],
     substation_split_prob: float,
     substation_unsplit_prob: float,
     action_set: ActionSet,
@@ -305,8 +304,8 @@ def initialize_genetic_algorithm(
     proportion_crossover: float,
     crossover_mutation_ratio: float,
     random_seed: int,
-    observed_metrics: Sequence[MetricType],
-    me_descriptors: Sequence[DescriptorDef],
+    observed_metrics: tuple[MetricType, ...],
+    me_descriptors: tuple[DescriptorDef, ...],
     distributed: bool,
     devices: Optional[list[jax.Device]] = None,
     cell_depth: int = 1,
@@ -506,8 +505,8 @@ def flatten_fitnesses_if_distributed(
 
 
 def get_repertoire_metrics(
-    repertoire: DiscreteMapElitesRepertoire, observed_metrics: Sequence[MetricType]
-) -> tuple[float, dict[MetricType, float | int]]:
+    repertoire: DiscreteMapElitesRepertoire, observed_metrics: tuple[MetricType, ...]
+) -> tuple[float, dict[MetricType, float]]:
     """Get the metrics of the best individual in the Mapelites repertoire.
 
     Parameters
@@ -515,7 +514,7 @@ def get_repertoire_metrics(
     repertoire : DiscreteMapElitesRepertoire
         The repertoire
 
-    observed_metrics : Sequence[MetricType]
+    observed_metrics : tuple[MetricType, ...]
         The metrics to observe (max_flow_n_0, median_flow_n_0 ...)
 
     Returns
@@ -552,7 +551,7 @@ def algo_setup(
 ) -> tuple[
     DiscreteMapElites,
     JaxOptimizerData,
-    Sequence[SolverConfig],
+    tuple[SolverConfig, ...],
     float,
     dict,
     list[StaticInformationStats],
@@ -610,15 +609,17 @@ def algo_setup(
     if double_limits is not None:
         logger.info(f"Updating double limits to {double_limits}")
         dynamic_infos = update_max_mw_flows_according_to_double_limits(
-            dynamic_informations=[s.dynamic_information for s in static_informations],
-            solver_configs=[s.solver_config for s in static_informations],
+            dynamic_informations=tuple(s.dynamic_information for s in static_informations),
+            solver_configs=tuple(s.solver_config for s in static_informations),
             lower_limit=double_limits[0],
             upper_limit=double_limits[1],
         )
-        static_informations = [
-            replace(static_information, dynamic_information=dynamic_info)
-            for static_information, dynamic_info in zip(static_informations, dynamic_infos, strict=True)
-        ]
+        static_informations = tuple(
+            [
+                replace(static_information, dynamic_information=dynamic_info)
+                for static_information, dynamic_info in zip(static_informations, dynamic_infos, strict=True)
+            ]
+        )
 
     algo, jax_data = initialize_genetic_algorithm(
         batch_size=lf_args.batch_size,
@@ -666,7 +667,7 @@ def algo_setup(
     return (
         algo,
         jax_data,
-        [static_information.solver_config for static_information in static_informations],
+        tuple([static_information.solver_config for static_information in static_informations]),
         initial_fitness,
         initial_metrics,
         static_information_descriptions,

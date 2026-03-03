@@ -75,8 +75,6 @@ def import_grid_model(
     -------
     ImportResult
         A result dataclass from the importer, mainly including the grid folder and some stats
-    pypowsybl.loadflow.Parameters
-        The loadflow parameters that actually converged in the basecase
 
     Raises
     ------

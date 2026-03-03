@@ -15,7 +15,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 from beartype.typing import Callable, Optional, Tuple
-from jaxtyping import PyTree
+from jaxtyping import PRNGKeyArray, PyTree
 from pydantic import PositiveInt
 from qdax.core.emitters.emitter import Emitter, EmitterState
 from qdax.custom_types import (
@@ -23,7 +23,6 @@ from qdax.custom_types import (
     ExtraScores,
     Fitness,
     Metrics,
-    RNGKey,
 )
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import Genotype
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import (
@@ -41,8 +40,8 @@ class DiscreteMapElites:
     def __init__(
         self,
         scoring_function: Callable[
-            [Genotype, RNGKey, PyTree],
-            Tuple[Fitness, Descriptor, ExtraScores, EmitterScores, RNGKey, Genotype],
+            [Genotype, PRNGKeyArray, PyTree],
+            Tuple[Fitness, Descriptor, ExtraScores, EmitterScores, PRNGKeyArray, Genotype],
         ],
         emitter: Emitter,
         metrics_function: Callable[[DiscreteMapElitesRepertoire], Metrics],
@@ -60,9 +59,9 @@ class DiscreteMapElites:
     def init(
         self,
         genotypes: Genotype,
-        random_key: RNGKey,
+        random_key: PRNGKeyArray,
         scoring_data: PyTree,
-    ) -> Tuple[DiscreteMapElitesRepertoire, Optional[EmitterState], RNGKey]:
+    ) -> Tuple[DiscreteMapElitesRepertoire, Optional[EmitterState], PRNGKeyArray]:
         """Initialize a Map-Elites repertoire with an initial population of genotypes.
 
         Requires the definition of centroids that can be computed with any method
@@ -137,9 +136,9 @@ class DiscreteMapElites:
         self,
         repertoire: DiscreteMapElitesRepertoire,
         emitter_state: Optional[EmitterState],
-        random_key: RNGKey,
+        random_key: PRNGKeyArray,
         scoring_data: PyTree,
-    ) -> Tuple[DiscreteMapElitesRepertoire, Optional[EmitterState], Metrics, RNGKey]:
+    ) -> Tuple[DiscreteMapElitesRepertoire, Optional[EmitterState], Metrics, PRNGKeyArray]:
         """Perform one iteration of the MAP-Elites algorithm.
 
         1. A batch of genotypes is sampled in the repertoire and the genotypes

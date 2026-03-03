@@ -160,7 +160,7 @@ def get_critical_branch_count_n_1_matrix(
     n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
     aggregate_strategy: Optional[AggregateStrategy] = "max",
-) -> Int[Array, " "]:
+) -> Float[Array, " "]:
     """Compute the number of critical branches for an N-1 matrix
 
     A critical branch is a branch that is overloaded in at least one failure. It only returns
@@ -186,7 +186,7 @@ def get_critical_branch_count_n_1_matrix(
         max_fn = jnp.max
     elif aggregate_strategy == "nanmax":
         max_fn = jnp.nanmax
-    return max_fn(jnp.sum(is_critical, axis=1))
+    return max_fn(jnp.sum(is_critical, axis=1)).astype(float)
 
 
 def get_transport_n_1_matrix(
@@ -228,7 +228,7 @@ def get_number_of_splits(
     branch_topology: Bool[Array, " n_splits max_branch_per_sub"],
     sub_ids: Int[Array, " n_splits"],
     n_relevant_subs: int,
-) -> Int[Array, " "]:
+) -> Float[Array, " "]:
     """Count the number of split substations in a topology
 
     Parameters
@@ -242,18 +242,18 @@ def get_number_of_splits(
 
     Returns
     -------
-    Int[Array, " "]
+    Float[Array, " "]
         The number of split substations in the topology
     """
     # Only count the substations that are valid
     has_splits = jnp.any(branch_topology, axis=-1)
     subid_valid = (sub_ids >= 0) & (sub_ids < n_relevant_subs)
-    return jnp.sum(has_splits & subid_valid)
+    return jnp.sum(has_splits & subid_valid).astype(float)
 
 
 def get_number_of_disconnections(
     disconnections: Optional[Int[Array, " max_n_disconnections"]], n_branches: int
-) -> Int[Array, " "]:
+) -> Float[Array, " "]:
     """Count the number of actual disconnections in the disconnections vector
 
     A disconnection is assumed valid if it refers to an existing branch - this does
@@ -274,9 +274,9 @@ def get_number_of_disconnections(
         The number of disconnections in the disconnections vector
     """
     if disconnections is None:
-        return jnp.array(0, dtype=int)
+        return jnp.array(0, dtype=float)
     # Only count the disconnections that are valid
-    return jnp.sum((disconnections >= 0) & (disconnections < n_branches))
+    return jnp.sum((disconnections >= 0) & (disconnections < n_branches)).astype(float)
 
 
 def get_cross_coupler_flow_penalty(
@@ -437,7 +437,7 @@ def get_n0_n1_delta(
         return max_fn(delta, axis=1)
 
     highest_delta = jnp.argmax(jnp.abs(delta), axis=1)
-    return delta[jnp.arange(delta.shape[0])[:, None], highest_delta, jnp.arange(delta.shape[2])[None, :]]
+    return jnp.take_along_axis(delta, highest_delta[:, None, :], axis=1).squeeze(axis=1)
 
 
 def compute_n0_n1_max_diff(
@@ -519,7 +519,7 @@ def get_n0_n1_delta_penalty(
 def get_switching_distance(
     branch_action_index: Int[Array, " n_splits"],
     reassignment_distance: Int[Array, " n_branch_actions"],
-) -> Int[Array, " "]:
+) -> Float[Array, " "]:
     """Look up the switching distance for a branch action.
 
     Parameters
@@ -531,10 +531,10 @@ def get_switching_distance(
 
     Returns
     -------
-    Int[Array, " "]
+    Float[Array, " "]
         The switching distance for each split
     """
-    return reassignment_distance.at[branch_action_index].get(mode="fill", fill_value=0).sum()
+    return reassignment_distance.at[branch_action_index].get(mode="fill", fill_value=0).sum().astype(float)
 
 
 def get_bb_outage_penalty(bb_outage_penalty: Optional[Float[Array, " "]]) -> Float[Array, " "]:
@@ -551,11 +551,11 @@ def get_bb_outage_overload(bb_outage_overload: Optional[Float[Array, " "]]) -> F
     return bb_outage_overload
 
 
-def get_bb_outage_grid_splits(bb_outage_grid_splits: Optional[Int[Array, " "]]) -> Int[Array, " "]:
+def get_bb_outage_grid_splits(bb_outage_grid_splits: Optional[Int[Array, " "]]) -> Float[Array, " "]:
     """Pass the BB outage grid splits from the solver or raise if not provided."""
     if bb_outage_grid_splits is None:
         raise ValueError("No BB outage grid splits returned from solver")
-    return bb_outage_grid_splits
+    return bb_outage_grid_splits.astype(float)
 
 
 def get_n_2_penalty(
@@ -618,7 +618,7 @@ def aggregate_to_metric_batched(
     reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
-) -> Float[Array, " batch_size"] | Int[Array, " batch_size"]:
+) -> Float[Array, " batch_size"]:
     """Aggregate the N-0 and N-1 results down to a single metric
 
     This is a batched version of aggregate_to_metric and can be used to aggregate multiple results,
@@ -656,7 +656,7 @@ def aggregate_matrix_to_metric(
     branch_limits: BranchLimits,
     metric: MatrixMetric,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
-) -> Float[Array, " "] | Int[Array, " "]:
+) -> Float[Array, " "]:
     """Aggregate a metric that needs the N-1/N-0 matrices
 
     This chooses the correct max_mw_flow and calls aggregate_n_1_matrix
@@ -710,7 +710,7 @@ def aggregate_to_metric(  # noqa: C901
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
     aggregate_strategy: Optional[AggregateStrategy] = "max",
-) -> Float[Array, " "] | Int[Array, " "]:
+) -> Float[Array, " "]:
     """Aggregate the N-0 and N-1 results down to a single metric
 
     This gives several options for commonly used aggregation metrics
@@ -785,7 +785,7 @@ def aggregate_n_1_matrix(
     ] = "max_flow",
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
-) -> Float[Array, " "] | Int[Array, " "]:
+) -> Float[Array, " "]:
     """Aggregate the N-1 matrix down to a single metric
 
     Parameters

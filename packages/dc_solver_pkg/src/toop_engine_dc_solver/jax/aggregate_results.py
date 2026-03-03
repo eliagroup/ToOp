@@ -588,17 +588,15 @@ def get_pst_switching_distance(
         return jnp.array(0.0)
 
     # Extract optimized tap indices
-    # Shape: (n_timesteps, n_controllable_pst) or (batch, n_timesteps, n_controllable_pst)
+    # Shape: (n_timesteps, n_controllable_pst)
     optimized_tap_idx = optimized_taps.pst_tap_idx
 
-    # TODO: Multi-timestep support.
-    optimized_tap_idx_single = jnp.max(optimized_tap_idx)
-
+    # TODO: Proper multi-timestep support.
     # Compute squared L2 distance (Euclidean distance squared)
-    diff = optimized_tap_idx_single.astype(int) - initial_tap_idx.astype(int)
-    deviation = jnp.sum(diff * diff)
+    diff = optimized_tap_idx.astype(float) - initial_tap_idx.astype(float)[None, :]
+    deviation = jnp.sum(jnp.square(diff))
 
-    return deviation.astype(float)
+    return deviation
 
 
 def get_n_2_penalty(

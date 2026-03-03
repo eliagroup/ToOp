@@ -40,7 +40,7 @@ from toop_engine_dc_solver.jax.aggregate_results import (
     get_worst_k_contingencies,
 )
 from toop_engine_dc_solver.jax.inputs import load_static_information
-from toop_engine_dc_solver.jax.types import BranchLimits, SolverLoadflowResults
+from toop_engine_dc_solver.jax.types import BranchLimits, NodalInjOptimResults, SolverLoadflowResults
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
@@ -513,6 +513,33 @@ def test_aggregate_to_metric() -> None:
     ref = get_switching_distance(branch_action_index, reassignment_distance)
     assert jnp.array_equal(res, ref)
 
+    initial_pst_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
+    pst_optimized = replace(
+        lf_res,
+        nodal_injections_optimized=NodalInjOptimResults(
+            pst_tap_idx=jnp.array(
+                [
+                    [3, 4, 5, 6, 7],
+                    [10, 10, 10, 10, 10],
+                ],
+                dtype=float,
+            )
+        ),
+    )
+    res = aggregate_to_metric(
+        pst_optimized,
+        branch_limits,
+        reassignment_distance,
+        n_subs_rel,
+        "pst_switching_distance",
+        initial_pst_tap_idx=initial_pst_tap_idx,
+    )
+    ref = get_pst_switching_distance(
+        optimized_taps=pst_optimized.nodal_injections_optimized,
+        initial_tap_idx=initial_pst_tap_idx,
+    )
+    assert jnp.allclose(res, ref)
+
     res = aggregate_to_metric(lf_res, branch_limits, reassignment_distance, n_subs_rel, "disconnected_branches")
     assert res == 0
 
@@ -851,8 +878,6 @@ def test_get_worst_n_k_contingency_basic() -> None:
 
 def test_get_pst_switching_distance() -> None:
     """Test the PST setpoint deviation metric."""
-    from toop_engine_dc_solver.jax.types import NodalInjOptimResults
-
     n_controllable_pst = 5
     n_timesteps = 3
 
@@ -894,19 +919,19 @@ def test_get_pst_switching_distance() -> None:
     assert deviation == expected_deviation, f"Expected deviation {expected_deviation}, got {deviation}"
 
     # Case 6: Multiple timesteps - should use first timestep only
-    initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
+    initial_tap_idx = jnp.array([2, 3, 4, 5], dtype=int)
     optimized_taps = NodalInjOptimResults(
         pst_tap_idx=jnp.array(
             [
-                [3, 4, 5, 6, 7],  # First timestep: deviation = 5 (squared)
-                [10, 10, 10, 10, 10],  # Second timestep: would be higher deviation
-                [0, 0, 0, 0, 0],  # Third timestep: would be different deviation
+                [3, 4, 5, 6],  # First timestep: small deviation: 1^2 + 1^2 + 1^2 + 1^2 = 4
+                [10, 10, 10, 10],  # Second timestep: 8^2 + 7^2 + 6^2 + 5^2 = 174
+                [0, 0, 0, 0],  # Third timestep: 2^2 + 3^2 + 4^2 + 5^2 = 54
             ],
             dtype=float,
-        )  # shape: (n_timesteps=3, n_controllable_pst=5)
+        )  # shape: (n_timesteps=3, n_controllable_pst=4)
     )
     deviation = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_deviation = 5.0  # Only first timestep should be used: 1^2 + 1^2 + 1^2 + 1^2 + 1^2 = 5
+    expected_deviation = 4.0 + 174.0 + 54.0  # Should sum deviations across all timesteps
     assert deviation == expected_deviation, f"Expected deviation {expected_deviation}, got {deviation}"
 
     # Case 7: Verify JAX compatibility (can be JIT compiled)

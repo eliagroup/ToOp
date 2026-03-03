@@ -17,7 +17,7 @@ import jax.numpy as jnp
 import logbook
 import networkx as nx
 import numpy as np
-from beartype.typing import Literal, NamedTuple, Optional, Sequence
+from beartype.typing import Literal, Optional, Sequence
 from jaxtyping import Array, Bool, Int
 from networkx.algorithms.components import (
     connected_components,
@@ -44,10 +44,11 @@ from toop_engine_interfaces.asset_topology_helpers import (
 logger = logbook.Logger(__name__)
 
 
-class OptimalSeparationSetInfo(NamedTuple):
+@dataclass
+class OptimalSeparationSetInfo:
     """Tuple that holds information about the possible 2-node separations in a Station"""
 
-    separation_set: Bool[np.ndarray, " n_configurations 2 ..."]
+    separation_set: Bool[np.ndarray, " n_configurations 2 n_assets_in_config"]
     """The separation set of busbars in the station. Each row corresponds to a possible two-way split of
     the station obtained by opening some couplers. This is the optimized table, i.e. equivalent
     configurations have been purged and the table is in the format where busbar A and B are joined,

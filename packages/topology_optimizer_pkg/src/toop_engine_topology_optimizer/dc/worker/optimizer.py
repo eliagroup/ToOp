@@ -82,7 +82,7 @@ class OptimizerData:
 def initialize_optimization(
     params: DCOptimizerParameters,
     optimization_id: str,
-    static_information_files: tuple[str | Path],
+    static_information_files: tuple[str | Path, ...],
     processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[OptimizerData, list[StaticInformationStats], Strategy]:
     """Initialize the optimization run.

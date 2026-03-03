@@ -61,13 +61,13 @@ def test_nminus1_definition(example_nminus1_definition: Nminus1Definition):
 def test_load_save_nminus1_definition(
     example_nminus1_definition: Nminus1Definition, tmp_path_factory: pytest.TempPathFactory
 ):
-    with tmp_path_factory.mktemp("nminus1") as temp_dir:
-        # Save the Nminus1Definition to a file
-        file_path = temp_dir / "nminus1_definition.json"
-        save_nminus1_definition(file_path, example_nminus1_definition)
+    tmp_dir = tmp_path_factory.mktemp("nminus1")
+    # Save the Nminus1Definition to a file
+    file_path = tmp_dir / "nminus1_definition.json"
+    save_nminus1_definition(file_path, example_nminus1_definition)
 
-        copy = load_nminus1_definition(file_path)
-        assert copy == example_nminus1_definition, "Loaded Nminus1Definition does not match"
+    copy = load_nminus1_definition(file_path)
+    assert copy == example_nminus1_definition, "Loaded Nminus1Definition does not match"
 
 
 def test_contingency_methods():

@@ -74,9 +74,9 @@ def modify_constan_z_load(net: pp.pandapowerNet, value: float = 0.0) -> None:
     None
 
     """
-    const_z_percent_value = 100.0
-    constan_z_load = net.load[np.isclose(net.load["const_z_percent"], const_z_percent_value)].index
-    net.load.loc[constan_z_load, "const_z_percent"] = value
+    const_z_p_percent_value = 100.0
+    constan_z_load = net.load[np.isclose(net.load["const_z_p_percent"], const_z_p_percent_value)].index
+    net.load.loc[constan_z_load, "const_z_p_percent"] = value
 
 
 def handle_switches(network: pp.pandapowerNet) -> None:

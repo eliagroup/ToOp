@@ -51,7 +51,7 @@ def heuristic_first(
 
     return jnp.where(
         requires_addition[None, :],
-        current_switching_table.at[first_true, range(requires_addition.shape[0])].set(True),
+        current_switching_table.at[first_true, jnp.arange(requires_addition.shape[0])].set(True),
         current_switching_table,
     )
 
@@ -94,7 +94,7 @@ def heuristic_least_connected_busbar(
 
     current_switching_table = jnp.where(
         single_busbar_assets[None, :],
-        current_switching_table.at[first_hit, range(requires_addition.shape[0])].set(True),
+        current_switching_table.at[first_hit, jnp.arange(requires_addition.shape[0])].set(True),
         current_switching_table,
     )
     requires_addition = requires_addition & ~single_busbar_assets
@@ -141,7 +141,7 @@ def heuristic_least_connected_busbar(
     # Now we can update the current switching table with the selected busbar indices
     current_switching_table = jnp.where(
         requires_addition[None, :],
-        current_switching_table.at[selected_busbar_indices, range(requires_addition.shape[0])].set(True),
+        current_switching_table.at[selected_busbar_indices, jnp.arange(requires_addition.shape[0])].set(True),
         current_switching_table,
     )
     return current_switching_table

@@ -9,7 +9,7 @@
 
 import dataclasses
 
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
 from networkx.classes import MultiGraph

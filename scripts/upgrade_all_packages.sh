@@ -12,7 +12,6 @@ ITEMS=("interfaces_pkg" "grid_helpers_pkg" "contingency_analysis_pkg" "dc_solver
 
 echo "Upgrading all packages to the latest versions..."
 uv lock --upgrade
-
 cd packages
 # Iterate and publish
 for item in "${ITEMS[@]}"; do

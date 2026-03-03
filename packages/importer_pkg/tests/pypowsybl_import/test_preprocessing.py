@@ -296,19 +296,19 @@ def test_modify_constan_z_load():
     b1 = pp.create_bus(net, vn_kv=20)
     b2 = pp.create_bus(net, vn_kv=0.4)
 
-    # Add a load with const_z_percent = 100.0
-    pp.create_load(net, bus=b1, p_mw=0.1, q_mvar=0.05, const_z_percent=100.0)
-    pp.create_load(net, bus=b2, p_mw=0.2, q_mvar=0.1, const_z_percent=50.0)
+    # Add a load with const_z_p_percent = 100.0
+    pp.create_load(net, bus=b1, p_mw=0.1, q_mvar=0.05, const_z_p_percent=100.0)
+    pp.create_load(net, bus=b2, p_mw=0.2, q_mvar=0.1, const_z_p_percent=50.0)
 
     # Modify constant z load
     modify_constan_z_load(net, value=0.0)
 
-    # Check if the load with const_z_percent = 100.0 is modified
-    assert net.load.loc[net.load["const_z_percent"] == 0.0].shape[0] == 1
-    assert net.load.loc[net.load["const_z_percent"] == 100.0].shape[0] == 0
+    # Check if the load with const_z_p_percent = 100.0 is modified
+    assert net.load.loc[net.load["const_z_p_percent"] == 0.0].shape[0] == 1
+    assert net.load.loc[net.load["const_z_p_percent"] == 100.0].shape[0] == 0
 
-    # Check if the load with const_z_percent != 100.0 is not modified
-    assert net.load.loc[net.load["const_z_percent"] == 50.0].shape[0] == 1
+    # Check if the load with const_z_p_percent != 100.0 is not modified
+    assert net.load.loc[net.load["const_z_p_percent"] == 50.0].shape[0] == 1
 
 
 def test_modify_constan_z_load_with_different_value():
@@ -319,19 +319,19 @@ def test_modify_constan_z_load_with_different_value():
     b1 = pp.create_bus(net, vn_kv=20)
     b2 = pp.create_bus(net, vn_kv=0.4)
 
-    # Add a load with const_z_percent = 100.0
-    pp.create_load(net, bus=b1, p_mw=0.1, q_mvar=0.05, const_z_percent=100.0)
-    pp.create_load(net, bus=b2, p_mw=0.2, q_mvar=0.1, const_z_percent=50.0)
+    # Add a load with const_z_p_percent = 100.0
+    pp.create_load(net, bus=b1, p_mw=0.1, q_mvar=0.05, const_z_p_percent=100.0)
+    pp.create_load(net, bus=b2, p_mw=0.2, q_mvar=0.1, const_z_p_percent=50.0)
 
     # Modify constant z load
     modify_constan_z_load(net, value=75.0)
 
-    # Check if the load with const_z_percent = 100.0 is modified
-    assert net.load.loc[net.load["const_z_percent"] == 75.0].shape[0] == 1
-    assert net.load.loc[net.load["const_z_percent"] == 100.0].shape[0] == 0
+    # Check if the load with const_z_p_percent = 100.0 is modified
+    assert net.load.loc[net.load["const_z_p_percent"] == 75.0].shape[0] == 1
+    assert net.load.loc[net.load["const_z_p_percent"] == 100.0].shape[0] == 0
 
-    # Check if the load with const_z_percent != 100.0 is not modified
-    assert net.load.loc[net.load["const_z_percent"] == 50.0].shape[0] == 1
+    # Check if the load with const_z_p_percent != 100.0 is not modified
+    assert net.load.loc[net.load["const_z_p_percent"] == 50.0].shape[0] == 1
 
 
 def test_create_nminus1_definition_from_masks_basic(ucte_file):

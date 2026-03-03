@@ -20,7 +20,7 @@ E.g. inner German will not merge with this function. Convert the inner German li
 
 import logbook
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Optional
 from pydantic import BaseModel, Field, model_validator

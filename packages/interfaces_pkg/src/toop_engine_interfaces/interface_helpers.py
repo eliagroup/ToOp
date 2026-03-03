@@ -11,7 +11,7 @@ from copy import deepcopy
 from functools import lru_cache
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 from pandera import DataFrameModel, Index
 from pandera import typing as pat
 

@@ -215,7 +215,7 @@ def pull(
     pulled_strategy = []
     for topo in selected_strategy:
         # Merge case_ids from DC and unsplit AC
-        merged_ids = list(set(topo.worst_k_contingency_cases) | worst_k_cont_ids_unsplit)
+        merged_ids = sorted(set(topo.worst_k_contingency_cases) | worst_k_cont_ids_unsplit)
 
         data = topo.model_dump(
             include=[

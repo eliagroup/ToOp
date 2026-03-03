@@ -19,23 +19,17 @@ jobs:
       contents: write
     steps:
       - name: Check out repository code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 0 # fetch full history
           fetch-tags: true # ensure tags are fetched
           ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
           persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
-
-      - name: "Set up Python"
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+      - name: Setup Python and install dependencies
+        uses: ./.github/actions/setup-python
         with:
-          python-version-file: "pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --frozen --only-group ci
+          sync-args: '--frozen --only-group ci'
 
       - name: Set development release flag
         run: |
@@ -64,10 +58,7 @@ jobs:
           fi
 
       - name: Configure git profile
-        run: |
-          git config user.name "ToOp Build Service"
-          git config user.email ToOp@eliagroup.eu
-
+        uses: ./.github/actions/configure-git-profile
       - name: Create release tag
         run: |
           echo "Creating git tag"
@@ -86,25 +77,17 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
 
       - name: Configure git profile
-        run: |
-          git config user.name "ToOp Build Service"
-          git config user.email ToOp@eliagroup.eu
+        uses: ./.github/actions/configure-git-profile
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
-
-      - name: "Set up Python"
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+      - name: Setup Python and install dependencies
+        uses: ./.github/actions/setup-python
         with:
-          python-version-file: "pyproject.toml"
-
-      - name: Install dependencies
-        run: uv sync --only-group doc --frozen
+          sync-args: '--frozen --only-group doc'
 
       - name: Conditional Deployment
         run: uv run mkdocs gh-deploy --force

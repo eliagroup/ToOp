@@ -439,19 +439,20 @@ def dc_repertoire_elements_per_sub() -> tuple[Int[np.ndarray, " n_relevant_subs"
 @pytest.fixture
 def dc_repertoire(session: Session) -> list[ACOptimTopology]:
     """Populate the database with three strategies of 10 random timesteps each"""
+    rng = np.random.default_rng(42)
     for _strategy in range(3):
         assignments = []
         for _timestep in range(10):
             # Generate random assignments
-            n_splits = np.random.randint(1, 6)
-            n_disconnections = np.random.randint(0, 3)
+            n_splits = int(rng.integers(1, 6))
+            n_disconnections = int(rng.integers(0, 3))
             n_psts = 5
 
             assignments.append(
                 (
-                    np.random.choice(a=5000, size=n_splits, replace=False).tolist(),  # actions
-                    np.random.choice(a=10, size=n_disconnections, replace=False).tolist(),  # disconnections
-                    np.random.randint(low=0, high=60, size=n_psts).tolist(),  # pst_setpoints
+                    rng.choice(a=5000, size=n_splits, replace=False).tolist(),  # actions
+                    rng.choice(a=10, size=n_disconnections, replace=False).tolist(),  # disconnections
+                    rng.integers(low=0, high=60, size=n_psts).tolist(),  # pst_setpoints
                 )
             )
         strategy_hash = hash_topo_data(assignments)
@@ -466,12 +467,12 @@ def dc_repertoire(session: Session) -> list[ACOptimTopology]:
                     strategy_hash=strategy_hash,
                     optimization_id="test",
                     optimizer_type=OptimizerType.DC,
-                    fitness=np.random.rand() * -3000,
+                    fitness=float(rng.random()) * -3000,
                     metrics={
-                        "overload_energy_n_1": np.random.rand(),
-                        "switching_distance": np.random.randint(0, 30),
-                        "split_subs": np.random.randint(0, 5),
-                        "disconnections": np.random.randint(0, 10),
+                        "overload_energy_n_1": float(rng.random()),
+                        "switching_distance": int(rng.integers(0, 30)),
+                        "split_subs": int(rng.integers(0, 5)),
+                        "disconnections": int(rng.integers(0, 10)),
                     },
                 )
             )
@@ -499,24 +500,26 @@ def contingency_ids_case_57(n_minus1_definitions_case_57: list[Nminus1Definition
 @pytest.fixture
 def unsplit_ac_dc_repertoire(session: Session, contingency_ids_case_57: list[str]) -> tuple[list[ACOptimTopology], Session]:
     """Populate the database with three strategies of 10 random timesteps each"""
+    rng = np.random.default_rng(43)
+    contingency_ids_sorted = sorted(contingency_ids_case_57)
     for _strategy in range(3):
         assignments = []
         for _timestep in range(10):
             # Generate random assignments
-            n_splits = np.random.randint(1, 6)
-            n_disconnections = np.random.randint(0, 3)
+            n_splits = int(rng.integers(1, 6))
+            n_disconnections = int(rng.integers(0, 3))
             n_psts = 5
 
             assignments.append(
                 (
-                    np.random.choice(a=5000, size=n_splits, replace=False).tolist(),  # actions
-                    np.random.choice(a=10, size=n_disconnections, replace=False).tolist(),  # disconnections
-                    np.random.randint(low=0, high=60, size=n_psts).tolist(),  # pst_setpoints
+                    rng.choice(a=5000, size=n_splits, replace=False).tolist(),  # actions
+                    rng.choice(a=10, size=n_disconnections, replace=False).tolist(),  # disconnections
+                    rng.integers(low=0, high=60, size=n_psts).tolist(),  # pst_setpoints
                 )
             )
         strategy_hash = hash_topo_data(assignments)
         for timestep, (actions, disconnections, pst_setpoints) in enumerate(assignments):
-            case_ids = np.random.choice(contingency_ids_case_57, size=5, replace=False).tolist()
+            case_ids = rng.choice(contingency_ids_sorted, size=min(5, len(contingency_ids_sorted)), replace=False).tolist()
             session.add(
                 ACOptimTopology(
                     actions=actions,
@@ -527,10 +530,10 @@ def unsplit_ac_dc_repertoire(session: Session, contingency_ids_case_57: list[str
                     strategy_hash=strategy_hash,
                     optimization_id="test",
                     optimizer_type=OptimizerType.DC,
-                    fitness=np.random.rand(),
+                    fitness=float(rng.random()),
                     metrics={
-                        "overload_energy_n_1": np.random.rand(),
-                        "top_k_overloads_n_1": np.random.rand(),
+                        "overload_energy_n_1": float(rng.random()),
+                        "top_k_overloads_n_1": float(rng.random()),
                     },
                     worst_k_contingency_cases=case_ids,
                 )
@@ -539,7 +542,7 @@ def unsplit_ac_dc_repertoire(session: Session, contingency_ids_case_57: list[str
     # Add unsplit topology AC topology
     unsplit_strategy_hash = hash_topo_data([([], [], [])])  # Unique hash for unsplit topology
     # Generate unique case_ids for the unsplit topology
-    case_ids = np.random.choice(contingency_ids_case_57, size=5, replace=False).tolist()
+    case_ids = rng.choice(contingency_ids_sorted, size=min(5, len(contingency_ids_sorted)), replace=False).tolist()
     unsplit_topology = ACOptimTopology(
         actions=[],
         disconnections=[],
@@ -549,10 +552,10 @@ def unsplit_ac_dc_repertoire(session: Session, contingency_ids_case_57: list[str
         strategy_hash=unsplit_strategy_hash,
         optimization_id="test",
         optimizer_type=OptimizerType.AC,
-        fitness=np.random.rand(),
+        fitness=float(rng.random()),
         metrics={
-            "overload_energy_n_1": np.random.rand(),
-            "top_k_overloads_n_1": np.random.rand(),
+            "overload_energy_n_1": float(rng.random()),
+            "top_k_overloads_n_1": float(rng.random()),
         },
         worst_k_contingency_cases=case_ids,
     )

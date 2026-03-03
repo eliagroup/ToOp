@@ -8,7 +8,7 @@
 import numpy as np
 import pandapower as pp
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pytest
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower

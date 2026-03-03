@@ -14,7 +14,7 @@ Author:  Benjamin Petrick
 Created: 2025-05-13
 """
 
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Literal, Optional, TypeAlias
 

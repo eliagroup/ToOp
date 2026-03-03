@@ -10,7 +10,7 @@
 from enum import Enum
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import List, Literal, Optional, TypeAlias, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator

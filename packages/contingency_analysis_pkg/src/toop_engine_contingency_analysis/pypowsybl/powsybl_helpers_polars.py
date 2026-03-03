@@ -11,7 +11,7 @@ This includes translating contingencies, monitored elements and collecting
 the necessary data from the network, so this only has to happen once.
 """
 
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing.polars as patpl
 import polars as pl
 import pypowsybl

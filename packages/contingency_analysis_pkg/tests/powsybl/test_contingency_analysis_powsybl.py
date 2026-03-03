@@ -6,7 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import numpy as np
-import pandera as pa
+import pandera.pandas as pa
 import pypowsybl
 import pytest
 from polars.testing import assert_frame_equal

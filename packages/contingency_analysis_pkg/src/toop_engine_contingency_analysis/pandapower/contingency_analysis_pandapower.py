@@ -12,7 +12,7 @@ from copy import deepcopy
 
 import pandapower as pp
 import pandapower.topology as top
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 import ray
 from beartype.typing import Literal, Optional, Union

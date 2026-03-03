@@ -20,7 +20,7 @@ from copy import deepcopy
 import logbook
 import numpy as np
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Optional
 from pypowsybl.network import Network

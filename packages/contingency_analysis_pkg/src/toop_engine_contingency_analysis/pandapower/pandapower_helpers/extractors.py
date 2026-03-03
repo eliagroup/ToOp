@@ -10,7 +10,7 @@
 import numpy as np
 import pandapower
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from pandapower import pandapowerNet
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (

@@ -9,7 +9,7 @@
 
 import numpy as np
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from pandapower import pandapowerNet
 from pandapower.toolbox import res_power_columns

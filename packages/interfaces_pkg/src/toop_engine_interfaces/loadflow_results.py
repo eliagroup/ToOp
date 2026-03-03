@@ -20,7 +20,7 @@ The grid holds some information that is referenced in the results:
 
 from enum import Enum
 
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Any, Optional, Self, Union
 from pandera.typing import DataFrame, Index, Series

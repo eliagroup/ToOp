@@ -9,7 +9,7 @@
 """Utilities for extracting pandapower bus (node) simulation results per contingency."""
 
 import numpy as np
-import pandera as pa
+import pandera.pandas as pa
 import pandera.typing as pat
 from pandapower import pandapowerNet
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (

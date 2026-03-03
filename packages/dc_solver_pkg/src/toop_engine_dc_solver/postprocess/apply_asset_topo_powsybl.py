@@ -17,7 +17,7 @@ the node/breaker way is still TODO.
 from datetime import datetime
 
 import numpy as np
-import pandera as pa
+import pandera.pandas as pa
 from beartype.typing import Literal, Optional, Union
 from pypowsybl.network import Network
 from toop_engine_dc_solver.export.asset_topology_to_dgs import (

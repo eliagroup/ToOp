@@ -13,7 +13,7 @@ from functools import partial
 from pathlib import Path
 
 import jax
-from beartype.typing import Any, Callable, Sequence
+from beartype.typing import Any, Callable
 from fsspec import AbstractFileSystem
 from jax import lax
 from jax_dataclasses import replace
@@ -57,7 +57,7 @@ class OptimizerData:
     optimization_id: str
     """The id of the optimization run"""
 
-    solver_configs: Sequence[SolverConfig]
+    solver_configs: tuple[SolverConfig, ...]
     """The solver config for every timestep"""
 
     algo: DiscreteMapElites
@@ -82,7 +82,7 @@ class OptimizerData:
 def initialize_optimization(
     params: DCOptimizerParameters,
     optimization_id: str,
-    static_information_files: Sequence[str | Path],
+    static_information_files: tuple[str | Path],
     processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[OptimizerData, list[StaticInformationStats], Strategy]:
     """Initialize the optimization run.
@@ -96,7 +96,7 @@ def initialize_optimization(
         The parameters for the optimization run
     optimization_id : str
         The id of the optimization run, used to annotate results and heartbeats
-    static_information_files : Sequence[str | Path]
+    static_information_files : tuple[str | Path, ...]
         The paths to the static information files to load
     processed_gridfile_fs: AbstractFileSystem
         The target filesystem for the preprocessing worker. This contains all processed grid files.

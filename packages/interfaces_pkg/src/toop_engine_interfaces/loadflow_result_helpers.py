@@ -283,7 +283,7 @@ def get_failed_node_results(
 
 
 def extract_branch_results(
-    branch_results: BranchResultSchema,
+    branch_results: pat.DataFrame[BranchResultSchema],
     timestep: int,
     contingencies: list[str],
     monitored_branches: list[GridElement],
@@ -354,7 +354,7 @@ def extract_branch_results(
 
 
 def extract_node_matrices(
-    node_results: NodeResultSchema,
+    node_results: pat.DataFrame[NodeResultSchema],
     timestep: int,
     contingencies: list[str],
     monitored_nodes: list[GridElement],

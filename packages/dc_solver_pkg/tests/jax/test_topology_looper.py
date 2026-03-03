@@ -104,7 +104,7 @@ def test_run_solver(
         injections=injections,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
-        aggregate_metric_fn=lambda _1, _2: 0,
+        aggregate_metric_fn=lambda _1, _2: 0.0,
         aggregate_output_fn=lambda x: x.n_1_matrix,
     )
 

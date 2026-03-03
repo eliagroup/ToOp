@@ -22,7 +22,7 @@ import jax
 import jax.numpy as jnp
 from beartype.typing import Optional
 from jax_dataclasses import replace
-from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree, Shaped
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric
 from toop_engine_dc_solver.jax.batching import (
     count_injection_combinations_from_corresponding_topology,
@@ -203,7 +203,7 @@ class DefaultAggregateOutputFn(AggregateOutputProtocol):
         self.number_most_affected_n_0 = number_most_affected_n_0
         self.fixed_hash = fixed_hash
 
-    def __call__(self, lf_result: SolverLoadflowResults) -> PyTree:
+    def __call__(self, lf_result: SolverLoadflowResults) -> tuple[SparseNMinus0, SparseNMinus1]:
         """Just calls sparsify results"""
         return sparsify_results(
             n_0_matrix=lf_result.n_0_matrix,
@@ -555,13 +555,13 @@ def iterate_inj_bruteforce_sequential(
     topologies: ActionIndexComputations,
     disconnections: Optional[Int[Array, " n_topologies n_disconnections"]],
     injections: Optional[InjectionComputations],
-    result_storage: PyTree,
+    result_storage: PyTree[Shaped[Array, " n_topologies ..."]],
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
     aggregate_metric_fn: AggregateMetricProtocol,
     aggregate_output_fn: AggregateOutputProtocol,
 ) -> tuple[
-    PyTree,
+    PyTree[Shaped[Array, " n_topologies ..."]],
     Bool[Array, " n_topologies n_splits max_inj_per_sub"],
     Bool[Array, " n_topologies"],
 ]:
@@ -575,7 +575,7 @@ def iterate_inj_bruteforce_sequential(
         The disconnections to perform, padded to match the batch size
     injections: Optional[InjectionComputations]
         The injection computations to perform, padded to match the batch size
-    result_storage : PyTree[Shaped, " n_topologies ..."]
+    result_storage : PyTree[Shaped[Array, " n_topologies ..."]]
         An array with storage reserved for the results
     dynamic_information : DynamicInformation
         Dynamic information about the grid, such as the PTDF matrix
@@ -588,7 +588,7 @@ def iterate_inj_bruteforce_sequential(
 
     Returns
     -------
-    PyTree[Shaped, " n_topologies ..."]
+    PyTree[Shaped[Array, " n_topologies ..."]]
         The aggregated results for every topology according to the aggregate_output_fn. The results
         are obtained by applying aggregate_output_fn to the N-0 and N-1 matrices of every topology
         and then stacking the results. They are of the same dimension as the inputs
@@ -611,12 +611,12 @@ def iterate_inj_bruteforce_sequential(
     def _run_single_iter(
         i: Int[Array, " "],
         storage: tuple[
-            PyTree,
+            PyTree[Shaped[Array, " n_topologies ..."]],
             Bool[Array, " n_topologies n_splits max_inj_per_sub"],
             Bool[Array, " n_topologies"],
         ],
     ) -> tuple[
-        PyTree,
+        PyTree[Shaped[Array, " n_topologies ..."]],
         Bool[Array, " n_topologies n_splits max_inj_per_sub"],
         Bool[Array, " n_topologies"],
     ]:
@@ -669,7 +669,7 @@ def run_solver_symmetric(
     solver_config: SolverConfig,
     aggregate_output_fn: AggregateOutputProtocol,
     nodal_inj_start_options: Optional[NodalInjStartOptions] = None,
-) -> tuple[PyTree, Bool[Array, " n_topologies"]]:
+) -> tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies"]]:
     """Run the symmetric solver for a given set of topologies and injections.
 
     Symmetric means that there is exactly one injection topology per branch topology. You can pass
@@ -700,7 +700,7 @@ def run_solver_symmetric(
 
     Returns
     -------
-    PyTree[Shaped, " n_topologies ..."]
+    PyTree[Shaped[Array, " n_topologies ..."]]
         The aggregated results for every topology according to the aggregate_output_fn. The results
         are obtained by applying aggregate_output_fn to the N-0 and N-1 matrices of every topology
         and then stacking the results.
@@ -823,12 +823,12 @@ def iterate_symmetric_sequential(
     topologies: ActionIndexComputations,
     disconnections: Optional[Int[Array, " n_topologies n_disconnections"]],
     injections: Optional[Bool[Array, " n_topologies n_splits max_inj_per_sub"]],
-    result_storage: PyTree,
+    result_storage: PyTree[Shaped[Array, " n_topologies ..."]],
     nodal_inj_start_options: Optional[NodalInjStartOptions],
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
     aggregate_output_fn: AggregateOutputProtocol,
-) -> tuple[PyTree, Bool[Array, " n_topologies"]]:
+) -> tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies"]]:
     """Iterate over already padded topologies and injections sequentially
 
     Parameters
@@ -839,7 +839,7 @@ def iterate_symmetric_sequential(
         The disconnections to perform as topological measures, padded to match the batch size
     injections : Optional[Bool[Array, " n_topologies n_splits max_inj_per_sub"]]
         The injection computations to perform, padded to match the batch size
-    result_storage : PyTree[Shaped, " n_topologies ..."]
+    result_storage : PyTree[Shaped[Array, " n_topologies ..."]]
         An array with storage reserved for the results
     nodal_inj_start_options : Optional[NodalInjStartOptions]
         Starting options for nodal injection optimization. If None, optimization is disabled.
@@ -854,7 +854,7 @@ def iterate_symmetric_sequential(
 
     Returns
     -------
-    PyTree[Shaped, " n_topologies ..."]
+    PyTree[Shaped[Array, " n_topologies ..."]]
         The aggregated results for every topology according to the aggregate_output_fn. The results
         are obtained by applying aggregate_output_fn to the N-0 and N-1 matrices of every topology
         and then stacking the results. They are of the same dimension as the inputs
@@ -871,8 +871,8 @@ def iterate_symmetric_sequential(
 
     def _run_single_iter(
         i: Int[Array, " "],
-        storage: tuple[PyTree, Bool[Array, " n_topologies"]],
-    ) -> tuple[PyTree, Bool[Array, " n_topologies"]]:
+        storage: tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies"]],
+    ) -> tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies"]]:
         topology_batch = slice_topologies_action_index(topologies, i, batch_size)
         disconnections_batch = (
             jax.lax.dynamic_slice_in_dim(disconnections, i * batch_size, batch_size, axis=0)

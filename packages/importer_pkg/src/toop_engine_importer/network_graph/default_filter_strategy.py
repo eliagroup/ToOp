@@ -252,7 +252,7 @@ def get_connectable_busbars_update_dict(
 
 def get_connectable_assets_update_dict(
     connectable_node_assets_to_busbars: dict[int, list[int]], graph: nx.Graph
-) -> dict[int, dict[str, list[Union[str, int]]] :]:
+) -> dict[int, dict[str, list[Union[str, int]]]]:
     """Get the connectable assets update dictionary for the BusbarConnectionInfo.
 
     Uses the reversed connectable_node_assets_to_busbars to update the connectable assets in the BusbarConnectionInfo.

@@ -658,7 +658,7 @@ class TopoVectBranchComputations(eqx.Module):
     for each branch in the station. The station is identified via the sub_ids array.
     """
 
-    topologies: Bool[Array, " *batch n_splits max_branch_per_sub"]
+    topologies: Bool[Array, " *topo_batch n_splits max_branch_per_sub"]
     """An array of topologies that we want to have computed. The topologies are stored as topo-vects
     for the substation that's being reconfigured, where each entry is a boolean value indicating
     whether the line is on bus 0 (False) or on bus 1 (True). Note that loads and generators are not

@@ -102,7 +102,9 @@ class BatchedContingencyAnalysisParams(eqx.Module):
 def contingency_analysis_matrix(
     unbatched_params: UnBatchedContingencyAnalysisParams,
     batched_params: BatchedContingencyAnalysisParams,
-) -> Float[Array, " n_timesteps n_failures_total n_branches_monitored"]:
+) -> Float[
+    Array, " n_timesteps n_failures_total n_branches_monitored"
+]:  # n_failures_total = n_branch_failures + n_multi_failures + n_inj_failures + n_bb_outages
     """
     Perform a n-0 and n-1 analysis and returns the full n-0 loads and n-1 matrix.
 
@@ -132,46 +134,48 @@ def contingency_analysis_matrix(
         mode="fill", fill_value=jnp.nan
     )
 
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches_monitored"] = calc_n_1_matrix(
+    n_1_matrix: Float[Array, " n_timesteps n_branch_failures n_branches_monitored"] = calc_n_1_matrix(
         lodf=batched_params.lodf,
         branches_to_outage=unbatched_params.branches_to_fail,
         n_0_flow=batched_params.n_0_flow,
         n_0_flow_monitors=n_0_flow_monitors,
     )
 
-    multi_n_1_matrix = apply_modf_matrices(
+    multi_n_1_matrix: Float[Array, " n_timesteps n_multi_failures n_branches_monitored"] = apply_modf_matrices(
         modf_matrices=batched_params.modf,
         n_0_flow=batched_params.n_0_flow,
         branches_monitored=unbatched_params.branches_monitored,
     )
 
-    inj_n_1_matrix = calc_injection_outages(
+    inj_n_1_matrix: Float[Array, " n_timesteps n_inj_failures n_branches_monitored"] = calc_injection_outages(
         ptdf=batched_params.ptdf,
         n_0_flow=batched_params.n_0_flow,
         injection_outage_deltap=unbatched_params.injection_outage_deltap,
         injection_outage_node=batched_params.injection_outage_node,
         branches_monitored=unbatched_params.branches_monitored,
     )
+    if unbatched_params.enable_bb_outages:
+        bb_outage_n_1_matrix: Float[Array, " n_timesteps n_bb_outages n_branches_monitored"] = calc_bb_outage_contingency(
+            n_0_flows=batched_params.n_0_flow,
+            ptdf=batched_params.ptdf,
+            nodal_injections=batched_params.nodal_injections,
+            action_indices=batched_params.action_indices,
+            from_nodes=batched_params.from_nodes,
+            to_nodes=batched_params.to_nodes,
+            action_set=unbatched_params.action_set,
+            branches_monitored=unbatched_params.branches_monitored,
+            non_rel_bb_outage_data=unbatched_params.non_rel_bb_outage_data,
+            disconnections=batched_params.disconnections,
+        )
+    else:
+        bb_outage_n_1_matrix: Float[Array, " n_timesteps 0 n_branches_monitored"] = jnp.zeros(
+            (batched_params.n_0_flow.shape[0], 0, unbatched_params.branches_monitored.shape[0]),
+            dtype=batched_params.n_0_flow.dtype,
+        )
 
-    bb_outage_n_1_matrix = calc_bb_outage_contingency(
-        n_0_flows=batched_params.n_0_flow,
-        ptdf=batched_params.ptdf,
-        nodal_injections=batched_params.nodal_injections,
-        action_indices=batched_params.action_indices,
-        from_nodes=batched_params.from_nodes,
-        to_nodes=batched_params.to_nodes,
-        action_set=unbatched_params.action_set,
-        branches_monitored=unbatched_params.branches_monitored,
-        non_rel_bb_outage_data=unbatched_params.non_rel_bb_outage_data,
-        disconnections=batched_params.disconnections,
-    )
-    bb_outage_n_1_matrix = jnp.where(
-        unbatched_params.enable_bb_outages,
-        bb_outage_n_1_matrix,
-        jnp.zeros_like(bb_outage_n_1_matrix),
-    )
-
-    n_1_matrix = jnp.concatenate([n_1_matrix, multi_n_1_matrix, inj_n_1_matrix, bb_outage_n_1_matrix], axis=1)
+    n_1_matrix: Float[
+        Array, " n_timesteps n_branch_failures+n_multi_failures+n_inj_failures+n_bb_outages n_branches_monitored"
+    ] = jnp.concatenate([n_1_matrix, multi_n_1_matrix, inj_n_1_matrix, bb_outage_n_1_matrix], axis=1)
 
     return n_1_matrix
 
@@ -180,10 +184,10 @@ def calc_bb_outage_contingency(
     n_0_flows: Float[Array, " n_timesteps n_branches"],
     ptdf: Float[Array, " n_branches n_bus"],
     nodal_injections: Float[Array, " n_timesteps n_bus"],
-    action_indices: Optional[Int[Array, " n_split_subs"]],
-    from_nodes: Optional[Int[Array, " n_branches"]],
-    to_nodes: Optional[Int[Array, " n_branches"]],
-    action_set: Optional[ActionSet],
+    action_indices: Int[Array, " n_split_subs"],
+    from_nodes: Int[Array, " n_branches"],
+    to_nodes: Int[Array, " n_branches"],
+    action_set: ActionSet,
     branches_monitored: Int[Array, " n_branches_monitored"],
     non_rel_bb_outage_data: Optional[NonRelBBOutageData],
     disconnections: Optional[Int[Array, " n_disconnections"]] = None,
@@ -217,14 +221,16 @@ def calc_bb_outage_contingency(
     disconnections : Optional[Int[Array, " n_disconnections"]], optional
         Disconnection action to be considered, by default None.
 
+    Raises
+    ------
+    ValueError
+        If action set, action indices, from nodes or to nodes are not provided for busbar
+
     Returns
     -------
     Float[Array, "n_timesteps n_bb_outages n_branches_monitored"]
         The branch outage flows for all timesteps, branch outages, and monitored branches.
     """
-    if action_set is None or action_indices is None or from_nodes is None or to_nodes is None:
-        return jnp.zeros((n_0_flows.shape[0], 0, branches_monitored.shape[0]), dtype=n_0_flows.dtype)
-
     padded_action_indices: Int[Array, " n_rel_subs"] = pad_action_with_unsplit_action_indices(action_set, action_indices)
     bb_outage_flows, _success_rel_bbs = perform_rel_bb_outage_single_topo(
         n_0_flows=n_0_flows,

@@ -815,7 +815,7 @@ def convert_inj_topo_vect(
     sub_ids: Int[ArrayLike, " batch_size n_splits"],
     generators_per_sub: Int[ArrayLike, " n_subs_relevant"],
     missing_split_behavior: Literal["zero", "raise"] = "zero",
-) -> Bool[ArrayLike, " batch_size n_splits max_inj_per_sub"]:
+) -> Bool[np.ndarray, " batch_size n_splits max_inj_per_sub"]:
     """Convert the dense numpy topo vect to a padded jax topo vect
 
     The dense numpy topo vect holds a boolean for every generator in any sub, ordered as in n_generators_per_sub,

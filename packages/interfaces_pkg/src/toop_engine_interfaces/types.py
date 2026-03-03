@@ -40,11 +40,7 @@ MatrixMetric: TypeAlias = Literal[
     "transport_n_1",
 ]
 
-OperationMetric: TypeAlias = Literal[
-    "switching_distance",
-    "split_subs",
-    "disconnected_branches",
-]
+OperationMetric: TypeAlias = Literal["switching_distance", "split_subs", "disconnected_branches", "fitness"]
 
 OtherMetric: TypeAlias = Literal[
     "n0_n1_delta",
@@ -61,7 +57,6 @@ OtherMetric: TypeAlias = Literal[
     "non_converging_loadflows",
     # TODO: FIXME: remove fitness_dc when "Topology" is refactored and accepts different stages like "dc", "dc+" and "ac"
     "fitness_dc",
-    "fitness",
 ]
 
 MetricType: TypeAlias = Literal[MatrixMetric, OperationMetric, OtherMetric]

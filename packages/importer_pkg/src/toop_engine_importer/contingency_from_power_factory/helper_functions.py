@@ -12,12 +12,13 @@ Created: 2025-05-13
 """
 
 import logbook
+import pandera.typing as pat
 from toop_engine_importer.contingency_from_power_factory.power_factory_data_class import ContingencyMatchSchema
 
 logger = logbook.Logger(__name__)
 
 
-def get_stats_n1_list_found(processed_n1_definition: ContingencyMatchSchema) -> dict:
+def get_stats_n1_list_found(processed_n1_definition: pat.DataFrame[ContingencyMatchSchema]) -> dict:
     """Get the statistics of the found elements in the n-1 definition.
 
     This function gets a statistics of the found elements in the n-1 definition.
@@ -26,7 +27,7 @@ def get_stats_n1_list_found(processed_n1_definition: ContingencyMatchSchema) -> 
 
     Parameters
     ----------
-    processed_n1_definition : pd.DataFrame
+    processed_n1_definition : pat.DataFrame[ContingencyMatchSchema]
         The n-1 definition to get the statistics from.
         The DataFrame must contain the following columns:
         - contingency_name: The name of the contingency from the n-1 definition file.

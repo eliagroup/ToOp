@@ -89,7 +89,7 @@ dev = [
 ]
 
 [tool.pytest_env]
-DEBUG="true"
+ENABLE_BEARTYPE="true"
 
 [tool.uv.sources]
 toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }

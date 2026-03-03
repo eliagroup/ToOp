@@ -6,7 +6,7 @@
 # Mozilla Public License, version 2.0
 import os
 
-if os.getenv("DEBUG"):
+if os.getenv("ENABLE_BEARTYPE"):
     from beartype.claw import beartype_this_package
     from jaxtyping import install_import_hook
 

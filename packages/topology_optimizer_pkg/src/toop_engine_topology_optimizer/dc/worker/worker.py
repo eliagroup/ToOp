@@ -172,7 +172,7 @@ def optimization_loop(
         optimizer_data, stats, initial_strategy = initialize_optimization(
             params=dc_params,
             optimization_id=optimization_id,
-            static_information_files=[gf.static_information_file for gf in grid_files],
+            static_information_files=tuple([gf.static_information_file for gf in grid_files]),
             processed_gridfile_fs=processed_gridfile_fs,
         )
         send_result_fn(

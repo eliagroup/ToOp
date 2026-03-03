@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pandera.typing as pat
+import pandera.typing.polars as patpl
 import polars as pl
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float
@@ -256,7 +256,7 @@ def subset_contingencies_polars(loadflow_results: LoadflowResultsPolars, conting
 
 
 def extract_branch_results_polars(
-    branch_results: pat.DataFrame[BranchResultSchemaPolars],
+    branch_results: patpl.LazyFrame[BranchResultSchemaPolars],
     timestep: int,
     contingencies: list[str],
     monitored_branches: list[GridElement],
@@ -266,7 +266,7 @@ def extract_branch_results_polars(
 
     Parameters
     ----------
-    branch_results: BranchResultSchema,
+    branch_results: patpl.LazyFrame[BranchResultSchemaPolars],
         The branch results dataframe to extract the branch results from.
     timestep : int
         The selected timestep to pull from the loadflow results.
@@ -341,7 +341,7 @@ def extract_branch_results_polars(
 
 
 def extract_node_matrices_polars(
-    node_results: pat.DataFrame[NodeResultSchemaPolars],
+    node_results: patpl.LazyFrame[NodeResultSchemaPolars],
     timestep: int,
     contingencies: list[str],
     monitored_nodes: list[GridElement],
@@ -356,7 +356,7 @@ def extract_node_matrices_polars(
 
     Parameters
     ----------
-    node_results: pat.DataFrame[NodeResultSchemaPolars],
+    node_results: patpl.LazyFrame[NodeResultSchemaPolars],
         The node results polars dataframe to extract the node results from.
     timestep : int
         The selected timestep to pull from the loadflow results.

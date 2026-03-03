@@ -591,15 +591,8 @@ def get_pst_switching_distance(
     # Shape: (n_timesteps, n_controllable_pst) or (batch, n_timesteps, n_controllable_pst)
     optimized_tap_idx = optimized_taps.pst_tap_idx
 
-    # Handle both batched and non-batched cases
-    # If there are timesteps, take the first timestep (index 0)
-    # This assumes we're computing deviation for a single timestep at a time
-    if optimized_tap_idx.ndim == 2:
-        # Shape: (n_timesteps, n_controllable_pst) -> take first timestep
-        optimized_tap_idx_single = optimized_tap_idx[0]
-    else:
-        # Shape: (n_controllable_pst) - already single timestep
-        optimized_tap_idx_single = optimized_tap_idx
+    # TODO: Multi-timestep support.
+    optimized_tap_idx_single = jnp.max(optimized_tap_idx)
 
     # Compute squared L2 distance (Euclidean distance squared)
     diff = optimized_tap_idx_single.astype(int) - initial_tap_idx.astype(int)
@@ -800,36 +793,37 @@ def aggregate_to_metric(  # noqa: C901 # Conditions of the same type permitted
     Float[Array, " "]
         The aggregated metric
     """
-    if metric == "n0_n1_delta":
-        retval = get_n0_n1_delta_penalty(lf_res.n_0_matrix, lf_res.n_1_matrix, branch_limits.n0_n1_max_diff)
-    elif metric == "cross_coupler_flow":
-        retval = get_cross_coupler_flow_penalty(lf_res.cross_coupler_flows, lf_res.sub_ids, branch_limits.coupler_limits)
-    elif metric == "switching_distance":
-        retval = get_switching_distance(
-            branch_action_index=lf_res.branch_action_index,
-            reassignment_distance=reassignment_distance,
-        )
-    elif metric == "pst_switching_distance":
-        retval = get_pst_switching_distance(
-            optimized_taps=lf_res.nodal_injections_optimized,
-            initial_tap_idx=initial_pst_tap_idx,
-        )
-    elif metric == "split_subs":
-        retval = get_number_of_splits(lf_res.branch_topology, lf_res.sub_ids, n_relevant_subs)
-    elif metric == "disconnected_branches":
-        retval = get_number_of_disconnections(lf_res.disconnections, branch_limits.max_mw_flow.shape[0])
-    elif metric == "n_2_penalty":
-        retval = get_n_2_penalty(lf_res.n_2_penalty)
-    elif metric == "bb_outage_penalty":
-        retval = get_bb_outage_penalty(lf_res.bb_outage_penalty)
-    elif metric == "bb_outage_overload":
-        retval = get_bb_outage_overload(lf_res.bb_outage_overload)
-    elif metric == "bb_outage_grid_splits":
-        retval = get_bb_outage_grid_splits(lf_res.bb_outage_splits)
-    else:
-        retval = aggregate_matrix_to_metric(
-            lf_res=lf_res, branch_limits=branch_limits, metric=metric, aggregate_strategy=aggregate_strategy
-        )
+    match metric:
+        case "n0_n1_delta":
+            retval = get_n0_n1_delta_penalty(lf_res.n_0_matrix, lf_res.n_1_matrix, branch_limits.n0_n1_max_diff)
+        case "cross_coupler_flow":
+            retval = get_cross_coupler_flow_penalty(lf_res.cross_coupler_flows, lf_res.sub_ids, branch_limits.coupler_limits)
+        case "switching_distance":
+            retval = get_switching_distance(
+                branch_action_index=lf_res.branch_action_index,
+                reassignment_distance=reassignment_distance,
+            )
+        case "pst_switching_distance":
+            retval = get_pst_switching_distance(
+                optimized_taps=lf_res.nodal_injections_optimized,
+                initial_tap_idx=initial_pst_tap_idx,
+            )
+        case "split_subs":
+            retval = get_number_of_splits(lf_res.branch_topology, lf_res.sub_ids, n_relevant_subs)
+        case "disconnected_branches":
+            retval = get_number_of_disconnections(lf_res.disconnections, branch_limits.max_mw_flow.shape[0])
+        case "n_2_penalty":
+            retval = get_n_2_penalty(lf_res.n_2_penalty)
+        case "bb_outage_penalty":
+            retval = get_bb_outage_penalty(lf_res.bb_outage_penalty)
+        case "bb_outage_overload":
+            retval = get_bb_outage_overload(lf_res.bb_outage_overload)
+        case "bb_outage_grid_splits":
+            retval = get_bb_outage_grid_splits(lf_res.bb_outage_splits)
+        case _:
+            retval = aggregate_matrix_to_metric(
+                lf_res=lf_res, branch_limits=branch_limits, metric=metric, aggregate_strategy=aggregate_strategy
+            )
     return retval
 
 
@@ -880,29 +874,28 @@ def aggregate_n_1_matrix(
         The aggregated metric
     """
     assert len(n_1_matrix.shape) == 3, "This method does not support a batch dimension, use aggregate_n_1_matrices instead"
-
-    if metric == "max_flow":
-        metric = get_max_flow_n_1_matrix(n_1_matrix, max_mw_flow, aggregate_strategy)
-    elif metric == "overload_energy":
-        metric = get_overload_energy_n_1_matrix(n_1_matrix, max_mw_flow, overload_weight, aggregate_strategy)
-    elif metric == "underload_energy":
-        metric = get_underload_energy_n_1_matrix(n_1_matrix, max_mw_flow)
-    elif metric == "transport":
-        metric = get_transport_n_1_matrix(n_1_matrix, max_mw_flow, aggregate_strategy)
-    elif metric == "median_flow":
-        metric = get_median_flow_n_1_matrix(n_1_matrix, max_mw_flow, aggregate_strategy)
-    elif metric == "exponential_overload_energy":
-        metric = get_exponential_overload_energy_n_1_matrix(
-            n_1_matrix, max_mw_flow, overload_weight, aggregate_strategy=aggregate_strategy
-        )
-    elif metric == "critical_branch_count":
-        metric = get_critical_branch_count_n_1_matrix(n_1_matrix, max_mw_flow, aggregate_strategy=aggregate_strategy)
-    elif metric == "cumulative_overload":
-        metric = get_cumulative_overload_n_1_matrix(n_1_matrix, max_mw_flow)
-    else:
-        raise ValueError(f"Unknown metric {metric}")
-
-    return metric
+    match metric:
+        case "max_flow":
+            aggregated = get_max_flow_n_1_matrix(n_1_matrix, max_mw_flow, aggregate_strategy)
+        case "overload_energy":
+            aggregated = get_overload_energy_n_1_matrix(n_1_matrix, max_mw_flow, overload_weight, aggregate_strategy)
+        case "underload_energy":
+            aggregated = get_underload_energy_n_1_matrix(n_1_matrix, max_mw_flow)
+        case "transport":
+            aggregated = get_transport_n_1_matrix(n_1_matrix, max_mw_flow, aggregate_strategy)
+        case "median_flow":
+            aggregated = get_median_flow_n_1_matrix(n_1_matrix, max_mw_flow, aggregate_strategy)
+        case "exponential_overload_energy":
+            aggregated = get_exponential_overload_energy_n_1_matrix(
+                n_1_matrix, max_mw_flow, overload_weight, aggregate_strategy=aggregate_strategy
+            )
+        case "critical_branch_count":
+            aggregated = get_critical_branch_count_n_1_matrix(n_1_matrix, max_mw_flow, aggregate_strategy=aggregate_strategy)
+        case "cumulative_overload":
+            aggregated = get_cumulative_overload_n_1_matrix(n_1_matrix, max_mw_flow)
+        case _:
+            raise ValueError(f"Unknown metric {metric}")
+    return aggregated
 
 
 def default_metric(

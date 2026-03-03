@@ -805,7 +805,10 @@ def run_initial_loadflow(
     static_information: StaticInformation,
     lower_limit_n_0: Optional[float] = 0.9,
     lower_limit_n_1: Optional[float] = 0.9,
-    metrics: tuple[MetricType, ...] = ("overload_energy_n_0", "overload_energy_n_1"),
+    metrics: tuple[MetricType, ...] = (
+        "overload_energy_n_0",
+        "overload_energy_n_1",
+    ),  # TODO: this can be removed, it is never used
 ) -> tuple[StaticInformation, tuple[float, ...]]:
     """Run one initial loadflow computation with the unsplit grid
 

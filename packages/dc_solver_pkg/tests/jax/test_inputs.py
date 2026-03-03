@@ -55,11 +55,17 @@ def assert_static_information(a: StaticInformation, b: StaticInformation) -> Non
                 assert getattr(a.dynamic_information, key) is not None
                 assert a.dynamic_information.nodal_injection_information == b.dynamic_information.nodal_injection_information
         else:
-            assert jnp.array_equal(
-                getattr(a.dynamic_information, key),
-                getattr(b.dynamic_information, key),
-                equal_nan=True,
-            )
+            item_a = getattr(a.dynamic_information, key)
+            item_b = getattr(b.dynamic_information, key)
+            if item_a is None or item_b is None:
+                assert item_b is None
+                assert item_a is None
+            else:
+                assert jnp.array_equal(
+                    getattr(a.dynamic_information, key),
+                    getattr(b.dynamic_information, key),
+                    equal_nan=True,
+                )
 
     for key in a.solver_config.__dataclass_fields__.keys():
         assert isinstance(getattr(b.solver_config, key), type(getattr(a.solver_config, key)))

@@ -559,7 +559,7 @@ def get_bb_outage_grid_splits(bb_outage_grid_splits: Optional[Int[Array, " "]]) 
     return bb_outage_grid_splits
 
 
-def get_pst_setpoint_deviation(
+def get_pst_switching_distance(
     optimized_taps: Optional[NodalInjOptimResults],
     initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
 ) -> Float[Array, " "]:
@@ -688,8 +688,8 @@ def aggregate_to_metric_batched(
     metric : MetricType = "max_flow_n_1"
         The metric to use for aggregation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
-        The initial tap positions for PSTs. Required for computing pst_setpoint_deviation metric.
-        If None, pst_setpoint_deviation will return 0.0
+        The initial tap positions for PSTs. Required for computing pst_switching_distance metric.
+        If None, pst_switching_distance will return 0.0
 
     Returns
     -------
@@ -792,8 +792,8 @@ def aggregate_to_metric(  # noqa: C901 # Conditions of the same type permitted
         This is useful if you want to ignore failures that are not relevant for the metric,
         e.g. if you want to ignore busbar outage failures in the overload energy calculation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
-        The initial tap positions for PSTs. Required for computing pst_setpoint_deviation metric.
-        If None, pst_setpoint_deviation will return 0.0
+        The initial tap positions for PSTs. Required for computing pst_switching_distance metric.
+        If None, pst_switching_distance will return 0.0
 
     Returns
     -------
@@ -809,8 +809,8 @@ def aggregate_to_metric(  # noqa: C901 # Conditions of the same type permitted
             branch_action_index=lf_res.branch_action_index,
             reassignment_distance=reassignment_distance,
         )
-    elif metric == "pst_setpoint_deviation":
-        retval = get_pst_setpoint_deviation(
+    elif metric == "pst_switching_distance":
+        retval = get_pst_switching_distance(
             optimized_taps=lf_res.nodal_injections_optimized,
             initial_tap_idx=initial_pst_tap_idx,
         )

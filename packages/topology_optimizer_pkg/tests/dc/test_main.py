@@ -292,11 +292,11 @@ def test_main_mapelites_2D(tmp_path: str, static_information_file: str) -> None:
         assert np.isfinite(topo.metrics.fitness)
 
 
-def test_main_mapelites_2D_pst_opt(tmp_path: str, static_information_file: str) -> None:
+def test_main_mapelites_2D_pst_opt(tmp_path: str, static_information_file_complex: str) -> None:
     batch_size = 16
     args = CLIArgs(
         stats_dir=os.path.join(tmp_path, "res_dir"),
-        fixed_files=(str(static_information_file), str(static_information_file)),
+        fixed_files=(str(static_information_file_complex), str(static_information_file_complex)),
         ga_config=BatchedMEParameters(
             observed_metrics=(
                 "overload_energy_n_1",

@@ -8,6 +8,7 @@
 """Functions to initialize and modify NetworkGraphData."""
 
 import numpy as np
+import pandera.typing as pat
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     HelperBranchSchema,
@@ -78,11 +79,11 @@ def add_node_tuple_column(network_graph_data: NetworkGraphData) -> None:
 
 
 def remove_helper_branches(
-    nodes_df: NodeSchema,
-    helper_branches_df: HelperBranchSchema,
-    node_assets_df: NodeAssetSchema,
-    switches_df: SwitchSchema,
-    branches_df: BranchSchema,
+    nodes_df: pat.DataFrame[NodeSchema],
+    helper_branches_df: pat.DataFrame[HelperBranchSchema],
+    node_assets_df: pat.DataFrame[NodeAssetSchema],
+    switches_df: pat.DataFrame[SwitchSchema],
+    branches_df: pat.DataFrame[BranchSchema],
 ) -> None:
     """Remove helper branches from the network.
 
@@ -95,18 +96,18 @@ def remove_helper_branches(
 
     Parameters
     ----------
-    nodes_df : NodeSchema
+    nodes_df : pat.DataFrame[NodeSchema]
         The DataFrame containing the nodes. See the NodeSchema for more information.
         Note: The nodes_df is modified in place.
-    helper_branches_df : HelperBranchSchema
+    helper_branches_df : pat.DataFrame[HelperBranchSchema]
         The DataFrame containing the helper branches. See the HelperBranchSchema for more information.
         Note: this DataFrame is obsolete after the function is called.
-    node_assets_df : NodeAssetSchema
+    node_assets_df : pat.DataFrame[NodeAssetSchema]
         The DataFrame containing the node assets. See the NodeAssetsSchema for more information.
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The DataFrame containing the switches. See the SwitchSchema for more information.
         Note: The switches_df is modified in place.
-    branches_df : BranchSchema
+    branches_df : pat.DataFrame[BranchSchema]
         The DataFrame containing the branches. See the BranchSchema for more information.
         Note: The branches_df is modified in place.
     """

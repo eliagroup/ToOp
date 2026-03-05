@@ -57,7 +57,7 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
     me = DiscreteMapElites(
         scoring_function=partial(
             scoring_function,
-            solver_configs=[static_information.solver_config],
+            solver_configs=(static_information.solver_config,),
             target_metrics=(
                 ("overload_energy_n_1", 1.0),
                 ("underload_energy_n_1", -1.0),
@@ -100,7 +100,7 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
     repertoire, emitter_state, rng_key = me.init(
         genotypes=empty_genotypes,
         random_key=jax.random.PRNGKey(0),
-        scoring_data=[static_information.dynamic_information],
+        scoring_data=(static_information.dynamic_information,),
     )
 
     assert repertoire.fitnesses.shape == (20 * cell_depth,)
@@ -109,7 +109,7 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
         repertoire=repertoire,
         emitter_state=emitter_state,
         random_key=rng_key,
-        scoring_data=[static_information.dynamic_information],
+        scoring_data=(static_information.dynamic_information,),
     )
 
     assert repertoire.fitnesses.shape == (20 * cell_depth,)
@@ -221,7 +221,7 @@ def test_pst_optimization(
     me = DiscreteMapElites(
         scoring_function=partial(
             scoring_function,
-            solver_configs=[solver_config],
+            solver_configs=(solver_config,),
             target_metrics=(("overload_energy_n_1", 1.0),),
             observed_metrics=("overload_energy_n_1", "split_subs"),
             descriptor_metrics=("split_subs",),
@@ -260,7 +260,7 @@ def test_pst_optimization(
             starting_taps=di.nodal_injection_information.starting_tap_idx,
         ),
         random_key=rng_key,
-        scoring_data=[di],
+        scoring_data=(di,),
     )
 
     assert repertoire.genotypes.nodal_injections_optimized is not None
@@ -270,7 +270,7 @@ def test_pst_optimization(
             repertoire=repertoire,
             emitter_state=emitter_state,
             random_key=rng_key,
-            scoring_data=[di],
+            scoring_data=(di,),
         )
 
     assert repertoire.genotypes.nodal_injections_optimized is not None

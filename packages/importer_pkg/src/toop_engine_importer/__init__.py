@@ -7,8 +7,13 @@
 
 """Importer Module."""
 
+import os
 import sys
 
+if os.getenv("ENABLE_BEARTYPE"):
+    from beartype.claw import beartype_this_package
+
+    beartype_this_package()
 from pandera import Int
 
 if sys.platform == "win32":

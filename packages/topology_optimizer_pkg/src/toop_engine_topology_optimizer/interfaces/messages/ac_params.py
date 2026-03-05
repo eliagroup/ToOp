@@ -11,8 +11,6 @@ On AC, some subtelties are different to the DC optimization such as that the opt
 batched, and the parameters are slightly different.
 """
 
-from __future__ import annotations
-
 import math
 
 from beartype.typing import Optional
@@ -92,7 +90,7 @@ class ACGAParameters(BaseModel):
     assume the DC optimizer had some problem and abort the optimization run."""
 
     @model_validator(mode="after")
-    def probabilities_sum_to_one(self) -> ACOptimizerParameters:
+    def probabilities_sum_to_one(self) -> "ACGAParameters":
         """Ensure that the probabilities sum to one"""
         total_probability = self.pull_prob + self.reconnect_prob + self.close_coupler_prob
         if not math.isclose(total_probability, 1.0):

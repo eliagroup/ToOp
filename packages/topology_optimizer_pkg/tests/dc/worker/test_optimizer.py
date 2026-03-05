@@ -38,7 +38,7 @@ def test_extract_results(
     optimizer_data, stats, initial_strategy = initialize_optimization(
         params=start_opt_command.dc_params,
         optimization_id="test123",
-        static_information_files=[gf.static_information_file for gf in start_opt_command.grid_files],
+        static_information_files=tuple([gf.static_information_file for gf in start_opt_command.grid_files]),
         processed_gridfile_fs=processed_gridfile_fs,
     )
 

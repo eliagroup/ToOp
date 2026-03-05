@@ -42,7 +42,7 @@ def test_apply_disconnections_empty_disconnections(
     assert ptdf_new.shape == ptdf.shape
     assert jnp.allclose(ptdf_new, ptdf)
 
-    disconnections = jnp.array([])
+    disconnections = jnp.array([], dtype=int)
 
     disc_res = apply_disconnections(ptdf, from_node, to_node, disconnections)
     ptdf_new, success = disc_res.ptdf, disc_res.success

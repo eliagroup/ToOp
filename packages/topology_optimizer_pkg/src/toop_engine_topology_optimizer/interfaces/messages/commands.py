@@ -11,8 +11,6 @@ The backend will send commands in the form of messages to the optimizer, which w
 a certain behaviour. The Optimizer will respond with results, for this see results.py
 """
 
-from __future__ import annotations
-
 import uuid
 from datetime import datetime
 

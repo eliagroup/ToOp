@@ -356,7 +356,12 @@ def realise_ba_to_physical_topo_per_station_jax(
         is equal to the number of branch actions for the station. Each element
         represents the number of reassignments needed to reach the target configuration
     """
-    separation_set, coupler_states, _coupler_distances, busbar_a_separation = separation_set_info
+    separation_set, coupler_states, _coupler_distances, busbar_a_separation = (
+        separation_set_info.separation_set,
+        separation_set_info.coupler_states,
+        separation_set_info.coupler_distance,
+        separation_set_info.busbar_a,
+    )
     current_coupler_state = [c.open for c in station.couplers]
 
     if separation_set.size == 0 or not np.any(local_branch_action_set):

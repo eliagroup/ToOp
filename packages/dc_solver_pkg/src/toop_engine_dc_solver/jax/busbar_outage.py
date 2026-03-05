@@ -134,7 +134,7 @@ def perform_outage_multi_busbars(
     to_nodes: Int[Array, " n_branches"],
     branches_monitored: Int[Array, " n_branches_monitored"],
     n_0_flows: Float[Array, " n_timesteps n_branches"],
-    disconnections: Int[Array, " n_disconnections"] = None,
+    disconnections: Optional[Int[Array, " n_disconnections"]] = None,
 ) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_monitored"], Bool[Array, " n_bb_outages"]]:
     """Simulate outages for multiple busbars and computes the resulting load flow solutions.
 
@@ -204,7 +204,7 @@ def perform_non_rel_bb_outages(
     to_node: Int[Array, " n_branches"],
     non_rel_bb_outage_data: NonRelBBOutageData,
     branches_monitored: Int[Array, " n_branches_monitored"],
-    disconnections: Int[Array, " n_disconnections"] = None,
+    disconnections: Optional[Int[Array, " n_disconnections"]] = None,
 ) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_monitored"], Bool[Array, " n_bb_outages"]]:
     """
     Perform non-rel busbar outages and compute the resulting line flows.
@@ -226,7 +226,7 @@ def perform_non_rel_bb_outages(
         including branch outages, delta injections, and nodal indices.
     branches_monitored : Int[Array, "n_branches_monitored"]
         Array of branch indices that are monitored during the outage.
-    disconnections : Int[Array, "n_disconnections"], optional
+    disconnections : Optional[Int[Array, "n_disconnections"]], optional
         Array of disconnection actions which were performed before the busbar outage as part of
         topological actions. If provided, branches that are already outaged by these disconnections
         will not be outaged again in the busbar outage.
@@ -350,7 +350,7 @@ def perform_rel_bb_outage_single_topo(
     to_nodes: Int[Array, " n_branches"],
     action_set: ActionSet,
     branches_monitored: Int[Array, " n_branches_monitored"],
-    disconnections: Int[Array, " n_disconnections"] = None,
+    disconnections: Optional[Int[Array, " n_disconnections"]] = None,
 ) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_monitored"], Bool[Array, " n_bb_outages"]]:
     """Perform a relevant busbar outage for a single topology.
 
@@ -494,7 +494,10 @@ def perform_rel_bb_outage_batched(
     action_set: ActionSet,
     branches_monitored: Int[Array, " n_branches_monitored"],
     disconnections: Int[Array, " batch_size n_disconnections"] = None,
-) -> tuple[Float[Array, " batch_size n_bb_outages n_timesteps n_branches"], Bool[Array, " batch_size n_bb_outages"]]:
+) -> tuple[
+    Float[Array, " batch_size n_bb_outages n_timesteps n_branches_monitored"],
+    Bool[Array, " batch_size n_bb_outages"],
+]:
     """
     Perform relative busbar outages for a batch of topologies.
 
@@ -524,7 +527,7 @@ def perform_rel_bb_outage_batched(
 
     Returns
     -------
-    Float[Array, " batch_size n_bb_outages n_timesteps n_branches"]
+    Float[Array, " batch_size n_bb_outages n_timesteps n_branches_monitored"]
         The load flows for each topology, busbar outage, timestep, and monitored branch.
     Bool[Array, " batch_size n_bb_outages"]
         A boolean matrix indicating whether each busbar outage was successfully simulated.

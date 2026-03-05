@@ -186,15 +186,15 @@ def get_switch_group_number(grouped_switches: dict) -> str:
     return reassignment_key
 
 
-def find_switches(lines: pd.DataFrame, node_id: list[str]) -> pd.DataFrame:
+def find_switches(lines: pd.DataFrame, node_id: str | list[str]) -> pd.DataFrame:
     """Find the all switches on the input node.
 
     Parameters
     ----------
     lines : pd.DataFrame
         The lines data-frame from UCTE file
-    node_id : list[str]
-        The node id to search for switches. Note: expects switches to be closed -> status = 2 (closed)
+    node_id : str | list[str]
+        The node id(s) to search for switches. Note: expects switches to be closed -> status = 2 (closed)
         Note: this is the first 7 characters of the id (Node), not the full id of busbar that has one additional character
 
     Returns
@@ -359,7 +359,7 @@ def handle_order_of_branch(branch_df: pd.DataFrame, replacement_id: str) -> str:
     return updated_replacement_id
 
 
-def find_branch_index(branch_df: pd.DataFrame, id: str) -> pd.DataFrame:
+def find_branch_index(branch_df: pd.DataFrame, id: str) -> pd.Index:
     """Find the index of the branch in the UCTE data.
 
     Parameters
@@ -388,7 +388,7 @@ def execute_branch_assignment(
     branch_df: pd.DataFrame,
     id: str,
     replacement_id: str,
-    statistics_all_stations: dict[str, dict[str, dict[str, list[str]]]],
+    statistics_all_stations: dict[str, dict[str, list[str] | dict[str, list[str]]]],
 ) -> bool:
     """Apply branch assignment to the UCTE data.
 
@@ -469,7 +469,7 @@ def get_replacement_id(element: dict, code: str, bus_a: str, bus_b: str) -> str:
     return replacement_id
 
 
-def update_id_if_has_been_replaced(id: int, statistics: dict[str, Any]) -> int:
+def update_id_if_has_been_replaced(id: str | int, statistics: dict[str, Any]) -> str | int:
     """Update the ID if it has been replaced in the statistics.
 
     Each branch has a "from" and "to" bus.
@@ -478,7 +478,7 @@ def update_id_if_has_been_replaced(id: int, statistics: dict[str, Any]) -> int:
 
     Parameters
     ----------
-    id : str
+    id : str | int
         The ID of the branch, which might have been replaced
     statistics : dict
         The statistics dictionary from process_file()
@@ -501,7 +501,7 @@ def apply_branch_assignment(  # noqa: PLR0912, C901
     trafo_reg: pd.DataFrame,
     bus_a: str,
     bus_b: str,
-    statistics_all_stations: dict[str, dict[str, dict[str, list[str]]]],
+    statistics_all_stations: dict[str, dict[str, list[str] | dict[str, list[str]]]],
 ) -> list:
     """Apply branch assignment to the UCTE data.
 

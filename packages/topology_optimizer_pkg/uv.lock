@@ -2696,16 +2696,16 @@ wheels = [
 ]
 
 [[package]]
-name = "pytest-dotenv"
-version = "0.5.2"
+name = "pytest-env"
+version = "1.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
     { name = "python-dotenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cd/b0/cafee9c627c1bae228eb07c9977f679b3a7cb111b488307ab9594ba9e4da/pytest-dotenv-0.5.2.tar.gz", hash = "sha256:2dc6c3ac6d8764c71c6d2804e902d0ff810fa19692e95fe138aefc9b1aa73732", size = 3782, upload-time = "2020-06-16T12:38:03.4Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e6/56/a931c6f6194917ff44be41b8586e2ffd13a18fa70fb28d9800a4695befa5/pytest_env-1.5.0.tar.gz", hash = "sha256:db8994b9ce170f135a37acc09ac753a6fc697d15e691b576ed8d8ca261c40246", size = 15271, upload-time = "2026-02-17T18:31:39.095Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/da/9da67c67b3d0963160e3d2cbc7c38b6fae342670cc8e6d5936644b2cf944/pytest_dotenv-0.5.2-py3-none-any.whl", hash = "sha256:40a2cece120a213898afaa5407673f6bd924b1fa7eafce6bda0e8abffe2f710f", size = 3993, upload-time = "2020-06-16T12:38:01.139Z" },
+    { url = "https://files.pythonhosted.org/packages/61/af/99b52a8524983bfece35e51e65a0b517b22920c023e57855c95e744e19e4/pytest_env-1.5.0-py3-none-any.whl", hash = "sha256:89a15686ac837c9cd009a8a2d52bd55865e2f23c82094247915dae4540c87161", size = 10122, upload-time = "2026-02-17T18:31:37.496Z" },
 ]
 
 [[package]]
@@ -3434,7 +3434,7 @@ dev = [
     { name = "pypowsybl-jupyter", specifier = ">=1.0.0" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "pytest-dotenv" },
+    { name = "pytest-env" },
     { name = "pytest-logbook", specifier = ">=1.2.0" },
     { name = "pytest-mock" },
     { name = "pytest-timeout" },
@@ -3521,7 +3521,7 @@ dev = [
     { name = "pypowsybl-jupyter", specifier = ">=1.0.0" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "pytest-dotenv" },
+    { name = "pytest-env" },
     { name = "pytest-logbook", specifier = ">=1.2.0" },
     { name = "pytest-mock" },
     { name = "pytest-timeout" },
@@ -3577,7 +3577,7 @@ dev = [
     { name = "pypowsybl-jupyter", specifier = ">=1.0.0" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "pytest-dotenv" },
+    { name = "pytest-env" },
     { name = "pytest-logbook", specifier = ">=1.2.0" },
     { name = "pytest-mock" },
     { name = "pytest-timeout" },
@@ -3645,7 +3645,7 @@ dev = [
     { name = "pypowsybl-jupyter", specifier = ">=1.0.0" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "pytest-dotenv" },
+    { name = "pytest-env" },
     { name = "pytest-logbook", specifier = ">=1.2.0" },
     { name = "pytest-mock" },
     { name = "pytest-timeout" },
@@ -3664,6 +3664,7 @@ dependencies = [
     { name = "beartype" },
     { name = "chex" },
     { name = "confluent-kafka" },
+    { name = "equinox" },
     { name = "hydra-core" },
     { name = "jax" },
     { name = "jax-dataclasses" },
@@ -3698,7 +3699,7 @@ dev = [
     { name = "pypowsybl-jupyter" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "pytest-dotenv" },
+    { name = "pytest-env" },
     { name = "pytest-logbook" },
     { name = "pytest-mock" },
     { name = "pytest-timeout" },
@@ -3714,6 +3715,7 @@ requires-dist = [
     { name = "beartype", specifier = ">=0.22.0,<0.23.0" },
     { name = "chex", specifier = ">=0.1.88,<0.2.0" },
     { name = "confluent-kafka", specifier = ">=2.10.0,<3.0.0" },
+    { name = "equinox", specifier = ">=0.11,<0.12" },
     { name = "hydra-core", specifier = ">=1.3.2,<2.0.0" },
     { name = "jax", specifier = ">=0.4.30" },
     { name = "jax-dataclasses", specifier = ">=1.6.2,<2.0.0" },
@@ -3748,7 +3750,7 @@ dev = [
     { name = "pypowsybl-jupyter", specifier = ">=1.0.0" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "pytest-dotenv" },
+    { name = "pytest-env" },
     { name = "pytest-logbook", specifier = ">=1.2.0" },
     { name = "pytest-mock" },
     { name = "pytest-timeout" },

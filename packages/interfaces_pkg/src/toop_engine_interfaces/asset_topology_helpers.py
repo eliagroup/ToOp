@@ -8,6 +8,7 @@
 """Collects some common helper functions for asset topology manipulation."""
 
 import itertools
+from numbers import Integral
 from pathlib import Path
 
 import networkx as nx
@@ -455,7 +456,7 @@ def filter_assets_by_type(
 
 def find_multi_connected_without_coupler(
     station: Station,
-) -> list[tuple[int, int, int]]:
+) -> list[tuple[Integral, Integral, Integral]]:
     """Find assets bridging multiple busbars without a coupler in between
 
     These cases can cause a bug in the downstream functions
@@ -467,7 +468,7 @@ def find_multi_connected_without_coupler(
 
     Returns
     -------
-    list[tuple[int, int, int]]
+    list[tuple[Integral, Integral, Integral]]
         A list of tuples containing the index of the multi-connected asset and the indices of the
         two busbars it is bridging.
         Only returns bridges that don't have a coupler in between.
@@ -724,7 +725,7 @@ def merge_stations(
 
 
 # TODO: refactor due to C901
-def merge_station(original: Station, new: Station) -> tuple[Station, list[BusbarCoupler], list[tuple[int, int, bool]]]:  # noqa: PLR0912, C901
+def merge_station(original: Station, new: Station) -> tuple[Station, list[BusbarCoupler], list[tuple[int, int, bool]]]:
     """Merge all the changes from the new station into the original station
 
     This will overwrite all assets, couplers and busbars in the original station with the ones from
@@ -766,9 +767,129 @@ def merge_station(original: Station, new: Station) -> tuple[Station, list[Busbar
     busbar_mapping = {}
     busbar_int_id_mapping = {}
     max_busbar_id = max(busbar.int_id for busbar in new.busbars)
-    for i, busbar in enumerate(original.busbars):
+    asset_mapping, new_couplers, coupler_diff = map_busbars_and_assets(
+        original, new, busbar_mapping, busbar_int_id_mapping, max_busbar_id
+    )
+
+    # Loop through the switching table and copy the values over for which there is a mapping
+    new_asset_switching_table = original.asset_switching_table.copy()
+    station, asset_diff = update_asset_switching_table(
+        original, new, busbar_mapping, asset_mapping, new_couplers, new_asset_switching_table
+    )
+    return station, coupler_diff, asset_diff
+
+
+def update_asset_switching_table(
+    original_station: Station,
+    new_station: Station,
+    busbar_mapping: dict[int, int],
+    asset_mapping: dict[int, int],
+    new_couplers: list[BusbarCoupler],
+    new_asset_switching_table: np.ndarray,
+) -> tuple[Station, list[tuple[int, int, bool]]]:
+    """Update the asset switching table of the original station with the values from the new station.
+
+    This is a separate function to reduce the complexity of merge_station.
+    It also updates the couplers in the original station with the new couplers.
+
+    Parameters
+    ----------
+    original_station : Station
+        The original station that should be modified
+    new_station : Station
+        The new station that contains the changes that should be merged into the original station
+    busbar_mapping : dict[int, int]
+        The mapping from the original busbar indices to the new busbar indices
+    asset_mapping : dict[int, int]
+        The mapping from the original asset indices to the new asset indices
+    new_couplers : list[BusbarCoupler]
+        The new list of couplers that should be merged into the original station
+    new_asset_switching_table : np.ndarray
+        The new asset switching table that should be updated with the values from the new station. This
+        is modified in place and returned as part of the new station object.
+
+    Returns
+    -------
+    Station
+        The modified original station, with the updated asset switching table and couplers
+    list[tuple[int, int, bool]]
+        The asset diff that has been switched. Each tuple contains the asset index that was
+        affected, which busbar index was affected and whether the asset was connected (True) or
+        disconnected (False) to that bus
+    """
+    asset_diff = []
+    for busbar_idx in range(original_station.asset_switching_table.shape[0]):
+        if busbar_idx in busbar_mapping:
+            mapped_busbar_idx = busbar_mapping[busbar_idx]
+            for asset_idx in range(original_station.asset_switching_table.shape[1]):
+                if asset_idx in asset_mapping:
+                    mapped_asset_idx = asset_mapping[asset_idx]
+
+                    if (
+                        new_asset_switching_table[busbar_idx, asset_idx]
+                        != new_station.asset_switching_table[mapped_busbar_idx, mapped_asset_idx]
+                    ):
+                        asset_diff.append(
+                            (
+                                asset_idx,
+                                busbar_idx,
+                                bool(new_station.asset_switching_table[mapped_busbar_idx, mapped_asset_idx]),
+                            )
+                        )
+
+                        new_asset_switching_table[busbar_idx, asset_idx] = new_station.asset_switching_table[
+                            mapped_busbar_idx, mapped_asset_idx
+                        ]
+
+    original_station = original_station.model_copy(
+        update={"couplers": new_couplers, "asset_switching_table": new_asset_switching_table}
+    )
+    return original_station, asset_diff
+
+
+def map_busbars_and_assets(
+    original_station: Station,
+    new_station: Station,
+    busbar_mapping: dict[int, int],
+    busbar_int_id_mapping: dict[int, int],
+    max_busbar_id: int,
+) -> tuple[dict[int, int], list[BusbarCoupler], list[BusbarCoupler]]:
+    """Find a mapping from old busbars to new busbars and from old assets to new assets
+
+    This is a separate function to reduce the complexity of merge_station.
+    It also merges the couplers and returns the new couplers and the coupler diff.
+
+    Parameters
+    ----------
+    original_station : Station
+        The original station that should be modified
+    new_station : Station
+        The new station that contains the changes that should be merged into the original station
+    busbar_mapping : dict[int, int]
+        The mapping from the original busbar indices to the new busbar indices. This is modified in place and
+        returned as part of the new station object.
+    busbar_int_id_mapping : dict[int, int]
+        The mapping from the original busbar int_ids to the new busbar int_ids. This is modified in place and
+        returned as part of the new station object.
+    max_busbar_id : int
+        The maximum busbar int_id in the new station.
+        This is used to assign new int_ids to busbars that are in the original station but not in the new station,
+        to avoid conflicts with existing busbars in the new station.
+
+    Returns
+    -------
+    dict[int, int]
+        The mapping from the original asset indices to the new asset indices. This is modified in place
+        and returned as part of the new station object.
+    list[BusbarCoupler]
+        The new list of couplers that should be merged into the original station
+    list[BusbarCoupler]
+        The coupler diff in this station, i.e. which couplers have been switched. Stores the
+        new state of the couplers, i.e. which state the coupler has been switched to
+    """
+    for i, busbar in enumerate(original_station.busbars):
         found = False
-        for j, other in enumerate(new.busbars):
+        for j, other in enumerate(new_station.busbars):
             if busbar.grid_model_id == other.grid_model_id:
                 busbar_mapping[i] = j
                 busbar_int_id_mapping[busbar.int_id] = other.int_id
@@ -780,43 +901,17 @@ def merge_station(original: Station, new: Station) -> tuple[Station, list[Busbar
 
     # Same for the switchable assets
     asset_mapping = {}
-    for i, asset in enumerate(original.assets):
-        for j, other in enumerate(new.assets):
+    for i, asset in enumerate(original_station.assets):
+        for j, other in enumerate(new_station.assets):
             if asset.grid_model_id == other.grid_model_id:
                 asset_mapping[i] = j
                 break
 
     # Merge couplers
-    new_couplers, coupler_diff = merge_couplers(original.couplers, new.couplers, busbar_mapping=busbar_int_id_mapping)
-
-    # Loop through the switching table and copy the values over for which there is a mapping
-    asset_diff = []
-    new_asset_switching_table = original.asset_switching_table.copy()
-    for busbar_idx in range(original.asset_switching_table.shape[0]):
-        if busbar_idx in busbar_mapping:
-            mapped_busbar_idx = busbar_mapping[busbar_idx]
-            for asset_idx in range(original.asset_switching_table.shape[1]):
-                if asset_idx in asset_mapping:
-                    mapped_asset_idx = asset_mapping[asset_idx]
-
-                    if (
-                        new_asset_switching_table[busbar_idx, asset_idx]
-                        != new.asset_switching_table[mapped_busbar_idx, mapped_asset_idx]
-                    ):
-                        asset_diff.append(
-                            (
-                                asset_idx,
-                                busbar_idx,
-                                new.asset_switching_table[mapped_busbar_idx, mapped_asset_idx],
-                            )
-                        )
-
-                        new_asset_switching_table[busbar_idx, asset_idx] = new.asset_switching_table[
-                            mapped_busbar_idx, mapped_asset_idx
-                        ]
-
-    station = original.model_copy(update={"couplers": new_couplers, "asset_switching_table": new_asset_switching_table})
-    return station, coupler_diff, asset_diff
+    new_couplers, coupler_diff = merge_couplers(
+        original_station.couplers, new_station.couplers, busbar_mapping=busbar_int_id_mapping
+    )
+    return asset_mapping, new_couplers, coupler_diff
 
 
 def compare_stations(
@@ -1113,7 +1208,7 @@ def topology_diff(
     )
 
 
-def order_station_assets(station: Station, asset_ids: list[str]) -> tuple[Station, list[str]]:
+def order_station_assets(station: Station, asset_ids: list[str]) -> tuple[Station, list[str], list[str]]:
     """Orders the assets in a station according to a list of asset ids.
 
     If an asset is not found in the station, it will be added to the not_found list.

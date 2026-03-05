@@ -245,10 +245,10 @@ def test_shortest_paths_to_target_ids():
 
     assert result == {4: [1, 2, 3, 4], 5: [1, 6, 5]}
 
-    result_with_cutoff = shortest_paths_to_target_ids(graph, target_node_ids, node_id, cutoff=4)
+    result_with_cutoff = shortest_paths_to_target_ids(graph, target_node_ids, node_id, cutoff=4.0)
     assert result_with_cutoff == {4: [1, 2, 3, 4]}
 
-    result_with_cutoff = shortest_paths_to_target_ids(graph, target_node_ids, node_id, cutoff=5)
+    result_with_cutoff = shortest_paths_to_target_ids(graph, target_node_ids, node_id, cutoff=5.0)
     assert result_with_cutoff == {4: [1, 2, 3, 4]}
 
     result_with_weight = shortest_paths_to_target_ids(graph, target_node_ids, node_id, weight="station_weight")

@@ -12,7 +12,7 @@ from enum import Enum
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
-from beartype.typing import List, Literal, Optional, Tuple, TypeAlias, Union
+from beartype.typing import List, Literal, Optional, Tuple, Type, TypeAlias, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
 
@@ -379,7 +379,7 @@ class SwitchableAssetSchema(pa.DataFrameModel):
     """The in_service information of the asset."""
 
 
-def get_empty_dataframe_from_df_model(df_model: pa.DataFrameModel) -> pd.DataFrame:
+def get_empty_dataframe_from_df_model(df_model: Type[pa.DataFrameModel]) -> pd.DataFrame:
     """Get an empty DataFrame from a DataFrameModel.
 
     This functions creates an empty DataFrame with the columns and correct dtype of the DataFrameModel.

@@ -19,7 +19,7 @@ import networkx as nx
 import numpy as np
 from beartype.typing import Optional, Union
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
-from jaxtyping import Array, Bool, Float, Int
+from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.lodf import calc_lodf
 from toop_engine_dc_solver.jax.multi_outages import apply_modf_matrix, build_modf_matrix, update_ptdf_with_modf
 from toop_engine_dc_solver.jax.types import DisconnectionResults, MODFMatrix, int_max
@@ -179,7 +179,7 @@ def update_n0_flows_after_disconnections(
 
 
 def random_disconnection_indices(
-    rng_key: jax.random.PRNGKey,
+    rng_key: PRNGKeyArray,
     n_disconnections: int,
     batch_size: int,
     disconnectable_branches: Int[Array, " n_disconnectable_branches"],
@@ -229,7 +229,7 @@ def random_disconnection_indices(
 
 
 def random_disconnections(
-    rng_key: jax.random.PRNGKey,
+    rng_key: PRNGKeyArray,
     batch_size: int,
     n_disconnections: int,
     disconnectable_branches: Int[Array, " n_disconnectable_branches"],
@@ -239,7 +239,7 @@ def random_disconnections(
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : PRNGKeyArray
         The random number generator key
     batch_size : int
         How many disconnections to generate, should be the same as number of topologies

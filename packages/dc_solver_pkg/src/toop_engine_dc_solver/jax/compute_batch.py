@@ -12,10 +12,11 @@ If you want to compute any number of batches, use the topology_looper module ins
 
 from functools import partial
 
+import equinox as eqx
 import jax
 from beartype.typing import Optional
 from jax import numpy as jnp
-from jax_dataclasses import pytree_dataclass, replace
+from jax_dataclasses import replace
 from jaxtyping import Array, Bool, Float, Int, PyTree, Shaped
 from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
 from toop_engine_dc_solver.jax.busbar_outage import get_busbar_outage_penalty_batched
@@ -59,8 +60,7 @@ from toop_engine_dc_solver.jax.types import (
 )
 
 
-@pytree_dataclass
-class InjectionIter:
+class InjectionIter(eqx.Module):
     """Holds the data for a injection/contingency computation iteration results and the iterator int.
 
     The sparse results are of shape (batch_size_bsdf) and hold the current best values.
@@ -69,19 +69,18 @@ class InjectionIter:
     n_0_results: SparseNMinus0
     n_1_results: SparseNMinus1
     i: Int[Array, " "]
-    best_inj_combi: Int[Array, " batch_size_bsdf n_sub_relevant"]
+    best_inj_combi: Bool[Array, " batch_size_bsdf n_splits max_inj_per_sub"]
     metrics: Float[Array, " batch_size_bsdf"]
 
 
-@pytree_dataclass
-class InjectionIterMetrics:
+class InjectionIterMetrics(eqx.Module):
     """Holds the injection iteration results for the metrics based injection computation.
 
     We don't yet store the SparseNMinus0/1 results, they have to be computed again at the end
     """
 
     i: Int[Array, " "]
-    best_inj_combi: Int[Array, " batch_size_bsdf n_sub_relevant"]
+    best_inj_combi: Bool[Array, " batch_size_bsdf n_splits max_inj_per_sub"]
     metrics: Float[Array, " batch_size_bsdf"]
 
 
@@ -297,8 +296,8 @@ def compute_batch(
     aggregate_metric_fn: AggregateMetricProtocol,
     aggregate_output_fn: AggregateOutputProtocol,
 ) -> tuple[
-    PyTree[Shaped, " batch_size_bsdf ..."],
-    Int[Array, " batch_size_bsdf n_subs_rel"],
+    PyTree[Shaped[Array, " batch_size_bsdf ..."]],
+    Bool[Array, " batch_size_bsdf n_splits max_inj_per_sub"],
     Bool[Array, " batch_size_bsdf"],
 ]:
     """Compute a single batch of topologies and injections in bruteforce mode
@@ -330,9 +329,9 @@ def compute_batch(
 
     Returns
     -------
-    PyTree[Shaped, " batch_size_bsdf ..."]
+    PyTree[Shaped[Array, " batch_size_bsdf ..."]]
         The results object for this batch according to aggregate_output_fn
-    Int[Array, " batch_size_bsdf n_subs_rel"]
+    Bool[Array, " batch_size_bsdf n_splits max_inj_per_sub"]
         The best injection combination for each topology
     Bool[Array, " batch_size_bsdf"]
         The success flag for each topology
@@ -705,7 +704,7 @@ def compute_symmetric_batch(
         branches_monitored=dynamic_information.branches_monitored,
         action_set=dynamic_information.action_set,
         non_rel_bb_outage_data=dynamic_information.non_rel_bb_outage_data,
-        enable_bb_outages=(solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1),
+        enable_bb_outages=solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1,
     )
 
     nodal_injections = compute_injections(

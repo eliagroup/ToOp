@@ -14,6 +14,7 @@ import seaborn as sns
 from beartype.typing import Optional
 from jax import numpy as jnp
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from qdax.custom_types import Fitness
 
 
@@ -21,7 +22,7 @@ def plot_repertoire_1d(
     fitnesses: Fitness,
     n_cells_per_dim: tuple[int, ...],
     descriptor_metrics: tuple[str, ...],
-) -> plt.Figure:
+) -> Figure:
     """Plot a bar chart of the repertoire's fitnesses.
 
     Parameters
@@ -44,7 +45,7 @@ def plot_repertoire_1d(
     )
     plt.xlabel(descriptor_metrics[0])
     plt.ylabel("Fitness")
-    return plt
+    return plt.gcf()
 
 
 def plot_repertoire_2d(

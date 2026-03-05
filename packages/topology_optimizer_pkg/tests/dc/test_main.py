@@ -290,3 +290,52 @@ def test_main_mapelites_2D(tmp_path: str, static_information_file: str) -> None:
     for topo in stats["best_topos"]:
         topo = Topology.model_validate(topo)
         assert np.isfinite(topo.metrics.fitness)
+
+
+def test_main_mapelites_2D_pst_opt(tmp_path: str, static_information_file_complex: str) -> None:
+    batch_size = 16
+    args = CLIArgs(
+        stats_dir=os.path.join(tmp_path, "res_dir"),
+        fixed_files=(str(static_information_file_complex), str(static_information_file_complex)),
+        ga_config=BatchedMEParameters(
+            observed_metrics=(
+                "overload_energy_n_1",
+                "switching_distance",
+                "split_subs",
+                "pst_switching_distance",
+            ),
+            target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance", 1.0)),
+            iterations_per_epoch=10,
+            runtime_seconds=10,
+            # MapElites specifics
+            me_descriptors=(
+                DescriptorDef(metric="split_subs", num_cells=5),
+                DescriptorDef(metric="switching_distance", num_cells=40),
+            ),
+            plot=False,
+            cell_depth=4,
+            pst_mutation_sigma=3.0,
+            enable_nodal_inj_optim=True,
+        ),
+        lf_config=LoadflowSolverParameters(batch_size=batch_size),
+    )
+
+    stats_file = os.path.join(tmp_path, "res_dir", "res.json")
+
+    processed_gridfile_fs = LocalFileSystem()
+    main(args, processed_gridfile_fs=processed_gridfile_fs)
+    assert os.path.exists(stats_file)
+
+    with open(stats_file, "r") as f:
+        stats = json.load(f)
+
+    assert stats["max_fitness"] is not None
+    assert np.isfinite(stats["max_fitness"])
+    assert stats["best_topos"] is not None
+    assert len(stats["best_topos"])
+    assert stats["initial_metrics"] is not None
+    assert all(metric in stats["initial_metrics"].keys() for metric in args.ga_config.observed_metrics)
+
+    for topo in stats["best_topos"]:
+        topo = Topology.model_validate(topo)
+        assert np.isfinite(topo.metrics.fitness)

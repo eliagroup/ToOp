@@ -155,6 +155,7 @@ def update_max_mw_flows_according_to_double_limits(
 def verify_static_information(
     static_informations: Iterable[StaticInformation],
     max_num_disconnections: int,
+    enable_nodal_inj_optim: bool,
 ) -> None:
     """Verify the static information.
 
@@ -167,6 +168,9 @@ def verify_static_information(
         The static information to verify
     max_num_disconnections : int
         The maximum number of disconnections that can be made
+    enable_nodal_inj_optim: bool
+        Whether to enable the nodal injection optimization. If so, all static informations are verified to contain
+        nodal injection information with at least one controllable PST.
 
     Raises
     ------
@@ -220,6 +224,22 @@ def verify_static_information(
                 for static_information in static_informations
             ]
         ), "All static informations must have the same disconnectable branches"
+    if enable_nodal_inj_optim:
+        assert first_static_information.dynamic_information.nodal_injection_information is not None, (
+            "Nodal injection opt. is enabled, but the first static information does not contain nodal injection info. "
+            "For nodal injection optimization, we require at least one controllable PST in the nodal injection info. "
+        )
+        assert all(
+            [
+                static_information.dynamic_information.nodal_injection_information is not None
+                and static_information.dynamic_information.nodal_injection_information.controllable_pst_indices.shape[0] > 0
+                for static_information in static_informations
+            ]
+        ), (
+            "Nodal injection optimization is enabled, but some static/nodal injection info does not contain controll. PSTs. "
+            "This requires at least one controllable PST in the nodal injection information. "
+            "Disable nodal injection optimization or provide correct static information. "
+        )
 
 
 def update_static_information(
@@ -600,7 +620,9 @@ def algo_setup(
 
     logger.info(f"Running {n_devices} GPUs with config {ga_args}, {lf_args}")
 
-    verify_static_information(static_informations, lf_args.max_num_disconnections)
+    verify_static_information(
+        static_informations, lf_args.max_num_disconnections, enable_nodal_inj_optim=ga_args.enable_nodal_inj_optim
+    )
 
     static_informations = update_static_information(
         static_informations, lf_args.batch_size, enable_nodal_inj_optim=ga_args.enable_nodal_inj_optim
@@ -619,6 +641,15 @@ def algo_setup(
                 replace(static_information, dynamic_information=dynamic_info)
                 for static_information, dynamic_info in zip(static_informations, dynamic_infos, strict=True)
             ]
+        )
+
+    if not ga_args.enable_nodal_inj_optim and "pst_switching_distance" in [metric for metric, _ in ga_args.target_metrics]:
+        logger.warning(
+            (
+                "The target metrics include pst_switching_distance but nodal injection optimization is disabled. "
+                "This will lead to pst_switching_distance being always 0 and not optimized for. "
+                "Consider enabling nodal injection optimization or removing pst_switching_distance from the target metrics. "
+            )
         )
 
     algo, jax_data = initialize_genetic_algorithm(

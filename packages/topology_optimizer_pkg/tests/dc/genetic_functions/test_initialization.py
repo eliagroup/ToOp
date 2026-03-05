@@ -7,6 +7,7 @@
 
 import jax
 import jax.numpy as jnp
+import pytest
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import Genotype
@@ -14,6 +15,7 @@ from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     get_repertoire_metrics,
     initialize_genetic_algorithm,
     update_max_mw_flows_according_to_double_limits,
+    verify_static_information,
 )
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import (
     DiscreteMapElitesRepertoire,
@@ -157,3 +159,13 @@ def test_get_repertoire_metrics():
     assert jnp.all(fitness_best == fitness_again)
     assert jnp.all(metrics_best["overload_energy_n_1"] == two_metrics["overload_energy_n_1"])
     assert "overload_energy_n_0" in two_metrics.keys()
+
+
+def test_verify_static_information(static_information_file) -> None:
+    static_information = load_static_information(static_information_file)
+
+    # This should not raise an error
+    verify_static_information([static_information], max_num_disconnections=1, enable_nodal_inj_optim=False)
+    # Should raise because there are no PSTs in this grid but nodal injection optimization is enabled
+    with pytest.raises(AssertionError):
+        verify_static_information([static_information], max_num_disconnections=5, enable_nodal_inj_optim=True)

@@ -36,13 +36,14 @@ from toop_engine_dc_solver.jax.aggregate_results import (
     get_number_of_disconnections,
     get_number_of_splits,
     get_overload_energy_n_1_matrix,
+    get_pst_switching_distance,
     get_switching_distance,
     get_transport_n_1_matrix,
     get_underload_energy_n_1_matrix,
     get_worst_k_contingencies,
 )
 from toop_engine_dc_solver.jax.inputs import load_static_information
-from toop_engine_dc_solver.jax.types import BranchLimits, SolverLoadflowResults
+from toop_engine_dc_solver.jax.types import BranchLimits, NodalInjOptimResults, SolverLoadflowResults
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
@@ -555,6 +556,33 @@ def test_aggregate_to_metric(mocker) -> None:
     ref = get_switching_distance(branch_action_index, reassignment_distance)
     assert jnp.array_equal(res, ref)
 
+    initial_pst_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
+    pst_optimized = replace(
+        lf_res,
+        nodal_injections_optimized=NodalInjOptimResults(
+            pst_tap_idx=jnp.array(
+                [
+                    [3, 4, 5, 6, 7],
+                    [10, 10, 10, 10, 10],
+                ],
+                dtype=float,
+            )
+        ),
+    )
+    res = aggregate_to_metric(
+        pst_optimized,
+        branch_limits,
+        reassignment_distance,
+        n_subs_rel,
+        "pst_switching_distance",
+        initial_pst_tap_idx=initial_pst_tap_idx,
+    )
+    ref = get_pst_switching_distance(
+        optimized_taps=pst_optimized.nodal_injections_optimized,
+        initial_tap_idx=initial_pst_tap_idx,
+    )
+    assert jnp.allclose(res, ref)
+
     res = aggregate_to_metric(lf_res, branch_limits, reassignment_distance, n_subs_rel, "disconnected_branches")
     assert res == 0
 
@@ -907,3 +935,84 @@ def test_get_worst_n_k_contingency_basic() -> None:
     assert worst_k_overload.top_k_overloads.shape == (n_timesteps,)
     assert worst_k_overload.case_indices.shape == (n_timesteps, k)
     assert jnp.all(worst_k_overload.top_k_overloads >= 0)
+
+
+def test_get_pst_switching_distance() -> None:
+    """Test the PST setpoint switching distance metric."""
+
+    # Case 1: No PST optimization enabled (both None)
+    switching_distance = get_pst_switching_distance(optimized_taps=None, initial_tap_idx=None)
+    assert switching_distance == 0.0, "Switching distance should be 0 when PST optimization is disabled"
+
+    # Case 2: PST optimization enabled but no initial taps provided
+    optimized_taps = NodalInjOptimResults(
+        pst_tap_idx=jnp.array([[0, 1, 2, 3, 4]], dtype=float)  # shape: (n_timesteps=1, n_controllable_pst)
+    )
+    switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=None)
+    assert switching_distance == 0.0, "Switching distance should be 0 when initial tap indices are not provided"
+
+    # Case 3: No switching_distance - optimized taps match initial taps
+    initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
+    optimized_taps = NodalInjOptimResults(
+        pst_tap_idx=jnp.array([[2, 3, 4, 5, 6]], dtype=float)  # shape: (n_timesteps=1, n_controllable_pst)
+    )
+    switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    assert switching_distance == 0.0, "Switching distance should be 0 when taps haven't changed"
+
+    # Case 4: Simple switching_distance case - single timestep
+    initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
+    optimized_taps = NodalInjOptimResults(
+        pst_tap_idx=jnp.array([[3, 4, 5, 6, 7]], dtype=float)  # All shifted by +1
+    )
+    switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    expected_switching_distance = 5.0  # Sum of (3-2)^2 + (4-3)^2 + (5-4)^2 + (6-5)^2 + (7-6)^2 = 1+1+1+1+1 = 5
+    assert switching_distance == expected_switching_distance, (
+        f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
+    )
+
+    # Case 5: Mixed positive and negative switching distances
+    initial_tap_idx = jnp.array([5, 5, 5, 5, 5], dtype=int)
+    optimized_taps = NodalInjOptimResults(
+        pst_tap_idx=jnp.array([[3, 7, 5, 4, 8]], dtype=float)  # switching distances: -2, +2, 0, -1, +3
+    )
+    switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    expected_switching_distance = (
+        4.0 + 4.0 + 0.0 + 1.0 + 9.0
+    )  # Squared L2 distance = (-2)^2 + 2^2 + 0^2 + (-1)^2 + 3^2 = 18.0
+    assert switching_distance == expected_switching_distance, (
+        f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
+    )
+
+    # Case 6: Multiple timesteps - aggregates distances across all timesteps
+    initial_tap_idx = jnp.array([2, 3, 4, 5], dtype=int)
+    optimized_taps = NodalInjOptimResults(
+        pst_tap_idx=jnp.array(
+            [
+                [3, 4, 5, 6],  # First timestep: small switching_distance: 1^2 + 1^2 + 1^2 + 1^2 = 4
+                [10, 10, 10, 10],  # Second timestep: 8^2 + 7^2 + 6^2 + 5^2 = 174
+                [0, 0, 0, 0],  # Third timestep: 2^2 + 3^2 + 4^2 + 5^2 = 54
+            ],
+            dtype=float,
+        )  # shape: (n_timesteps=3, n_controllable_pst=4)
+    )
+    switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    expected_switching_distance = 4.0 + 174.0 + 54.0  # Should sum switching distances across all timesteps
+    assert switching_distance == expected_switching_distance, (
+        f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
+    )
+
+    # Case 7: Verify JAX compatibility (can be JIT compiled)
+    @jax.jit
+    def jitted_switching_distance(optimized_taps, initial_tap_idx):
+        return get_pst_switching_distance(optimized_taps, initial_tap_idx)
+
+    initial_tap_idx = jnp.array([1, 2, 3], dtype=int)
+    optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[2, 3, 4]], dtype=float))
+
+    switching_distance_jitted = jitted_switching_distance(optimized_taps, initial_tap_idx)
+    switching_distance_normal = get_pst_switching_distance(optimized_taps, initial_tap_idx)
+
+    assert jnp.allclose(switching_distance_jitted, switching_distance_normal), (
+        "JIT and non-JIT versions should produce same result"
+    )
+    assert switching_distance_jitted == 3.0, f"Expected switching_distance 3.0, got {switching_distance_jitted}"

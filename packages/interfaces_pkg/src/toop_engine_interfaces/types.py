@@ -40,7 +40,13 @@ MatrixMetric: TypeAlias = Literal[
     "transport_n_1",
 ]
 
-OperationMetric: TypeAlias = Literal["switching_distance", "split_subs", "disconnected_branches", "fitness"]
+OperationMetric: TypeAlias = Literal[
+    "switching_distance",
+    "split_subs",
+    "disconnected_branches",
+    "fitness",
+    "pst_switching_distance",
+]
 
 OtherMetric: TypeAlias = Literal[
     "n0_n1_delta",

@@ -80,13 +80,13 @@ repos:
           - --preserve-cell-metadata
           - --remove-all-notebook-metadata
   - repo: https://github.com/kynan/nbstripout
-    rev: 0.9.0
+    rev: 0.9.1
     hooks:
       - id: nbstripout
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.15.1
+    rev: v0.15.4
     hooks:
       # --include=["dc_solver/**/*.py", "tests/**/*.py"] overwrites the ruff.toml include.
       # Run the linter.

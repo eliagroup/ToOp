@@ -62,7 +62,7 @@ def test_validate_network_masks(ucte_importer_parameters: UcteImporterParameters
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
     )
     assert powsybl_masks.validate_network_masks(masks, masks_default)
-    masks = replace(masks, line_disconnectable=[1])
+    masks = replace(masks, line_disconnectable=np.array([1]))
     assert not powsybl_masks.validate_network_masks(masks, masks_default)
 
 
@@ -484,7 +484,7 @@ def test_make_masks_with_contingency_file(
 def test_validate_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
-    assert powsybl_masks.validate_network_masks(ucte_importer_parameters, default_masks) is False
+    assert powsybl_masks.validate_network_masks.__wrapped__(ucte_importer_parameters, default_masks) is False
 
     wrong_shape_masks = replace(default_masks, line_for_reward=default_masks.line_for_reward[:2])
     assert powsybl_masks.validate_network_masks(wrong_shape_masks, default_masks) is False
@@ -614,7 +614,7 @@ def test_get_switchable_buses():
     expected = ["S1VL1_0", "S1VL2_0", "S2VL1_0", "S3VL1_0", "S4VL1_0"]
     select_by_voltage_level_id_list = ["S1VL1", "S1VL2", "S2VL1", "S3VL1", "S4VL1"]
     network = pypowsybl.network.create_four_substations_node_breaker_network_with_extensions()
-    voltage_level_prefix = ["OVERWRITE"]
+    voltage_level_prefix = ["S"]
     cutoff_voltage = 1000
     buses = get_switchable_buses_ucte(
         network,
@@ -628,7 +628,7 @@ def test_get_switchable_buses():
     expected = ["S1VL1_0", "S1VL2_0", "S4VL1_0"]
     select_by_voltage_level_id_list = ["S1VL1", "S1VL2", "S4VL1"]
     network = pypowsybl.network.create_four_substations_node_breaker_network_with_extensions()
-    voltage_level_prefix = ["OVERWRITE"]
+    voltage_level_prefix = ["S"]
     cutoff_voltage = 1000
     buses = get_switchable_buses_ucte(
         network,

@@ -11,8 +11,6 @@ This holds the parameters to start the optimization. Some parameters can not be 
 the names of the kafka streams) and are included in the command line start parameters instead.
 """
 
-from __future__ import annotations
-
 from beartype.typing import Optional
 from pydantic import (
     BaseModel,
@@ -109,7 +107,7 @@ class BatchedMEParameters(BaseModel):
     This is used to determine the worst cases for overloads."""
 
     @model_validator(mode="after")
-    def infer_missing_observed_metrics(self) -> BatchedMEParameters:
+    def infer_missing_observed_metrics(self) -> "BatchedMEParameters":
         """Add potentially missing target and descriptor metrics to the observed metrics."""
         for metric, _ in self.target_metrics:
             if metric not in self.observed_metrics:

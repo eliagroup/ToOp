@@ -13,9 +13,8 @@ belonging to those components, and converts them into PandapowerElements objects
 Used to expand initial contingencies into full topology-aware outage groups.
 """
 
-from typing import Iterable, Set, Tuple
-
 import pandapower as pp
+from beartype.typing import Iterable, Set, Tuple
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
     PandapowerElements,

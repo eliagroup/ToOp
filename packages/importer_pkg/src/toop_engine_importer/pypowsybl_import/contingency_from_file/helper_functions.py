@@ -12,12 +12,13 @@ Created: 2025-05-13
 """
 
 import pandas as pd
+import pandera.typing as pat
 import pypowsybl
 from toop_engine_importer.contingency_from_power_factory.power_factory_data_class import AllGridElementsSchema
 
 
 # TODO: consider refactoring from grid_helpers.powsybl.powsybl_asset_topo import get_all_element_names
-def get_all_element_names(net: pypowsybl.network.Network) -> AllGridElementsSchema:
+def get_all_element_names(net: pypowsybl.network.Network) -> pat.DataFrame[AllGridElementsSchema]:
     """Get all element names from the network.
 
     Parameters
@@ -27,7 +28,7 @@ def get_all_element_names(net: pypowsybl.network.Network) -> AllGridElementsSche
 
     Returns
     -------
-    AllGridElementsSchema
+    pat.DataFrame[AllGridElementsSchema]
         A DataFrame containing the element names and their types.
     """
     attributes = ["name"]

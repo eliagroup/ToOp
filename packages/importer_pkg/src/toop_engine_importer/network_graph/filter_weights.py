@@ -15,6 +15,8 @@ This module sets all weights for the edges in the Schema DataFrames of the Netwo
 The weights are used in the default filter strategy.
 """
 
+import pandera.typing as pat
+
 from .data_classes import (
     BranchSchema,
     HelperBranchSchema,
@@ -23,7 +25,11 @@ from .data_classes import (
 )
 
 
-def set_all_weights(branches_df: BranchSchema, switches_df: SwitchSchema, helper_branches_df: HelperBranchSchema) -> None:
+def set_all_weights(
+    branches_df: pat.DataFrame[BranchSchema],
+    switches_df: pat.DataFrame[SwitchSchema],
+    helper_branches_df: pat.DataFrame[HelperBranchSchema],
+) -> None:
     """Set all weights for the edges DataFrame in the NetworkGraphData model.
 
     All weights are set in place in the DataFrames.
@@ -37,13 +43,13 @@ def set_all_weights(branches_df: BranchSchema, switches_df: SwitchSchema, helper
 
     Parameters
     ----------
-    branches_df : BranchSchema
+    branches_df : pat.DataFrame[BranchSchema]
         The BranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The SwitchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    helper_branches_df : HelperBranchSchema
+    helper_branches_df : pat.DataFrame[HelperBranchSchema]
         The HelperBranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
     """
@@ -55,7 +61,11 @@ def set_all_weights(branches_df: BranchSchema, switches_df: SwitchSchema, helper
     set_switch_open_weight(branches_df=branches_df, switches_df=switches_df, helper_branches_df=helper_branches_df)
 
 
-def set_station_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helper_branches_df: HelperBranchSchema) -> None:
+def set_station_weight(
+    branches_df: pat.DataFrame[BranchSchema],
+    switches_df: pat.DataFrame[SwitchSchema],
+    helper_branches_df: pat.DataFrame[HelperBranchSchema],
+) -> None:
     """Set the station weight for the edges DataFrame in the NetworkGraphData model.
 
     station_weight:
@@ -65,13 +75,13 @@ def set_station_weight(branches_df: BranchSchema, switches_df: SwitchSchema, hel
 
     Parameters
     ----------
-    branches_df : BranchSchema
+    branches_df : pat.DataFrame[BranchSchema]
         The BranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The SwitchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    helper_branches_df : HelperBranchSchema
+    helper_branches_df : pat.DataFrame[HelperBranchSchema]
         The HelperBranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
     """
@@ -89,7 +99,11 @@ def set_station_weight(branches_df: BranchSchema, switches_df: SwitchSchema, hel
     branches_df.loc[cond, weight_name] = WeightValues.step.value
 
 
-def set_bay_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helper_branches_df: HelperBranchSchema) -> None:
+def set_bay_weight(
+    branches_df: pat.DataFrame[BranchSchema],
+    switches_df: pat.DataFrame[SwitchSchema],
+    helper_branches_df: pat.DataFrame[HelperBranchSchema],
+) -> None:
     """Set the bay weight for the edges DataFrame in the NetworkGraphData model.
 
     bay_weight:
@@ -101,13 +115,13 @@ def set_bay_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helper_
 
     Parameters
     ----------
-    branches_df : BranchSchema
+    branches_df : pat.DataFrame[BranchSchema]
         The BranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The SwitchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    helper_branches_df : HelperBranchSchema
+    helper_branches_df : pat.DataFrame[HelperBranchSchema]
         The HelperBranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
     """
@@ -123,7 +137,11 @@ def set_bay_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helper_
     )
 
 
-def set_trafo_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helper_branches_df: HelperBranchSchema) -> None:
+def set_trafo_weight(
+    branches_df: pat.DataFrame[BranchSchema],
+    switches_df: pat.DataFrame[SwitchSchema],
+    helper_branches_df: pat.DataFrame[HelperBranchSchema],
+) -> None:
     """Set the trafo weight for the edges DataFrame in the NetworkGraphData model.
 
     trafo_weight:
@@ -132,13 +150,13 @@ def set_trafo_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helpe
 
     Parameters
     ----------
-    branches_df : BranchSchema
+    branches_df : pat.DataFrame[BranchSchema]
         The BranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The SwitchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    helper_branches_df : HelperBranchSchema
+    helper_branches_df : pat.DataFrame[HelperBranchSchema]
         The HelperBranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
     """
@@ -158,7 +176,11 @@ def set_trafo_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helpe
     branches_df.loc[cond, weight_name] = WeightValues.high.value
 
 
-def set_coupler_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helper_branches_df: HelperBranchSchema) -> None:
+def set_coupler_weight(
+    branches_df: pat.DataFrame[BranchSchema],
+    switches_df: pat.DataFrame[SwitchSchema],
+    helper_branches_df: pat.DataFrame[HelperBranchSchema],
+) -> None:
     """Set the coupler weight for the edges DataFrame in the NetworkGraphData model.
 
     coupler_weight:
@@ -168,13 +190,13 @@ def set_coupler_weight(branches_df: BranchSchema, switches_df: SwitchSchema, hel
 
     Parameters
     ----------
-    branches_df : BranchSchema
+    branches_df : pat.DataFrame[BranchSchema]
         The BranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The SwitchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    helper_branches_df : HelperBranchSchema
+    helper_branches_df : pat.DataFrame[HelperBranchSchema]
         The HelperBranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
     """
@@ -190,7 +212,11 @@ def set_coupler_weight(branches_df: BranchSchema, switches_df: SwitchSchema, hel
     )
 
 
-def set_busbar_weight(branches_df: BranchSchema, switches_df: SwitchSchema, helper_branches_df: HelperBranchSchema) -> None:
+def set_busbar_weight(
+    branches_df: pat.DataFrame[BranchSchema],
+    switches_df: pat.DataFrame[SwitchSchema],
+    helper_branches_df: pat.DataFrame[HelperBranchSchema],
+) -> None:
     """Set the busbar weight for the edges DataFrame in the NetworkGraphData model.
 
     busbar_weight:
@@ -199,13 +225,13 @@ def set_busbar_weight(branches_df: BranchSchema, switches_df: SwitchSchema, help
 
     Parameters
     ----------
-    branches_df : BranchSchema
+    branches_df : pat.DataFrame[BranchSchema]
         The BranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The SwitchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    helper_branches_df : HelperBranchSchema
+    helper_branches_df : pat.DataFrame[HelperBranchSchema]
         The HelperBranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
     """
@@ -222,7 +248,9 @@ def set_busbar_weight(branches_df: BranchSchema, switches_df: SwitchSchema, help
 
 
 def set_switch_open_weight(
-    branches_df: BranchSchema, switches_df: SwitchSchema, helper_branches_df: HelperBranchSchema
+    branches_df: pat.DataFrame[BranchSchema],
+    switches_df: pat.DataFrame[SwitchSchema],
+    helper_branches_df: pat.DataFrame[HelperBranchSchema],
 ) -> None:
     """Set the open switch weight for the edges DataFrame in the NetworkGraphData model.
 
@@ -232,13 +260,13 @@ def set_switch_open_weight(
 
     Parameters
     ----------
-    branches_df : BranchSchema
+    branches_df : pat.DataFrame[BranchSchema]
         The BranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The SwitchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    helper_branches_df : HelperBranchSchema
+    helper_branches_df : pat.DataFrame[HelperBranchSchema]
         The HelperBranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
     """
@@ -257,9 +285,9 @@ def set_switch_open_weight(
 
 
 def set_weights_for_edges(
-    branches_df: BranchSchema,
-    switches_df: SwitchSchema,
-    helper_branches_df: HelperBranchSchema,
+    branches_df: pat.DataFrame[BranchSchema],
+    switches_df: pat.DataFrame[SwitchSchema],
+    helper_branches_df: pat.DataFrame[HelperBranchSchema],
     weights: tuple[float, float, float],
     weight_name: str,
 ) -> None:
@@ -272,13 +300,13 @@ def set_weights_for_edges(
 
     Parameters
     ----------
-    branches_df : BranchSchema
+    branches_df : pat.DataFrame[BranchSchema]
         The BranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The SwitchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
-    helper_branches_df : HelperBranchSchema
+    helper_branches_df : pat.DataFrame[HelperBranchSchema]
         The HelperBranchSchema DataFrame from the NetworkGraphData model.
         Note: The DataFrame is modified in place.
     weights : tuple[float, float, float]

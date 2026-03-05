@@ -66,7 +66,7 @@ def test_compute_bsdf_lodf_static_flows(
         ),
         solver_config=replace(
             static_information.solver_config,
-            aggregation_metric="overload_energy",
+            aggregation_metric="overload_energy_n_1",
             number_most_affected=n_branches * n_failures,
             number_most_affected_n_0=n_branches,
             number_max_out_in_most_affected=n_branches,
@@ -282,7 +282,7 @@ def test_compute_symmetric_batch(
         corresponding_topology=jnp.zeros((buffer_size_injection, batch_size_injection), dtype=int)
         .at[0, 0:batch_size_bsdf]
         .set(corresponding_topology),
-        pad_mask=jnp.zeros((buffer_size_injection, batch_size_injection), dtype=int).at[0, 0:batch_size_bsdf].set(1),
+        pad_mask=jnp.zeros((buffer_size_injection, batch_size_injection), dtype=bool).at[0, 0:batch_size_bsdf].set(1),
     )
 
     res_ref, best_inj_combo_ref, success_ref = compute_batch(

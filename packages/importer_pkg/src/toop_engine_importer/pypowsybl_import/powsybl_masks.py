@@ -19,9 +19,11 @@ from pathlib import Path
 import logbook
 import numpy as np
 import pandas as pd
+import pandera.typing as pat
 from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
+from jaxtyping import Bool
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.contingency_from_power_factory.contingency_from_file import (
     get_contingencies_from_file,
@@ -277,11 +279,11 @@ def get_voltage_from_voltage_level_id(network: Network, voltage_level_ids: pd.Se
 
 def get_border_line_mask(
     lines_df: pd.DataFrame,
-    side_1_in_area: np.ndarray,
-    side_2_in_area: np.ndarray,
-    hv_line_mask: np.ndarray,
+    side_1_in_area: Bool[np.ndarray, " n_lines"],
+    side_2_in_area: Bool[np.ndarray, " n_lines"],
+    hv_line_mask: Bool[np.ndarray, " n_lines"],
     area_codes: list[str],
-) -> np.ndarray:
+) -> tuple[Bool[np.ndarray, " n_lines"], Bool[np.ndarray, " n_lines"]]:
     """Filter border lines in UCTE.
 
     Usually these are modeled as tie-lines,
@@ -297,20 +299,20 @@ def get_border_line_mask(
     ----------
     lines_df: pd.DataFrame
         The lines in the network including the voltage_level_id columns
-    side_1_in_area: np.ndarray
+    side_1_in_area: Bool[np.ndarray, " n_lines"]
         Boolean array of length n_lines that depicts if the side 1 is inside the border
-    side_2_in_area: np.ndarray
+    side_2_in_area: Bool[np.ndarray, " n_lines"]
         Boolean array of length n_lines that depicts if the side 2 is inside the border
-    hv_line_mask: np.ndarray
+    hv_line_mask: Bool[np.ndarray, " n_lines"]
         Boolean array of length n_lines that depicts if the line is high voltage
     area_codes: list[str]
         A list of area codes that are considered as part of the network
 
     Returns
     -------
-    np.ndarray
+    Bool[np.ndarray, " n_lines"]
         A boolean array over all lines, that depicts outgoing border lines
-    np.ndarray
+    Bool[np.ndarray, " n_lines"]
         A boolean array over all lines, that depicts internal border lines
     """
     potential_border_lines = (side_1_in_area != side_2_in_area) & hv_line_mask
@@ -1083,7 +1085,7 @@ def update_masks_from_contingency_list_file(
     assert trafo3ws.empty, "3-winding transformers should have been converted to 2w-trafos."
 
     with filesystem.open(str(importer_parameters.contingency_list_file), mode="r") as f:
-        contingency_analysis_df: ContingencyImportSchema = pd.read_csv(f, index_col=0, header=0)
+        contingency_analysis_df: pat.DataFrame[ContingencyImportSchema] = pd.read_csv(f, index_col=0, header=0)
 
     monitored_ids = contingency_analysis_df.query("observe_std").index.to_list()
     contingency_ids = contingency_analysis_df.query("contingency_case").index.to_list()

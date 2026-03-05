@@ -29,7 +29,7 @@ import logbook
 import numpy as np
 from beartype.typing import Optional
 from jax import numpy as jnp
-from jaxtyping import Array, Bool, Float, Int
+from jaxtyping import Array, ArrayLike, Bool, Float, Int
 from toop_engine_dc_solver.jax.bsdf import calc_bsdf, update_from_to_node
 from toop_engine_dc_solver.jax.lodf import calc_lodf_matrix
 from toop_engine_dc_solver.jax.multi_outages import build_modf_matrices
@@ -496,9 +496,9 @@ def enumerate_branch_actions(
 
 
 def pad_out_action_set(
-    branch_actions: list[Bool[np.ndarray, " n_branch_actions_per_sub n_assets_per_sub"]],
-    injection_actions: list[Bool[np.ndarray, " n_injection_actions_per_sub n_assets_per_sub"]],
-    reassignment_distance: list[Int[np.ndarray, " n_branch_actions_per_sub"]],
+    branch_actions: list[Bool[ArrayLike, " n_branch_actions_per_sub ..."]],
+    injection_actions: list[Bool[ArrayLike, " n_injection_actions_per_sub ..."]],
+    reassignment_distance: list[Int[ArrayLike, " n_branch_actions_per_sub"]],
 ) -> ActionSet:
     """Pad out a list of actions to a fixed size and concatenate them into the action set.
 
@@ -507,11 +507,11 @@ def pad_out_action_set(
 
     Parameters
     ----------
-    branch_actions : list[Bool[Array, " n_branch_actions_per_sub n_assets_per_sub"]]
+    branch_actions : list[Bool[Array, " n_branch_actions_per_sub ..."]]
         The list of branch actions to pad out, where the outer list is per relevant substation and the inner array
         holds branch actions of different number of assets for each substation. The fist dimension is the size of the
         action set and the last one the number of assets in this station.
-    injection_actions : list[Bool[Array, " n_injection_actions_per_sub n_assets_per_sub"]]
+    injection_actions : list[Bool[Array, " n_injection_actions_per_sub ..."]]
         The list of injection actions to pad out, where the outer list is per relevant substation and the inner array
         holds injection actions of different number of assets for each substation. The fist dimension is the size of the
         action set and the last one the number of assets in this station.

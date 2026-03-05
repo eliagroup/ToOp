@@ -7,18 +7,6 @@
 
 """Backend/preprocessing/postprocessing functionalities for the DC solver, refactored version."""
 
-from beartype.claw import beartype_this_package
-
-# Make sure beartype_this_package is the only imported module
-beartype_only_non_dunder_import = all(d.startswith("_") or d == "beartype_this_package" for d in dir())
-if beartype_only_non_dunder_import:
-    beartype_this_package()  # Leave this at the top. Otherwise the modules imported before wont be beartyped
-else:
-    raise ImportError(
-        "Please make sure that beartype_this_package is the only imported module before calling beartype_this_package"
-        "Please check the import statements."
-    )
-
 from toop_engine_interfaces.backend import BackendInterface
 
 from .action_set import (

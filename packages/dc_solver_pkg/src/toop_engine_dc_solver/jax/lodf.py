@@ -19,7 +19,7 @@ from functools import partial
 import jax
 from beartype.typing import Optional
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
-from jaxtyping import Array, Bool, Float, Int
+from jaxtyping import Array, ArrayLike, Bool, Float, Int
 from toop_engine_dc_solver.jax.types import int_max
 
 
@@ -155,7 +155,7 @@ def get_failure_cases_to_zero(
 def zero_lodf_matrix(
     lodf_matrix: Float[Array, " n_failures n_branches_monitored"],
     success: Bool[Array, " n_failures"],
-    branches_to_zero: Int[Array, " n_branches_to_zero"],
+    branches_to_zero: Int[ArrayLike, " n_branches_to_zero"],
     branches_to_outage: Int[Array, " n_failures"],
 ) -> tuple[Float[Array, " n_failures n_branches_monitored"], Bool[Array, " n_failures"]]:
     """Zeroes the LODF matrix for specific branches

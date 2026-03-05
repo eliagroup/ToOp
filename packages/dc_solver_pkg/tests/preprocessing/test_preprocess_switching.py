@@ -212,8 +212,13 @@ def test_preprocess_station() -> None:
         ),
         grid_model_id="station1",
     )
-
-    configurations_table, coupler_states, coupler_distance, busbar_a = make_optimal_separation_set(station)
+    separation_set = make_optimal_separation_set(station)
+    configurations_table, coupler_states, coupler_distance, busbar_a = (
+        separation_set.separation_set,
+        separation_set.coupler_states,
+        separation_set.coupler_distance,
+        separation_set.busbar_a,
+    )
     n_configs = configurations_table.shape[0]
 
     assert configurations_table.shape == (n_configs, 2, 5)

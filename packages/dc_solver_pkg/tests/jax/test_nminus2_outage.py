@@ -137,7 +137,7 @@ def test_run_single_l1_case(
         dynamic_information,
         multi_outage_branches=[],
         multi_outage_nodes=[],
-        nonrel_injection_outage_deltap=jnp.zeros((0, 1), dtype=float),
+        nonrel_injection_outage_deltap=jnp.zeros((1, 0), dtype=float),
         nonrel_injection_outage_node=jnp.zeros((0,), dtype=int),
     )
 
@@ -191,7 +191,7 @@ def test_n_2_analysis_against_solver(
         dynamic_information,
         multi_outage_branches=[],
         multi_outage_nodes=[],
-        nonrel_injection_outage_deltap=jnp.zeros((0, 1), dtype=float),
+        nonrel_injection_outage_deltap=jnp.zeros((1, 0), dtype=float),
         nonrel_injection_outage_node=jnp.zeros((0,), dtype=int),
     )
 
@@ -250,7 +250,7 @@ def test_n_2_padded_elements(
         dynamic_information,
         multi_outage_branches=[],
         multi_outage_nodes=[],
-        nonrel_injection_outage_deltap=jnp.zeros((0, 1), dtype=float),
+        nonrel_injection_outage_deltap=jnp.zeros((1, 0), dtype=float),
         nonrel_injection_outage_node=jnp.zeros((0,), dtype=int),
     )
 

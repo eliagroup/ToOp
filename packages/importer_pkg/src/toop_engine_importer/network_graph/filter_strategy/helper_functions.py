@@ -23,7 +23,7 @@ T = TypeVar("T")
 
 def set_asset_bay_edge_attr(
     graph: nx.Graph,
-    asset_bay_update_dict: dict[str, dict[int, list[int]]],
+    asset_bay_update_dict: dict[str | tuple, dict[int, list[int]]],
 ) -> None:
     """Set the bay information in the nx.Graph.
 
@@ -35,7 +35,7 @@ def set_asset_bay_edge_attr(
     graph : nx.Graph
         The network graph.
         Note: The graph is modified in place.
-    asset_bay_update_dict : dict[str, dict[int, list[int]]]
+    asset_bay_update_dict : dict[str | tuple, dict[int, list[int]]]
         A dictionary containing the shortest path to a busbar for each busbar.
         key: bay_id (a str grid_model_id)
         value: dictionary from shortest_paths_to_target_ids
@@ -100,7 +100,7 @@ def calculate_asset_bay_for_node_assets(
 def set_single_bay_weight(
     graph: nx.Graph,
     edge_id: tuple[int, int],
-    bay_weight: WeightValues,
+    bay_weight: float,
 ) -> None:
     """Set the bay weight for a single edge in the nx.Graph.
 

@@ -23,6 +23,7 @@ from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import 
     get_loadflow_based_trafo_limits,
     get_new_limits_for_branch,
 )
+from toop_engine_interfaces.loadflow_results import BranchSide
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     LimitAdjustmentParameters,
 )
@@ -34,7 +35,7 @@ def test_create_current_limits_df():
     new_limit_df = create_current_limits_df(
         new_limit_series,
         element_type="LINE",
-        side="ONE",
+        side=BranchSide.ONE,
         limit_name="new_limit",
         acceptable_duration=100,
         group_names=group_names,

@@ -270,7 +270,7 @@ def add_suffix_to_duplicated_grid_model_id(df: pd.DataFrame, column: str = "grid
             df.loc[to_be_modified.index[i], column] = f"{grid_model_id}{suffix}"
 
 
-def remove_suffix_from_switchable_assets(switchable_asset: list[SwitchableAsset]) -> list[SwitchableAsset]:
+def remove_suffix_from_switchable_assets(switchable_asset: list[SwitchableAsset]) -> None:
     """Remove the grid model id suffix from a switchable asset.
 
     Parameters
@@ -281,8 +281,7 @@ def remove_suffix_from_switchable_assets(switchable_asset: list[SwitchableAsset]
 
     Returns
     -------
-    str
-        The switchable asset without the suffix.
+    None
     """
     for asset in switchable_asset:
         for suffix in get_args(DUPLICATED_EDGE_SUFFIX):

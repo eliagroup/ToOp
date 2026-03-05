@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import pytest
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import Genotype
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     get_repertoire_metrics,
     initialize_genetic_algorithm,
@@ -27,8 +28,8 @@ def test_update_max_mw_flows_according_to_double_limits(
 ) -> None:
     static_information = load_static_information(static_information_file)
     updated_dynamic_informations = update_max_mw_flows_according_to_double_limits(
-        [static_information.dynamic_information],
-        [static_information.solver_config],
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
         0.9,
         1.0,
     )
@@ -48,8 +49,8 @@ def test_update_max_mw_flows_according_to_double_limits(
         ),
     )
     updated_dynamic_informations_with_n_1 = update_max_mw_flows_according_to_double_limits(
-        [static_information_with_n_1.dynamic_information],
-        [static_information_with_n_1.solver_config],
+        (static_information_with_n_1.dynamic_information,),
+        (static_information_with_n_1.solver_config,),
         0.9,
         1.0,
     )
@@ -70,8 +71,8 @@ def test_initialize_genetic_algorithm(
         batch_size=1,
         max_num_splits=2,
         max_num_disconnections=2,
-        static_informations=[static_information],
-        target_metrics=[("overload_energy_n_1", 1.0)],
+        static_informations=tuple([static_information]),
+        target_metrics=(("overload_energy_n_1", 1.0),),
         substation_split_prob=0.1,
         substation_unsplit_prob=0.1,
         action_set=static_information.dynamic_information.action_set,
@@ -99,8 +100,8 @@ def test_distributed_initialize(static_information_file) -> None:
         batch_size=10,
         max_num_splits=2,
         max_num_disconnections=2,
-        static_informations=[static_information],
-        target_metrics=[("overload_energy_n_1", 1.0)],
+        static_informations=tuple([static_information]),
+        target_metrics=tuple([("overload_energy_n_1", 1.0)]),
         substation_split_prob=0.1,
         substation_unsplit_prob=0.1,
         action_set=static_information.dynamic_information.action_set,
@@ -120,6 +121,7 @@ def test_distributed_initialize(static_information_file) -> None:
     def assert_node(x):
         assert x.shape[0] == 2, f"Expected 2 to be the first dimension, got {x.shape}"
         assert len(x.global_shards) == len(devices)
+        return x
 
     jax.tree_util.tree_map(assert_node, jax_data)
 
@@ -127,13 +129,17 @@ def test_distributed_initialize(static_information_file) -> None:
 def test_get_repertoire_metrics():
     fitnesses = jnp.array([1, 2, 3, 4, 5, 6, 7, -jnp.inf])
     metrics = {
-        "test_metric": jnp.array([9, 10, 11, 12, 13, 14, 15, 16]),
-        "test_metric2": jnp.array([17, 18, 19, 20, 21, 22, 23, 24]),
+        "overload_energy_n_1": jnp.array([9, 10, 11, 12, 13, 14, 15, 16], dtype=float),
+        "overload_energy_n_0": jnp.array([17, 18, 19, 20, 21, 22, 23, 24], dtype=float),
     }
-    descriptors = jnp.array([25, 26, 27, 28, 29, 30, 31, 32])
-
+    descriptors = jnp.array([[25], [26], [27], [28], [29], [30], [31], [32]])
+    genotypes = Genotype(  # 4 topologies
+        action_index=jnp.array([[0], [1], [2], [0]]),
+        disconnections=jnp.array([[0], [1], [2], [0]]),
+        nodal_injections_optimized=None,
+    )
     test_repertoire = DiscreteMapElitesRepertoire(
-        genotypes=jnp.array([0, 0, 0, 0, 0, 0, 0, 0]),
+        genotypes=genotypes,
         fitnesses=fitnesses,
         descriptors=descriptors,
         extra_scores=metrics,
@@ -141,13 +147,18 @@ def test_get_repertoire_metrics():
         cell_depth=1,
     )
 
-    fitness_best, metrics_best = get_repertoire_metrics(test_repertoire, ["test_metric"])
+    fitness_best, metrics_best = get_repertoire_metrics(test_repertoire, ("overload_energy_n_1",))
     assert fitness_best == jnp.array(7)
-    assert metrics_best["test_metric"] == jnp.array(15)
-    assert "test_metric2" not in metrics_best.keys()
-    fitness_again, metrics_again = get_repertoire_metrics(test_repertoire, ["test_metric"])
+    assert metrics_best["overload_energy_n_1"] == jnp.array(15)
+    assert "overload_energy_n_0" not in metrics_best.keys()
+    fitness_again, metrics_again = get_repertoire_metrics(test_repertoire, ("overload_energy_n_1",))
     assert jnp.all(fitness_best == fitness_again)
-    assert jnp.all(metrics_best["test_metric"] == metrics_again["test_metric"])
+    assert jnp.all(metrics_best["overload_energy_n_1"] == metrics_again["overload_energy_n_1"])
+
+    fitness_again, two_metrics = get_repertoire_metrics(test_repertoire, ("overload_energy_n_1", "overload_energy_n_0"))
+    assert jnp.all(fitness_best == fitness_again)
+    assert jnp.all(metrics_best["overload_energy_n_1"] == two_metrics["overload_energy_n_1"])
+    assert "overload_energy_n_0" in two_metrics.keys()
 
 
 def test_verify_static_information(static_information_file) -> None:

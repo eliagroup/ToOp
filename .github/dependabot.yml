@@ -1,0 +1,37 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 10
+  - package-ecosystem: "uv"
+    directories:
+      - "/"
+      - "/packages/contingency_analysis_pkg"
+      - "/packages/dc_solver_pkg"
+      - "/packages/grid_helpers_pkg"
+      - "/packages/importer_pkg"
+      - "/packages/interfaces_pkg"
+      - "/packages/topology_optimizer_pkg"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 10
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 10
+  - package-ecosystem: "docker-compose"
+    directory: "/dev-deployment"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 10
+  - package-ecosystem: "pre-commit" # Cooldown not supported
+    directory: "/"
+    schedule:
+      interval: "weekly"

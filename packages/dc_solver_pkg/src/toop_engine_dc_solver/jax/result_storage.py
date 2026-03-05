@@ -270,7 +270,7 @@ def update_aggregate_metrics(
     | Float[ArrayLike, " batch_size_injection n_splits max_inj_per_sub"],
     corresponding_topology: Int[Array, " batch_size_injections"],
     metric: Float[ArrayLike, " batch_size_injections"],
-    pad_mask: Bool[ArrayLike, " batch_size_injections"] | Int[ArrayLike, " batch_size_injections"],
+    pad_mask: Bool[ArrayLike, " batch_size_injections"],
     metrics_acc: Float[Array, " batch_size_bsdf"],
     best_inj_acc: Bool[ArrayLike, " batch_size_bsdf n_splits max_inj_per_sub"]
     | Float[ArrayLike, " batch_size_bsdf n_splits max_inj_per_sub"],

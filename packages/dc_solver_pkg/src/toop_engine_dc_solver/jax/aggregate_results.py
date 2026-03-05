@@ -177,7 +177,7 @@ def get_critical_branch_count_n_1_matrix(
 
     Returns
     -------
-    Int[Array, " "]
+    Float[Array, " "]
         The number of critical branches for the given flow
     """
     # A branch is critical if it is overloaded in at least one failure
@@ -270,7 +270,7 @@ def get_number_of_disconnections(
 
     Returns
     -------
-    Int[Array, " "]
+    Float[Array, " "]
         The number of disconnections in the disconnections vector
     """
     if disconnections is None:
@@ -958,10 +958,8 @@ def get_worst_k_contingencies(
 
     Returns
     -------
-    Float[Array, " n_timesteps"]
-        The total overload corresponding to the worst k contingencies for each timestep.
-    Int[Array, " n_timesteps k"]
-        The indices of the worst k contingencies for each timestep.
+    WorstKContingencyResults
+        The overload for the worst k contingencies and their indices in the n-1 matrix.
     """
     overload_matrix = jnp.clip(jnp.abs(n_1_matrix) - max_mw_flow, min=0, max=None)
 

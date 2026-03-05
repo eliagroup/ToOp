@@ -10,6 +10,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import pytest
+from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
 from toop_engine_grid_helpers.pandapower.slack_allocation import (
     _slack_allocation_tie_break,
     assign_slack_gen_by_weight,
@@ -180,17 +181,20 @@ def net_with_sgen():
 def test_errors_on_invalid_index(net_with_sgen):
     slack_allocation_module = __import__(IMPORT_PATH, fromlist=["*"])
     net, sgen_idx = net_with_sgen
+    bus_lookup, _ = create_bus_lookup_simple(net)
     with pytest.raises(ValueError):
-        slack_allocation_module.replace_sgen_by_gen(net, -5)
+        slack_allocation_module.replace_sgen_by_gen(net, -5, bus_lookup=bus_lookup)
     with pytest.raises(ValueError):
-        slack_allocation_module.replace_sgen_by_gen(net, 999999)
+        slack_allocation_module.replace_sgen_by_gen(net, 999999, bus_lookup=bus_lookup)
 
 
 def test_vm_pu_from_res_bus(net_with_sgen):
     slack_allocation_module = __import__(IMPORT_PATH, fromlist=["*"])
     net, sgen_idx = net_with_sgen
     net.res_bus = pd.DataFrame(index=net.bus.index, data={"vm_pu": 1.023})
-    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx))
+    net.converged = True
+    bus_lookup, _ = create_bus_lookup_simple(net)
+    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx), bus_lookup=bus_lookup)
 
     assert new_idx in net.gen.index
     assert pytest.approx(net.gen.at[new_idx, "vm_pu"], rel=1e-5) == 1.023
@@ -206,7 +210,8 @@ def test_vm_pu_from_existing_gen_same_bus():
     pp.create_gen(net, bus=b1, p_mw=0.0, vm_pu=1.034, name="Ref Gen")
 
     sgen_idx = pp.create_sgen(net, bus=b1, p_mw=2.0, name="SGen B", in_service=True)
-    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx))
+    bus_lookup, _ = create_bus_lookup_simple(net)
+    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx), bus_lookup=bus_lookup)
 
     assert pytest.approx(net.gen.at[new_idx, "vm_pu"], rel=1e-5) == 1.034
 
@@ -216,7 +221,8 @@ def test_vm_pu_from_ext_grid():
     net = _net_with_buses(2)
     b1 = net.bus.index[1]
     sgen_idx = pp.create_sgen(net, bus=b1, p_mw=1.0, name="SGen C", in_service=True)
-    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx))
+    bus_lookup, _ = create_bus_lookup_simple(net)
+    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx), bus_lookup=bus_lookup)
     assert pytest.approx(net.gen.at[new_idx, "vm_pu"], rel=1e-9) == 1.0
 
 
@@ -226,14 +232,16 @@ def test_vm_pu_default_when_no_sources():
     net.ext_grid.drop(index=net.ext_grid.index, inplace=True)
     b1 = net.bus.index[1]
     sgen_idx = pp.create_sgen(net, bus=b1, p_mw=1.0, name="SGen D", in_service=True)
-    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx))
+    bus_lookup, _ = create_bus_lookup_simple(net)
+    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx), bus_lookup=bus_lookup)
     assert pytest.approx(net.gen.at[new_idx, "vm_pu"], rel=1e-9) == 1.0
 
 
 def test_cols_copied_and_slack_weight(net_with_sgen):
     slack_allocation_module = __import__(IMPORT_PATH, fromlist=["*"])
     net, sgen_idx = net_with_sgen
-    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx))
+    bus_lookup, _ = create_bus_lookup_simple(net)
+    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx), bus_lookup=bus_lookup)
 
     for c in ["min_q_mvar", "max_q_mvar", "min_p_mw", "max_p_mw", "sn_mva", "referencePriority", "description"]:
         assert c in net.gen.columns, f"Column {c} should be added to net.gen"
@@ -246,7 +254,8 @@ def test_cols_copied_and_slack_weight(net_with_sgen):
 def test_retain_false_removes_original_sgen(net_with_sgen):
     slack_allocation_module = __import__(IMPORT_PATH, fromlist=["*"])
     net, sgen_idx = net_with_sgen
-    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx), retain_sgen_elm=False)
+    bus_lookup, _ = create_bus_lookup_simple(net)
+    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx), retain_sgen_elm=False, bus_lookup=bus_lookup)
     assert sgen_idx not in net.sgen.index
     assert new_idx in net.gen.index
 
@@ -255,7 +264,8 @@ def test_cost_tables_rewired(net_with_sgen):
     slack_allocation_module = __import__(IMPORT_PATH, fromlist=["*"])
     net, sgen_idx = net_with_sgen
     net.pwl_cost.loc[len(net.pwl_cost)] = {"et": "sgen", "element": sgen_idx}
-    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx))
+    bus_lookup, _ = create_bus_lookup_simple(net)
+    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx), bus_lookup=bus_lookup)
     for table in ("poly_cost", "pwl_cost"):
         # If the table has rows, ensure none still point to sgen/old index
         df = net[table]
@@ -267,7 +277,8 @@ def test_cost_tables_rewired(net_with_sgen):
 def test_controllable_and_name_and_in_service_preserved(net_with_sgen):
     slack_allocation_module = __import__(IMPORT_PATH, fromlist=["*"])
     net, sgen_idx = net_with_sgen
-    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx))
+    bus_lookup, _ = create_bus_lookup_simple(net)
+    new_idx = slack_allocation_module.replace_sgen_by_gen(net, int(sgen_idx), bus_lookup=bus_lookup)
     assert bool(net.gen.at[new_idx, "controllable"]) is True
     assert net.gen.at[new_idx, "name"] == net.sgen.at[sgen_idx, "name"]
     assert bool(net.sgen.at[sgen_idx, "in_service"]) is False
@@ -495,7 +506,7 @@ def test_converts_sgen_then_sets_slack(monkeypatch):
     new_gen_idx = pp.create_gen(net4, bus=b2, p_mw=0.0, vm_pu=1.0)
     net4.gen.drop(new_gen_idx, inplace=True)
 
-    def fake_replace_sgen(net, sgen, retain_sgen_elm=True):
+    def fake_replace_sgen(net, sgen, bus_lookup, retain_sgen_elm=True):
         return new_gen_idx
 
     monkeypatch.setattr(mod, "replace_sgen_by_gen", fake_replace_sgen)

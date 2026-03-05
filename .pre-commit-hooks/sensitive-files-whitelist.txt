@@ -1,3 +1,4 @@
+
 # Whitelist for sensitive file type pre-commit hook
 # One pattern per line. Supports glob patterns.
 # Lines starting with # are comments and will be ignored.

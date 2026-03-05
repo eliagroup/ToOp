@@ -159,8 +159,10 @@ def filter_relevant_nodes_branch_count(network_data: NetworkData) -> NetworkData
     n_connections = np.array(
         list(
             map(
-                lambda node_idx: np.sum((network_data.from_nodes == node_idx) & ~network_data.bridging_branch_mask)
-                + np.sum((network_data.to_nodes == node_idx) & ~network_data.bridging_branch_mask),
+                lambda node_idx: (
+                    np.sum((network_data.from_nodes == node_idx) & ~network_data.bridging_branch_mask)
+                    + np.sum((network_data.to_nodes == node_idx) & ~network_data.bridging_branch_mask)
+                ),
                 relevant_node_indices,
             )
         )

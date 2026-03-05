@@ -1,7 +1,7 @@
 # Quickstart
 
 The ToOp repository contains a lot of functionality, which can be overwhelming if you look at it for the first time.
-But you do not need to understand all of them to use the parts of importance to you.
+But you do not need to understand all of them to use the parts of importance to you. 
 
 However, it is helpful to grasp some of the key concepts and data structures.
 If you want to do this first, please refer to [Usage](./usage.md).

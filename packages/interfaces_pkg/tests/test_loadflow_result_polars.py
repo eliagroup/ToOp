@@ -18,7 +18,9 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     extract_branch_results_polars,
     load_loadflow_results_polars,
     save_loadflow_results_polars,
+    subset_contingencies_polars,
 )
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 
 
@@ -147,7 +149,79 @@ def test_concatenate_loadflow_results_polars():
 
     other_job_res = res_2.model_copy(update={"job_id": "other_test_job"})
     with pytest.raises(AssertionError):
-        res = concatenate_loadflow_results_polars([res_1, other_job_res])
+        concatenate_loadflow_results_polars([res_1, other_job_res])
 
     with pytest.raises(AssertionError):
         concatenate_loadflow_results_polars([])
+
+
+@pytest.fixture
+def sample_loadflow_results_polars():
+    # Create minimal polars DataFrames with a 'contingency' column
+    branch_results = pl.LazyFrame({"contingency": ["c1", "c2", "c3"], "val": [1.0, 2.0, 3.0]})
+    node_results = pl.LazyFrame({"contingency": ["c1", "c2", "c3"], "val": [10.0, 20.0, 30.0]})
+    regulating_element_results = pl.LazyFrame({"contingency": ["c1", "c2", "c3"], "val": [100.0, 200.0, 300.0]})
+    converged = pl.LazyFrame({"contingency": ["c1", "c2", "c3"], "status": [True, False, True]})
+    va_diff_results = pl.LazyFrame({"contingency": ["c1", "c2", "c3"], "diff": [0.1, 0.2, 0.3]})
+    return LoadflowResultsPolars(
+        job_id="job-123",
+        branch_results=branch_results,
+        node_results=node_results,
+        regulating_element_results=regulating_element_results,
+        converged=converged,
+        va_diff_results=va_diff_results,
+        warnings=["warn1"],
+        additional_information=["info1"],
+    )
+
+
+def test_subset_contingencies_polars_basic(sample_loadflow_results_polars):
+    contingencies = ["c1", "c3"]
+    result = subset_contingencies_polars(sample_loadflow_results_polars, contingencies)
+    # Collect all LazyFrames to DataFrames for assertion
+    branch_df = result.branch_results.collect()
+    node_df = result.node_results.collect()
+    reg_elem_df = result.regulating_element_results.collect()
+    converged_df = result.converged.collect()
+    va_diff_df = result.va_diff_results.collect()
+
+    for df in [branch_df, node_df, reg_elem_df, converged_df, va_diff_df]:
+        assert set(df["contingency"].to_list()) == set(contingencies)
+        assert all(c in contingencies for c in df["contingency"].to_list())
+
+    assert result.job_id == "job-123"
+    assert result.warnings == ["warn1"]
+    assert result.additional_information == ["info1"]
+
+
+def test_subset_contingencies_polars_empty_contingencies(sample_loadflow_results_polars):
+    contingencies = []
+    result = subset_contingencies_polars(sample_loadflow_results_polars, contingencies)
+    # All DataFrames should be empty
+    assert result.branch_results.collect().height == 0
+    assert result.node_results.collect().height == 0
+    assert result.regulating_element_results.collect().height == 0
+    assert result.converged.collect().height == 0
+    assert result.va_diff_results.collect().height == 0
+
+
+def test_subset_contingencies_polars_no_match(sample_loadflow_results_polars):
+    contingencies = ["not_present"]
+    result = subset_contingencies_polars(sample_loadflow_results_polars, contingencies)
+    # All DataFrames should be empty
+    assert result.branch_results.collect().height == 0
+    assert result.node_results.collect().height == 0
+    assert result.regulating_element_results.collect().height == 0
+    assert result.converged.collect().height == 0
+    assert result.va_diff_results.collect().height == 0
+
+
+def test_subset_contingencies_polars_all_contingencies(sample_loadflow_results_polars):
+    contingencies = ["c1", "c2", "c3"]
+    result = subset_contingencies_polars(sample_loadflow_results_polars, contingencies)
+    # All DataFrames should have all rows
+    assert result.branch_results.collect().height == 3
+    assert result.node_results.collect().height == 3
+    assert result.regulating_element_results.collect().height == 3
+    assert result.converged.collect().height == 3
+    assert result.va_diff_results.collect().height == 3

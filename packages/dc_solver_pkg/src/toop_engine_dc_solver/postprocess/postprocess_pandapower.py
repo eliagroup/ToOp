@@ -19,6 +19,7 @@ from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float
 from overrides import overrides
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import ContingencyAnalysisConfig, ParallelConfig
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower import apply_station
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
@@ -366,14 +367,17 @@ class PandapowerRunner(AbstractLoadflowRunner):
         nminus1_definition = self.nminus1_definition.model_copy(
             update={"contingencies": [Contingency(elements=[], id="BASECASE")]}
         )
+        cfg = ContingencyAnalysisConfig(
+            runpp_kwargs=self.lf_params,
+            method="dc",
+            polars=True,
+        )
         return run_contingency_analysis_pandapower(
             net=net,
             n_minus_1_definition=nminus1_definition,
             job_id="",
             timestep=0,
-            method="dc",
-            polars=True,
-            runpp_kwargs=self.lf_params,
+            cfg=cfg,
         )
 
     @overrides
@@ -455,16 +459,16 @@ class PandapowerRunner(AbstractLoadflowRunner):
             raise NotImplementedError("Phase shift tap setpoints are not supported in the pandapower runner yet")
         net, self.last_action_info = apply_topology(self.net, actions, self.action_set)
         net = apply_disconnections(net, disconnections, self.action_set)
-
-        return run_contingency_analysis_pandapower(
-            net=net,
-            n_minus_1_definition=self.nminus1_definition,
-            job_id="",
-            timestep=0,
-            method=method,
-            n_processes=self.n_processes,
-            polars=True,
+        cfg = ContingencyAnalysisConfig(
             runpp_kwargs=self.lf_params,
+            method=method,
+            polars=True,
+            parallel=ParallelConfig(
+                n_processes=self.n_processes,
+            ),
+        )
+        return run_contingency_analysis_pandapower(
+            net=net, n_minus_1_definition=self.nminus1_definition, job_id="", timestep=0, cfg=cfg
         )
 
     def get_last_action_info(self) -> Optional[RealizedTopology]:

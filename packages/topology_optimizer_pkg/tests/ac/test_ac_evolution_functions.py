@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from jaxtyping import Int
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session
+from sqlmodel import Session, select
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.evolution_functions import (
     close_coupler,
@@ -29,7 +29,7 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDB
 
 
 def test_pull(dc_repertoire: list[BaseDBTopology]) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
     pulled = pull(strategy)
     for new, old in zip(pulled, strategy):
         assert isinstance(new, ACOptimTopology)
@@ -44,12 +44,12 @@ def test_pull(dc_repertoire: list[BaseDBTopology]) -> None:
 
 
 def test_pull_with_worst_k_contingencies(
-    unsplit_ac_dc_repertoire: list[BaseDBTopology],
+    unsplit_ac_dc_repertoire: tuple[list[ACOptimTopology], Session],
     n_minus1_definitions_case_57: list[Nminus1Definition],
 ):
     repo, session = unsplit_ac_dc_repertoire
 
-    strategy = select_strategy(np.random.default_rng(0), repo, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), repo, repo, default_scorer)
     # Create a copy of the strategy to avoid mutating the original during pull
     strategy_copy = [copy.deepcopy(t) for t in strategy]
 
@@ -85,7 +85,7 @@ def test_pull_with_worst_k_contingencies(
 
 
 def test_reconnect(dc_repertoire: list[BaseDBTopology]) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
     reconnected = reconnect(np.random.default_rng(0), strategy)
 
     assert len(reconnected) == len(strategy)
@@ -118,21 +118,94 @@ def test_select_repertoire(dc_repertoire: list[ACOptimTopology], session: Sessio
         session.add(topo)
     session.commit()
 
-    pulled = select_repertoire("test", [OptimizerType.DC], session)
+    pulled = select_repertoire("test", [OptimizerType.DC], [], session)
     assert len(pulled) == len(dc_repertoire)
     assert set(p.id for p in pulled) == set(p.id for p in dc_repertoire)
 
-    pulled = select_repertoire("test", [], session)
+    pulled = select_repertoire("test", [], [], session)
     assert len(pulled) == 0
 
-    pulled = select_repertoire("nottest", [OptimizerType.DC], session)
+    pulled = select_repertoire("nottest", [OptimizerType.DC], [], session)
     assert len(pulled) == 0
+
+
+def test_select_repertoire_without_parent_on(session: Session) -> None:
+    # Create a repertoire with one topology that has a parent on DC and one that doesn't have a parent
+    repertoire = [
+        ACOptimTopology(
+            actions=[1],
+            disconnections=[],
+            pst_setpoints=None,
+            unsplit=False,
+            timestep=0,
+            strategy_hash=hash_topo_data([([1], [], None)]),
+            optimization_id="test",
+            optimizer_type=OptimizerType.AC,
+            fitness=0.5,
+            parent=ACOptimTopology(
+                actions=[1],
+                disconnections=[],
+                pst_setpoints=None,
+                unsplit=False,
+                timestep=0,
+                strategy_hash=hash_topo_data([([1], [], None)]),
+                optimization_id="test",
+                optimizer_type=OptimizerType.DC,
+                fitness=0.5,
+            ),
+        ),
+        ACOptimTopology(
+            actions=[2],
+            disconnections=[],
+            pst_setpoints=None,
+            unsplit=False,
+            timestep=0,
+            strategy_hash=hash_topo_data([([2], [], None)]),
+            optimization_id="test",
+            optimizer_type=OptimizerType.DC,
+            fitness=0.5,
+            parent=None,
+        ),
+        ACOptimTopology(
+            actions=[2],
+            disconnections=[],
+            pst_setpoints=None,
+            unsplit=False,
+            timestep=0,
+            strategy_hash=hash_topo_data([([2], [], None)]),
+            optimization_id="nottest",
+            optimizer_type=OptimizerType.DC,
+            fitness=0.5,
+            parent=None,
+        ),
+    ]
+    session.add_all(repertoire)
+    session.commit()
+    assert len(session.exec(select(ACOptimTopology)).all()) == 4
+
+    filtered = select_repertoire(
+        optimization_id="test",
+        optimizer_type=[OptimizerType.DC],
+        without_parent_on=[OptimizerType.AC],
+        session=session,
+    )
+    assert len(filtered) == 1
+    assert filtered[0].strategy_hash == hash_topo_data([([2], [], None)])
+    assert filtered[0].parent is None
+
+    unfiltered = select_repertoire(
+        optimization_id="test",
+        optimizer_type=[OptimizerType.DC],
+        without_parent_on=[],
+        session=session,
+    )
+    assert len(unfiltered) == 2
 
 
 def test_close_coupler(
     dc_repertoire: list[ACOptimTopology],
 ) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
 
     closed = close_coupler(
         rng=np.random.default_rng(0),
@@ -164,7 +237,7 @@ def test_close_coupler(
 def test_close_coupler_no_coupler(
     dc_repertoire: list[ACOptimTopology],
 ) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
     # If a strategy completely without splits is fed in, no coupler can be closed
     no_coupler_open = [
         ACOptimTopology(
@@ -196,7 +269,7 @@ def test_evolution_try_close_coupler(
     # for select_strategy and close coupler
     # Thus, the results should match exactly
     rng.choice(["pull", "reconnect", "close_coupler"], p=[0, 0, 1])
-    strategy = select_strategy(rng, dc_repertoire, default_scorer)
+    strategy = select_strategy(rng, dc_repertoire, dc_repertoire, default_scorer)
     # Repeat elements per sub to match strategy timestep dimension
     branches_per_sub = np.repeat(branches_per_sub[None], len(strategy), axis=0)
     injections_per_sub = np.repeat(injections_per_sub[None], len(strategy), axis=0)
@@ -237,7 +310,7 @@ def test_evolution_try_reconnect(session: Session, dc_repertoire: list[ACOptimTo
     # for select_strategy and close coupler
     # Thus, the results should match exactly
     rng.choice(["pull", "reconnect", "close_coupler"], p=[0, 1, 0])
-    strategy = select_strategy(rng, dc_repertoire, default_scorer)
+    strategy = select_strategy(rng, dc_repertoire, dc_repertoire, default_scorer)
     reference = reconnect(
         rng,
         selected_strategy=strategy,
@@ -274,7 +347,7 @@ def test_evolution_try_pull(session: Session, dc_repertoire: list[ACOptimTopolog
     # for select_strategy and close coupler
     # Thus, the results should match exactly
     rng.choice(["pull", "reconnect", "close_coupler"], p=[1, 0, 0])
-    strategy = select_strategy(rng, dc_repertoire, default_scorer)
+    strategy = select_strategy(rng, dc_repertoire, dc_repertoire, default_scorer)
     reference = pull(
         selected_strategy=strategy,
     )

@@ -56,8 +56,11 @@ def test_create_default_network_masks():
 
 def test_validate_network_masks(ucte_importer_parameters: UcteImporterParameters):
     network = pypowsybl.network.create_micro_grid_be_network()
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
     masks_default = powsybl_masks.create_default_network_masks(network)
-    masks = powsybl_masks.make_masks(network=network, importer_parameters=ucte_importer_parameters)
+    masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
+    )
     assert powsybl_masks.validate_network_masks(masks, masks_default)
     masks = replace(masks, line_disconnectable=[1])
     assert not powsybl_masks.validate_network_masks(masks, masks_default)
@@ -269,8 +272,10 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
     # make sure the slack is removed from relevant subs
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
     network_masks = powsybl_masks.make_masks(
         network=network,
+        slack_id=lf_result.reference_bus_id,
         importer_parameters=importer_parameters,
         blacklisted_ids=[],
     )
@@ -287,8 +292,11 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
     assert np.array_equal(updated_masks.relevant_subs, expected_bus_mask)
 
     # make sure the slack is removed from relevant subs
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
+
     network_masks = powsybl_masks.make_masks(
         network=network,
+        slack_id=lf_result.reference_bus_id,
         importer_parameters=importer_parameters,
         blacklisted_ids=[],
     )
@@ -394,7 +402,10 @@ def test_trafo_dso_border(ucte_file_with_border, ucte_importer_parameters: UcteI
 def test_make_masks(ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters):
     network = pypowsybl.network.load(ucte_file_with_border)
     default_masks = powsybl_masks.create_default_network_masks(network)
-    masks = powsybl_masks.make_masks(network=network, importer_parameters=ucte_importer_parameters)
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
+    masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
+    )
     assert powsybl_masks.validate_network_masks(masks, default_masks)
 
 
@@ -403,7 +414,10 @@ def test_make_masks_node_breaker(
 ):
     network = basic_node_breaker_network_powsybl_not_disconnectable
     default_masks = powsybl_masks.create_default_network_masks(network)
-    masks = powsybl_masks.make_masks(network=network, importer_parameters=cgmes_importer_parameters)
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
+    masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=cgmes_importer_parameters
+    )
     assert powsybl_masks.validate_network_masks(masks, default_masks)
 
 
@@ -642,7 +656,8 @@ def test_remove_slack_from_relevant_subs(ucte_file_with_border):
         default_masks,
         relevant_subs=np.ones(len(bus_df), dtype=bool),
     )
-    result = powsybl_masks.remove_slack_from_relevant_subs(network, network_masks)
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
+    result = powsybl_masks.remove_slack_from_relevant_subs(network_masks, network, slack_id=lf_result.reference_bus_id)
     expected = np.array(
         [True, True, True, True, True, True, True, True, False, True, True, True, True, True, True, True, True]
     )

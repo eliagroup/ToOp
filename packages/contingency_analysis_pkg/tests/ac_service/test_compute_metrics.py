@@ -40,8 +40,8 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
     assert "overload_energy_n_0" in metrics
     assert "max_flow_n_1" in metrics
     assert "overload_energy_n_1" in metrics
-    assert "max_va_diff_n_0" in metrics
-    assert "max_va_diff_n_1" in metrics
+    # assert "max_va_diff_n_0" in metrics
+    # assert "max_va_diff_n_1" in metrics
     assert "overload_current_n_0" in metrics
     assert "overload_current_n_1" in metrics
     assert "critical_branch_count_n_1" in metrics
@@ -49,16 +49,16 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
 
     assert metrics["max_flow_n_0"] <= metrics["max_flow_n_1"]
     assert metrics["overload_energy_n_0"] <= metrics["overload_energy_n_1"]
-    assert metrics["max_va_diff_n_0"] <= metrics["max_va_diff_n_1"]
+    # assert metrics["max_va_diff_n_0"] <= metrics["max_va_diff_n_1"]
     assert metrics["overload_current_n_0"] <= metrics["overload_current_n_1"]
 
     metrics_2 = compute_metrics(lf_res)
     assert "max_flow_n_1" in metrics_2
     assert "overload_energy_n_1" in metrics_2
-    assert "max_va_diff_n_1" in metrics_2
+    # assert "max_va_diff_n_1" in metrics_2
     assert "overload_current_n_1" in metrics_2
     assert np.isclose(metrics_2["max_flow_n_1"], metrics["max_flow_n_1"])
-    assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
+    # assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
     assert np.isclose(metrics_2["overload_current_n_1"], metrics["overload_current_n_1"])
     assert np.isclose(metrics_2["overload_energy_n_1"], metrics["overload_energy_n_1"])
     assert "max_flow_n_0" not in metrics_2

@@ -586,9 +586,10 @@ def test_get_topo_integration(basic_node_breaker_network_powsybl_network_graph):
         data_folder="data_folder",
         area_settings=AreaSettings(cutoff_voltage=220, control_area=["BE"], view_area=["BE"], nminus1_area=["BE"]),
     )
-
+    lf_result, *_ = pypowsybl.loadflow.run_dc(net)
     network_masks = powsybl_masks.make_masks(
         network=net,
+        slack_id=lf_result.reference_bus_id,
         importer_parameters=importer_parameters,
         blacklisted_ids=[],
     )
@@ -677,8 +678,10 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         ),
     )
 
+    lf_result, *_ = pypowsybl.loadflow.run_dc(net)
     network_masks = powsybl_masks.make_masks(
         network=net,
+        slack_id=lf_result.reference_bus_id,
         importer_parameters=importer_parameters,
         blacklisted_ids=[],
     )

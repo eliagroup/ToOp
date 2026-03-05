@@ -24,7 +24,9 @@ import logbook
 import pandas as pd
 from beartype.typing import Optional
 from numpy.random import Generator as Rng
+from sqlalchemy import exists
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import aliased
 from sqlmodel import Session, select
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.select_strategy import select_strategy
@@ -38,7 +40,9 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import (
 logger = logbook.Logger(__name__)
 
 
-def select_repertoire(optimization_id: str, optimizer_type: list[OptimizerType], session: Session) -> list[ACOptimTopology]:
+def select_repertoire(
+    optimization_id: str, optimizer_type: list[OptimizerType], without_parent_on: list[OptimizerType], session: Session
+) -> list[ACOptimTopology]:
     """Select the topologies that are suitable for mutation and crossover
 
     In this case, all topologies that satisfy the filter criteria are suitable, however a check after
@@ -52,6 +56,10 @@ def select_repertoire(optimization_id: str, optimizer_type: list[OptimizerType],
         The optimization ID to filter for
     optimizer_type : list[OptimizerType]
         The optimizer types to filter for (whitelist)
+    without_parent_on : list[OptimizerType]
+        If the topology has a parent on any of these types, the topology will be filtered out (blacklist). A parent means the
+        topology has already been evaluated on that optimizer type.
+
     session : Session
         The database session to use
 
@@ -66,6 +74,22 @@ def select_repertoire(optimization_id: str, optimizer_type: list[OptimizerType],
         ACOptimTopology.optimizer_type.in_(optimizer_type),
         ACOptimTopology.unsplit == False,  # noqa: E712
     )
+
+    # Filter out topologies whose parent has the specified optimizer types
+    # (i.e., topologies that were created from parents of those types)
+    if without_parent_on:
+        parent = aliased(ACOptimTopology)
+        mutate_query = mutate_query.where(
+            ~exists(
+                select(1)
+                .select_from(parent)
+                .where(
+                    ACOptimTopology.parent_id == parent.id,
+                    parent.optimizer_type.in_(without_parent_on),
+                    parent.optimization_id == optimization_id,
+                )
+            )
+        )
 
     # Execute the query and get the results
     suitable_topologies = session.exec(mutate_query).all()
@@ -191,7 +215,7 @@ def pull(
     pulled_strategy = []
     for topo in selected_strategy:
         # Merge case_ids from DC and unsplit AC
-        merged_ids = list(set(topo.worst_k_contingency_cases) | worst_k_cont_ids_unsplit)
+        merged_ids = sorted(set(topo.worst_k_contingency_cases) | worst_k_cont_ids_unsplit)
 
         data = topo.model_dump(
             include=[
@@ -447,34 +471,67 @@ def evolution_try(
     action_choice = rng.choice(["pull", "reconnect", "close_coupler"], p=[pull_prob, reconnect_prob, close_coupler_prob])
     if action_choice == "pull":
         old_strategy = select_strategy(
-            rng,
-            select_repertoire(optimization_id, [OptimizerType.DC, OptimizerType.AC], session),
-            default_scorer,
+            rng=rng,
+            repertoire=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+                without_parent_on=[],
+                session=session,
+            ),
+            candidates=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC],
+                without_parent_on=[OptimizerType.AC],
+                session=session,
+            ),
+            interest_scorer=default_scorer,
             filter_strategy=filter_strategy,
         )
-        new_strategy = pull(old_strategy, session=session, n_minus1_definitions=n_minus1_definition)
+        new_strategy = pull(selected_strategy=old_strategy, session=session, n_minus1_definitions=n_minus1_definition)
     elif action_choice == "reconnect":
         old_strategy = select_strategy(
-            rng,
-            select_repertoire(optimization_id, [OptimizerType.DC, OptimizerType.AC], session),
-            default_scorer,
+            rng=rng,
+            repertoire=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+                without_parent_on=[],
+                session=session,
+            ),
+            candidates=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+                without_parent_on=[OptimizerType.AC],
+                session=session,
+            ),
+            interest_scorer=default_scorer,
             filter_strategy=None,
         )
 
         new_strategy = reconnect(
-            rng,
-            old_strategy,
+            rng=rng,
+            selected_strategy=old_strategy,
         )
     elif action_choice == "close_coupler":
         old_strategy = select_strategy(
-            rng,
-            select_repertoire(optimization_id, [OptimizerType.DC, OptimizerType.AC], session),
-            default_scorer,
+            rng=rng,
+            repertoire=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+                without_parent_on=[],
+                session=session,
+            ),
+            candidates=select_repertoire(
+                optimization_id=optimization_id,
+                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+                without_parent_on=[OptimizerType.AC],
+                session=session,
+            ),
+            interest_scorer=default_scorer,
             filter_strategy=None,
         )
         new_strategy = close_coupler(
-            rng,
-            old_strategy,
+            rng=rng,
+            selected_strategy=old_strategy,
         )
     else:
         raise RuntimeError("np.random.choice returned an unexpected value")

@@ -11,6 +11,7 @@ import dataclasses
 
 import pandera as pa
 import pandera.typing as pat
+from beartype.typing import Any, Literal, Optional
 from networkx.classes import MultiGraph
 from pandera.typing import Index, Series
 from pydantic import BaseModel, Field
@@ -92,6 +93,13 @@ class PandapowerContingency(BaseModel):
     va_diff_info: list[VADiffInfo] = Field(default_factory=list)
     """A mapping from nodes at branches and their closest Circuit breaker switches."""
 
+    def is_basecase(self) -> bool:
+        """Check if the contingency is the N-0 base case.
+
+        A base case is defined as a contingency that has no elements in it.
+        """
+        return len(self.elements) == 0
+
 
 class PandapowerNMinus1Definition(BaseModel):
     """A Pandapower N-1 definition.
@@ -119,6 +127,14 @@ class PandapowerNMinus1Definition(BaseModel):
         description="A list of ids that were not unique in the grid. This is only relevant for cgmes ids.",
     )
 
+    @property
+    def base_case(self) -> Optional[PandapowerContingency]:
+        """Get the base case contingency, which is the contingency with no elements in it."""
+        for contingency in self.contingencies:
+            if contingency.is_basecase():
+                return contingency
+        return None
+
     def __getitem__(self, key: str | int | slice) -> "PandapowerNMinus1Definition":
         """Get a subset of the nminus1definition based on the contingencies.
 
@@ -145,3 +161,23 @@ class PandapowerNMinus1Definition(BaseModel):
         )
         # pylint: disable=unsubscriptable-object
         return PandapowerNMinus1Definition.model_validate(updated_definition)
+
+
+class ParallelConfig(BaseModel):
+    """Parallel execution settings for contingency analysis."""
+
+    n_processes: int = 1
+    batch_size: Optional[int] = None
+
+
+class ContingencyAnalysisConfig(BaseModel):
+    """Configuration for pandapower N-1 contingency analysis."""
+
+    method: Literal["ac", "dc"] = "ac"
+    min_island_size: int = 11
+
+    runpp_kwargs: dict[str, Any] | None = None
+    polars: bool = False
+    apply_outage_grouping: bool = False
+
+    parallel: ParallelConfig = Field(default_factory=ParallelConfig)

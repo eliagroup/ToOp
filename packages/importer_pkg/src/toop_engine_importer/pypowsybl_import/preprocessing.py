@@ -321,7 +321,7 @@ def convert_file(
     # Iterate over Loadflow parameters and voltage initialization methods to find a converging loadflow.
     # This is necessary because some grid files do not converge with the
     # default loadflow parameters and voltage initialization method.
-    lf_params, main_result = find_convering_loadflow_params(importer_parameters, network)
+    lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
 
     statistics = PreProcessingStatistics(
         import_result=ImportResult(data_folder=importer_parameters.data_folder, grid_type=importer_parameters.data_type),
@@ -371,7 +371,9 @@ def convert_file(
 
     # get N-1 masks
     status_update_fn("get_masks", "Creating Network Masks")
-    network_masks = get_network_masks(network, importer_parameters, statistics, filesystem=unprocessed_gridfile_fs)
+    network_masks = get_network_masks(
+        network, main_result.reference_bus_id, importer_parameters, statistics, filesystem=unprocessed_gridfile_fs
+    )
     save_masks_to_filesystem(
         data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
     )
@@ -418,7 +420,7 @@ def convert_file(
     return statistics.import_result
 
 
-def find_convering_loadflow_params(
+def find_converging_loadflow_params(
     importer_parameters: BaseImporterParameters, network: Network
 ) -> tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]:
     """Iterate over Loadflow parameters and voltage initialization methods to find a converging loadflow.
@@ -442,6 +444,7 @@ def find_convering_loadflow_params(
     voltage_methods = [VoltageInitMode.PREVIOUS_VALUES, VoltageInitMode.DC_VALUES, VoltageInitMode.UNIFORM_VALUES]
     for lf_params_base, voltage_method in product(lf_params_list, voltage_methods):
         lf_params = deepcopy(lf_params_base)
+        lf_params.provider_parameters = deepcopy(lf_params_base.provider_parameters)
         lf_params.voltage_init_mode = voltage_method
         try:
             main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
@@ -467,6 +470,7 @@ def find_convering_loadflow_params(
 
 def get_network_masks(
     network: Network,
+    slack_id: str,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
     statistics: PreProcessingStatistics,
     filesystem: AbstractFileSystem,
@@ -477,6 +481,8 @@ def get_network_masks(
     ----------
     network: Network
         The network to create the asset topology for
+    slack_id: str
+        The id of the slack bus
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         import parameters that include the datafolder
     statistics: PreProcessingStatistics
@@ -491,6 +497,7 @@ def get_network_masks(
     """
     network_masks = make_masks(
         network=network,
+        slack_id=slack_id,
         importer_parameters=importer_parameters,
         blacklisted_ids=statistics.id_lists["black_list"],
         filesystem=filesystem,

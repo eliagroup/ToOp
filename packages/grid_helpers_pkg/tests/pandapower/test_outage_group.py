@@ -316,8 +316,8 @@ def test_add_elements_bipartite_line():
     g = nx.Graph()
     add_elements_bipartite(net, g, tables=[("line", "line")])
 
-    bus_nodes = {f"b_{i}" for i in net.bus.index.to_list()}
-    assert bus_nodes == {"b_0", "b_1"}
+    bus_nodes = {f"b&&{i}" for i in net.bus.index.to_list()}
+    assert bus_nodes == {"b&&0", "b&&1"}
     assert len(_element_nodes(g, bus_nodes)) == len(net.line)
 
 
@@ -331,7 +331,7 @@ def test_add_elements_bipartite_impedance():
     g = nx.Graph()
     add_elements_bipartite(net, g, tables=[("impedance", "impedance")])
 
-    bus_nodes = {f"b_{i}" for i in net.bus.index.to_list()}
+    bus_nodes = {f"b&&{i}" for i in net.bus.index.to_list()}
     assert len(_element_nodes(g, bus_nodes)) == len(net.impedance)
 
 
@@ -356,7 +356,7 @@ def test_add_elements_bipartite_trafo():
     g = nx.Graph()
     add_elements_bipartite(net, g, tables=[("trafo", "trafo")])
 
-    bus_nodes = {f"b_{i}" for i in net.bus.index.to_list()}
+    bus_nodes = {f"b&&{i}" for i in net.bus.index.to_list()}
     assert len(_element_nodes(g, bus_nodes)) == len(net.trafo)
 
 
@@ -390,7 +390,7 @@ def test_add_elements_bipartite_trafo3w():
     g = nx.Graph()
     add_elements_bipartite(net, g, tables=[("trafo3w", "trafo3w")])
 
-    bus_nodes = {f"b_{i}" for i in net.bus.index.to_list()}
+    bus_nodes = {f"b&&{i}" for i in net.bus.index.to_list()}
     assert len(_element_nodes(g, bus_nodes)) == len(net.trafo3w)
 
 
@@ -402,7 +402,7 @@ def test_add_elements_bipartite_single_bus_element_bus_column():
     g = nx.Graph()
     add_elements_bipartite(net, g, tables=[("load", "load")])
 
-    bus_nodes = {f"b_{i}" for i in net.bus.index.to_list()}
+    bus_nodes = {f"b&&{i}" for i in net.bus.index.to_list()}
     assert len(_element_nodes(g, bus_nodes)) == len(net.load)
 
 
@@ -505,7 +505,7 @@ def test_add_elements_bipartite_all_types_in_one_call():
         ],
     )
 
-    bus_nodes = {f"b_{i}" for i in net.bus.index.to_list()}
+    bus_nodes = {f"b&&{i}" for i in net.bus.index.to_list()}
     assert bus_nodes.issubset(set(g.nodes))
 
     # Total element nodes should equal total rows across included tables
@@ -520,13 +520,13 @@ def test_adds_edge_for_each_pair():
     add_traversable_bus_bus_edges(g, pairs)
 
     # Nodes should exist
-    assert "b_1" in g.nodes
-    assert "b_2" in g.nodes
-    assert "b_3" in g.nodes
+    assert "b&&1" in g.nodes
+    assert "b&&2" in g.nodes
+    assert "b&&3" in g.nodes
 
     # Edges should exist (undirected)
-    assert g.has_edge("b_1", "b_2")
-    assert g.has_edge("b_2", "b_3")
+    assert g.has_edge("b&&1", "b&&2")
+    assert g.has_edge("b&&2", "b&&3")
     assert g.number_of_edges() == 2
 
 
@@ -537,7 +537,7 @@ def test_duplicate_pairs_do_not_create_multiple_edges():
     add_traversable_bus_bus_edges(g, pairs)
 
     # NetworkX Graph is simple: only one undirected edge between 1 and 2
-    assert g.has_edge("b_1", "b_2")
+    assert g.has_edge("b&&1", "b&&2")
     assert g.number_of_edges() == 1
 
 
@@ -547,8 +547,8 @@ def test_self_loop_pair_creates_self_loop_edge():
     pairs = [(5, 5)]
     add_traversable_bus_bus_edges(g, pairs)
 
-    assert "b_5" in g.nodes
-    assert g.has_edge("b_5", "b_5")
+    assert "b&&5" in g.nodes
+    assert g.has_edge("b&&5", "b&&5")
     assert g.number_of_edges() == 1
 
 

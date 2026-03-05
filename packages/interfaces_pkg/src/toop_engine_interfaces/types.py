@@ -42,6 +42,7 @@ OperationMetric: TypeAlias = Literal[
     "switching_distance",
     "split_subs",
     "disconnected_branches",
+    "pst_switching_distance",
 ]
 
 OtherMetric: TypeAlias = Literal[

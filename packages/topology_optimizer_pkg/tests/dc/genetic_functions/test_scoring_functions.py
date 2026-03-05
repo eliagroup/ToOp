@@ -10,11 +10,12 @@ import json
 import jax
 import numpy as np
 import pytest
+from beartype.typing import Optional
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.inputs import load_static_information
-from toop_engine_topology_optimizer.ac.scoring_functions import get_threshold_n_minus1_overload
+from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
     crossover,
@@ -30,6 +31,42 @@ from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import Dis
 from toop_engine_topology_optimizer.interfaces.messages.results import Topology
 
 from packages.topology_optimizer_pkg.tests.dc.test_main import assert_topology
+
+
+def get_threshold_n_minus1_overload(
+    strategy: list[ACOptimTopology],
+) -> tuple[Optional[list[float]], Optional[list[list[int]]]]:
+    """Extract the 'top_k_overloads_n_1' thresholds and corresponding case indices from a list of ACOptimTopology strategies.
+
+    overload_threshold is defined as the maximum allowed overload energy for the worst k AC N-1 contingency analysis
+    of the split topologies. This threshold is computed using the worst k AC contingencies of the unsplit grid and the
+    worst k DC contingencies of the split grid. Refer to the "pull" method in evolution_functions.py for more details.
+
+    Parameters
+    ----------
+    strategy : list of ACOptimTopology
+        A list of ACOptimTopology objects, each containing a 'metrics' dictionary with overload thresholds and case indices.
+
+    Returns
+    -------
+    tuple of (Optional[list of float], Optional[list of list of int])
+        A tuple containing:
+        - A list of overload thresholds for each topology, or None if any required metric is missing.
+        - A list of lists of case indices for each topology, or None if any required metric is missing.
+
+    """
+    overload_threshold_all_t = []
+    case_indices_all_t = []
+    for topo in strategy:
+        threshold_overload = topo.metrics.get("top_k_overloads_n_1", None)
+        threshold_case_indices = topo.worst_k_contingency_cases
+        if threshold_overload is None or len(threshold_case_indices) == 0:
+            return None, None
+
+        overload_threshold_all_t.append(threshold_overload)
+        case_indices_all_t.append(threshold_case_indices)
+
+    return overload_threshold_all_t, case_indices_all_t
 
 
 def test_translate_topology(static_information_file: str) -> None:
@@ -295,3 +332,271 @@ def test_get_threshold_n_minus1_overload_empty_strategy():
     thresholds, indices = get_threshold_n_minus1_overload(strategy)
     assert thresholds == []
     assert indices == []
+
+
+def test_pst_switching_distance_metric_integration(static_information_file_complex: str) -> None:
+    """Test that pst_switching_distance metric works in the scoring function."""
+    static_information = load_static_information(static_information_file_complex)
+
+    # Skip test if there are no controllable PSTs in this grid
+    if (
+        static_information.dynamic_information.nodal_injection_information is None
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
+    ):
+        pytest.skip("No controllable PSTs in this grid")
+
+    action_set = static_information.dynamic_information.action_set
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
+
+    max_num_splits = 2
+    n_disconnections = 0
+    batch_size = 8
+    n_timesteps = static_information.dynamic_information.n_timesteps
+
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
+    )
+
+    # Initialize with PST optimization enabled (starting taps)
+    pst_n_taps = static_information.dynamic_information.nodal_injection_information.pst_n_taps
+    starting_taps = static_information.dynamic_information.nodal_injection_information.starting_tap_idx
+
+    # Create some topologies
+    topologies = empty_repertoire(
+        batch_size,
+        max_num_splits,
+        n_disconnections,
+        n_timesteps,
+        starting_taps,
+    )
+
+    key = jax.random.PRNGKey(42)
+
+    topologies, key = mutate(
+        topologies=topologies,
+        random_key=key,
+        substation_split_prob=0.1,
+        substation_unsplit_prob=0.00001,
+        action_set=action_set,
+        n_disconnectable_branches=n_disconnectable_branches,
+        n_subs_mutated_lambda=5.0,
+        disconnect_prob=0.0,
+        reconnect_prob=0.0,
+        pst_mutation_sigma=0,  # No PST mutation yet
+        pst_n_taps=pst_n_taps,
+        mutation_repetition=1,
+    )
+
+    # Test 1: With pst_switching_distance in observed metrics
+    (_, _, metrics, _, _, _) = scoring_function(
+        topologies,
+        key,
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
+        target_metrics=(("overload_energy_n_1", 1.0),),
+        observed_metrics=(
+            "overload_energy_n_1",
+            "switching_distance",
+            "pst_switching_distance",
+        ),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    assert "pst_switching_distance" in metrics, "pst_switching_distance should be in metrics"
+    assert metrics["pst_switching_distance"].shape == (batch_size,), "Metric should have batch dimension"
+
+    # Since we haven't mutated PSTs (pst_mutation_sigma=0), all distances should be 0
+    assert jnp.all(metrics["pst_switching_distance"] == 0.0), "Distances should be 0 when PST taps haven't changed"
+
+    # Test 2: With PST mutation, distances should be non-zero
+    topologies_mutated, key = mutate(
+        topologies=topologies,
+        random_key=key,
+        substation_split_prob=0.0,  # No topology changes
+        substation_unsplit_prob=0.0,
+        action_set=action_set,
+        n_disconnectable_branches=n_disconnectable_branches,
+        n_subs_mutated_lambda=0.0,
+        disconnect_prob=0.0,
+        reconnect_prob=0.0,
+        pst_mutation_sigma=2.0,  # Enable PST mutation
+        pst_n_taps=pst_n_taps,
+        mutation_repetition=1,
+    )
+
+    (_, _, metrics_mutated, _, _, _) = scoring_function(
+        topologies_mutated,
+        key,
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
+        target_metrics=(("overload_energy_n_1", 1.0),),
+        observed_metrics=(
+            "overload_energy_n_1",
+            "pst_switching_distance",
+            "switching_distance",
+        ),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    # With PST mutation, at least some topologies should have non-zero distances
+    # (though it's possible all mutations result in the same tap due to clipping)
+    assert "pst_switching_distance" in metrics_mutated, "Metric should be computed"
+    assert jnp.all(jnp.isfinite(metrics_mutated["pst_switching_distance"])), "All distances should be finite"
+    assert jnp.all(metrics_mutated["pst_switching_distance"] >= 0.0), "distances should be non-negative"
+
+
+def test_pst_switching_distance_in_target_metrics(static_information_file_complex: str) -> None:
+    """Test that pst_switching_distance metric used as a target metric."""
+    static_information = load_static_information(static_information_file_complex)
+
+    # Skip test if there are no controllable PSTs in this grid
+    if (
+        static_information.dynamic_information.nodal_injection_information is None
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
+    ):
+        pytest.skip("No controllable PSTs in this grid")
+
+    action_set = static_information.dynamic_information.action_set
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
+
+    max_num_splits = 2
+    n_disconnections = 0
+    batch_size = 8
+    n_timesteps = static_information.dynamic_information.n_timesteps
+
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
+    )
+
+    # Initialize with PST optimization enabled (starting taps)
+    pst_n_taps = static_information.dynamic_information.nodal_injection_information.pst_n_taps
+    starting_taps = static_information.dynamic_information.nodal_injection_information.starting_tap_idx
+
+    # Create some topologies
+    topologies = empty_repertoire(
+        batch_size,
+        max_num_splits,
+        n_disconnections,
+        n_timesteps,
+        starting_taps,
+    )
+
+    key = jax.random.PRNGKey(42)
+
+    topologies, key = mutate(
+        topologies=topologies,
+        random_key=key,
+        substation_split_prob=0.1,
+        substation_unsplit_prob=0.00001,
+        action_set=action_set,
+        n_disconnectable_branches=n_disconnectable_branches,
+        n_subs_mutated_lambda=5.0,
+        disconnect_prob=0.0,
+        reconnect_prob=0.0,
+        pst_mutation_sigma=2.0,  # Enable PST mutation
+        pst_n_taps=pst_n_taps,
+        mutation_repetition=1,
+    )
+
+    # Test 1: With small cost for pst_switching_distance in target metrics
+    (fitness_small_weight, _, metrics, _, _, _) = scoring_function(
+        topologies,
+        key,
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance", 0.1)),
+        observed_metrics=(
+            "overload_energy_n_1",
+            "switching_distance",
+            "pst_switching_distance",
+        ),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    assert jnp.less_equal(fitness_small_weight, 0.0).all(), "Fitness should be non-positive"
+    assert jnp.greater_equal(metrics["pst_switching_distance"], 0.0).any(), (
+        "Metric should be greater 0 for some topologies due to PST mutation"
+    )
+
+    (fitness, _, metrics, _, _, _) = scoring_function(
+        topologies,
+        key,
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance", 10.0)),
+        observed_metrics=(
+            "overload_energy_n_1",
+            "pst_switching_distance",
+            "switching_distance",
+        ),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    # The fitness should be worse as the pst_switching_distance weight is higher, even if overload_energy_n_1 is the same
+    assert jnp.less_equal(fitness, fitness_small_weight).all(), (
+        "Fitness should be worse with higher weight on pst_switching_distance"
+    )
+
+
+def test_pst_switching_distance_without_pst_optimization(static_information_file: str) -> None:
+    """Test that pst_switching_distance returns 0 when PST optimization is disabled."""
+    static_information = load_static_information(static_information_file)
+
+    action_set = static_information.dynamic_information.action_set
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
+
+    max_num_splits = 2
+    batch_size = 4
+    n_timesteps = static_information.dynamic_information.n_timesteps
+
+    # Disable PST optimization by setting nodal_injection_information to None
+    dynamic_info_no_pst = replace(
+        static_information.dynamic_information,
+        nodal_injection_information=None,
+    )
+
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
+        dynamic_information=dynamic_info_no_pst,
+    )
+
+    topologies = empty_repertoire(batch_size, max_num_splits, 0, n_timesteps)
+
+    key = jax.random.PRNGKey(100)
+    topologies, key = mutate(
+        topologies=topologies,
+        random_key=key,
+        substation_split_prob=0.1,
+        substation_unsplit_prob=0.0,
+        action_set=action_set,
+        n_disconnectable_branches=n_disconnectable_branches,
+        n_subs_mutated_lambda=3.0,
+        disconnect_prob=0.0,
+        reconnect_prob=0.0,
+        pst_mutation_sigma=0,  # PST mutation irrelevant when PST opt disabled
+        pst_n_taps=jnp.array([], dtype=int),
+        mutation_repetition=1,
+    )
+
+    (_, _, metrics, _, _, _) = scoring_function(
+        topologies,
+        key,
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
+        target_metrics=(("overload_energy_n_1", 1.0),),
+        observed_metrics=(
+            "overload_energy_n_1",
+            "pst_switching_distance",
+            "switching_distance",
+        ),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    assert "pst_switching_distance" in metrics, "Metric should be computed even when PST opt is disabled"
+    # All distances should be 0 when PST optimization is disabled
+    assert jnp.all(metrics["pst_switching_distance"] == 0.0), (
+        "PST switching distance should be 0 when PST optimization is disabled"
+    )

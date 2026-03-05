@@ -7,6 +7,7 @@
 
 # import os
 import os
+import shutil
 import time
 import uuid
 from copy import deepcopy
@@ -293,7 +294,7 @@ def cgmes_importer_parameters(tmp_path_factory: pytest.TempPathFactory, test_pyp
 
 
 @pytest.fixture(scope="session")
-def imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, ucte_file) -> Path:
+def _imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, ucte_file) -> Path:
     tmp_path = tmp_path_factory.mktemp("imported_ucte_file_data_folder")
     importer_parameters = UcteImporterParameters(
         grid_model_file=ucte_file,
@@ -319,9 +320,17 @@ def imported_ucte_file_data_folder(tmp_path_factory: pytest.TempPathFactory, uct
     return tmp_path
 
 
+@pytest.fixture(scope="function")
+def imported_ucte_file_data_folder(_imported_ucte_file_data_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_imported_ucte_file_data_folder, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
 @pytest.fixture(scope="session")
 def ucte_asset_topology(ucte_file: Path) -> Topology:
     network = pypowsybl.network.load(ucte_file)
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
+
     importer_parameters = UcteImporterParameters(
         grid_model_file=ucte_file,
         data_folder="files_path",
@@ -333,7 +342,9 @@ def ucte_asset_topology(ucte_file: Path) -> Topology:
         ),
     )
 
-    network_masks = powsybl_masks.make_masks(network=network, importer_parameters=importer_parameters)
+    network_masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=importer_parameters
+    )
     topology_model = get_topology(
         network,
         relevant_stations=network_masks.relevant_subs,

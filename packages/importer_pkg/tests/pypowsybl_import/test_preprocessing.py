@@ -108,8 +108,11 @@ def test_fill_statistics_for_network_masks(ucte_file, ucte_importer_parameters):
     assert statistics.import_parameter is None
     for key, value in statistics.id_lists.items():
         assert value == []
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
 
-    masks = powsybl_masks.make_masks(network=network, importer_parameters=ucte_importer_parameters)
+    masks = powsybl_masks.make_masks(
+        network=network, slack_id=lf_result.reference_bus_id, importer_parameters=ucte_importer_parameters
+    )
     preprocessing.fill_statistics_for_network_masks(network=network, statistics=statistics, network_masks=masks)
     for key, value in statistics.id_lists.items():
         assert len(value) > 0

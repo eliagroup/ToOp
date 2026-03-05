@@ -14,6 +14,7 @@ from pypowsybl.network import Network as PowsyblNetwork
 from toop_engine_contingency_analysis.pandapower import (
     run_contingency_analysis_pandapower,
 )
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import ContingencyAnalysisConfig, ParallelConfig
 from toop_engine_contingency_analysis.pypowsybl import (
     run_contingency_analysis_powsybl,
 )
@@ -65,16 +66,21 @@ def get_ac_loadflow_results(
         If the network is not a PandapowerNetwork or PowsyblNetwork
     """
     if isinstance(net, PandapowerNetwork):
+        cfg = ContingencyAnalysisConfig(
+            runpp_kwargs=lf_params if isinstance(lf_params, dict) else None,
+            method="ac",
+            polars=True,
+            parallel=ParallelConfig(
+                n_processes=n_processes,
+                batch_size=batch_size,
+            ),
+        )
         lf_results = run_contingency_analysis_pandapower(
             net,
             n_minus_1_definition,
             job_id,
             timestep,
-            n_processes=n_processes,
-            batch_size=batch_size,
-            method="ac",
-            runpp_kwargs=lf_params if isinstance(lf_params, dict) else None,
-            polars=True,
+            cfg=cfg,
         )
     elif isinstance(net, PowsyblNetwork):
         lf_results = run_contingency_analysis_powsybl(

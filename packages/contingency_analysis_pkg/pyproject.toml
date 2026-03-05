@@ -92,11 +92,5 @@ dev = [
 toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }
 toop_engine_grid_helpers = { path = "../grid_helpers_pkg", editable = true }
 
-[[tool.uv.index]]
-name = "MCCS"
-url = "***REMOVED***"
-publish-url = "***REMOVED***"
-explicit = true
-
 [tool.uv-secure.ignore_packages]
 ray = [] # Ignore issues with all versions of the ray package

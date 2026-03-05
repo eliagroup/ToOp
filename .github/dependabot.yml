@@ -4,6 +4,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      all:
+        patterns:
+          - "*"
     cooldown:
       default-days: 10
   - package-ecosystem: "uv"
@@ -17,21 +21,42 @@ updates:
       - "/packages/topology_optimizer_pkg"
     schedule:
       interval: "weekly"
+    groups:
+      production:
+        dependency-type: "production"
+        patterns:
+          - "*"
+      development:
+        dependency-type: "development"
+        patterns:
+          - "*"
     cooldown:
       default-days: 10
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      all:
+        patterns:
+          - "*"
     cooldown:
       default-days: 10
   - package-ecosystem: "docker-compose"
     directory: "/dev-deployment"
     schedule:
       interval: "weekly"
+    groups:
+      all:
+        patterns:
+          - "*"
     cooldown:
       default-days: 10
   - package-ecosystem: "pre-commit" # Cooldown not supported
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      all:
+        patterns:
+          - "*"

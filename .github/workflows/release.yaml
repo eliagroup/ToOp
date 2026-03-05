@@ -7,7 +7,19 @@
 
 name: release
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: "Version bump type"
+        required: false
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+        default: "auto"
 
 permissions: {}
 
@@ -23,7 +35,7 @@ jobs:
         with:
           fetch-depth: 0 # fetch full history
           fetch-tags: true # ensure tags are fetched
-          ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
+          ssh-key: ${{ secrets.RELEASE_KEY }}
           persist-credentials: true # keeps GITHUB_TOKEN set up for pushing back to remote
 
       - name: Setup Python and install dependencies
@@ -46,8 +58,13 @@ jobs:
           if [ "$isDevRelease" = "true" ]; then
             newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes --devrelease $GITHUB_RUN_ID)
           else
-            newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes)
-          fi 
+            bumpType="${{ inputs.bump_type }}"
+            if [ "$bumpType" = "auto" ]; then
+              newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes)
+            else
+              newVersion=$(uv run --no-sync cz --no-raise 21 bump --get-next --yes --increment "$bumpType")
+            fi
+          fi
 
           if [[ -z "$newVersion" ]]; then
             echo "No new version to release. Exiting."

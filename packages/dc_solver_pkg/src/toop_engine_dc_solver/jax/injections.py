@@ -18,14 +18,14 @@ import jax
 import numpy as np
 from beartype.typing import Literal, Optional
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
-from jaxtyping import Array, Bool, Float, Int
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import ActionSet, InjectionComputations, TopoVectBranchComputations, int_max
 from toop_engine_dc_solver.jax.utils import action_index_to_binary_form
 
 
 def get_injection_per_bus(
     injection_assignment: Bool[Array, " max_inj_per_sub"],
-    sub_id: Int[Array, ""],
+    sub_id: Int[ArrayLike, ""],
     relevant_injections: Float[Array, " n_timesteps n_relevant_subs max_inj_per_sub"],
 ) -> tuple[Float[Array, " n_timesteps"], Float[Array, " n_timesteps"]]:
     """Get the injection on bus A and B for a single substation.
@@ -55,10 +55,10 @@ def get_injection_per_bus(
 
 def get_single_injection_vector(
     injection_assignment: Bool[Array, " max_inj_per_sub"],
-    sub_id: Int[Array, " "],
+    sub_id: Int[ArrayLike, ""],
     relevant_injections: Float[Array, " n_timesteps n_relevant_subs max_inj_per_sub"],
     nodal_injections: Float[Array, " n_timesteps n_bus"],
-    n_stat: Int[Array, " "],
+    n_stat: Int[ArrayLike, ""],
     rel_stat_map: Int[Array, " n_relevant_subs"],
 ) -> Float[Array, " n_timesteps n_bus"]:
     """Update the nodal injection vector with a single assignment.
@@ -106,7 +106,7 @@ def get_injection_vector(
     sub_ids: Int[Array, " n_splits"],
     relevant_injections: Float[Array, " n_timesteps n_relevant_subs max_inj_per_sub"],
     nodal_injections: Float[Array, " n_timesteps n_bus"],
-    n_stat: Int[Array, " "],
+    n_stat: Int[ArrayLike, " "],
     rel_stat_map: Int[Array, " n_relevant_subs"],
 ) -> Float[Array, " n_timesteps n_bus"]:
     """Apply a nodal injection combination to a nodal injection vector.
@@ -152,13 +152,13 @@ def get_injection_vector(
 
 def get_reassignment_deltap(
     injection_assignment: Bool[Array, " max_inj_per_sub"],
-    sub_id: Int[Array, " "],
+    sub_id: Int[ArrayLike, " "],
     relevant_injections: Float[Array, " n_timesteps n_relevant_subs max_inj_per_sub"],
-    n_stat: Int[Array, " "],
+    n_stat: Int[ArrayLike, " "],
     rel_stat_map: Int[Array, " n_relevant_subs"],
 ) -> tuple[
-    Int[Array, " "],
-    Int[Array, " "],
+    Int[ArrayLike, " "],
+    Int[ArrayLike, " "],
     Float[Array, " n_timesteps "],
     Float[Array, " n_timesteps "],
 ]:
@@ -182,9 +182,9 @@ def get_reassignment_deltap(
 
     Returns
     -------
-    busa_node: Int[Array, " "]
+    busa_node: Int[ArrayLike, " "]
         The node index for bus A
-    busb_node: Int[Array, " "]
+    busb_node: Int[ArrayLike, " "]
         The node index for bus B
     busa_delta: Float[Array, " n_timesteps "]
         The delta p for bus A
@@ -215,7 +215,7 @@ def apply_reassignments_deltap(
     split_n0_flow: Float[Array, " n_timesteps n_branch"],
     ptdf: Float[Array, " n_branch n_bus"],
     relevant_injections: Float[Array, " n_timesteps n_relevant_subs max_inj_per_sub"],
-    n_stat: Int[Array, " "],
+    n_stat: Int[ArrayLike, " "],
     rel_stat_map: Int[Array, " n_relevant_subs"],
 ) -> Float[Array, " n_timesteps n_branch"]:
     """Apply the reassignments using the PTDF deltap method
@@ -335,7 +335,7 @@ def get_single_outaged_injection_node_after_reassignment(
     nonrel_injection_outage_node: Int[Array, " n_nonrel_inj_failures"],
     rel_stat_map: Int[Array, " n_relevant_subs"],
     n_stat: Int[Array, " "],
-) -> Int[Array, " n_rel_inj_failures"]:
+) -> Int[Array, " n_inj_failures"]:
     """Get the assigned node of all injection outages post-split.
 
     Takes into account the injection assignment and potentially moves injection outages to bus B
@@ -435,7 +435,7 @@ def convert_relevant_sub_injection_outages(
     relevant_injection_outage_sub: Int[Array, " n_rel_inj_failures"],
     relevant_injection_outage_idx: Int[Array, " n_rel_inj_failures"],
     rel_stat_map: Int[Array, " n_relevant_subs"],
-    n_stat: Int[Array, " "],
+    n_stat: Int[ArrayLike, " "],
 ) -> Int[Array, " n_rel_inj_failures"]:
     """Convert the relevant sub injection outage indices.
 
@@ -634,19 +634,19 @@ def default_injection(
 
 
 def random_injection_for_topology(
-    rng_key: jax.random.PRNGKey,
+    rng_key: PRNGKeyArray,
     branch_topology: Bool[Array, " batch_size n_splits max_branch_per_sub"],
     sub_ids: Int[Array, " batch_size n_splits"],
     n_inj_combis: Int[Array, " n_sub_relevant"],
     n_inj_per_topology: int = 1,
-) -> tuple[Int[Array, " batch_size*n_inj_per_topology n_splits"], Int[Array, " batch_size*n_inj_per_topology"]]:
+) -> tuple[Int[Array, " n_samples n_splits"], Int[Array, " n_samples"]]:
     """Get a batch of random injections as an index into n_inj_combis
 
     Makes sure to only create non-zero injections where the branch topology has a split
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : PRNGKeyArray
         The random key to use for sampling
     branch_topology : Bool[Array, " batch_size n_splits max_branch_per_sub"]
         The branch topology to sample injections for
@@ -659,9 +659,9 @@ def random_injection_for_topology(
 
     Returns
     -------
-    Int[Array, " batch_size*n_inj_per_topology n_splits"]
+    Int[Array, " n_samples n_splits"]
         The sampled injections as an integer index into all possible actions at that sub (n_inj_combis)
-    Int[Array, " batch_size*n_inj_per_topology"]
+    Int[Array, " n_samples"]
         The corresponding topology index for each injection
     """
     batch_size = branch_topology.shape[0]
@@ -683,7 +683,7 @@ def random_injection_for_topology(
     # Subselect only the injections where the branch has a split
     def _take_sampled_injection(
         si: Int[Array, " n_inj_per_topology n_rel_subs"], sub_ids: Int[Array, " n_splits"]
-    ) -> Int[Array, " n_inj_per_topology n_splits"]:
+    ) -> Int[Array, " n_splits n_inj_per_topology"]:
         return jax.vmap(lambda sub_id: si.at[:, sub_id].get(mode="fill", fill_value=False))(sub_ids)
 
     sampled_injections = jax.vmap(_take_sampled_injection)(sampled_injections, sub_ids)
@@ -695,7 +695,7 @@ def random_injection_for_topology(
 
 
 def random_injection(
-    rng_key: jax.random.PRNGKey,
+    rng_key: PRNGKeyArray,
     n_generators_per_sub: Int[Array, " n_subs_relevant"],
     n_inj_per_topology: int,
     for_topology: TopoVectBranchComputations,
@@ -704,7 +704,7 @@ def random_injection(
 
     Parameters
     ----------
-    rng_key : jax.random.PRNGKey
+    rng_key : PRNGKeyArray
         The random key to use for sampling
     n_generators_per_sub : Int[Array, " n_subs_relevant"]
         The number of generators per substation
@@ -742,9 +742,9 @@ def random_injection(
 
 
 def convert_inj_candidates(
-    inj_topologies: Bool[Array, " batch_size n_splits max_inj_per_sub"],
-    sub_ids: Int[Array, " batch_size n_splits"],
-    n_generators_per_sub: Int[Array, " n_subs_relevant"],
+    inj_topologies: Bool[ArrayLike, " batch_size n_splits max_inj_per_sub"],
+    sub_ids: Int[ArrayLike, " batch_size n_splits"],
+    n_generators_per_sub: Int[ArrayLike, " n_subs_relevant"],
 ) -> Bool[np.ndarray, " batch_size total_inj"]:
     """Convert the injection candidates from the padded jax topo vect to a dense numpy topo vect
 
@@ -812,10 +812,10 @@ def convert_action_index_to_numpy(
 
 def convert_inj_topo_vect(
     numpy_topo_vect: Bool[np.ndarray, " batch_size total_inj"],
-    sub_ids: Int[Array, " batch_size n_splits"],
-    generators_per_sub: Int[Array, " n_subs_relevant"],
+    sub_ids: Int[ArrayLike, " batch_size n_splits"],
+    generators_per_sub: Int[ArrayLike, " n_subs_relevant"],
     missing_split_behavior: Literal["zero", "raise"] = "zero",
-) -> Bool[Array, " batch_size n_splits max_inj_per_sub"]:
+) -> Bool[np.ndarray, " batch_size n_splits max_inj_per_sub"]:
     """Convert the dense numpy topo vect to a padded jax topo vect
 
     The dense numpy topo vect holds a boolean for every generator in any sub, ordered as in n_generators_per_sub,

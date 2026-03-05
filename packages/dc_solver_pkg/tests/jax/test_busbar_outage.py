@@ -894,14 +894,14 @@ def test_filter_already_outaged_branches_single_outage():
     assert jnp.array_equal(filtered_branches, expected_result), "All branches should be set to int_max()."
 
     # Test case 4: Empty branch_outages
-    branch_outages = jnp.array([])
+    branch_outages = jnp.array([], dtype=int)
     disconnections = jnp.array([1, 2])
     filtered_branches = filter_already_outaged_branches_single_outage(branch_outages, disconnections)
     assert filtered_branches.size == 0, "Filtered branches should be empty when branch_outages is empty."
 
     # Test case 5: Empty disconnections
     branch_outages = jnp.array([1, 2, 3, 4])
-    disconnections = jnp.array([])
+    disconnections = jnp.array([], dtype=int)
     filtered_branches = filter_already_outaged_branches_single_outage(branch_outages, disconnections)
     assert jnp.array_equal(filtered_branches, branch_outages), (
         "Branches should remain unchanged when disconnections are empty."

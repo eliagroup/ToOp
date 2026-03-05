@@ -17,12 +17,12 @@ def test_merge_branch_action_sets():
         n_br_combis=2, n_max_bb_to_outage_per_sub=3, max_branches_per_sub=4, n_timesteps=1, seed=0
     )
     a = ActionSet(
-        branch_actions=jnp.array([[1, 0], [0, 1]]),
-        substation_correspondence=jnp.array([0, 1]),
-        n_actions_per_sub=jnp.array([1, 1]),
-        unsplit_action_mask=jnp.array([False, False]),
-        reassignment_distance=jnp.array([3, 4]),
-        inj_actions=jnp.array([[1, 0], [0, 1]]),
+        branch_actions=jnp.array([[1, 0], [0, 1]], dtype=bool),
+        substation_correspondence=jnp.array([0, 1], dtype=int),
+        n_actions_per_sub=jnp.array([1, 1], dtype=int),
+        unsplit_action_mask=jnp.array([False, False], dtype=bool),
+        reassignment_distance=jnp.array([3, 4], dtype=int),
+        inj_actions=jnp.array([[1, 0], [0, 1]], dtype=bool),
         rel_bb_outage_data=dummy_a_outage_data,
     )
 
@@ -30,12 +30,12 @@ def test_merge_branch_action_sets():
         n_br_combis=2, n_max_bb_to_outage_per_sub=3, max_branches_per_sub=4, n_timesteps=1, seed=1
     )
     b = ActionSet(
-        branch_actions=jnp.array([[1, 1], [0, 0]]),
-        substation_correspondence=jnp.array([1, 0]),
-        n_actions_per_sub=jnp.array([1, 1]),
-        unsplit_action_mask=jnp.array([False, True]),
-        reassignment_distance=jnp.array([5, 6]),
-        inj_actions=jnp.array([[1, 1], [0, 0]]),
+        branch_actions=jnp.array([[1, 1], [0, 0]], dtype=bool),
+        substation_correspondence=jnp.array([1, 0], dtype=int),
+        n_actions_per_sub=jnp.array([1, 1], dtype=int),
+        unsplit_action_mask=jnp.array([False, True], dtype=bool),
+        reassignment_distance=jnp.array([5, 6], dtype=int),
+        inj_actions=jnp.array([[1, 1], [0, 0]], dtype=bool),
         rel_bb_outage_data=dummy_b_outage_data,
     )
 
@@ -76,12 +76,12 @@ def test_merge_branch_action_sets():
 def test_merge_topologies():
     # Create a BranchActionSet instance
     action_set = ActionSet(
-        branch_actions=jnp.array([[1, 0], [0, 1]]),
-        substation_correspondence=jnp.array([0, 1]),
-        n_actions_per_sub=jnp.array([1, 1]),
-        unsplit_action_mask=jnp.array([False, False]),
-        reassignment_distance=jnp.array([3, 4]),
-        inj_actions=jnp.array([[1, 0], [0, 1]]),
+        branch_actions=jnp.array([[1, 0], [0, 1]], dtype=bool),
+        substation_correspondence=jnp.array([0, 1], dtype=int),
+        n_actions_per_sub=jnp.array([1, 1], dtype=int),
+        unsplit_action_mask=jnp.array([False, False], dtype=bool),
+        reassignment_distance=jnp.array([3, 4], dtype=int),
+        inj_actions=jnp.array([[1, 0], [0, 1]], dtype=bool),
     )
 
     # Create topologies and substation ids
@@ -101,12 +101,12 @@ def test_merge_topologies():
 def test_index_branch_action_set():
     # Create a BranchActionSet instance
     action_set = ActionSet(
-        branch_actions=jnp.array([[1, 0], [0, 1], [1, 1]]),
-        substation_correspondence=jnp.array([0, 1, 0]),
-        n_actions_per_sub=jnp.array([2, 1]),
-        unsplit_action_mask=jnp.array([False, False, True]),
-        reassignment_distance=jnp.array([3, 4, 5]),
-        inj_actions=jnp.array([[1, 0], [0, 1], [1, 1]]),
+        branch_actions=jnp.array([[1, 0], [0, 1], [1, 1]], dtype=bool),
+        substation_correspondence=jnp.array([0, 1, 0], dtype=int),
+        n_actions_per_sub=jnp.array([2, 1], dtype=int),
+        unsplit_action_mask=jnp.array([False, False, True], dtype=bool),
+        reassignment_distance=jnp.array([3, 4, 5], dtype=int),
+        inj_actions=jnp.array([[1, 0], [0, 1], [1, 1]], dtype=bool),
     )
 
     # Index with integer array

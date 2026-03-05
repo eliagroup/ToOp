@@ -89,7 +89,7 @@ def validate_loadflow_results(
 
     (n_0_solver, n_1_solver), success_solver = run_solver_symmetric(
         topologies=ActionIndexComputations(
-            action=jnp.array([actions]),
+            action=jnp.array([actions], dtype=int),
             pad_mask=jnp.array([True]),
         ),
         disconnections=disconnections[None] if disconnections is not None else None,

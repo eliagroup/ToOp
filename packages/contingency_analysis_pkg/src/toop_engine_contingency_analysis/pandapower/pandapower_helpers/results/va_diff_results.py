@@ -8,13 +8,12 @@
 
 """Utilities for extracting pandapower VA diff simulation results per contingency."""
 
-from typing import Optional
-
 import networkx as nx
 import numpy as np
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
+from beartype.typing import Optional
 from pandapower import pandapowerNet
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,

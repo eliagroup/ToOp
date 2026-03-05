@@ -10,12 +10,15 @@ from pathlib import Path
 
 import jax
 import jax.numpy as jnp
+import jaxtyping
 import numpy as np
 import pypowsybl
 import pytest
+from beartype.typing import Callable
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_dc_solver.jax.aggregate_results import (
+    aggregate_matrix_to_metric,
     aggregate_n_1_matrix,
     aggregate_to_metric,
     aggregate_to_metric_batched,
@@ -99,22 +102,22 @@ def test_get_exponential_overload_energy_n_1_matrix() -> None:
 
     overload = get_overload_energy_n_1_matrix(flow, max_mw_flow)
 
-    exponential_overload = get_exponential_overload_energy_n_1_matrix(flow, max_mw_flow, alpha=1)
+    exponential_overload = get_exponential_overload_energy_n_1_matrix(flow, max_mw_flow, alpha=1.0)
     assert exponential_overload.shape == overload.shape
     assert jnp.allclose(exponential_overload, overload)
 
-    exponential_overload = get_exponential_overload_energy_n_1_matrix(flow, max_mw_flow, alpha=5)
+    exponential_overload = get_exponential_overload_energy_n_1_matrix(flow, max_mw_flow, alpha=5.0)
     assert exponential_overload >= overload
 
     overload = get_overload_energy_n_1_matrix(flow, max_mw_flow, overload_weight=overload_weights)
 
     exponential_overload = get_exponential_overload_energy_n_1_matrix(
-        flow, max_mw_flow, alpha=1, overload_weight=overload_weights
+        flow, max_mw_flow, alpha=1.0, overload_weight=overload_weights
     )
     assert jnp.allclose(exponential_overload, overload)
 
     exponential_overload = get_exponential_overload_energy_n_1_matrix(
-        flow, max_mw_flow, alpha=5, overload_weight=overload_weights
+        flow, max_mw_flow, alpha=5.0, overload_weight=overload_weights
     )
     assert exponential_overload >= overload
 
@@ -190,7 +193,24 @@ def test_get_median_flow_n_1_matrix() -> None:
     assert jnp.allclose(median_flow, jnp.median(jnp.max(flow, axis=1)))
 
 
-def test_aggregate_to_metric_batched() -> None:
+def get_unwrapped_function(func: Callable) -> Callable:
+    """Utility function to get the original function from a beartype and jaxtyping decorated function, by unwrapping all layers of decoration.
+
+    Parameters
+    ----------
+    func : Callable
+        The decorated function.
+
+    Returns
+    -------
+     Callable
+         The original function, with all layers of decoration removed."""
+    while hasattr(func, "__wrapped__"):
+        func = func.__wrapped__
+    return func
+
+
+def test_aggregate_to_metric_batched(mocker) -> None:
     n_batch = 8
     n_timesteps = 5
     n_failures = 30
@@ -375,7 +395,7 @@ def test_aggregate_to_metric_batched() -> None:
     assert cumulative_overload.shape == (n_batch,)
     assert jnp.allclose(cumulative_overload[0], cumulative_overload_ref)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(jaxtyping.TypeCheckError):
         aggregate_to_metric_batched(
             lf_res,
             branch_limits,
@@ -384,8 +404,31 @@ def test_aggregate_to_metric_batched() -> None:
             metric="unknown_metric",
         )
 
+    # Call non-beartyped/jaxtyped versions to make sure there is still an error
+    mocker.patch(
+        "toop_engine_dc_solver.jax.aggregate_results.aggregate_matrix_to_metric",
+        side_effect=get_unwrapped_function(aggregate_matrix_to_metric),
+    )
+    mocker.patch(
+        "toop_engine_dc_solver.jax.aggregate_results.aggregate_to_metric",
+        side_effect=get_unwrapped_function(aggregate_to_metric),
+    )
+    mocker.patch(
+        "toop_engine_dc_solver.jax.aggregate_results.choose_max_mw_flow",
+        side_effect=get_unwrapped_function(choose_max_mw_flow),
+    )
 
-def test_aggregate_to_metric() -> None:
+    with pytest.raises(ValueError):
+        get_unwrapped_function(aggregate_to_metric_batched)(
+            lf_res,
+            branch_limits,
+            None,
+            n_subs_rel,
+            metric="unknown_metric",
+        )
+
+
+def test_aggregate_to_metric(mocker) -> None:
     n_timesteps = 5
     n_failures = 30
     n_branch = 50
@@ -522,7 +565,7 @@ def test_aggregate_to_metric() -> None:
                     [3, 4, 5, 6, 7],
                     [10, 10, 10, 10, 10],
                 ],
-                dtype=float,
+                dtype=int,
             )
         ),
     )
@@ -542,15 +585,6 @@ def test_aggregate_to_metric() -> None:
 
     res = aggregate_to_metric(lf_res, branch_limits, reassignment_distance, n_subs_rel, "disconnected_branches")
     assert res == 0
-
-    with pytest.raises(ValueError):
-        aggregate_to_metric(
-            lf_res=lf_res,
-            branch_limits=branch_limits,
-            reassignment_distance=reassignment_distance,
-            n_relevant_subs=n_subs_rel,
-            metric="unknown_metric",
-        )
 
     with pytest.raises(ValueError):
         aggregate_to_metric(
@@ -577,6 +611,33 @@ def test_aggregate_to_metric() -> None:
             reassignment_distance=reassignment_distance,
             n_relevant_subs=n_subs_rel,
             metric="cross_coupler_flow",
+        )
+
+    with pytest.raises(jaxtyping.TypeCheckError):
+        aggregate_to_metric(
+            lf_res=lf_res,
+            branch_limits=branch_limits,
+            reassignment_distance=reassignment_distance,
+            n_relevant_subs=n_subs_rel,
+            metric="unknown_metric",
+        )
+
+    # Call non-beartyped versions to make sure there is still an error
+    mocker.patch(
+        "toop_engine_dc_solver.jax.aggregate_results.choose_max_mw_flow",
+        side_effect=get_unwrapped_function(choose_max_mw_flow),
+    )
+    mocker.patch(
+        "toop_engine_dc_solver.jax.aggregate_results.aggregate_matrix_to_metric",
+        side_effect=get_unwrapped_function(aggregate_matrix_to_metric),
+    )
+    with pytest.raises(ValueError):
+        get_unwrapped_function(aggregate_to_metric)(
+            lf_res=lf_res,
+            branch_limits=branch_limits,
+            reassignment_distance=reassignment_distance,
+            n_relevant_subs=n_subs_rel,
+            metric="unknown_metric",
         )
 
 
@@ -649,7 +710,7 @@ def test_n0_n1_delta() -> None:
         get_n0_n1_delta_penalty(
             jnp.array([[20.0]]),
             jnp.array([[[10.0], [15.0], [20.0], [23.0]]]),
-            jnp.array([-2]),
+            jnp.array([-2.0]),
         ).item()
         == 0.0
     )
@@ -801,16 +862,16 @@ def test_get_number_of_disconnections() -> None:
     assert get_number_of_disconnections(disconnections, n_branches) == max_n_disconnections
 
     # Case 3: Some disconnections out of range
-    disconnections = jnp.array([0, 10, 20, 50, 60, -1, 30])
+    disconnections = jnp.array([0, 10, 20, 50, 60, -1, 30], dtype=int)
     expected_count = jnp.sum((disconnections >= 0) & (disconnections < n_branches))
     assert get_number_of_disconnections(disconnections, n_branches) == expected_count
 
     # Case 4: All disconnections out of range
-    disconnections = jnp.array([n_branches, n_branches + 1, -5, -10])
+    disconnections = jnp.array([n_branches, n_branches + 1, -5, -10], dtype=int)
     assert get_number_of_disconnections(disconnections, n_branches) == 0
 
     # Case 5: Empty disconnections array
-    disconnections = jnp.array([])
+    disconnections = jnp.array([], dtype=int)
     assert get_number_of_disconnections(disconnections, n_branches) == 0
 
 
@@ -885,7 +946,7 @@ def test_get_pst_switching_distance() -> None:
 
     # Case 2: PST optimization enabled but no initial taps provided
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[0, 1, 2, 3, 4]], dtype=float)  # shape: (n_timesteps=1, n_controllable_pst)
+        pst_tap_idx=jnp.array([[0, 1, 2, 3, 4]], dtype=int)  # shape: (n_timesteps=1, n_controllable_pst)
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=None)
     assert switching_distance == 0.0, "Switching distance should be 0 when initial tap indices are not provided"
@@ -893,7 +954,7 @@ def test_get_pst_switching_distance() -> None:
     # Case 3: No switching_distance - optimized taps match initial taps
     initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[2, 3, 4, 5, 6]], dtype=float)  # shape: (n_timesteps=1, n_controllable_pst)
+        pst_tap_idx=jnp.array([[2, 3, 4, 5, 6]], dtype=int)  # shape: (n_timesteps=1, n_controllable_pst)
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
     assert switching_distance == 0.0, "Switching distance should be 0 when taps haven't changed"
@@ -901,7 +962,7 @@ def test_get_pst_switching_distance() -> None:
     # Case 4: Simple switching_distance case - single timestep
     initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[3, 4, 5, 6, 7]], dtype=float)  # All shifted by +1
+        pst_tap_idx=jnp.array([[3, 4, 5, 6, 7]], dtype=int)  # All shifted by +1
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
     expected_switching_distance = 5.0  # Sum of (3-2)^2 + (4-3)^2 + (5-4)^2 + (6-5)^2 + (7-6)^2 = 1+1+1+1+1 = 5
@@ -912,7 +973,7 @@ def test_get_pst_switching_distance() -> None:
     # Case 5: Mixed positive and negative switching distances
     initial_tap_idx = jnp.array([5, 5, 5, 5, 5], dtype=int)
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[3, 7, 5, 4, 8]], dtype=float)  # switching distances: -2, +2, 0, -1, +3
+        pst_tap_idx=jnp.array([[3, 7, 5, 4, 8]], dtype=int)  # switching distances: -2, +2, 0, -1, +3
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
     expected_switching_distance = (
@@ -931,7 +992,7 @@ def test_get_pst_switching_distance() -> None:
                 [10, 10, 10, 10],  # Second timestep: 8^2 + 7^2 + 6^2 + 5^2 = 174
                 [0, 0, 0, 0],  # Third timestep: 2^2 + 3^2 + 4^2 + 5^2 = 54
             ],
-            dtype=float,
+            dtype=int,
         )  # shape: (n_timesteps=3, n_controllable_pst=4)
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
@@ -946,7 +1007,7 @@ def test_get_pst_switching_distance() -> None:
         return get_pst_switching_distance(optimized_taps, initial_tap_idx)
 
     initial_tap_idx = jnp.array([1, 2, 3], dtype=int)
-    optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[2, 3, 4]], dtype=float))
+    optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[2, 3, 4]], dtype=int))
 
     switching_distance_jitted = jitted_switching_distance(optimized_taps, initial_tap_idx)
     switching_distance_normal = get_pst_switching_distance(optimized_taps, initial_tap_idx)

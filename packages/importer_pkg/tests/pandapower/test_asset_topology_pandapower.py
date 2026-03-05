@@ -268,7 +268,7 @@ def test_get_parameter_from_station():
         asset_topology.get_parameter_from_station(network=net, station_bus_index=[57, 58], parameter="vn_kv")
     # test 2 - NOT_A_PARAMETER
     with pytest.raises(ValueError):
-        asset_topology.get_parameter_from_station(network=net, station_bus_index=57, parameter="NOT_A_PARAMETER")
+        asset_topology.get_parameter_from_station.__wrapped__(network=net, station_bus_index=57, parameter="NOT_A_PARAMETER")
     # test 3 - vn_kv
     expected = 20.0
     result = asset_topology.get_parameter_from_station(network=net, station_bus_index=[57], parameter="vn_kv")

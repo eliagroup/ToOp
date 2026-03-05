@@ -36,12 +36,15 @@ MatrixMetric: TypeAlias = Literal[
     "top_k_overloads_n_1",
     "cumulative_overload_n_0",
     "cumulative_overload_n_1",
+    "transport_n_0",
+    "transport_n_1",
 ]
 
 OperationMetric: TypeAlias = Literal[
     "switching_distance",
     "split_subs",
     "disconnected_branches",
+    "fitness",
     "pst_switching_distance",
 ]
 

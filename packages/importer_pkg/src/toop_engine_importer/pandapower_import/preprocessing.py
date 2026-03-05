@@ -245,7 +245,7 @@ def fuse_cross_coupler(
             # relabel bus ids after fusing
             bus_labels = np.arange(np.max(network.bus.index) + 1)
             for bus_ids in coupler["cross_coupler_bus_ids"]:
-                bus_ids_list = list(bus_labels[bus_ids])
+                bus_ids_list = [int(bus_labels[bus_id]) for bus_id in bus_ids]
                 bus_labels = fuse_closed_switches_by_bus_ids(network, bus_ids_list)
 
 

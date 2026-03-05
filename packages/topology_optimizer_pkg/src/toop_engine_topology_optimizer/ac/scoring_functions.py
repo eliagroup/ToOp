@@ -14,7 +14,7 @@ import logbook
 import numpy as np
 import pandas as pd
 import polars as pl
-from beartype.typing import Optional
+from beartype.typing import Collection, Optional, Sequence
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics as compute_metrics_lfs
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_interfaces.asset_topology import RealizedTopology
@@ -35,7 +35,7 @@ logger = logbook.Logger(__name__)
 
 def get_early_stopping_contingency_ids(
     strategy: list[ACOptimTopology],
-    add_base_case_ids: Optional[list[str]] = None,
+    add_base_case_ids: Optional[list[str | None]] = None,
 ) -> Optional[list[list[str]]]:
     """Extract the contingency ids for early stopping from a list of ACOptimTopology strategies.
 
@@ -47,7 +47,7 @@ def get_early_stopping_contingency_ids(
     ----------
     strategy : list of ACOptimTopology
         A list of ACOptimTopology objects, each containing a worst_k_contingency_cases attribute with contingency case ids.
-    add_base_case_ids : Optional[list[str]]
+    add_base_case_ids : Optional[list[str | None]]
         An optional list of base case ids to include in the early stopping subset. If provided, these will be added to the
         list of contingency case ids for each timestep. The list is expected to have the same length as the strategy
         (number of timesteps), and each element is a string id of the base case.
@@ -61,6 +61,8 @@ def get_early_stopping_contingency_ids(
     for topo, base_case_id in zip(strategy, add_base_case_ids or [None] * len(strategy), strict=True):
         worst_k_contingency_cases = deepcopy(topo.worst_k_contingency_cases)
         if len(worst_k_contingency_cases) == 0:
+            # TODO Does this make sense?
+            # Shouldnt we just continue?
             logger.warning(
                 f"No overload threshold or case ids found in the strategy"
                 f"worst_k_contingency_cases: {worst_k_contingency_cases}"
@@ -73,7 +75,9 @@ def get_early_stopping_contingency_ids(
 
 
 def update_runner_nminus1(
-    runners: list[AbstractLoadflowRunner], nminus1_defs: list[Nminus1Definition], case_ids_all_t: list[list[str]]
+    runners: list[AbstractLoadflowRunner],
+    nminus1_defs: list[Nminus1Definition],
+    case_ids_all_t: Sequence[Collection[str]],
 ) -> None:
     """Update the N-1 definitions in the runners to only include the worst k contingencies.
 
@@ -85,7 +89,7 @@ def update_runner_nminus1(
         The loadflow runners to update. The length of the list equals the number of timesteps.
     nminus1_defs : list[Nminus1Definition]
         The original N-1 definitions to use as a template. The length of the list equals the number of timesteps.
-    case_ids_all_t : list[list[str]]
+    case_ids_all_t : Sequence[Collection[str]]
         A list of contingency ids for each runner, indicating which contingencies to keep in the N-1 definition.
         Each element should be an index to the contingencies in the original N-1 definition.
     """
@@ -102,7 +106,7 @@ def compute_loadflow_and_metrics(
     strategy: list[ACOptimTopology],
     base_case_ids: list[Optional[str]],
     n_timestep_processes: int = 1,
-    cases_subset: Optional[list[list[str]]] = None,
+    cases_subset: Optional[Sequence[Collection[str]]] = None,
 ) -> tuple[LoadflowResultsPolars, list[Optional[AdditionalActionInfo]], list[Metrics]]:
     """Compute loadflow results and associated metrics for a given set of strategies.
 
@@ -119,7 +123,7 @@ def compute_loadflow_and_metrics(
         List of base case identifiers corresponding to each strategy. Can be None.
     n_timestep_processes : int, optional
         Number of parallel processes to use for timestep simulations (default is 1).
-    cases_subset : list of list of str, optional
+    cases_subset : Optional[Sequence[Collection[str]]]
         Subset of contingency cases to use for loadflow computation. If None, all available contingencies are used.
 
     Returns
@@ -276,7 +280,7 @@ def compute_loadflow(
     pst_setpoints: list[Optional[list[int]]],
     runners: list[AbstractLoadflowRunner],
     n_timestep_processes: int = 1,  # noqa: ARG001
-) -> tuple[LoadflowResultsPolars, list[AdditionalActionInfo]]:
+) -> tuple[LoadflowResultsPolars, list[Optional[AdditionalActionInfo]]]:
     """Compute the loadflow for a given strategy
 
     Parameters
@@ -299,7 +303,7 @@ def compute_loadflow(
     -------
     LoadflowResultsPolars
         The loadflow results for all timesteps in the strategy
-    list[AdditionalActionInfo]
+    list[Optional[AdditionalActionInfo]]
         Additional information about the actions taken, such as switching distance or other metrics. The length of
         the list is n_timesteps.
     """

@@ -6,7 +6,9 @@
 # Mozilla Public License, version 2.0
 
 import jax
+import jaxtyping
 import numpy as np
+import pytest
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from tests.numpy_reference import run_solver as run_solver_ref
@@ -34,6 +36,7 @@ from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     InjectionComputations,
     SolverLoadflowResults,
+    SparseSolverOutput,
     StaticInformation,
     TopoVectBranchComputations,
 )
@@ -101,7 +104,7 @@ def test_run_solver(
         injections=injections,
         dynamic_information=dynamic_information,
         solver_config=solver_config,
-        aggregate_metric_fn=lambda _1, _2: 0,
+        aggregate_metric_fn=lambda _1, _2: 0.0,
         aggregate_output_fn=lambda x: x.n_1_matrix,
     )
 
@@ -288,6 +291,32 @@ def test_run_solver_with_disconnections(
         topologies=action_index_topo,
         disconnections=disconnections,
         injections=None,
+        dynamic_information=static_information.dynamic_information,
+        solver_config=static_information.solver_config,
+    )
+    assert res is not None
+
+
+def test_typecheck():
+    with pytest.raises(jaxtyping.TypeCheckError):
+        SparseSolverOutput(n_0_results=123, n_1_results=123, best_inj_combi=True, success="True")
+
+
+def test_run_solver_with_disconnections_and_injections(
+    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
+) -> None:
+    topologies, candidates, static_information = jax_inputs
+
+    action_index_topo, _ = convert_topo_to_action_set_index(
+        topologies, static_information.dynamic_information.action_set, True
+    )
+
+    disconnections = jnp.repeat(jnp.array([[8, 999]]), topologies.topologies.shape[0], axis=0)
+
+    res = run_solver(
+        topologies=action_index_topo,
+        disconnections=disconnections,
+        injections=candidates,
         dynamic_information=static_information.dynamic_information,
         solver_config=static_information.solver_config,
     )

@@ -70,7 +70,7 @@ dev = [
     "pre-commit-hooks",
     "pytest",
     "pytest-cov",
-    "pytest-dotenv",
+    "pytest-env",
     "pytest-mock",
     "pytest-timeout",
     "pytest-xdist>=3.8.0",
@@ -87,6 +87,9 @@ dev = [
     "numba>=0.61.2",
     "orjson>=3.11.3",
 ]
+
+[tool.pytest_env]
+ENABLE_BEARTYPE="true"
 
 [tool.uv.sources]
 toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }

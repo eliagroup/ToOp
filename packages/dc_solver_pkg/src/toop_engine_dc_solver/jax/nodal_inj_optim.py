@@ -152,9 +152,9 @@ def nodal_inj_optimization(
     assert nodal_inj_info is not None, "Nodal injection information must be provided for PST optimization"
 
     # Get PST tap indices from start options (shape: batch_size x n_timesteps x n_controllable_pst)
-    pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_pst"] = (
-        start_options.previous_results.pst_tap_idx.astype(jnp.int32)
-    )
+    pst_tap_indices = start_options.previous_results.pst_tap_idx
+    if pst_tap_indices.ndim == 2:
+        pst_tap_indices = pst_tap_indices[None, :, :]
 
     n_0_updated = apply_pst_taps(
         n_0=n_0,

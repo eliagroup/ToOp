@@ -35,7 +35,8 @@ dependencies=[
     "jax-dataclasses (>=1.6.2,<2.0.0)",
     "polars>=1.33.0",
     "orjson>=3.11.3",
-    "werkzeug>=3.1.4"
+    "werkzeug>=3.1.4",
+    "equinox (>=0.11,<0.12)"
 ]
 
 [build-system]
@@ -52,7 +53,7 @@ dev = [
     "pre-commit-hooks",
     "pytest",
     "pytest-cov",
-    "pytest-dotenv",
+    "pytest-env",
     "pytest-mock",
     "pytest-timeout",
     "pytest-xdist>=3.8.0",
@@ -67,6 +68,9 @@ dev = [
     "pypowsybl-jupyter>=1.0.0",
     "docker>=7.1.0",
 ]
+
+[tool.pytest_env]
+ENABLE_BEARTYPE="true"
 
 [tool.uv.sources]
 toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }

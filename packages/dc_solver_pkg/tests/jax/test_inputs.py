@@ -29,9 +29,15 @@ from toop_engine_dc_solver.jax.types import (
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
 
 
+def check_equal(a, b):
+    if isinstance(a, jnp.ndarray) and isinstance(b, jnp.ndarray):
+        return jnp.array_equal(a, b, equal_nan=True)
+    return a == b
+
+
 def assert_static_information(a: StaticInformation, b: StaticInformation) -> None:
     assert jax.tree_util.tree_map(
-        lambda a, b: jnp.array_equal(a, b, equal_nan=True) if isinstance(a, jnp.ndarray) else a == b,
+        lambda a, b: a if check_equal(a, b) else None,
         a.dynamic_information,
         b.dynamic_information,
     )

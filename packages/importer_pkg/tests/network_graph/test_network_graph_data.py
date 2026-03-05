@@ -8,11 +8,12 @@
 from unittest import mock
 
 import pandas as pd
+from toop_engine_importer.network_graph.data_classes import NetworkGraphData
 from toop_engine_importer.network_graph.network_graph_data import add_node_tuple_column
 
 
 def test_add_node_tuple():
-    network_graph_data = mock.Mock()
+    network_graph_data = mock.Mock(spec=NetworkGraphData)
     network_graph_data.switches = pd.DataFrame({"from_node": [1, 4], "to_node": [3, 2]})
     network_graph_data.branches = pd.DataFrame({"from_node": [5, 8], "to_node": [7, 6]})
     network_graph_data.helper_branches = pd.DataFrame({"from_node": [9, 12], "to_node": [11, 10]})

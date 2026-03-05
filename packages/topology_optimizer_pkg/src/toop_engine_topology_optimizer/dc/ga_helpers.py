@@ -15,9 +15,24 @@ import jax
 from average import EWMA
 from beartype.typing import Optional
 from jax import numpy as jnp
+from jaxtyping import PRNGKeyArray
 from qdax.core.containers.repertoire import Repertoire
 from qdax.core.emitters.standard_emitters import EmitterState, ExtraScores, MixingEmitter
-from qdax.custom_types import Descriptor, Fitness, Genotype
+from qdax.custom_types import Descriptor, Fitness
+from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import Genotype
+from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import DiscreteMapElitesRepertoire
+
+
+class MixingEmitterState(EmitterState):
+    """The state of a MixingEmitter.
+
+    It extends the EmitterState with additional fields to track the number of
+    branch and injection combinations and splits.
+    """
+
+    total_branch_combis: jnp.ndarray
+    total_inj_combis: jnp.ndarray
+    total_num_splits: jnp.ndarray
 
 
 class TrackingMixingEmitter(MixingEmitter):
@@ -25,33 +40,36 @@ class TrackingMixingEmitter(MixingEmitter):
 
     def init(
         self,
-        random_key: jax.random.PRNGKey,
+        random_key: PRNGKeyArray,
         init_genotypes: Optional[Genotype],  # noqa: ARG002
-    ) -> tuple[EmitterState, jax.random.PRNGKey]:
+    ) -> tuple[EmitterState, PRNGKeyArray]:
         """Overwrite the Emitter.init function to seed an EmitterState."""
-        return {
-            "total_branch_combis": jnp.array(0, dtype=int),
-            "total_inj_combis": jnp.array(0, dtype=int),
-            "total_num_splits": jnp.array(0, dtype=int),
-        }, random_key
+        return MixingEmitterState(
+            total_branch_combis=jnp.array(0, dtype=int),
+            total_inj_combis=jnp.array(0, dtype=int),
+            total_num_splits=jnp.array(0, dtype=int),
+        ), random_key
 
     def state_update(
         self,
         emitter_state: Optional[EmitterState],
-        repertoire: Optional[Repertoire],  # noqa: ARG002
+        repertoire: Optional[Repertoire | DiscreteMapElitesRepertoire],  # noqa: ARG002
         genotypes: Optional[Genotype],  # noqa: ARG002
         fitnesses: Optional[Fitness],  # noqa: ARG002
         descriptors: Optional[Descriptor],  # noqa: ARG002
-        extra_scores: Optional[ExtraScores],
+        extra_scores: ExtraScores,
     ) -> EmitterState:
         """Overwrite the state update to store information for the running means."""
         assert emitter_state is not None
         assert extra_scores is not None
-        return {
-            "total_branch_combis": emitter_state["total_branch_combis"] + extra_scores["n_branch_combis"].astype(int),
-            "total_inj_combis": emitter_state["total_inj_combis"] + extra_scores["n_inj_combis"].astype(int),
-            "total_num_splits": emitter_state["total_num_splits"] + extra_scores["n_split_grids"].astype(int),
-        }
+        return MixingEmitterState(
+            total_branch_combis=emitter_state.total_branch_combis
+            + extra_scores.get("n_branch_combis", jnp.array(0, dtype=int)).astype(int),
+            total_inj_combis=emitter_state.total_inj_combis
+            + extra_scores.get("n_inj_combis", jnp.array(0, dtype=int)).astype(int),
+            total_num_splits=emitter_state.total_num_splits
+            + extra_scores.get("n_split_grids", jnp.array(0, dtype=int)).astype(int),
+        )
 
 
 @dataclass
@@ -123,16 +141,16 @@ def update_running_means(running_means: RunningMeans, emitter_state: EmitterStat
     last_emitter_state = (
         running_means.last_emitter_state
         if running_means.last_emitter_state is not None
-        else {
-            "total_branch_combis": jnp.array(0, dtype=int),
-            "total_inj_combis": jnp.array(0, dtype=int),
-            "total_num_splits": jnp.array(0, dtype=int),
-        }
+        else MixingEmitterState(
+            total_branch_combis=jnp.array(0, dtype=int),
+            total_inj_combis=jnp.array(0, dtype=int),
+            total_num_splits=jnp.array(0, dtype=int),
+        )
     )
 
-    branch_diff = emitter_state["total_branch_combis"].item() - last_emitter_state["total_branch_combis"].item()
-    inj_diff = emitter_state["total_inj_combis"].item() - last_emitter_state["total_inj_combis"].item()
-    split_diff = emitter_state["total_num_splits"].item() - last_emitter_state["total_num_splits"].item()
+    branch_diff = emitter_state.total_branch_combis.item() - last_emitter_state.total_branch_combis.item()
+    inj_diff = emitter_state.total_inj_combis.item() - last_emitter_state.total_inj_combis.item()
+    split_diff = emitter_state.total_num_splits.item() - last_emitter_state.total_num_splits.item()
 
     # Clip diffs due to sporadic integer overflows
     branch_diff = max(branch_diff, 0)

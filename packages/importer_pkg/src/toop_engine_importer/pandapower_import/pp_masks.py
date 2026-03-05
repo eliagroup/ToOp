@@ -13,13 +13,14 @@ Created: 2024-10-02
 """
 
 from dataclasses import asdict, dataclass
+from numbers import Integral
 from pathlib import Path
 
 import logbook
 import numpy as np
 import pandapower as pp
 from beartype.typing import Optional
-from jaxtyping import Array, Bool, Int
+from jaxtyping import ArrayLike, Bool, Int
 from pandas import Index
 from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker import (
     get_coupler_types_of_substation,
@@ -94,7 +95,7 @@ class NetworkMasks:
 def make_pp_masks(
     network: pp.pandapowerNet,
     region: str = "",
-    voltage_level: float = 150,
+    voltage_level: float | int = 150,
     min_power: float = 100.0,
     trafo_weight: float = 1.2,
     cross_border_weight: float = 1.2,
@@ -271,13 +272,13 @@ def make_pp_masks(
 def get_relevant_subs(
     network: pp.pandapowerNet,
     region: str = "",
-    voltage_level: float = 150,
+    voltage_level: float | int = 150,
     min_branches_per_station: int = 4,
     exclude_stations: Optional[list[str]] = None,
     substation_column: str = "substat",
     min_busbars_per_substation: int = 2,
     min_busbar_coupler_per_station: int = 1,
-) -> NetworkMasks:
+) -> Bool[ArrayLike, " n_buses"]:
     """Create the network masks for the pandapower network.
 
     Parameters
@@ -357,7 +358,7 @@ def mask_min_branches_per_station(
     substation_column: str,
     min_branches_per_station: int = 4,
     exclude_stations: Optional[list[str]] = None,
-) -> Bool[Array, " n_buses"]:
+) -> Bool[ArrayLike, " n_buses"]:
     """Get the mask for the substations with a minimum number of branches.
 
     Parameters
@@ -441,7 +442,7 @@ def count_assets_in_substation(
 
 
 def count_assets(
-    branches: dict[str, list[str]],
+    branches: dict[str, list[str | Integral]],
     include_branches: bool = True,
     include_gen: bool = False,
     include_load: bool = False,
@@ -483,7 +484,7 @@ def count_assets(
     return len_assets
 
 
-def count_branches_at_buses(network: pp.pandapowerNet, buses: Index) -> Int[Array, " n_buses"]:
+def count_branches_at_buses(network: pp.pandapowerNet, buses: Index) -> Int[ArrayLike, " n_buses"]:
     """Count the number of branches connected to the buses.
 
     Parameters
@@ -495,7 +496,7 @@ def count_branches_at_buses(network: pp.pandapowerNet, buses: Index) -> Int[Arra
 
     Returns
     -------
-    int[Array, " n_buses"]
+    Int[ArrayLike, " n_buses"]
         The number of branches connected to the buses.
     """
     buses = np.array(buses)
@@ -511,7 +512,7 @@ def mask_min_busbar_per_station(
     net: pp.pandapowerNet,
     min_branches_per_station: int = 2,
     substation_column: str = "substat",
-) -> Bool[Array, " n_buses"]:
+) -> Bool[ArrayLike, " n_buses"]:
     """Count the number of busbars per station.
 
     This function counts the number of busbars per station and
@@ -575,7 +576,7 @@ def mask_min_busbar_coupler(
     net: pp.pandapowerNet,
     min_busbar_coupler_per_station: int = 1,
     substation_column: str = "substat",
-) -> Bool[Array, " n_buses"]:
+) -> Bool[ArrayLike, " n_buses"]:
     """Get the mask for the substations with a minimum number of busbar coupler.
 
     Parameters
@@ -591,10 +592,10 @@ def mask_min_busbar_coupler(
 
     Returns
     -------
-        Bool[Array, " n_buses"]
+        Bool[ArrayLike, " n_buses"]
         A boolean mask of the substations with a minimum number of busbar coupler.
     """
-    bus_type_b = get_type_b_nodes(net)
+    bus_type_b = get_type_b_nodes(net, substation_column=substation_column)
     station_names = bus_type_b[substation_column].unique()
     n_buses = len(net.bus)
     mask_multiple_busbar_coupler = np.zeros(n_buses, dtype=bool)

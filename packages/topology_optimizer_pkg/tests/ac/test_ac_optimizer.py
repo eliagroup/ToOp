@@ -6,13 +6,13 @@
 # Mozilla Public License, version 2.0
 
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
-from confluent_kafka import Consumer
 from fsspec.implementations.dirfs import DirFileSystem
-from sqlmodel import select
+from sqlmodel import Session, select
+from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_results_polars
@@ -242,8 +242,8 @@ def test_wait_for_first_dc_results_timeout() -> None:
 
         with pytest.raises(TimeoutError):
             wait_for_first_dc_results(
-                results_consumer=MagicMock(),
-                session=MagicMock(),
+                results_consumer=Mock(spec=LongRunningKafkaConsumer),
+                session=Mock(spec=Session),
                 max_wait_time=1,
                 optimization_id="test",
                 heartbeat_fn=_heartbeat_fn,
@@ -300,7 +300,7 @@ def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:
 
     # Run the epoch
     # We create an empty consumer, as we have already added the results to the database
-    consumer = Mock(spec=Consumer)
+    consumer = Mock(spec=LongRunningKafkaConsumer)
     consumer.consume = Mock(return_value=[])
     send_result_fn = Mock()
     run_epoch(optimizer_data, consumer, send_result_fn, epoch=0)

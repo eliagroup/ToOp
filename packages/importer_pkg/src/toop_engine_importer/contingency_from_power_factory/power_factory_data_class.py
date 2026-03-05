@@ -14,7 +14,12 @@ Author:  Benjamin Petrick
 Created: 2025-05-13
 """
 
-import pandera.pandas as pa
+import importlib.metadata as im
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Literal, Optional, TypeAlias
 

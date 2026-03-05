@@ -14,10 +14,15 @@ For the bus/branch way, see the function apply_topology_bus_branch.
 the node/breaker way is still TODO.
 """
 
+import importlib.metadata as im
 from datetime import datetime
 
 import numpy as np
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 from beartype.typing import Literal, Optional, Union
 from pypowsybl.network import Network
 from toop_engine_dc_solver.export.asset_topology_to_dgs import (

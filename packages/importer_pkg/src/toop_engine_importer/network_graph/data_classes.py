@@ -7,10 +7,15 @@
 
 """The data_classes module contains the data classes for the network graph model."""
 
+import importlib.metadata as im
 from enum import Enum
 
 import pandas as pd
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from beartype.typing import List, Literal, Optional, TypeAlias, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator

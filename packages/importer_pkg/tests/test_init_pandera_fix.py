@@ -15,7 +15,7 @@ from toop_engine_importer.__init__ import Int
 def test_int_check_win32(monkeypatch):
     # Check pandera version
     pandera_version = tuple(map(int, pandera.__version__.split(".")))
-    assert pandera_version < (0, 23), "Check if this Patch is still needed"
+    assert pandera_version < (0, 30), "Check if this Patch is still needed"
     # Patch sys.platform to 'win32'
     monkeypatch.setattr(sys, "platform", "win32")
     importlib.reload(sys.modules["toop_engine_importer.__init__"])

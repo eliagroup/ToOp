@@ -7,9 +7,15 @@
 
 """Logic to replace a dangling node with tie lines."""
 
+import importlib.metadata as im
+
 import numpy as np
 import pandas as pd
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from pypowsybl.network import BusBreakerTopology
 from pypowsybl.network.impl.network import Network

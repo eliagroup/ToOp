@@ -5,8 +5,15 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import importlib.metadata as im
+
 import numpy as np
-import pandera.pandas as pa
+import pandera
+
+if im.version("pandera").startswith("0.29"):
+    pass
+else:
+    pass
 import pypowsybl
 import pytest
 from polars.testing import assert_frame_equal
@@ -77,11 +84,14 @@ def test_run_ac_contingency_analysis_powsybl(powsybl_net: str, request, init_ray
 def test_contingency_analysis_validated_or_not(powsybl_node_breaker_net: pypowsybl.network.Network) -> None:
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
 
-    with pa.config.config_context(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA):
+    with pandera.config.config_context(
+        validation_enabled=True,
+        validation_depth=pandera.config.ValidationDepth.SCHEMA_AND_DATA,
+    ):
         lf_result_with_val_polars = get_ac_loadflow_results(
             powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
         )
-    with pa.config.config_context(validation_enabled=False):
+    with pandera.config.config_context(validation_enabled=False):
         lf_result_no_val_polars = get_ac_loadflow_results(
             powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=2
         )

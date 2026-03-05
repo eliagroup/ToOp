@@ -18,9 +18,15 @@ E.g. inner German will not merge with this function. Convert the inner German li
 
 """
 
+import importlib.metadata as im
+
 import logbook
 import pandas as pd
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Optional
 from pydantic import BaseModel, Field, model_validator

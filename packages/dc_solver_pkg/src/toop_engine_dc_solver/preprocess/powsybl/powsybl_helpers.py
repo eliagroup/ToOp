@@ -11,11 +11,16 @@ The helper functions are independent of the backend but work
 for general powsybl net (and frankly, these should be implemented in pypowsybl itself)
 """
 
+import importlib.metadata as im
 import math
 from copy import deepcopy
 
 import pandas as pd
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Optional
 from pandera import DataFrameModel, Field

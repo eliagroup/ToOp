@@ -7,11 +7,16 @@
 
 """Module containing helper functions to interact with interfaces."""
 
+import importlib.metadata as im
 from copy import deepcopy
 from functools import lru_cache
 
 import pandas as pd
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 from pandera import DataFrameModel, Index
 from pandera import typing as pat
 

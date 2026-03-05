@@ -18,9 +18,13 @@ The grid holds some information that is referenced in the results:
     transformer, SVC, ...)
 """
 
+import importlib.metadata as im
 from enum import Enum
 
-import pandera.pandas as pa
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Any, Optional, Self, Union
 from pandera.typing import DataFrame, Index, Series

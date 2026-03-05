@@ -8,7 +8,12 @@
 
 """Utilities for extracting pandapower regulating elements simulation results per contingency."""
 
-import pandera.pandas as pa
+import importlib.metadata as im
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,

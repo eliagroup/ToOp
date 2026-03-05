@@ -7,12 +7,17 @@
 
 """Compute the N-1 AC/DC power flow for the pandapower network."""
 
+import importlib.metadata as im
 import math
 from copy import deepcopy
 
 import pandapower as pp
 import pandapower.topology as top
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 import ray
 from beartype.typing import Literal, Optional, Union

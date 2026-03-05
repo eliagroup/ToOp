@@ -11,7 +11,12 @@ This includes translating contingencies, monitored elements and collecting
 the necessary data from the network, so this only has to happen once.
 """
 
-import pandera.pandas as pa
+import importlib.metadata as im
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing.polars as patpl
 import polars as pl
 import pypowsybl

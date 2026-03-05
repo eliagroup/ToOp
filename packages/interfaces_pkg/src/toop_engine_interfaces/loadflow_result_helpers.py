@@ -7,13 +7,18 @@
 
 """Loadflow result helpers. Holds functions to work with the loadflow results interfaces."""
 
+import importlib.metadata as im
 import json
 from itertools import product
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 import polars as pl
 from beartype.typing import Optional, Union

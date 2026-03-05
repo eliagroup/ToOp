@@ -7,10 +7,16 @@
 
 """Helpers for building pandapower N-1 contingency definitions and Pandera-validated convergence result DataFrames."""
 
+import importlib.metadata as im
+
 import numpy as np
 import pandapower
 import pandas as pd
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Literal
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import PandapowerContingency

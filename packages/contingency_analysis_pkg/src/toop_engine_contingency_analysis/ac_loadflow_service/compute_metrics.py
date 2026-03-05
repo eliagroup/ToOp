@@ -10,8 +10,14 @@
 This is similar to jax.aggregate_results.py but straight on the results dataframes.
 """
 
+import importlib.metadata as im
+
 import pandas as pd
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing.polars as patpl
 import polars as pl
 from beartype.typing import Literal, Optional

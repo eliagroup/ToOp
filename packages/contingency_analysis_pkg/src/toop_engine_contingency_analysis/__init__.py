@@ -5,10 +5,15 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import importlib.metadata as im
 import sys
 
 from beartype.claw import beartype_this_package
-from pandera import Int
+
+if im.version("pandera") < "0.29.0":
+    from pandera import Int
+else:
+    from pandera.dtypes import Int
 
 beartype_this_package()
 

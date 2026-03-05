@@ -8,8 +8,12 @@
 """Schemas for N-1"""
 
 import dataclasses
+import importlib.metadata as im
 
-import pandera.pandas as pa
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
 from networkx.classes import MultiGraph

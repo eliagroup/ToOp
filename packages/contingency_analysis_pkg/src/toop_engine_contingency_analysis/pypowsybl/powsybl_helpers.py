@@ -11,11 +11,16 @@ This includes translating contingencies, monitored elements and collecting
 the necessary data from the network, so this only has to happen once.
 """
 
+import importlib.metadata as im
 from copy import deepcopy
 
 import numpy as np
 import pandas as pd
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 import pypowsybl
 from beartype.typing import Literal, Optional, get_args

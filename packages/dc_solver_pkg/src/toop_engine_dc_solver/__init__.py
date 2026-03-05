@@ -5,9 +5,13 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import importlib.metadata as im
 import sys
 
-from pandera import Int
+if im.version("pandera") < "0.29.0":
+    from pandera import Int
+else:
+    from pandera.dtypes import Int
 
 if sys.platform == "win32":
     Int.check = lambda self, pandera_dtype, data_container=None: isinstance(pandera_dtype, Int)  # noqa: ARG005

@@ -14,13 +14,18 @@ Created: 2024-11-12
 Note: this module currently ignores the asset_setpoints.
 """
 
+import importlib.metadata as im
 import io
 from copy import deepcopy
 
 import logbook
 import numpy as np
 import pandas as pd
-import pandera.pandas as pa
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Optional
 from pypowsybl.network import Network

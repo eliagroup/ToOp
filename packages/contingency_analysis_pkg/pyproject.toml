@@ -32,11 +32,11 @@ classifiers=[
         'Programming Language :: Python :: 3.13'
 ]
 
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.11,<3.14"
 
 [tool.hatch.metadata.hooks.uv-dynamic-versioning]
 dependencies = [
-    "pandera[polars] (>=0.29,<0.30.0)",
+    "pandera[polars] (>=0.22,<0.30.0)",
     "ray (>=2.42.1,<2.55.0)",
     "beartype (>=0.22.0,<0.23.0)",
     "numpy (>=1.26.0,<2.5.0)",

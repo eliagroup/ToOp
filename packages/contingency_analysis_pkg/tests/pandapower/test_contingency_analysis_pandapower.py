@@ -8,7 +8,7 @@
 import numpy as np
 import pandapower as pp
 import pandas as pd
-import pandera.pandas as pa
+import pandera
 import pytest
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
@@ -28,11 +28,14 @@ from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, 
 
 def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet, init_ray) -> None:
     nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
-    with pa.config.config_context(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA):
+    with pandera.config.config_context(
+        validation_enabled=True,
+        validation_depth=pandera.config.ValidationDepth.SCHEMA_AND_DATA,
+    ):
         lf_result_sequential_polars = get_ac_loadflow_results(
             pandapower_net, nminus1_definition, job_id="test_job", n_processes=1
         )
-    with pa.config.config_context(validation_enabled=False):
+    with pandera.config.config_context(validation_enabled=False):
         lf_result_sequential_polars_no_val = get_ac_loadflow_results(
             pandapower_net, nminus1_definition, job_id="test_job", n_processes=1
         )

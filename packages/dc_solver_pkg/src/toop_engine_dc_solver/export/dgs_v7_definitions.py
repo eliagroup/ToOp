@@ -10,7 +10,12 @@
 This module only contains needed definitions, currently it focuses on switches.
 """
 
-import pandera.pandas as pa
+import importlib.metadata as im
+
+if im.version("pandera").startswith("0.29"):
+    import pandera.pandas as pa
+else:
+    import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Literal
 

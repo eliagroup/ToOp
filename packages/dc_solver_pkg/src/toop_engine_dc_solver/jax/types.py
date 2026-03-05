@@ -10,17 +10,373 @@
 This is in one central file to simplify import management
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
+import equinox as eqx
 import jax
 from beartype.typing import Optional, Protocol, Union
 from jax import numpy as jnp
-from jax_dataclasses import Static, pytree_dataclass
-from jaxtyping import Array, Bool, Float, Int, PyTree
+from jax_dataclasses import Static
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
 from toop_engine_interfaces.types import MetricType
+
+
+def int_max() -> int:
+    """Get the int max depending whether jax runs in 64 or 32 bit mode"""
+    return int(jnp.iinfo(jnp.int64).max) if jax.config.read("jax_enable_x64") else int(jnp.iinfo(jnp.int32).max)
+
+
+class MODFMatrix(eqx.Module):
+    """A MODF matrix for a single batch of multi-outages."""
+
+    modf: Float[Array, " ... n_branches n_outaged_branches"]
+    """The impact of the multi-outages on all branches in the network."""
+
+    branch_indices: Int[Array, " ... n_outaged_branches"]
+    """Which branches were outaged in the multi-outage"""
+
+    def __getitem__(self, key: Union[slice, int, jnp.ndarray]) -> "MODFMatrix":
+        """Get a slice of the MODF matrix.
+
+        Parameters
+        ----------
+        key : Union[slice, int, jnp.ndarray]
+            The key to index the MODF matrix with. This can be a slice, an integer or a boolean
+            array.
+
+        Returns
+        -------
+        MODFMatrix
+            The indexed MODF matrix.
+        """
+        return MODFMatrix(
+            modf=self.modf[key],
+            branch_indices=self.branch_indices[key],
+        )
+
+
+class NodalInjectionInformation(eqx.Module):
+    """Holds the nodal injection optimization data required by the DC solver."""
+
+    controllable_pst_indices: Int[Array, " n_controllable_pst"]
+    """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
+    actually shift angles and can be varied between shift_min and shift_max."""
+
+    shift_degree_min: Float[Array, " n_controllable_pst"]
+    """The minimum shift angle for each controllable PST. Cached here to avoid repeated access."""
+
+    shift_degree_max: Float[Array, " n_controllable_pst"]
+    """The maximum shift angle for each controllable PST. Cached here to avoid repeated access."""
+
+    pst_n_taps: Int[Array, " n_controllable_pst"]
+    """The number of discrete taps for each controllable PST"""
+
+    pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
+    """Discrete individual taps (in degrees) of controllable PSTs. The array is zero-padded to the maximum number of
+    pst_n_taps."""
+
+    starting_tap_idx: Int[Array, " n_controllable_pst"]
+    """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
+
+    grid_model_low_tap: Int[Array, " n_controllable_pst"]
+    """The lowest tap position for each controllable PST but in the original grid model. If original
+    taps are to be reconstructed from indices into pst_tap_values then tap + grid_model_low_tap gives the actual tap position
+    in the original grid model."""
+
+
+class N2BaselineAnalysis(eqx.Module):
+    """The output of the N-2 baseline analysis, used to compare the split n-2 analysis against."""
+
+    l1_branches: Int[Array, " n_l1_outages"]
+    """All branches that have been analysed as L1 outages"""
+
+    tot_stat_blacklisted: Int[Array, " n_sub_relevant max_branch_per_sub"]
+    """Branches that could not be outaged because they split the grid already in the unsplit
+    analysis don't need to be considered in the split analysis. This will include all stub lines to
+    relevant substations. These L1 cases are blacklisted. This is a copy of
+    dynamic_information.tot_stat where all the blacklisted cases are set to int_max."""
+
+    n_2_overloads: Float[Array, " n_l1_outages"]
+    """The overload energy for each L1 outage"""
+
+    n_2_success_count: Int[Array, " n_l1_outages"]
+    """How many N-2 cases were successfully computed for each L1 outage"""
+
+    more_splits_penalty: Float[Array, ""]
+    """If a topology causes more non-converging DC loadflows due to splits in the grid than the
+    baseline, a penalty is added to the metrics. I.e. if success_count is lower in the split
+    analysis than in the unsplit, this split penalty is added for every point difference in the
+    success_counts."""
+
+    max_mw_flow: Float[Array, " n_branches_monitored"]
+    """The branch limits used to compute the N-2 overload energy. This is likely a copy of
+    branch_limits.max_mw_flow, however it is less bug-prone to replicate it so the unsplit and split
+    analysis will always use the same limits."""
+
+    overload_weight: Optional[Float[Array, " n_branches_monitored"]]
+    """The overload weights used to compute the N-2 overload energy. This is likely a copy of
+    branch_limits.overload_weight, however it is less bug-prone to replicate it so the unsplit and
+    split analysis will always use the same weights."""
+
+
+class RelBBOutageData(eqx.Module):
+    """Holds the relevant busbar outage data."""
+
+    branch_outage_set: Int[Array, " n_actions n_max_bb_to_outage_per_sub max_branches_per_sub"]
+    """
+    This corresponds to the branches that are outaged in the busbar-outage cases, represented as integers.
+    These integers are essentially branch indices that index into branch_ids of NetworkData.
+    n_actions = sum(num_combis_per_sub)
+    If a sub has fewer than max_branch_per_sub branches, the remaining entries are padded with False.
+    """
+    deltap_set: Float[Array, " n_actions n_max_bb_to_outage_per_sub n_timesteps"]
+    """
+    The injection outages for each branch_action. The delta_p vector would depend on each action in the action_set.
+    The branch actions branch actions determine the placement of stub branches (if any) and the placement of
+    stub branches influence the delta_p vector. Additionally, injection_action determine the placement of the
+    injections on different busbars.
+    """
+    nodal_indices: Int[Array, " n_actions n_max_bb_to_outage_per_sub"]
+    """
+    The nodal index of the outaged busbar for each combination of branch and injection action
+    """
+    articulation_node_mask: Bool[Array, " n_actions n_max_bb_to_outage_per_sub"]
+    """
+    A mask that indicates if a particular busbar can be outaged or not. The idea is to not outage any busbar
+    that may result in a split in the station as this might lead to splitting the station twice. A True means
+    that the busbar is an articulation node and can't be outaged.
+    For ex, if bus_a: 1 - 2 - 3 ; bus_b: 4
+    Here busbar 2 is an articulation node as if it is outaged, bus_a will be split into 1 and 3.
+    """
+
+    def __eq__(self, other: object) -> bool:
+        """Equality is defined by array_equals checks
+
+        Parameters
+        ----------
+        other : object
+            The object to compare with.
+
+        Returns
+        -------
+        bool
+            True if the objects are equal, False otherwise.
+        """
+        if not isinstance(other, RelBBOutageData):
+            return False
+        return bool(
+            jnp.array_equal(self.branch_outage_set, other.branch_outage_set)
+            and jnp.array_equal(self.deltap_set, other.deltap_set)
+            and jnp.array_equal(self.nodal_indices, other.nodal_indices)
+            and jnp.array_equal(self.articulation_node_mask, other.articulation_node_mask)
+        )
+
+    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "RelBBOutageData":
+        """Access the first batch dimension of the RelBBOutageData"""
+        return RelBBOutageData(
+            branch_outage_set=self.branch_outage_set[key],
+            deltap_set=self.deltap_set[key],
+            nodal_indices=self.nodal_indices[key],
+            articulation_node_mask=self.articulation_node_mask[key],
+        )
+
+
+class NonRelBBOutageData(eqx.Module):
+    """Holds the non-relevant busbar outage data."""
+
+    branch_outages: Int[Array, " n_non_rel_bb_outages max_n_branches_failed"]
+    """The indices of the branches that are outaged in the busbar-outage cases, represented as integers.
+    Note that, this is a padded array with int_max.
+    """
+
+    nodal_indices: Int[Array, " n_non_rel_bb_outages"]
+    """The nodal_index of the busbars to be outaged. The length of the list
+    is the same as branch_outages. """
+
+    deltap: Float[Array, " n_non_rel_bb_outages n_timesteps"]
+    """For every busbar outage, the delta in power that has to be subtracted from
+    the nodal injection."""
+
+
+class BBOutageBaselineAnalysis(eqx.Module):
+    """The output of the busbar outage analysis for unsplit grid.
+
+    This is used as a baseline to compare against the split busbar outage analysis. This baseline data is used when we
+    calculate the difference between the split and unsplit busbar outage analysis.
+    """
+
+    overload: Float[Array, " "]
+    """ The worst overload energy due to busbar_outages."""
+
+    success_count: Int[Array, " "]
+    """How many loadflow computations for the busbar outages were successful.
+    """
+
+    more_splits_penalty: Float[Array, " "]
+    """If a topology causes more non-converging DC loadflows due to splits in the grid than the
+    baseline, a penalty is added to the metrics. I.e. if success_count is lower in the split
+    analysis than in the unsplit, this split penalty is added for every point difference in the
+    success_counts."""
+
+    max_mw_flow: Float[Array, " n_branches_monitored"]
+    """The branch limits used to compute the bb_outage overload energy. This is likely a copy of
+    branch_limits.max_mw_flow, however it is less bug-prone to replicate it so the unsplit and split
+    analysis will always use the same limits."""
+
+    overload_weight: Optional[Float[Array, " n_branches_monitored"]]
+    """The overload weights used to compute the bb_outage overload energy. This is likely a copy of
+    branch_limits.overload_weight, however it is less bug-prone to replicate it so the unsplit and
+    split analysis will always use the same weights."""
+
+
+class BranchLimits(eqx.Module):
+    """A dataclass holding the different branch limits.
+
+    As there are many slightly different types of limits, we introduce a dataclass to encapsulate them.
+    """
+
+    max_mw_flow: Float[Array, " n_branches_monitored"]
+    """The maximum flow in MW for each branch as stored in the specs of the line"""
+
+    max_mw_flow_n_1: Optional[Float[Array, " n_branches_monitored"]] = None
+    """Optionally, a different flow capacity in the N-1 case. If this is not None, it will override
+    max_mw_flow for N-1 computations. Otherwise, max_mw_flow will be used for both N-1 and N-0."""
+
+    overload_weight: Optional[Float[Array, " n_branches_monitored"]] = None
+    """Optionally, a different weight for each branch in the overload energy computation. If this is
+    not None, it will multiply the overload energy by the weight for each branch. Otherwise, a
+    constant weight of 1 will be used."""
+
+    max_mw_flow_limited: Optional[Float[Array, " n_branches_monitored"]] = None
+    """Optionally, a lower flow capacity to artificially constrain branches below their physical
+    limits. This is useful to avoid bringing branches too close to critical and can be computed
+    through aggregate_results.apply_double_limit"""
+
+    max_mw_flow_n_1_limited: Optional[Float[Array, " n_branches_monitored"]] = None
+    """Optionally, a lower flow capacity in the N-1 case to artificially constrain branches below
+    their physical limits. This is useful to avoid bringing branches too close to critical and can
+    be computed through aggregate_results.apply_double_limit"""
+
+    n0_n1_max_diff: Optional[Float[Array, " n_branches_monitored"]] = None
+    """Optionally, a maximum difference between the N-0 and N-1 flows in MW. 0 means the N-1 flows
+    shall be exactly the N-0 flows or lower, any value larger than 0 means that the relative
+    difference shall not exceed this value - 20 means that the N-1 flows can be at most 20 MW higher
+    than the N-0 flows. By applying this limit to transformers, the optimizer is penalized for
+    creating scenarios that pump a lot of energy into the distribution grid upon simple failures."""
+
+    coupler_limits: Optional[Float[Array, " n_subs_relevant"]] = None
+    """Optionally, a limit on the flow on the couplers for each relevant substation."""
+
+
+class ActionSet(eqx.Module):
+    """Holds the information for an ActionSet.
+
+    Instead of allowing all reassignments, it is required to constrain the optimizer
+    to choose from a set of actions per substation that have been pre-computed in the preprocessing
+    phase. This dataclass holds the information for these actions. Each action is a substation-local assignment of all
+    branches and injections, completely defining the electrical switching configuration of the substation. The physical
+    configuration and the switching actions to reach it are not stored in the jax part as they are not needed at runtime.
+    """
+
+    branch_actions: Bool[Array, " n_branch_actions max_branch_per_sub"]
+    """A padded out boolean array with the branch assignment for each action in the action set. Each action is a combination
+    of a branch and injection assignment. As each action corresponds to a single substation, this holds up to
+    max_branch_per_sub booleans and is padded with False if the sub has fewer branches. This holds a True if a branch is on
+    bus B and False if it is on bus A. The actions for all substations are concatenated to a large list of n_inj_action
+    assignments."""
+
+    inj_actions: Bool[Array, " n_branch_actions max_inj_per_sub"]  # Bool[Array, " n_inj_actions max_inj_per_sub"]
+    """A padded out boolean array with the injection assignment for each action in the action set. This holds
+    a True if an injection is on bus B and False if it is on bus A. The actions for all substations are
+    concatenated to a large list of n_inj_action assignments. If a sub has fewer than max_inj_per_sub
+    injections, the remaining entries are padded with False.
+    Potentially this can be overwritten by an injection combination passed in to the inj bruteforce mode.
+    """
+
+    n_actions_per_sub: Int[Array, " n_sub_relevant"]
+    """The number of branch actions for each substation. The actions in branch_actions are
+    concatenated for all substations, meaning n_actions == sum(n_actions_per_sub)"""
+
+    substation_correspondence: Int[ArrayLike, " n_branch_actions"]
+    """Holds for each action which substation it corresponds to. This improves search
+    performance in the array, though retrieval via n_actions_per_sub is also possible as the
+    actions are guaranteed to be in order of substation"""
+
+    unsplit_action_mask: Bool[Array, " n_branch_actions"]  # Bool[Array, " n_unsplit_actions"]
+    """A mask of unsplit actions, i.e. columns in the actions array that are all False.
+    This is used to avoid sampling the unsplit action in the random_topology generator. This is True where
+    the unsplit action is stored."""
+
+    reassignment_distance: Int[ArrayLike, " n_branch_actions"]
+    """The number of reassignments that were necessary to get from the starting topology in that station to the topology
+    described by the action in the action set."""
+
+    rel_bb_outage_data: Optional[RelBBOutageData] = None
+    """
+    Busbar outage data corresponding to each action in the action set. Each action in the action set determine
+    which branches and injections are on which busbar. This in turn determines which assets are outaged if
+    a busbar is outaged. This is optional because we may chose to skip calculating busbar outages in some cases.
+    """
+
+    def __eq__(self, other: object) -> bool:
+        """Equality is defined by array_equals checks
+
+        Parameters
+        ----------
+        other : object
+            The object to compare with.
+
+        Returns
+        -------
+        bool
+            True if the objects are equal, False otherwise.
+        """
+        if not isinstance(other, ActionSet):
+            return False
+        return bool(
+            jnp.array_equal(self.branch_actions, other.branch_actions)
+            and jnp.array_equal(self.n_actions_per_sub, other.n_actions_per_sub)
+            and jnp.array_equal(self.substation_correspondence, other.substation_correspondence)
+            and jnp.array_equal(self.unsplit_action_mask, other.unsplit_action_mask)
+            and jnp.array_equal(self.reassignment_distance, other.reassignment_distance)
+            and jnp.array_equal(self.inj_actions, other.inj_actions)
+            and self.rel_bb_outage_data == other.rel_bb_outage_data
+        )
+
+    def __getitem__(self, index: Union[Int[Array, " n_indices"], Bool[Array, " n_actions"]]) -> "ActionSet":
+        """Index a branch action set.
+
+        Parameters
+        ----------
+        index : Union[Int[Array, " n_indices"], Bool[Array, " n_actions"]]
+            The indices to index the branch action set with. Supported are boolean indices and
+            integer indices.
+
+        Returns
+        -------
+        BranchActionSet
+            The indexed branch action set.
+        """
+        assert index.ndim == 1, "Index must be 1D"
+        sub_correspondence = self.substation_correspondence[index]
+        n_actions_per_sub = jnp.bincount(
+            sub_correspondence, minlength=self.n_actions_per_sub.shape[0], length=self.n_actions_per_sub.shape[0]
+        )
+
+        return ActionSet(
+            branch_actions=self.branch_actions[index],
+            substation_correspondence=sub_correspondence,
+            n_actions_per_sub=n_actions_per_sub,
+            unsplit_action_mask=self.unsplit_action_mask[index],
+            reassignment_distance=self.reassignment_distance[index],
+            inj_actions=self.inj_actions[index],
+            rel_bb_outage_data=self.rel_bb_outage_data[index] if self.rel_bb_outage_data is not None else None,
+        )
+
+    def __len__(self) -> int:
+        """Get the number of actions"""
+        return self.branch_actions.shape[0]
 
 
 @dataclass
@@ -146,8 +502,7 @@ class SolverConfig:
         return self.branches_per_sub.val.max().item()
 
 
-@pytree_dataclass
-class DynamicInformation:
+class DynamicInformation(eqx.Module):
     """Holds the dynamic information for the solver.
 
     A dataclass holding all the information that is needed for the solver and that is ok to be
@@ -191,11 +546,11 @@ class DynamicInformation:
     susceptance: Float[Array, " n_branches"]
     """The susceptance of each branch"""
 
-    relevant_injections: Float[Array, " n_timesteps n_sub_relevant max_inj_per_sub"]
+    relevant_injections: Float[Array, " *n_timesteps n_sub_relevant max_inj_per_sub"]
     """The individual injections at the relevant subs, representing individual loads and generators that can be reassigned
     independently. The injections are padded to max_inj_per_sub with zeros, i.e. reassigning out of range will do nothing."""
 
-    nodal_injections: Float[Array, " n_timesteps n_bus"]
+    nodal_injections: Float[Array, " *n_timesteps n_bus"]
     """The default nodal injections in the unsplit configuration. This is the sum of all
     consumptions and productions for each bus. The solver will adjust this based on the injection
     combination. There is a different vector for each timestep."""
@@ -227,7 +582,7 @@ class DynamicInformation:
     """The branches that can be disconnected as a remedial action. This is a list of indices into
     the branches array"""
 
-    nonrel_injection_outage_deltap: Float[Array, " n_timesteps n_nonrel_inj_failures"]
+    nonrel_injection_outage_deltap: Float[Array, " *n_timesteps n_nonrel_inj_failures"]
     """For every injection outage at a non-relevant sub, the delta in nodal injection that is to be expected from this
     outage."""
 
@@ -243,7 +598,7 @@ class DynamicInformation:
     substation. Meaning relevant_injections[relevant_injection_outage_sub, relevant_injection_outage_idx] is the
     injection that is failing.."""
 
-    unsplit_flow: Float[Array, " n_timesteps n_branches"]
+    unsplit_flow: Float[Array, " *n_timesteps n_branches"]
     """The flow in the network before any bus splits. This can either be the DC loadflow, the AC loadflow or
     any mixture of the two."""
 
@@ -382,8 +737,7 @@ class DynamicInformation:
         )
 
 
-@pytree_dataclass
-class StaticInformation:
+class StaticInformation(eqx.Module):
     """Holds the static information for the solver.
 
     The static information comprises a set of data that is not changing during the computation
@@ -394,7 +748,7 @@ class StaticInformation:
     dynamic_information: DynamicInformation
     """The dynamic information that is used for the computation"""
 
-    solver_config: Static[SolverConfig]
+    solver_config: Static[SolverConfig] = eqx.field(static=True)
     """The static configuration that is used for the computation"""
 
     def __hash__(self) -> int:
@@ -405,7 +759,7 @@ class StaticInformation:
         """
         return id(self)
 
-    def __eq__(self, other: object) -> Bool:
+    def __eq__(self, other: object) -> bool:
         """Test for equality.
 
         Parameters
@@ -471,159 +825,7 @@ class StaticInformation:
         return self.dynamic_information.n_actions
 
 
-@pytree_dataclass
-class BranchLimits:
-    """A dataclass holding the different branch limits.
-
-    As there are many slightly different types of limits, we introduce a dataclass to encapsulate them.
-    """
-
-    max_mw_flow: Float[Array, " n_branches_monitored"]
-    """The maximum flow in MW for each branch as stored in the specs of the line"""
-
-    max_mw_flow_n_1: Optional[Float[Array, " n_branches_monitored"]] = None
-    """Optionally, a different flow capacity in the N-1 case. If this is not None, it will override
-    max_mw_flow for N-1 computations. Otherwise, max_mw_flow will be used for both N-1 and N-0."""
-
-    overload_weight: Optional[Float[Array, " n_branches_monitored"]] = None
-    """Optionally, a different weight for each branch in the overload energy computation. If this is
-    not None, it will multiply the overload energy by the weight for each branch. Otherwise, a
-    constant weight of 1 will be used."""
-
-    max_mw_flow_limited: Optional[Float[Array, " n_branches_monitored"]] = None
-    """Optionally, a lower flow capacity to artificially constrain branches below their physical
-    limits. This is useful to avoid bringing branches too close to critical and can be computed
-    through aggregate_results.apply_double_limit"""
-
-    max_mw_flow_n_1_limited: Optional[Float[Array, " n_branches_monitored"]] = None
-    """Optionally, a lower flow capacity in the N-1 case to artificially constrain branches below
-    their physical limits. This is useful to avoid bringing branches too close to critical and can
-    be computed through aggregate_results.apply_double_limit"""
-
-    n0_n1_max_diff: Optional[Float[Array, " n_branches_monitored"]] = None
-    """Optionally, a maximum difference between the N-0 and N-1 flows in MW. 0 means the N-1 flows
-    shall be exactly the N-0 flows or lower, any value larger than 0 means that the relative
-    difference shall not exceed this value - 20 means that the N-1 flows can be at most 20 MW higher
-    than the N-0 flows. By applying this limit to transformers, the optimizer is penalized for
-    creating scenarios that pump a lot of energy into the distribution grid upon simple failures."""
-
-    coupler_limits: Optional[Float[Array, " n_subs_relevant"]] = None
-    """Optionally, a limit on the flow on the couplers for each relevant substation."""
-
-
-@pytree_dataclass
-class ActionSet:
-    """Holds the information for an ActionSet.
-
-    Instead of allowing all reassignments, it is required to constrain the optimizer
-    to choose from a set of actions per substation that have been pre-computed in the preprocessing
-    phase. This dataclass holds the information for these actions. Each action is a substation-local assignment of all
-    branches and injections, completely defining the electrical switching configuration of the substation. The physical
-    configuration and the switching actions to reach it are not stored in the jax part as they are not needed at runtime.
-    """
-
-    branch_actions: Bool[Array, " n_actions max_branch_per_sub"]
-    """A padded out boolean array with the branch assignment for each action in the action set. Each action is a combination
-    of a branch and injection assignment. As each action corresponds to a single substation, this holds up to
-    max_branch_per_sub booleans and is padded with False if the sub has fewer branches. This holds a True if a branch is on
-    bus B and False if it is on bus A. The actions for all substations are concatenated to a large list of n_inj_action
-    assignments."""
-
-    inj_actions: Bool[Array, " n_actions max_inj_per_sub"]
-    """A padded out boolean array with the injection assignment for each action in the action set. This holds
-    a True if an injection is on bus B and False if it is on bus A. The actions for all substations are
-    concatenated to a large list of n_inj_action assignments. If a sub has fewer than max_inj_per_sub
-    injections, the remaining entries are padded with False.
-    Potentially this can be overwritten by an injection combination passed in to the inj bruteforce mode.
-    """
-
-    n_actions_per_sub: Int[Array, " n_sub_relevant"]
-    """The number of branch actions for each substation. The actions in branch_actions are
-    concatenated for all substations, meaning n_actions == sum(n_actions_per_sub)"""
-
-    substation_correspondence: Int[Array, " n_actions"]
-    """Holds for each action which substation it corresponds to. This improves search
-    performance in the array, though retrieval via n_actions_per_sub is also possible as the
-    actions are guaranteed to be in order of substation"""
-
-    unsplit_action_mask: Bool[Array, " n_actions"]
-    """A mask of unsplit actions, i.e. columns in the actions array that are all False.
-    This is used to avoid sampling the unsplit action in the random_topology generator. This is True where
-    the unsplit action is stored."""
-
-    reassignment_distance: Int[Array, " n_actions"]
-    """The number of reassignments that were necessary to get from the starting topology in that station to the topology
-    described by the action in the action set."""
-
-    rel_bb_outage_data: Optional[RelBBOutageData] = None
-    """
-    Busbar outage data corresponding to each action in the action set. Each action in the action set determine
-    which branches and injections are on which busbar. This in turn determines which assets are outaged if
-    a busbar is outaged. This is optional because we may chose to skip calculating busbar outages in some cases.
-    """
-
-    def __eq__(self, other: object) -> bool:
-        """Equality is defined by array_equals checks
-
-        Parameters
-        ----------
-        other : object
-            The object to compare with.
-
-        Returns
-        -------
-        bool
-            True if the objects are equal, False otherwise.
-        """
-        if not isinstance(other, ActionSet):
-            return False
-        return (
-            jnp.array_equal(self.branch_actions, other.branch_actions)
-            and jnp.array_equal(self.n_actions_per_sub, other.n_actions_per_sub)
-            and jnp.array_equal(self.substation_correspondence, other.substation_correspondence)
-            and jnp.array_equal(self.unsplit_action_mask, other.unsplit_action_mask)
-            and jnp.array_equal(self.reassignment_distance, other.reassignment_distance)
-            and jnp.array_equal(self.inj_actions, other.inj_actions)
-            and self.rel_bb_outage_data == other.rel_bb_outage_data
-        )
-
-    def __getitem__(self, index: Union[Int[Array, " n_indices"], Bool[Array, " n_actions"]]) -> ActionSet:
-        """Index a branch action set.
-
-        Parameters
-        ----------
-        index : Union[Int[Array, " n_indices"], Bool[Array, " n_actions"]]
-            The indices to index the branch action set with. Supported are boolean indices and
-            integer indices.
-
-        Returns
-        -------
-        BranchActionSet
-            The indexed branch action set.
-        """
-        assert index.ndim == 1, "Index must be 1D"
-        sub_correspondence = self.substation_correspondence[index]
-        n_actions_per_sub = jnp.bincount(
-            sub_correspondence, minlength=self.n_actions_per_sub.shape[0], length=self.n_actions_per_sub.shape[0]
-        )
-
-        return ActionSet(
-            branch_actions=self.branch_actions[index],
-            substation_correspondence=sub_correspondence,
-            n_actions_per_sub=n_actions_per_sub,
-            unsplit_action_mask=self.unsplit_action_mask[index],
-            reassignment_distance=self.reassignment_distance[index],
-            inj_actions=self.inj_actions[index],
-            rel_bb_outage_data=self.rel_bb_outage_data[index] if self.rel_bb_outage_data is not None else None,
-        )
-
-    def __len__(self) -> int:
-        """Get the number of actions"""
-        return self.branch_actions.shape[0]
-
-
-@pytree_dataclass
-class ActionIndexComputations:
+class ActionIndexComputations(eqx.Module):
     """Holds branch+injection topology computations in the form of indices into the action set.
 
     Each action consist of a set of splits, where each split is determined by an index into the ActionSet.
@@ -635,17 +837,17 @@ class ActionIndexComputations:
     substation_correspondence
     """
 
-    action: Int[Array, " ... n_topologies n_splits"]
+    action: Int[Array, " *topo_batch n_splits"]
     """An index into the action set, determining the reconfiguration and the substation that was split. Each split
     must refer to a different substation, otherwise the action is invalid. If an action wants to represent less than
     n_split splits, the remaining slots are to be filled with invalid indices, e.g. int_max. Consequently, passing only
     int_max will result in the unsplit configuration."""
 
-    pad_mask: Bool[Array, "... n_topologies"]
+    pad_mask: Bool[Array, " *topo_batch"]
     """In case the computations are padded to a common batch size, mark which computations are
     valid (True) and which are just padding (False)."""
 
-    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> ActionIndexComputations:
+    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "ActionIndexComputations":
         """Access the first batch dimension of the topology computations"""
         return ActionIndexComputations(
             action=self.action[key],
@@ -657,15 +859,14 @@ class ActionIndexComputations:
         return self.action.shape[0]
 
 
-@pytree_dataclass
-class TopoVectBranchComputations:
+class TopoVectBranchComputations(eqx.Module):
     """Stores branch topology computations in topo-vect form.
 
     This is a padded topo vect with an entry per split, showing the busbar assignment
     for each branch in the station. The station is identified via the sub_ids array.
     """
 
-    topologies: Bool[Array, " ... n_topologies n_splits max_branch_per_sub"]
+    topologies: Bool[Array, " *topo_batch n_splits max_branch_per_sub"]
     """An array of topologies that we want to have computed. The topologies are stored as topo-vects
     for the substation that's being reconfigured, where each entry is a boolean value indicating
     whether the line is on bus 0 (False) or on bus 1 (True). Note that loads and generators are not
@@ -681,16 +882,16 @@ class TopoVectBranchComputations:
     have seen a topology change.
     """
 
-    sub_ids: Int[Array, " ... n_topologies n_splits"]
+    sub_ids: Int[Array, " *topo_batch n_splits"]
     """The substation id that is affected by the currently computed bus split. This indexes into
     relevant substations only, as the others can't be split.
     """
 
-    pad_mask: Bool[Array, "... n_topologies"]
+    pad_mask: Bool[Array, " *topo_batch"]
     """In case the computations are padded to a common batch size, mark which computations are
     valid (True) and which are just padding (False)."""
 
-    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> TopoVectBranchComputations:
+    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "TopoVectBranchComputations":
         """Access the first batch dimension of the topology computations"""
         return TopoVectBranchComputations(
             topologies=self.topologies[key],
@@ -703,14 +904,13 @@ class TopoVectBranchComputations:
         return self.topologies.shape[0]
 
 
-@pytree_dataclass
-class InjectionComputations:
+class InjectionComputations(eqx.Module):
     """Injection combinations can be either used from the action set or overwritten with custom injection combinations.
 
     If this is passed, that means the the injection actions from the set shall be overwritten.
     """
 
-    corresponding_topology: Int[Array, " ... n_injection_combinations"]
+    corresponding_topology: Int[Array, " *injection_batch"]
     """An index into either ActionIndexComputations, telling for which branch topology this injection combination
     is computed. The injection action associated with the action set will be overwritten by the injection combination
     in this topo-vect. Entries are sorted by corresponding_topology to make
@@ -718,18 +918,18 @@ class InjectionComputations:
     one or more injection combinations per branch action. If a branch action is never mentioned, this entails undefined
     behaviour for that branch action. The number of injection combinations per branch action is not fixed and can vary."""
 
-    injection_topology: Bool[Array, " ... n_injection_combinations n_splits max_inj_per_sub"]
+    injection_topology: Bool[Array, " *injection_batch n_splits max_inj_per_sub"]
     """The injection topology for each substation. This is a topo vect which holds whether an
     injection is on busbar A (False) or busbar B (True). The last dimension is padded to max_inj_per_sub.
     It holds an entry for every substation that is split in the corresponding branch topology, as injection
     reassignments on unsplit stations do not make sense. The substations ids are the same as in the
     corresponding branch topology."""
 
-    pad_mask: Bool[Array, "... n_injection_combinations"]
+    pad_mask: Bool[ArrayLike, " *injection_batch"]
     """In case the computations are padded to a common batch size, mark which computations are
     valid (True) and which are just padding (False)."""
 
-    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> InjectionComputations:
+    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "InjectionComputations":
         """Access the first batch dimension of the injection computations"""
         return InjectionComputations(
             corresponding_topology=self.corresponding_topology[key],
@@ -738,17 +938,16 @@ class InjectionComputations:
         )
 
 
-@pytree_dataclass
-class SparseNMinus0:
+class SparseNMinus0(eqx.Module):
     """A dataclass for tracking maximum N-0 results in a sparse fashion."""
 
-    pf_n_0_max: Float[Array, " ... n_timesteps number_most_affected"]
+    pf_n_0_max: Float[Array, " *timestep_batch number_most_affected"]
     """The maximum rho values encountered"""
 
-    hist_mon: Int[Array, " ... n_timesteps number_most_affected"]
+    hist_mon: Int[Array, " *timestep_batch number_most_affected"]
     """The index of the overloaded branch, indexing into only monitored lines"""
 
-    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> SparseNMinus0:
+    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "SparseNMinus0":
         """Access the first batch dimension of the topology computations"""
         return SparseNMinus0(
             pf_n_0_max=self.pf_n_0_max[key],
@@ -756,8 +955,7 @@ class SparseNMinus0:
         )
 
 
-@pytree_dataclass
-class SparseNMinus1:
+class SparseNMinus1(eqx.Module):
     """A dataclass for tracking maximum N-1 results in a sparse fashion.
 
     Very similar to a COO sparse matrix, this tracks the values (pf_n_1_max) and the row and column
@@ -767,16 +965,16 @@ class SparseNMinus1:
 
     # TODO maybe just use jax.experimental.sparse.BCOO?
 
-    pf_n_1_max: Float[Array, " ... n_timesteps number_most_affected"]
+    pf_n_1_max: Float[Array, " *timestep_batch number_most_affected"]
     """The maximum rho values encountered"""
 
-    hist_mon: Int[Array, " ... n_timesteps number_most_affected"]
+    hist_mon: Int[Array, " *timestep_batch number_most_affected"]
     """The index of the overloaded branch"""
 
-    hist_out: Int[Array, " ... n_timesteps number_most_affected"]
+    hist_out: Int[Array, " *timestep_batch number_most_affected"]
     """The index of the outaged branch that caused the overload, i.e. the N-1 case"""
 
-    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> SparseNMinus1:
+    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "SparseNMinus1":
         """Access the first batch dimension of the topology computations"""
         return SparseNMinus1(
             pf_n_1_max=self.pf_n_1_max[key],
@@ -785,8 +983,7 @@ class SparseNMinus1:
         )
 
 
-@pytree_dataclass
-class BSDFResults:
+class BSDFResults(eqx.Module):
     """A dataclass encapsulating the data that is updated within the bsdf computation.
 
     This holds only the changing parts, information from the StaticInformation dataclass and the to-
@@ -814,8 +1011,7 @@ class BSDFResults:
     """The BSDF vectors for each split, used in the cross-coupler flow updates."""
 
 
-@pytree_dataclass
-class DisconnectionResults:
+class DisconnectionResults(eqx.Module):
     """A dataclass encapsulating the results of the disconnection computations.
 
     This holds only the changing parts, information from the StaticInformation dataclass and the to-
@@ -839,48 +1035,16 @@ class DisconnectionResults:
     """The MODF matrices for the disconnections to apply the loadflow update"""
 
 
-@pytree_dataclass
-class SparseSolverOutput:
+class SparseSolverOutput(eqx.Module):
     """Store the results of the loadflow computations on a per-topology basis."""
 
     n_0_results: SparseNMinus0
     n_1_results: SparseNMinus1
-    best_inj_combi: Int[Array, " ... n_sub_relevant"]
-    success: Bool[Array, " ..."]
+    success: Bool[ArrayLike, " ..."]
+    best_inj_combi: Optional[Bool[ArrayLike, " ... n_splits max_inj_per_sub"]] = None
 
 
-@pytree_dataclass
-class MODFMatrix:
-    """A MODF matrix for a single batch of multi-outages."""
-
-    modf: Float[Array, " ... n_branches n_outaged_branches"]
-    """The impact of the multi-outages on all branches in the network."""
-
-    branch_indices: Int[Array, " ... n_outaged_branches"]
-    """Which branches were outaged in the multi-outage"""
-
-    def __getitem__(self, key: Union[slice, int, jnp.ndarray]) -> MODFMatrix:
-        """Get a slice of the MODF matrix.
-
-        Parameters
-        ----------
-        key : Union[slice, int, jnp.ndarray]
-            The key to index the MODF matrix with. This can be a slice, an integer or a boolean
-            array.
-
-        Returns
-        -------
-        MODFMatrix
-            The indexed MODF matrix.
-        """
-        return MODFMatrix(
-            modf=self.modf[key],
-            branch_indices=self.branch_indices[key],
-        )
-
-
-@pytree_dataclass
-class TopologyResults:
+class TopologyResults(eqx.Module):
     """Stores the results of the BSDF, LODF and static flow computations.
 
     All computations that happen over topology batches.
@@ -895,93 +1059,55 @@ class TopologyResults:
     to_node: Int[Array, " ... n_branches"]
     """The to nodes after applying every topology"""
 
-    lodf: Float[Array, " ... n_failures n_branches_monitored"]
+    lodf: Optional[Float[ArrayLike, " ... n_single_outages n_branches_monitored"]]
     """The LODF matrices for every topology and every failure"""
 
     success: Bool[Array, " ..."]
     """Whether all computations for a topology were successful (i.e. all bsdfs, all outages, all
     LODFs and all MODFs."""
 
-    outage_modf: list[MODFMatrix]
+    outage_modf: Optional[list[MODFMatrix]]
     """The MODF matrices for the multi-outages"""
 
-    failure_cases_to_zero: Optional[Bool[Array, " ... n_failures"]]
+    failure_cases_to_zero: Optional[Bool[ArrayLike, " ... n_total_outages"]]
     """If disconnections are applied, potentially some failure cases need to be zeroed out after the N-1
     computation."""
 
-    bsdf: Float[Array, " ... n_splits n_branches"]
+    bsdf: Float[ArrayLike, " ... n_splits n_branches"]
     """If cross-busbar flows are to be computed, this holds the BSDF vectors required to do that"""
 
     disconnection_modf: Optional[MODFMatrix]
     """If disconnections are applied, this holds the MODF matrices for the disconnections."""
 
 
-@pytree_dataclass
-class N2BaselineAnalysis:
-    """The output of the N-2 baseline analysis, used to compare the split n-2 analysis against."""
-
-    l1_branches: Int[Array, " n_l1_outages"]
-    """All branches that have been analysed as L1 outages"""
-
-    tot_stat_blacklisted: Int[Array, " n_sub_relevant max_branch_per_sub"]
-    """Branches that could not be outaged because they split the grid already in the unsplit
-    analysis don't need to be considered in the split analysis. This will include all stub lines to
-    relevant substations. These L1 cases are blacklisted. This is a copy of
-    dynamic_information.tot_stat where all the blacklisted cases are set to int_max."""
-
-    n_2_overloads: Float[Array, " n_l1_outages"]
-    """The overload energy for each L1 outage"""
-
-    n_2_success_count: Int[Array, " n_l1_outages"]
-    """How many N-2 cases were successfully computed for each L1 outage"""
-
-    more_splits_penalty: Float[Array, ""]
-    """If a topology causes more non-converging DC loadflows due to splits in the grid than the
-    baseline, a penalty is added to the metrics. I.e. if success_count is lower in the split
-    analysis than in the unsplit, this split penalty is added for every point difference in the
-    success_counts."""
-
-    max_mw_flow: Float[Array, " n_branches_monitored"]
-    """The branch limits used to compute the N-2 overload energy. This is likely a copy of
-    branch_limits.max_mw_flow, however it is less bug-prone to replicate it so the unsplit and split
-    analysis will always use the same limits."""
-
-    overload_weight: Optional[Float[Array, " n_branches_monitored"]]
-    """The overload weights used to compute the N-2 overload energy. This is likely a copy of
-    branch_limits.overload_weight, however it is less bug-prone to replicate it so the unsplit and
-    split analysis will always use the same weights."""
-
-
-@pytree_dataclass
-class NodalInjOptimResults:
+class NodalInjOptimResults(eqx.Module):
     """A container for the results of the nodal injection optimization.
 
     Currently this includes only the PST taps, but later this might be extended to HVDCs or even redispatch clusters.
     """
 
-    pst_tap_idx: Float[Array, " ... n_timesteps n_controllable_pst"]
+    pst_tap_idx: Int[ArrayLike, " *batch_size n_timesteps n_controllable_pst"]
     """The PST taps as indices into the tap values table after optimization (i.e. not shift degrees).
 
     Though this might be discrete if PST optimization should happen discrete, we store it as a float in case continuous
     PST optimization is used.
     """
 
-    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> NodalInjOptimResults:
+    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "NodalInjOptimResults":
         """Access the first batch dimension of the nodal injection optimization results"""
         return NodalInjOptimResults(
             pst_tap_idx=self.pst_tap_idx[key],
         )
 
 
-@pytree_dataclass
-class NodalInjStartOptions:
+class NodalInjStartOptions(eqx.Module):
     """Options for the starting point of the nodal injection optimization."""
 
     previous_results: NodalInjOptimResults
     """The results from a previous optimization to use as a starting point, e.g. from a previous topology that only has
     a small mutation distance."""
 
-    precision_percent: Float[Array, " "]
+    precision_percent: Float[ArrayLike, " *batch_size"]
     """The precision to which the optimization should run in percent of the maximal precision.
 
     This is a scalar (0-D array) that applies uniformly to all topologies in the batch.
@@ -993,8 +1119,7 @@ class NodalInjStartOptions:
     """
 
 
-@pytree_dataclass
-class SolverLoadflowResults:
+class SolverLoadflowResults(eqx.Module):
     """The loadflow results without any preprocessing in matrix form.
 
     This is the primary input for the aggregate_output and aggregate_metrics functions,
@@ -1008,10 +1133,10 @@ class SolverLoadflowResults:
     """The N-1 p values for all monitored branches where the failures are ordered by normal N-1
     single branch contingencies, then multi-outages, then injection outages, then busbar outages."""
 
-    cross_coupler_flows: Float[Array, " ... n_splits n_timesteps"]
+    cross_coupler_flows: Optional[Float[ArrayLike, " ... n_splits n_timesteps"]]
     """The cross-coupler flows for each coupler/split and timestep in MW."""
 
-    branch_action_index: Int[Array, " ... n_splits"]
+    branch_action_index: Optional[Int[ArrayLike, " ... n_splits"]]
     """The index into the branch action set, which determined the branch topology in binary format. Corresponds
     to the input passed into the solver."""
 
@@ -1049,14 +1174,14 @@ class SolverLoadflowResults:
     nodal_injections_optimized: Optional[NodalInjOptimResults] = None
     """The results of the nodal injection optimization, if any was performed."""
 
-    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> SolverLoadflowResults:
+    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "SolverLoadflowResults":
         """Access the first batch dimension of the loadflow matrices"""
         assert self.n_0_matrix.ndim >= 3, "Only works if a batch dimension is present"
         return SolverLoadflowResults(
             n_0_matrix=self.n_0_matrix[key],
             n_1_matrix=self.n_1_matrix[key],
-            cross_coupler_flows=self.cross_coupler_flows[key],
-            branch_action_index=self.branch_action_index[key],
+            cross_coupler_flows=(self.cross_coupler_flows[key] if self.cross_coupler_flows is not None else None),
+            branch_action_index=(self.branch_action_index[key] if self.branch_action_index is not None else None),
             branch_topology=self.branch_topology[key],
             sub_ids=self.sub_ids[key],
             injection_topology=self.injection_topology[key],
@@ -1071,8 +1196,7 @@ class SolverLoadflowResults:
         )
 
 
-@pytree_dataclass
-class WorstKContingencyResults:
+class WorstKContingencyResults(eqx.Module):
     """Stores the worst K contingency cases so the AC optimizer can focus on those first."""
 
     top_k_overloads: Float[Array, " n_timesteps"]
@@ -1202,151 +1326,3 @@ class AggregateOutputProtocol(Protocol):
             True if the objects are equal, False otherwise.
         """
         return hash(self) == hash(other)
-
-
-@pytree_dataclass
-class RelBBOutageData:
-    """Holds the relevant busbar outage data."""
-
-    branch_outage_set: Int[Array, " n_actions n_max_bb_to_outage_per_sub max_branches_per_sub"]
-    """
-    This corresponds to the branches that are outaged in the busbar-outage cases, represented as integers.
-    These integers are essentially branch indices that index into branch_ids of NetworkData.
-    n_actions = sum(num_combis_per_sub)
-    If a sub has fewer than max_branch_per_sub branches, the remaining entries are padded with False.
-    """
-    deltap_set: Float[Array, " n_actions n_max_bb_to_outage_per_sub n_timesteps"]
-    """
-    The injection outages for each branch_action. The delta_p vector would depend on each action in the action_set.
-    The branch actions branch actions determine the placement of stub branches (if any) and the placement of
-    stub branches influence the delta_p vector. Additionally, injection_action determine the placement of the
-    injections on different busbars.
-    """
-    nodal_indices: Int[Array, " n_actions n_max_bb_to_outage_per_sub"]
-    """
-    The nodal index of the outaged busbar for each combination of branch and injection action
-    """
-    articulation_node_mask: Bool[Array, " n_actions n_max_bb_to_outage_per_sub"]
-    """
-    A mask that indicates if a particular busbar can be outaged or not. The idea is to not outage any busbar
-    that may result in a split in the station as this might lead to splitting the station twice. A True means
-    that the busbar is an articulation node and can't be outaged.
-    For ex, if bus_a: 1 - 2 - 3 ; bus_b: 4
-    Here busbar 2 is an articulation node as if it is outaged, bus_a will be split into 1 and 3.
-    """
-
-    def __eq__(self, other: object) -> bool:
-        """Equality is defined by array_equals checks
-
-        Parameters
-        ----------
-        other : object
-            The object to compare with.
-
-        Returns
-        -------
-        bool
-            True if the objects are equal, False otherwise.
-        """
-        if not isinstance(other, RelBBOutageData):
-            return False
-        return (
-            jnp.array_equal(self.branch_outage_set, other.branch_outage_set)
-            and jnp.array_equal(self.deltap_set, other.deltap_set)
-            and jnp.array_equal(self.nodal_indices, other.nodal_indices)
-            and jnp.array_equal(self.articulation_node_mask, other.articulation_node_mask)
-        )
-
-    def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> RelBBOutageData:
-        """Access the first batch dimension of the RelBBOutageData"""
-        return RelBBOutageData(
-            branch_outage_set=self.branch_outage_set[key],
-            deltap_set=self.deltap_set[key],
-            nodal_indices=self.nodal_indices[key],
-            articulation_node_mask=self.articulation_node_mask[key],
-        )
-
-
-@pytree_dataclass
-class NonRelBBOutageData:
-    """Holds the non-relevant busbar outage data."""
-
-    branch_outages: Int[Array, " n_non_rel_bb_outages max_n_branches_failed"]
-    """The indices of the branches that are outaged in the busbar-outage cases, represented as integers.
-    Note that, this is a padded array with int_max.
-    """
-
-    nodal_indices: Int[Array, " n_non_rel_bb_outages"]
-    """The nodal_index of the busbars to be outaged. The length of the list
-    is the same as branch_outages. """
-
-    deltap: Float[Array, " n_non_rel_bb_outages n_timesteps"]
-    """For every busbar outage, the delta in power that has to be subtracted from
-    the nodal injection."""
-
-
-def int_max() -> int:
-    """Get the int max depending whether jax runs in 64 or 32 bit mode"""
-    return int(jnp.iinfo(jnp.int64).max) if jax.config.read("jax_enable_x64") else int(jnp.iinfo(jnp.int32).max)
-
-
-@pytree_dataclass
-class BBOutageBaselineAnalysis:
-    """The output of the busbar outage analysis for unsplit grid.
-
-    This is used as a baseline to compare against the split busbar outage analysis. This baseline data is used when we
-    calculate the difference between the split and unsplit busbar outage analysis.
-    """
-
-    overload: Float[Array, " "]
-    """ The worst overload energy due to busbar_outages."""
-
-    success_count: Int[Array, " "]
-    """How many loadflow computations for the busbar outages were successful.
-    """
-
-    more_splits_penalty: Float[Array, " "]
-    """If a topology causes more non-converging DC loadflows due to splits in the grid than the
-    baseline, a penalty is added to the metrics. I.e. if success_count is lower in the split
-    analysis than in the unsplit, this split penalty is added for every point difference in the
-    success_counts."""
-
-    max_mw_flow: Float[Array, " n_branches_monitored"]
-    """The branch limits used to compute the bb_outage overload energy. This is likely a copy of
-    branch_limits.max_mw_flow, however it is less bug-prone to replicate it so the unsplit and split
-    analysis will always use the same limits."""
-
-    overload_weight: Optional[Float[Array, " n_branches_monitored"]]
-    """The overload weights used to compute the bb_outage overload energy. This is likely a copy of
-    branch_limits.overload_weight, however it is less bug-prone to replicate it so the unsplit and
-    split analysis will always use the same weights."""
-
-
-@pytree_dataclass
-class NodalInjectionInformation:
-    """Holds the nodal injection optimization data required by the DC solver."""
-
-    controllable_pst_indices: Int[Array, " n_controllable_pst"]
-    """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
-    actually shift angles and can be varied between shift_min and shift_max."""
-
-    shift_degree_min: Float[Array, " n_controllable_pst"]
-    """The minimum shift angle for each controllable PST. Cached here to avoid repeated access."""
-
-    shift_degree_max: Float[Array, " n_controllable_pst"]
-    """The maximum shift angle for each controllable PST. Cached here to avoid repeated access."""
-
-    pst_n_taps: Int[Array, " n_controllable_pst"]
-    """The number of discrete taps for each controllable PST"""
-
-    pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
-    """Discrete individual taps (in degrees) of controllable PSTs. The array is zero-padded to the maximum number of
-    pst_n_taps."""
-
-    starting_tap_idx: Int[Array, " n_controllable_pst"]
-    """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
-
-    grid_model_low_tap: Int[Array, " n_controllable_pst"]
-    """The lowest tap position for each controllable PST but in the original grid model. If original
-    taps are to be reconstructed from indices into pst_tap_values then tap + grid_model_low_tap gives the actual tap position
-    in the original grid model."""

@@ -24,8 +24,6 @@ Outputs:
   benchmark_summary.json stored in ${hydra.run.dir}.
 """
 
-from __future__ import annotations
-
 import json
 import sys
 import time

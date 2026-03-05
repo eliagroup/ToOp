@@ -16,7 +16,7 @@ selection criterium based on overload energy
 import jax
 from beartype.typing import Literal, Optional, TypeAlias
 from jax import numpy as jnp
-from jaxtyping import Array, Bool, Float, Int, PyTree
+from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.types import (
     BranchLimits,
     NodalInjOptimResults,
@@ -32,8 +32,8 @@ AggregateStrategy: TypeAlias = Literal["max", "nanmax"]
 
 
 def get_max_flow_n_1_matrix(
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
-    max_mw_flow: Float[Array, " n_branches"],
+    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
+    max_mw_flow: Float[ArrayLike, " n_branches"],
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " "]:
     """Compute the maximum flow for an N-1 matrix
@@ -60,9 +60,9 @@ def get_max_flow_n_1_matrix(
 
 
 def get_overload_energy_n_1_matrix(
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
-    max_mw_flow: Float[Array, " n_branches"],
-    overload_weight: Optional[Float[Array, " n_branches"]] = None,
+    n_1_matrix: Float[ArrayLike, " *batch_size n_timesteps n_failures n_branches"],
+    max_mw_flow: Float[ArrayLike, " n_branches"],
+    overload_weight: Optional[Float[ArrayLike, " n_branches"]] = None,
     aggregate_strategy: Optional[AggregateStrategy] = "max",
 ) -> Float[Array, " "]:
     """Compute the overload energy for an N-1 matrix
@@ -71,7 +71,7 @@ def get_overload_energy_n_1_matrix(
 
     Parameters
     ----------
-    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches"]
+    n_1_matrix : Float[ArrayLike, " *batch_size n_timesteps n_failures n_branches"]
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
@@ -103,11 +103,11 @@ def get_overload_energy_n_1_matrix(
         max_fn = jnp.max
     elif aggregate_strategy == "nanmax":
         max_fn = jnp.nanmax
-    return jnp.sum(max_fn(overload_matrix, axis=1))
+    return jnp.sum(max_fn(overload_matrix, axis=-2))
 
 
 def get_exponential_overload_energy_n_1_matrix(
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
+    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
     alpha: float = 1.5,
@@ -117,7 +117,7 @@ def get_exponential_overload_energy_n_1_matrix(
 
     Parameters
     ----------
-    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches"]
+    n_1_matrix : Float[ArrayLike, " n_timesteps n_failures n_branches"]
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
@@ -158,10 +158,10 @@ def get_exponential_overload_energy_n_1_matrix(
 
 
 def get_critical_branch_count_n_1_matrix(
-    n_1_matrix: Float[Array, " n_timesteps n_failures n_branches"],
+    n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
     aggregate_strategy: Optional[AggregateStrategy] = "max",
-) -> Int[Array, " "]:
+) -> Float[Array, " "]:
     """Compute the number of critical branches for an N-1 matrix
 
     A critical branch is a branch that is overloaded in at least one failure. It only returns
@@ -169,7 +169,7 @@ def get_critical_branch_count_n_1_matrix(
 
     Parameters
     ----------
-    n_1_matrix : Float[Array, " n_timesteps n_failures n_branches"]
+    n_1_matrix : Float[ArrayLike, " n_timesteps n_failures n_branches"]
         The N-1 matrix, i.e. the relative flows for each timestep and each failure
     max_mw_flow : Float[Array, " n_branches"]
         The maximum flow for each branch
@@ -178,7 +178,7 @@ def get_critical_branch_count_n_1_matrix(
 
     Returns
     -------
-    Int[Array, " "]
+    Float[Array, " "]
         The number of critical branches for the given flow
     """
     # A branch is critical if it is overloaded in at least one failure
@@ -187,7 +187,7 @@ def get_critical_branch_count_n_1_matrix(
         max_fn = jnp.max
     elif aggregate_strategy == "nanmax":
         max_fn = jnp.nanmax
-    return max_fn(jnp.sum(is_critical, axis=1))
+    return max_fn(jnp.sum(is_critical, axis=1)).astype(float)
 
 
 def get_transport_n_1_matrix(
@@ -229,7 +229,7 @@ def get_number_of_splits(
     branch_topology: Bool[Array, " n_splits max_branch_per_sub"],
     sub_ids: Int[Array, " n_splits"],
     n_relevant_subs: int,
-) -> Int[Array, " "]:
+) -> Float[Array, " "]:
     """Count the number of split substations in a topology
 
     Parameters
@@ -243,18 +243,18 @@ def get_number_of_splits(
 
     Returns
     -------
-    Int[Array, " "]
+    Float[Array, " "]
         The number of split substations in the topology
     """
     # Only count the substations that are valid
     has_splits = jnp.any(branch_topology, axis=-1)
     subid_valid = (sub_ids >= 0) & (sub_ids < n_relevant_subs)
-    return jnp.sum(has_splits & subid_valid)
+    return jnp.sum(has_splits & subid_valid).astype(float)
 
 
 def get_number_of_disconnections(
     disconnections: Optional[Int[Array, " max_n_disconnections"]], n_branches: int
-) -> Int[Array, " "]:
+) -> Float[Array, " "]:
     """Count the number of actual disconnections in the disconnections vector
 
     A disconnection is assumed valid if it refers to an existing branch - this does
@@ -271,13 +271,13 @@ def get_number_of_disconnections(
 
     Returns
     -------
-    Int[Array, " "]
+    Float[Array, " "]
         The number of disconnections in the disconnections vector
     """
     if disconnections is None:
-        return 0
+        return jnp.array(0, dtype=float)
     # Only count the disconnections that are valid
-    return jnp.sum((disconnections >= 0) & (disconnections < n_branches))
+    return jnp.sum((disconnections >= 0) & (disconnections < n_branches)).astype(float)
 
 
 def get_cross_coupler_flow_penalty(
@@ -438,7 +438,7 @@ def get_n0_n1_delta(
         return max_fn(delta, axis=1)
 
     highest_delta = jnp.argmax(jnp.abs(delta), axis=1)
-    return delta[jnp.arange(delta.shape[0]), highest_delta]
+    return jnp.take_along_axis(delta, highest_delta[:, None, :], axis=1).squeeze(axis=1)
 
 
 def compute_n0_n1_max_diff(
@@ -482,7 +482,7 @@ def compute_n0_n1_max_diff(
 def get_n0_n1_delta_penalty(
     n_0: Float[Array, " n_timesteps n_branches"],
     n_1: Float[Array, " n_timesteps n_failures n_branches"],
-    n0_n1_max_diff: Optional[Float[Array, " n_branches"]],
+    n0_n1_max_diff: Optional[Float[ArrayLike, " n_branches"]],
 ) -> Float[Array, " "]:
     """Compute the penalty for violating maximum N-0 to N-1 delta
 
@@ -520,7 +520,7 @@ def get_n0_n1_delta_penalty(
 def get_switching_distance(
     branch_action_index: Int[Array, " n_splits"],
     reassignment_distance: Int[Array, " n_branch_actions"],
-) -> Int[Array, " "]:
+) -> Float[Array, " "]:
     """Look up the switching distance for a branch action.
 
     Parameters
@@ -532,10 +532,10 @@ def get_switching_distance(
 
     Returns
     -------
-    Int[Array, " "]
+    Float[Array, " "]
         The switching distance for each split
     """
-    return reassignment_distance.at[branch_action_index].get(mode="fill", fill_value=0).sum()
+    return reassignment_distance.at[branch_action_index].get(mode="fill", fill_value=0).sum().astype(float)
 
 
 def get_bb_outage_penalty(bb_outage_penalty: Optional[Float[Array, " "]]) -> Float[Array, " "]:
@@ -552,11 +552,11 @@ def get_bb_outage_overload(bb_outage_overload: Optional[Float[Array, " "]]) -> F
     return bb_outage_overload
 
 
-def get_bb_outage_grid_splits(bb_outage_grid_splits: Optional[Int[Array, " "]]) -> Int[Array, " "]:
+def get_bb_outage_grid_splits(bb_outage_grid_splits: Optional[Int[Array, " "]]) -> Float[Array, " "]:
     """Pass the BB outage grid splits from the solver or raise if not provided."""
     if bb_outage_grid_splits is None:
         raise ValueError("No BB outage grid splits returned from solver")
-    return bb_outage_grid_splits
+    return bb_outage_grid_splits.astype(float)
 
 
 def get_pst_switching_distance(
@@ -656,7 +656,7 @@ def choose_max_mw_flow(
 def aggregate_to_metric_batched(
     lf_res_batch: SolverLoadflowResults,
     branch_limits: BranchLimits,
-    reassignment_distance: Int[Array, " n_branch_actions"],
+    reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
     initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
@@ -753,7 +753,7 @@ def aggregate_matrix_to_metric(
 def aggregate_to_metric(  # noqa: C901 # Conditions of the same type permitted
     lf_res: SolverLoadflowResults,
     branch_limits: BranchLimits,
-    reassignment_distance: Int[Array, " n_branch_actions"],
+    reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
     aggregate_strategy: Optional[AggregateStrategy] = "max",
@@ -797,6 +797,8 @@ def aggregate_to_metric(  # noqa: C901 # Conditions of the same type permitted
         case "cross_coupler_flow":
             retval = get_cross_coupler_flow_penalty(lf_res.cross_coupler_flows, lf_res.sub_ids, branch_limits.coupler_limits)
         case "switching_distance":
+            if reassignment_distance is None:
+                raise ValueError("No reassignment_distance given for switching_distance metric")
             retval = get_switching_distance(
                 branch_action_index=lf_res.branch_action_index,
                 reassignment_distance=reassignment_distance,
@@ -835,6 +837,7 @@ def aggregate_n_1_matrix(
         "underload_energy",
         "transport",
         "exponential_overload_energy",
+        "critical_branch_count",
         "cumulative_overload",
     ] = "max_flow",
     overload_weight: Optional[Float[Array, " n_branches"]] = None,
@@ -994,27 +997,25 @@ def compute_double_limits(
 
 
 def get_worst_k_contingencies(
-    k: Int[Array, " "],
+    k: int,
     n_1_matrix: Float[Array, " n_timesteps n_failures n_branches_monitored"],
-    max_mw_flow: Float[Array, " n_branches"],
+    max_mw_flow: Float[Array, " n_branches_monitored"],
 ) -> WorstKContingencyResults:
     """Get the worst k contingencies from the n-1 matrix.
 
     Parameters
     ----------
-    k : Int[Array, " "]
+    k : int
         The number of worst contingencies to select.
     n_1_matrix : Float[Array, " n_timesteps n_failures n_branches_monitored"]
         The n-1 contingency matrix.
-    max_mw_flow : Float[Array, " n_branches"]
+    max_mw_flow : Float[Array, " n_branches_monitored"]
         The maximum allowed flow for each branch.
 
     Returns
     -------
-    Float[Array, " n_timesteps"]
-        The total overload corresponding to the worst k contingencies for each timestep.
-    Int[Array, " n_timesteps k"]
-        The indices of the worst k contingencies for each timestep.
+    WorstKContingencyResults
+        The overload for the worst k contingencies and their indices in the n-1 matrix.
     """
     overload_matrix = jnp.clip(jnp.abs(n_1_matrix) - max_mw_flow, min=0, max=None)
 

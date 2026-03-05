@@ -11,8 +11,6 @@ A module that contains methods to run the full end-to-end pipeline from grid fil
 Note that these methods are simply wrappers to use existing functionality in a sequence.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import shutil
@@ -189,7 +187,7 @@ def run_task_process(cfg: DictConfig, conn: Optional[Connection] = None) -> Opti
     cli_args = {
         "ga_config": ga_params,
         "lf_config": lf_params,
-        "fixed_files": tuple(cfg.fixed_files) if cfg.fixed_files is not None else None,
+        "fixed_files": list(cfg.fixed_files) if cfg.fixed_files is not None else None,
         "double_precision": cfg.double_precision if cfg.double_precision is not None else None,
         "tensorboard_dir": cfg.tensorboard_dir if cfg.tensorboard_dir is not None else None,
         "stats_dir": cfg.stats_dir if cfg.stats_dir is not None else None,
@@ -387,7 +385,7 @@ def run_preprocessing(
     return info, static_information
 
 
-def run_dc_optimization(dc_optim_config: dict) -> dict:
+def run_dc_optimization(dc_optim_config: dict | DictConfig) -> dict:
     """
     Run the DC optimization process with the specified configuration.
 
@@ -398,7 +396,7 @@ def run_dc_optimization(dc_optim_config: dict) -> dict:
 
     Parameters
     ----------
-    dc_optim_config : DictConfig
+    dc_optim_config : dict | DictConfig
         Configuration object containing optimization parameters. Expected keys:
         - "omp_num_threads": int, number of OpenMP threads to use.
         - "num_cuda_devices": int, number of CUDA devices to make visible.
@@ -727,7 +725,7 @@ def perform_ac_analysis(
 
 
 def run_dc_optimization_stage(
-    dc_optim_config: dict,
+    dc_optim_config: dict | DictConfig,
     optimizer_snapshot_dir: Path,
 ) -> Path:
     """

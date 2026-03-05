@@ -18,6 +18,7 @@ import pypowsybl
 from beartype.typing import Callable, Optional
 from fsspec import AbstractFileSystem
 from numpy.random import Generator as Rng
+from pydantic import PositiveInt
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
     get_worst_k_contingencies_ac,
@@ -453,7 +454,7 @@ def initialize_optimization(
 def wait_for_first_dc_results(
     results_consumer: LongRunningKafkaConsumer,
     session: Session,
-    max_wait_time: float,
+    max_wait_time: PositiveInt,
     optimization_id: str,
     heartbeat_fn: Callable[[], None],
 ) -> None:
@@ -468,7 +469,7 @@ def wait_for_first_dc_results(
         The consumer where to listen for DC results
     session : Session
         The database session to use for storing topologies
-    max_wait_time : float
+    max_wait_time : PositiveInt
         The maximum time to wait for DC results, in seconds
     optimization_id : str
         The ID of the optimization run, used to filter the incoming topologies and only proceed when DC results from

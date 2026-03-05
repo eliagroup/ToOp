@@ -169,8 +169,8 @@ def test_scoring_function(static_information_file: str) -> None:
     (fitness, descriptors, metrics, emitter_info, random_key, topologies) = scoring_function(
         topologies,
         key,
-        [static_information.dynamic_information],
-        [static_information.solver_config],
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
         target_metrics=(
             ("overload_energy_n_1", 1.0),
             ("underload_energy_n_1", -1.0),
@@ -251,14 +251,14 @@ def test_summarize(static_information_file: str) -> None:
         lambda topo, key, _: scoring_function(
             topo,
             key,
-            [static_information.dynamic_information],
-            [static_information.solver_config],
+            (static_information.dynamic_information,),
+            (static_information.solver_config,),
             target_metrics=(("overload_energy_n_1", 1.0),),
-            observed_metrics=[
+            observed_metrics=(
                 "overload_energy_n_1",
                 "underload_energy_n_1",
                 "switching_distance",
-            ],
+            ),
             descriptor_metrics=("switching_distance",),
         ),
         emitter,
@@ -267,7 +267,7 @@ def test_summarize(static_information_file: str) -> None:
     )
 
     repertoire, emitter_state, random_key = algo.init(
-        topologies, jax.random.PRNGKey(0), [static_information.dynamic_information]
+        topologies, jax.random.PRNGKey(0), (static_information.dynamic_information,)
     )
     contingency_ids = static_information.solver_config.contingency_ids
     stats = summarize(

@@ -78,9 +78,9 @@ dev = [
     "pre-commit-hooks",
     "pytest",
     "pytest-cov",
-    "pytest-dotenv",
     "pytest-mock",
     "pytest-timeout",
+    "pytest-env",
     "pytest-xdist>=3.8.0",
     "ipykernel>=6.25.2",
     "jupyter>=1.0.0",
@@ -115,6 +115,9 @@ doc = [
 override-dependencies = [
     "nbconvert; sys_platform == 'never'", 
 ]
+[tool.pytest_env]
+ENABLE_BEARTYPE="true"
+
 [tool.pytest.ini_options]
 
 pythonpath = [
@@ -139,7 +142,6 @@ addopts = [
   "--new-first",
   "--show-capture=all",
   "--verbosity=4",
-  "--jaxtyping-packages=dc_solver",
 ]
 junit_family = "legacy"
 testpaths = [

@@ -17,6 +17,7 @@ from toop_engine_importer.network_graph.network_graph_helper_functions import (
     remove_suffix_from_switchable_assets,
     reverse_dict_list,
 )
+from toop_engine_interfaces.asset_topology import SwitchableAsset
 
 
 def test_find_busbar_in_list():
@@ -97,7 +98,7 @@ def test_add_dict_list():
     assert add_dict_list(dict_list1, dict_list2, mode="append") == expected_result_append
 
     with pytest.raises(ValueError):
-        add_dict_list(dict_list1, dict_list2, mode="invalid_mode")
+        add_dict_list.__wrapped__(dict_list1, dict_list2, mode="invalid_mode")
 
 
 def test_find_longest_path():
@@ -170,17 +171,12 @@ def test_remove_path_multiple_busbars_basic():
     assert remove_path_multiple_busbars(path_dict, busbars) == expected
 
 
-class DummySwitchableAsset:
-    def __init__(self, grid_model_id):
-        self.grid_model_id = grid_model_id
-
-
 def test_remove_suffix_from_switchable_assets_removes_suffix():
     suffixes = list(DUPLICATED_EDGE_SUFFIX.__args__)
     assets = [
-        DummySwitchableAsset(f"asset1{suffixes[0]}"),
-        DummySwitchableAsset(f"asset2{suffixes[1]}"),
-        DummySwitchableAsset("asset3"),
+        SwitchableAsset(grid_model_id=f"asset1{suffixes[0]}"),
+        SwitchableAsset(grid_model_id=f"asset2{suffixes[1]}"),
+        SwitchableAsset(grid_model_id="asset3"),
     ]
     remove_suffix_from_switchable_assets(assets)
     assert assets[0].grid_model_id == "asset1"

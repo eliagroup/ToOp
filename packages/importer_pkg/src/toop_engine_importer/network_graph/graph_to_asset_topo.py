@@ -11,8 +11,9 @@ import logbook
 import networkx as nx
 import numpy as np
 import pandas as pd
+import pandera.typing as pat
 from beartype.typing import Literal, Optional, Union
-from jaxtyping import Array, Bool
+from jaxtyping import ArrayLike, Bool
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     BusbarConnectionInfo,
@@ -29,12 +30,12 @@ from toop_engine_interfaces.asset_topology import (
 logger = logbook.Logger(__name__)
 
 
-def get_busbar_df(nodes_df: NodeSchema, substation_id: str) -> pd.DataFrame:
+def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd.DataFrame:
     """Get the busbar from the NetworkGraphData nodes dataframe.
 
     Parameters
     ----------
-    nodes_df: NodeSchema
+    nodes_df: pat.DataFrame[NodeSchema]
         Dataframe with all nodes of the substation or whole network.
         expects NetworkGraphData.nodes
     substation_id: str
@@ -59,12 +60,14 @@ def get_busbar_df(nodes_df: NodeSchema, substation_id: str) -> pd.DataFrame:
     return busbar_df
 
 
-def get_coupler_df(switches_df: SwitchSchema, busbar_df: pd.DataFrame, substation_id: str, graph: nx.Graph) -> pd.DataFrame:
+def get_coupler_df(
+    switches_df: pat.DataFrame[SwitchSchema], busbar_df: pd.DataFrame, substation_id: str, graph: nx.Graph
+) -> pd.DataFrame:
     """Get the busbar couplers from the NetworkGraphData edges dataframe.
 
     Parameters
     ----------
-    switches_df: SwitchSchema
+    switches_df: pat.DataFrame[SwitchSchema]
         Dataframe with all switches of the substation.
         expects NetworkGraphData.switches
     busbar_df: pd.DataFrame
@@ -155,7 +158,7 @@ def get_coupler_df(switches_df: SwitchSchema, busbar_df: pd.DataFrame, substatio
 
 
 def select_one_busbar_for_coupler_side(
-    coupler_index: pd.Index,
+    coupler_index: pd.Index | int | str,
     bay_df: pd.DataFrame,
     side: Literal["from", "to"],
     out_of_service_busbar_ids: list[str],
@@ -170,7 +173,7 @@ def select_one_busbar_for_coupler_side(
 
     Parameters
     ----------
-    coupler_index: Index
+    coupler_index: pd.Index | int | str
         Index of the coupler in the dataframe.
     bay_df: pd.DataFrame
         Dataframe with the asset bay switches.
@@ -222,7 +225,7 @@ def select_one_busbar_for_coupler_side(
     return default_busbar_grid_model_id
 
 
-def get_state_of_coupler_based_on_bay(coupler_index: pd.Index, bay_df: pd.DataFrame) -> bool:
+def get_state_of_coupler_based_on_bay(coupler_index: pd.Index | int | str, bay_df: pd.DataFrame) -> bool:
     """Get the state of the coupler, based on the state of the bay.
 
     This function checks if the coupler is open or closed, based on the state of the switches in the bay_df.
@@ -230,7 +233,7 @@ def get_state_of_coupler_based_on_bay(coupler_index: pd.Index, bay_df: pd.DataFr
 
     Parameters
     ----------
-    coupler_index: int
+    coupler_index: pd.Index | int | str
         Index of the coupler in the dataframe.
     bay_df: pd.DataFrame
         Dataframe with the asset bay switches.
@@ -275,8 +278,10 @@ def get_state_of_coupler_based_on_bay(coupler_index: pd.Index, bay_df: pd.DataFr
 
 
 def get_switchable_asset(
-    busbar_connection_info: dict[str, BusbarConnectionInfo], node_assets_df: NodeAssetSchema, branches_df: BranchSchema
-) -> SwitchableAssetSchema:
+    busbar_connection_info: dict[str, BusbarConnectionInfo],
+    node_assets_df: pat.DataFrame[NodeAssetSchema],
+    branches_df: pat.DataFrame[BranchSchema],
+) -> pat.DataFrame[SwitchableAssetSchema]:
     """Get the switchable assets from the NetworkGraphData busbar_connection_info dict.
 
     Parameters
@@ -284,16 +289,16 @@ def get_switchable_asset(
     busbar_connection_info: dict[str, BusbarConnectionInfo]
         Dictionary with all busbar connections of the substation.
         expects network_graph.get_busbar_connection_info()
-    node_assets_df: NodeAssetSchema
+    node_assets_df: pat.DataFrame[NodeAssetSchema]
         Dataframe with all nodes of the substation.
         expects get_node_assets_df
-    branches_df: BranchSchema
+    branches_df: pat.DataFrame[BranchSchema]
         Dataframe with all branches of the substation.
         expects get_branches_df
 
     Returns
     -------
-    connected_asset_df: pd.DataFrame
+    connected_asset_df: pat.DataFrame[SwitchableAssetSchema]
         connected_asset_df of the specified substation.
     """
     connected_assets_list = [asset for assets in busbar_connection_info.values() for asset in assets.connectable_assets]
@@ -336,7 +341,7 @@ def get_switchable_asset(
 
 
 def get_asset_bay_df(
-    switches_df: SwitchSchema,
+    switches_df: pat.DataFrame[SwitchSchema],
     asset_grid_model_id: str,
     busbar_df: pd.DataFrame,
     edge_connection_info: dict[str, EdgeConnectionInfo],
@@ -345,7 +350,7 @@ def get_asset_bay_df(
 
     Parameters
     ----------
-    switches_df: SwitchSchema
+    switches_df: pat.DataFrame[SwitchSchema]
         Dataframe with all switches of the substation.
         expects NetworkGraphData.switches
     asset_grid_model_id: str
@@ -431,7 +436,7 @@ def get_sl_switch(asset_bays_df: pd.DataFrame) -> tuple[Optional[str], list[str]
     return sl_switch_id, logs, n_sl_sw_found
 
 
-def get_dv_switch(asset_bays_df: pd.DataFrame, asset_grid_model_id: str) -> str:
+def get_dv_switch(asset_bays_df: pd.DataFrame, asset_grid_model_id: str) -> tuple[str, list[str], int]:
     """Get the dv_switch from the asset bay.
 
     Parameters
@@ -518,7 +523,7 @@ def get_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
     }
 
 
-def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
+def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> tuple[dict[str, str], list[str]]:
     """Get the dv_sr_switch from the asset bay.
 
     This function exists due to data quality issues.
@@ -538,6 +543,8 @@ def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
     dv_sr_dict: dict[str, str]
         dv_sr_switch of the asset bay.
         or {} if no dv_sr_switch is found.
+    logs: list[str]
+        List of logs that are created during the process.
     """
     logs = []
     dv_sr_sw = asset_bays_df[
@@ -561,16 +568,16 @@ def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> dict[str, str]:
 
 
 def get_asset_bay(
-    switches_df: SwitchSchema,
+    switches_df: pat.DataFrame[SwitchSchema],
     asset_grid_model_id: str,
     busbar_df: pd.DataFrame,
     edge_connection_info: dict[str, EdgeConnectionInfo],
-) -> Union[AssetBay, None]:
+) -> tuple[Union[AssetBay, None], list[str]]:
     """Get the asset bay for a asset_grid_model_id.
 
     Parameters
     ----------
-    switches_df: SwitchSchema
+    switches_df: pat.DataFrame[SwitchSchema]
         Dataframe with all switches of the substation.
         expects NetworkGraphData.switches
     asset_grid_model_id: str
@@ -638,9 +645,12 @@ def get_asset_bay(
 def get_station_connection_tables(
     busbar_connection_info: dict[str, BusbarConnectionInfo],
     busbar_df: pd.DataFrame,
-    switchable_assets_df: SwitchableAssetSchema,
+    switchable_assets_df: pat.DataFrame[SwitchableAssetSchema],
 ) -> tuple[
-    Bool[Array, " n_bus n_asset"], Bool[Array, " n_bus n_asset"], Bool[Array, " n_bus n_bus"], Bool[Array, " n_bus n_bus"]
+    Bool[np.ndarray, " n_bus n_asset"],
+    Bool[np.ndarray, " n_bus n_asset"],
+    Bool[np.ndarray, " n_bus n_bus"],
+    Bool[np.ndarray, " n_bus n_bus"],
 ]:
     """Get the switching table physically from the NetworkGraphData busbar_connection_info dict.
 
@@ -658,17 +668,17 @@ def get_station_connection_tables(
 
     Returns
     -------
-    asset_connectivity: Bool[Array, " n_bus n_asset"]
+    asset_connectivity: Bool[np.ndarray, " n_bus n_asset"]
         asset_connectivity of the specified substation.
         Holds the all possible layouts of the switching table, shape (n_bus n_asset).
         An entry is true if it is possible to connected an asset to the busbar.
-    asset_switching_table: Bool[Array, " n_bus n_asset"]
+    asset_switching_table: Bool[np.ndarray, " n_bus n_asset"]
         Holds the switching of each asset to each busbar, shape (n_bus n_asset).
         An entry is true if the asset is connected to the busbar.
-    busbar_connectivity: Bool[Array, " n_bus n_bus"]]
+    busbar_connectivity: Bool[np.ndarray, " n_bus n_bus"]]
         Holds the all possible layouts of the switching table, shape (n_bus n_bus).
         An entry is true if it is possible to connected an busbar to the busbar.
-    busbar_switching_table: Bool[Array, " n_bus n_bus"]]
+    busbar_switching_table: Bool[np.ndarray, " n_bus n_bus"]]
         Holds the switching of each busbar to each busbar, shape (n_bus n_bus).
         An entry is true if a busbar is connected to the busbar.
     """
@@ -708,9 +718,9 @@ def get_station_connection_tables(
 
 
 def remove_double_connections(
-    switching_table: Bool[Array, " n_bus n_asset"],
+    switching_table: Bool[ArrayLike, " n_bus n_asset"],
     substation_id: Optional[str] = None,
-) -> Bool[Array, " n_bus n_asset"]:
+) -> Bool[ArrayLike, " n_bus n_asset"]:
     """Remove double connections from the switching table.
 
     An Asset can be connected to multiple busbars.

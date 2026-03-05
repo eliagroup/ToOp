@@ -78,7 +78,7 @@ params = DCOptimizerParameters(
 optimizer_data, stats, initial_strategy = initialize_optimization(
     params=params,
     optimization_id="my_optimization", 
-    static_information_files=["grid_data.pkl"]
+    static_information_files=tuple(["grid_data.pkl"])
 )
 ```
 

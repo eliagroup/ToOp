@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import json
+from multiprocessing.connection import Connection
 from pathlib import Path
 from unittest import mock
 
@@ -25,6 +26,6 @@ def test_runner(benchmark_config_file: Path, tmp_path_factory: pytest.TempPathFa
 
 
 def test_run_benchmark_process(benchmark_config: dict):
-    mock_conn = mock.Mock()
+    mock_conn = mock.Mock(spec=Connection)
     run_benchmark_process(mock_conn, benchmark_config["benchmarks"][0])
     assert mock_conn.send.called

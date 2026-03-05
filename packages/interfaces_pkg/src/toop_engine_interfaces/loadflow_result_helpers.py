@@ -9,6 +9,7 @@
 
 import json
 from itertools import product
+from numbers import Integral
 from pathlib import Path
 
 import numpy as np
@@ -282,7 +283,7 @@ def get_failed_node_results(
 
 
 def extract_branch_results(
-    branch_results: BranchResultSchema,
+    branch_results: pat.DataFrame[BranchResultSchema],
     timestep: int,
     contingencies: list[str],
     monitored_branches: list[GridElement],
@@ -353,7 +354,7 @@ def extract_branch_results(
 
 
 def extract_node_matrices(
-    node_results: NodeResultSchema,
+    node_results: pat.DataFrame[NodeResultSchema],
     timestep: int,
     contingencies: list[str],
     monitored_nodes: list[GridElement],
@@ -477,14 +478,14 @@ def extract_solver_matrices(
     return n_0_vector, n1_matrix, success
 
 
-def select_timestep(loadflow_results: LoadflowResults, timestep: int) -> LoadflowResults:
+def select_timestep(loadflow_results: LoadflowResults, timestep: Integral) -> LoadflowResults:
     """Select a specific timestep from the loadflow results.
 
     Parameters
     ----------
     loadflow_results : LoadflowResults
         The loadflow results to select the timestep from.
-    timestep : int
+    timestep : Integral
         The timestep to select.
 
     Returns
@@ -581,7 +582,7 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         The loadflow results in polars format.
     """
 
-    def pandas_to_polars(df: Optional[pd.DataFrame], lazy: bool) -> Optional[pl.DataFrame]:
+    def pandas_to_polars(df: Optional[pd.DataFrame], lazy: bool) -> Optional[pl.DataFrame | pl.LazyFrame]:
         """Convert a pandas DataFrame to a polars DataFrame.
 
         Parameters

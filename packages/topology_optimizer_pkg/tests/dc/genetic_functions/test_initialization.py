@@ -152,7 +152,6 @@ def test_get_repertoire_metrics():
 
 def test_verify_static_information(static_information_file) -> None:
     static_information = load_static_information(static_information_file)
-    # static_information_complex = load_static_information(static_information_file_complex)
 
     # This should not raise an error
     verify_static_information([static_information], max_num_disconnections=1, enable_nodal_inj_optim=False)

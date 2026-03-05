@@ -878,8 +878,6 @@ def test_get_worst_n_k_contingency_basic() -> None:
 
 def test_get_pst_switching_distance() -> None:
     """Test the PST setpoint deviation metric."""
-    n_controllable_pst = 5
-    n_timesteps = 3
 
     # Case 1: No PST optimization enabled (both None)
     deviation = get_pst_switching_distance(optimized_taps=None, initial_tap_idx=None)
@@ -918,7 +916,7 @@ def test_get_pst_switching_distance() -> None:
     expected_deviation = 4.0 + 4.0 + 0.0 + 1.0 + 9.0  # Squared L2 distance = (-2)^2 + 2^2 + 0^2 + (-1)^2 + 3^2 = 18.0
     assert deviation == expected_deviation, f"Expected deviation {expected_deviation}, got {deviation}"
 
-    # Case 6: Multiple timesteps - should use first timestep only
+    # Case 6: Multiple timesteps - aggregates distances across all timesteps
     initial_tap_idx = jnp.array([2, 3, 4, 5], dtype=int)
     optimized_taps = NodalInjOptimResults(
         pst_tap_idx=jnp.array(

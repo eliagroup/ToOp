@@ -225,8 +225,8 @@ def verify_static_information(
         ), "All static informations must have the same disconnectable branches"
     if enable_nodal_inj_optim:
         assert first_static_information.dynamic_information.nodal_injection_information is not None, (
-            "Nodal injection opt. is enabled, but the first static information does not contain nodal injection info.",
-            "For nodal injection optimization, we require at least one controllable PST in the nodal injection info.",
+            "Nodal injection opt. is enabled, but the first static information does not contain nodal injection info. "
+            "For nodal injection optimization, we require at least one controllable PST in the nodal injection info. "
         )
         assert all(
             [
@@ -235,9 +235,9 @@ def verify_static_information(
                 for static_information in static_informations
             ]
         ), (
-            "Nodal injection optimization is enabled, but some static/nodal injection info does not contain controll. PSTs.",
-            "This requires at least one controllable PST in the nodal injection information.",
-            "Disable nodal injection optimization or provide correct static information.",
+            "Nodal injection optimization is enabled, but some static/nodal injection info does not contain controll. PSTs. "
+            "This requires at least one controllable PST in the nodal injection information. "
+            "Disable nodal injection optimization or provide correct static information. "
         )
 
 
@@ -643,9 +643,9 @@ def algo_setup(
     if not ga_args.enable_nodal_inj_optim and "pst_switching_distance" in [metric for metric, _ in ga_args.target_metrics]:
         logger.warning(
             (
-                "The target metrics include pst_switching_distance but nodal injection optimization is disabled.",
-                "This will lead to pst_switching_distance being always 0 and not optimized for.",
-                "Consider enabling nodal injection optimization or removing pst_switching_distance from the target metrics.",
+                "The target metrics include pst_switching_distance but nodal injection optimization is disabled. "
+                "This will lead to pst_switching_distance being always 0 and not optimized for. "
+                "Consider enabling nodal injection optimization or removing pst_switching_distance from the target metrics. "
             )
         )
 

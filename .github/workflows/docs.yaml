@@ -19,11 +19,19 @@ permissions: {}
 env:
   CHANGELOG_FILE: "docs/changelog.md"
 
+concurrency:
+  group: docs-gh-pages
+  cancel-in-progress: false
+
 jobs:
   publish-docs:
     runs-on: ubuntu-latest
     environment: docs
-    if: (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && github.ref == 'refs/heads/main'
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
     permissions:
       contents: write
     steps:
@@ -49,20 +57,36 @@ jobs:
           python-version-file: "pyproject.toml"
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --only-group doc
 
       - name: Build documentation
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Getting releases"
-          releases=$(gh release list --json name | jq -r 'reverse | .[].name')
+          set -euo pipefail
 
-          for release in $releases; do
-              echo "Building documentation for version $release"
+          echo "Getting stable releases"
+          releases_json=$(gh release list --exclude-drafts --exclude-pre-releases --limit 200 --json tagName)
+          latest_tag=$(echo "$releases_json" | jq -r '.[0].tagName // empty')
+
+          if [ -z "$latest_tag" ]; then
+            echo "No stable GitHub releases found. Exiting without deployment."
+            exit 0
+          fi
+
+          echo "Latest stable release tag: $latest_tag"
+          echo "$releases_json" | jq -r 'reverse | .[].tagName' | while IFS= read -r release_tag; do
+              [ -z "$release_tag" ] && continue
+
+              echo "Building documentation for tag $release_tag"
 
               echo "Checking out commit tag"
-              git checkout $release --force
+              git checkout --force -- "$release_tag"
+
+              echo "Syncing documentation dependencies for tag $release_tag"
+              uv sync --frozen --only-group doc
+
+              mkdir -p "$(dirname "$CHANGELOG_FILE")"
 
               echo "Adding changelog to mkdocs nav"
               # NOTE:
@@ -73,15 +97,19 @@ jobs:
               echo "  - Changelog: changelog.md" >> mkdocs.yml
 
               echo "Fetching release url"
-              url=$(gh release view $release --json url | jq -r '.url')
-              echo "# [$release]($url)" > $CHANGELOG_FILE   
-              
-              echo "Fetching release body"
-              body=$(gh release view $release --json body | jq -r '.body')
-              echo "$body" >> $CHANGELOG_FILE
+              url=$(gh release view "$release_tag" --json url | jq -r '.url')
+              printf '# [%s](%s)\n' "$release_tag" "$url" > "$CHANGELOG_FILE"
 
-              echo "Writing to gh-pages branch"
-              uv run mike deploy --update-aliases $release latest
+              echo "Fetching release body"
+              gh release view "$release_tag" --json body | jq -r '.body' >> "$CHANGELOG_FILE"
+
+              if [ "$release_tag" = "$latest_tag" ]; then
+                echo "Writing to gh-pages branch with latest alias"
+                uv run mike deploy --update-aliases "$release_tag" latest
+              else
+                echo "Writing to gh-pages branch"
+                uv run mike deploy "$release_tag"
+              fi
           done
 
       - name: Set default version tag
@@ -90,5 +118,5 @@ jobs:
 
       - name: Publish documentation
         run: |
-          git checkout gh-pages --force
-          git push origin gh-pages --force
+          git checkout gh-pages --force || git checkout -b gh-pages origin/gh-pages
+          git push origin gh-pages

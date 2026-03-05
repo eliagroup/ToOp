@@ -230,8 +230,8 @@ def n_2_analysis(
     buffer = jax.tree_util.tree_map(lambda x: jnp.zeros((n_l1_outages, *x.shape), dtype=x.dtype), results_dtype)
 
     def body_fun(
-        val_tuple: tuple[Int[Array, ""], PyTree[Int[Array, "n_l1_outages"]]],
-    ) -> tuple[Int[Array, ""], PyTree[Int[Array, "n_l1_outages"]]]:
+        val_tuple: tuple[Int[Array, ""], PyTree[Shaped[Array, " n_l1_outages ..."]]],
+    ) -> tuple[Int[Array, ""], PyTree[Shaped[Array, " n_l1_outages ..."]]]:
         i, buffer = val_tuple
         l1_branch = l1_outages[i]
         storage_index = sorting_indices[i]

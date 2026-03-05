@@ -111,7 +111,7 @@ def set_single_bay_weight(
         Note: The graph is modified in place.
     edge_id : tuple[int, int]
         The edge id (a tuple of node_ids).
-    bay_weight : WeightValues
+    bay_weight : float
         The bay weight to set.
     """
     content_dict = {

@@ -194,7 +194,7 @@ def bench_inj_ratio(
 
     Parameters
     ----------
-    rng_key : jaxtyping.PRNGKeyArray
+    rng_key : PRNGKeyArray
         The random key to use for generating the topologies
     static_information : StaticInformation
         The static information to run the benchmark with.

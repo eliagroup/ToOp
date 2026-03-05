@@ -39,7 +39,7 @@ Each package has `src/`, `tests/`, `pyproject.toml`, and `README.md`. Use `uv` f
 ```python
 from jaxtyping import Array, Int, Float, Bool
 
-class TopoVectBranchComputations)(eqx.Module):
+class TopoVectBranchComputations(eqx.Module):
     topology_branch_vec: Int[Array, "batch n_branch"]
 ```
 

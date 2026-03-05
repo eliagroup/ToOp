@@ -37,9 +37,9 @@ CGMESRegionType: TypeAlias = Literal[
 AllCountriesRegionType: TypeAlias = Literal[""]
 
 # For artificial grids
-CustomeRegionType: TypeAlias = Literal["S3"]
+CustomRegionType: TypeAlias = Literal["S3"]
 
-RegionType: TypeAlias = Union[UCTERegionType, CGMESRegionType, AllCountriesRegionType, CustomeRegionType]
+RegionType: TypeAlias = Union[UCTERegionType, CGMESRegionType, AllCountriesRegionType, CustomRegionType]
 GridModelType: TypeAlias = Literal["ucte", "cgmes"]
 
 

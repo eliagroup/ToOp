@@ -563,11 +563,11 @@ def get_pst_switching_distance(
     optimized_taps: Optional[NodalInjOptimResults],
     initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
 ) -> Float[Array, " "]:
-    """Compute the deviation between optimized PST tap positions and initial setpoints.
+    """Compute the switching distances between optimized PST tap positions and initial setpoints.
 
     This metric measures how much the optimized PST tap positions deviate from the initial
     setpoints using squared L2 distance (sum of squared differences). It is useful for penalizing
-    solutions that require large changes to PST settings, with quadratic penalty for larger deviations.
+    solutions that require large changes to PST settings, with quadratic penalty for larger switching distances.
 
     Parameters
     ----------
@@ -594,9 +594,9 @@ def get_pst_switching_distance(
     # TODO: Proper multi-timestep support.
     # Compute squared L2 distance (Euclidean distance squared)
     diff = optimized_tap_idx.astype(float) - initial_tap_idx.astype(float)[None, :]
-    deviation = jnp.sum(jnp.square(diff))
+    switching_distance = jnp.sum(jnp.square(diff))
 
-    return deviation
+    return switching_distance
 
 
 def get_n_2_penalty(

@@ -877,71 +877,81 @@ def test_get_worst_n_k_contingency_basic() -> None:
 
 
 def test_get_pst_switching_distance() -> None:
-    """Test the PST setpoint deviation metric."""
+    """Test the PST setpoint switching distance metric."""
 
     # Case 1: No PST optimization enabled (both None)
-    deviation = get_pst_switching_distance(optimized_taps=None, initial_tap_idx=None)
-    assert deviation == 0.0, "Deviation should be 0 when PST optimization is disabled"
+    switching_distance = get_pst_switching_distance(optimized_taps=None, initial_tap_idx=None)
+    assert switching_distance == 0.0, "Switching distance should be 0 when PST optimization is disabled"
 
     # Case 2: PST optimization enabled but no initial taps provided
     optimized_taps = NodalInjOptimResults(
         pst_tap_idx=jnp.array([[0, 1, 2, 3, 4]], dtype=float)  # shape: (n_timesteps=1, n_controllable_pst)
     )
-    deviation = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=None)
-    assert deviation == 0.0, "Deviation should be 0 when initial tap indices are not provided"
+    switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=None)
+    assert switching_distance == 0.0, "Switching distance should be 0 when initial tap indices are not provided"
 
-    # Case 3: No deviation - optimized taps match initial taps
+    # Case 3: No switching_distance - optimized taps match initial taps
     initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
     optimized_taps = NodalInjOptimResults(
         pst_tap_idx=jnp.array([[2, 3, 4, 5, 6]], dtype=float)  # shape: (n_timesteps=1, n_controllable_pst)
     )
-    deviation = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    assert deviation == 0.0, "Deviation should be 0 when taps haven't changed"
+    switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    assert switching_distance == 0.0, "Switching distance should be 0 when taps haven't changed"
 
-    # Case 4: Simple deviation case - single timestep
+    # Case 4: Simple switching_distance case - single timestep
     initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
     optimized_taps = NodalInjOptimResults(
         pst_tap_idx=jnp.array([[3, 4, 5, 6, 7]], dtype=float)  # All shifted by +1
     )
-    deviation = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_deviation = 5.0  # Sum of (3-2)^2 + (4-3)^2 + (5-4)^2 + (6-5)^2 + (7-6)^2 = 1+1+1+1+1 = 5
-    assert deviation == expected_deviation, f"Expected deviation {expected_deviation}, got {deviation}"
+    switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    expected_switching_distance = 5.0  # Sum of (3-2)^2 + (4-3)^2 + (5-4)^2 + (6-5)^2 + (7-6)^2 = 1+1+1+1+1 = 5
+    assert switching_distance == expected_switching_distance, (
+        f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
+    )
 
-    # Case 5: Mixed positive and negative deviations
+    # Case 5: Mixed positive and negative switching distances
     initial_tap_idx = jnp.array([5, 5, 5, 5, 5], dtype=int)
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[3, 7, 5, 4, 8]], dtype=float)  # Deviations: -2, +2, 0, -1, +3
+        pst_tap_idx=jnp.array([[3, 7, 5, 4, 8]], dtype=float)  # switching distances: -2, +2, 0, -1, +3
     )
-    deviation = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_deviation = 4.0 + 4.0 + 0.0 + 1.0 + 9.0  # Squared L2 distance = (-2)^2 + 2^2 + 0^2 + (-1)^2 + 3^2 = 18.0
-    assert deviation == expected_deviation, f"Expected deviation {expected_deviation}, got {deviation}"
+    switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    expected_switching_distance = (
+        4.0 + 4.0 + 0.0 + 1.0 + 9.0
+    )  # Squared L2 distance = (-2)^2 + 2^2 + 0^2 + (-1)^2 + 3^2 = 18.0
+    assert switching_distance == expected_switching_distance, (
+        f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
+    )
 
     # Case 6: Multiple timesteps - aggregates distances across all timesteps
     initial_tap_idx = jnp.array([2, 3, 4, 5], dtype=int)
     optimized_taps = NodalInjOptimResults(
         pst_tap_idx=jnp.array(
             [
-                [3, 4, 5, 6],  # First timestep: small deviation: 1^2 + 1^2 + 1^2 + 1^2 = 4
+                [3, 4, 5, 6],  # First timestep: small switching_distance: 1^2 + 1^2 + 1^2 + 1^2 = 4
                 [10, 10, 10, 10],  # Second timestep: 8^2 + 7^2 + 6^2 + 5^2 = 174
                 [0, 0, 0, 0],  # Third timestep: 2^2 + 3^2 + 4^2 + 5^2 = 54
             ],
             dtype=float,
         )  # shape: (n_timesteps=3, n_controllable_pst=4)
     )
-    deviation = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_deviation = 4.0 + 174.0 + 54.0  # Should sum deviations across all timesteps
-    assert deviation == expected_deviation, f"Expected deviation {expected_deviation}, got {deviation}"
+    switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    expected_switching_distance = 4.0 + 174.0 + 54.0  # Should sum switching distances across all timesteps
+    assert switching_distance == expected_switching_distance, (
+        f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
+    )
 
     # Case 7: Verify JAX compatibility (can be JIT compiled)
     @jax.jit
-    def jitted_deviation(optimized_taps, initial_tap_idx):
+    def jitted_switching_distance(optimized_taps, initial_tap_idx):
         return get_pst_switching_distance(optimized_taps, initial_tap_idx)
 
     initial_tap_idx = jnp.array([1, 2, 3], dtype=int)
     optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[2, 3, 4]], dtype=float))
 
-    deviation_jitted = jitted_deviation(optimized_taps, initial_tap_idx)
-    deviation_normal = get_pst_switching_distance(optimized_taps, initial_tap_idx)
+    switching_distance_jitted = jitted_switching_distance(optimized_taps, initial_tap_idx)
+    switching_distance_normal = get_pst_switching_distance(optimized_taps, initial_tap_idx)
 
-    assert jnp.allclose(deviation_jitted, deviation_normal), "JIT and non-JIT versions should produce same result"
-    assert deviation_jitted == 3.0, f"Expected deviation 3.0, got {deviation_jitted}"
+    assert jnp.allclose(switching_distance_jitted, switching_distance_normal), (
+        "JIT and non-JIT versions should produce same result"
+    )
+    assert switching_distance_jitted == 3.0, f"Expected switching_distance 3.0, got {switching_distance_jitted}"

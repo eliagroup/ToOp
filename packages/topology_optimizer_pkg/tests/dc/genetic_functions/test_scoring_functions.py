@@ -406,10 +406,10 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
     assert "pst_switching_distance" in metrics, "pst_switching_distance should be in metrics"
     assert metrics["pst_switching_distance"].shape == (batch_size,), "Metric should have batch dimension"
 
-    # Since we haven't mutated PSTs (pst_mutation_sigma=0), all deviations should be 0
-    assert jnp.all(metrics["pst_switching_distance"] == 0.0), "Deviation should be 0 when PST taps haven't changed"
+    # Since we haven't mutated PSTs (pst_mutation_sigma=0), all distances should be 0
+    assert jnp.all(metrics["pst_switching_distance"] == 0.0), "Distances should be 0 when PST taps haven't changed"
 
-    # Test 2: With PST mutation, deviation should be non-zero
+    # Test 2: With PST mutation, distances should be non-zero
     topologies_mutated, key = mutate(
         topologies=topologies,
         random_key=key,
@@ -439,11 +439,11 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
         descriptor_metrics=("switching_distance",),
     )
 
-    # With PST mutation, at least some topologies should have non-zero deviation
+    # With PST mutation, at least some topologies should have non-zero distances
     # (though it's possible all mutations result in the same tap due to clipping)
     assert "pst_switching_distance" in metrics_mutated, "Metric should be computed"
-    assert jnp.all(jnp.isfinite(metrics_mutated["pst_switching_distance"])), "All deviations should be finite"
-    assert jnp.all(metrics_mutated["pst_switching_distance"] >= 0.0), "Deviations should be non-negative"
+    assert jnp.all(jnp.isfinite(metrics_mutated["pst_switching_distance"])), "All distances should be finite"
+    assert jnp.all(metrics_mutated["pst_switching_distance"] >= 0.0), "distances should be non-negative"
 
 
 def test_pst_switching_distance_in_target_metrics(static_information_file_complex: str) -> None:
@@ -596,5 +596,7 @@ def test_pst_switching_distance_without_pst_optimization(static_information_file
     )
 
     assert "pst_switching_distance" in metrics, "Metric should be computed even when PST opt is disabled"
-    # All deviations should be 0 when PST optimization is disabled
-    assert jnp.all(metrics["pst_switching_distance"] == 0.0), "Deviation should be 0 when PST optimization is disabled"
+    # All distances should be 0 when PST optimization is disabled
+    assert jnp.all(metrics["pst_switching_distance"] == 0.0), (
+        "PST switching distance should be 0 when PST optimization is disabled"
+    )

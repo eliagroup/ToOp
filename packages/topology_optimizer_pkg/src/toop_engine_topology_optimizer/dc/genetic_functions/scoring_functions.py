@@ -12,20 +12,20 @@ import jax.numpy as jnp
 import numpy as np
 from beartype.typing import Optional
 from jax_dataclasses import replace
-from jaxtyping import Array, Bool, Float, Int
-from qdax.core.emitters.standard_emitters import EmitterState
+from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
+from qdax.core.emitters.standard_emitters import EmitterState, ExtraScores
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric_batched, get_worst_k_contingencies
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.nodal_inj_optim import make_start_options
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     DynamicInformation,
-    MetricType,
     NodalInjOptimResults,
     NodalInjStartOptions,
     SolverConfig,
     int_max,
 )
+from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
     Genotype,
     deduplicate_genotypes,
@@ -63,6 +63,7 @@ METRICS = {
     "switching_distance": jnp.maximum,
     "split_subs": jnp.maximum,
     "n_2_penalty": jnp.add,
+    "pst_switching_distance": jnp.maximum,
 }
 
 
@@ -111,6 +112,11 @@ def compute_overloads(
         solver_config=solver_config,
     )
 
+    # Extract initial PST tap indices if PST optimization is enabled
+    initial_pst_tap_idx = None
+    if dynamic_information.nodal_injection_information is not None:
+        initial_pst_tap_idx = dynamic_information.nodal_injection_information.starting_tap_idx
+
     aggregates = {}
     for metric_name in observed_metrics:
         metric = aggregate_to_metric_batched(
@@ -119,6 +125,7 @@ def compute_overloads(
             reassignment_distance=dynamic_information.action_set.reassignment_distance,
             n_relevant_subs=dynamic_information.n_sub_relevant,
             metric=metric_name,
+            initial_pst_tap_idx=initial_pst_tap_idx,
         )
         metric = jnp.where(success, metric, jnp.inf)
         aggregates[metric_name] = metric
@@ -138,7 +145,7 @@ def compute_overloads(
 
 def scoring_function(
     topologies: Genotype,
-    random_key: jax.random.PRNGKey,
+    random_key: PRNGKeyArray,
     dynamic_informations: tuple[DynamicInformation, ...],
     solver_configs: tuple[SolverConfig, ...],
     target_metrics: tuple[tuple[MetricType, float], ...],
@@ -149,8 +156,8 @@ def scoring_function(
     Float[Array, " batch_size"],
     Int[Array, " batch_size n_dims"],
     dict,
-    dict,
-    jax.random.PRNGKey,
+    ExtraScores,
+    PRNGKeyArray,
     Genotype,
 ]:
     """Create scoring function for the genetic algorithm.
@@ -159,7 +166,7 @@ def scoring_function(
     ----------
     topologies : Genotype
         The topologies to score
-    random_key : jax.random.PRNGKey
+    random_key : PRNGKeyArray
         The random key to use for the scoring (currently not used)
     dynamic_informations : tuple[DynamicInformation, ...]
         The dynamic information of the grid for every timestep
@@ -178,14 +185,14 @@ def scoring_function(
     Returns
     -------
     Float[Array, " batch_size"]
-        The metrics of the topologies
+        The fitness of the topologies, calculated as the weighted sum of the target metrics
     Int[Array, " batch_size n_dims"]
         The descriptors of the topologies
     dict
-        The extra scores
-    dict
+        The metrics of the topologies, including the target metrics and any other observed metrics
+    ExtraScores
         Emitter Information
-    jax.random.PRNGKey
+    PRNGKeyArray
         The random key that was passed in, unused
     Genotype
         The genotypes that were passed in, but updated to account for in-the-loop optimizations such as the nodal
@@ -452,7 +459,7 @@ def summarize(
 
     # Store the topologies
     best_topos = [t.model_dump() for t in topologies]
-    retval = {k: v.item() for k, v in emitter_state.items()}
+    retval = {k: v.item() for k, v in emitter_state.__dict__.items()}
     retval.update(
         {
             "max_fitness": max_fitness,

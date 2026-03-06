@@ -7,11 +7,10 @@
 
 """Translation utilities for converting N-1 definitions into pandapower-ready monitored elements and contingencies."""
 
-from typing import Any, get_args
-
 import numpy as np
 import pandas as pd
 import pandera.typing as pat
+from beartype.typing import Any, get_args
 from pandapower import pandapowerNet
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.extractors import (
     extract_contingencies_with_cgmes_id,

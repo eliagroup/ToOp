@@ -10,6 +10,7 @@
 import time
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 
 import jax
 from beartype.typing import Any, Callable
@@ -17,10 +18,10 @@ from fsspec import AbstractFileSystem
 from jax import lax
 from jax_dataclasses import replace
 from jaxtyping import Array, Int
+from qdax.core.emitters.standard_emitters import EmitterState
 from toop_engine_dc_solver.jax.types import SolverConfig
 from toop_engine_dc_solver.preprocess.convert_to_jax import StaticInformationStats
 from toop_engine_interfaces.types import MetricType
-from toop_engine_topology_optimizer.dc.ga_helpers import EmitterState
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     JaxOptimizerData,
     algo_setup,
@@ -81,7 +82,7 @@ class OptimizerData:
 def initialize_optimization(
     params: DCOptimizerParameters,
     optimization_id: str,
-    static_information_files: tuple[str, ...],
+    static_information_files: tuple[str | Path, ...],
     processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[OptimizerData, list[StaticInformationStats], Strategy]:
     """Initialize the optimization run.
@@ -95,7 +96,7 @@ def initialize_optimization(
         The parameters for the optimization run
     optimization_id : str
         The id of the optimization run, used to annotate results and heartbeats
-    static_information_files : tuple[str, ...]
+    static_information_files : tuple[str | Path, ...]
         The paths to the static information files to load
     processed_gridfile_fs: AbstractFileSystem
         The target filesystem for the preprocessing worker. This contains all processed grid files.

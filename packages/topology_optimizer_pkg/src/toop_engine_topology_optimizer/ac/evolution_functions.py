@@ -22,7 +22,7 @@ try to simplify the topology by closing a single coupler.
 
 import logbook
 import pandas as pd
-from beartype.typing import Optional
+from beartype.typing import Collection, Optional, Sequence
 from numpy.random import Generator as Rng
 from sqlalchemy import exists
 from sqlalchemy.exc import IntegrityError
@@ -100,7 +100,7 @@ def select_repertoire(
 def get_unsplit_ac_topology(
     optimization_id: str,
     session: Session,
-) -> ACOptimTopology:
+) -> Optional[ACOptimTopology]:
     """Get the unsplit AC topology for the given optimization ID
 
     Parameters
@@ -140,7 +140,7 @@ def default_scorer(metrics: pd.DataFrame) -> pd.Series:
 
 
 def get_contingency_indices_from_ids(
-    case_ids_all_t: list[list[str]], n_minus1_definitions: list[Nminus1Definition]
+    case_ids_all_t: Sequence[Collection[str]], n_minus1_definitions: list[Nminus1Definition]
 ) -> list[list[int]]:
     """Map contingency ids to their indices in the N-1 definition for each timestep.
 
@@ -149,7 +149,7 @@ def get_contingency_indices_from_ids(
 
     Parameters
     ----------
-    case_ids_all_t : list[list[str]]
+    case_ids_all_t : Sequence[Collection[str]]
         A list of lists, where each inner list contains the contingency ids for a specific timestep.
     n_minus1_definitions : list[Nminus1Definition]
         A list of N-1 definitions, one for each timestep, containing the contingencies.

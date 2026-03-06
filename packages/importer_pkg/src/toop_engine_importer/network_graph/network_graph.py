@@ -8,6 +8,7 @@
 """Helper functions for the NetworkGraphData model."""
 
 import networkx as nx
+import pandera.typing as pat
 from beartype.typing import Any, Callable, Iterable, Iterator, Literal, Optional, Union
 from toop_engine_importer.network_graph.data_classes import (
     BRANCH_TYPES,
@@ -58,14 +59,14 @@ def generate_graph(network_graph_data: NetworkGraphData) -> nx.Graph:
     return graph
 
 
-def graph_creation_nodes_helper(nodes_df: NodeSchema, graph: nx.Graph) -> None:
+def graph_creation_nodes_helper(nodes_df: pat.DataFrame[NodeSchema], graph: nx.Graph) -> None:
     """Create nodes in the NetworkX graph from the node DataFrame.
 
     Adds BusbarConnectionInfo to the nodes
 
     Parameters
     ----------
-    nodes_df : NodeSchema
+    nodes_df : pat.DataFrame[NodeSchema]
         The DataFrame containing the nodes.
     graph : nx.Graph
         The NetworkX graph to which the nodes will be added.
@@ -77,12 +78,14 @@ def graph_creation_nodes_helper(nodes_df: NodeSchema, graph: nx.Graph) -> None:
         graph.add_node(_index, **row_dict)
 
 
-def graph_creation_edge_helper(edge_df: Union[BranchSchema, SwitchSchema], graph: nx.Graph) -> None:
+def graph_creation_edge_helper(
+    edge_df: Union[pat.DataFrame[BranchSchema], pat.DataFrame[SwitchSchema]], graph: nx.Graph
+) -> None:
     """Create edges in the NetworkX graph from the edge DataFrame.
 
     Parameters
     ----------
-    edge_df : Union[BranchSchema, SwitchSchema]
+    edge_df : Union[pat.DataFrame[BranchSchema], pat.DataFrame[SwitchSchema]]
         The DataFrame containing the edges.
     graph : nx.Graph
         The NetworkX graph to which the edges will be added.
@@ -101,12 +104,12 @@ def graph_creation_edge_helper(edge_df: Union[BranchSchema, SwitchSchema], graph
         graph.add_edge(row["from_node"], row["to_node"], **row_dict)
 
 
-def graph_creation_node_assets_helper(node_assets_df: NodeAssetSchema, graph: nx.Graph) -> None:
+def graph_creation_node_assets_helper(node_assets_df: pat.DataFrame[NodeAssetSchema], graph: nx.Graph) -> None:
     """Create node assets_list from node_assets_df in the nodes_df.
 
     Parameters
     ----------
-    node_assets_df : NodeAssetSchema
+    node_assets_df : pat.DataFrame[NodeAssetSchema]
         The DataFrame containing the node_assets.
     graph : nx.Graph
         The NetworkX graph to which the nodes will be added.
@@ -118,7 +121,7 @@ def graph_creation_node_assets_helper(node_assets_df: NodeAssetSchema, graph: nx
         graph.nodes[node]["busbar_connection_info"].node_assets_ids = node_content.index.to_list()
 
 
-def get_branch_node_asset_update_dict(branch_df: BranchSchema) -> dict[int, dict[str, Any]]:
+def get_branch_node_asset_update_dict(branch_df: pat.DataFrame[BranchSchema]) -> dict[int, dict[str, Any]]:
     """Get the update dict for the node assets from the branches.
 
     Gets an update for BusbarConnectionInfo.node_assets and
@@ -126,7 +129,7 @@ def get_branch_node_asset_update_dict(branch_df: BranchSchema) -> dict[int, dict
 
     Parameters
     ----------
-    branch_df : BranchSchema
+    branch_df : pat.DataFrame[BranchSchema]
         The DataFrame containing the branches.
 
     Returns
@@ -157,7 +160,7 @@ def shortest_paths_to_target_ids(
     target_node_ids: list[int],
     start_node_id: int,
     weight: Union[str, Callable] = "station_weight",
-    cutoff: int = int(WeightValues.high.value),
+    cutoff: float = WeightValues.high.value,
 ) -> dict[int, list[int]]:
     """Find the shortest paths from one busbar to a list of busbars in the NetworkX graph.
 
@@ -182,7 +185,7 @@ def shortest_paths_to_target_ids(
         positional arguments: the two endpoints of an edge and the
         dictionary of edge attributes for that edge. The function must
         return a number or None to indicate a hidden edge.
-    cutoff : int, optional
+    cutoff : WeightValues, optional
         The cutoff value for the shortest path.
 
     Returns
@@ -200,7 +203,7 @@ def shortest_paths_to_target_ids(
 
 
 def flatten_list_of_mixed_entries(
-    stacked_list: list[Iterable[str | int] | str | int],
+    stacked_list: list[Iterable | str | int],
 ) -> Iterator[str | int]:
     """Generate flattened entries from a list of iterables and non-iterables.
 
@@ -277,7 +280,7 @@ def multi_weight_function(weight_list: list[str], weight_multiplier: Optional[di
             weight_multiplier[weight] = 1.0
 
     # ruff: noqa: ARG001
-    def multi_weight_function(from_id: int, to_id: int, data: dict[str, Any]) -> int:
+    def multi_weight_function(from_id: int, to_id: int, data: dict[str, Any]) -> int | float:
         """Return the sum of the weights in the weight_list."""
         return sum(data.get(weight, 0) * weight_multiplier[weight] for weight in weight_list)
 
@@ -319,7 +322,7 @@ def get_busbar_true_nodes(graph: nx.Graph) -> tuple[list[int], list[int]]:
 
 
 def get_busbar_connection_info(
-    graph: nx.Graph, busbar_grid_model_id: Optional[list[str]] = None
+    graph: nx.Graph, busbar_grid_model_id: Optional[str | list[str]] = None
 ) -> dict[str, BusbarConnectionInfo]:
     """Return the BusbarConnectionInfo of the busbars in the NetworkGraphData model.
 
@@ -353,7 +356,7 @@ def get_busbar_connection_info(
 
 def get_edge_connection_info(
     graph: nx.Graph, edge_grid_model_ids: Optional[list[str]] = None
-) -> dict[str, BusbarConnectionInfo]:
+) -> dict[str, EdgeConnectionInfo]:
     """Return the EdgeConnectionInfo of the edges in the NetworkGraphData model.
 
     Parameters
@@ -367,7 +370,7 @@ def get_edge_connection_info(
     Returns
     -------
     edge_connection_info : dict
-        A dictionary containing the EdgeConnectionInfo for each busbar.
+        A dictionary containing the EdgeConnectionInfo for each edge.
             Key: grid_model_id
             Value: EdgeConnectionInfo
         Note: always returns a dict. Dict is empty if no edge is found.
@@ -453,7 +456,7 @@ def get_nodes_ids_with_a_connected_asset(graph: nx.Graph) -> list[int]:
     return asset_node_ids
 
 
-def get_edge_list_by_attribute(graph: nx.Graph, attribute: str, value: list[Any]) -> list[tuple[int, int]]:
+def get_edge_list_by_attribute(graph: nx.Graph, attribute: str, value: list[Any]) -> list[set[int] | tuple[int, int]]:
     """Get a list of edge ids by an attribute value.
 
     Parameters
@@ -478,7 +481,7 @@ def get_edge_list_by_attribute(graph: nx.Graph, attribute: str, value: list[Any]
 
 def get_busbar_connection_info_attribute(
     graph: nx.Graph, attribute: str, node_type: Optional[Literal["busbar", "node"]] = None
-) -> dict[int, list[int]]:
+) -> dict[int, list[int | str]]:
     """Get an attribute from the BusbarConnectionInfo from graph.nodes.
 
     Parameters
@@ -511,7 +514,7 @@ def get_busbar_connection_info_attribute(
     return connectable_busbars_dict
 
 
-def get_branch_ids_by_type_list(graph: nx.Graph, branch_types: Optional[list[str]] = None) -> list[int]:
+def get_branch_ids_by_type_list(graph: nx.Graph, branch_types: Optional[list[str]] = None) -> list[int | set[int]]:
     """Get the branch ids by the branch types.
 
     Returns the branch ids of the branch types in the NetworkX graph.
@@ -528,7 +531,7 @@ def get_branch_ids_by_type_list(graph: nx.Graph, branch_types: Optional[list[str
 
     Returns
     -------
-    branch_ids : list[int]
+    branch_ids : list[int | set[int]]
         A list of branch ids.
     """
     if branch_types is None:
@@ -585,7 +588,7 @@ def update_busbar_connection_info(
 
 
 def validate_update_dict_for_connection_info(
-    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[int, dict[str, Any]]
+    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[str, Any]
 ) -> bool:
     """Test if the keys in the update_dict are in the connection_info.
 
@@ -609,7 +612,7 @@ def validate_update_dict_for_connection_info(
 
 
 def append_connection_info(
-    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[int, dict[str, Any]]
+    connection_info: Union[BusbarConnectionInfo, EdgeConnectionInfo], update_dict: dict[int | str, Any]
 ) -> Union[BusbarConnectionInfo, EdgeConnectionInfo]:
     """Append the ConnectionInfo in the graph model.
 

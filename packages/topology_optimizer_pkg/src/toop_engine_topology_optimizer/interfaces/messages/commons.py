@@ -7,13 +7,11 @@
 
 """Some small definitions that are common to both AC and DC optimizations"""
 
-from __future__ import annotations
-
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from beartype.typing import Literal, Optional, TypeAlias, Union
+from beartype.typing import Literal, Optional, Union
 from pydantic import (
     BaseModel,
     PositiveFloat,
@@ -21,8 +19,6 @@ from pydantic import (
 )
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.types import MetricType
-
-Fitness: TypeAlias = Literal["fitness"]
 
 
 class Framework(str, Enum):
@@ -160,7 +156,7 @@ class FilterStrategy(BaseModel):
     filter_dominator_metrics = ["switching_distance", "split_subs"]
     """
 
-    filter_discriminator_metric_distances: Optional[dict[Union[MetricType, Fitness], set[float]]] = None
+    filter_discriminator_metric_distances: Optional[dict[Union[MetricType], set[float]]] = None
     """The distances for the metrics to use for the dominator filter.
     This is a dictionary where the key is the metric and the value is a set of distances.
     The distances are used to filter out strategies that are too far away from the original topology.

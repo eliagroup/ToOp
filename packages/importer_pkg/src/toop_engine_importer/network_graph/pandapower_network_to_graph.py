@@ -10,6 +10,7 @@
 import logbook
 import networkx as nx
 import pandas as pd
+import pandera.typing as pat
 from pandapower.auxiliary import pandapowerNet
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
@@ -143,7 +144,7 @@ def get_edges_data(dataframe: pd.DataFrame, asset_type: str, only_relevant_col: 
     return dataframe
 
 
-def get_nodes(net: pandapowerNet, only_relevant_col: bool = True) -> NodeSchema:
+def get_nodes(net: pandapowerNet, only_relevant_col: bool = True) -> pat.DataFrame[NodeSchema]:
     """Get the nodes data from the pandapower network and return a df ready to use for the NodeSchema.
 
     Parameters
@@ -156,7 +157,7 @@ def get_nodes(net: pandapowerNet, only_relevant_col: bool = True) -> NodeSchema:
 
     Returns
     -------
-    nodes_df : NodeSchema
+    nodes_df : pat.DataFrame[NodeSchema]
         The DataFrame containing the nodes in the format of the NodeSchema.
     """
     nodes_df = net.bus.copy()
@@ -198,7 +199,7 @@ def get_nodes(net: pandapowerNet, only_relevant_col: bool = True) -> NodeSchema:
     return nodes_df
 
 
-def get_switches_df(net: pandapowerNet, only_relevant_col: bool = True) -> SwitchSchema:
+def get_switches_df(net: pandapowerNet, only_relevant_col: bool = True) -> pat.DataFrame[SwitchSchema]:
     """Get the switches data from the pandapower network and return a df ready to use for the SwitchSchema.
 
     Parameters
@@ -211,7 +212,7 @@ def get_switches_df(net: pandapowerNet, only_relevant_col: bool = True) -> Switc
 
     Returns
     -------
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The DataFrame containing the switches in the format of the SwitchSchema.
     """
     switches_df = net.switch.copy()
@@ -226,7 +227,7 @@ def get_switches_df(net: pandapowerNet, only_relevant_col: bool = True) -> Switc
     return switches_df
 
 
-def get_branch_df(net: pandapowerNet, only_relevant_col: bool = True) -> BranchSchema:
+def get_branch_df(net: pandapowerNet, only_relevant_col: bool = True) -> pat.DataFrame[BranchSchema]:
     """Get the branches data from the pandapower network and return a df ready to use for the BranchSchema.
 
     Note: A star equivalent transformation for three winding trafos is not needed before calling this module.
@@ -242,7 +243,7 @@ def get_branch_df(net: pandapowerNet, only_relevant_col: bool = True) -> BranchS
 
     Returns
     -------
-    branch_df : BranchSchema
+    branch_df : pat.DataFrame[BranchSchema]
         The DataFrame containing the branches in the format of the BranchSchema.
     """
     line_df = net.line.copy()

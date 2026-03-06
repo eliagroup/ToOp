@@ -17,6 +17,7 @@ from pathlib import Path
 
 import logbook
 import pandas as pd
+import pandera.typing as pat
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_importer.contingency_from_power_factory.power_factory_data_class import (
@@ -30,7 +31,7 @@ logger = logbook.Logger(__name__)
 
 def get_contingencies_from_file(
     n1_file: Path, delimiter: str = ";", filesystem: AbstractFileSystem | None = None
-) -> ContingencyImportSchemaPowerFactory:
+) -> pat.DataFrame[ContingencyImportSchemaPowerFactory]:
     """Get the contingencies from the file.
 
     This function reads the contingencies from the file and returns a DataFrame in the
@@ -62,10 +63,10 @@ def get_contingencies_from_file(
 
 
 def match_contingencies(
-    n1_definition: ContingencyImportSchemaPowerFactory,
-    all_element_names: AllGridElementsSchema,
+    n1_definition: pat.DataFrame[ContingencyImportSchemaPowerFactory],
+    all_element_names: pat.DataFrame[AllGridElementsSchema],
     match_by_name: bool = True,
-) -> ContingencyMatchSchema:
+) -> pat.DataFrame[ContingencyMatchSchema]:
     """Match the contingencies from the file with the elements in the grid model.
 
     This function matches the contingencies from the file with the elements in the grid model.
@@ -73,9 +74,9 @@ def match_contingencies(
 
     Parameters
     ----------
-    n1_definition : ContingencyImportSchema
+    n1_definition : pat.DataFrame[ContingencyImportSchemaPowerFactory]
         The contingencies from the file.
-    all_element_names : AllGridElementsSchema
+    all_element_names : pat.DataFrame[AllGridElementsSchema]
         The elements in the grid model.
     match_by_name : bool
         If True, match by name. Default is True.
@@ -83,7 +84,7 @@ def match_contingencies(
 
     Returns
     -------
-    ContingencyMatchSchema
+    pat.DataFrame[ContingencyMatchSchema]
         A DataFrame containing the matched contingencies.
     """
     processed_n1_definition = match_contingencies_by_index(n1_definition, all_element_names)
@@ -93,20 +94,21 @@ def match_contingencies(
 
 
 def match_contingencies_by_index(
-    n1_definition: ContingencyImportSchemaPowerFactory, all_element_names: AllGridElementsSchema
-) -> ContingencyMatchSchema:
+    n1_definition: pat.DataFrame[ContingencyImportSchemaPowerFactory],
+    all_element_names: pat.DataFrame[AllGridElementsSchema],
+) -> pat.DataFrame[ContingencyMatchSchema]:
     """Match the contingencies from the file with the elements in the grid model.
 
     Parameters
     ----------
-    n1_definition : ContingencyImportSchema
+    n1_definition : pat.DataFrame[ContingencyImportSchemaPowerFactory]
         The contingencies from the file.
-    all_element_names : AllGridElementsSchema
+    all_element_names : pat.DataFrame[AllGridElementsSchema]
         The elements in the grid model.
 
     Returns
     -------
-    ContingencyMatchSchema
+    pat.DataFrame[ContingencyMatchSchema]
         A DataFrame containing the matched contingencies.
     """
     # match grid_model_ids directly
@@ -127,9 +129,9 @@ def match_contingencies_by_index(
 
 
 def match_contingencies_by_name(
-    processed_n1_definition: ContingencyMatchSchema,
-    all_element_names: AllGridElementsSchema,
-) -> ContingencyMatchSchema:
+    processed_n1_definition: pat.DataFrame[ContingencyMatchSchema],
+    all_element_names: pat.DataFrame[AllGridElementsSchema],
+) -> pat.DataFrame[ContingencyMatchSchema]:
     """Match the contingencies from the file with the elements in the grid model by name.
 
     Matches by name and replaces the grid_model_name, element_type and grid_model_id.
@@ -138,14 +140,14 @@ def match_contingencies_by_name(
 
     Parameters
     ----------
-    processed_n1_definition : ContingencyMatchSchema
+    processed_n1_definition : pat.DataFrame[ContingencyMatchSchema]
         The contingencies from the file.
-    all_element_names : AllGridElementsSchema
+    all_element_names : pat.DataFrame[AllGridElementsSchema]
         The elements in the grid model.
 
     Returns
     -------
-    ContingencyMatchSchema
+    pat.DataFrame[ContingencyMatchSchema]
         A DataFrame containing the matched contingencies.
     """
     processed_n1_definition = match_contingencies_column(
@@ -181,10 +183,10 @@ def match_contingencies_by_name(
 
 
 def match_contingencies_with_suffix(
-    processed_n1_definition: ContingencyMatchSchema,
-    all_element_names: AllGridElementsSchema,
+    processed_n1_definition: pat.DataFrame[ContingencyMatchSchema],
+    all_element_names: pat.DataFrame[AllGridElementsSchema],
     grid_model_suffix: list[str],
-) -> ContingencyMatchSchema:
+) -> pat.DataFrame[ContingencyMatchSchema]:
     """Match the contingencies from the file with the elements in the grid model by name.
 
     Matches by name and replaces the grid_model_name with power_factory_grid_model_name.
@@ -192,16 +194,16 @@ def match_contingencies_with_suffix(
 
     Parameters
     ----------
-    processed_n1_definition : ContingencyMatchSchema
+    processed_n1_definition : pat.DataFrame[ContingencyMatchSchema]
         The contingencies from the file.
-    all_element_names : AllGridElementsSchema
+    all_element_names : pat.DataFrame[AllGridElementsSchema]
         The elements in the grid model.
     grid_model_suffix : list[str]
         The suffixes to match the grid model names.
 
     Returns
     -------
-    ContingencyMatchSchema
+    pat.DataFrame[ContingencyMatchSchema]
         A DataFrame containing the matched contingencies.
     """
     all_element_names["grid_model_name_suffix"] = all_element_names["grid_model_name"]
@@ -224,20 +226,20 @@ def match_contingencies_with_suffix(
 
 
 def match_contingencies_column(
-    processed_n1_definition: ContingencyMatchSchema,
-    all_element_names: AllGridElementsSchema,
+    processed_n1_definition: pat.DataFrame[ContingencyMatchSchema],
+    all_element_names: pat.DataFrame[AllGridElementsSchema],
     n1_column: str,
     element_column: str,
-) -> ContingencyMatchSchema:
+) -> pat.DataFrame[ContingencyMatchSchema]:
     """Match a column processed_n1_definition with a column from all_element_names.
 
     This functions matches based on 100% name match and replaces the grid_model_name, element_type and grid_model_id
 
     Parameters
     ----------
-    processed_n1_definition : ContingencyMatchSchema
+    processed_n1_definition : pat.DataFrame[ContingencyMatchSchema]
         The contingencies from the file.
-    all_element_names : AllGridElementsSchema
+    all_element_names : pat.DataFrame[AllGridElementsSchema]
         The elements in the grid model.
     n1_column : str
         The column name in processed_n1_definition.
@@ -246,7 +248,7 @@ def match_contingencies_column(
 
     Returns
     -------
-    ContingencyMatchSchema
+    pat.DataFrame[ContingencyMatchSchema]
         A DataFrame containing the matched contingencies.
     """
     # merge the n1_definition with all_element_names

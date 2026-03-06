@@ -64,7 +64,7 @@ def test_get_paths_file_does_not_exist(pipeline_and_configs):
 
     pipeline_params, _, _ = pipeline_and_configs
 
-    pipeline_params_ = copy.deepcopy(pipeline_params)
+    pipeline_params_ = copy.deepcopy(PipelineConfig(**pipeline_params))
     pipeline_params_.file_name = "non_existent_file.xiidm"
     with pytest.raises(FileNotFoundError):
         get_paths(pipeline_params_)

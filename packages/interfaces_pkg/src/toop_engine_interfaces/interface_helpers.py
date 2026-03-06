@@ -9,6 +9,7 @@
 
 from copy import deepcopy
 from functools import lru_cache
+from typing import Type
 
 import pandas as pd
 import pandera as pa
@@ -17,7 +18,7 @@ from pandera import typing as pat
 
 
 @lru_cache(maxsize=None)
-def _get_empty_dataframe_from_model_cached(model: DataFrameModel) -> pat.DataFrame[DataFrameModel]:
+def _get_empty_dataframe_from_model_cached(model: Type[DataFrameModel]) -> pat.DataFrame[DataFrameModel]:
     """Create an empty DataFrame based on the provided DataFrameModel and cache the result.
 
     DO NOT CALL THIS FUNCTION DIRECTLY
@@ -26,7 +27,7 @@ def _get_empty_dataframe_from_model_cached(model: DataFrameModel) -> pat.DataFra
 
     Parameters
     ----------
-    model : DataFrameModel
+    model : Type[DataFrameModel]
         The DataFrameModel from which to create the empty DataFrame.
 
     Returns
@@ -62,12 +63,12 @@ def _get_empty_dataframe_from_model_cached(model: DataFrameModel) -> pat.DataFra
 
 
 @pa.check_types
-def get_empty_dataframe_from_model(model: DataFrameModel) -> pat.DataFrame[DataFrameModel]:
+def get_empty_dataframe_from_model(model: Type[DataFrameModel]) -> pat.DataFrame[DataFrameModel]:
     """Create an empty DataFrame based on the provided DataFrameModel.
 
     Parameters
     ----------
-    model : DataFrameModel
+    model : Type[DataFrameModel]
         The DataFrameModel from which to create the empty DataFrame.
 
     Returns

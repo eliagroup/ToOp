@@ -39,7 +39,7 @@ UCTE_STATUS_CODE_SWITCH = {True: 7, False: 2}
 
 
 def load_ucte(
-    input_uct: Path,
+    input_uct: Path | str,
 ) -> tuple[str, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, str]:
     """Load UCTE file and return its contents as separate dataframes.
 
@@ -121,7 +121,7 @@ def asset_topo_to_uct(
         f.write(output_ucte_str)
 
 
-def change_trafos_lines_in_ucte(ucte_df: pd.DataFrame, change_df: pd.DataFrame) -> pd.DataFrame:
+def change_trafos_lines_in_ucte(ucte_df: pd.DataFrame, change_df: pd.DataFrame) -> None:
     """Change the 'from' and 'to' columns of the trafos or line DataFrame based on the change_df.
 
     Parameters
@@ -135,8 +135,7 @@ def change_trafos_lines_in_ucte(ucte_df: pd.DataFrame, change_df: pd.DataFrame) 
 
     Returns
     -------
-    pd.DataFrame
-        The updated trafos DataFrame
+    None
     """
     # Create a new column 'grid_model_id' in the trafos DataFrame
     ucte_df["grid_model_id"] = ucte_df.apply(lambda row: f"{row['from']} {row['to']} {row['order']}", axis=1)
@@ -254,12 +253,12 @@ def update_coupler_state(row: pd.Series) -> pd.Series:
     return row
 
 
-def get_coupler_state_ucte(couplers: BusbarCoupler) -> list[dict[str, Union[str, int]]]:
+def get_coupler_state_ucte(couplers: list[BusbarCoupler]) -> list[dict[str, Union[str, int]]]:
     """Get coupler ucte state of from a BusbarCoupler.
 
     Parameters
     ----------
-    couplers : BusbarCoupler
+    couplers : list[BusbarCoupler]
         BusbarCoupler object from the asset topology model
 
     Returns

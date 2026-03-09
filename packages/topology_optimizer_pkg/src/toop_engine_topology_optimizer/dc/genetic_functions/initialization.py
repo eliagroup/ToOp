@@ -34,11 +34,17 @@ from toop_engine_dc_solver.jax.types import (
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import StaticInformationStats, extract_static_information_stats
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
-from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
+from toop_engine_topology_optimizer.dc.genetic_functions.crossover import (
     crossover,
-    empty_repertoire,
-    mutate,
 )
+from toop_engine_topology_optimizer.dc.genetic_functions.genotype import empty_repertoire
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
+    DisconnectionMutationConfig,
+    MutationConfig,
+    NodalInjectionMutationConfig,
+    SubstationMutationConfig,
+)
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate import mutate
 from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import (
     scoring_function,
 )
@@ -314,13 +320,8 @@ def initialize_genetic_algorithm(
     max_num_disconnections: int,
     static_informations: tuple[StaticInformation, ...],
     target_metrics: tuple[tuple[MetricType, float], ...],
-    substation_split_prob: float,
-    substation_unsplit_prob: float,
+    mutation_config: MutationConfig,
     action_set: ActionSet,
-    n_subs_mutated_lambda: float,
-    disconnect_prob: float,
-    reconnect_prob: float,
-    pst_mutation_sigma: float | int,
     proportion_crossover: float,
     crossover_mutation_ratio: float,
     random_seed: int,
@@ -329,7 +330,6 @@ def initialize_genetic_algorithm(
     distributed: bool,
     devices: Optional[list[jax.Device]] = None,
     cell_depth: int = 1,
-    mutation_repetition: int = 1,
     n_worst_contingencies: int = 10,
 ) -> tuple[DiscreteMapElites, JaxOptimizerData]:
     """Initialize the mapelites algorithm.
@@ -346,20 +346,10 @@ def initialize_genetic_algorithm(
         The static information to use for the optimization run
     target_metrics : tuple[tuple[MetricType, float], ...]
         The target metrics to use for the optimization run
-    substation_split_prob : float
-        The probability to split a substation
-    substation_unsplit_prob : float
-        The probability to reset a split substation to the unsplit state
+    mutation_config : MutationConfig
+        The mutation configuration to use for the optimization run
     action_set : ActionSet
         The action set to use for mutations
-    n_subs_mutated_lambda : float
-        The lambda parameter for the Poisson distribution to determine the number of substations to mutate
-    disconnect_prob : float
-        The probability to disconnect a new branch
-    reconnect_prob : float
-        The probability to reconnect a disconnected branch, will overwrite a possible disconnect
-    pst_mutation_sigma : float
-        The sigma to use for the normal distribution to sample the PST tap mutation from.
     proportion_crossover : float
         The proportion of crossover to mutation
     crossover_mutation_ratio : float
@@ -376,8 +366,6 @@ def initialize_genetic_algorithm(
         The devices to run the optimization on, if distributed
     cell_depth: int
         The cell depth to use if applicable
-    mutation_repetition: int
-        More chance to get unique mutations by mutating mutation_repetition copies of the repertoire
     n_worst_contingencies: int
         The number of worst contingencies to consider in the scoring function for calculating
         top_k_overloads_n_1.
@@ -417,18 +405,8 @@ def initialize_genetic_algorithm(
 
     mutate_partial = partial(
         mutate,
-        substation_split_prob=substation_split_prob,
-        substation_unsplit_prob=substation_unsplit_prob,
+        mutation_config=mutation_config,
         action_set=action_set,
-        n_disconnectable_branches=len(dynamic_informations[0].disconnectable_branches),
-        n_subs_mutated_lambda=n_subs_mutated_lambda,
-        disconnect_prob=disconnect_prob,
-        reconnect_prob=reconnect_prob,
-        pst_mutation_sigma=pst_mutation_sigma,
-        pst_n_taps=dynamic_informations[0].nodal_injection_information.pst_n_taps
-        if dynamic_informations[0].nodal_injection_information is not None
-        else None,
-        mutation_repetition=mutation_repetition,
     )
     crossover_partial = partial(crossover, action_set=action_set, prob_take_a=proportion_crossover)
 
@@ -651,20 +629,39 @@ def algo_setup(
                 "Consider enabling nodal injection optimization or removing pst_switching_distance from the target metrics. "
             )
         )
-
+    n_rel_subs = static_informations[0].dynamic_information.n_sub_relevant
+    n_disconnectable_branches = len(static_informations[0].dynamic_information.disconnectable_branches)
+    mutation_config = MutationConfig(
+        mutation_repetition=ga_args.mutation_repetition,
+        random_topo_prob=ga_args.random_topo_prob,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=ga_args.n_subs_mutated_lambda,
+            add_split_prob=ga_args.add_split_prob,
+            change_split_prob=ga_args.change_split_prob,
+            remove_split_prob=ga_args.remove_split_prob,
+            n_rel_subs=n_rel_subs,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=ga_args.add_disconnection_prob,
+            change_disconnection_prob=ga_args.change_disconnection_prob,
+            remove_disconnection_prob=ga_args.remove_disconnection_prob,
+            n_disconnectable_branches=n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=NodalInjectionMutationConfig(
+            pst_mutation_sigma=ga_args.pst_mutation_sigma,
+            pst_n_taps=static_informations[0].dynamic_information.nodal_injection_information.pst_n_taps,
+        )
+        if static_informations[0].dynamic_information.nodal_injection_information is not None
+        else None,
+    )
     algo, jax_data = initialize_genetic_algorithm(
         batch_size=lf_args.batch_size,
-        max_num_splits=lf_args.max_num_splits,
-        max_num_disconnections=lf_args.max_num_disconnections,
+        max_num_splits=min(n_rel_subs, lf_args.max_num_splits),
+        max_num_disconnections=min(n_disconnectable_branches, lf_args.max_num_disconnections),
         static_informations=static_informations,
         target_metrics=ga_args.target_metrics,
-        substation_split_prob=ga_args.substation_split_prob,
-        substation_unsplit_prob=ga_args.substation_unsplit_prob,
         action_set=static_informations[0].dynamic_information.action_set,
-        n_subs_mutated_lambda=ga_args.n_subs_mutated_lambda,
-        disconnect_prob=ga_args.disconnect_prob,
-        reconnect_prob=ga_args.reconnect_prob,
-        pst_mutation_sigma=ga_args.pst_mutation_sigma,
+        mutation_config=mutation_config,
         proportion_crossover=ga_args.proportion_crossover,
         crossover_mutation_ratio=ga_args.crossover_mutation_ratio,
         random_seed=ga_args.random_seed,
@@ -672,7 +669,6 @@ def algo_setup(
         distributed=lf_args.distributed,
         devices=jax.devices() if lf_args.distributed else None,
         me_descriptors=ga_args.me_descriptors,
-        mutation_repetition=ga_args.mutation_repetition,
         cell_depth=ga_args.cell_depth,
         n_worst_contingencies=ga_args.n_worst_contingencies,
     )

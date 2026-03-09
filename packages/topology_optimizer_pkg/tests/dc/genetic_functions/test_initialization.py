@@ -10,12 +10,17 @@ import jax.numpy as jnp
 import pytest
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.inputs import load_static_information
-from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import Genotype
+from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     get_repertoire_metrics,
     initialize_genetic_algorithm,
     update_max_mw_flows_according_to_double_limits,
     verify_static_information,
+)
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
+    DisconnectionMutationConfig,
+    MutationConfig,
+    SubstationMutationConfig,
 )
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import (
     DiscreteMapElitesRepertoire,
@@ -66,20 +71,32 @@ def test_initialize_genetic_algorithm(
     static_information_file: str,
 ) -> None:
     static_information = load_static_information(static_information_file)
-
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.3,
+            change_split_prob=0.4,
+            remove_split_prob=0.3,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.3,
+            change_disconnection_prob=0.4,
+            remove_disconnection_prob=0.3,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=None,
+    )
     (algo, jax_data) = initialize_genetic_algorithm(
         batch_size=1,
         max_num_splits=2,
         max_num_disconnections=2,
         static_informations=tuple([static_information]),
         target_metrics=(("overload_energy_n_1", 1.0),),
-        substation_split_prob=0.1,
-        substation_unsplit_prob=0.1,
         action_set=static_information.dynamic_information.action_set,
-        n_subs_mutated_lambda=1.0,
-        disconnect_prob=0.1,
-        reconnect_prob=0.1,
-        pst_mutation_sigma=0,
+        mutation_config=mutation_config,
         proportion_crossover=0.5,
         crossover_mutation_ratio=0.5,
         random_seed=42,
@@ -95,20 +112,32 @@ def test_distributed_initialize(static_information_file) -> None:
     devices = jax.devices()
 
     static_information = load_static_information(static_information_file)
-
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.3,
+            change_split_prob=0.4,
+            remove_split_prob=0.3,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.3,
+            change_disconnection_prob=0.4,
+            remove_disconnection_prob=0.3,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=None,
+    )
     (algo, jax_data) = initialize_genetic_algorithm(
         batch_size=10,
         max_num_splits=2,
         max_num_disconnections=2,
         static_informations=tuple([static_information]),
         target_metrics=tuple([("overload_energy_n_1", 1.0)]),
-        substation_split_prob=0.1,
-        substation_unsplit_prob=0.1,
         action_set=static_information.dynamic_information.action_set,
-        n_subs_mutated_lambda=1.0,
-        disconnect_prob=0.1,
-        reconnect_prob=0.1,
-        pst_mutation_sigma=0,
+        mutation_config=mutation_config,
         proportion_crossover=0.5,
         crossover_mutation_ratio=0.5,
         random_seed=42,

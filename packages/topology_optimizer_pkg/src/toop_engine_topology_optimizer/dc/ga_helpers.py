@@ -19,7 +19,7 @@ from jaxtyping import PRNGKeyArray
 from qdax.core.containers.repertoire import Repertoire
 from qdax.core.emitters.standard_emitters import EmitterState, ExtraScores, MixingEmitter
 from qdax.custom_types import Descriptor, Fitness
-from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import Genotype
+from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import DiscreteMapElitesRepertoire
 
 

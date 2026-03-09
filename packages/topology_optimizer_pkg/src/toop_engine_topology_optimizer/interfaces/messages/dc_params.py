@@ -28,29 +28,68 @@ from toop_engine_topology_optimizer.interfaces.messages.commons import Descripto
 class BatchedMEParameters(BaseModel):
     """Parameters for starting the batched genetic algorithm (In this case Map-Elites)"""
 
-    substation_split_prob: confloat(ge=0.0, le=1.0) = 0.1
-    """The probability to split an unsplit substation. If not split, a reconfiguration is applied"""
+    ### General optimization configuration ###
 
-    substation_unsplit_prob: confloat(ge=0.0, le=1.0) = 0.01
-    """The probability to reset a split substation to the unsplit state"""
+    runtime_seconds: PositiveFloat = 60
+    """The runtime in seconds"""
 
-    disconnect_prob: confloat(ge=0.0, le=1.0) = 0.1
-    """The probability to disconnect a new branch"""
+    iterations_per_epoch: PositiveInt = 100
+    """The number of iterations per epoch"""
 
-    reconnect_prob: confloat(ge=0.0, le=1.0) = 0.1
-    """The probability to reconnect a disconnected branch, will overwrite a possible disconnect"""
-
-    pst_mutation_sigma: NonNegativeFloat = 0.0
-    """The sigma to use for the normal distribution that mutates the PST taps. The mutation is applied by adding a random
-    value drawn from this distribution to the current tap position. A value of 0.0 means no PST mutation."""
+    random_seed: int = 42
+    """The random seed to use for reproducibility"""
 
     enable_nodal_inj_optim: bool = False
     """Whether to enable the nodal injection optimization stage. This can optimize PSTs (currently) and soon HVDC and
     potentially even redispatch clusters. Using this will increase runtime."""
 
+    plot: bool = False
+    """Whether to plot the repertoire"""
+
+    n_worst_contingencies: PositiveInt = 20
+    """The number of worst contingencies to consider in the scoring function.
+    This is used to determine the worst cases for overloads."""
+
+    ### MUTATION CONFIGURATION ###
+
+    mutation_repetition: PositiveInt = 2
+    """More chance to get unique mutations by mutating multiple copies of the repertoire"""
+
+    random_topo_prob: confloat(ge=0.0, le=1.0) = 0.1
+    """The probability to create a random topology instead of mutating the existing one.
+    This can help to escape local minima."""
+
+    # Parameters for the mutation of substation splits
     n_subs_mutated_lambda: PositiveFloat = 2.0
     """The number of substations to mutate in a single iteration is drawn from a poisson with this
     lambda"""
+
+    # Probabilities for the different substation mutation types,
+    # If the sum is smaller than 1, the rest of the probability is assigned to the "remain unchanged" option
+    add_split_prob: confloat(ge=0.0, le=1.0) = 0.25
+    """The probability to add an additional split to a substation,
+    applied after the number of substations to mutate is drawn"""
+    change_split_prob: confloat(ge=0.0, le=1.0) = 0.3
+    """The probability to change an existing split in a substation"""
+    remove_split_prob: confloat(ge=0.0, le=1.0) = 0.25
+    """The probability to remove a split from a substation"""
+
+    # Parameters for the mutation of disconnections
+    # If the sum is smaller than 1, the rest of the probability is assigned to the "remain unchanged" option
+    add_disconnection_prob: confloat(ge=0.0, le=1.0) = 0.2
+    """The probability to add a disconnection, applied after the number of disconnections to mutate is drawn"""
+    change_disconnection_prob: confloat(ge=0.0, le=1.0) = 0.2
+    """The probability to change an existing disconnection"""
+    remove_disconnection_prob: confloat(ge=0.0, le=1.0) = 0.2
+    """The probability to remove an existing disconnection"""
+
+    # Parameters for the mutation of nodal injections (currently only PSTs)
+
+    pst_mutation_sigma: NonNegativeFloat = 0.0
+    """The sigma to use for the normal distribution that mutates the PST taps. The mutation is applied by adding a random
+    value drawn from this distribution to the current tap position. A value of 0.0 means no PST mutation."""
+
+    ### CROSS OVER CONFIGURATION ###
 
     proportion_crossover: confloat(ge=0, le=1) = 0.1
     """The proportion of the first topology to take in the crossover"""
@@ -58,6 +97,7 @@ class BatchedMEParameters(BaseModel):
     crossover_mutation_ratio: confloat(ge=0, le=1) = 0.5
     """The ratio of crossovers to mutations"""
 
+    ### SCORING CONFIGURATION ###
     target_metrics: tuple[tuple[MetricType, float], ...] = (("overload_energy_n_1", 1.0),)
     """The list of metrics to optimize for with their weights"""
 
@@ -74,7 +114,7 @@ class BatchedMEParameters(BaseModel):
     """The observed metrics, i.e. which metrics are to be computed for logging purposes. The
     target_metrics and me_descriptors must be included in the observed metrics and will be added
     automatically by the validator if they are missing"""
-
+    ### MAP ELITES CONFIGURATION ###
     me_descriptors: tuple[DescriptorDef, ...] = (
         DescriptorDef(metric="split_subs", num_cells=5),
         DescriptorDef(metric="switching_distance", num_cells=45),
@@ -83,28 +123,9 @@ class BatchedMEParameters(BaseModel):
     and a number of cells. If the metric exceeds the number of cells, it will be clipped to the
     largest cell index. Currently, this must be integer metrics"""
 
-    runtime_seconds: PositiveFloat = 60
-    """The runtime in seconds"""
-
-    iterations_per_epoch: PositiveInt = 100
-    """The number of iterations per epoch"""
-
-    random_seed: int = 42
-    """The random seed to use for reproducibility"""
-
     cell_depth: PositiveInt = 1
     """When applicable, each cell contains cell_depth unique topologies. Use 1 to retain the
     original map-elites behaviour"""
-
-    plot: bool = False
-    """Whether to plot the repertoire"""
-
-    mutation_repetition: PositiveInt = 1
-    """More chance to get unique mutations by mutating multiple copies of the repertoire"""
-
-    n_worst_contingencies: PositiveInt = 20
-    """The number of worst contingencies to consider in the scoring function.
-    This is used to determine the worst cases for overloads."""
 
     @model_validator(mode="after")
     def infer_missing_observed_metrics(self) -> "BatchedMEParameters":

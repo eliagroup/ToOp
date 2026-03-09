@@ -23,6 +23,7 @@ MODULES: list[str] = [
     "toop_engine_topology_optimizer.ac.optimizer",
     "toop_engine_topology_optimizer.ac.scoring_functions",
     "toop_engine_topology_optimizer.ac.worker",
+    "toop_engine_topology_optimizer.dc.genetic_functions.mutation.config",
 ]
 
 

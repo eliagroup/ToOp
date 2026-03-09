@@ -71,7 +71,7 @@ jobs:
               echo "Building documentation for tag $release_tag"
 
               echo "Checking out commit tag"
-              git checkout --force -- "$release_tag"
+              git checkout --force "$release_tag"
 
               echo "Syncing documentation dependencies for tag $release_tag"
               uv sync --frozen --only-group doc

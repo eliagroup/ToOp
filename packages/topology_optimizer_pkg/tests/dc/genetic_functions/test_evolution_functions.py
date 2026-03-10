@@ -183,7 +183,6 @@ def test_mutate_disconnection_multi(synthetic_action_set: ActionSet) -> None:
 
 
 def test_mutate(synthetic_action_set: ActionSet) -> None:
-
     action_set = synthetic_action_set
 
     disconnectable_branches = jnp.array([0, 1, 2, 3, 4])

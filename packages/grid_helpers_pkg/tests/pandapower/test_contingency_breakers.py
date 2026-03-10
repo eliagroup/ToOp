@@ -53,8 +53,7 @@ def network_with_transformer3w_and_breakers():
         max_i_ka=1,
         name="line_lv",
     )
-    pp.create_switch(grid, bus=lv_bus_branch, element=lv_bus_terminal, et="b", closed=True, type="CB",
-                     name="CB_LV_BRANCH")
+    pp.create_switch(grid, bus=lv_bus_branch, element=lv_bus_terminal, et="b", closed=True, type="CB", name="CB_LV_BRANCH")
 
     # Non-circuit-breaker switch
     pp.create_switch(grid, bus=mv_bus_aux, element=mv_bus_branch, et="b", closed=True, type="DS", name="DS_MV_BRANCH")

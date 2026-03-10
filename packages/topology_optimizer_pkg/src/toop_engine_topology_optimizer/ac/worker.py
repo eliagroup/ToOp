@@ -186,7 +186,7 @@ def optimization_loop(
                 optimization_id=optimization_id,
                 wall_time=time.time() - start_time,
                 iteration=epoch,
-                num_branch_topologies_tried=epoch,
+                num_branch_topologies_tried=epoch - 1,  # Exactly one branch topology per epoch but we increment before
                 num_injection_topologies_tried=0,
             )
         )

@@ -8,7 +8,7 @@
 import jax
 import jax.numpy as jnp
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults
-from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
+from toop_engine_topology_optimizer.dc.genetic_functions.genotype import (
     Genotype,
 )
 from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import (

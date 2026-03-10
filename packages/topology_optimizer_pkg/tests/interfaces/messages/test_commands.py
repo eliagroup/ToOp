@@ -74,7 +74,7 @@ def test_deserialization():
     )
 
     serialized = command.model_dump()
-    del serialized["command"]["dc_params"]["ga_config"]["substation_split_prob"]
+    del serialized["command"]["dc_params"]["ga_config"]["add_split_prob"]
     json_serialized = json.dumps(serialized)
 
     parsed = Command.model_validate_json(json_serialized)

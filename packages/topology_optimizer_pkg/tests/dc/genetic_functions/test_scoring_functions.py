@@ -17,11 +17,17 @@ from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
-from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
+from toop_engine_topology_optimizer.dc.genetic_functions.crossover import (
     crossover,
-    empty_repertoire,
-    mutate,
 )
+from toop_engine_topology_optimizer.dc.genetic_functions.genotype import empty_repertoire
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
+    DisconnectionMutationConfig,
+    MutationConfig,
+    NodalInjectionMutationConfig,
+    SubstationMutationConfig,
+)
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate import mutate
 from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import (
     scoring_function,
     summarize,
@@ -72,8 +78,6 @@ def get_threshold_n_minus1_overload(
 def test_translate_topology(static_information_file: str) -> None:
     static_information = load_static_information(static_information_file)
 
-    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
-
     action_set = static_information.dynamic_information.action_set
     assert action_set is not None
 
@@ -91,20 +95,29 @@ def test_translate_topology(static_information_file: str) -> None:
     )
 
     key = jax.random.PRNGKey(0)
-
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.3,
+            change_split_prob=0.4,
+            remove_split_prob=0.3,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.3,
+            change_disconnection_prob=0.4,
+            remove_disconnection_prob=0.3,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=None,
+    )
     topologies, key = mutate(
         topologies=topologies,
         random_key=key,
-        substation_split_prob=0.2,
-        substation_unsplit_prob=0.00001,
+        mutation_config=mutation_config,
         action_set=action_set,
-        n_disconnectable_branches=n_disconnectable_branches,
-        n_subs_mutated_lambda=5.0,
-        disconnect_prob=0.5,
-        reconnect_prob=0.5,
-        pst_mutation_sigma=0,
-        pst_n_taps=jnp.array([], dtype=int),
-        mutation_repetition=1,
     )
 
     assert_topology(
@@ -150,20 +163,29 @@ def test_scoring_function(static_information_file: str) -> None:
     )
 
     key = jax.random.PRNGKey(0)
-
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.3,
+            change_split_prob=0.4,
+            remove_split_prob=0.3,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.3,
+            change_disconnection_prob=0.4,
+            remove_disconnection_prob=0.3,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=None,
+    )
     topologies, key = mutate(
         topologies=topologies,
         random_key=key,
-        substation_split_prob=0.2,
-        substation_unsplit_prob=0.00001,
+        mutation_config=mutation_config,
         action_set=action_set,
-        n_disconnectable_branches=n_disconnectable_branches,
-        n_subs_mutated_lambda=20.0,
-        disconnect_prob=0.5,
-        reconnect_prob=0.5,
-        pst_mutation_sigma=0,
-        pst_n_taps=jnp.array([], dtype=int),
-        mutation_repetition=1,
     )
 
     (fitness, descriptors, metrics, emitter_info, random_key, topologies) = scoring_function(
@@ -210,36 +232,32 @@ def test_summarize(static_information_file: str) -> None:
     topologies = empty_repertoire(batch_size, max_num_splits, 0, n_timesteps)
 
     key = jax.random.PRNGKey(0)
-
-    topologies, key = mutate(
-        topologies=topologies,
-        random_key=key,
-        substation_split_prob=0.2,
-        substation_unsplit_prob=0.00001,
-        action_set=action_set,
-        n_disconnectable_branches=n_disconnectable_branches,
-        n_subs_mutated_lambda=20.0,
-        disconnect_prob=0.5,
-        reconnect_prob=0.5,
-        pst_mutation_sigma=0,
-        pst_n_taps=jnp.array([], dtype=int),
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
         mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.3,
+            change_split_prob=0.4,
+            remove_split_prob=0.3,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.3,
+            change_disconnection_prob=0.4,
+            remove_disconnection_prob=0.3,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=None,
     )
+    topologies, key = mutate(topologies=topologies, random_key=key, action_set=action_set, mutation_config=mutation_config)
 
     emitter = TrackingMixingEmitter(
         lambda topologies, key: mutate(
             topologies=topologies,
             random_key=key,
-            substation_split_prob=0.2,
-            substation_unsplit_prob=0.0001,
             action_set=action_set,
-            n_disconnectable_branches=n_disconnectable_branches,
-            n_subs_mutated_lambda=20.0,
-            disconnect_prob=0.5,
-            reconnect_prob=0.5,
-            pst_mutation_sigma=0,
-            pst_n_taps=jnp.array([], dtype=int),
-            mutation_repetition=1,
+            mutation_config=mutation_config,
         ),
         lambda topo_a, topo_b, key: crossover(
             topologies_a=topo_a, topologies_b=topo_b, random_key=key, action_set=action_set, prob_take_a=0.1
@@ -372,20 +390,32 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
     )
 
     key = jax.random.PRNGKey(42)
-
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.1,
+            change_split_prob=0.0,
+            remove_split_prob=0.0001,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.0,
+            change_disconnection_prob=0.0,
+            remove_disconnection_prob=0.0,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=NodalInjectionMutationConfig(
+            pst_mutation_sigma=0.0,
+            pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+        ),
+    )
     topologies, key = mutate(
         topologies=topologies,
         random_key=key,
-        substation_split_prob=0.1,
-        substation_unsplit_prob=0.00001,
+        mutation_config=mutation_config,
         action_set=action_set,
-        n_disconnectable_branches=n_disconnectable_branches,
-        n_subs_mutated_lambda=5.0,
-        disconnect_prob=0.0,
-        reconnect_prob=0.0,
-        pst_mutation_sigma=0,  # No PST mutation yet
-        pst_n_taps=pst_n_taps,
-        mutation_repetition=1,
     )
 
     # Test 1: With pst_switching_distance in observed metrics
@@ -410,19 +440,32 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
     assert jnp.all(metrics["pst_switching_distance"] == 0.0), "Distances should be 0 when PST taps haven't changed"
 
     # Test 2: With PST mutation, distances should be non-zero
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.0,
+            change_split_prob=0.0,
+            remove_split_prob=0.0,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.0,
+            change_disconnection_prob=0.0,
+            remove_disconnection_prob=0.0,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=NodalInjectionMutationConfig(
+            pst_mutation_sigma=2.0,
+            pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+        ),
+    )
     topologies_mutated, key = mutate(
         topologies=topologies,
         random_key=key,
-        substation_split_prob=0.0,  # No topology changes
-        substation_unsplit_prob=0.0,
+        mutation_config=mutation_config,
         action_set=action_set,
-        n_disconnectable_branches=n_disconnectable_branches,
-        n_subs_mutated_lambda=0.0,
-        disconnect_prob=0.0,
-        reconnect_prob=0.0,
-        pst_mutation_sigma=2.0,  # Enable PST mutation
-        pst_n_taps=pst_n_taps,
-        mutation_repetition=1,
     )
 
     (_, _, metrics_mutated, _, _, _) = scoring_function(
@@ -484,20 +527,32 @@ def test_pst_switching_distance_in_target_metrics(static_information_file_comple
     )
 
     key = jax.random.PRNGKey(42)
-
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.0,
+            change_split_prob=0.0,
+            remove_split_prob=0.0,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.0,
+            change_disconnection_prob=0.0,
+            remove_disconnection_prob=0.0,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=NodalInjectionMutationConfig(
+            pst_mutation_sigma=2.0,
+            pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+        ),
+    )
     topologies, key = mutate(
         topologies=topologies,
         random_key=key,
-        substation_split_prob=0.1,
-        substation_unsplit_prob=0.00001,
+        mutation_config=mutation_config,
         action_set=action_set,
-        n_disconnectable_branches=n_disconnectable_branches,
-        n_subs_mutated_lambda=5.0,
-        disconnect_prob=0.0,
-        reconnect_prob=0.0,
-        pst_mutation_sigma=2.0,  # Enable PST mutation
-        pst_n_taps=pst_n_taps,
-        mutation_repetition=1,
     )
 
     # Test 1: With small cost for pst_switching_distance in target metrics
@@ -566,19 +621,32 @@ def test_pst_switching_distance_without_pst_optimization(static_information_file
     topologies = empty_repertoire(batch_size, max_num_splits, 0, n_timesteps)
 
     key = jax.random.PRNGKey(100)
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=3.0,
+            add_split_prob=0.1,
+            change_split_prob=0.0,
+            remove_split_prob=0.0,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.0,
+            change_disconnection_prob=0.0,
+            remove_disconnection_prob=0.0,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=NodalInjectionMutationConfig(
+            pst_mutation_sigma=0.0,
+            pst_n_taps=jnp.array([], dtype=int),
+        ),
+    )
     topologies, key = mutate(
         topologies=topologies,
         random_key=key,
-        substation_split_prob=0.1,
-        substation_unsplit_prob=0.0,
+        mutation_config=mutation_config,
         action_set=action_set,
-        n_disconnectable_branches=n_disconnectable_branches,
-        n_subs_mutated_lambda=3.0,
-        disconnect_prob=0.0,
-        reconnect_prob=0.0,
-        pst_mutation_sigma=0,  # PST mutation irrelevant when PST opt disabled
-        pst_n_taps=jnp.array([], dtype=int),
-        mutation_repetition=1,
     )
 
     (_, _, metrics, _, _, _) = scoring_function(

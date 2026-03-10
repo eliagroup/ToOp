@@ -163,7 +163,7 @@ def mutate_disconnections(
     # We only allow to add a disconnection if there are less disconnections than the maximum number of disconnections.
     allow_add = (n_disconnections < max_num_disconnections) & (add_disconnection_prob > 0.0)
     # We only allow to remove a disconnection if there is at least one disconnection,
-    # and we don't want to end up with zero disconnections if there are splits in the topology,
+    # and we don't want to end up with zero disconnections if there are no splits in the topology,
     # because then we would always end up with the same unsplit topology after mutation.
     allow_remove = (has_splits & (n_disconnections == 1)) | (n_disconnections > 1)
 

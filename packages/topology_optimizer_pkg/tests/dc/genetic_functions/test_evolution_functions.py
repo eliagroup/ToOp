@@ -231,7 +231,7 @@ def test_mutate(synthetic_action_set: ActionSet) -> None:
         disconnection_mutation_config=disc_config,
     )
 
-    assert jnp.sum(outages != int_max) == 1
+    assert jnp.sum(outages != int_max()) == 1
 
     mutation_config = MutationConfig(
         random_topo_prob=0.0,
@@ -321,8 +321,8 @@ def test_mutate_on_same_repository_with_different_keys(synthetic_action_set: Act
     topologies2, _ = mutate(topologies=topologies, random_key=key2, action_set=action_set, mutation_config=mutation_config)
 
     assert not (
-        jnp.all(jnp.diff(topologies1.action_index - topologies2.action_index, axis=0) == 0)
-        and jnp.all(jnp.diff(topologies1.disconnections - topologies2.disconnections, axis=0) == 0)
+        jnp.array_equal(topologies1.action_index, topologies2.action_index)
+        or jnp.array_equal(topologies1.disconnections, topologies2.disconnections)
     ), "With different random keys, we should get different mutations"
     all_actions = [topologies1.action_index, topologies2.action_index]
     all_discos = [topologies1.disconnections, topologies2.disconnections]

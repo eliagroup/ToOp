@@ -377,6 +377,14 @@ def initialize_genetic_algorithm(
     JaxOptimizerData
         The initialized jax dataclass
     """
+    assert max_num_splits <= static_informations[0].dynamic_information.n_sub_relevant, (
+        "The maximum number of splits cannot be larger than the number of relevant substations"
+    )
+
+    assert max_num_disconnections <= static_informations[0].dynamic_information.disconnectable_branches.shape[0], (
+        "The maximum number of disconnections cannot be larger than the number of disconnectable branches"
+    )
+
     n_devices = len(jax.devices()) if distributed else 1
 
     dynamic_informations = tuple([static_information.dynamic_information for static_information in static_informations])

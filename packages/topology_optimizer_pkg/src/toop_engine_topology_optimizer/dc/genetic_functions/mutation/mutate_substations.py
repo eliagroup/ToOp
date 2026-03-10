@@ -54,7 +54,9 @@ def change_split_substation(
     substations_split = jnp.zeros(n_subs_rel, dtype=bool).at[sub_ids].set(True, mode="drop")
     # We also include the currently split substation in the list of split substations,
     # so that we can resplit an already split substation if all substations are already split
-    substations_split = substations_split.at[sub_ids[split_idx]].set(False, mode="drop")
+    substations_split = substations_split.at[sub_ids.at[split_idx].get(mode="fill", fill_value=int_max_value)].set(
+        False, mode="drop"
+    )
 
     # Sample a new substation from the substations which have not been split yet for every topology
     # in the batch

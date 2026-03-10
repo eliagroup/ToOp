@@ -138,6 +138,17 @@ class BatchedMEParameters(BaseModel):
                 self.observed_metrics += (descriptor.metric,)
         return self
 
+    @model_validator(mode="after")
+    def probabilities_less_than_one(self) -> "BatchedMEParameters":
+        """Check that the mutation probabilities are not larger than 1."""
+        if self.add_split_prob + self.change_split_prob + self.remove_split_prob > 1.0:
+            raise ValueError("The sum of the substation mutation probabilities cannot be larger than 1.")
+        if self.add_disconnection_prob + self.change_disconnection_prob + self.remove_disconnection_prob > 1.0:
+            raise ValueError("The sum of the disconnection mutation probabilities cannot be larger than 1.")
+        if self.random_topo_prob > 1.0:
+            raise ValueError("The random topology probability cannot be larger than 1.")
+        return self
+
 
 class LoadflowSolverParameters(BaseModel):
     """Parameters for the loadflow solver."""

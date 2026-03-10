@@ -181,21 +181,21 @@ def optimization_loop(
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return
 
-        if time.time() - start_time > ac_params.ga_config.runtime_seconds:
-            logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
-            send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
-            running = False
-            break
-
         send_heartbeat_fn(
             OptimizationStatsHeartbeat(
                 optimization_id=optimization_id,
                 wall_time=time.time() - start_time,
                 iteration=epoch,
-                num_branch_topologies_tried=0,
+                num_branch_topologies_tried=epoch,
                 num_injection_topologies_tried=0,
             )
         )
+
+        if time.time() - start_time > ac_params.ga_config.runtime_seconds:
+            logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
+            send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
+            running = False
+            break
 
 
 def idle_loop(

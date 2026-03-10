@@ -228,11 +228,11 @@ def mutate(
     mutation_config: MutationConfig,
     action_set: ActionSet,
 ) -> tuple[Genotype, PRNGKeyArray]:
-    """Mutate the topologies by splitting substations and changing the branch and injection topos.
+    """Mutate the topologies by splitting substations, disconnecting branches and mutating nodal injections (PSTs).
 
-    Makes sure that at all times, a substation is split at most once and that all branch and
-    injection actions are in range of the available actions for the substation. If a substation is
-    not split, this is indicated by the value int_max in the substation, branch and injection.
+    Makes sure that at all times, a substation is split at most once and that all branch actions
+    are in range of the available actions for the substation. If a substation is
+    not split, this is indicated by the value int_max in the substation, branch.
 
     We mutate mutation_repetition copies of the initial repertoire to increase the chance of getting
     unique mutations.
@@ -261,7 +261,7 @@ def mutate(
     # Repeat the topologies to increase the chance of getting unique mutations
     repeated_topologies = repeat_topologies(topologies, batch_size, mutation_config.mutation_repetition)
     n_mutations = batch_size * mutation_config.mutation_repetition
-    mutation_key, pst_key, shuffle_key, random_key = jax.random.split(random_key, 4)
+    mutation_key, pst_key, random_key = jax.random.split(random_key, 3)
     sub_ids = extract_sub_ids(
         repeated_topologies.action_index,
         action_set,
@@ -294,13 +294,8 @@ def mutate(
         nodal_injections_optimized=nodal_injections_optimized,
     )
     if mutation_config.mutation_repetition > 1:
-        perm = jax.random.permutation(shuffle_key, topologies_mutated.action_index.shape[0])
-        shuffled_genotypes = jax.tree_util.tree_map(
-            lambda x: x[perm],
-            topologies_mutated,
-        )
         topologies_mutated, _ = deduplicate_genotypes(
-            shuffled_genotypes,
+            topologies_mutated,
             desired_size=batch_size,
         )
 

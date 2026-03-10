@@ -41,7 +41,6 @@ def deduplicate_genotypes(
     ----------
     genotypes : Genotype
         The genotypes to deduplicate. These should be sorted by action id already.
-        For better results, shuffle first and then deduplicate.
     desired_size : Optional[int]
         How many unique values you are expecting. If not given, this is not jittable
 

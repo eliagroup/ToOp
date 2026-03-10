@@ -13,7 +13,7 @@ from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_interfaces.messages.protobuf_message_factory import serialize_message
-from toop_engine_topology_optimizer.ac.listener import poll_results_topic
+from toop_engine_topology_optimizer.ac.listener import finish_optimization, poll_results_topic
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import (
@@ -59,6 +59,31 @@ def result() -> Result:
             ]
         ),
     )
+
+
+def test_finish_optimization(session: Session) -> None:
+    # Add a test topology to the database that belongs to the optimization we will finish
+    topo = ACOptimTopology(
+        actions=[5, 6, 7],
+        disconnections=[0, 1],
+        pst_setpoints=[0, 0, 0, 0],
+        unsplit=False,
+        timestep=0,
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        strategy_hash=bytes.fromhex("deadbeef"),
+        fitness=0.5,
+        metrics={"overload_energy_n_1": 123.4},
+    )
+    session.add(topo)
+    session.commit()
+
+    # Finish the optimization
+    finish_optimization(session, "test", OptimizerType.AC)
+
+    # Check that the topology has been deleted from the database
+    topologies = session.exec(select(ACOptimTopology)).all()
+    assert len(topologies) == 0
 
 
 def test_poll_results_topic(result: Result, session: Session) -> None:

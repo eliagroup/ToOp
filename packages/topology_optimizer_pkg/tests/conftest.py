@@ -4,7 +4,6 @@
 # If a copy of the MPL was not distributed with this file,
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
-
 import logging
 import os
 import shutil
@@ -25,7 +24,7 @@ from docker.models.containers import Container
 from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Int
 from omegaconf import DictConfig
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_dc_solver.example_grids import (
     case14_pandapower,
@@ -48,7 +47,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
 )
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
-from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
+from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_topo_data
 
@@ -396,11 +395,8 @@ def preprocessing_parameters() -> DictConfig:
 
 
 @pytest.fixture
-def session() -> Generator[Session, None, None]:
-    engine = create_engine("sqlite:///:memory:")
-    SQLModel.metadata.create_all(engine, tables=[ACOptimTopology.__table__])
-    with Session(engine) as session:
-        yield session
+def session() -> Session:
+    return create_session()
 
 
 @pytest.fixture

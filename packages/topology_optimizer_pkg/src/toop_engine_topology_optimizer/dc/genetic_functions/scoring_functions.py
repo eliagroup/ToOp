@@ -26,7 +26,7 @@ from toop_engine_dc_solver.jax.types import (
     int_max,
 )
 from toop_engine_interfaces.types import MetricType
-from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
+from toop_engine_topology_optimizer.dc.genetic_functions.genotype import (
     Genotype,
     deduplicate_genotypes,
     fix_dtypes,

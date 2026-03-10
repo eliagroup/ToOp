@@ -20,9 +20,20 @@
 ::: toop_engine_topology_optimizer.dc.main
 
 ## Genetic Algorithm Functions
-::: toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions
+
+
+::: toop_engine_topology_optimizer.dc.genetic_functions.genotype
 ::: toop_engine_topology_optimizer.dc.genetic_functions.initialization
 ::: toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions
+::: toop_engine_topology_optimizer.dc.genetic_functions.crossover
+
+### Mutation
+::: toop_engine_topology_optimizer.dc.genetic_functions.mutation.config
+::: toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate
+::: toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_substations
+::: toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_disconnections
+::: toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_nodal_inj
+::: toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils
 
 ## Repertoire
 ::: toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites

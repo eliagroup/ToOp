@@ -247,12 +247,6 @@ def mutate(
         The mutation configuration containing the probabilities for the different mutation operations and their parameters
     action_set : ActionSet
         The action set containing available actions on a per-substation basis.
-    n_disconnectable_branches: int
-        The number of disconnectable branches in the action set.
-    pst_n_taps : Int[Array, " num_psts"]
-        The number of taps for each PST, from nodal_injection_information.pst_n_taps.
-    mutation_repetition : int
-        More chance to get unique mutations by mutating mutation_repetition copies of the repertoire
 
     Returns
     -------

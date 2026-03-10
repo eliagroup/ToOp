@@ -14,7 +14,7 @@ from fsspec.implementations.local import LocalFileSystem
 from jax import numpy as jnp
 from toop_engine_dc_solver.jax.topology_computations import extract_sub_ids
 from toop_engine_dc_solver.jax.types import ActionSet, int_max
-from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
+from toop_engine_topology_optimizer.dc.genetic_functions.genotype import (
     Genotype,
 )
 from toop_engine_topology_optimizer.dc.main import CLIArgs, main

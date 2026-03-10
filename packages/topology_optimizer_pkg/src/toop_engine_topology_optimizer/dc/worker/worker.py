@@ -203,7 +203,7 @@ def optimization_loop(
                 logger.warning("No strategies extracted, skipping push.")
 
     logger.info(f"Starting optimization {optimization_id}")
-    epoch = 0
+    epoch = 1
     running = True
     start_time = time.time()
     while running:

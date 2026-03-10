@@ -12,6 +12,12 @@ import pytest
 from jaxtyping import Array, Float, Int, Shaped
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import JaxOptimizerData, initialize_genetic_algorithm
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
+    DisconnectionMutationConfig,
+    MutationConfig,
+    NodalInjectionMutationConfig,
+    SubstationMutationConfig,
+)
 from toop_engine_topology_optimizer.dc.repertoire.discrete_map_elites import DiscreteMapElites
 from toop_engine_topology_optimizer.dc.worker.optimizer import run_single_device_epoch
 from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef
@@ -71,25 +77,43 @@ def test_jax_no_tracing_flag() -> None:
 
 def _initialize_small_optimizer(static_information_file: str, batch_size: int) -> tuple[DiscreteMapElites, JaxOptimizerData]:
     static_information = load_static_information(static_information_file)
+    mutation_config = MutationConfig(
+        mutation_repetition=1,
+        random_topo_prob=0.0,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.1,
+            change_split_prob=0.1,
+            remove_split_prob=0.1,
+            n_rel_subs=20,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.1,
+            change_disconnection_prob=0.1,
+            remove_disconnection_prob=0.1,
+            n_disconnectable_branches=5,
+        ),
+        nodal_injection_mutation_config=NodalInjectionMutationConfig(
+            pst_mutation_sigma=0.0,
+            pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+        )
+        if static_information.dynamic_information.nodal_injection_information is not None
+        else None,
+    )
     algo, jax_data = initialize_genetic_algorithm(
         batch_size=batch_size,
         max_num_splits=2,
         max_num_disconnections=2,
         static_informations=(static_information,),
         target_metrics=(("overload_energy_n_1", 1.0),),
-        substation_split_prob=0.1,
-        substation_unsplit_prob=0.1,
         action_set=static_information.dynamic_information.action_set,
-        n_subs_mutated_lambda=1.0,
-        disconnect_prob=0.1,
-        reconnect_prob=0.1,
-        pst_mutation_sigma=0,
         proportion_crossover=0.5,
         crossover_mutation_ratio=0.5,
         random_seed=42,
         observed_metrics=("overload_energy_n_1", "split_subs"),
         me_descriptors=(DescriptorDef(metric="split_subs", num_cells=8),),
         distributed=False,
+        mutation_config=mutation_config,
     )
     return algo, jax_data
 

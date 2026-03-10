@@ -362,7 +362,7 @@ def get_coupler_type(
 
 
 def busbar_coupler_condition(
-    busbar1: int, busbar2: int, connectable_assets: dict[int, list[str]], threshold: float = 0.5
+    busbar1: int, busbar2: int, connectable_assets: dict[int, list[int | str]], threshold: float | int = 0.5
 ) -> bool:
     """Check if a busbar is a busbar coupler.
 

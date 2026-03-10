@@ -93,13 +93,13 @@ def sample_metrics_2d_df():
 def sample_metrics_3d_df():
     # Create a simple DataFrame for testing
     data = [
-        {"switching_distance": 1, "split_subs": 1, "fitness": -10, "disconnections": 5},
-        {"switching_distance": 2, "split_subs": 1, "fitness": -20, "disconnections": 0},
-        {"switching_distance": 3, "split_subs": 1, "fitness": -10, "disconnections": 0},
-        {"switching_distance": 1, "split_subs": 2, "fitness": -15, "disconnections": 3},
-        {"switching_distance": 2, "split_subs": 2, "fitness": -5, "disconnections": 5},
-        {"switching_distance": 3, "split_subs": 2, "fitness": -30, "disconnections": 1},
-        {"switching_distance": 2, "split_subs": 3, "fitness": -9, "disconnections": 0},
+        {"switching_distance": 1, "split_subs": 1, "fitness": -10, "disconnected_branches": 5},
+        {"switching_distance": 2, "split_subs": 1, "fitness": -20, "disconnected_branches": 0},
+        {"switching_distance": 3, "split_subs": 1, "fitness": -10, "disconnected_branches": 0},
+        {"switching_distance": 1, "split_subs": 2, "fitness": -15, "disconnected_branches": 3},
+        {"switching_distance": 2, "split_subs": 2, "fitness": -5, "disconnected_branches": 5},
+        {"switching_distance": 3, "split_subs": 2, "fitness": -30, "disconnected_branches": 1},
+        {"switching_distance": 2, "split_subs": 3, "fitness": -9, "disconnected_branches": 0},
     ]
     return pd.DataFrame(data)
 
@@ -288,7 +288,7 @@ def test_dominator_filter_numeric_3d(sample_metrics_3d_df):
 
     # now it becomes a bit wired to follow in this array representation, as it is not sorted anymore in the expected way
 
-    observed = ["switching_distance", "split_subs", "disconnections"]
+    observed = ["switching_distance", "split_subs", "disconnected_branches"]
     mask = get_dominator_mask(
         sample_metrics_3d_df, target_metrics=observed, fitness_col="fitness", observed_metrics=observed
     )
@@ -317,7 +317,9 @@ def test_median_filter(sample_metrics_3d_df, default_filter_strategy: FilterStra
     expected_mask = [True, False, True, True, True, False, True]
     assert all(mask == expected_mask)
 
-    mask = get_median_mask(sample_metrics_3d_df, target_metrics=["split_subs", "switching_distance", "disconnections"])
+    mask = get_median_mask(
+        sample_metrics_3d_df, target_metrics=["split_subs", "switching_distance", "disconnected_branches"]
+    )
     # [{'switching_distance': 1, 'split_subs': 1, 'fitness': -10, 'disconnections': 5}, # below median - disconnections
     #  {'switching_distance': 2, 'split_subs': 1, 'fitness': -20, 'disconnections': 0}, # below median - split_subs & switching_distance
     #  {'switching_distance': 3, 'split_subs': 1, 'fitness': -10, 'disconnections': 0}, # should be kept
@@ -328,9 +330,11 @@ def test_median_filter(sample_metrics_3d_df, default_filter_strategy: FilterStra
     expected_mask = [False, False, True, False, True, False, True]
     assert all(mask == expected_mask)
 
-    sample_metrics_3d_df["disconnections"] = -sample_metrics_3d_df["disconnections"]  # make it an artificial fitness metric
-    mask = get_median_mask(sample_metrics_3d_df, target_metrics=["split_subs"], fitness_col="disconnections")
-    sample_metrics_3d_df["disconnections"] = -sample_metrics_3d_df["disconnections"]  # restore original values
+    sample_metrics_3d_df["disconnected_branches"] = -sample_metrics_3d_df[
+        "disconnected_branches"
+    ]  # make it an artificial fitness metric
+    mask = get_median_mask(sample_metrics_3d_df, target_metrics=["split_subs"], fitness_col="disconnected_branches")
+    sample_metrics_3d_df["disconnected_branches"] = -sample_metrics_3d_df["disconnected_branches"]  # restore original values
     # [{'switching_distance': 1, 'split_subs': 1, 'fitness': -10, 'disconnections': 5}, # below median - disconnections fitness
     #  {'switching_distance': 2, 'split_subs': 1, 'fitness': -20, 'disconnections': 0}, # should be kept
     #  {'switching_distance': 3, 'split_subs': 1, 'fitness': -10, 'disconnections': 0}, # should be kept
@@ -441,7 +445,7 @@ def test_discriminator_filter_2d(sample_metrics_2d_df):
 
 def test_repertoire_selection_mask(sample_metrics_3d_df, default_filter_strategy: FilterStrategy):
     # Test repertoire selection mask with a DataFrame that has multiple metrics
-    target_metrics = ["switching_distance", "split_subs", "disconnections"]
+    target_metrics = ["switching_distance", "split_subs", "disconnected_branches"]
     default_filter_strategy.filter_dominator_metrics_target = target_metrics
     discriminator_df = pd.DataFrame()
     mask = get_repertoire_filter_mask(
@@ -457,7 +461,7 @@ def test_repertoire_selection_mask(sample_metrics_3d_df, default_filter_strategy
     expected_mask = [True, False, True, False, True, False, False]
     assert all(mask == expected_mask)
 
-    discriminator_df = pd.DataFrame([{"switching_distance": 1, "split_subs": 1, "fitness": -10, "disconnections": 5}])
+    discriminator_df = pd.DataFrame([{"switching_distance": 1, "split_subs": 1, "fitness": -10, "disconnected_branches": 5}])
     mask = get_repertoire_filter_mask(
         sample_metrics_3d_df, discriminator_df=discriminator_df, filter_strategy=default_filter_strategy
     )
@@ -474,7 +478,7 @@ def test_repertoire_selection_mask(sample_metrics_3d_df, default_filter_strategy
 
 def test_subtract_repertoire_selection_fitness(sample_metrics_3d_df: pd.DataFrame, default_filter_strategy: FilterStrategy):
     # Test subtract_repertoire_selection_fitness with a DataFrame that has multiple metrics
-    target_metrics = ["switching_distance", "split_subs", "disconnections"]
+    target_metrics = ["switching_distance", "split_subs", "disconnected_branches"]
     discriminator_df = pd.DataFrame()
     metrics_df_substract = filter_metrics_df(
         metrics_df=sample_metrics_3d_df,

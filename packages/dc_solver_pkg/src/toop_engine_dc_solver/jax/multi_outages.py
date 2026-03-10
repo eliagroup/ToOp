@@ -19,8 +19,6 @@ approach is more efficient. This module provides both approaches, and the user c
 to use based on the specific use case.
 """
 
-from __future__ import annotations
-
 import jax
 from beartype.typing import Optional
 from jax import numpy as jnp
@@ -239,7 +237,10 @@ def compute_multi_outage(
     n_0_flow: Float[Array, " n_timesteps n_branches"],
     multi_outages: Int[Array, " n_multi_outages"],
     branches_monitored: Optional[Int[Array, " n_branches_monitored"]],
-) -> tuple[Float[Array, " n_timesteps n_branches"], Bool[Array, " "]]:
+) -> tuple[
+    Float[Array, " n_timesteps n_branches_monitored"],
+    Bool[Array, " "],
+]:
     """Compute the flow after a single multi-outage using the MODF formulation
 
     You can look up the theory in the paper:

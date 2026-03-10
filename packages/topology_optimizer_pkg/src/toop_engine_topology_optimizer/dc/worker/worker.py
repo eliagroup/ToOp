@@ -172,7 +172,7 @@ def optimization_loop(
         optimizer_data, stats, initial_strategy = initialize_optimization(
             params=dc_params,
             optimization_id=optimization_id,
-            static_information_files=[gf.static_information_file for gf in grid_files],
+            static_information_files=tuple([gf.static_information_file for gf in grid_files]),
             processed_gridfile_fs=processed_gridfile_fs,
         )
         send_result_fn(
@@ -229,8 +229,8 @@ def optimization_loop(
                 optimization_id=optimization_id,
                 wall_time=time.time() - start_time,
                 iteration=epoch,
-                num_branch_topologies_tried=optimizer_data.jax_data.emitter_state["total_branch_combis"].sum().item(),
-                num_injection_topologies_tried=optimizer_data.jax_data.emitter_state["total_inj_combis"].sum().item(),
+                num_branch_topologies_tried=optimizer_data.jax_data.emitter_state.total_branch_combis.sum().item(),
+                num_injection_topologies_tried=optimizer_data.jax_data.emitter_state.total_inj_combis.sum().item(),
             )
         )
 

@@ -17,7 +17,7 @@ import jax.numpy as jnp
 import logbook
 import networkx as nx
 import numpy as np
-from beartype.typing import Literal, NamedTuple, Optional, Sequence
+from beartype.typing import Literal, Optional, Sequence
 from jaxtyping import Array, Bool, Int
 from networkx.algorithms.components import (
     connected_components,
@@ -44,10 +44,11 @@ from toop_engine_interfaces.asset_topology_helpers import (
 logger = logbook.Logger(__name__)
 
 
-class OptimalSeparationSetInfo(NamedTuple):
+@dataclass
+class OptimalSeparationSetInfo:
     """Tuple that holds information about the possible 2-node separations in a Station"""
 
-    separation_set: Bool[np.ndarray, " n_configurations 2 n_assets"]
+    separation_set: Bool[np.ndarray, " n_configurations 2 n_assets_in_config"]
     """The separation set of busbars in the station. Each row corresponds to a possible two-way split of
     the station obtained by opening some couplers. This is the optimized table, i.e. equivalent
     configurations have been purged and the table is in the format where busbar A and B are joined,
@@ -72,7 +73,7 @@ class OptimalSeparationSetInfo(NamedTuple):
 def make_separation_set(
     station: Station,
 ) -> tuple[
-    Bool[np.ndarray, " n_configurations 2 n_assets"],
+    Bool[np.ndarray, " n_configurations 2 ..."],
     Bool[np.ndarray, " n_configurations n_couplers"],
     list[set[int]],
 ]:
@@ -102,7 +103,7 @@ def make_separation_set(
 
     Returns
     -------
-    Bool[np.ndarray, " n_configurations 2 n_assets"]
+    Bool[np.ndarray, " n_configurations 2 ..."]
         A table of electrical configurations. Each row corresponds to a configuration, and each
         column corresponds to an asset. The second dimension represents busbar A and B. A true value
         means that for this configuration, on this busbar, the asset is connected.
@@ -188,7 +189,7 @@ def make_separation_set(
 
 
 def identify_unnecessary_configurations(
-    configurations: Bool[np.ndarray, " n_configurations n_assets"],
+    configurations: Bool[np.ndarray, " n_configurations n_separation_assets"],
     clip_hamming_distance: int = 0,
 ) -> Bool[np.ndarray, " n_configurations"]:
     """Identify configurations that are equivalent to others.
@@ -199,7 +200,7 @@ def identify_unnecessary_configurations(
 
     Parameters
     ----------
-    configurations : Bool[np.ndarray, " n_configurations n_assets"]
+    configurations : Bool[np.ndarray, " n_configurations n_separation_assets"]
         The configurations table to be filtered.
     clip_hamming_distance : int, optional
         The maximum hamming distance between two configurations for them to be considered
@@ -443,9 +444,9 @@ def make_optimal_separation_set(
 
 
 def pad_configurations_table(
-    configuration_table: Bool[Array, " n_configurations n_assets"],
+    configuration_table: Bool[Array, " n_configurations n_separation_assets"],
     coupler_distances: Int[Array, " n_configurations"],
-    ignore_assets: Bool[Array, " n_assets"],
+    ignore_assets: Bool[Array, " n_separation_assets"],
     max_n_assets: int,
     max_n_configurations: int,
 ) -> tuple[
@@ -460,11 +461,11 @@ def pad_configurations_table(
 
     Parameters
     ----------
-    configuration_table : Bool[Array, " n_configurations n_assets"]
+    configuration_table : Bool[Array, " n_configurations n_separation_assets"]
         The configuration table to pad.
     coupler_distances : Int[Array, " n_configurations"]
         The coupler distances to pad.
-    ignore_assets : Bool[Array, " n_assets"]
+    ignore_assets : Bool[Array, " n_separation_assets"]
         Which assets shall not be counted in the hamming distance. True to ignore.
     max_n_assets : int
         The maximum number of assets in the table.

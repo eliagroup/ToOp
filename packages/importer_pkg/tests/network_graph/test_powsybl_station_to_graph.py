@@ -109,7 +109,7 @@ def test_get_node_assets(basic_node_breaker_network_powsyblV2):
         "load1": "",
         "load2": "",
     }
-    all_names_df = pd.DataFrame.from_dict(names_dict, orient="index", columns=["name"])
+    all_names_df = pd.DataFrame.from_dict(names_dict, orient="index", columns=["name"])["name"]
     switches_df = get_switches(switches_df=nbt.switches)
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)

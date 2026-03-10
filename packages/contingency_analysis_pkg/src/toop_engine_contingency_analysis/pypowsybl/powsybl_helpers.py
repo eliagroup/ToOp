@@ -717,6 +717,7 @@ def get_node_results(
     # set empty dataframe columns to NaN
     all_node_results["p"] = np.nan
     all_node_results["q"] = np.nan
+    all_node_results["vm_basecase_deviation"] = np.nan
     all_node_results["element_name"] = ""
     all_node_results["contingency_name"] = ""
 

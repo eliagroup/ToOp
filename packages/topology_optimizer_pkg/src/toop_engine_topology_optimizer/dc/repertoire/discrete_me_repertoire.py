@@ -13,17 +13,17 @@ algorithm as well as several variants. Adapted from QDax
 (https://github.com/adaptive-intelligent-robotics/QDax)
 """
 
-from __future__ import annotations
-
 from functools import partial
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 from beartype.typing import Optional, Tuple, Union
-from jax_dataclasses import Static, pytree_dataclass
-from jaxtyping import Array, Float, Int, PyTree, Shaped
-from qdax.custom_types import Descriptor, ExtraScores, Fitness, Genotype, RNGKey
+from jax_dataclasses import Static
+from jaxtyping import Array, Float, Int, PRNGKeyArray
+from qdax.custom_types import Descriptor, ExtraScores, Fitness
+from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import Genotype
 
 
 @partial(jax.jit, static_argnames=("n_cells_per_dim",))
@@ -73,33 +73,34 @@ def get_cell_index(
     )  # jittable thanks to clip mode
 
 
-@pytree_dataclass
-class DiscreteMapElitesRepertoire:
+class DiscreteMapElitesRepertoire(eqx.Module):
     """A class to store the MAP-Elites repertoire."""
 
-    genotypes: PyTree[Shaped[Array, " repertoire_size *feature_dims"]]
+    genotypes: Genotype
     """The genotypes in the repertoire.
 
     The PyTree can be a simple Jax array or a more complex nested structure
     such as to represent parameters of neural network in Flax."""
 
-    fitnesses: Float[Array, " repertoire_size"]
+    fitnesses: Float[Array, " *repertoire_size"]
     """The fitness of solutions in each cell of the repertoire."""
 
-    descriptors: Int[Array, " repertoire_size n_dims"]
+    descriptors: Int[Array, " *repertoire_size n_dims"]
     """The descriptors of solutions in each cell of the repertoire."""
 
-    extra_scores: Optional[PyTree[Float[Array, " repertoire_size *extra_dims"]]]
+    extra_scores: ExtraScores
     """The extra scores of solutions in each cell of the repertoire. Usually the metrics"""
 
-    n_cells_per_dim: Static[tuple[int, ...]]
+    n_cells_per_dim: Static[tuple[int, ...]] = eqx.field(static=True)
     """The number of cells per dimension."""
 
-    cell_depth: Static[int] = 1
+    cell_depth: Static[int] = eqx.field(static=True, default=1)
     """Each cell contains cell_depth unique individuals"""
 
     @partial(jax.jit, static_argnames=("num_samples",))
-    def sample(self: DiscreteMapElitesRepertoire, random_key: RNGKey, num_samples: int) -> Tuple[Genotype, RNGKey]:
+    def sample(
+        self: "DiscreteMapElitesRepertoire", random_key: PRNGKeyArray, num_samples: int
+    ) -> Tuple[Genotype, PRNGKeyArray]:
         """Sample elements in the repertoire.
 
         Parameters
@@ -127,7 +128,7 @@ class DiscreteMapElitesRepertoire:
 
         return samples, random_key
 
-    def __getitem__(self, index: Union[int, slice, jnp.ndarray]) -> DiscreteMapElitesRepertoire:
+    def __getitem__(self, index: Union[int, slice, jnp.ndarray]) -> "DiscreteMapElitesRepertoire":
         """Get a slice of the repertoire.
 
         Parameters
@@ -149,13 +150,13 @@ class DiscreteMapElitesRepertoire:
         )
 
 
-@jax.jit
+@eqx.filter_jit  # TODO. Why did this not fail before?
 def add_to_repertoire(
     repertoire: DiscreteMapElitesRepertoire,
-    batch_of_genotypes: PyTree[Shaped[Array, " batch_size *feature_dims"]],
+    batch_of_genotypes: Genotype,
     batch_of_descriptors: Int[Array, " batch_size n_dims"],
     batch_of_fitnesses: Float[Array, " batch_size"],
-    batch_of_extra_scores: Optional[PyTree[Shaped[Array, " batch_size *extra_dims"]]] = None,
+    batch_of_extra_scores: Optional[ExtraScores] = None,
 ) -> DiscreteMapElitesRepertoire:
     """Add a batch of elements to the repertoire.
 
@@ -197,10 +198,10 @@ def add_to_repertoire(
 @jax.jit
 def add_to_repertoire_without_cell_depth(
     repertoire: DiscreteMapElitesRepertoire,
-    batch_of_genotypes: PyTree[Shaped[Array, " batch_size *feature_dims"]],
+    batch_of_genotypes: Genotype,
     batch_of_descriptors: Int[Array, " batch_size n_dims"],
     batch_of_fitnesses: Float[Array, " batch_size"],
-    batch_of_extra_scores: Optional[PyTree[Shaped[Array, " batch_size *extra_dims"]]] = None,
+    batch_of_extra_scores: Optional[ExtraScores] = None,
 ) -> DiscreteMapElitesRepertoire:
     """Add a batch of elements to the repertoire.
 
@@ -208,13 +209,13 @@ def add_to_repertoire_without_cell_depth(
     ----------
     repertoire: DiscreteMapElitesRepertoire
         the MAP-Elites repertoire to which the elements will be added.
-    batch_of_genotypes: PyTree[Shaped[Array, " batch_size *feature_dims"]]
+    batch_of_genotypes: Genotype
         a batch of genotypes to be added to the repertoire.
     batch_of_descriptors: Int[Array, " batch_size n_dims"]
         an array that contains the descriptors of the genotypes.
     batch_of_fitnesses: Float[Array, " batch_size"]
         an array that contains the fitnesses of the genotypes.
-    batch_of_extra_scores: Optional[PyTree[Shaped[Array, " batch_size *extra_dims"]]]
+    batch_of_extra_scores: Optional[ExtraScores]
         tree that contains the extra_scores of genotypes.
 
     Returns
@@ -261,7 +262,7 @@ def add_to_repertoire_without_cell_depth(
     new_fitnesses = repertoire.fitnesses.at[batch_of_indices].set(batch_of_fitnesses.squeeze(axis=-1), mode="drop")
     new_descriptors = repertoire.descriptors.at[batch_of_indices].set(batch_of_descriptors, mode="drop")
     if batch_of_extra_scores is None:
-        new_extra_scores = None
+        new_extra_scores = {}
     else:
         new_extra_scores = jax.tree_util.tree_map(
             lambda repertoire_extra_scores, new_extra_scores: repertoire_extra_scores.at[batch_of_indices].set(
@@ -284,10 +285,10 @@ def add_to_repertoire_without_cell_depth(
 @jax.jit
 def add_to_repertoire_with_cell_depth(
     repertoire: DiscreteMapElitesRepertoire,
-    batch_of_genotypes: PyTree[Shaped[Array, " batch_size *feature_dims"]],
+    batch_of_genotypes: Genotype,
     batch_of_descriptors: Int[Array, " batch_size n_dims"],
     batch_of_fitnesses: Float[Array, " batch_size"],
-    batch_of_extra_scores: Optional[PyTree[Shaped[Array, " batch_size *extra_dims"]]] = None,
+    batch_of_extra_scores: Optional[ExtraScores] = None,
 ) -> DiscreteMapElitesRepertoire:
     """Add a batch of elements to a repertoire with depth.
 
@@ -298,13 +299,13 @@ def add_to_repertoire_with_cell_depth(
     ----------
     repertoire: DiscreteMapElitesRepertoire
         the MAP-Elites repertoire to which the elements will be added.
-    batch_of_genotypes: PyTree[Shaped[Array, " batch_size *feature_dims"]]
+    batch_of_genotypes: Genotype
         a batch of genotypes to be added to the repertoire.
     batch_of_descriptors: Int[Array, " batch_size n_dims"]
         an array that contains the descriptors of the genotypes.
     batch_of_fitnesses: Float[Array, " batch_size"]
         an array that contains the fitnesses of the genotypes.
-    batch_of_extra_scores: Optional[PyTree[Shaped[Array, " batch_size *extra_dims"]]]
+    batch_of_extra_scores: Optional[ExtraScores]
         tree that contains the extra_scores of genotypes.
 
     Returns
@@ -427,7 +428,8 @@ def add_to_repertoire_with_cell_depth(
 
     # extra scores
     if batch_of_extra_scores is None:
-        selected_extra_scores = None
+        # TODO IS THIS INTENDED
+        selected_extra_scores = {}
     else:
         selected_extra_scores = jax.tree_util.tree_map(
             lambda x, y: jnp.concatenate([x, y], axis=0)[final_indices_selection],
@@ -476,7 +478,9 @@ def init_repertoire(
         an initialized MAP-Elite repertoire
     """
     # retrieve one genotype from the population
-    (first_genotype, first_extra_score) = jax.tree_util.tree_map(lambda x: x[0], (genotypes, extra_scores))
+    (first_genotype, first_extra_score) = jax.tree_util.tree_map(
+        lambda x: x[0] if x is not None else None, (genotypes, extra_scores)
+    )
 
     # create a repertoire with default values
     repertoire = _init_default(
@@ -531,7 +535,7 @@ def _init_default(
 
     # default extra scores is all 0
     if extra_scores is None:
-        default_extra_scores = None
+        default_extra_scores = {}
     else:
         default_extra_scores = jax.tree_util.tree_map(
             lambda x: jnp.zeros(shape=(repertoire_size, *x.shape), dtype=x.dtype),

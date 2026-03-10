@@ -576,24 +576,24 @@ def test_validate_network_masks(pp_network_w_switches):
     assert validate_network_masks(net, masks)
 
     with logbook.handlers.TestHandler() as caplog:
-        assert not validate_network_masks(net, 1)
+        assert not validate_network_masks.__wrapped__(net, 1)
         assert "network_masks are not of type NetworkMasks" in "".join(caplog.formatted_records)
 
     with logbook.handlers.TestHandler() as caplog:
         masks.relevant_subs = 1
-        assert not validate_network_masks(net, masks)
+        assert not validate_network_masks.__wrapped__(net, masks)
         assert "Mask relevant_subs is not a numpy array" in "".join(caplog.formatted_records)
 
     masks = create_default_network_masks(net)
     with logbook.handlers.TestHandler() as caplog:
         masks.relevant_subs = np.array([1])
-        assert not validate_network_masks(net, masks)
+        assert not validate_network_masks.__wrapped__(net, masks)
         assert "Shape of mask relevant_subs is not correct" in "".join(caplog.formatted_records)
 
     masks = create_default_network_masks(net)
     with logbook.handlers.TestHandler() as caplog:
         masks.relevant_subs = np.zeros(len(net.bus), dtype=int)
-        assert not validate_network_masks(net, masks)
+        assert not validate_network_masks.__wrapped__(net, masks)
         assert "Dtype of mask relevant_subs is not correct" in "".join(caplog.formatted_records)
 
 

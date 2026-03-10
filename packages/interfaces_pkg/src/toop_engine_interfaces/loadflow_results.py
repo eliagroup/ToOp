@@ -22,7 +22,7 @@ from enum import Enum
 
 import pandera as pa
 import pandera.typing as pat
-from beartype.typing import Any, Optional, Self, Union
+from beartype.typing import Any, Optional, Union
 from pandera.typing import DataFrame, Index, Series
 from pydantic import BaseModel, Field
 
@@ -48,6 +48,9 @@ class BranchSide(Enum):
 
     THREE = 3
     """Only valid for 3 winding transformers, representing the low voltage side."""
+
+    NONE = 4
+    """No side specified."""
 
 
 class RegulatingElementType(Enum):
@@ -199,6 +202,14 @@ class NodeResultSchema(pa.DataFrameModel):
     If the engine does not support the computation of this value, the column can be omitted.
     """
 
+    vm_basecase_deviation: Series[float] = pa.Field(nullable=True)
+    """Voltage magnitude deviation from the basecase (N-0) in percent.
+        Computed as:
+            abs(vm_contingency - vm_basecase) / vm_basecase * 100
+        For basecase contingency, the deviation will be 0.0 (basecase vs basecase).
+        NaN if no valid basecase voltage exists(basecase not converged).
+    """
+
     element_name: Series[str] = pa.Field(default="", nullable=True)
     """The name of the node, if available. This is not used for the loadflow computation, but can be used for display
     purposes. If no name is available, this should be set to an empty string.
@@ -346,7 +357,7 @@ class LoadflowResults(BaseModel):
     """Additional information that the loadflow solver wants to convey to the user. There is no limitation what can
     be put in here except that it needs to be json serializable."""
 
-    def __eq__(self, lf_result: Self) -> bool:
+    def __eq__(self, lf_result: object) -> bool:
         """Compare two LoadflowResults objects for equality.
 
         Rounds floats to 6 decimal places for comparison.

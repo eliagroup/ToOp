@@ -57,7 +57,7 @@ def get_node_result_df(
     table_ids = monitored_buses.table_id.to_list()
     unique_ids = monitored_buses.index.to_list()
     # Add logic for 5% ΔV voltage limit
-    net.res_bus["basecase_deviation"] = (
+    net.res_bus["vm_basecase_deviation"] = (
         abs(net.res_bus["vm_pu"] - basecase_voltage) / basecase_voltage.replace(0, np.nan)
     ) * 100
     node_results_df = net.res_bus.reindex(table_ids)

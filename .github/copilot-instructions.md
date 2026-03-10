@@ -35,12 +35,11 @@ Each package has `src/`, `tests/`, `pyproject.toml`, and `README.md`. Use `uv` f
 
 **Backend Abstraction**: `BackendInterface` (abstract) ← `PandaPowerBackend`/`PowsyblBackend` (concrete). Always implement all interface methods; validation happens in tests like `test_backend.py`.
 
-**JAX Pytrees**: Use `@pytree_dataclass` from `jax_dataclasses` for all JAX-traced data structures. Standard `@dataclass` for non-traced data. Example:
+**JAX Pytrees**: Use `eqx.Module` from `import equinox as eqx` for all JAX-traced data structures. Standard `@dataclass` for non-traced data. Example:
 ```python
-from jax_dataclasses import pytree_dataclass
 from jaxtyping import Array, Int, Float, Bool
-@pytree_dataclass
-class TopoVectBranchComputations:
+
+class TopoVectBranchComputations(eqx.Module):
     topology_branch_vec: Int[Array, "batch n_branch"]
 ```
 
@@ -84,11 +83,12 @@ def compute_flows(
 - **Never** put batch-varying data in `StaticInformation` - it forces expensive recompilation.
 - Use `jax_dataclasses.Static` wrapper for pytree fields that shouldn't be traced:
 ```python
-from jax_dataclasses import Static, pytree_dataclass
-@pytree_dataclass
-class MyData:
+from jax_dataclasses import Static
+import equinox as eqx
+
+class MyData(eqx.Module):
     traced_array: Float[Array, " n"]      # JAX will trace this
-    static_config: Static[int]            # JAX won't trace this
+    static_config: Static[int] = eqx.field(static=True)      # JAX won't trace this
 ```
 
 **HDF5 Persistence**: Large matrices stored in `.hdf5` via `h5py`. See `dc_solver_pkg/jax/inputs.py` for save/load patterns. Paths in `interfaces_pkg/folder_structure.py`.

@@ -12,6 +12,7 @@ import datetime
 import logbook
 import networkx as nx
 import pandas as pd
+import pandera.typing as pat
 from pydantic import ValidationError
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
@@ -115,7 +116,7 @@ def get_node_breaker_topology_graph(network_graph_data: NetworkGraphData) -> nx.
     return graph
 
 
-def get_switches(switches_df: pd.DataFrame) -> SwitchSchema:
+def get_switches(switches_df: pd.DataFrame) -> pat.DataFrame[SwitchSchema]:
     """Get switches from a node breaker topology.
 
     Get the switches from a node breaker topology, rename and retype for the NetworkGraph.
@@ -127,7 +128,7 @@ def get_switches(switches_df: pd.DataFrame) -> SwitchSchema:
 
     Returns
     -------
-    switches_df : SwitchSchema
+    switches_df : pat.DataFrame[SwitchSchema]
         The switches as a DataFrame, with renamed columns for the NetworkGraph.
     """
     switches_df.reset_index(inplace=True)
@@ -156,7 +157,7 @@ def get_nodes(
     nodes_df: pd.DataFrame,
     switches_df: pd.DataFrame,
     substation_info: SubstationInformation,
-) -> NodeSchema:
+) -> pat.DataFrame[NodeSchema]:
     """Get nodes from a node breaker topology.
 
     Get the nodes from a node breaker topology, rename and retype for the NetworkGraph.
@@ -176,7 +177,7 @@ def get_nodes(
 
     Returns
     -------
-    nodes_df : NodeSchema
+    nodes_df : pat.DataFrame[NodeSchema]
         The nodes as a DataFrame, with renamed columns for the NetworkGraph.
     """
     nodes_df = nodes_df.merge(busbar_sections_names_df, left_on="connectable_id", right_index=True, how="left")
@@ -203,7 +204,7 @@ def get_nodes(
     return NodeSchema.validate(nodes_df)
 
 
-def get_helper_branches(internal_connections_df: pd.DataFrame) -> HelperBranchSchema:
+def get_helper_branches(internal_connections_df: pd.DataFrame) -> pat.DataFrame[HelperBranchSchema]:
     """Get helper branches from a node breaker topology.
 
     Get the helper branches from a node breaker topology, rename and retype for the NetworkGraph.
@@ -215,7 +216,7 @@ def get_helper_branches(internal_connections_df: pd.DataFrame) -> HelperBranchSc
 
     Returns
     -------
-    helper_branches : HelperBranchSchema
+    helper_branches : pat.DataFrame[HelperBranchSchema]
         The helper branches as a DataFrame, with renamed columns for the NetworkGraph.
     """
     helper_branches = internal_connections_df
@@ -229,7 +230,7 @@ def get_helper_branches(internal_connections_df: pd.DataFrame) -> HelperBranchSc
     return helper_branches
 
 
-def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.DataFrame) -> NodeAssetSchema:
+def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.Series) -> pat.DataFrame[NodeAssetSchema]:
     """Get node assets from a node breaker topology.
 
     Get the node assets from a node breaker topology, rename and retype for the NetworkGraph.
@@ -238,12 +239,12 @@ def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.DataFrame) -> NodeA
     ----------
     nodes_df : pd.DataFrame
         The nodes DataFrame from the node NodeBreakerTopology.
-    all_names_df : pd.DataFrame
+    all_names_df : pd.Series
         The names of all elements in the network.
 
     Returns
     -------
-    node_assets_df : NodeAssetSchema
+    node_assets_df : pat.DataFrame[NodeAssetSchema]
         The node assets as a DataFrame, with renamed columns for the NetworkGraph
     """
     node_assets_df = nodes_df[(nodes_df["connectable_type"] != "") & (nodes_df["connectable_type"] != "BUSBAR_SECTION")]

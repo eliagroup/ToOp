@@ -78,7 +78,7 @@ def get_empty_bay_list(graph: nx.Graph) -> list[list[int]]:
     return empty_asset_bay_lists
 
 
-def get_empty_bay_update_dict(empty_bay_lists: list[list[int]]) -> dict[tuple[int, int], dict[str, WeightValues]]:
+def get_empty_bay_update_dict(empty_bay_lists: list[list[int]]) -> dict[tuple[int, int], dict[str, float]]:
     """Get the empty bay update dictionary for the nx.Graph.
 
     The empty bay update dictionary is used set the bay weight.
@@ -91,7 +91,7 @@ def get_empty_bay_update_dict(empty_bay_lists: list[list[int]]) -> dict[tuple[in
 
     Returns
     -------
-    update_edge_dict : dict[tuple[int,int], dict[str, WeightValues]]
+    update_edge_dict : dict[tuple[int,int], dict[str, float]]
         A dictionary containing the update information for each edge.
         keys: edge_id (a tuple of node_ids)
         values: {"bay_weight": WeightValues.max_step.value}

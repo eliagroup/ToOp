@@ -74,6 +74,27 @@ def _get_trafo_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[np.int64, 
     return [(np.int64(row.hv_bus), np.int64(row.lv_bus))]
 
 
+def _get_impedance_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[np.int64, np.int64]]:
+    """
+    Return the bus connection edge for an impedance element.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        The pandapower network object.
+    el_id : int
+        ID of the impedance element in ``net.impedance``.
+
+    Returns
+    -------
+    list[tuple[np.int64, np.int64]]
+        A list containing a single edge representing the impedance
+        connection: [(from_bus, to_bus)].
+    """
+    row = net.impedance.loc[el_id]
+    return [(np.int64(row.from_bus), np.int64(row.to_bus))]
+
+
 def _get_trafo3w_edges(net: pp.pandapowerNet, el_id: int) -> list[tuple[np.int64, np.int64]]:
     """
     For a 3-winding transformer, return edges between all three windings.
@@ -138,7 +159,7 @@ def _edges_for_branch_element(net: pp.pandapowerNet, el_type: str, el_id: int) -
     net : pp.pandapowerNet
         The pandapower network object.
     el_type : str
-        Type of the branch element ("line", "trafo", or "trafo3w").
+        Type of the branch element ("line", "trafo", "impedance" or "trafo3w").
     el_id : int
         Numeric ID of the element.
 
@@ -153,6 +174,8 @@ def _edges_for_branch_element(net: pp.pandapowerNet, el_type: str, el_id: int) -
         res = _get_trafo_edges(net, el_id)
     elif el_type == "trafo3w":
         res = _get_trafo3w_edges(net, el_id)
+    elif el_type == "impedance":
+        res = _get_impedance_edges(net, el_id)
     else:
         raise ValueError(f"Unknown element type: {el_type}")
 

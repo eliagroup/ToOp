@@ -5,6 +5,9 @@ Please check if the PR fulfills these requirements:
 - [ ] PR Title follows conventional commit messages
 - [ ] Tests for the changes have been added (for bug fixes / features)
 - [ ] Docs have been added / updated (for bug fixes / features)
+- [ ] Docs have been added / updated (for bug fixes / features)
+- [ ] I have run the pre-commit checks locally as described in CONTRIBUTING.md
+- [ ] All commits in this PR are DCO signed-off (see CONTRIBUTING.md)
 - [ ] PR passes CI
 
 ## Does this PR already have an issue describing the problem?

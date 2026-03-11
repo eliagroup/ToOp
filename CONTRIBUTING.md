@@ -35,13 +35,13 @@ The devcontainer automatically provides:
 - **Git configuration** with safe directory setup
 - **Testing suite** based on `pytest` with VS Code testing integration.
    - Run all tests: `uv run pytest` (this may take some time)
-   - Run some test: `uv run pytest packages/<package_name>_pkg/<package_name>_tests`
+   - Run some test: `uv run pytest packages/<package_name>_pkg/tests`
 
 ## Contributing via Pull Requests
 
 We use [trunk-based development](https://trunkbaseddevelopment.com/), where **`main`** refers to the stable trunk branch containing all development and releases.
 
-The contribution guideline slightly differs between internal and external developers.
+The contribution guidelines differ slightly between internal and external developers.
 As an external developer, you can fork our repository and contribute to code via pull requests.
 Make sure to name pull request according to our [commit message standard](./CONTRIBUTING.md#pr-commit-message-standards) as CI validation will fail otherwise.
 
@@ -128,6 +128,8 @@ You will make your life easier by adhering to conventional commits throughout al
 ### Acceptance Criteria for PRs
 
 - Single purpose: Each PR should contain one type of change - either a feature, a bugfix, or a refactor. Avoid mixing different types of changes in a single PR
+- PR description should be meaningful but concise. Use the following template:
+
 - Title of the pull request must conform to the [conventional commit spec](./CONTRIBUTING.md#pr-commit-message-standards). It will be used for the squashed commit message of a PR.
 - Pull request squash commit message has to include **Developer Certificate of Origin**. Under some circumstances GitHub automatically adds author's signature, but in some cases it has to be added manually.
 - Code must pass all pre-commit hooks `pre-commit run --all-files`.
@@ -136,7 +138,7 @@ You will make your life easier by adhering to conventional commits throughout al
    - Test locally by running `uv run pytest`
 - Documentation should be updated if needed
 
-#### PR Commit Message Standards
+### PR Commit Message Standards
 
 We require [Conventional Commits](https://www.conventionalcommits.org/) and Developer Certificate of Origin (DCO) for each commit in the main branch. These commits are created when a pull request is squashed into the main branch.
 
@@ -163,7 +165,7 @@ Signed-off-by: FirstName LastName <something@example.org>
 - `test`: Adding missing tests or correcting existing tests
 - `chore`: Changes to the build process or auxiliary tools
 
-#### Developer Certificate of Origin
+### Developer Certificate of Origin
 
 The last line of the commit message certifies the origin of the code that will be committed.
 This means that you certify you have the rights to submit this work under this project's open source license (see [Git docs](https://git-scm.com/docs/git-config#Documentation/git-config.txt-formatsignOff)).
@@ -188,11 +190,7 @@ Signed-off-by: FirstName LastName <something@example.org>
 
 ### Commit Message Validation
 
-Commit messages are validated both locally (via pre-commit hooks) and in CI. The validation uses [Commitizen](https://commitizen-tools.github.io/commitizen/) with the conventional commits standard.
-
-If your commit message doesn't follow the convention:
-- Locally: The pre-commit hook will block the commit
-- In CI: Pull requests will fail validation
+Commit messages are *not* validated but the final squashed commit of your PR will be. For that, we use [Commitizen](https://commitizen-tools.github.io/commitizen/) with the conventional commits standard.
 
 ## Release Process
 

@@ -85,26 +85,4 @@ jobs:
         run: |
           echo "Pushing changes to remote."
           git push --tags
-
-  publish-docs:
-    needs: bump-version
-    if: ${{ github.ref == 'refs/heads/main' }}
-    environment: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-        with:
-          ssh-key: ${{ secrets.RELEASE_BOT_KEY }}
-
-      - name: Configure git profile
-        uses: ./.github/actions/configure-git-profile
-
-      - name: Setup Python and install dependencies
-        uses: ./.github/actions/setup-python
-        with:
-          sync-args: '--frozen --only-group doc'
-
-      - name: Conditional Deployment
-        run: uv run mkdocs gh-deploy --force
+          

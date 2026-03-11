@@ -2,32 +2,6 @@
 
 Thank you for your interest in contributing to ToOp! This guide will help you understand our development workflow and contribution process.
 
-## Branch Strategy
-
-We use [trunk-based development](https://trunkbaseddevelopment.com/):
-
-- **`main`**: The stable trunk branch containing all development and releases
-
-### Working with Branches
-
-1. **Feature Development**: Create feature branches from `main`
-   ```bash
-   git checkout main
-   git pull origin main
-   git checkout -b feat/your-feature-name
-   ```
-
-2. **Bug Fixes**: Create fix branches from `main`
-   ```bash
-   git checkout main
-   git pull origin main
-   git checkout -b fix/fix-description
-   ```
-
-3. **Pull Requests**:
-   - All feature and fix branches should target `main`
-   - Ensure your changes are tested and pass all CI checks before requesting review
-
 ## Local Development Setup
 
 We provide a [Development Container](https://containers.dev/) configuration that sets up a complete development environment with all dependencies and tools pre-configured.
@@ -54,7 +28,7 @@ We provide a [Development Container](https://containers.dev/) configuration that
 
 The devcontainer automatically provides:
 
-- **Python environment** with all dependencies installed via `uv`
+- **Python environment** with all dependencies installed via `uv sync`
 - **Pre-commit hooks** automatically installed and configured
 - **VS Code extensions** for Python, Jupyter, Azure tools, and code quality
 - **Docker-in-Docker** for containerized workflows
@@ -63,68 +37,100 @@ The devcontainer automatically provides:
    - Run all tests: `uv run pytest` (this may take some time)
    - Run some test: `uv run pytest packages/<package_name>_pkg/<package_name>_tests`
 
-### Benefits
+## Contributing via Pull Requests
 
-- **Consistent Environment**: Everyone uses the same development setup
-- **Quick Start**: No manual dependency installation required
-- **Isolation**: No impact on your local system
-- **Pre-configured Tools**: All linting, formatting, and validation tools ready to use
+We use [trunk-based development](https://trunkbaseddevelopment.com/), where **`main`** refers to the stable trunk branch containing all development and releases.
 
-### Commit Message Validation
+The contribution guideline slightly differs between internal and external developers.
+As an external developer, you can fork our repository and contribute to code via pull requests.
+Make sure to name pull request according to our [commit message standard](./CONTRIBUTING.md#pr-commit-message-standards) as CI validation will fail otherwise.
 
-Commit messages are validated both locally (via pre-commit hooks) and in CI. The validation uses [Commitizen](https://commitizen-tools.github.io/commitizen/) with the conventional commits standard.
+### Contributing with AI/LLM tools
 
-If your commit message doesn't follow the convention:
-- Locally: The pre-commit hook will block the commit
-- In CI: Pull requests will fail validation
+You may use AI coding assistants, but:
 
-## Release Process
+- You are fully responsible for all contributed code, whether written manually or generated.
+- You must understand and be able to explain every submitted change.
+- A human must always review, validate, and approve the final contribution.
+- Do not use AI to interact with maintainers on your behalf. Improving grammar or clarity of your message is permitted.
+- Fully autonomous AI agents that open PRs without human review are not allowed and PRs will be rejected.
 
-Releases are managed through GitHub Actions and only generate Git tags. No commits are created during the release process.
+### Acknowledgements
+This AI contribution guide is mainly based on SymPy and SciPy developers' AI policies. We thank them for their contribution.
 
-### Release Types
+### Branching for Development
+You are advised to name branches in accordance with your goal.
+For that, we provide [commit message types](./CONTRIBUTING.md#commit-types). For example, if you develop a new feature you can name your branch:
 
-1. **Stable Releases** (from `main` branch):
-   - Follow semantic versioning (e.g., `v1.2.3`)
-   - Used for production-ready code
+**Feature Development**: Create feature branches from `main`
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b feat/your-feature-name
+   ```
 
-2. **Development Releases** (from feature branches):
-   - Include a development identifier (e.g., `v1.2.3.dev12345`)
-   - Used for testing and preview purposes
+**Bug Fixes**: Create fix branches from `main`
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b fix/fix-description
+   ```
 
-### Release Workflow
+### Standard PR workflow for external developers
 
-The release process is automated through `.github/workflows/release.yaml`:
+1. **Fork and install**:
+   ```bash
+   git clone https://github.com/<your-username>/ToOp.git
+   cd ToOp
+   uv sync
+   pre-commit install
+   ```
 
-1. **Manual Trigger**: Releases are triggered manually via GitHub Actions
-2. **Version Calculation**: Commitizen analyzes commit history to determine the next version
-3. **Tag Creation**: A Git tag is created with the new version
-4. **Tag Push**: The tag is pushed to the repository
+2. **Add our repo to merge updates**:
+   ```bash
+   git remote add upstream https://github.com/eliagroup/ToOp.git
+   ```
 
-**Note**: Releases only create Git tags. No packages are published to external registries.
+3. **Create a branch from `main`**:
+   ```bash
+   git checkout main
+   git pull upstream main
+   git checkout -b feat/your-change
+   ```
 
-### Creating a Release
+4. **Implement and validate** (tests + checks):
+   ```bash
+   uv run pytest
+   pre-commit run --all-files
+   ```
 
-1. Ensure your branch has the changes you want to release
-2. Go to the GitHub Actions tab in the repository
-3. Select the "release" workflow
-4. Click "Run workflow" and select the appropriate branch
-5. The workflow will automatically determine the next version and create a tag
+5. **Sync with upstream before pushing to your fork**:
+   ```bash
+   git fetch upstream
+   git rebase upstream/main
+   ```
 
-## Pull Request Process
+6. **Commit your change**:
+We require [Conventional Commits](https://www.conventionalcommits.org/) and [Developer Certificate of Origin (DCO)](./CONTRIBUTING.md#developer-certificate-of-origin) for each commit to the main branch.
+Note that these commit messages are based on all commit messages within your PR, which will be squashed before a merge into main.
+You will make your life easier by adhering to conventional commits throughout all your commits.
+   You can do so by using the `-s` flag when committing.
+      ```bash
+      git add <files>
+      git commit -s
+      ```
 
-1. **Create a Branch**: Create a new branch from the `main` branch
-2. **Make Changes**: Implement your feature or fix
-3. **Write Tests**: Ensure your changes are covered by tests
-4. **Push**: Push your branch to the repository
-5. **Open PR**: Create a pull request targeting the `main` branch
+6. **Push to your fork and open a PR to `main`**:
+   ```bash
+   git push --set-upstream origin feat/your-change
+   ```
 
-### PR Requirements
+### Acceptance Criteria for PRs
 
 - Single purpose: Each PR should contain one type of change - either a feature, a bugfix, or a refactor. Avoid mixing different types of changes in a single PR
-- Title of the pull request must conform to the conventional commit specification (see below). It will be used for pull request squash commit message. 
-- Pull request squash commit message has to include Developer Certificate of Origin (see below). Under some circumstances GitHub automatically adds author's signature, but in some cases it has to be added manually.
-- Code must pass all pre-commit hooks
+- Title of the pull request must conform to the [conventional commit spec](./CONTRIBUTING.md#pr-commit-message-standards). It will be used for the squashed commit message of a PR.
+- Pull request squash commit message has to include **Developer Certificate of Origin**. Under some circumstances GitHub automatically adds author's signature, but in some cases it has to be added manually.
+- Code must pass all pre-commit hooks `pre-commit run --all-files`.
 - Tests must pass.
    - Code coverage must be over 90% and aimed for 100%.
    - Test locally by running `uv run pytest`
@@ -180,6 +186,46 @@ docs: update installation instructions
 Signed-off-by: FirstName LastName <something@example.org>
 ```
 
+### Commit Message Validation
+
+Commit messages are validated both locally (via pre-commit hooks) and in CI. The validation uses [Commitizen](https://commitizen-tools.github.io/commitizen/) with the conventional commits standard.
+
+If your commit message doesn't follow the convention:
+- Locally: The pre-commit hook will block the commit
+- In CI: Pull requests will fail validation
+
+## Release Process
+
+Releases are managed through GitHub Actions and only generate Git tags. No commits are created during the release process.
+
+### Release Types
+
+1. **Stable Releases** (from `main` branch):
+   - Follow semantic versioning (e.g., `v1.2.3`)
+   - Used for production-ready code
+
+2. **Development Releases** (from feature branches):
+   - Include a development identifier (e.g., `v1.2.3.dev12345`)
+   - Used for testing and preview purposes
+
+### Release Workflow
+
+The release process is automated through `.github/workflows/release.yaml`:
+
+1. **Manual Trigger**: Releases are triggered manually via GitHub Actions
+2. **Version Calculation**: Commitizen analyzes commit history to determine the next version
+3. **Tag Creation**: A Git tag is created with the new version
+4. **Tag Push**: The tag is pushed to the repository
+
+**Note**: Releases only create Git tags. No packages are published to external registries.
+
+### Creating a Release
+
+1. Ensure your branch has the changes you want to release
+2. Go to the GitHub Actions tab in the repository
+3. Select the "release" workflow
+4. Click "Run workflow" and select the appropriate branch
+5. The workflow will automatically determine the next version and create a tag
 
 ## Getting Help
 

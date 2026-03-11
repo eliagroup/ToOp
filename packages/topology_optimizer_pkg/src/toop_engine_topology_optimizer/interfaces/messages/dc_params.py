@@ -188,3 +188,7 @@ class DCOptimizerParameters(BaseModel):
     check_command_frequency: PositiveInt = 10
     """The frequency to check for new commands, based on number of iterations. Should be a multiple
     of summary_frequency"""
+
+    skip_optimization_after_hours: PositiveFloat = 2.0
+    """The maximum age of an optimization command before the worker will skip the optimization, in hours.
+    This is to prevent running optimizations on outdated grid files in case of long queues or other issues."""

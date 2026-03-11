@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -317,6 +318,22 @@ def test_optimization_loop(
     assert results[-1].reason == "converged"
 
     assert isinstance(heartbeats[0], OptimizationStartedHeartbeat)
+
+    results.clear()
+
+    optimization_loop(
+        dc_params=start_opt_command.dc_params,
+        grid_files=start_opt_command.grid_files,
+        send_result_fn=send_result_fn,
+        send_heartbeat_fn=send_heartbeat_fn,
+        optimization_id=start_opt_command.optimization_id,
+        processed_gridfile_fs=processed_gridfile_fs,
+        command_time=datetime.now() - timedelta(hours=start_opt_command.dc_params.skip_optimization_after_hours + 1),
+    )
+    assert len(results) == 1
+    assert isinstance(results[0], OptimizationStoppedResult)
+    assert results[0].reason == "command-too-old"
+    assert "too old" in results[0].message
 
 
 # @pytest.mark.skip()

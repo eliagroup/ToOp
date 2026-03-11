@@ -10,11 +10,12 @@
 import time
 import traceback
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from functools import partial
 from uuid import uuid4
 
 import logbook
-from beartype.typing import Callable
+from beartype.typing import Callable, Optional
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from sqlmodel import Session
@@ -83,6 +84,7 @@ def optimization_loop(
     optimization_id: str,
     loadflow_result_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
+    command_time: Optional[datetime] = None,
 ) -> None:
     """Run the main loop for the AC optimizer.
 
@@ -112,7 +114,16 @@ def optimization_loop(
         Internally, only the data folder is passed around as a dirfs.
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
+    command_time: Optional[datetime] = None
+        The time the command was sent. This is used to determine if the command is too old and should be skipped to
+        avoid running optimizations on outdated grid files in case of long queues or other issues.
     """
+    command_time = command_time or datetime.now()
+    if command_time + timedelta(hours=ac_params.skip_optimization_after_hours) < datetime.now():
+        command_age = datetime.now() - command_time
+        send_result_fn(OptimizationStoppedResult(reason="command-too-old", message=f"Command is too old ({command_age})"))
+        logger.warning(f"Command for {optimization_id} is too old ({command_age}), skipping optimization")
+        return
     logger.info(f"Initializing optimization {optimization_id}")
     try:
         send_heartbeat_fn(
@@ -202,7 +213,7 @@ def idle_loop(
     worker_data: WorkerData,
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
     heartbeat_interval_ms: int,
-) -> StartOptimizationCommand:
+) -> tuple[StartOptimizationCommand, datetime]:
     """Run idle loop of the AC optimizer worker.
 
     This will be running when the worker is currently not optimizing
@@ -224,6 +235,9 @@ def idle_loop(
     -------
     StartOptimizationCommand
         The start optimization command to start the optimization run with
+    datetime
+        The time the command was sent, as provided in the command.
+        This is used to determine if the command is too old and should be skipped.
 
     Raises
     ------
@@ -248,7 +262,8 @@ def idle_loop(
         command = Command.model_validate_json(deserialize_message(message.value()))
 
         if isinstance(command.command, StartOptimizationCommand):
-            return command.command
+            command_time = datetime.fromisoformat(command.timestamp)
+            return command.command, command_time
 
         if isinstance(command.command, ShutdownCommand):
             logger.info("Shutting down due to ShutdownCommand")
@@ -344,7 +359,7 @@ def main(
 
     while True:
         # During the idle loop, the result consumer is paused and only the command consumer is active
-        command = idle_loop(
+        command, command_time = idle_loop(
             worker_data=worker_data,
             send_heartbeat_fn=partial(send_heartbeat, ping_commands=False),
             heartbeat_interval_ms=args.heartbeat_interval_ms,
@@ -361,6 +376,7 @@ def main(
             optimization_id=command.optimization_id,
             loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
+            command_time=command_time,
         )
         worker_data.command_consumer.stop_processing()
         scrub_db(worker_data.db)

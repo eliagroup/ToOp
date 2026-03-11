@@ -14,7 +14,7 @@ batched, and the parameters are slightly different.
 import math
 
 from beartype.typing import Optional
-from pydantic import BaseModel, PositiveInt, confloat, model_validator
+from pydantic import BaseModel, PositiveFloat, PositiveInt, confloat, model_validator
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, FilterStrategy
 
@@ -108,3 +108,7 @@ class ACOptimizerParameters(BaseModel):
 
     ga_config: ACGAParameters = ACGAParameters()
     """The genetic algorithm configuration"""
+
+    skip_optimization_after_hours: PositiveFloat = 2.0
+    """Whether to skip the optimization if the command is too old,
+    i.e. if the command was sent more than this many hours ago."""

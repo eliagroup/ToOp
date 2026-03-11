@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -268,6 +269,23 @@ def test_optimization_loop(
     assert isinstance(heartbeats[0], OptimizationStartedHeartbeat)
 
     assert len(worker_data.db.exec(select(ACOptimTopology)).all())
+
+    parameters.skip_optimization_after_hours = 2.0
+    results.clear()
+    optimization_loop(
+        ac_params=parameters,
+        grid_files=grid_files,
+        worker_data=worker_data,
+        send_result_fn=send_result_fn,
+        send_heartbeat_fn=send_heartbeat_fn,
+        optimization_id="test",
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
+        command_time=datetime.now() - timedelta(hours=parameters.skip_optimization_after_hours + 1),
+    )
+    assert len(results) == 1
+    assert isinstance(results[0], OptimizationStoppedResult)
+    assert results[0].reason == "command-too-old"
 
 
 def test_optimization_loop_error_during_initialization(

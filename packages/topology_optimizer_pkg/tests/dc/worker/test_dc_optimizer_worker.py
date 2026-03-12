@@ -8,7 +8,7 @@
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from beartype.typing import Literal, Union
@@ -127,6 +127,45 @@ def test_idle_loop(
         idle_loop(consumer, lambda _: None, 100)
     assert excinfo.value.code == 0
     consumer.consumer.close()
+
+
+def test_idle_loop_optimization_started_command_too_old() -> None:
+    mock_consumer = Mock(spec=LongRunningKafkaConsumer)
+    mock_consumer.consumer = Mock(spec=Consumer)
+    shutdown_command = Command(command=ShutdownCommand())
+    # Make poll() return an OptimizationStartedCommand message
+    start_command = Command(
+        command=StartOptimizationCommand(
+            dc_params=DCOptimizerParameters(),
+            grid_files=[GridFile(framework=Framework.PYPOWSYBL, grid_folder="not/exist")],
+            optimization_id="test",
+        ),
+        timestamp=(datetime.now() - timedelta(hours=1)).isoformat(),
+    )
+    start_message = Mock()
+    start_message.value.return_value = serialize_message(start_command.model_dump_json())
+    shutdown_message = Mock()
+    shutdown_message.value.return_value = serialize_message(shutdown_command.model_dump_json())
+
+    mock_consumer.poll.side_effect = [start_message, shutdown_message]
+    results = []
+    heartbeats = []
+
+    def send_result_fn(result: ResultUnion, optimization_id: str) -> None:
+        results.append((result, optimization_id))
+
+    with pytest.raises(SystemExit):
+        idle_loop(
+            consumer=mock_consumer,
+            send_heartbeat_fn=lambda hb: heartbeats.append(hb),
+            send_result_fn=send_result_fn,
+            heartbeat_interval_ms=100,
+            max_command_age_hours=0.5,
+        )
+    assert len(results) == 1
+    assert isinstance(results[0][0], OptimizationStoppedResult)
+    assert results[0][1] == "test"
+    assert results[0][0].reason == "command-too-old"
 
 
 @pytest.mark.timeout(60)
@@ -318,22 +357,6 @@ def test_optimization_loop(
     assert results[-1].reason == "converged"
 
     assert isinstance(heartbeats[0], OptimizationStartedHeartbeat)
-
-    results.clear()
-
-    optimization_loop(
-        dc_params=start_opt_command.dc_params,
-        grid_files=start_opt_command.grid_files,
-        send_result_fn=send_result_fn,
-        send_heartbeat_fn=send_heartbeat_fn,
-        optimization_id=start_opt_command.optimization_id,
-        processed_gridfile_fs=processed_gridfile_fs,
-        command_time=datetime.now() - timedelta(hours=start_opt_command.dc_params.skip_optimization_after_hours + 1),
-    )
-    assert len(results) == 1
-    assert isinstance(results[0], OptimizationStoppedResult)
-    assert results[0].reason == "command-too-old"
-    assert "too old" in results[0].message
 
 
 # @pytest.mark.skip()

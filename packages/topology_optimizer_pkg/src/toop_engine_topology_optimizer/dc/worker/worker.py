@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import jax
 import logbook
-from beartype.typing import Callable, Optional
+from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
@@ -68,12 +68,18 @@ class Args(BaseModel):
     heartbeat_interval_ms: int = 1000
     """The interval in milliseconds to send heartbeats."""
 
+    max_command_age_hours: float = 3.0
+    """The maximum age of a command in hours. If a command is received that is older than this,
+    the command will be ignored."""
+
 
 def idle_loop(
     consumer: LongRunningKafkaConsumer,
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
+    send_result_fn: Callable[[ResultUnion, str], None],
     heartbeat_interval_ms: int,
-) -> tuple[StartOptimizationCommand, datetime]:
+    max_command_age_hours: float,
+) -> StartOptimizationCommand:
     """Run idle loop of the worker.
 
     This will be running when the worker is currently not optimizing
@@ -86,16 +92,20 @@ def idle_loop(
         The initialized Kafka consumer to listen for commands on.
     send_heartbeat_fn : Callable[[HeartbeatUnion], None]
         A function to call when there were no messages received for a while.
+    send_result_fn : Callable[[ResultUnion, str], None]
+        A function to call to send results back to the results topic, used to send a message in case a command is too old.
     heartbeat_interval_ms : int
         The time to wait for a new command in milliseconds. If no command has been received, a
         heartbeat will be sent and then the receiver will wait for commands again.
+    max_command_age_hours: float
+        The maximum age of a command in hours.
+        If a command is received that is older than this, the command will be ignored
+        and a message will be sent to the results topic.
 
     Returns
     -------
     StartOptimizationCommand,
         The start optimization command to start the optimization run with
-    datetime
-        The time the command was sent, as provided in the command.
 
     Raises
     ------
@@ -113,7 +123,6 @@ def idle_loop(
             continue
 
         command = Command.model_validate_json(deserialize_message(message.value()))
-        time_of_command = datetime.fromisoformat(command.timestamp)
 
         if isinstance(command.command, ShutdownCommand):
             logger.info("Shutting down due to ShutdownCommand")
@@ -121,7 +130,21 @@ def idle_loop(
             consumer.consumer.close()
             raise SystemExit(command.command.exit_code)
         if isinstance(command.command, StartOptimizationCommand):
-            return command.command, time_of_command
+            time_of_command = datetime.fromisoformat(command.timestamp)
+            if time_of_command < datetime.now() - timedelta(hours=max_command_age_hours):
+                logger.warning(
+                    f"Received command with timestamp from the past (timestamp: {time_of_command}, "
+                    f"now: {datetime.now()}), skipping command"
+                )
+                send_result_fn(
+                    OptimizationStoppedResult(
+                        reason="command-too-old", message=f"Received outdated command: {command}. Skipping.."
+                    ),
+                    command.command.optimization_id,
+                )
+                consumer.commit()
+                continue
+            return command.command
 
         # If we are here, we received a command that we do not know
         logger.warning(f"Received unknown command, dropping: {command} / {message.value}")
@@ -135,7 +158,6 @@ def optimization_loop(
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
     optimization_id: str,
     processed_gridfile_fs: AbstractFileSystem,
-    command_time: Optional[datetime] = None,
 ) -> None:
     """Run an optimization until the optimization has converged
 
@@ -160,20 +182,12 @@ def optimization_loop(
         Internally, only the data folder is passed around as a dirfs.
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
-    command_time: Optional[datetime] = None
-        The time the command was sent.
 
     Raises
     ------
     SystemExit
         If a ShutdownCommand is received
     """
-    command_time = command_time or datetime.now()
-    if command_time + timedelta(hours=dc_params.skip_optimization_after_hours) < datetime.now():
-        command_age = datetime.now() - command_time
-        send_result_fn(OptimizationStoppedResult(reason="command-too-old", message=f"Command is too old ({command_age})"))
-        logger.warning(f"Command for {optimization_id} is too old ({command_age}), skipping optimization")
-        return
     logger.info(f"Initializing DC optimization {optimization_id}")
     try:
         send_heartbeat_fn(
@@ -311,10 +325,12 @@ def main(
         producer.flush()
 
     while True:
-        command, command_time = idle_loop(
+        command = idle_loop(
             consumer=command_consumer,
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=False),
+            send_result_fn=send_result,
             heartbeat_interval_ms=args.heartbeat_interval_ms,
+            max_command_age_hours=args.max_command_age_hours,
         )
 
         command_consumer.start_processing()
@@ -325,6 +341,5 @@ def main(
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=True),
             optimization_id=command.optimization_id,
             processed_gridfile_fs=processed_gridfile_fs,
-            command_time=command_time,
         )
         command_consumer.stop_processing()

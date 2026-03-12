@@ -127,7 +127,9 @@ def test_main_warmup_processes_many_results_and_exits_via_mocked_idle_loop(
     def patched_idle_loop(
         worker_data: WorkerData,
         send_heartbeat_fn: Callable[[HeartbeatUnion], None],
+        send_result_fn: Callable[[ResultUnion, str], None],
         heartbeat_interval_ms: int,
+        max_command_age_hours: float,
     ) -> StartOptimizationCommand:
         del send_heartbeat_fn, heartbeat_interval_ms
         processed_count["n"] = len(worker_data.db.exec(select(ACOptimTopology)).all())

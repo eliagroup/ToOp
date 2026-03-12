@@ -197,7 +197,7 @@ def test_idle_loop_optimization_started() -> None:
     worker_data.command_consumer.poll.return_value = start_message
     worker_data.result_consumer.consume.return_value = []
     heartbeats = []
-    parsed_start_command = idle_loop(
+    parsed_start_command, _command_time = idle_loop(
         worker_data=worker_data,
         send_heartbeat_fn=lambda hb: heartbeats.append(hb),
         heartbeat_interval_ms=100,

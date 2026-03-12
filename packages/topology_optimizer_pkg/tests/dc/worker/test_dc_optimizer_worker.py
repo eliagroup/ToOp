@@ -113,7 +113,7 @@ def test_idle_loop(
         client_id="test_idle_loop_client",
     )
 
-    parsed = idle_loop(consumer, lambda _: None, 100)
+    parsed, _command_time = idle_loop(consumer, lambda _: None, 100)
     assert parsed.optimization_id == "test"
     assert tuple(gf.grid_folder for gf in parsed.grid_files) == ("child_folder",)
     assert consumer.last_msg is not None

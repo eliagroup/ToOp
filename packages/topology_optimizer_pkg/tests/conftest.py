@@ -421,8 +421,12 @@ def preprocessing_parameters() -> DictConfig:
 
 
 @pytest.fixture
-def session() -> Session:
-    return create_session()
+def session() -> Generator[Session, None, None]:
+    db_session = create_session()
+    try:
+        yield db_session
+    finally:
+        db_session.close()
 
 
 @pytest.fixture

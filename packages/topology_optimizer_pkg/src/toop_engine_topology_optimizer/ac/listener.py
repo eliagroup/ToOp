@@ -56,12 +56,15 @@ def finish_optimization(db: Session, optimization_id: str, optimizer_type: Optim
 
     # For both AC and DC optimizations, we save an entry to the finished optimizations table to prevent picking up old
     # topologies from previous optimizations
-    finished_optimization = FinishedOptimizations(
-        optimization_id=optimization_id,
-        optimizer_type=optimizer_type,
-    )
-    db.add(finished_optimization)
-    db.commit()
+    try:
+        finished_optimization = FinishedOptimizations(
+            optimization_id=optimization_id,
+            optimizer_type=optimizer_type,
+        )
+        db.add(finished_optimization)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
 
 
 def poll_results_topic(

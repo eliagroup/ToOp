@@ -54,6 +54,13 @@ class IdleHeartbeat(BaseModel):
     """The message type, don't change this"""
 
 
+class StartupHeartbeat(BaseModel):
+    """A heartbeat that is sent by the optimizer when it starts up but not yet ready to accept optimizations"""
+
+    message_type: Literal["startup"] = "startup"
+    """The message type, don't change this"""
+
+
 class LogMessage(BaseModel):
     """A log message that is sent by the optimizer to the master."""
 
@@ -70,7 +77,9 @@ class LogMessage(BaseModel):
     """Whether this is an error message"""
 
 
-HeartbeatUnion: TypeAlias = Union[IdleHeartbeat, LogMessage, OptimizationStatsHeartbeat, OptimizationStartedHeartbeat]
+HeartbeatUnion: TypeAlias = Union[
+    IdleHeartbeat, LogMessage, OptimizationStatsHeartbeat, OptimizationStartedHeartbeat, StartupHeartbeat
+]
 
 
 class Heartbeat(BaseModel):

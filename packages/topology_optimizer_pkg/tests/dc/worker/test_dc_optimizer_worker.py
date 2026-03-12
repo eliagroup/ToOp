@@ -113,7 +113,7 @@ def test_idle_loop(
         client_id="test_idle_loop_client",
     )
 
-    parsed, _command_time = idle_loop(consumer, lambda _: None, 100)
+    parsed = idle_loop(consumer, lambda _: None, 100, lambda _result, _optim: None, max_command_age_hours=2.0)
     assert parsed.optimization_id == "test"
     assert tuple(gf.grid_folder for gf in parsed.grid_files) == ("child_folder",)
     assert consumer.last_msg is not None
@@ -124,7 +124,7 @@ def test_idle_loop(
     producer.flush()
 
     with pytest.raises(SystemExit) as excinfo:
-        idle_loop(consumer, lambda _: None, 100)
+        idle_loop(consumer, lambda _: None, 100, lambda _result, _optim: None, max_command_age_hours=0.5)
     assert excinfo.value.code == 0
     consumer.consumer.close()
 

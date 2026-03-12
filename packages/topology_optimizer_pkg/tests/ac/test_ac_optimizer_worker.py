@@ -170,6 +170,7 @@ def test_idle_loop_no_message() -> None:
             send_heartbeat_fn=lambda hb: heartbeats.append(hb),
             send_result_fn=lambda result, optimization_id: None,
             heartbeat_interval_ms=100,
+            max_command_age_hours=2.0,
         )
     assert len(heartbeats) == 2
     assert worker_data.command_consumer.poll.call_count == 2
@@ -199,7 +200,7 @@ def test_idle_loop_optimization_started() -> None:
     worker_data.command_consumer.poll.return_value = start_message
     worker_data.result_consumer.consume.return_value = []
     heartbeats = []
-    parsed_start_command, _command_time = idle_loop(
+    parsed_start_command = idle_loop(
         worker_data=worker_data,
         send_heartbeat_fn=lambda hb: heartbeats.append(hb),
         send_result_fn=lambda result, optimization_id: None,

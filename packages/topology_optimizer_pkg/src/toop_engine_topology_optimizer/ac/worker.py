@@ -338,7 +338,9 @@ def main(
         If the worker receives a ShutdownCommand
     """
     instance_id = str(uuid4())
-    logger.info(f"Starting AC worker {instance_id} with config {args}")
+    logger.info(
+        f"Starting AC worker {instance_id} with config {args}, spooling through results topic to warm up result storage"
+    )
 
     # We create two separate consumers for the command and result topics as we don't want to
     # catch results during the idle loop.
@@ -390,6 +392,8 @@ def main(
         heartbeat_interval_ms=args.heartbeat_interval_ms,
     )
     worker_data.command_consumer.stop_processing()
+
+    logger.info("Finished warmup loop, entering main loop to wait for commands and run optimizations")
 
     while True:
         # During the idle loop, the result consumer is paused and only the command consumer is active

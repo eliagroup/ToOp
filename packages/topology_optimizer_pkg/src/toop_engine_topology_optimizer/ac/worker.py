@@ -38,16 +38,13 @@ from toop_engine_topology_optimizer.interfaces.messages.heartbeats import (
     IdleHeartbeat,
     OptimizationStartedHeartbeat,
     OptimizationStatsHeartbeat,
+    StartupHeartbeat,
 )
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     OptimizationStartedResult,
     OptimizationStoppedResult,
     Result,
     ResultUnion,
-)
-
-from packages.topology_optimizer_pkg.src.toop_engine_topology_optimizer.interfaces.messages.heartbeats import (
-    StartupHeartbeat,
 )
 
 logger = logbook.Logger(__name__)

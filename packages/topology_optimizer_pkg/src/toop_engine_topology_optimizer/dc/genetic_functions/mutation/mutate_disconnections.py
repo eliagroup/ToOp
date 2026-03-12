@@ -185,7 +185,7 @@ def mutate_disconnections(
     # Otherwise, normalise the allowed probabilities to sum to 1
     # If probs are negative, only the remain option is considered
     probs = jnp.where(
-        (~has_splits) & allow_add,
+        (~has_splits) & allow_add & (n_disconnections == 0),
         jnp.array([1.0, 0.0, 0.0, 0.0]),
         jnp.where(jnp.sum(probs) > 0, probs / jnp.sum(probs), jnp.array([0.0, 0.0, 0.0, 1.0])),
     )

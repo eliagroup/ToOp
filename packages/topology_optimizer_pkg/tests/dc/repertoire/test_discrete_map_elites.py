@@ -27,11 +27,17 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
-from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import (
+from toop_engine_topology_optimizer.dc.genetic_functions.crossover import (
     crossover,
-    empty_repertoire,
-    mutate,
 )
+from toop_engine_topology_optimizer.dc.genetic_functions.genotype import empty_repertoire
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
+    DisconnectionMutationConfig,
+    MutationConfig,
+    NodalInjectionMutationConfig,
+    SubstationMutationConfig,
+)
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate import mutate
 from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import (
     convert_to_topologies,
     scoring_function,
@@ -53,7 +59,24 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
         static_information,
         solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
     )
-
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=5.0,
+            add_split_prob=0.2,
+            change_split_prob=0.2,
+            remove_split_prob=0.2,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.5,
+            change_disconnection_prob=0.0,
+            remove_disconnection_prob=0.5,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=None,
+    )
     me = DiscreteMapElites(
         scoring_function=partial(
             scoring_function,
@@ -74,16 +97,8 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
             lambda topologies, key: mutate(
                 topologies,
                 key,
-                substation_split_prob=0.2,
-                substation_unsplit_prob=0.0001,
+                mutation_config=mutation_config,
                 action_set=action_set,
-                n_disconnectable_branches=len(disconnectable_branches),
-                n_subs_mutated_lambda=5.0,
-                disconnect_prob=0.5,
-                reconnect_prob=0.5,
-                pst_mutation_sigma=0,
-                pst_n_taps=jnp.array([], dtype=int),
-                mutation_repetition=1,
             ),
             lambda topo_a, topo_b, key: crossover(topo_a, topo_b, key, action_set=action_set, prob_take_a=0.1),
             0.5,
@@ -217,7 +232,27 @@ def test_pst_optimization(
     stats, static_information, network_data, net = create_3_node_pst_example_grid
     di = static_information.dynamic_information
     solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
-
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.0,
+            change_split_prob=0.0,
+            remove_split_prob=0.0,
+            n_rel_subs=di.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.0,
+            change_disconnection_prob=0.0,
+            remove_disconnection_prob=0.0,
+            n_disconnectable_branches=di.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=NodalInjectionMutationConfig(
+            pst_mutation_sigma=3.0,
+            pst_n_taps=di.nodal_injection_information.pst_n_taps,
+        ),
+    )
     me = DiscreteMapElites(
         scoring_function=partial(
             scoring_function,
@@ -231,16 +266,8 @@ def test_pst_optimization(
             lambda topologies, key: mutate(
                 topologies,
                 key,
-                substation_split_prob=0.0,
-                substation_unsplit_prob=0.0,
+                mutation_config=mutation_config,
                 action_set=di.action_set,
-                n_disconnectable_branches=0,
-                n_subs_mutated_lambda=0.0,
-                disconnect_prob=0.0,
-                reconnect_prob=0.0,
-                pst_mutation_sigma=3.0,
-                pst_n_taps=di.nodal_injection_information.pst_n_taps,
-                mutation_repetition=1,
             ),
             lambda topo_a, topo_b, key: crossover(topo_a, topo_b, key, action_set=di.action_set, prob_take_a=0.5),
             0.5,

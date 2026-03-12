@@ -13,6 +13,7 @@ from pathlib import Path
 import chex
 import docker
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pandera
 import pypowsybl
@@ -33,6 +34,7 @@ from toop_engine_dc_solver.example_grids import (
     case57_non_converging,
     oberrhein_data,
 )
+from toop_engine_dc_solver.jax.types import ActionSet
 from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_grid_helpers.powsybl.example_grids import (
     create_complex_grid_battery_hvdc_svc_3w_trafo,
@@ -659,4 +661,58 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> N
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,
+    )
+
+
+def _synthetic_action_set(
+    n_subs: int,
+    n_actions_per_sub: int,
+    max_branch_per_sub: int,
+    max_inj_per_sub: int,
+) -> ActionSet:
+    """Build a synthetic action set with one unsplit action and many split actions per substation."""
+    assert n_actions_per_sub >= 2
+
+    branch_actions = []
+    inj_actions = []
+    substation_correspondence = []
+    unsplit_mask = []
+
+    for sub_id in range(n_subs):
+        for action_local in range(n_actions_per_sub):
+            is_unsplit = action_local == 0
+            branch_action = np.zeros(max_branch_per_sub, dtype=bool)
+            inj_action = np.zeros(max_inj_per_sub, dtype=bool)
+
+            if not is_unsplit:
+                # Encode local action id into bit patterns to create many distinct split actions.
+                for branch_idx in range(max_branch_per_sub):
+                    branch_action[branch_idx] = bool((action_local >> (branch_idx % 8)) & 1)
+                for inj_idx in range(max_inj_per_sub):
+                    inj_action[inj_idx] = bool((action_local >> ((inj_idx + 3) % 8)) & 1)
+
+            branch_actions.append(branch_action)
+            inj_actions.append(inj_action)
+            substation_correspondence.append(sub_id)
+            unsplit_mask.append(is_unsplit)
+
+    n_total_actions = n_subs * n_actions_per_sub
+
+    return ActionSet(
+        branch_actions=jnp.array(branch_actions, dtype=bool),
+        inj_actions=jnp.array(inj_actions, dtype=bool),
+        n_actions_per_sub=jnp.full((n_subs,), n_actions_per_sub, dtype=int),
+        substation_correspondence=jnp.array(substation_correspondence, dtype=int),
+        unsplit_action_mask=jnp.array(unsplit_mask, dtype=bool),
+        reassignment_distance=jnp.arange(n_total_actions, dtype=int),
+    )
+
+
+@pytest.fixture
+def synthetic_action_set() -> ActionSet:
+    return _synthetic_action_set(
+        n_subs=20,
+        n_actions_per_sub=100,
+        max_branch_per_sub=10,
+        max_inj_per_sub=10,
     )

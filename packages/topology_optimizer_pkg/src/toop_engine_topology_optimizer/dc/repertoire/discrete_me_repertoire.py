@@ -23,7 +23,7 @@ from beartype.typing import Optional, Tuple, Union
 from jax_dataclasses import Static
 from jaxtyping import Array, Float, Int, PRNGKeyArray
 from qdax.custom_types import Descriptor, ExtraScores, Fitness
-from toop_engine_topology_optimizer.dc.genetic_functions.evolution_functions import Genotype
+from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 
 
 @partial(jax.jit, static_argnames=("n_cells_per_dim",))

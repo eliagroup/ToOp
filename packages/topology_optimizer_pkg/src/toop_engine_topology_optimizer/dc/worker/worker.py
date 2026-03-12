@@ -203,7 +203,7 @@ def optimization_loop(
                 logger.warning("No strategies extracted, skipping push.")
 
     logger.info(f"Starting optimization {optimization_id}")
-    epoch = 0
+    epoch = 1
     running = True
     start_time = time.time()
     while running:
@@ -218,12 +218,6 @@ def optimization_loop(
             return
         epoch += 1
 
-        if time.time() - start_time > dc_params.ga_config.runtime_seconds:
-            logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
-            send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
-            running = False
-            break
-
         send_heartbeat_fn(
             OptimizationStatsHeartbeat(
                 optimization_id=optimization_id,
@@ -233,6 +227,12 @@ def optimization_loop(
                 num_injection_topologies_tried=optimizer_data.jax_data.emitter_state.total_inj_combis.sum().item(),
             )
         )
+
+        if time.time() - start_time > dc_params.ga_config.runtime_seconds:
+            logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
+            send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
+            running = False
+            break
 
 
 def main(

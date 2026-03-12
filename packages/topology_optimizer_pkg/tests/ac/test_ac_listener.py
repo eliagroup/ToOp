@@ -108,7 +108,7 @@ def test_poll_results_topic(result: Result, session: Session) -> None:
     message.value.return_value = serialize_message(result.model_dump_json())
     consumer.consume.return_value = [message]
     processed, _stopped_optimization_ids = poll_results_topic(db=session, consumer=consumer, first_poll=True)
-    assert len(processed) == 2
+    assert processed == {"test": 2}
 
     topologies = session.exec(select(ACOptimTopology)).all()
     assert len(topologies) == 3
@@ -147,7 +147,7 @@ def test_poll_results_topic_optimization_started_result(result: Result, session:
     consumer.consume.return_value = [message]
 
     processed, _stopped_optimization_ids = poll_results_topic(db=session, consumer=consumer, first_poll=True)
-    assert len(processed) == 2
+    assert processed == {"test": 2}
 
     topologies = session.exec(select(ACOptimTopology)).all()
     assert len(topologies) == 2

@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -276,7 +277,9 @@ def test_idle_loop_no_message() -> None:
         idle_loop(
             worker_data=worker_data,
             send_heartbeat_fn=lambda hb: heartbeats.append(hb),
+            send_result_fn=lambda result, optimization_id: None,
             heartbeat_interval_ms=100,
+            max_command_age_hours=2.0,
         )
     assert len(heartbeats) == 2
     assert worker_data.command_consumer.poll.call_count == 2
@@ -298,7 +301,8 @@ def test_idle_loop_optimization_started() -> None:
             ac_params=ACOptimizerParameters(),
             grid_files=[GridFile(framework=Framework.PYPOWSYBL, grid_folder="not/exist")],
             optimization_id="test",
-        )
+        ),
+        timestamp=(datetime.now() - timedelta(hours=1)).isoformat(),
     )
     start_message = Mock()
     start_message.value.return_value = serialize_message(start_command.model_dump_json())
@@ -308,7 +312,9 @@ def test_idle_loop_optimization_started() -> None:
     parsed_start_command = idle_loop(
         worker_data=worker_data,
         send_heartbeat_fn=lambda hb: heartbeats.append(hb),
+        send_result_fn=lambda result, optimization_id: None,
         heartbeat_interval_ms=100,
+        max_command_age_hours=2.0,
     )
     assert parsed_start_command.grid_files[0].grid_folder == "not/exist"
 
@@ -317,6 +323,49 @@ def test_idle_loop_optimization_started() -> None:
     assert worker_data.result_consumer.consume.call_count == 0
     assert worker_data.result_consumer.close.call_count == 0
     assert worker_data.command_consumer.close.call_count == 0
+
+
+def test_idle_loop_optimization_started_command_too_old() -> None:
+    worker_data = WorkerData(
+        db=create_session(),
+        command_consumer=Mock(spec=LongRunningKafkaConsumer),
+        result_consumer=Mock(spec=LongRunningKafkaConsumer),
+        producer=Mock(spec=Producer),
+    )
+    shutdown_command = Command(command=ShutdownCommand())
+    # Make poll() return an OptimizationStartedCommand message
+    start_command = Command(
+        command=StartOptimizationCommand(
+            ac_params=ACOptimizerParameters(),
+            grid_files=[GridFile(framework=Framework.PYPOWSYBL, grid_folder="not/exist")],
+            optimization_id="test",
+        ),
+        timestamp=(datetime.now() - timedelta(hours=1)).isoformat(),
+    )
+    start_message = Mock()
+    start_message.value.return_value = serialize_message(start_command.model_dump_json())
+    shutdown_message = Mock()
+    shutdown_message.value.return_value = serialize_message(shutdown_command.model_dump_json())
+
+    worker_data.command_consumer.poll.side_effect = [start_message, shutdown_message]
+    results = []
+    heartbeats = []
+
+    def send_result_fn(result: ResultUnion, optimization_id: str) -> None:
+        results.append((result, optimization_id))
+
+    with pytest.raises(SystemExit):
+        idle_loop(
+            worker_data=worker_data,
+            send_heartbeat_fn=lambda hb: heartbeats.append(hb),
+            send_result_fn=send_result_fn,
+            heartbeat_interval_ms=100,
+            max_command_age_hours=0.5,
+        )
+    assert len(results) == 1
+    assert isinstance(results[0][0], OptimizationStoppedResult)
+    assert results[0][1] == "test"
+    assert results[0][0].reason == "command-too-old"
 
 
 def test_optimization_loop(

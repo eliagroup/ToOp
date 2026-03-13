@@ -7,6 +7,8 @@
 
 """Mutation utility functions for the genetic algorithm."""
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, ArrayLike, Bool, Int, PRNGKeyArray
@@ -46,10 +48,11 @@ def sample_new_id(
     return get_random_true_idx(random_key, available_mask, int_max_value)
 
 
+@partial(jax.jit, static_argnames=("n_samples",))
 def sample_unique_indices_small_k(
     random_key: PRNGKeyArray,
-    n_choices: int,
-    n_samples: int,
+    n_choices: Int[ArrayLike, " "],
+    n_samples: Int[ArrayLike, " "],
 ) -> Int[Array, " n_samples"]:
     """Sample unique indices from ``range(n_choices)`` efficiently for small ``n_samples``.
 
@@ -59,9 +62,9 @@ def sample_unique_indices_small_k(
     ----------
     random_key : PRNGKeyArray
         Random key used for sampling.
-    n_choices : int
+    n_choices : Int[ArrayLike, " "]
         Number of available choices in the range ``[0, n_choices)``.
-    n_samples : int
+    n_samples : Int[ArrayLike, " "]
         Number of unique indices to sample. Must be less than or equal to ``n_choices``.
 
     Returns
@@ -69,11 +72,13 @@ def sample_unique_indices_small_k(
     Int[Array, " n_samples"]
         Unique sampled indices.
     """
+    if n_samples == 0:
+        return jnp.array([], dtype=int)
     sampled = jnp.full((n_samples,), -1, dtype=int)
     sampled_positions = jnp.arange(n_samples)
 
     def _sample_one(
-        sample_idx: int,
+        sample_idx: Int[ArrayLike, " "],
         state: tuple[Int[Array, " n_samples"], PRNGKeyArray],
     ) -> tuple[Int[Array, " n_samples"], PRNGKeyArray]:
         sampled_indices, key = state

@@ -8,7 +8,6 @@
 import io
 from datetime import datetime
 from pathlib import Path
-from typing import cast
 
 import numpy as np
 import pytest
@@ -148,19 +147,8 @@ def test_store_and_load_station_diff_io_empty_list():
 
 
 def test_validate_actions_grouped_accepts_grouped_actions():
-    actions = [DummyStation("s1"), DummyStation("s1"), DummyStation("s2"), DummyStation("s3"), DummyStation("s3")]
-    validate_actions_grouped(cast(list[Station], actions))
-
-
-def test_validate_actions_grouped_raises_for_non_grouped_actions():
-    actions = [DummyStation("s1"), DummyStation("s2"), DummyStation("s1")]
-    with pytest.raises(ValueError, match="not grouped by station"):
-        validate_actions_grouped(cast(list[Station], actions))
-
-
-def test_action_set_model_validator_rejects_non_grouped_local_actions():
-    station_a = Station.model_construct(
-        grid_model_id="station_a",
+    station_s1 = Station.model_construct(
+        grid_model_id="s1",
         name=None,
         type=None,
         region=None,
@@ -168,6 +156,69 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
         busbars=[],
         couplers=[],
         assets=[],
+        asset_switching_table=np.zeros((0, 0), dtype=bool),
+        asset_connectivity=None,
+        model_log=None,
+    )
+    station_s2 = station_s1.model_copy(update={"grid_model_id": "s2"})
+    station_s3 = station_s1.model_copy(update={"grid_model_id": "s3"})
+
+    actions = [station_s1, station_s1, station_s2, station_s3, station_s3]
+    validate_actions_grouped(actions)
+
+
+def test_validate_actions_grouped_raises_for_non_grouped_actions():
+    station_s1 = Station.model_construct(
+        grid_model_id="s1",
+        name=None,
+        type=None,
+        region=None,
+        voltage_level=None,
+        busbars=[],
+        couplers=[],
+        assets=[],
+        asset_switching_table=np.zeros((0, 0), dtype=bool),
+        asset_connectivity=None,
+        model_log=None,
+    )
+    station_s2 = station_s1.model_copy(update={"grid_model_id": "s2"})
+
+    actions = [station_s1, station_s2, station_s1]
+    with pytest.raises(ValueError, match="not grouped by station"):
+        validate_actions_grouped(actions)
+
+
+def test_action_set_model_validator_rejects_non_grouped_local_actions():
+    busbars = [
+        Busbar.model_construct(
+            grid_model_id="station_a_busbar_0",
+            type=None,
+            name=None,
+            int_id=0,
+            in_service=True,
+            bus_branch_bus_id=None,
+        )
+    ]
+    assets = [
+        SwitchableAsset.model_construct(
+            grid_model_id="station_a_asset_0",
+            type=None,
+            name=None,
+            in_service=True,
+            branch_end=None,
+            asset_bay=None,
+        )
+    ]
+
+    station_a = Station.model_construct(
+        grid_model_id="station_a",
+        name=None,
+        type=None,
+        region=None,
+        voltage_level=None,
+        busbars=busbars,
+        couplers=[],
+        assets=assets,
         asset_switching_table=np.zeros((1, 1), dtype=bool),
         asset_connectivity=None,
         model_log=None,

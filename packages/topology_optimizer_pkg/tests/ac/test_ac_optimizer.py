@@ -74,7 +74,12 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
     # Load the network datas
     action_sets = [
-        load_action_set_fs(filesystem=processed_gridfile_fs, file_path=grid_file.action_set_file) for grid_file in grid_files
+        load_action_set_fs(
+            filesystem=processed_gridfile_fs,
+            json_file_path=grid_file.action_set_file,
+            diff_file_path=grid_file.action_set_diff_file,
+        )
+        for grid_file in grid_files
     ]
     nminus1_definitions = [
         load_pydantic_model_fs(

@@ -330,7 +330,10 @@ def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
     nminus1_def = load_nminus1_definition(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
     )
-    action_set = load_action_set(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["action_set_file_path"],
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     runner.store_nminus1_definition(nminus1_def)
     runner.store_action_set(action_set)
 

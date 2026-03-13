@@ -28,7 +28,10 @@ from toop_engine_topology_optimizer.interfaces.messages.results import Metrics
 
 
 def test_compute_loadflow(grid_folder: Path) -> None:
-    action_set = load_action_set(grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"],
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     nminus1_definition = load_nminus1_definition(
         grid_folder / "case14" / PREPROCESSING_PATHS["nminus1_definition_file_path"]
     )
@@ -64,7 +67,10 @@ def test_compute_loadflow(grid_folder: Path) -> None:
 
 
 def test_scoring_functions_split(grid_folder: Path) -> None:
-    action_set = load_action_set(grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"],
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     nminus1_definition = load_nminus1_definition(
         grid_folder / "case14" / PREPROCESSING_PATHS["nminus1_definition_file_path"]
     )
@@ -312,7 +318,10 @@ def test_scoring_and_acceptance_early_stopping(grid_folder: Path) -> None:
     2. Early stopping acceptance and continuation to full N-1 when strategy performs well on critical contingencies
     3. Correct handling of the early_stopping flag in rejection reasons
     """
-    action_set = load_action_set(grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"],
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     nminus1_definition = load_nminus1_definition(
         grid_folder / "case14" / PREPROCESSING_PATHS["nminus1_definition_file_path"]
     )
@@ -447,7 +456,10 @@ def test_scoring_and_acceptance_no_early_stopping(grid_folder: Path) -> None:
     This test verifies that when early_stop_validation is False, all contingencies are computed
     regardless of worst_k_contingency_cases.
     """
-    action_set = load_action_set(grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"],
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     nminus1_definition = load_nminus1_definition(
         grid_folder / "case14" / PREPROCESSING_PATHS["nminus1_definition_file_path"]
     )
@@ -537,7 +549,10 @@ def test_compute_remaining_loadflows(grid_folder: Path) -> None:
     3. The metrics are computed on the full combined set of loadflows
     4. All contingencies are present in the final result
     """
-    action_set = load_action_set(grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"],
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     nminus1_definition = load_nminus1_definition(
         grid_folder / "case14" / PREPROCESSING_PATHS["nminus1_definition_file_path"]
     )

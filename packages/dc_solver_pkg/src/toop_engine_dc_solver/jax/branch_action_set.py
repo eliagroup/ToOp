@@ -116,6 +116,12 @@ def merge_branch_action_sets(  # noqa: PLR0915
         n_actions_per_sub=n_actions_per_sub,
         unsplit_action_mask=unsplit_action_mask,
         reassignment_distance=reassignment_distance,
+        action_start_indices=jnp.concatenate(
+            [
+                jnp.array([0], dtype=n_actions_per_sub.dtype),
+                jnp.cumsum(n_actions_per_sub[:-1]),
+            ]
+        ),
         inj_actions=inj_actions,
         rel_bb_outage_data=rel_bb_outage_data,
     )
@@ -160,6 +166,7 @@ def merge_topologies(
         n_actions_per_sub=jnp.zeros(action_set.n_actions_per_sub.shape, dtype=int),  # Not actually needed for merge
         unsplit_action_mask=jnp.zeros(new_branch_actions.shape[0], dtype=bool),  # Not actually needed for merge
         reassignment_distance=jnp.full(new_branch_actions.shape[0], reassignment_distance_fill, dtype=int),
+        action_start_indices=jnp.zeros(action_set.n_actions_per_sub.shape, dtype=int),
         inj_actions=jnp.full((new_branch_actions.shape[0], max_inj_per_sub), injection_fill, dtype=bool),
     )
 
@@ -193,5 +200,6 @@ def empty_branch_action_set(
         n_actions_per_sub=jnp.zeros(n_sub_relevant, dtype=int),
         unsplit_action_mask=jnp.array([], dtype=bool),
         reassignment_distance=jnp.array([], dtype=int),
+        action_start_indices=jnp.zeros(n_sub_relevant, dtype=int),
         inj_actions=jnp.zeros((0, max_inj_per_sub), dtype=bool),
     )

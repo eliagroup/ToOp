@@ -695,15 +695,18 @@ def sample_action_index_from_branch_actions(
         A random branch action index for each substation. If sub_id is an invalid sub id, will return int_max
     """
     valid_sub_id = (sub_id >= 0) & (sub_id < branch_action_set.n_actions_per_sub.shape[0])
-    choice_probs = (branch_action_set.substation_correspondence == sub_id) & ~branch_action_set.unsplit_action_mask
-    # This will be equal to sum(choice_probs) but doesn't involve a sum operation
-    n_available_actions = branch_action_set.n_actions_per_sub.at[sub_id].get(mode="fill", fill_value=2) - 1
-    choice_probs = choice_probs.astype(float) / n_available_actions
-    new_branch_action = jax.random.choice(
+    safe_sub_id = jnp.where(valid_sub_id, sub_id, 0)
+
+    action_start_indices = branch_action_set.action_start_indices
+    n_available_actions = branch_action_set.n_actions_per_sub[safe_sub_id] - 1
+    action_offset = action_start_indices[safe_sub_id] + 1
+    random_action = jax.random.randint(
         key=rng_key,
-        a=branch_action_set.branch_actions.shape[0],
-        p=choice_probs,
+        shape=(),
+        minval=0,
+        maxval=jnp.maximum(n_available_actions, 1),
     )
+    new_branch_action = action_offset + random_action
 
     return jnp.where(valid_sub_id, new_branch_action, int_max())
 

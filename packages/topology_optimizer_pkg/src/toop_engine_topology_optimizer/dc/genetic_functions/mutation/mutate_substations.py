@@ -7,19 +7,55 @@
 
 """Mutation functions for substations in the genetic algorithm."""
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Int, PRNGKeyArray
+from jaxtyping import Array, ArrayLike, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.topology_computations import sample_action_index_from_branch_actions
 from toop_engine_dc_solver.jax.types import ActionSet, int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import SubstationMutationConfig
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import do_nothing, get_random_true_idx
 
 
+@partial(jax.jit, static_argnames=["n_rel_subs"])
+def _sample_new_substation_id(
+    random_key: PRNGKeyArray,
+    sub_ids: Int[Array, " max_num_splits"],
+    n_rel_subs: int,
+    ignored_idx: Int[ArrayLike, " "],
+) -> Int[Array, " "]:
+    """Sample a relevant substation id that is not already used in the active split slots.
+
+    Parameters
+    ----------
+    random_key : PRNGKeyArray
+        Random key used for sampling.
+    sub_ids : Int[Array, " max_num_splits"]
+        Current split substations of one individual.
+    n_rel_subs : int
+        Number of relevant substations that may be selected.
+    ignored_idx : Int[Array, " "]
+        Index in ``sub_ids`` to ignore while checking duplicates. This is used for branch replacement,
+        where the currently replaced split must not block its own substation id.
+
+    Returns
+    -------
+    Int[Array, " "]
+        A valid new substation id, or ``int_max()`` if none are available.
+    """
+    int_max_value = int_max()
+    available_mask = jnp.ones((n_rel_subs,), dtype=bool).at[sub_ids].set(False, mode="drop")
+    available_mask = available_mask.at[sub_ids.at[ignored_idx].get(mode="fill", fill_value=int_max_value)].set(
+        True, mode="drop"
+    )
+    return get_random_true_idx(random_key, available_mask, int_max_value)
+
+
 def change_split_substation(
     random_key: PRNGKeyArray,
     sub_ids: Int[Array, " max_num_splits"],
-    n_subs_rel: int,
+    n_rel_subs: int,
     int_max_value: int,
 ) -> tuple[Int[Array, " "], Int[Array, " "]]:
     """Change a split to a different one.
@@ -32,9 +68,8 @@ def change_split_substation(
         The random key to use for the mutation
     sub_ids : Int[Array, " max_num_splits"]
         The substation ids before mutation
-    n_subs_rel : int
-        The number of relevant substations in the grid, used to determine the valid
-        range of substation ids for mutation
+    n_rel_subs : int
+        Number of relevant substations that may be selected.
     int_max_value : int
         The value that indicates an unsplit substation, used to determine which substations
         are currently split and to sample a new substation id from the valid range
@@ -47,20 +82,16 @@ def change_split_substation(
     Int[Array, " "]
         The index of the substation that was mutated. If no substation was mutated, this is set to int_max
     """
-    split_key, sub_key, random_key = jax.random.split(random_key, 3)
+    split_key, sub_key = jax.random.split(random_key, 2)
     is_split = sub_ids != int_max_value
     split_idx = get_random_true_idx(split_key, is_split, int_max_value)
 
-    substations_split = jnp.zeros(n_subs_rel, dtype=bool).at[sub_ids].set(True, mode="drop")
-    # We also include the currently split substation in the list of split substations,
-    # so that we can resplit an already split substation if all substations are already split
-    substations_split = substations_split.at[sub_ids.at[split_idx].get(mode="fill", fill_value=int_max_value)].set(
-        False, mode="drop"
+    new_substation_idx = jax.lax.cond(
+        split_idx != int_max_value,
+        lambda key: _sample_new_substation_id(key, sub_ids, n_rel_subs, split_idx),
+        lambda _key: jnp.array(int_max_value, dtype=int),
+        sub_key,
     )
-
-    # Sample a new substation from the substations which have not been split yet for every topology
-    # in the batch
-    new_substation_idx: Int[Array, " "] = jax.random.categorical(sub_key, jnp.log(1 - substations_split.astype(float)))
 
     return split_idx, new_substation_idx
 
@@ -102,7 +133,7 @@ def unsplit_substation(
 def split_additional_sub(
     random_key: PRNGKeyArray,
     sub_ids: Int[Array, " max_num_splits"],
-    n_subs_rel: int,
+    n_rel_subs: int,
     int_max_value: int,
 ) -> tuple[Int[Array, " "], Int[Array, " "]]:
     """Mutate the substation ids of a single topology.
@@ -113,8 +144,8 @@ def split_additional_sub(
         The random key to use for the mutation
     sub_ids : Int[Array, " max_num_splits"]
         The substation ids before mutation
-    n_subs_rel : int
-        The number of relevant substations in the grid
+    n_rel_subs : int
+        Number of relevant substations that may be selected.
     int_max_value : int
         The value to use for the mutation, which should be the maximum integer value used
         to indicate an empty slot in the genotype.
@@ -129,20 +160,18 @@ def split_additional_sub(
         happen despite no new split. If no substation was split yet and no split happened, this is
         set to int_max
     """
-    split_key, sub_key, random_key = jax.random.split(random_key, 3)
+    split_key, sub_key = jax.random.split(random_key, 2)
     non_split = sub_ids == int_max_value
     split_idx = get_random_true_idx(split_key, non_split, int_max_value)
 
-    substations_split = jnp.zeros(n_subs_rel, dtype=bool).at[sub_ids].set(True, mode="drop")
-    all_split = jnp.all(substations_split)
+    new_substation_idx = jax.lax.cond(
+        split_idx != int_max_value,
+        lambda key: _sample_new_substation_id(key, sub_ids, n_rel_subs, int_max_value),
+        lambda _key: jnp.array(int_max_value, dtype=int),
+        sub_key,
+    )
 
-    # Sample a new substation from the substations which have not been split yet for every topology
-    # in the batch
-    new_substation_idx: Int[Array, " "] = jax.random.categorical(sub_key, jnp.log(1 - substations_split.astype(float)))
-
-    # If there are no other substations to split,
-    # we set the new_substation_idx to int_max_value to indicate that no new substation was split
-    split_idx = jnp.where(all_split, int_max_value, split_idx)
+    split_idx = jnp.where(new_substation_idx == int_max_value, int_max_value, split_idx)
 
     return split_idx, new_substation_idx
 
@@ -197,7 +226,8 @@ def mutate_sub_splits(
     int_max_value = int_max()
     operation_key, sub_key, action_key, random_key = jax.random.split(random_key, 4)
     n_max_splits = sub_ids.shape[0]
-    n_splits = jnp.sum(sub_ids != int_max())
+    is_split = sub_ids != int_max_value
+    n_splits = jnp.sum(is_split)
 
     allow_add = n_splits < n_max_splits
     allow_remove = n_splits > 0
@@ -210,7 +240,8 @@ def mutate_sub_splits(
     probs = jnp.where(allowed, probs, 0.0)
     probs = jnp.where(jnp.sum(probs) > 0, probs / jnp.sum(probs), jnp.array([0.0, 0.0, 0.0, 1.0]))
 
-    chosen_op = jax.random.choice(operation_key, jnp.arange(4), p=probs)
+    cumulative_probs = jnp.cumsum(probs)
+    chosen_op = jnp.searchsorted(cumulative_probs, jax.random.uniform(operation_key), side="right")
 
     changed_indices, new_sub_ids = jax.lax.switch(
         chosen_op,
@@ -224,11 +255,15 @@ def mutate_sub_splits(
     )
     sub_ids = sub_ids.at[changed_indices].set(new_sub_ids, mode="drop")
 
-    # The branch action set stores the available actions
-    new_action = sample_action_index_from_branch_actions(
-        rng_key=action_key,
-        sub_id=new_sub_ids,
-        branch_action_set=action_set,
+    new_action = jax.lax.cond(
+        (changed_indices != int_max_value) & (new_sub_ids != int_max_value),
+        lambda _: sample_action_index_from_branch_actions(
+            rng_key=action_key,
+            sub_id=new_sub_ids,
+            branch_action_set=action_set,
+        ),
+        lambda _: jnp.array(int_max_value),
+        operand=None,
     )
 
     action = action.at[changed_indices].set(new_action, mode="drop")

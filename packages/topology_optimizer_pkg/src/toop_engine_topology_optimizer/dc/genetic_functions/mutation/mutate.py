@@ -19,6 +19,7 @@ from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import 
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_disconnections import mutate_disconnections
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_nodal_inj import mutate_nodal_injections
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_substations import mutate_sub_splits
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import sample_unique_indices_small_k
 
 
 def mutate_topology(

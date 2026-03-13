@@ -32,12 +32,17 @@ realized the same way if maintenances are active. Hence, for the moment, it is n
 topology into the action set.
 """
 
+import io
+import itertools
+from dataclasses import dataclass
 from pathlib import Path
 
+import h5py
 import numpy as np
 from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
+from jaxtyping import Bool
 from pydantic import BaseModel
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
@@ -98,14 +103,248 @@ class ActionSet(BaseModel):
     yet in the solver."""
 
     local_actions: list[Station]
-    """A list of split/reconfiguration actions that affect exactly one substation."""
-
-    global_actions: list[list[Station]]
-    """A list of split/reconfiguration actions that affect multiple substations. Each action contains a list of affected
-    stations."""
+    """A list of split/reconfiguration actions that affect exactly one substation. These are typically ordered by station,
+    i.e. actions affecting the same station are next to each other, but this is not strictly required. The grid_model_id of
+    the station should be used to determine which substation it affects."""
 
 
-def load_action_set_fs(filesystem: AbstractFileSystem, file_path: Union[str, Path]) -> ActionSet:
+@dataclass
+class StationDiffArray:
+    """A difference between copies of a station in the local action set and the starting topology.
+
+    So that the action set does not have to store copies of the full station with all associated information, we only store
+    the changes in the station that are typical for the actions in the action set, i.e. the switching table and coupler
+    states. Furthermore, we store them in array form for the entire action set, so that we can potentially store them in
+    parquet format.
+
+    A full action set consists of station diffs for every switchable station in the grid.
+    """
+
+    grid_model_id: str
+    """The grid model id of the station."""
+
+    coupler_open: Bool[np.ndarray, " n_actions n_couplers"]
+    """The state of the "open" field for every coupler in the station. The array dimension n_couplers is equivalent to
+    station.couplers in length and order and the entries correspond to open (True) and closed (False). The n_actions
+    dimension provides an entry per action in the action set."""
+
+    switching_table: Bool[np.ndarray, " n_actions n_busbars n_assets"]
+    """The switching table of the station. The array dimensions n_busbars and n_assets are equivalent to the
+    switching table in the station, """
+
+
+def _validate_station_diff_hypothesis(starting_station: Station, action: Station) -> None:
+    """Validate that only coupler open states and switching table values differ.
+
+    Parameters
+    ----------
+    starting_station : Station
+        The reference station from the starting topology.
+    action : Station
+        The action station to validate.
+
+    Raises
+    ------
+    ValueError
+        If any field differs besides coupler open states and switching table values.
+    """
+    if action.grid_model_id != starting_station.grid_model_id:
+        raise ValueError(
+            f"Action station grid_model_id {action.grid_model_id} does not match starting station "
+            f"{starting_station.grid_model_id}."
+        )
+
+    def normalize_station(station: Station) -> dict[str, object]:
+        station_data = station.model_dump(mode="json")
+        station_data.pop("asset_switching_table", None)
+        for coupler in station_data.get("couplers", []):
+            if isinstance(coupler, dict):
+                coupler.pop("open", None)
+        return station_data
+
+    if normalize_station(action) != normalize_station(starting_station):
+        raise ValueError(
+            f"Action station {action.grid_model_id} changed fields other than coupler open states and asset switching table."
+        )
+
+
+def store_station_diff_io(binaryio: io.IOBase, station_diffs: list[StationDiffArray]) -> None:
+    """Store a station diff to a hdf5 file, using a different group for every station
+
+    Use load_station_diff_io to load it again
+
+    Parameters
+    ----------
+    binaryio : io.IOBase
+        A binary file-like object to store the station diffs in.
+    station_diffs : list[StationDiffArray]
+        A list of station diffs to store.
+    """
+    with h5py.File(binaryio, mode="w") as file:
+        for station_diff in station_diffs:
+            group = file.create_group(station_diff.grid_model_id)
+            group.create_dataset("coupler_open", data=station_diff.coupler_open)
+            group.create_dataset("switching_table", data=station_diff.switching_table)
+
+
+def load_station_diff_io(binaryio: io.IOBase) -> list[StationDiffArray]:
+    """Load station diffs from a hdf5 file, using a different group for every station
+
+    Use store_station_diff_io to store it.
+
+    Parameters
+    ----------
+    binaryio : io.IOBase
+        A binary file-like object to load the station diffs from.
+
+    Returns
+    -------
+    list[StationDiffArray]
+        A list of station diffs loaded from the file.
+    """
+    station_diffs = []
+    with h5py.File(binaryio, mode="r") as file:
+        for grid_model_id in file.keys():
+            group = file[grid_model_id]
+            coupler_open = group["coupler_open"][:]
+            switching_table = group["switching_table"][:]
+            station_diff = StationDiffArray(
+                grid_model_id=grid_model_id, coupler_open=coupler_open, switching_table=switching_table
+            )
+            station_diffs.append(station_diff)
+    return station_diffs
+
+
+def expand_single_station_diff_to_actions(starting_station: Station, station_diff: StationDiffArray) -> list[Station]:
+    """Expand densely stored station diffs to a list of stations with the same format as in the action set.
+
+    This only expands a single station diff, so it should be called once per station in the action set.
+
+    Parameters
+    ----------
+    starting_station : Station
+        The station as it looks in the starting topology. All fields from the station will be copied except for the
+        coupler states and switching table, which will be overwritten by the station diff.
+    station_diff : StationDiffArray
+        The station diff to expand.
+
+    Returns
+    -------
+    list[Station]
+        A list of stations, each corresponding to an action in the station diffs action dimension.
+    """
+    actions = []
+    for i in range(station_diff.coupler_open.shape[0]):
+        coupler_array = station_diff.coupler_open[i]
+        couplers = [
+            coupler.model_copy(update={"open": bool(coupler_open)})
+            for coupler, coupler_open in zip(starting_station.couplers, coupler_array, strict=True)
+        ]
+        switching_table = station_diff.switching_table[i]
+
+        action = starting_station.model_copy(
+            update={
+                "couplers": couplers,
+                "asset_switching_table": switching_table,
+            },
+        )
+        actions.append(action)
+    return actions
+
+
+def expand_station_diffs(starting_topology: Topology, station_diffs: list[StationDiffArray]) -> list[Station]:
+    """Expand densely stored station diffs to a list of stations with the same format as in the action set.
+
+    This expands a list of station diffs, so it can be called once per action set.
+
+    Parameters
+    ----------
+    starting_topology : Topology
+        The topology as it looks in the starting topology. The station diffs will be matched to the stations in the topology
+        based on their grid_model_id and all fields from the station will be copied except for the coupler states and
+        switching table, which will be overwritten by the station diff.
+    station_diffs : list[StationDiffArray]
+        The station diffs to expand.
+
+    Returns
+    -------
+    list[Station]
+        A list of stations, each corresponding to an action in the station diffs action dimension.
+    """
+    grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.stations}
+    actions = []
+    for station_diff in station_diffs:
+        starting_station = grid_model_id_to_station[station_diff.grid_model_id]
+        actions.extend(expand_single_station_diff_to_actions(starting_station, station_diff))
+    return actions
+
+
+def compress_actions_to_station_diffs(
+    starting_topology: Topology, actions: list[Station], validate_diff_hypothesis: bool = False
+) -> list[StationDiffArray]:
+    """Compress a list of stations with the same format as in the action set to densely stored station diffs.
+
+    This compresses a list of stations, so it can be called once per action set.
+    Note that this assumes
+    - The list of actions is grouped by station, i.e. all actions for the same station are next to each other in the list.
+    - The change between actions for the same station only regards the coupler states and switching table. If
+      validate_diff_hypothesis is True, then this will be checked and it will raise a Value Error
+
+
+    Parameters
+    ----------
+    starting_topology : Topology
+        The topology as it looks in the starting topology. The stations will be matched to the stations in the topology
+        based on their grid_model_id and the coupler states and switching table will be compared to the ones in the topology
+        to create the station diffs.
+    actions : list[Station]
+        A list of stations, each corresponding to an action in the station diffs action dimension.
+    validate_diff_hypothesis : bool
+        Whether to validate the hypothesis that the change between actions for the same station only regards the coupler
+        states and switching table. If True, this will check the actions and raise a Value Error if this is not the case.
+        Note that this will make the compression significantly slower, so it should only be used for debugging purposes.
+
+    Returns
+    -------
+    list[StationDiffArray]
+        The station diffs corresponding to the actions.
+
+    Raises
+    ------
+    ValueError
+        If the actions are not grouped by station
+    ValueError
+        If validate_diff_hypothesis is True and the change between actions for the same station regards fields other than the
+        coupler states and switching table.
+    """
+    grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.stations}
+    station_diffs = {}
+    for grid_model_id, group in itertools.groupby(actions, key=lambda action: action.grid_model_id):
+        if grid_model_id not in grid_model_id_to_station:
+            raise ValueError(f"Action station grid_model_id {grid_model_id} not found in starting topology.")
+        starting_station = grid_model_id_to_station[grid_model_id]
+
+        coupler_open = []
+        switching_table = []
+        for action in group:
+            if validate_diff_hypothesis:
+                _validate_station_diff_hypothesis(starting_station=starting_station, action=action)
+            coupler_open.append([coupler.open for coupler in action.couplers])
+            switching_table.append(action.asset_switching_table)
+        coupler_open_array = np.array(coupler_open).astype(bool)
+        switching_table_array = np.array(switching_table).astype(bool)
+        station_diff = StationDiffArray(
+            grid_model_id=grid_model_id, coupler_open=coupler_open_array, switching_table=switching_table_array
+        )
+        if station_diff.grid_model_id in station_diffs:
+            raise ValueError(f"Duplicate station diff for grid_model_id {grid_model_id}, actions were not in order.")
+        station_diffs[grid_model_id] = station_diff
+    return list(station_diffs.values())
+
+
+def load_action_set_fs(
+    filesystem: AbstractFileSystem, file_path: Union[str, Path], load_station_diffs: bool = True
+) -> ActionSet:
     """Load an action set from a file system.
 
     Parameters
@@ -113,15 +352,27 @@ def load_action_set_fs(filesystem: AbstractFileSystem, file_path: Union[str, Pat
     filesystem : AbstractFileSystem
         The file system to use to load the action set.
     file_path : Union[str, Path]
-        The path to the file containing the action set in json format.
+        The path to the file containing the action set. It is assumed that file_path + ".json" will contain an action
+        set in json format and that file_path + ".hdf5" will contain the station diffs in hdf5 format.
+    load_station_diffs : bool
+        Whether to load the station diffs from the hdf5 file and expand them to local actions. If False, the local_actions
+        field will be the empty list, but loading is faster.
 
     Returns
     -------
     ActionSet
         The action set loaded from the file.
     """
-    with filesystem.open(str(file_path), "r") as f:
-        return ActionSet.model_validate_json(f.read())
+    json_file = str(file_path) + ".json"
+    hdf5_file = str(file_path) + ".hdf5"
+    with filesystem.open(json_file, "r") as f:
+        action_set = ActionSet.model_validate_json(f.read())
+    if load_station_diffs:
+        with filesystem.open(hdf5_file, "rb") as f:
+            station_diffs = load_station_diff_io(f)
+        local_actions = expand_station_diffs(starting_topology=action_set.starting_topology, station_diffs=station_diffs)
+        action_set = action_set.model_copy(update={"local_actions": local_actions})
+    return action_set
 
 
 def load_action_set(file_path: Union[str, Path]) -> ActionSet:
@@ -130,7 +381,8 @@ def load_action_set(file_path: Union[str, Path]) -> ActionSet:
     Parameters
     ----------
     file_path : Union[str, Path]
-        The path to the file containing the action set in json format.
+        The path to the file containing the action set. It is assumed that file_path + ".json" will contain an action
+        set in json format and that file_path + ".hdf5" will contain the station diffs in hdf5 format.
 
     Returns
     -------
@@ -140,29 +392,81 @@ def load_action_set(file_path: Union[str, Path]) -> ActionSet:
     return load_action_set_fs(LocalFileSystem(), file_path)
 
 
-def save_action_set(file_path: Union[str, Path], action_set: ActionSet) -> None:
+def save_action_set_fs(
+    filesystem: AbstractFileSystem,
+    file_path: Union[str, Path],
+    action_set: ActionSet,
+    validate_diff_hypothesis: bool = False,
+) -> None:
+    """Save an action set to a file system.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        The file system to use to save the action set.
+    file_path : Union[str, Path]
+        The base path used to save the action set. Data is split into two files:
+        file_path + ".json" for the pydantic payload and file_path + ".hdf5" for station diffs.
+    action_set : ActionSet
+        The action set to save.
+    validate_diff_hypothesis : bool
+        Whether to validate that local action changes only affect coupler open states and switching tables.
+        This is intended for debugging and can make saving slower.
+    """
+    json_file = str(file_path) + ".json"
+    hdf5_file = str(file_path) + ".hdf5"
+
+    station_diffs = compress_actions_to_station_diffs(
+        starting_topology=action_set.starting_topology,
+        actions=action_set.local_actions,
+        validate_diff_hypothesis=validate_diff_hypothesis,
+    )
+
+    # local_actions are persisted in the HDF5 file as compressed station diffs.
+    action_set_without_local_actions = action_set.model_copy(update={"local_actions": []})
+    save_pydantic_model_fs(filesystem=filesystem, file_path=json_file, pydantic_model=action_set_without_local_actions)
+
+    filesystem.makedirs(Path(hdf5_file).parent.as_posix(), exist_ok=True)
+    with filesystem.open(hdf5_file, "wb") as f:
+        store_station_diff_io(f, station_diffs)
+
+
+def save_action_set(
+    file_path: Union[str, Path],
+    action_set: ActionSet,
+    validate_diff_hypothesis: bool = False,
+) -> None:
     """Save an action set to a file.
 
     Parameters
     ----------
     file_path : Union[str, Path]
-        The path to the file to save the action set to in json format.
+        The base path used to save the action set. Data is split into two files:
+        file_path + ".json" and file_path + ".hdf5".
     action_set : ActionSet
         The action set to save.
+    validate_diff_hypothesis : bool
+        Whether to validate that local action changes only affect coupler open states and switching tables.
+        This is intended for debugging and can make saving slower.
 
     """
-    save_pydantic_model_fs(filesystem=LocalFileSystem(), file_path=file_path, pydantic_model=action_set)
+    save_action_set_fs(
+        filesystem=LocalFileSystem(),
+        file_path=file_path,
+        action_set=action_set,
+        validate_diff_hypothesis=validate_diff_hypothesis,
+    )
 
 
 def random_actions(action_set: ActionSet, rng: np.random.Generator, n_split_subs: int) -> list[int]:
-    """Generate a random topology from the action set.
+    """Sample a random topology from the action set.
 
     Makes sure to sample each substation at most once.
 
     Parameters
     ----------
     action_set : ActionSet
-        The action set to generate the random topology from.
+        The action set to sample the random topology from.
     rng : np.random.Generator
         The random number generator to use.
     n_split_subs : int

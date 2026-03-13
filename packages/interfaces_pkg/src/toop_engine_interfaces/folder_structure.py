@@ -29,7 +29,7 @@ PREPROCESSING_PATHS: Final[dict[str, str]] = {
     "logs_path": "logs",
     "start_datetime_info_file_path": "logs/start_datetime.info",
     "chronics_path": "chronics",
-    "action_set_file_path": "action_set.json",
+    "action_set_file_path": "action_set",
     "nminus1_definition_file_path": "nminus1_definition.json",
     "ignore_file_path": "ignore_elements.csv",
     "contingency_list_file_path": "contingency_list.csv",

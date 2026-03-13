@@ -312,6 +312,10 @@ class ActionSet(eqx.Module):
     """The number of reassignments that were necessary to get from the starting topology in that station to the topology
     described by the action in the action set."""
 
+    action_start_indices: Int[Array, " n_sub_relevant"]
+    """Optional precomputed start index for each substation in the concatenated action arrays.
+    If present, random action sampling can use this directly instead of recomputing cumulative sums."""
+
     rel_bb_outage_data: Optional[RelBBOutageData] = None
     """
     Busbar outage data corresponding to each action in the action set. Each action in the action set determine
@@ -341,6 +345,14 @@ class ActionSet(eqx.Module):
             and jnp.array_equal(self.unsplit_action_mask, other.unsplit_action_mask)
             and jnp.array_equal(self.reassignment_distance, other.reassignment_distance)
             and jnp.array_equal(self.inj_actions, other.inj_actions)
+            and (
+                (self.action_start_indices is None and other.action_start_indices is None)
+                or (
+                    self.action_start_indices is not None
+                    and other.action_start_indices is not None
+                    and jnp.array_equal(self.action_start_indices, other.action_start_indices)
+                )
+            )
             and self.rel_bb_outage_data == other.rel_bb_outage_data
         )
 
@@ -370,6 +382,12 @@ class ActionSet(eqx.Module):
             n_actions_per_sub=n_actions_per_sub,
             unsplit_action_mask=self.unsplit_action_mask[index],
             reassignment_distance=self.reassignment_distance[index],
+            action_start_indices=jnp.concatenate(
+                [
+                    jnp.array([0], dtype=n_actions_per_sub.dtype),
+                    jnp.cumsum(n_actions_per_sub[:-1]),
+                ]
+            ),
             inj_actions=self.inj_actions[index],
             rel_bb_outage_data=self.rel_bb_outage_data[index] if self.rel_bb_outage_data is not None else None,
         )

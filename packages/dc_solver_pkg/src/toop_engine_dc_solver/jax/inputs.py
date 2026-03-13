@@ -749,6 +749,12 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                         substation_correspondence=jnp.array(file["action_set_substation_correspondence"][:]),
                         unsplit_action_mask=jnp.array(file["action_set_unsplit_action_mask"][:]),
                         reassignment_distance=jnp.array(file["action_set_reassignment_distance"][:]),
+                        action_start_indices=jnp.concatenate(
+                            [
+                                jnp.array([0], dtype=jnp.array(file["action_set_n_actions_per_sub"][:]).dtype),
+                                jnp.cumsum(jnp.array(file["action_set_n_actions_per_sub"][:])[:-1]),
+                            ]
+                        ),
                         rel_bb_outage_data=RelBBOutageData(
                             branch_outage_set=jnp.array(file["action_set_rel_bb_outage_data_branch_outage_set"][:]),
                             nodal_indices=jnp.array(file["action_set_rel_bb_outage_data_nodal_indices"][:]),

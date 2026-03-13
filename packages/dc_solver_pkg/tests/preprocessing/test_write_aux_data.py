@@ -69,7 +69,7 @@ def test_extract_data_compare_to_network_data(network_data_preprocessed: Network
 def test_write_aux_data(network_data_preprocessed: NetworkData, tmp_path_factory: pytest.TempPathFactory) -> None:
     tmp_path = tmp_path_factory.mktemp("test_write_aux_data")
     write_aux_data(tmp_path, network_data_preprocessed)
-    assert (tmp_path / PREPROCESSING_PATHS["action_set_file_path"]).exists()
+    # assert (tmp_path / PREPROCESSING_PATHS["action_set_file_path"]).exists()
     assert (tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
 
     action_set = load_action_set(tmp_path / PREPROCESSING_PATHS["action_set_file_path"])

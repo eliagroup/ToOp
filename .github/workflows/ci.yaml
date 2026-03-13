@@ -69,7 +69,8 @@ jobs:
     needs: [test-packages-toop-runner, test-packages-github-runner]
     if: success()
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code

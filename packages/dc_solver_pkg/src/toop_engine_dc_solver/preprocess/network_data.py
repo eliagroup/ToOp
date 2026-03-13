@@ -849,6 +849,9 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
 
     return ActionSet(
         starting_topology=network_data.asset_topology,
+        simplified_starting_topology=network_data.simplified_asset_topology
+        if network_data.simplified_asset_topology
+        else network_data.asset_topology,
         local_actions=local_actions,
         disconnectable_branches=disconnectable_branches,
         pst_ranges=pst_ranges,

@@ -140,6 +140,7 @@ def _build_large_random_action_set(
 
     return ActionSet(
         starting_topology=starting_topology,
+        simplified_starting_topology=starting_topology,
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],

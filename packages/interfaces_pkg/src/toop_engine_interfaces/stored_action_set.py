@@ -80,14 +80,19 @@ class HVDCRange(GridElement):
 
 
 class ActionSet(BaseModel):
-    """A collection of actions in the form of asset topology stations.
+    """A collection of actions available to the optimizer in readable form.
 
-    We make a convention that the beginning of the action set always includes substation
-    local actions and the global actions are at the end.
+    All actions are also stored directly in jax, but without IDs, names or other useful information to
+    introspect them.
     """
 
     starting_topology: Topology
-    """How the grid looked like when the action set was first generated."""
+    """How the grid looked like when the action set was first generated. This does not include any
+    asset topology simplifications but is just a copy of the importing result"""
+
+    simplified_starting_topology: Topology
+    """The starting topology in a preprocessed form. This does include simplifications made and is the basis for
+    the local actions."""
 
     connectable_branches: list[GridElement]
     """A list of assets that can be connected as a remedial action."""
@@ -329,6 +334,8 @@ def compress_actions_to_station_diffs(
         The topology as it looks in the starting topology. The stations will be matched to the stations in the topology
         based on their grid_model_id and the coupler states and switching table will be compared to the ones in the topology
         to create the station diffs.
+        Note that this should be the simplified starting topology if simplifications have been applies, as they will also be
+        present in all stations in the action set.
     actions : list[Station]
         A list of stations, each corresponding to an action in the station diffs action dimension.
     validate_diff_hypothesis : bool
@@ -359,6 +366,12 @@ def compress_actions_to_station_diffs(
         coupler_open = []
         switching_table = []
         for action in group:
+            assert len(action.couplers) == len(starting_station.couplers), (
+                "Number of couplers in action station does not match starting station."
+            )
+            assert action.asset_switching_table.shape == starting_station.asset_switching_table.shape, (
+                "Switching table shape in action station does not match starting station."
+            )
             if validate_diff_hypothesis:
                 _validate_station_diff_hypothesis(starting_station=starting_station, action=action)
             coupler_open.append([coupler.open for coupler in action.couplers])
@@ -399,7 +412,9 @@ def load_action_set_fs(
     if diff_file_path is not None:
         with filesystem.open(str(diff_file_path), "rb") as f:
             station_diffs = load_station_diff_io(f)
-        local_actions = expand_station_diffs(starting_topology=action_set.starting_topology, station_diffs=station_diffs)
+        local_actions = expand_station_diffs(
+            starting_topology=action_set.simplified_starting_topology, station_diffs=station_diffs
+        )
         action_set = action_set.model_copy(update={"local_actions": local_actions})
     return action_set
 
@@ -450,7 +465,8 @@ def save_action_set_fs(
     hdf5_file = str(diff_file_path)
 
     station_diffs = compress_actions_to_station_diffs(
-        starting_topology=action_set.starting_topology,
+        # Station diffs are computed against the simplified topology used to generate local actions.
+        starting_topology=action_set.simplified_starting_topology,
         actions=action_set.local_actions,
         validate_diff_hypothesis=validate_diff_hypothesis,
     )

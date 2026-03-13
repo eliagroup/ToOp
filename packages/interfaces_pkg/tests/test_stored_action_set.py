@@ -239,6 +239,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
     with pytest.raises(ValidationError, match="not grouped by station"):
         ActionSet(
             starting_topology=starting_topology,
+            simplified_starting_topology=starting_topology,
             connectable_branches=[],
             disconnectable_branches=[],
             pst_ranges=[],
@@ -397,7 +398,7 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
             "couplers": [
                 starting_station.couplers[0].model_copy(update={"open": True}),
             ],
-            "asset_switching_table": np.array([[False, True]], dtype=bool),
+            "asset_switching_table": np.array([[False, True], [True, False]], dtype=bool),
         }
     )
 
@@ -406,7 +407,7 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
             "couplers": [
                 starting_station.couplers[0].model_copy(update={"busbar_from_id": 99}),
             ],
-            "asset_switching_table": np.array([[True, True]], dtype=bool),
+            "asset_switching_table": np.array([[True, True], [False, False]], dtype=bool),
         }
     )
 
@@ -498,6 +499,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
     )
     action_set = ActionSet.model_construct(
         starting_topology=starting_topology,
+        simplified_starting_topology=starting_topology,
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],

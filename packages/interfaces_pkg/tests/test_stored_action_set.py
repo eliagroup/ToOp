@@ -8,9 +8,11 @@
 import io
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
 from toop_engine_interfaces.stored_action_set import (
     ActionSet,
@@ -22,6 +24,7 @@ from toop_engine_interfaces.stored_action_set import (
     random_actions,
     save_action_set,
     store_station_diff_io,
+    validate_actions_grouped,
 )
 
 
@@ -142,6 +145,55 @@ def test_store_and_load_station_diff_io_empty_list():
     loaded = load_station_diff_io(buffer)
 
     assert loaded == []
+
+
+def test_validate_actions_grouped_accepts_grouped_actions():
+    actions = [DummyStation("s1"), DummyStation("s1"), DummyStation("s2"), DummyStation("s3"), DummyStation("s3")]
+    validate_actions_grouped(cast(list[Station], actions))
+
+
+def test_validate_actions_grouped_raises_for_non_grouped_actions():
+    actions = [DummyStation("s1"), DummyStation("s2"), DummyStation("s1")]
+    with pytest.raises(ValueError, match="not grouped by station"):
+        validate_actions_grouped(cast(list[Station], actions))
+
+
+def test_action_set_model_validator_rejects_non_grouped_local_actions():
+    station_a = Station.model_construct(
+        grid_model_id="station_a",
+        name=None,
+        type=None,
+        region=None,
+        voltage_level=None,
+        busbars=[],
+        couplers=[],
+        assets=[],
+        asset_switching_table=np.zeros((1, 1), dtype=bool),
+        asset_connectivity=None,
+        model_log=None,
+    )
+    station_b = station_a.model_copy(update={"grid_model_id": "station_b"})
+
+    starting_topology = Topology.model_construct(
+        topology_id="starting_topology",
+        grid_model_file=None,
+        name=None,
+        stations=[station_a, station_b],
+        asset_setpoints=None,
+        timestamp=datetime.now(),
+        metrics=None,
+    )
+
+    non_grouped_local_actions = [station_a, station_b, station_a]
+    with pytest.raises(ValidationError, match="not grouped by station"):
+        ActionSet(
+            starting_topology=starting_topology,
+            connectable_branches=[],
+            disconnectable_branches=[],
+            pst_ranges=[],
+            hvdc_ranges=[],
+            local_actions=non_grouped_local_actions,
+        )
 
 
 def test_compress_and_expand_station_diffs_random_roundtrip():
@@ -319,14 +371,14 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
 
 def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
     starting_station = Station.model_construct(
-        grid_model_id="station_save_load",
+        grid_model_id="station1",
         name=None,
         type=None,
         region=None,
         voltage_level=None,
         busbars=[
             Busbar.model_construct(
-                grid_model_id="station_save_load_busbar_1",
+                grid_model_id="busbar1",
                 type=None,
                 name=None,
                 int_id=1,
@@ -334,7 +386,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
                 bus_branch_bus_id=None,
             ),
             Busbar.model_construct(
-                grid_model_id="station_save_load_busbar_2",
+                grid_model_id="busbar2",
                 type=None,
                 name=None,
                 int_id=2,
@@ -344,7 +396,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
         ],
         couplers=[
             BusbarCoupler.model_construct(
-                grid_model_id="station_save_load_coupler_0",
+                grid_model_id="coupler1",
                 type=None,
                 name=None,
                 busbar_from_id=1,
@@ -356,7 +408,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
         ],
         assets=[
             SwitchableAsset.model_construct(
-                grid_model_id="station_save_load_asset_1",
+                grid_model_id="asset1",
                 type=None,
                 name=None,
                 in_service=True,
@@ -364,7 +416,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
                 asset_bay=None,
             ),
             SwitchableAsset.model_construct(
-                grid_model_id="station_save_load_asset_2",
+                grid_model_id="asset2",
                 type=None,
                 name=None,
                 in_service=True,
@@ -415,4 +467,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
     loaded_action = loaded_action_set.local_actions[0]
     assert loaded_action.grid_model_id == local_action.grid_model_id
     assert [c.open for c in loaded_action.couplers] == [c.open for c in local_action.couplers]
-    assert np.array_equal(loaded_action.asset_switching_table, local_action.asset_switching_table)
+    assert np.array_equal(
+        np.asarray(loaded_action.asset_switching_table),
+        np.asarray(local_action.asset_switching_table),
+    )

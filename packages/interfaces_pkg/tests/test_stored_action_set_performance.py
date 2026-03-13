@@ -1,10 +1,3 @@
-# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
-#
-# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
-# If a copy of the MPL was not distributed with this file,
-# you can obtain one at https://mozilla.org/MPL/2.0/.
-# Mozilla Public License, version 2.0
-
 import time
 from datetime import datetime
 from pathlib import Path
@@ -164,7 +157,7 @@ def test_stored_action_set_large_performance(tmp_path: Path, record_property) ->
     avg_assets_per_station = 15
     couplers_per_station = 3
 
-    rng = np.random.default_rng(20260313)
+    rng = np.random.default_rng(42)
     action_set = _build_large_random_action_set(
         rng=rng,
         n_actions=n_actions,
@@ -181,20 +174,20 @@ def test_stored_action_set_large_performance(tmp_path: Path, record_property) ->
     assert all(len(station.couplers) == couplers_per_station for station in action_set.starting_topology.stations)
 
     old_file = tmp_path / "action_set_legacy.json"
-    new_json_file = tmp_path / "action_set_split.json"
-    new_diff_file = tmp_path / "action_set_split.hdf5"
+    new_json = tmp_path / "action_set_split.json"
+    new_diff = tmp_path / "action_set_split_diff.hdf5"
 
     t0 = time.perf_counter()
     save_pydantic_model_fs(filesystem=LocalFileSystem(), file_path=old_file, pydantic_model=action_set)
     old_save_seconds = time.perf_counter() - t0
 
     t0 = time.perf_counter()
-    save_action_set(json_file_path=new_json_file, diff_file_path=new_diff_file, action_set=action_set)
+    save_action_set(json_file_path=new_json, diff_file_path=new_diff, action_set=action_set)
     new_save_seconds = time.perf_counter() - t0
 
     old_size_bytes = old_file.stat().st_size
-    new_json_size_bytes = new_json_file.stat().st_size
-    new_hdf5_size_bytes = new_diff_file.stat().st_size
+    new_json_size_bytes = new_json.stat().st_size
+    new_hdf5_size_bytes = new_diff.stat().st_size
     new_size_bytes = new_json_size_bytes + new_hdf5_size_bytes
 
     t0 = time.perf_counter()
@@ -202,15 +195,11 @@ def test_stored_action_set_large_performance(tmp_path: Path, record_property) ->
     old_load_seconds = time.perf_counter() - t0
 
     t0 = time.perf_counter()
-    loaded_new = load_action_set(new_json_file, new_diff_file)
+    loaded_new = load_action_set(new_json, new_diff)
     new_load_seconds = time.perf_counter() - t0
 
     t0 = time.perf_counter()
-    loaded_new_metadata_only = load_action_set_fs(
-        LocalFileSystem(),
-        json_file_path=new_json_file,
-        diff_file_path=None,
-    )
+    loaded_new_metadata_only = load_action_set_fs(LocalFileSystem(), new_json, diff_file_path=None)
     new_load_metadata_only_seconds = time.perf_counter() - t0
 
     assert len(loaded_old.local_actions) == n_actions

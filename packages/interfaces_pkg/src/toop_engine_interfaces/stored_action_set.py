@@ -43,7 +43,7 @@ from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.nminus1_definition import GridElement
@@ -103,9 +103,15 @@ class ActionSet(BaseModel):
     yet in the solver."""
 
     local_actions: list[Station]
-    """A list of split/reconfiguration actions that affect exactly one substation. These are typically ordered by station,
-    i.e. actions affecting the same station are next to each other, but this is not strictly required. The grid_model_id of
+    """A list of split/reconfiguration actions that affect exactly one substation. These are must be ordered by station,
+    i.e. actions affecting the same station are next to each other. The grid_model_id of
     the station should be used to determine which substation it affects."""
+
+    @model_validator(mode="after")
+    def _validate_local_actions_grouped(self) -> "ActionSet":
+        """Validate local actions are grouped by station."""
+        validate_actions_grouped(self.local_actions)
+        return self
 
 
 @dataclass
@@ -131,6 +137,32 @@ class StationDiffArray:
     switching_table: Bool[np.ndarray, " n_actions n_busbars n_assets"]
     """The switching table of the station. The array dimensions n_busbars and n_assets are equivalent to the
     switching table in the station, """
+
+
+def validate_actions_grouped(actions: list[Station]) -> None:
+    """Validate that actions are grouped by station grid model id.
+
+    Parameters
+    ----------
+    actions : list[Station]
+        Action stations to validate.
+
+    Raises
+    ------
+    ValueError
+        If a station grid model id appears in multiple non-contiguous groups.
+    """
+    seen_grid_model_ids: set[str] = set()
+    last_grid_model_id: str | None = None
+    for action in actions:
+        grid_model_id = action.grid_model_id
+        if grid_model_id != last_grid_model_id:
+            if grid_model_id in seen_grid_model_ids:
+                raise ValueError(
+                    f"Actions are not grouped by station. Grid model id {grid_model_id} appears in multiple groups."
+                )
+            seen_grid_model_ids.add(grid_model_id)
+            last_grid_model_id = grid_model_id
 
 
 def _validate_station_diff_hypothesis(starting_station: Station, action: Station) -> None:

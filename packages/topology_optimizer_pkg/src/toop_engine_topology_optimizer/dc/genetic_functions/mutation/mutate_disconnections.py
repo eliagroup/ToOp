@@ -9,7 +9,7 @@
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Bool, Int, PRNGKeyArray
+from jaxtyping import Array, ArrayLike, Bool, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import DisconnectionMutationConfig
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import (

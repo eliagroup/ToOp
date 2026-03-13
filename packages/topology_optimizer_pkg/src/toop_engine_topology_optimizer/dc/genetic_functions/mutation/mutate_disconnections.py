@@ -7,14 +7,17 @@
 
 """Mutation functions for the disconnections in the genetic algorithm."""
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, ArrayLike, Bool, Int, PRNGKeyArray
+from jaxtyping import Array, ArrayLike, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import DisconnectionMutationConfig
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import do_nothing, get_random_true_idx
 
 
+@partial(jax.jit, static_argnames=["n_disconnectable_branches"])
 def _sample_new_branch_id(
     random_key: PRNGKeyArray,
     disconnections: Int[Array, " max_num_disconnections"],
@@ -42,34 +45,11 @@ def _sample_new_branch_id(
         A valid branch id, or ``int_max()`` if none are available.
     """
     int_max_value = int_max()
-    disconnected_mask = disconnections != int_max_value
-    effective_mask = disconnected_mask & (jnp.arange(disconnections.shape[0]) != ignored_idx)
-    n_blocked = jnp.sum(effective_mask)
-    n_available = n_disconnectable_branches - n_blocked
-
-    def _draw_valid(_random_key: PRNGKeyArray) -> Int[Array, " "]:
-        initial_candidate = jax.random.randint(_random_key, shape=(), minval=0, maxval=n_disconnectable_branches)
-
-        def _needs_resample(loop_state: tuple[Int[Array, " "], PRNGKeyArray]) -> Bool[Array, " "]:
-            candidate, _loop_key = loop_state
-            is_blocked = effective_mask & (disconnections == candidate)
-            return jnp.any(is_blocked)
-
-        def _resample(loop_state: tuple[Int[Array, " "], PRNGKeyArray]) -> tuple[Int[Array, " "], PRNGKeyArray]:
-            _candidate, loop_key = loop_state
-            draw_key, loop_key = jax.random.split(loop_key)
-            candidate = jax.random.randint(draw_key, shape=(), minval=0, maxval=n_disconnectable_branches)
-            return candidate, loop_key
-
-        candidate, _ = jax.lax.while_loop(_needs_resample, _resample, (initial_candidate, _random_key))
-        return candidate
-
-    return jax.lax.cond(
-        n_available > 0,
-        _draw_valid,
-        lambda _random_key: jnp.array(int_max_value, dtype=int),
-        random_key,
+    available_mask = jnp.ones((n_disconnectable_branches,), dtype=bool).at[disconnections].set(False, mode="drop")
+    available_mask = available_mask.at[disconnections.at[ignored_idx].get(mode="fill", fill_value=int_max_value)].set(
+        True, mode="drop"
     )
+    return get_random_true_idx(random_key, available_mask, int_max_value)
 
 
 def change_disconnected_branch(

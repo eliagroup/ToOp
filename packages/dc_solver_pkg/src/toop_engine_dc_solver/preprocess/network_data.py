@@ -853,7 +853,6 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
         disconnectable_branches=disconnectable_branches,
         pst_ranges=pst_ranges,
         hvdc_ranges=[],  # Not implemented yet
-        global_actions=[],
         connectable_branches=[],  # Not implemented yet
     )
 

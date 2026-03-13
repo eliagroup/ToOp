@@ -48,7 +48,6 @@ def action_set_multiple_subs() -> ActionSet:
         pst_ranges=[],
         hvdc_ranges=[],
         local_actions=local_actions,
-        global_actions=[],
     )
 
 
@@ -78,7 +77,6 @@ def test_random_actions_empty_local_actions():
         pst_ranges=[],
         hvdc_ranges=[],
         local_actions=[],
-        global_actions=[],
     )
     result = random_actions(action_set, rng, 2)
     assert result == []
@@ -94,7 +92,6 @@ def test_random_actions_single_substation():
         pst_ranges=[],
         hvdc_ranges=[],
         local_actions=local_actions,
-        global_actions=[],
     )
     result = random_actions(action_set, rng, 1)
     assert len(result) == 1

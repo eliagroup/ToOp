@@ -9,7 +9,7 @@
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Bool, Int, PRNGKeyArray
+from jaxtyping import Array, ArrayLike, Bool, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.topology_computations import sample_action_index_from_branch_actions
 from toop_engine_dc_solver.jax.types import ActionSet, int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import SubstationMutationConfig
@@ -20,7 +20,7 @@ def _sample_new_substation_id(
     random_key: PRNGKeyArray,
     sub_ids: Int[Array, " max_num_splits"],
     n_rel_subs: int,
-    ignored_idx: Int[Array, " "],
+    ignored_idx: Int[ArrayLike, " "],
 ) -> Int[Array, " "]:
     """Sample a relevant substation id that is not already used in the active split slots.
 
@@ -32,7 +32,7 @@ def _sample_new_substation_id(
         Current split substations of one individual.
     n_rel_subs : int
         Number of relevant substations that may be selected.
-    ignored_idx : Int[Array, " "]
+    ignored_idx : Int[ArrayLike, " "]
         Index in ``sub_ids`` to ignore while checking duplicates. This is used for branch replacement,
         where the currently replaced split must not block its own substation id.
 

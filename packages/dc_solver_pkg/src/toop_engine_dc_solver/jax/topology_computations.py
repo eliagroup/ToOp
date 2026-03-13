@@ -704,7 +704,7 @@ def sample_action_index_from_branch_actions(
         key=rng_key,
         shape=(),
         minval=0,
-        maxval=n_available_actions,
+        maxval=jnp.maximum(n_available_actions, 1),
     )
     new_branch_action = action_offset + random_action
 

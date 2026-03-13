@@ -9,7 +9,7 @@
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Int, PRNGKeyArray
+from jaxtyping import Array, Bool, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import DisconnectionMutationConfig
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import do_nothing, get_random_true_idx
@@ -50,7 +50,7 @@ def _sample_new_branch_id(
     def _draw_valid(_random_key: PRNGKeyArray) -> Int[Array, " "]:
         initial_candidate = jax.random.randint(_random_key, shape=(), minval=0, maxval=n_disconnectable_branches)
 
-        def _needs_resample(loop_state: tuple[Int[Array, " "], PRNGKeyArray]) -> Int[Array, " "]:
+        def _needs_resample(loop_state: tuple[Int[Array, " "], PRNGKeyArray]) -> Bool[Array, " "]:
             candidate, _loop_key = loop_state
             is_blocked = effective_mask & (disconnections == candidate)
             return jnp.any(is_blocked)

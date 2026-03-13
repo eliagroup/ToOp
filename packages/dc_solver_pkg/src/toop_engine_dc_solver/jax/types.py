@@ -313,8 +313,8 @@ class ActionSet(eqx.Module):
     described by the action in the action set."""
 
     action_start_indices: Int[Array, " n_sub_relevant"]
-    """Optional precomputed start index for each substation in the concatenated action arrays.
-    If present, random action sampling can use this directly instead of recomputing cumulative sums."""
+    """Precomputed start index for each substation in the concatenated action arrays.
+    Needed so random action sampling can use this directly instead of recomputing cumulative sums."""
 
     rel_bb_outage_data: Optional[RelBBOutageData] = None
     """
@@ -345,14 +345,7 @@ class ActionSet(eqx.Module):
             and jnp.array_equal(self.unsplit_action_mask, other.unsplit_action_mask)
             and jnp.array_equal(self.reassignment_distance, other.reassignment_distance)
             and jnp.array_equal(self.inj_actions, other.inj_actions)
-            and (
-                (self.action_start_indices is None and other.action_start_indices is None)
-                or (
-                    self.action_start_indices is not None
-                    and other.action_start_indices is not None
-                    and jnp.array_equal(self.action_start_indices, other.action_start_indices)
-                )
-            )
+            and jnp.array_equal(self.action_start_indices, other.action_start_indices)
             and self.rel_bb_outage_data == other.rel_bb_outage_data
         )
 

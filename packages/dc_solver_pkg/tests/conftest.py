@@ -391,7 +391,7 @@ def _preprocessed_data_folder(_data_folder: Path, tmp_path_factory: pytest.TempP
         solver_config=replace(static_information.solver_config, batch_size_bsdf=10),
     )
     best_actions = random_topology(
-        jax.random.PRNGKey(42),
+        jax.random.PRNGKey(19),
         branch_action_set=static_information.dynamic_information.action_set,
         limit_n_subs=2,
         batch_size=10,

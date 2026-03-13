@@ -72,6 +72,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import ActionSet
+from toop_engine_interfaces.stored_action_set import load_action_set as load_stored_action_set
 from toop_engine_topology_optimizer.dc.main import CLIArgs
 from toop_engine_topology_optimizer.dc.main import main as opt_main
 
@@ -414,14 +415,16 @@ def run_dc_optimization(dc_optim_config: dict | DictConfig) -> dict:
     return res
 
 
-def load_action_set(action_set_path: Path) -> ActionSet:
+def load_action_set(action_set_path: Path, action_set_diff_path: Path) -> ActionSet:
     """
-    Load an ActionSet object from a JSON file.
+    Load an ActionSet object from JSON metadata and HDF5 station diffs.
 
     Parameters
     ----------
     action_set_path : Path
-        The file path to the JSON file containing the action set definition.
+        The file path to the JSON file containing action set metadata.
+    action_set_diff_path : Path
+        The file path to the HDF5 file containing action set station diffs.
 
     Returns
     -------
@@ -432,14 +435,10 @@ def load_action_set(action_set_path: Path) -> ActionSet:
     ------
     FileNotFoundError
         If the specified file does not exist.
-    json.JSONDecodeError
-        If the file is not a valid JSON.
-    TypeError
-        If the JSON structure does not match the ActionSet constructor requirements.
+    FileNotFoundError
+        If one of the specified files does not exist.
     """
-    with open(action_set_path, "r") as f:
-        action_set_json = json.load(f)
-    return ActionSet(**action_set_json)
+    return load_stored_action_set(action_set_path, action_set_diff_path)
 
 
 def apply_topology_and_save(
@@ -573,14 +572,15 @@ def create_loadflow_runner(
     runner.load_base_grid(grid_file_path)
 
     action_set_path = data_folder / PREPROCESSING_PATHS["action_set_file_path"]
-    if action_set_path.exists():
-        logger.info(f"Loading action set from: {action_set_path}")
-        action_set = load_action_set(action_set_path)
+    action_set_diff_path = data_folder / PREPROCESSING_PATHS["action_set_diff_path"]
+    if action_set_path.exists() and action_set_diff_path.exists():
+        logger.info(f"Loading action set from: {action_set_path} and {action_set_diff_path}")
+        action_set = load_action_set(action_set_path, action_set_diff_path)
 
     if action_set is not None:
         runner.store_action_set(action_set)
     else:
-        raise FileNotFoundError(f"Action set file not found: {action_set_path}")
+        raise FileNotFoundError(f"Action set files not found: {action_set_path} and/or {action_set_diff_path}")
 
     return runner
 

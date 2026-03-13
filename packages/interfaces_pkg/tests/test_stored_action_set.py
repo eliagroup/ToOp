@@ -405,13 +405,14 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
         local_actions=[local_action],
     )
 
-    file_base = tmp_path / "action_set"
-    save_action_set(file_base, action_set)
+    json_file = tmp_path / "action_set.json"
+    diff_file = tmp_path / "action_set.hdf5"
+    save_action_set(json_file, diff_file, action_set)
 
-    assert (tmp_path / "action_set.json").exists()
-    assert (tmp_path / "action_set.hdf5").exists()
+    assert json_file.exists()
+    assert diff_file.exists()
 
-    loaded_action_set = load_action_set(file_base)
+    loaded_action_set = load_action_set(json_file, diff_file)
 
     assert len(loaded_action_set.local_actions) == 1
     loaded_action = loaded_action_set.local_actions[0]

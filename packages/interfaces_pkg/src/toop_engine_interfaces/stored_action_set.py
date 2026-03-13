@@ -343,7 +343,7 @@ def compress_actions_to_station_diffs(
 
 
 def load_action_set_fs(
-    filesystem: AbstractFileSystem, file_path: Union[str, Path], load_station_diffs: bool = True
+    filesystem: AbstractFileSystem, json_file_path: Union[str, Path], diff_file_path: Union[str, Path] | None
 ) -> ActionSet:
     """Load an action set from a file system.
 
@@ -351,50 +351,50 @@ def load_action_set_fs(
     ----------
     filesystem : AbstractFileSystem
         The file system to use to load the action set.
-    file_path : Union[str, Path]
-        The path to the file containing the action set. It is assumed that file_path + ".json" will contain an action
-        set in json format and that file_path + ".hdf5" will contain the station diffs in hdf5 format.
-    load_station_diffs : bool
-        Whether to load the station diffs from the hdf5 file and expand them to local actions. If False, the local_actions
-        field will be the empty list, but loading is faster.
+    json_file_path : Union[str, Path]
+        The path to the JSON file containing the action set without local actions.
+    diff_file_path : Union[str, Path] | None
+        The path to the HDF5 file containing the station diffs to expand to local actions. If this is none, the
+        local_actions field will not be filled and be the empty list.
 
     Returns
     -------
     ActionSet
         The action set loaded from the file.
     """
-    json_file = str(file_path) + ".json"
-    hdf5_file = str(file_path) + ".hdf5"
-    with filesystem.open(json_file, "r") as f:
+    with filesystem.open(str(json_file_path), "r") as f:
         action_set = ActionSet.model_validate_json(f.read())
-    if load_station_diffs:
-        with filesystem.open(hdf5_file, "rb") as f:
+    if diff_file_path is not None:
+        with filesystem.open(str(diff_file_path), "rb") as f:
             station_diffs = load_station_diff_io(f)
         local_actions = expand_station_diffs(starting_topology=action_set.starting_topology, station_diffs=station_diffs)
         action_set = action_set.model_copy(update={"local_actions": local_actions})
     return action_set
 
 
-def load_action_set(file_path: Union[str, Path]) -> ActionSet:
+def load_action_set(json_file_path: Union[str, Path], diff_file_path: Union[str, Path] | None) -> ActionSet:
     """Load an action set from a file.
 
     Parameters
     ----------
-    file_path : Union[str, Path]
-        The path to the file containing the action set. It is assumed that file_path + ".json" will contain an action
-        set in json format and that file_path + ".hdf5" will contain the station diffs in hdf5 format.
+    json_file_path : Union[str, Path]
+        The path to the JSON file containing the action set without local actions.
+    diff_file_path : Union[str, Path] | None
+        The path to the HDF5 file containing the station diffs to expand to local actions. If this is none, the
+        local_actions field will not be filled and be the empty list.
 
     Returns
     -------
     ActionSet
         The action set loaded from the file.
     """
-    return load_action_set_fs(LocalFileSystem(), file_path)
+    return load_action_set_fs(LocalFileSystem(), json_file_path=json_file_path, diff_file_path=diff_file_path)
 
 
 def save_action_set_fs(
     filesystem: AbstractFileSystem,
-    file_path: Union[str, Path],
+    json_file_path: Union[str, Path],
+    diff_file_path: Union[str, Path],
     action_set: ActionSet,
     validate_diff_hypothesis: bool = False,
 ) -> None:
@@ -404,17 +404,18 @@ def save_action_set_fs(
     ----------
     filesystem : AbstractFileSystem
         The file system to use to save the action set.
-    file_path : Union[str, Path]
-        The base path used to save the action set. Data is split into two files:
-        file_path + ".json" for the pydantic payload and file_path + ".hdf5" for station diffs.
+    json_file_path : Union[str, Path]
+        The path to the JSON file to save the pydantic payload.
+    diff_file_path : Union[str, Path]
+        The path to the HDF5 file to save the station diffs.
     action_set : ActionSet
         The action set to save.
     validate_diff_hypothesis : bool
         Whether to validate that local action changes only affect coupler open states and switching tables.
         This is intended for debugging and can make saving slower.
     """
-    json_file = str(file_path) + ".json"
-    hdf5_file = str(file_path) + ".hdf5"
+    json_file = str(json_file_path)
+    hdf5_file = str(diff_file_path)
 
     station_diffs = compress_actions_to_station_diffs(
         starting_topology=action_set.starting_topology,
@@ -432,7 +433,8 @@ def save_action_set_fs(
 
 
 def save_action_set(
-    file_path: Union[str, Path],
+    json_file_path: Union[str, Path],
+    diff_file_path: Union[str, Path],
     action_set: ActionSet,
     validate_diff_hypothesis: bool = False,
 ) -> None:
@@ -440,9 +442,10 @@ def save_action_set(
 
     Parameters
     ----------
-    file_path : Union[str, Path]
-        The base path used to save the action set. Data is split into two files:
-        file_path + ".json" and file_path + ".hdf5".
+    json_file_path : Union[str, Path]
+        The path to the JSON file to save the pydantic payload.
+    diff_file_path : Union[str, Path]
+        The path to the HDF5 file to save the station diffs.
     action_set : ActionSet
         The action set to save.
     validate_diff_hypothesis : bool
@@ -452,7 +455,8 @@ def save_action_set(
     """
     save_action_set_fs(
         filesystem=LocalFileSystem(),
-        file_path=file_path,
+        json_file_path=json_file_path,
+        diff_file_path=diff_file_path,
         action_set=action_set,
         validate_diff_hypothesis=validate_diff_hypothesis,
     )

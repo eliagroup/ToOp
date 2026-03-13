@@ -72,7 +72,10 @@ def test_write_aux_data(network_data_preprocessed: NetworkData, tmp_path_factory
     # assert (tmp_path / PREPROCESSING_PATHS["action_set_file_path"]).exists()
     assert (tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"]).exists()
 
-    action_set = load_action_set(tmp_path / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        tmp_path / PREPROCESSING_PATHS["action_set_file_path"],
+        tmp_path / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     nminus1_definition = load_nminus1_definition(tmp_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
 
     assert len(action_set.local_actions)
@@ -89,7 +92,10 @@ def test_write_aux_data_pst_ranges(tmp_path_factory: pytest.TempPathFactory) -> 
     network_data = preprocess(backend)
 
     write_aux_data(tmp_path, network_data)
-    action_set = load_action_set(tmp_path / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        tmp_path / PREPROCESSING_PATHS["action_set_file_path"],
+        tmp_path / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
 
     assert len(action_set.local_actions) == sum(len(x) for x in network_data.branch_action_set)
     assert len(action_set.pst_ranges) == network_data.controllable_phase_shift_mask.sum()

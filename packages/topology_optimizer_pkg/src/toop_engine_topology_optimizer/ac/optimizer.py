@@ -275,7 +275,12 @@ def initialize_optimization(
 
     # Load the network datas
     action_sets = [
-        load_action_set_fs(filesystem=processed_gridfile_fs, file_path=grid_file.action_set_file) for grid_file in grid_files
+        load_action_set_fs(
+            filesystem=processed_gridfile_fs,
+            json_file_path=grid_file.action_set_file,
+            diff_file_path=grid_file.action_set_diff_file,
+        )
+        for grid_file in grid_files
     ]
     nminus1_definitions = [
         load_pydantic_model_fs(

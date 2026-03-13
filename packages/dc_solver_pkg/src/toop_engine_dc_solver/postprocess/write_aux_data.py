@@ -52,7 +52,8 @@ def write_aux_data_fs(
     action_set = extract_action_set(network_data)
     save_action_set_fs(
         filesystem=filesystem,
-        file_path=PREPROCESSING_PATHS["action_set_file_path"],
+        json_file_path=PREPROCESSING_PATHS["action_set_file_path"],
+        diff_file_path=PREPROCESSING_PATHS["action_set_diff_path"],
         action_set=action_set,
     )
 

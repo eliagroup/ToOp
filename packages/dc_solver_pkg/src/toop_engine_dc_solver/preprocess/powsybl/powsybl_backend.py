@@ -38,6 +38,8 @@ from toop_engine_interfaces.folder_structure import (
 
 logger = logbook.Logger(__name__)
 
+INJECTION_COLUMNS = ["name", "p", "bus_id_int", "for_nminus1", "type"]
+
 
 class PowsyblBackend(BackendInterface):
     """Interface for a net using powsybl
@@ -149,7 +151,7 @@ class PowsyblBackend(BackendInterface):
         """
         nodes = self._get_nodes()
 
-        branches = self.net.get_branches()
+        branches = self.net.get_branches(attributes=["connected1", "connected2", "bus1_id", "bus2_id", "p1", "type"])
         # Ignore disconnected branches
         branches = branches[branches["connected1"] & branches["connected2"]]
         # Ignore branches where the nodes have been masked out (usually due to being a separate connected component)
@@ -283,7 +285,7 @@ class PowsyblBackend(BackendInterface):
         gens["bus_id_int"] = nodes.loc[gens["bus_id"], "int_id"].values
         gens["type"] = "GENERATOR"
 
-        return gens
+        return gens[INJECTION_COLUMNS]
 
     @functools.lru_cache
     def _get_battery(self) -> pd.DataFrame:
@@ -301,7 +303,7 @@ class PowsyblBackend(BackendInterface):
         batteries["type"] = "GENERATOR"
         batteries.loc[batteries["p"] > 0, "type"] = "LOAD"
 
-        return batteries
+        return batteries[INJECTION_COLUMNS]
 
     @functools.lru_cache
     def _get_hvdc_lcc(self) -> pd.DataFrame:
@@ -319,7 +321,7 @@ class PowsyblBackend(BackendInterface):
         lcc["type"] = "GENERATOR"
         lcc.loc[lcc["p"] > 0, "type"] = "LOAD"
 
-        return lcc
+        return lcc[INJECTION_COLUMNS]
 
     @functools.lru_cache
     def _get_hvdc_vsc(self) -> pd.DataFrame:
@@ -337,7 +339,7 @@ class PowsyblBackend(BackendInterface):
         vsc["type"] = "GENERATOR"
         vsc.loc[vsc["p"] > 0, "type"] = "LOAD"
 
-        return vsc
+        return vsc[INJECTION_COLUMNS]
 
     @functools.lru_cache
     def _get_loads(self) -> pd.DataFrame:
@@ -352,7 +354,7 @@ class PowsyblBackend(BackendInterface):
         loads["bus_id_int"] = nodes.loc[loads["bus_id"], "int_id"].values
         loads["type"] = "LOAD"
 
-        return loads
+        return loads[INJECTION_COLUMNS]
 
     @functools.lru_cache
     def _get_dangling_lines(self) -> pd.DataFrame:
@@ -372,7 +374,7 @@ class PowsyblBackend(BackendInterface):
         dangling["bus_id_int"] = nodes.loc[dangling["bus_id"], "int_id"].values
         dangling["type"] = "DANGLING_LINE"
 
-        return dangling
+        return dangling[INJECTION_COLUMNS]
 
     def _get_masks_path(self) -> Path:
         return Path(PREPROCESSING_PATHS["masks_path"])

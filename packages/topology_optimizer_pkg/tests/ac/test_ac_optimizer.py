@@ -237,7 +237,7 @@ def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_re
 
 def test_wait_for_first_dc_results_timeout() -> None:
     with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
-        poll_mock.return_value = ([], [])
+        poll_mock.return_value = ({}, [])
 
         heartbeat_counter = 0
 
@@ -254,6 +254,28 @@ def test_wait_for_first_dc_results_timeout() -> None:
                 heartbeat_fn=_heartbeat_fn,
             )
         assert heartbeat_counter > 0
+
+
+def test_wait_for_first_dc_results_success_with_topology_counts() -> None:
+    with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
+        poll_mock.return_value = ({"test": 3}, [])
+
+        heartbeat_counter = 0
+
+        def _heartbeat_fn() -> None:
+            nonlocal heartbeat_counter
+            heartbeat_counter += 1
+
+        wait_for_first_dc_results(
+            results_consumer=Mock(spec=LongRunningKafkaConsumer),
+            session=Mock(spec=Session),
+            max_wait_time=1,
+            optimization_id="test",
+            heartbeat_fn=_heartbeat_fn,
+        )
+
+        assert poll_mock.called
+        assert heartbeat_counter == 0
 
 
 def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:

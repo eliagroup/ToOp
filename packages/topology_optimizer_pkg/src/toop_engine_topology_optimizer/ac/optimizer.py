@@ -507,11 +507,9 @@ def wait_for_first_dc_results(
             f"DC poll iteration={poll_iteration}, elapsed_seconds={elapsed_seconds:.2f}, "
             f"received_topologies={len(added_topos)}"
         )
-        new_topos_for_optimization = [topo for topo in added_topos if topo.optimization_id == optimization_id]
-        if len(new_topos_for_optimization) > 0:
-            logger.info(
-                f"Received {len(new_topos_for_optimization)} topologies from DC results, proceeding with optimization"
-            )
+        new_topos_for_optimization = added_topos.get(optimization_id, 0)
+        if new_topos_for_optimization > 0:
+            logger.info(f"Received {new_topos_for_optimization} topologies from DC results, proceeding with optimization")
             return
         if optimization_id in stopped_optimization_ids:
             logger.warning("Received DC optimization stopped message before receiving any DC results, stop optimization")

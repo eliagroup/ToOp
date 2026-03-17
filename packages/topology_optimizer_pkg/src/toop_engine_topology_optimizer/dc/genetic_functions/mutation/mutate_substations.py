@@ -7,11 +7,9 @@
 
 """Mutation functions for substations in the genetic algorithm."""
 
-from functools import partial
-
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, ArrayLike, Int, PRNGKeyArray
+from jaxtyping import Array, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.topology_computations import sample_action_index_from_branch_actions
 from toop_engine_dc_solver.jax.types import ActionSet, int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import SubstationMutationConfig

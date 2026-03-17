@@ -48,60 +48,38 @@ def sample_new_id(
     return get_random_true_idx(random_key, available_mask, int_max_value)
 
 
-@partial(jax.jit, static_argnames=("n_samples",))
-def sample_unique_indices_small_k(
+@partial(jax.jit, static_argnames=["n_available_ids"])
+def _sample_new_id(
     random_key: PRNGKeyArray,
-    n_choices: Int[ArrayLike, " "],
-    n_samples: Int[ArrayLike, " "],
-) -> Int[Array, " n_samples"]:
-    """Sample unique indices from ``range(n_choices)`` efficiently for small ``n_samples``.
-
-    This avoids full permutations when only a handful of unique indices are needed.
+    already_used_ids: Int[Array, " n_splits_or_disconnections"],
+    n_available_ids: int,
+    ignored_idx: Int[ArrayLike, " "],
+) -> Int[Array, " "]:
+    """Sample a relevant id that is not already used in the active split slots.
 
     Parameters
     ----------
     random_key : PRNGKeyArray
         Random key used for sampling.
-    n_choices : Int[ArrayLike, " "]
-        Number of available choices in the range ``[0, n_choices)``.
-    n_samples : Int[ArrayLike, " "]
-        Number of unique indices to sample. Must be less than or equal to ``n_choices``.
+    already_used_ids : Int[Array, " max_num_splits"]
+        Current ids that should not be sampled again.
+    n_available_ids : int
+        Number of available ids that may be selected.
+    ignored_idx : Int[Array, " "]
+        Index in ``already_used_ids`` to ignore while checking duplicates. This is used for branch replacement,
+        where the currently replaced split must not block its own id.
 
     Returns
     -------
-    Int[Array, " n_samples"]
-        Unique sampled indices.
+    Int[Array, " "]
+        A valid new substation id, or ``int_max()`` if none are available.
     """
-    if n_samples == 0:
-        return jnp.array([], dtype=int)
-    sampled = jnp.full((n_samples,), -1, dtype=int)
-    sampled_positions = jnp.arange(n_samples)
-
-    def _sample_one(
-        sample_idx: Int[ArrayLike, " "],
-        state: tuple[Int[Array, " n_samples"], PRNGKeyArray],
-    ) -> tuple[Int[Array, " n_samples"], PRNGKeyArray]:
-        sampled_indices, key = state
-        draw_key, key = jax.random.split(key)
-        candidate = jax.random.randint(draw_key, shape=(), minval=0, maxval=n_choices)
-
-        def _needs_resample(loop_state: tuple[Int[Array, " "], PRNGKeyArray]) -> Bool[Array, ""]:
-            candidate_idx, _loop_key = loop_state
-            duplicate = (sampled_indices == candidate_idx) & (sampled_positions < sample_idx)
-            return jnp.any(duplicate)
-
-        def _resample(loop_state: tuple[Int[Array, " "], PRNGKeyArray]) -> tuple[Int[Array, " "], PRNGKeyArray]:
-            _candidate_idx, loop_key = loop_state
-            draw_key_inner, loop_key = jax.random.split(loop_key)
-            candidate_idx = jax.random.randint(draw_key_inner, shape=(), minval=0, maxval=n_choices)
-            return candidate_idx, loop_key
-
-        candidate, key = jax.lax.while_loop(_needs_resample, _resample, (candidate, key))
-        sampled_indices = sampled_indices.at[sample_idx].set(candidate)
-        return sampled_indices, key
-
-    sampled, _ = jax.lax.fori_loop(0, n_samples, _sample_one, (sampled, random_key))
-    return sampled
+    int_max_value = int_max()
+    available_mask = jnp.ones((n_available_ids,), dtype=bool).at[already_used_ids].set(False, mode="drop")
+    available_mask = available_mask.at[already_used_ids.at[ignored_idx].get(mode="fill", fill_value=int_max_value)].set(
+        True, mode="drop"
+    )
+    return get_random_true_idx(random_key, available_mask, int_max_value)
 
 
 def get_random_true_idx(

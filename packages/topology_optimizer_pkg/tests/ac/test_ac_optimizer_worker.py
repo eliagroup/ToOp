@@ -217,7 +217,10 @@ def test_main_warmup_processes_many_results_and_exits_via_mocked_idle_loop(
 @pytest.fixture
 def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Result:
     # Generate random DC topologies to pull
-    action_set = load_action_set(grid_folder / "case57" / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        grid_folder / "case57" / PREPROCESSING_PATHS["action_set_file_path"],
+        grid_folder / "case57" / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     assert len(action_set.local_actions)
     network_data = load_network_data(grid_folder / "case57" / PREPROCESSING_PATHS["network_data_file_path"])
     assert network_data.branch_action_set is not None

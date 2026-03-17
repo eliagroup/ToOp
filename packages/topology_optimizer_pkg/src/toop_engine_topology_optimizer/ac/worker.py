@@ -39,6 +39,7 @@ from toop_engine_topology_optimizer.interfaces.messages.heartbeats import (
     IdleHeartbeat,
     OptimizationStartedHeartbeat,
     OptimizationStatsHeartbeat,
+    StartupHeartbeat,
 )
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     OptimizationStartedResult,
@@ -285,6 +286,45 @@ def idle_loop(
         worker_data.command_consumer.commit()
 
 
+def warmup_result_storage(
+    worker_data: WorkerData,
+    heartbeat_fn: Callable[[HeartbeatUnion], None],
+    heartbeat_interval_ms: int = 5000,
+) -> None:
+    """Go through the results topic and stores all published topology results in the database
+
+    This way, when an optimization run starts, the local in-memory results storage is already populated with results, so
+    no time is wasted in spooling through the results topic.
+
+    Parameters
+    ----------
+    worker_data : WorkerData
+        The dataclass with the results consumer and database
+    heartbeat_fn : Callable[[HeartbeatUnion], None]
+        A function to call to send heartbeats during the warmup loop, as it can take a while if there are many results to
+        spool through.
+    heartbeat_interval_ms : int
+        The time interval in milliseconds to send heartbeats during the warmup loop, by default 5000 ms
+    """
+    logger.info("Starting warmup loop to spool through results topic and populate database")
+    first_poll = True
+    last_heartbeat_time = time.time()
+    while True:
+        added_topos, _ = poll_results_topic(
+            db=worker_data.db,
+            consumer=worker_data.result_consumer,
+            first_poll=first_poll,
+        )
+        first_poll = False
+
+        if added_topos == {}:
+            break
+
+        if time.time() - last_heartbeat_time > heartbeat_interval_ms / 1000:
+            heartbeat_fn(StartupHeartbeat())
+            last_heartbeat_time = time.time()
+
+
 def main(
     args: Args,
     loadflow_result_fs: AbstractFileSystem,
@@ -322,7 +362,9 @@ def main(
         If the worker receives a ShutdownCommand
     """
     instance_id = str(uuid4())
-    logger.info(f"Starting AC worker {instance_id} with config {args}")
+    logger.info(
+        f"Starting AC worker {instance_id} with config {args}, spooling through results topic to warm up result storage"
+    )
 
     # We create two separate consumers for the command and result topics as we don't want to
     # catch results during the idle loop.
@@ -365,6 +407,17 @@ def main(
             key=result.optimization_id.encode(),
         )
         worker_data.producer.flush()
+
+    send_heartbeat(StartupHeartbeat(), ping_commands=False)
+    worker_data.command_consumer.start_processing()
+    warmup_result_storage(
+        worker_data=worker_data,
+        heartbeat_fn=partial(send_heartbeat, ping_commands=True),
+        heartbeat_interval_ms=args.heartbeat_interval_ms,
+    )
+    worker_data.command_consumer.stop_processing()
+
+    logger.info("Finished warmup loop, entering main loop to wait for commands and run optimizations")
 
     while True:
         # During the idle loop, the result consumer is paused and only the command consumer is active

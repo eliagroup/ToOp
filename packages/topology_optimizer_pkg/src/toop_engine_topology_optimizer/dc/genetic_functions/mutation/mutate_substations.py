@@ -171,17 +171,22 @@ def mutate_sub_splits(
     random_key : PRNGKeyArray
         The random key used for the mutation
     """
+    int_max_value = int_max()
+    operation_key, sub_key, action_key, random_key = jax.random.split(random_key, 4)
+
+    # Gather probabilities for the different mutation operations
     add_split_prob = sub_mutate_config.add_split_prob
     change_split_prob = sub_mutate_config.change_split_prob
     remove_split_prob = sub_mutate_config.remove_split_prob
     prob_remain = 1 - add_split_prob - change_split_prob - remove_split_prob
+
+    # Gather config values for the mutation operations
     n_rel_subs = sub_mutate_config.n_rel_subs
-    int_max_value = int_max()
-    operation_key, sub_key, action_key, random_key = jax.random.split(random_key, 4)
     n_max_splits = sub_ids.shape[0]
     is_split = sub_ids != int_max_value
     n_splits = jnp.sum(is_split)
 
+    # Determine which mutation operations are allowed based on the current topology, and adjust probabilities accordingly
     allow_add = n_splits < n_max_splits
     allow_remove = n_splits > 0
     allow_replace = n_splits > 0
@@ -193,6 +198,7 @@ def mutate_sub_splits(
     probs = jnp.where(allowed, probs, 0.0)
     probs = jnp.where(jnp.sum(probs) > 0, probs / jnp.sum(probs), jnp.array([0.0, 0.0, 0.0, 1.0]))
 
+    # Pick one of the mutations at random
     chosen_op = jax.random.choice(a=probs.shape[0], shape=(), p=probs, key=operation_key)
 
     changed_indices, new_sub_ids = jax.lax.switch(
@@ -207,15 +213,11 @@ def mutate_sub_splits(
     )
     sub_ids = sub_ids.at[changed_indices].set(new_sub_ids, mode="drop")
 
-    new_action = jax.lax.cond(
-        (changed_indices != int_max_value) & (new_sub_ids != int_max_value),
-        lambda _: sample_action_index_from_branch_actions(
-            rng_key=action_key,
-            sub_id=new_sub_ids,
-            branch_action_set=action_set,
-        ),
-        lambda _: jnp.array(int_max_value),
-        operand=None,
+    # Update the action for the changed substation
+    new_action = sample_action_index_from_branch_actions(
+        rng_key=action_key,
+        sub_id=new_sub_ids,
+        branch_action_set=action_set,
     )
 
     action = action.at[changed_indices].set(new_action, mode="drop")

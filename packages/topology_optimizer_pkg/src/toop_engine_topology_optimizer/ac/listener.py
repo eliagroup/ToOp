@@ -18,13 +18,14 @@ not to messages by itself. Hence a filtering mechanic is added.
 
 import logbook
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session
+from sqlmodel import Session, delete
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message
-from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, convert_message_topo_to_db_topo
+from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, FinishedOptimizations, convert_message_topo_to_db_topo
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     OptimizationStartedResult,
     OptimizationStoppedResult,
+    OptimizerType,
     Result,
     TopologyPushResult,
 )
@@ -32,11 +33,45 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
 logger = logbook.Logger(__name__)
 
 
+def finish_optimization(db: Session, optimization_id: str, optimizer_type: OptimizerType) -> None:
+    """Mark an optimization as finished in the database.
+
+    If it was a DC optimization, this function just saves an entry to DB.
+    If it was an AC optimization, this function also deletes all topologies from the database that belong to this
+    optimization, as they are no longer relevant and we don't want to keep them around.
+
+    Parameters
+    ----------
+    db : Session
+        The database session to use for saving the finished optimization
+    optimization_id : str
+        The optimization ID of the finished optimization as sent via kafka
+    optimizer_type : OptimizerType
+        Which optimizer type has finished
+    """
+    if optimizer_type == OptimizerType.AC:
+        # For AC optimizations, we delete all topologies that belong to this optimization, as they are no longer relevant
+        db.exec(delete(ACOptimTopology).where(ACOptimTopology.optimization_id == optimization_id))
+        db.commit()
+
+    # For both AC and DC optimizations, we save an entry to the finished optimizations table to prevent picking up old
+    # topologies from previous optimizations
+    try:
+        finished_optimization = FinishedOptimizations(
+            optimization_id=optimization_id,
+            optimizer_type=optimizer_type,
+        )
+        db.add(finished_optimization)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+
+
 def poll_results_topic(
     db: Session,
     consumer: LongRunningKafkaConsumer,
     first_poll: bool = True,
-) -> tuple[list[ACOptimTopology], list[str]]:
+) -> tuple[dict[str, int], list[str]]:
     """Poll the results topic for new topologies to store in the DB
 
     We store topologies from all optimization jobs, as it could be that we will later optimize the same job in this worker.
@@ -55,13 +90,13 @@ def poll_results_topic(
 
     Returns
     -------
-    list[ACOptimTopology]
-        A list of topologies that were added to the database
+    dict[str, int]
+        A dictionary with the number of topologies added to the database for each optimization ID
     list[str]
         A list of optimization IDs for which a stop optimization result was received.
     """
-    added_topos = []
-    finished_optimizations = []
+    added_topos = {}
+    finished_optimizations: list[Result] = []
     messages = consumer.consume(timeout=30.0 if first_poll else 0.1, num_messages=10000)
     for message in messages:
         result = Result.model_validate_json(deserialize_message(message.value()))
@@ -72,7 +107,7 @@ def poll_results_topic(
         elif isinstance(result.result, OptimizationStartedResult):
             strategies = [result.result.initial_topology]
         elif isinstance(result.result, OptimizationStoppedResult):
-            finished_optimizations.append(result.optimization_id)
+            finished_optimizations.append(result)
             continue
         else:
             continue
@@ -85,9 +120,14 @@ def poll_results_topic(
             try:
                 db.add(topo)
                 db.commit()
-                added_topos.append(topo)
+                added_topos[result.optimization_id] = added_topos.get(result.optimization_id, 0) + 1
             except IntegrityError:
                 db.rollback()
                 pass
 
-    return added_topos, finished_optimizations
+    for result in finished_optimizations:
+        finish_optimization(db, result.optimization_id, result.optimizer_type)
+        if result.optimization_id in added_topos:
+            del added_topos[result.optimization_id]
+
+    return added_topos, [result.optimization_id for result in finished_optimizations]

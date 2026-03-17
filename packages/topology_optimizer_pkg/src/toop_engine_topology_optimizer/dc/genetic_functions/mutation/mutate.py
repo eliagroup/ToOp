@@ -19,7 +19,6 @@ from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import 
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_disconnections import mutate_disconnections
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_nodal_inj import mutate_nodal_injections
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_substations import mutate_sub_splits
-from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import sample_unique_indices_small_k
 
 
 def mutate_topology(
@@ -140,7 +139,7 @@ def create_random_topology(
     max_disconnections = disconnections.shape[0]
 
     unsplit_mask = jax.random.bernoulli(unsplit_key, p=0.5, shape=(max_num_splits,))
-    random_subs = sample_unique_indices_small_k(subs_key, n_rel_subs, max_num_splits)
+    random_subs = jax.random.choice(subs_key, shape=(max_num_splits,), a=jnp.arange(n_rel_subs), replace=False)
 
     sub_ids = jnp.where(unsplit_mask, int_max(), random_subs)
     action = jax.vmap(lambda sub_id, key: sample_action_index_from_branch_actions(key, sub_id, action_set))(
@@ -149,7 +148,9 @@ def create_random_topology(
     )
 
     not_disconnected_mask = jax.random.bernoulli(not_disc_key, p=0.5, shape=(max_disconnections,))
-    random_disconnections = sample_unique_indices_small_k(disc_key, n_disconnectable_branches, max_disconnections)
+    random_disconnections = jax.random.choice(
+        disc_key, shape=(max_disconnections,), a=jnp.arange(n_disconnectable_branches), replace=False
+    )
     disconnections = jnp.where(not_disconnected_mask, int_max(), random_disconnections)
 
     return sub_ids, action, disconnections, random_key
@@ -200,7 +201,6 @@ def mutate(
         action_set,
     )
     n_random_topologies = round(mutation_config.random_topo_prob * n_mutations)
-    n_random_topologies = max(0, min(n_mutations, n_random_topologies))
 
     mutate_topologies_batch = jax.vmap(
         lambda sub_id, action_single, disconnection_single, key: mutate_topology(

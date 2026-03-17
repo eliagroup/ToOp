@@ -73,7 +73,6 @@ def test_change_split_substation_no_split(random_key, int_max_value):
         int_max_value=int_max_value,
     )
     assert split_idx == int_max_value
-    assert new_substation_idx == int_max_value
 
 
 def test_change_split_substation_partial_split(random_key, int_max_value):
@@ -183,7 +182,6 @@ def test_split_additional_sub_all_split(random_key):
         int_max_value=int_max_value,
     )
     assert split_idx == int_max_value
-    assert new_substation_idx == int_max_value
 
 
 def test_split_additional_sub_no_split(random_key):

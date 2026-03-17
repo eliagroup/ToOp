@@ -708,7 +708,7 @@ def sample_action_index_from_branch_actions(
     )
     new_branch_action = action_offset + random_action
 
-    return jnp.where(valid_sub_id, new_branch_action, int_max())
+    return jnp.where(valid_sub_id, new_branch_action, jnp.array(int_max()))
 
 
 def sample_from_branch_actions(

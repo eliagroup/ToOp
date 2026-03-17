@@ -7,49 +7,17 @@
 
 """Mutation functions for substations in the genetic algorithm."""
 
-from functools import partial
-
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, ArrayLike, Int, PRNGKeyArray
+from jaxtyping import Array, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.topology_computations import sample_action_index_from_branch_actions
 from toop_engine_dc_solver.jax.types import ActionSet, int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import SubstationMutationConfig
-from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import do_nothing, get_random_true_idx
-
-
-@partial(jax.jit, static_argnames=["n_rel_subs"])
-def _sample_new_substation_id(
-    random_key: PRNGKeyArray,
-    sub_ids: Int[Array, " max_num_splits"],
-    n_rel_subs: int,
-    ignored_idx: Int[ArrayLike, " "],
-) -> Int[Array, " "]:
-    """Sample a relevant substation id that is not already used in the active split slots.
-
-    Parameters
-    ----------
-    random_key : PRNGKeyArray
-        Random key used for sampling.
-    sub_ids : Int[Array, " max_num_splits"]
-        Current split substations of one individual.
-    n_rel_subs : int
-        Number of relevant substations that may be selected.
-    ignored_idx : Int[Array, " "]
-        Index in ``sub_ids`` to ignore while checking duplicates. This is used for branch replacement,
-        where the currently replaced split must not block its own substation id.
-
-    Returns
-    -------
-    Int[Array, " "]
-        A valid new substation id, or ``int_max()`` if none are available.
-    """
-    int_max_value = int_max()
-    available_mask = jnp.ones((n_rel_subs,), dtype=bool).at[sub_ids].set(False, mode="drop")
-    available_mask = available_mask.at[sub_ids.at[ignored_idx].get(mode="fill", fill_value=int_max_value)].set(
-        True, mode="drop"
-    )
-    return get_random_true_idx(random_key, available_mask, int_max_value)
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import (
+    _sample_new_id,
+    do_nothing,
+    get_random_true_idx,
+)
 
 
 def change_split_substation(
@@ -60,7 +28,8 @@ def change_split_substation(
 ) -> tuple[Int[Array, " "], Int[Array, " "]]:
     """Change a split to a different one.
 
-    Either in the same substation or in a different substation
+    Either in the same substation or in a different substation.
+    This assumes, that there is a split already.
 
     Parameters
     ----------
@@ -85,14 +54,7 @@ def change_split_substation(
     split_key, sub_key = jax.random.split(random_key, 2)
     is_split = sub_ids != int_max_value
     split_idx = get_random_true_idx(split_key, is_split, int_max_value)
-
-    new_substation_idx = jax.lax.cond(
-        split_idx != int_max_value,
-        lambda key: _sample_new_substation_id(key, sub_ids, n_rel_subs, split_idx),
-        lambda _key: jnp.array(int_max_value, dtype=int),
-        sub_key,
-    )
-
+    new_substation_idx = _sample_new_id(sub_key, sub_ids, n_rel_subs, split_idx)
     return split_idx, new_substation_idx
 
 
@@ -163,16 +125,7 @@ def split_additional_sub(
     split_key, sub_key = jax.random.split(random_key, 2)
     non_split = sub_ids == int_max_value
     split_idx = get_random_true_idx(split_key, non_split, int_max_value)
-
-    new_substation_idx = jax.lax.cond(
-        split_idx != int_max_value,
-        lambda key: _sample_new_substation_id(key, sub_ids, n_rel_subs, int_max_value),
-        lambda _key: jnp.array(int_max_value, dtype=int),
-        sub_key,
-    )
-
-    split_idx = jnp.where(new_substation_idx == int_max_value, int_max_value, split_idx)
-
+    new_substation_idx = _sample_new_id(sub_key, sub_ids, n_rel_subs, int_max_value)
     return split_idx, new_substation_idx
 
 
@@ -240,8 +193,7 @@ def mutate_sub_splits(
     probs = jnp.where(allowed, probs, 0.0)
     probs = jnp.where(jnp.sum(probs) > 0, probs / jnp.sum(probs), jnp.array([0.0, 0.0, 0.0, 1.0]))
 
-    cumulative_probs = jnp.cumsum(probs)
-    chosen_op = jnp.searchsorted(cumulative_probs, jax.random.uniform(operation_key), side="right")
+    chosen_op = jax.random.choice(a=probs.shape[0], shape=(), p=probs, key=operation_key)
 
     changed_indices, new_sub_ids = jax.lax.switch(
         chosen_op,

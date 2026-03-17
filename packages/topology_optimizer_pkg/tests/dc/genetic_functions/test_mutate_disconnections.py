@@ -43,7 +43,7 @@ def test_change_disconnected_branch_valid(random_key, disconnections, n_disconne
     assert isinstance(new_disc_id, jnp.ndarray)
     assert new_disc_id.shape == ()
     if jnp.all(disconnections == int_max_value):
-        assert new_disc_id == int_max_value
+        assert disc_idx == int_max_value
     # If there are disconnected branches, new_disc_id should be in [0, n_disconnectable_branches)
     elif new_disc_id != int_max_value:
         assert 0 <= int(new_disc_id) < n_disconnectable_branches
@@ -53,7 +53,7 @@ def test_change_disconnected_branch_no_disconnected(random_key):
     disconnections = jnp.array([int_max(), int_max(), int_max()], dtype=int)
     n_disconnectable_branches = 3
     disc_idx, new_disc_id = change_disconnected_branch(random_key, disconnections, n_disconnectable_branches)
-    assert new_disc_id == int_max()
+    assert disc_idx == int_max()
 
 
 def test_change_disconnected_branch_all_branches_disconnected(random_key):

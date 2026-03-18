@@ -70,9 +70,6 @@ def get_bus_data(
     brh_to_bus = jnp.where(valid_branch_mask & (~from_stat_bool) & selected_bus_mask, tot_stat, fill_value)
     brh_from_bus = jnp.where(valid_branch_mask & from_stat_bool & selected_bus_mask, tot_stat, fill_value)
 
-    brh_to_bus = jnp.sort(brh_to_bus)
-    brh_from_bus = jnp.sort(brh_from_bus)
-
     return brh_to_bus, brh_from_bus
 
 

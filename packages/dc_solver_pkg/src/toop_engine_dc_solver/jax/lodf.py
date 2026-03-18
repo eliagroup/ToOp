@@ -28,7 +28,7 @@ def calc_lodf(
     ptdf: Float[Array, " n_branches n_bus"],
     from_node: Int[Array, " n_branches"],
     to_node: Int[Array, " n_branches"],
-    branches_monitored: Optional[Int[Array, " n_branches_monitored"]],
+    branches_monitored: Int[Array, " n_branches_monitored"],
 ) -> tuple[Float[Array, " n_branches_monitored"], Bool[Array, " "]]:
     """
     Calculate the LODF vector for a single outage or disconnection
@@ -61,49 +61,14 @@ def calc_lodf(
     from_node_outage = from_node.at[branch_to_outage].get(mode="fill", fill_value=int_max())
     to_node_outage = to_node.at[branch_to_outage].get(mode="fill", fill_value=int_max())
 
-    # Denominator, use .at to ensure that the branch that is outaged has a value of 1
+    ptdf_monitored = ptdf[branches_monitored]
+    # Denominator
     denom = (
         1
         - ptdf.at[branch_to_outage, from_node_outage].get(mode="fill", fill_value=0.0)
         + ptdf.at[branch_to_outage, to_node_outage].get(mode="fill", fill_value=0.0)
     )
-
     # Nominator
-    nom = ptdf.at[:, from_node_outage].get(mode="fill", fill_value=0.0) - ptdf.at[:, to_node_outage].get(
-        mode="fill", fill_value=0.0
-    )
-
-    # The lodf of the outaged branch must be -1,
-    # so we ensure this
-    nom = nom.at[branch_to_outage].set(-denom, mode="drop")
-
-    # Check if the network does not split (the network splits if denom is 0)
-    success = jnp.abs(denom) > 1e-11
-
-    if branches_monitored is not None:
-        nom = nom.at[branches_monitored].get(mode="fill", fill_value=0)
-
-    return nom / denom, success
-
-
-def _calc_lodf_monitored(
-    branch_to_outage: Int[Array, " "],
-    ptdf: Float[Array, " n_branches n_bus"],
-    ptdf_monitored: Float[Array, " n_branches_monitored n_bus"],
-    from_node: Int[Array, " n_branches"],
-    to_node: Int[Array, " n_branches"],
-    branches_monitored: Int[Array, " n_branches_monitored"],
-) -> tuple[Float[Array, " n_branches_monitored"], Bool[Array, " "]]:
-    """Calculate a single LODF vector directly on the monitored branch subset."""
-    from_node_outage = from_node.at[branch_to_outage].get(mode="fill", fill_value=int_max())
-    to_node_outage = to_node.at[branch_to_outage].get(mode="fill", fill_value=int_max())
-
-    denom = (
-        1
-        - ptdf.at[branch_to_outage, from_node_outage].get(mode="fill", fill_value=0.0)
-        + ptdf.at[branch_to_outage, to_node_outage].get(mode="fill", fill_value=0.0)
-    )
-
     nom = ptdf_monitored.at[:, from_node_outage].get(mode="fill", fill_value=0.0) - ptdf_monitored.at[:, to_node_outage].get(
         mode="fill", fill_value=0.0
     )
@@ -143,22 +108,11 @@ def calc_lodf_matrix(
         Whether the LODF was defined. False if the network split
     """
     if branches_monitored is None:
-        calc_lodf_partial = partial(
-            calc_lodf,
-            ptdf=ptdf,
-            from_node=from_node,
-            to_node=to_node,
-            branches_monitored=None,
-        )
+        branches_monitored = jnp.arange(ptdf.shape[0])
 
-        lodf, success = jax.vmap(calc_lodf_partial)(branches_to_outage)
-        return lodf, success
-
-    ptdf_monitored = ptdf[branches_monitored]
     calc_lodf_partial = partial(
-        _calc_lodf_monitored,
+        calc_lodf,
         ptdf=ptdf,
-        ptdf_monitored=ptdf_monitored,
         from_node=from_node,
         to_node=to_node,
         branches_monitored=branches_monitored,

@@ -7,8 +7,6 @@
 
 """Mutation utility functions for the genetic algorithm."""
 
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, ArrayLike, Bool, Int, PRNGKeyArray
@@ -16,40 +14,6 @@ from toop_engine_dc_solver.jax.types import int_max
 
 
 def sample_new_id(
-    random_key: PRNGKeyArray,
-    already_used_ids: Int[Array, " n_splits_or_disconnections"],
-    n_available_ids: int,
-    ignored_idx: Int[ArrayLike, " "],
-) -> Int[Array, " "]:
-    """Sample a relevant id that is not already used in the active split slots.
-
-    Parameters
-    ----------
-    random_key : PRNGKeyArray
-        Random key used for sampling.
-    already_used_ids : Int[Array, " max_num_splits"]
-        Current ids that should not be sampled again.
-    n_available_ids : int
-        Number of available ids that may be selected.
-    ignored_idx : Int[Array, " "]
-        Index in ``already_used_ids`` to ignore while checking duplicates. This is used for branch replacement,
-        where the currently replaced split must not block its own id.
-
-    Returns
-    -------
-    Int[Array, " "]
-        A valid new substation id, or ``int_max()`` if none are available.
-    """
-    int_max_value = int_max()
-    available_mask = jnp.ones((n_available_ids,), dtype=bool).at[already_used_ids].set(False, mode="drop")
-    available_mask = available_mask.at[already_used_ids.at[ignored_idx].get(mode="fill", fill_value=int_max_value)].set(
-        True, mode="drop"
-    )
-    return get_random_true_idx(random_key, available_mask, int_max_value)
-
-
-@partial(jax.jit, static_argnames=["n_available_ids"])
-def _sample_new_id(
     random_key: PRNGKeyArray,
     already_used_ids: Int[Array, " n_splits_or_disconnections"],
     n_available_ids: int,

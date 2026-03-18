@@ -28,7 +28,7 @@ def calc_lodf(
     ptdf: Float[Array, " n_branches n_bus"],
     from_node: Int[Array, " n_branches"],
     to_node: Int[Array, " n_branches"],
-    branches_monitored: Int[Array, " n_branches_monitored"],
+    branches_monitored: Optional[Int[Array, " n_branches_monitored"]],
 ) -> tuple[Float[Array, " n_branches_monitored"], Bool[Array, " "]]:
     """
     Calculate the LODF vector for a single outage or disconnection
@@ -61,7 +61,6 @@ def calc_lodf(
     from_node_outage = from_node.at[branch_to_outage].get(mode="fill", fill_value=int_max())
     to_node_outage = to_node.at[branch_to_outage].get(mode="fill", fill_value=int_max())
 
-    ptdf_monitored = ptdf[branches_monitored]
     # Denominator
     denom = (
         1
@@ -69,6 +68,7 @@ def calc_lodf(
         + ptdf.at[branch_to_outage, to_node_outage].get(mode="fill", fill_value=0.0)
     )
     # Nominator
+    ptdf_monitored = ptdf[branches_monitored] if branches_monitored is not None else ptdf
     nom = ptdf_monitored.at[:, from_node_outage].get(mode="fill", fill_value=0.0) - ptdf_monitored.at[:, to_node_outage].get(
         mode="fill", fill_value=0.0
     )
@@ -107,9 +107,6 @@ def calc_lodf_matrix(
     Bool[Array, " n_failures"]
         Whether the LODF was defined. False if the network split
     """
-    if branches_monitored is None:
-        branches_monitored = jnp.arange(ptdf.shape[0])
-
     calc_lodf_partial = partial(
         calc_lodf,
         ptdf=ptdf,

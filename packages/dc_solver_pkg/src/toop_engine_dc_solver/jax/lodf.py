@@ -68,7 +68,8 @@ def calc_lodf(
         + ptdf.at[branch_to_outage, to_node_outage].get(mode="fill", fill_value=0.0)
     )
     # Nominator
-    ptdf_monitored = ptdf[branches_monitored] if branches_monitored is not None else ptdf
+    branches_monitored = jnp.arange(ptdf.shape[0]) if branches_monitored is None else branches_monitored
+    ptdf_monitored = ptdf[branches_monitored]
     nom = ptdf_monitored.at[:, from_node_outage].get(mode="fill", fill_value=0.0) - ptdf_monitored.at[:, to_node_outage].get(
         mode="fill", fill_value=0.0
     )

@@ -13,9 +13,9 @@ from jaxtyping import Array, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import DisconnectionMutationConfig
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import (
-    _sample_new_id,
     do_nothing,
     get_random_true_idx,
+    sample_new_id,
 )
 
 
@@ -48,7 +48,7 @@ def change_disconnected_branch(
     is_disconnected = disconnections != int_max_value
     disc_idx = get_random_true_idx(random_index_key, is_disconnected, int_max_value)
 
-    new_disc_id = _sample_new_id(random_disc_key, disconnections, n_disconnectable_branches, disc_idx)
+    new_disc_id = sample_new_id(random_disc_key, disconnections, n_disconnectable_branches, disc_idx)
     return disc_idx, new_disc_id
 
 
@@ -108,7 +108,7 @@ def disconnect_additional_branch(
     is_disconnectable = disconnections == int_max_value
     disc_idx = get_random_true_idx(random_index_key, is_disconnectable, int_max_value)
 
-    new_disc_id = _sample_new_id(random_disc_key, disconnections, n_disconnectable_branches, int_max_value)
+    new_disc_id = sample_new_id(random_disc_key, disconnections, n_disconnectable_branches, int_max_value)
     return disc_idx, new_disc_id
 
 

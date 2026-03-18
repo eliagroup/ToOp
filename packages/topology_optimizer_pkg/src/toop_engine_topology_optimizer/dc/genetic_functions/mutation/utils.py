@@ -7,16 +7,13 @@
 
 """Mutation utility functions for the genetic algorithm."""
 
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, ArrayLike, Bool, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import int_max
 
 
-@partial(jax.jit, static_argnames=["n_available_ids"])
-def _sample_new_id(
+def sample_new_id(
     random_key: PRNGKeyArray,
     already_used_ids: Int[Array, " n_splits_or_disconnections"],
     n_available_ids: int,

@@ -314,7 +314,9 @@ class ActionSet(eqx.Module):
 
     action_start_indices: Int[Array, " n_sub_relevant"]
     """Precomputed start index for each substation in the concatenated action arrays.
-    Needed so random action sampling can use this directly instead of recomputing cumulative sums."""
+    Needed so random action sampling can use this directly instead of recomputing cumulative sums.
+    This is a cumulative sum of n_actions_per_sub, but is precomputed to avoid having to compute
+    it at runtime in the random topology generator."""
 
     rel_bb_outage_data: Optional[RelBBOutageData] = None
     """

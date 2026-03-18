@@ -14,9 +14,9 @@ from toop_engine_dc_solver.jax.topology_computations import sample_action_index_
 from toop_engine_dc_solver.jax.types import ActionSet, int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import SubstationMutationConfig
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import (
-    _sample_new_id,
     do_nothing,
     get_random_true_idx,
+    sample_new_id,
 )
 
 
@@ -54,7 +54,7 @@ def change_split_substation(
     split_key, sub_key = jax.random.split(random_key, 2)
     is_split = sub_ids != int_max_value
     split_idx = get_random_true_idx(split_key, is_split, int_max_value)
-    new_substation_idx = _sample_new_id(sub_key, sub_ids, n_rel_subs, split_idx)
+    new_substation_idx = sample_new_id(sub_key, sub_ids, n_rel_subs, split_idx)
     return split_idx, new_substation_idx
 
 
@@ -125,7 +125,7 @@ def split_additional_sub(
     split_key, sub_key = jax.random.split(random_key, 2)
     non_split = sub_ids == int_max_value
     split_idx = get_random_true_idx(split_key, non_split, int_max_value)
-    new_substation_idx = _sample_new_id(sub_key, sub_ids, n_rel_subs, int_max_value)
+    new_substation_idx = sample_new_id(sub_key, sub_ids, n_rel_subs, int_max_value)
     return split_idx, new_substation_idx
 
 

@@ -12,13 +12,19 @@ import jax.numpy as jnp
 from jaxtyping import Array, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import DisconnectionMutationConfig
-from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import do_nothing, get_random_true_idx
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import (
+    do_nothing,
+    get_random_true_idx,
+    sample_new_id,
+)
 
 
 def change_disconnected_branch(
     random_key: PRNGKeyArray, disconnections: Int[Array, " max_num_disconnections"], n_disconnectable_branches: int
 ) -> tuple[Int[Array, " "], Int[Array, " "]]:
     """Change a disconnected branch in the topology to a different one.
+
+    This assumes, that one branch is already disconnected, otherwise there would be nothing to change.
 
     Parameters
     ----------
@@ -42,13 +48,7 @@ def change_disconnected_branch(
     is_disconnected = disconnections != int_max_value
     disc_idx = get_random_true_idx(random_index_key, is_disconnected, int_max_value)
 
-    disconnectable = jnp.zeros(n_disconnectable_branches, dtype=bool).at[disconnections].set(True, mode="drop")
-    disconnectable = disconnectable.at[disconnections[disc_idx]].set(
-        False, mode="drop"
-    )  # make sure the currently disconnected branch is not sampled again
-
-    new_disc_id: Int[Array, " "] = jax.random.categorical(random_disc_key, jnp.log(1 - disconnectable.astype(float)))
-    new_disc_id = jnp.where(jnp.all(~disconnectable), int_max_value, new_disc_id)
+    new_disc_id = sample_new_id(random_disc_key, disconnections, n_disconnectable_branches, disc_idx)
     return disc_idx, new_disc_id
 
 
@@ -83,6 +83,8 @@ def disconnect_additional_branch(
 ) -> tuple[Int[Array, " "], Int[Array, " "]]:
     """Add a new disconnection to the topology.
 
+    This assumes, that there is still room to add a disconnection, otherwise there would be no valid branch to add.
+
     Parameters
     ----------
     random_key : jax.random.PRNGKey
@@ -105,13 +107,8 @@ def disconnect_additional_branch(
     # List available disconnections
     is_disconnectable = disconnections == int_max_value
     disc_idx = get_random_true_idx(random_index_key, is_disconnectable, int_max_value)
-    already_disconnected = jnp.zeros(n_disconnectable_branches, dtype=bool).at[disconnections].set(True, mode="drop")
-    all_disconnected = jnp.all(already_disconnected)
 
-    # Sample a new substation from the substations which have not been split yet for every topology
-    # in the batch
-    new_disc_id: Int[Array, " "] = jax.random.categorical(random_disc_key, jnp.log(1 - already_disconnected.astype(float)))
-    new_disc_id = jnp.where(all_disconnected, int_max_value, new_disc_id)
+    new_disc_id = sample_new_id(random_disc_key, disconnections, n_disconnectable_branches, int_max_value)
     return disc_idx, new_disc_id
 
 

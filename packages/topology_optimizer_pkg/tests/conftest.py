@@ -701,11 +701,18 @@ def _synthetic_action_set(
             unsplit_mask.append(is_unsplit)
 
     n_total_actions = n_subs * n_actions_per_sub
+    n_actions_per_sub_array = jnp.full((n_subs,), n_actions_per_sub, dtype=int)
 
     return ActionSet(
         branch_actions=jnp.array(branch_actions, dtype=bool),
         inj_actions=jnp.array(inj_actions, dtype=bool),
-        n_actions_per_sub=jnp.full((n_subs,), n_actions_per_sub, dtype=int),
+        n_actions_per_sub=n_actions_per_sub_array,
+        action_start_indices=jnp.concatenate(
+            [
+                jnp.array([0], dtype=n_actions_per_sub_array.dtype),
+                jnp.cumsum(n_actions_per_sub_array[:-1]),
+            ]
+        ),
         substation_correspondence=jnp.array(substation_correspondence, dtype=int),
         unsplit_action_mask=jnp.array(unsplit_mask, dtype=bool),
         reassignment_distance=jnp.arange(n_total_actions, dtype=int),

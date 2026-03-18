@@ -20,7 +20,7 @@ from functools import partial
 import jax
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
 from jaxtyping import Array, ArrayLike, Bool, Float, Int
-from toop_engine_dc_solver.jax.types import BSDFResults, HashableArrayWrapper
+from toop_engine_dc_solver.jax.types import BSDFResults, HashableArrayWrapper, int_max
 
 
 def get_bus_data(
@@ -63,28 +63,12 @@ def get_bus_data(
         branch is connected to bus a/b. Padded with int_max if the bus has less than
         max_branch_per_sub branches
     """
-    max_branch_per_sub = tot_stat.shape[0]
-    # Currently the substation topology is true on bus b, if we're interested in bus a invert.
-    if not return_bus_b:
-        substation_topology = ~substation_topology
+    fill_value = int_max()
+    selected_bus_mask = substation_topology if return_bus_b else ~substation_topology
+    valid_branch_mask = (tot_stat >= 0) & (tot_stat < n_branches)
 
-    # tot_stat contains out of bound indices as it is padded with int_max, we will instruct jax to
-    # drop operations on these indices through the mode parameter
-    brh_to_bus_mask: Bool[Array, " n_branches"] = jnp.zeros(n_branches, dtype=bool)
-    brh_to_bus_mask = brh_to_bus_mask.at[tot_stat].set(~from_stat_bool & substation_topology, mode="drop")
-    brh_from_bus_mask: Bool[Array, " n_branches"] = jnp.zeros(n_branches, dtype=bool)
-    brh_from_bus_mask = brh_from_bus_mask.at[tot_stat].set(from_stat_bool & substation_topology, mode="drop")
-
-    brh_to_bus = jnp.nonzero(
-        brh_to_bus_mask,
-        size=max_branch_per_sub,
-        fill_value=jnp.iinfo(tot_stat.dtype).max,
-    )[0]
-    brh_from_bus = jnp.nonzero(
-        brh_from_bus_mask,
-        size=max_branch_per_sub,
-        fill_value=jnp.iinfo(tot_stat.dtype).max,
-    )[0]
+    brh_to_bus = jnp.where(valid_branch_mask & (~from_stat_bool) & selected_bus_mask, tot_stat, fill_value)
+    brh_from_bus = jnp.where(valid_branch_mask & from_stat_bool & selected_bus_mask, tot_stat, fill_value)
 
     return brh_to_bus, brh_from_bus
 
@@ -387,14 +371,17 @@ def _apply_bus_split(
     n_stat: int,
 ) -> BSDFResults:
     """Like apply_bus_split, but assumes the current substation has a bus split."""
-    i_stat = jnp.array(rel_stat_map.val)[substation_id]
+    station_tot_stat = tot_stat[substation_id]
+    station_from_stat_bool = from_stat_bool[substation_id]
+    i_stat = jnp.asarray(rel_stat_map.val)[substation_id]
+
     bsdf, ptdf_th_sw, success = calc_bsdf(
         substation_topology=substation_configuration,
         ptdf=current_results.ptdf,
         i_stat_rel=substation_id,
         i_stat=i_stat,
-        tot_stat=tot_stat[substation_id],
-        from_stat_bool=from_stat_bool[substation_id],
+        tot_stat=station_tot_stat,
+        from_stat_bool=station_from_stat_bool,
         to_node=current_results.to_node,
         from_node=current_results.from_node,
         susceptance=susceptance,
@@ -404,8 +391,8 @@ def _apply_bus_split(
 
     to_node, from_node = update_from_to_node(
         substation_topology=substation_configuration,
-        tot_stat=tot_stat[substation_id],
-        from_stat_bool=from_stat_bool[substation_id],
+        tot_stat=station_tot_stat,
+        from_stat_bool=station_from_stat_bool,
         i_stat_rel_id=substation_id,
         to_node=current_results.to_node,
         from_node=current_results.from_node,

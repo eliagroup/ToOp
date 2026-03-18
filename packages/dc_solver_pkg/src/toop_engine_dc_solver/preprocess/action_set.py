@@ -553,6 +553,12 @@ def pad_out_action_set(
         substation_correspondence=jnp.array(substation_correspondence),
         unsplit_action_mask=unsplit_action_mask,
         reassignment_distance=jnp.array(padded_reassignments),
+        action_start_indices=jnp.concatenate(
+            [
+                jnp.array([0], dtype=n_actions_per_sub.dtype),
+                jnp.cumsum(n_actions_per_sub[:-1]),
+            ]
+        ),
         inj_actions=jnp.array(padded_injection_actions),
         rel_bb_outage_data=None,
     )

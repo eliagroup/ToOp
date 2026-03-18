@@ -380,6 +380,7 @@ def test_convert_action_index_to_numpy():
         ),
         branch_actions=jnp.zeros((4, 12), dtype=bool),
         n_actions_per_sub=jnp.array([1, 2, 1], dtype=int),
+        action_start_indices=jnp.array([0, 1, 3], dtype=int),
         unsplit_action_mask=jnp.zeros(4, dtype=bool),
         reassignment_distance=jnp.zeros(4, dtype=int),
     )

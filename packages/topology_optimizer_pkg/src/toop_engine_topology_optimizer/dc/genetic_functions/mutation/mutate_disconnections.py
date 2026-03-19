@@ -120,6 +120,10 @@ def mutate_disconnections(
 ) -> Int[Array, " max_num_disconnections"]:
     """Mutate the disconnections of a single topology.
 
+    Impossible mutations (e.g. adding a disconnection when there is no room to add one,
+    or removing a disconnection when there are none) are handled by setting the probabilities
+    for these mutations to zero, and adding them to the remain probability.
+
     Parameters
     ----------
     random_key : jax.random.PRNGKey
@@ -178,13 +182,15 @@ def mutate_disconnections(
     allowed = jnp.array([allow_add, allow_remove, allow_replace, allow_remain], dtype=bool)
     probs = jnp.where(allowed, probs, 0.0)
 
+    # Replace all "illegal" operations with "remain unchanged".
+    prob_sum = jnp.sum(probs)
     # If there are no splits, always add a disconnection
     # Otherwise, normalise the allowed probabilities to sum to 1
     # If probs are negative, only the remain option is considered
     probs = jnp.where(
         (~has_splits) & allow_add & (n_disconnections == 0),
         jnp.array([1.0, 0.0, 0.0, 0.0]),
-        jnp.where(jnp.sum(probs) > 0, probs / jnp.sum(probs), jnp.array([0.0, 0.0, 0.0, 1.0])),
+        probs.at[3].set(1.-prob_sum),
     )
 
     # Randomly choose which operation to perform based on the probabilities

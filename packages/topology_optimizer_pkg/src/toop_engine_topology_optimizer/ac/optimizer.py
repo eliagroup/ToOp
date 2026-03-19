@@ -60,6 +60,8 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import conver
 
 logger = logbook.Logger(__name__)
 
+INF_REPLACE = 99999999.0
+
 
 class AcNotConvergedError(Exception):
     """An exception that is raised when the AC optimization did not converge in the base grid"""
@@ -553,6 +555,8 @@ def run_epoch(
     logger.debug(f"Epoch {epoch}: imported {len(added_topos)} topology/ies from result stream")
     new_strategy = optimizer_data.evolution_fn()
 
+    enable_ac_rejection = optimizer_data.params.ga_config.enable_ac_rejection
+
     # It is possible that no new strategy was generated
     if not new_strategy:
         logger.debug(f"Epoch {epoch}: evolution returned no new strategy")
@@ -566,10 +570,12 @@ def run_epoch(
 
     except Exception as e:
         loadflow_result_reference = None
-        metrics = [Metrics(fitness=-np.inf, extra_scores={}) for _ in range(len(new_strategy))]
+        metrics = [Metrics(fitness=-INF_REPLACE, extra_scores={}) for _ in range(len(new_strategy))]
         rejection_reason = TopologyRejectionReason(
             criterion="topology-error", description=str(e), value_before=0.0, value_after=1.0
         )
+        # In case of error during scoring, we want to reject the topology, even if AC rejection is not enabled
+        enable_ac_rejection = True
         logger.error(f"Epoch {epoch}: error during scoring: {e}")
 
     # Update the strategy with the new loadflow results
@@ -580,7 +586,7 @@ def run_epoch(
         if "fitness_dc" in topology.metrics:
             metric.extra_scores["fitness_dc"] = topology.metrics["fitness_dc"]
         topology.metrics = metric.extra_scores
-        topology.fitness = metric.fitness
+        topology.fitness = metric.fitness or -INF_REPLACE
         topology.acceptance = rejection_reason is None
         topology.set_loadflow_reference(loadflow_result_reference)
 
@@ -600,7 +606,7 @@ def run_epoch(
     logger.debug(f"Epoch {epoch}: committed {len(new_strategy)} topology/ies to AC DB")
 
     # Send the new strategy to the result topic
-    if not optimizer_data.params.ga_config.enable_ac_rejection or rejection_reason is None:
+    if not enable_ac_rejection or rejection_reason is None:
         send_result_fn(TopologyPushResult(strategies=[Strategy(timesteps=message_topos)], epoch=epoch))
         logger.info(
             f"Epoch {epoch} completed, accept: True, metrics: {metrics[0].extra_scores}, fitness: {metrics[0].fitness}"

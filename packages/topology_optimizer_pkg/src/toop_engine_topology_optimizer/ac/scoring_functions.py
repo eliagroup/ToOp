@@ -27,6 +27,7 @@ from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.evolution_functions import get_contingency_indices_from_ids
+from toop_engine_topology_optimizer.ac.optimizer import INF_REPLACE
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, TopologyRejectionReason
 
@@ -248,7 +249,7 @@ def compute_metrics_single_timestep(
     """
     metrics = compute_metrics_lfs(loadflow_results=loadflow, base_case_id=base_case_id)
     metrics = {
-        key: (0.0 if value is None else np.nan_to_num(value, nan=0, posinf=99999999, neginf=-99999999).item())
+        key: (0.0 if value is None else np.nan_to_num(value, nan=0, posinf=INF_REPLACE, neginf=-INF_REPLACE).item())
         for key, value in metrics.items()
     }
     non_successful_states = [

@@ -29,6 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, select
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_topology_optimizer.ac.optimizer import INF_REPLACE
 from toop_engine_topology_optimizer.ac.select_strategy import select_strategy
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, OptimizerType
@@ -234,7 +235,7 @@ def pull(
         new_topo = ACOptimTopology(
             **data,
             optimizer_type=OptimizerType.AC,
-            fitness=-9999999,
+            fitness=-INF_REPLACE,
             parent_id=topo.id,
             metrics=metrics,
             worst_k_contingency_cases=merged_ids,
@@ -287,7 +288,7 @@ def reconnect(rng: Rng, selected_strategy: list[ACOptimTopology]) -> list[ACOpti
                 ]
             ),
             optimizer_type=OptimizerType.AC,
-            fitness=-9999999,
+            fitness=-INF_REPLACE,
             disconnections=[disc for disc in topo.disconnections if disc != chosen],
             unsplit=False,
             parent_id=topo.id,
@@ -357,7 +358,7 @@ def close_coupler(
                 ]
             ),
             optimizer_type=OptimizerType.AC,
-            fitness=-9999999,
+            fitness=-INF_REPLACE,
             actions=new_actions_timestep,
             unsplit=False,  # Will be updated below
             parent_id=topo.id,

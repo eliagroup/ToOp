@@ -366,12 +366,13 @@ def evaluate_acceptance(
     """
     for i, metric in enumerate(metrics_split):
         for metric_name, value in metric.extra_scores.items():
-            if value is None:
+            pre_split_value = metrics_unsplit[i].extra_scores.get(metric_name)
+            if value is None or pre_split_value is None:
                 return TopologyRejectionReason(
                     criterion="metric-error",
                     description=f"Metric {metric_name} is None in split strategy",
-                    value_before=metrics_unsplit[i].extra_scores.get(metric_name, 0),
-                    value_after=value,
+                    value_before=pre_split_value if pre_split_value is not None else 0,
+                    value_after=value if value is not None else 0,
                     early_stopping=early_stopping,
                 )
     n_non_converged_unsplit = np.array(
@@ -607,6 +608,8 @@ def scoring_and_acceptance(
             reject_critical_branch_threshold=scoring_params.reject_critical_branch_threshold,
             early_stopping=True,
         )
+        if rejection_reason is not None:
+            return lfs_early_stop, metrics_early_stop, rejection_reason
         lfs, metrics = compute_remaining_loadflows(
             runners=runners,
             strategy=strategy,

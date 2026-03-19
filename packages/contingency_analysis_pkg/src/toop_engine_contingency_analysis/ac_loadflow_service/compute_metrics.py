@@ -215,7 +215,7 @@ def get_worst_k_contingencies_ac(
 def compute_metrics(
     loadflow_results: LoadflowResultsPolars,
     base_case_id: Optional[str] = None,
-) -> dict[MetricType, float]:
+) -> dict[MetricType, float | None]:
     """Compute the metrics from the loadflow results.
 
     Parameters

@@ -136,7 +136,7 @@ class TopologyRejectionReason(BaseModel):
       we set this to 1 to indicate a bad topology)
     """
 
-    value_before: float
+    value_before: float | None = None
     """The value of the metric that caused the rejection before applying the strategy.
 
     Meaning of the value is similar to value_after dependent on the criterion.
@@ -159,6 +159,8 @@ def get_topology_rejection_message(result: TopologyRejectionReason) -> str:
         "critical-branch-count": "Rejecting topology due to critical branches increasing too much",
         "voltage-magnitude": "Rejecting topology due to voltage magnitude violation",
         "voltage-angle": "Rejecting topology due to voltage angle violation",
+        "metric-error": "Rejecting topology due to error during metric computation",
+        "topology-error": "Rejecting topology due to error during loadflow computation",
         "other": "Rejecting topology due to other reason",
     }
 

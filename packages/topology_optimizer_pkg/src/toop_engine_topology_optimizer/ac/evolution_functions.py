@@ -169,6 +169,9 @@ def get_contingency_indices_from_ids(
     return case_indices_all_t
 
 
+INF_FITNESS = 9999999.0
+
+
 def pull(
     selected_strategy: list[ACOptimTopology],
     session: Session = None,
@@ -234,7 +237,7 @@ def pull(
         new_topo = ACOptimTopology(
             **data,
             optimizer_type=OptimizerType.AC,
-            fitness=-9999999,
+            fitness=-INF_FITNESS,
             parent_id=topo.id,
             metrics=metrics,
             worst_k_contingency_cases=merged_ids,
@@ -287,7 +290,7 @@ def reconnect(rng: Rng, selected_strategy: list[ACOptimTopology]) -> list[ACOpti
                 ]
             ),
             optimizer_type=OptimizerType.AC,
-            fitness=-9999999,
+            fitness=-INF_FITNESS,
             disconnections=[disc for disc in topo.disconnections if disc != chosen],
             unsplit=False,
             parent_id=topo.id,
@@ -357,7 +360,7 @@ def close_coupler(
                 ]
             ),
             optimizer_type=OptimizerType.AC,
-            fitness=-9999999,
+            fitness=-INF_FITNESS,
             actions=new_actions_timestep,
             unsplit=False,  # Will be updated below
             parent_id=topo.id,

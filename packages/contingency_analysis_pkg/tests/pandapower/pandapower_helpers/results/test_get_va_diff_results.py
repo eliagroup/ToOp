@@ -256,8 +256,9 @@ def test_get_va_diff_results(pandapower_net: pp.pandapowerNet):
     assert isinstance(va_diff_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(va_diff_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(va_diff_df.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
-    assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist(), \
+    assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist(), (
         "Element IDs should match monitored elements + the outaged line"
+    )
     assert va_diff_df.va_diff.tolist() == [
         outage_net.res_bus.loc[0].va_degree - outage_net.res_bus.loc[1].va_degree,
     ], "VA differences should match the outage net"
@@ -331,7 +332,9 @@ def test_get_va_diff_results_multioutage(pandapower_net: pp.pandapowerNet):
     assert isinstance(va_diff_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(va_diff_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(va_diff_df.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
-    assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist() , "Element IDs should match monitored elements + the outaged line"
+    assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist(), (
+        "Element IDs should match monitored elements + the outaged line"
+    )
     assert va_diff_df.va_diff.tolist() == [
         outage_net.res_bus.loc[0].va_degree - outage_net.res_bus.loc[1].va_degree,
     ], "VA differences should match the outage net"

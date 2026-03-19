@@ -254,10 +254,5 @@ def compute_metrics(
             "critical_branch_count_n_0": count_critical_branches(n_0_branch_res),
         }
 
-        for metric_name, value in new_metrics.items():
-            assert value is not None, (
-                f"{metric_name} could not be computed, possibly due to missing or invalid base case results."
-            )
-
         metrics.update(new_metrics)
     return metrics

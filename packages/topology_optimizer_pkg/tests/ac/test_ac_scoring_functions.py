@@ -184,6 +184,40 @@ def test_evaluate_acceptance_identical_metrics():
     assert reason is None, "Results rejected although they are just as good and thresholds above 1."
 
 
+def test_evaluate_acceptance_invalid_metrics():
+    metrics_unsplit = [
+        Metrics(
+            fitness=-1.0,
+            extra_scores={
+                "non_converging_loadflows": 10,
+                "overload_energy_n_1": 100.0,
+                "critical_branch_count_n_1": 10,
+            },
+        )
+    ]
+    # Check identical values
+    metrics_split = [
+        Metrics(
+            fitness=-1.0,
+            extra_scores={
+                "non_converging_loadflows": None,
+                "overload_energy_n_1": 90,
+                "critical_branch_count_n_1": 9,
+            },
+        )
+    ]
+    reason = evaluate_acceptance(
+        metrics_split=metrics_split,
+        metrics_unsplit=metrics_unsplit,
+        reject_convergence_threshold=0.9,
+        reject_overload_threshold=0.9,
+        reject_critical_branch_threshold=0.9,
+    )
+    assert reason is not None, "Results accepted although they have invalid metric values."
+    assert reason.criterion == "metric-error"
+    assert reason.description == "Metric non_converging_loadflows is None in split strategy"
+
+
 def test_evaluate_acceptance_improved_metrics():
     metrics_unsplit = [
         Metrics(

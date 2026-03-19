@@ -557,12 +557,20 @@ def run_epoch(
     if not new_strategy:
         logger.debug(f"Epoch {epoch}: evolution returned no new strategy")
         return False
-
     logger.debug(f"Epoch {epoch}: evaluating strategy with {len(new_strategy)} timestep topology/ies")
-    loadflow_results, metrics, rejection_reason = optimizer_data.scoring_fn(new_strategy)
-    logger.debug(f"Epoch {epoch}: scoring finished, rejection_reason={rejection_reason}, n_metrics={len(metrics)}")
-    loadflow_result_reference = optimizer_data.store_loadflow_fn(loadflow_results)
-    logger.debug(f"Epoch {epoch}: stored loadflow reference={loadflow_result_reference}")
+    try:
+        loadflow_results, metrics, rejection_reason = optimizer_data.scoring_fn(new_strategy)
+        logger.debug(f"Epoch {epoch}: scoring finished, rejection_reason={rejection_reason}, n_metrics={len(metrics)}")
+        loadflow_result_reference = optimizer_data.store_loadflow_fn(loadflow_results)
+        logger.debug(f"Epoch {epoch}: stored loadflow reference={loadflow_result_reference}")
+
+    except Exception as e:
+        loadflow_result_reference = None
+        metrics = [Metrics(fitness=-np.inf, extra_scores={}) for _ in range(len(new_strategy))]
+        rejection_reason = TopologyRejectionReason(
+            criterion="topology-error", description=str(e), value_before=0.0, value_after=1.0
+        )
+        logger.error(f"Epoch {epoch}: error during scoring: {e}")
 
     # Update the strategy with the new loadflow results
     message_topos = []

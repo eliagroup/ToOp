@@ -363,6 +363,16 @@ def evaluate_acceptance(
     Optional[TopologyRejectionReason]
         A TopologyRejectionReason if the split results are rejected, None if accepted.
     """
+    for i, metric in enumerate(metrics_split):
+        for metric_name, value in metric.extra_scores.items():
+            if value is None:
+                return TopologyRejectionReason(
+                    criterion="metric-error",
+                    description=f"Metric {metric_name} is None in split strategy",
+                    value_before=metrics_unsplit[i].extra_scores.get(metric_name, 0),
+                    value_after=value,
+                    early_stopping=early_stopping,
+                )
     n_non_converged_unsplit = np.array(
         [unsplit.extra_scores.get("non_converging_loadflows", 0) for unsplit in metrics_unsplit]
     )
@@ -596,8 +606,6 @@ def scoring_and_acceptance(
             reject_critical_branch_threshold=scoring_params.reject_critical_branch_threshold,
             early_stopping=True,
         )
-        if rejection_reason is not None:
-            return lfs_early_stop, metrics_early_stop, rejection_reason
         lfs, metrics = compute_remaining_loadflows(
             runners=runners,
             strategy=strategy,

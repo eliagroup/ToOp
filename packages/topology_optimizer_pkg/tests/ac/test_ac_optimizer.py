@@ -31,6 +31,7 @@ from toop_engine_topology_optimizer.ac.scoring_functions import compute_loadflow
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
+from toop_engine_topology_optimizer.interfaces.messages.results import ResultUnion
 from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_topo_data
 
 
@@ -276,6 +277,79 @@ def test_wait_for_first_dc_results_success_with_topology_counts() -> None:
 
         assert poll_mock.called
         assert heartbeat_counter == 0
+
+
+def test_run_epoch_failing_scoring(grid_folder: Path, loadflow_result_folder: Path) -> None:
+    params = ACOptimizerParameters(
+        ga_config=ACGAParameters(
+            runtime_seconds=10, pull_prob=1.0, reconnect_prob=0.0, close_coupler_prob=0.0, seed=42, enable_ac_rejection=True
+        )
+    )
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
+    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
+    optimizer_data, _ = initialize_optimization(
+        params=params,
+        session=create_session(),
+        optimization_id="test",
+        grid_files=grid_files,
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
+    )
+    action_set = optimizer_data.action_sets[0]
+    assert action_set is not None
+    assert len(action_set.local_actions)
+    # Generate random DC topologies to pull
+    for _ in range(10):
+        actions = random_actions(action_set, np.random.default_rng(42), 2)
+
+        pst_setpoints = None
+
+        topo_hash = hash_topo_data([(actions, [], pst_setpoints)])
+
+        topo = ACOptimTopology(
+            actions=actions,
+            disconnections=[],
+            pst_setpoints=pst_setpoints,
+            timestep=0,
+            fitness=0,
+            unsplit=False,
+            strategy_hash=topo_hash,
+            optimization_id="test",
+            optimizer_type=OptimizerType.DC,
+        )
+        optimizer_data.session.add(topo)
+        try:
+            optimizer_data.session.commit()
+        except Exception:
+            optimizer_data.session.rollback()
+    consumer = Mock(spec=LongRunningKafkaConsumer)
+    consumer.consume = Mock(return_value=[])
+
+    # Mock the scoring function to raise an exception, simulating a failure during scoring
+    def scoring_fn(*args, **kwargs) -> None:
+        raise Exception("Loadflow computation failed")
+
+    optimizer_data.scoring_fn = scoring_fn
+    send_messages = []
+
+    def _send_result_fn(res: ResultUnion) -> None:
+        send_messages.append(res)
+
+    result = run_epoch(
+        optimizer_data=optimizer_data,
+        results_consumer=consumer,
+        send_result_fn=_send_result_fn,
+        epoch=0,
+    )
+
+    assert result == True
+    assert len(send_messages) == 1
+    assert send_messages[0].reason is not None
+    assert send_messages[0].reason.criterion == "topology-error"
+    assert send_messages[0].reason.description == "Loadflow computation failed"
+    assert send_messages[0].reason.value_before == 0.0
+    assert send_messages[0].reason.value_after == 1.0
 
 
 def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:

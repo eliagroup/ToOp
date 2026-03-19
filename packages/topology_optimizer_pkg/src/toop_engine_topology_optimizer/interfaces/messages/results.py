@@ -27,7 +27,7 @@ class Metrics(BaseModel):
     fitness: float
     """The current best fitness value, which is the optimized quantity"""
 
-    extra_scores: dict[MetricType, float]
+    extra_scores: dict[MetricType, float | None]
     """Additional metrics such as max_flow_n_0, etc.
     """
 
@@ -101,7 +101,14 @@ class Strategy(BaseModel):
 
 
 RejectionCriterion: TypeAlias = Literal[
-    "convergence", "voltage-magnitude", "voltage-angle", "overload-energy", "critical-branch-count", "other"
+    "convergence",
+    "voltage-magnitude",
+    "voltage-angle",
+    "overload-energy",
+    "critical-branch-count",
+    "metric-error",
+    "topology-error",
+    "other",
 ]
 
 
@@ -114,7 +121,7 @@ class TopologyRejectionReason(BaseModel):
     description: Optional[str] = None
     """A more detailed description of the rejection, e.g. which lines were overloaded, etc."""
 
-    value_after: float
+    value_after: float | None = None
     """The value of the metric that caused the rejection after applying the strategy.
 
     Depending on the criterion, this has different meanings:
@@ -124,6 +131,9 @@ class TopologyRejectionReason(BaseModel):
     - For voltage angle this is the maximum voltage angle violation in degrees.
     - For overload energy this is the overload in MW.
     - For critical branch count this is the number of critical branches, i.e. branches above their operational limit.
+    - For metric error this is the value of the metric
+    - For topology error this is 1. (as in there was an error during the loadflow/metric computation,
+      we set this to 1 to indicate a bad topology)
     """
 
     value_before: float

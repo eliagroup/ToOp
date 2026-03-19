@@ -125,13 +125,13 @@ def test_grouping_single_line_returns_connected_component():
         elements=[initial_element],
     )
 
-    result = get_outage_group_for_contingency(net, [contingency])
+    result = get_outage_group_for_contingency(net, [contingency])[0]
 
-    assert len(result) == 1
-    grouped = result[0]
+    assert len(result.contingencies) == 1
+    grouped = result.contingencies[0]
     assert grouped.unique_id == "c1"
 
-    ids = {(e.table, e.table_id) for e in grouped.elements}
+    ids = {(e.table, e.table_id) for e in result.elements}
 
     # must contain original element
     assert ("line", 0) in ids

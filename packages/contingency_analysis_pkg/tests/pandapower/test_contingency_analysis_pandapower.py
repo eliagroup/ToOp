@@ -120,11 +120,23 @@ def test_update_results_with_names_sets_missing_values_and_contingency_name() ->
         "reg_1": "Reg 1",
     }
 
-    regulating_elements_df, branch_results_df, node_results_df, va_diff_results = update_results_with_names(
+    regulating_elements_df = update_results_with_names(
         contingency,
         regulating_elements_df,
+        element_name_map,
+    )
+    branch_results_df = update_results_with_names(
+        contingency,
         branch_results_df,
+        element_name_map,
+    )
+    node_results_df = update_results_with_names(
+        contingency,
         node_results_df,
+        element_name_map,
+    )
+    va_diff_results = update_results_with_names(
+        contingency,
         va_diff_results,
         element_name_map,
     )

@@ -101,6 +101,29 @@ class PandapowerContingency(BaseModel):
         return len(self.elements) == 0
 
 
+class PandapowerContingencyGroup(BaseModel):
+    """
+    Represents a group of contingencies affecting the same set of network components.
+
+    This model aggregates multiple contingencies that map to the same connected
+    component signature (i.e., they impact the same parts of the grid). It also
+    contains the full set of grid elements belonging to those components.
+
+    Attributes
+    ----------
+        contingencies (list[PandapowerContingency]):
+            List of original contingencies that affect the same connected
+            component(s) and are therefore grouped together.
+
+        elements (list[PandapowerElements]):
+            Union of all grid elements contained in the connected component(s)
+            associated with this group. These represent the full outage scope.
+    """
+
+    contingencies: list[PandapowerContingency]
+    elements: list[PandapowerElements]
+
+
 class PandapowerNMinus1Definition(BaseModel):
     """A Pandapower N-1 definition.
 
@@ -112,6 +135,9 @@ class PandapowerNMinus1Definition(BaseModel):
 
     contingencies: list[PandapowerContingency]
     """The outages to be considered. Maps contingency id to outaged element ids."""
+
+    grouped_contingencies: Optional[list[PandapowerContingencyGroup]] = None
+    """Optional grouped outages to be considered."""
 
     missing_contingencies: list[Contingency]
     """A list of contingencies that were not found in the network."""

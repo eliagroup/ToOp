@@ -172,11 +172,13 @@ def mutate_disconnections(
     allow_replace = n_disconnections > 0
 
     allow_remain = True  # We can always choose to remain unchanged
-
+    # We temporarily set the remain probability to 0, because we will add the probabilities
+    # of the illegal actions to the remain probability later, after we set the illegal action probabilities to 0.
+    temp_remain_prob = 0.0
     # Create an array of the probabilities for the different operations,
     # and set the probabilities to 0 for the operations that are not allowed.
     probs = jnp.array(
-        [add_disconnection_prob, remove_disconnection_prob, change_disconnection_prob, 0.0], dtype=float
+        [add_disconnection_prob, remove_disconnection_prob, change_disconnection_prob, temp_remain_prob], dtype=float
     )
     allowed = jnp.array([allow_add, allow_remove, allow_replace, allow_remain], dtype=bool)
     probs = jnp.where(allowed, probs, 0.0)
@@ -189,7 +191,7 @@ def mutate_disconnections(
     probs = jnp.where(
         (~has_splits) & allow_add & (n_disconnections == 0),
         jnp.array([1.0, 0.0, 0.0, 0.0]),
-        probs.at[3].set(1.-prob_sum),
+        probs.at[3].set(1.0 - prob_sum),
     )
 
     # Randomly choose which operation to perform based on the probabilities

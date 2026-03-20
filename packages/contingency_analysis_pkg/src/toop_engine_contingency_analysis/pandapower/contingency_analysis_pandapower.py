@@ -498,10 +498,20 @@ def run_contingency_analysis_parallel(
     list[LoadflowResults]
         A list of the results per contingency
     """
-    n_outages = len(n_minus_1_definition.contingencies)
+    n_outages = len(n_minus_1_definition.grouped_contingencies)
     if batch_size is None:
         batch_size = math.ceil(n_outages / n_processes)
-    work = [n_minus_1_definition[i : i + batch_size] for i in range(0, n_outages, batch_size)]
+    work = []
+    for i in range(0, n_outages, batch_size):
+        grouped_batch = n_minus_1_definition.grouped_contingencies[i : i + batch_size]
+        work.append(
+            n_minus_1_definition.model_copy(
+                update={
+                    "contingencies": [],
+                    "grouped_contingencies": grouped_batch,
+                }
+            )
+        )
 
     # Schedule work until the handle list is too long, then wait for the first result and continue
     handles = []

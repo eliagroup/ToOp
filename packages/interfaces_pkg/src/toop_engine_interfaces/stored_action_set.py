@@ -205,34 +205,44 @@ def _validate_station_diff_hypothesis(starting_station: Station, action: Station
         )
 
 
-def store_station_diff_io(binaryio: io.IOBase, station_diffs: list[StationDiffArray]) -> None:
+def store_station_diff_fs(
+    filesystem: AbstractFileSystem, station_diffs: list[StationDiffArray], diff_file_path: str | Path
+) -> None:
     """Store a station diff to a hdf5 file, using a different group for every station
 
     Use load_station_diff_io to load it again
 
     Parameters
     ----------
-    binaryio : io.IOBase
-        A binary file-like object to store the station diffs in.
+    filesystem : AbstractFileSystem
+        A filesystem to store the station diffs in.
     station_diffs : list[StationDiffArray]
         A list of station diffs to store.
+    diff_file_path : str | Path
+        The file path to store the station diffs in.
     """
-    with h5py.File(binaryio, mode="w") as file:
+    filesystem.makedirs(Path(diff_file_path).parent.as_posix(), exist_ok=True)
+
+    bytes_io = io.BytesIO()
+    with h5py.File(bytes_io, mode="w") as file:
         for station_diff in station_diffs:
             group = file.create_group(station_diff.grid_model_id)
             group.create_dataset("coupler_open", data=station_diff.coupler_open)
             group.create_dataset("switching_table", data=station_diff.switching_table)
+    bytes_io.seek(0)
+    with filesystem.open(str(diff_file_path), "wb") as file:
+        file.write(bytes_io.getbuffer())
 
 
-def load_station_diff_io(binaryio: io.IOBase) -> list[StationDiffArray]:
+def _load_station_diff_io(binaryio: io.IOBase) -> list[StationDiffArray]:
     """Load station diffs from a hdf5 file, using a different group for every station
 
     Use store_station_diff_io to store it.
 
     Parameters
     ----------
-    binaryio : io.IOBase
-        A binary file-like object to load the station diffs from.
+    binaryio : io.BufferedIOBase
+        A binary IO to load the station diffs from.
 
     Returns
     -------
@@ -250,6 +260,27 @@ def load_station_diff_io(binaryio: io.IOBase) -> list[StationDiffArray]:
             )
             station_diffs.append(station_diff)
     return station_diffs
+
+
+def load_station_diff_fs(filesystem: AbstractFileSystem, diff_file_path: str | Path) -> list[StationDiffArray]:
+    """Load station diffs from a hdf5 file, using a different group for every station
+
+    Use store_station_diff_io to store it.
+
+    Parameters
+    ----------
+    filesystem : AbstractFileSystem
+        A filesystem to load the station diffs from.
+    diff_file_path : str | Path
+        The file path to load the station diffs from.
+
+    Returns
+    -------
+    list[StationDiffArray]
+        A list of station diffs loaded from the file.
+    """
+    with filesystem.open(str(diff_file_path), "rb") as file:
+        return _load_station_diff_io(file)
 
 
 def expand_single_station_diff_to_actions(starting_station: Station, station_diff: StationDiffArray) -> list[Station]:
@@ -410,8 +441,7 @@ def load_action_set_fs(
     with filesystem.open(str(json_file_path), "r") as f:
         action_set = ActionSet.model_validate_json(f.read())
     if diff_file_path is not None:
-        with filesystem.open(str(diff_file_path), "rb") as f:
-            station_diffs = load_station_diff_io(f)
+        station_diffs = load_station_diff_fs(filesystem, diff_file_path)
         local_actions = expand_station_diffs(
             starting_topology=action_set.simplified_starting_topology, station_diffs=station_diffs
         )
@@ -461,9 +491,6 @@ def save_action_set_fs(
         Whether to validate that local action changes only affect coupler open states and switching tables.
         This is intended for debugging and can make saving slower.
     """
-    json_file = str(json_file_path)
-    hdf5_file = str(diff_file_path)
-
     station_diffs = compress_actions_to_station_diffs(
         # Station diffs are computed against the simplified topology used to generate local actions.
         starting_topology=action_set.simplified_starting_topology,
@@ -473,14 +500,10 @@ def save_action_set_fs(
 
     # local_actions are persisted in the HDF5 file as compressed station diffs.
     action_set_without_local_actions = action_set.model_copy(update={"local_actions": []})
-    save_pydantic_model_fs(filesystem=filesystem, file_path=json_file, pydantic_model=action_set_without_local_actions)
-
-    filesystem.makedirs(Path(hdf5_file).parent.as_posix(), exist_ok=True)
-    bytes_io = io.BytesIO()
-    store_station_diff_io(bytes_io, station_diffs)
-    bytes_io.seek(0)
-    with filesystem.open(str(diff_file_path), "wb") as file:
-        file.write(bytes_io.getbuffer())
+    save_pydantic_model_fs(
+        filesystem=filesystem, file_path=str(json_file_path), pydantic_model=action_set_without_local_actions
+    )
+    store_station_diff_fs(filesystem, station_diffs, diff_file_path)
 
 
 def save_action_set(

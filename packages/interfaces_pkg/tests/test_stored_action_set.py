@@ -5,12 +5,12 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import io
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from pydantic import ValidationError
 from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
 from toop_engine_interfaces.stored_action_set import (
@@ -19,10 +19,10 @@ from toop_engine_interfaces.stored_action_set import (
     compress_actions_to_station_diffs,
     expand_station_diffs,
     load_action_set,
-    load_station_diff_io,
+    load_station_diff_fs,
     random_actions,
     save_action_set,
-    store_station_diff_io,
+    store_station_diff_fs,
     validate_actions_grouped,
 )
 
@@ -101,9 +101,9 @@ def test_random_actions_single_substation():
     assert result[0] in [0, 1]
 
 
-def test_store_and_load_station_diff_io_random_roundtrip():
+def test_store_and_load_station_diff_io_random_roundtrip(tmp_path: Path):
     rng = np.random.default_rng(1234)
-
+    filesystem = DirFileSystem(str(tmp_path))
     station_diffs = []
     for station_idx in range(4):
         n_actions = int(rng.integers(1, 8))
@@ -118,11 +118,9 @@ def test_store_and_load_station_diff_io_random_roundtrip():
             )
         )
 
-    buffer = io.BytesIO()
-    store_station_diff_io(buffer, station_diffs)
-    buffer.seek(0)
+    store_station_diff_fs(filesystem, station_diffs, "station_diffs.hdf5")
 
-    loaded = load_station_diff_io(buffer)
+    loaded = load_station_diff_fs(filesystem, "station_diffs.hdf5")
 
     loaded_by_id = {station_diff.grid_model_id: station_diff for station_diff in loaded}
     assert set(loaded_by_id) == {station_diff.grid_model_id for station_diff in station_diffs}
@@ -136,13 +134,10 @@ def test_store_and_load_station_diff_io_random_roundtrip():
         assert np.array_equal(result.switching_table, original.switching_table)
 
 
-def test_store_and_load_station_diff_io_empty_list():
-    buffer = io.BytesIO()
-    store_station_diff_io(buffer, [])
-    buffer.seek(0)
-
-    loaded = load_station_diff_io(buffer)
-
+def test_store_and_load_station_diff_io_empty_list(tmp_path: Path):
+    filesystem = DirFileSystem(str(tmp_path))
+    store_station_diff_fs(filesystem, [], "station_diffs.hdf5")
+    loaded = load_station_diff_fs(filesystem, "station_diffs.hdf5")
     assert loaded == []
 
 

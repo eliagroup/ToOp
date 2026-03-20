@@ -103,7 +103,7 @@ def test_random_actions_single_substation():
 
 def test_store_and_load_station_diff_io_random_roundtrip(tmp_path: Path):
     rng = np.random.default_rng(1234)
-    filesystem = DirFileSystem(str(tmp_path)).fs
+    filesystem = DirFileSystem(str(tmp_path))
     station_diffs = []
     for station_idx in range(4):
         n_actions = int(rng.integers(1, 8))
@@ -135,7 +135,7 @@ def test_store_and_load_station_diff_io_random_roundtrip(tmp_path: Path):
 
 
 def test_store_and_load_station_diff_io_empty_list(tmp_path: Path):
-    filesystem = DirFileSystem(str(tmp_path)).fs
+    filesystem = DirFileSystem(str(tmp_path))
     store_station_diff_fs(filesystem, [], "station_diffs.hdf5")
     loaded = load_station_diff_fs(filesystem, "station_diffs.hdf5")
     assert loaded == []

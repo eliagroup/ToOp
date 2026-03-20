@@ -35,7 +35,7 @@ from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
-from toop_engine_topology_optimizer.ac.evolution_functions import evolution
+from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, evolution
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.scoring_functions import (
     ACScoringParameters,
@@ -546,6 +546,7 @@ def run_epoch(
         Whether a new strategy was polled, i.e. an AC validation actually happened. The epoch counter will only be increased
         if this happened.
     """
+    enable_ac_rejection = optimizer_data.params.ga_config.enable_ac_rejection
     logger.info(f"Starting AC epoch={epoch}")
     added_topos, _stopped_opimization_ids = poll_results_topic(
         db=optimizer_data.session, consumer=results_consumer, first_poll=epoch == 1
@@ -559,10 +560,19 @@ def run_epoch(
         return False
 
     logger.debug(f"Epoch {epoch}: evaluating strategy with {len(new_strategy)} timestep topology/ies")
-    loadflow_results, metrics, rejection_reason = optimizer_data.scoring_fn(new_strategy)
-    logger.debug(f"Epoch {epoch}: scoring finished, rejection_reason={rejection_reason}, n_metrics={len(metrics)}")
-    loadflow_result_reference = optimizer_data.store_loadflow_fn(loadflow_results)
-    logger.debug(f"Epoch {epoch}: stored loadflow reference={loadflow_result_reference}")
+    try:
+        loadflow_results, metrics, rejection_reason = optimizer_data.scoring_fn(new_strategy)
+        logger.debug(f"Epoch {epoch}: scoring finished, rejection_reason={rejection_reason}, n_metrics={len(metrics)}")
+        loadflow_result_reference = optimizer_data.store_loadflow_fn(loadflow_results)
+        logger.debug(f"Epoch {epoch}: stored loadflow reference={loadflow_result_reference}")
+    except Exception as e:
+        loadflow_result_reference = None
+        metrics = [Metrics(fitness=INF_FITNESS, extra_scores={}) for _ in new_strategy]
+        rejection_reason = TopologyRejectionReason(
+            criterion="error", description=str(e), value_after=1.0, value_before=0.0, early_stopping=False
+        )
+        logger.error(f"Epoch {epoch}: error during scoring: {e}")
+        enable_ac_rejection = True  # Ensure that the topology is rejected in case of errors during scoring
 
     # Update the strategy with the new loadflow results
     message_topos = []
@@ -592,7 +602,7 @@ def run_epoch(
     logger.debug(f"Epoch {epoch}: committed {len(new_strategy)} topology/ies to AC DB")
 
     # Send the new strategy to the result topic
-    if not optimizer_data.params.ga_config.enable_ac_rejection or rejection_reason is None:
+    if not enable_ac_rejection or rejection_reason is None:
         send_result_fn(TopologyPushResult(strategies=[Strategy(timesteps=message_topos)], epoch=epoch))
         logger.info(
             f"Epoch {epoch} completed, accept: True, metrics: {metrics[0].extra_scores}, fitness: {metrics[0].fitness}"

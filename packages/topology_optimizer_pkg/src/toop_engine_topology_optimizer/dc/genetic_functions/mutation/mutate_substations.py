@@ -144,6 +144,9 @@ def mutate_sub_splits(
 
     The sub-ids are implicit to the branch topo action index, however we pass them explicitely
     to aid substation mutation.
+    Impossible mutations (e.g. adding a split when there is no room to add one,
+    or removing a split when there are none) are handled by setting the probabilities
+    for these mutations to zero, and normalising the remaining probabilities to sum to 1.
 
     Parameters
     ----------
@@ -188,8 +191,11 @@ def mutate_sub_splits(
 
     # Determine which mutation operations are allowed based on the current topology, and adjust probabilities accordingly
     allow_add = n_splits < n_max_splits
+    # We can only remove a split if there is at least one split to remove
     allow_remove = n_splits > 0
+    # We can only replace a split if there is at least one split to replace
     allow_replace = n_splits > 0
+    # We can always choose to remain unchanged
     allow_remain = True
 
     probs = jnp.array([add_split_prob, remove_split_prob, change_split_prob, prob_remain], dtype=float)

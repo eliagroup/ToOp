@@ -198,7 +198,7 @@ def mutate(
         The new random key
     """
     topologies = fix_dtypes(topologies)
-    batch_size = len(topologies.action_index)
+    batch_size = topologies.action_index.shape[0]
 
     # Repeat the topologies to increase the chance of getting unique mutations
     repeated_topologies = repeat_topologies(topologies, batch_size, mutation_config.mutation_repetition)

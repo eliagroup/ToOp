@@ -120,6 +120,10 @@ def mutate_disconnections(
 ) -> Int[Array, " max_num_disconnections"]:
     """Mutate the disconnections of a single topology.
 
+    Impossible mutations (e.g. adding a disconnection when there is no room to add one,
+    or removing a disconnection when there are none) are handled by setting the probabilities
+    for these mutations to zero, and adding them to the remain probability.
+
     Parameters
     ----------
     random_key : jax.random.PRNGKey
@@ -147,7 +151,6 @@ def mutate_disconnections(
     add_disconnection_prob = disconnection_mutation_config.add_disconnection_prob
     change_disconnection_prob = disconnection_mutation_config.change_disconnection_prob
     remove_disconnection_prob = disconnection_mutation_config.remove_disconnection_prob
-    remain_prob = 1 - add_disconnection_prob - change_disconnection_prob - remove_disconnection_prob
 
     n_disconnectable_branches = disconnection_mutation_config.n_disconnectable_branches
 
@@ -167,24 +170,28 @@ def mutate_disconnections(
     # We only allow to change a disconnection if there is at least one disconnection,
     # otherwise there is nothing to change
     allow_replace = n_disconnections > 0
-    # We always allow to remain unchanged, but this might be overriden below
-    allow_remain = True
 
+    allow_remain = True  # We can always choose to remain unchanged
+    # We temporarily set the remain probability to 0, because we will add the probabilities
+    # of the illegal actions to the remain probability later, after we set the illegal action probabilities to 0.
+    temp_remain_prob = 0.0
     # Create an array of the probabilities for the different operations,
     # and set the probabilities to 0 for the operations that are not allowed.
     probs = jnp.array(
-        [add_disconnection_prob, remove_disconnection_prob, change_disconnection_prob, remain_prob], dtype=float
+        [add_disconnection_prob, remove_disconnection_prob, change_disconnection_prob, temp_remain_prob], dtype=float
     )
     allowed = jnp.array([allow_add, allow_remove, allow_replace, allow_remain], dtype=bool)
     probs = jnp.where(allowed, probs, 0.0)
 
+    # Replace all "illegal" operations with "remain unchanged".
+    prob_sum = jnp.sum(probs)
     # If there are no splits, always add a disconnection
     # Otherwise, normalise the allowed probabilities to sum to 1
     # If probs are negative, only the remain option is considered
     probs = jnp.where(
         (~has_splits) & allow_add & (n_disconnections == 0),
         jnp.array([1.0, 0.0, 0.0, 0.0]),
-        jnp.where(jnp.sum(probs) > 0, probs / jnp.sum(probs), jnp.array([0.0, 0.0, 0.0, 1.0])),
+        probs.at[3].set(1.0 - prob_sum),
     )
 
     # Randomly choose which operation to perform based on the probabilities

@@ -161,33 +161,6 @@ class PandapowerNMinus1Definition(BaseModel):
                 return contingency
         return None
 
-    def __getitem__(self, key: str | int | slice) -> "PandapowerNMinus1Definition":
-        """Get a subset of the nminus1definition based on the contingencies.
-
-        If a string is given, the contingency id must be in the contingencies list.
-        If an integer or slice is given, the case id will be indexed by the integer or slice.
-        """
-        if isinstance(key, str):
-            contingency_ids = [contingency.unique_id for contingency in self.contingencies]
-            if key not in contingency_ids:
-                raise KeyError(f"Contingency id {key} not in contingencies.")
-            index = contingency_ids.index(key)
-            index = slice(index, index + 1)
-        elif isinstance(key, int):
-            index = slice(key, key + 1)
-        elif isinstance(key, slice):
-            index = key
-        else:
-            raise TypeError("Key must be a string, int or slice.")
-
-        updated_definition = self.model_copy(
-            update={
-                "contingencies": self.contingencies[index],
-            }
-        )
-        # pylint: disable=unsubscriptable-object
-        return PandapowerNMinus1Definition.model_validate(updated_definition)
-
 
 class ParallelConfig(BaseModel):
     """Parallel execution settings for contingency analysis."""

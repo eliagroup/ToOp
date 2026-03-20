@@ -476,8 +476,11 @@ def save_action_set_fs(
     save_pydantic_model_fs(filesystem=filesystem, file_path=json_file, pydantic_model=action_set_without_local_actions)
 
     filesystem.makedirs(Path(hdf5_file).parent.as_posix(), exist_ok=True)
-    with filesystem.open(hdf5_file, "wb") as f:
-        store_station_diff_io(f, station_diffs)
+    bytes_io = io.BytesIO()
+    store_station_diff_io(bytes_io, station_diffs)
+    bytes_io.seek(0)
+    with filesystem.open(str(diff_file_path), "wb") as file:
+        file.write(bytes_io.getbuffer())
 
 
 def save_action_set(

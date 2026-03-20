@@ -210,7 +210,7 @@ def store_station_diff_fs(
 ) -> None:
     """Store a station diff to a hdf5 file, using a different group for every station
 
-    Use load_station_diff_io to load it again
+    Use load_station_diff_fs to load it again
 
     Parameters
     ----------
@@ -280,7 +280,9 @@ def load_station_diff_fs(filesystem: AbstractFileSystem, diff_file_path: str | P
         A list of station diffs loaded from the file.
     """
     with filesystem.open(str(diff_file_path), "rb") as file:
-        return _load_station_diff_io(file)
+        file_bytes = file.read()
+    buffer = io.BytesIO(file_bytes)
+    return _load_station_diff_io(buffer)
 
 
 def expand_single_station_diff_to_actions(starting_station: Station, station_diff: StationDiffArray) -> list[Station]:

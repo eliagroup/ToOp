@@ -55,6 +55,34 @@ from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 
 
+def _apply_contingency_to_index(df: pd.DataFrame, contingency: PandapowerContingency) -> pd.DataFrame:
+    """
+    Apply a contingency to a DataFrame by updating its MultiIndex level and adding a corresponding column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with a MultiIndex that includes a "contingency" level.
+    contingency : object
+        Contingency object with attributes:
+        - unique_id : value to assign to the "contingency" index level
+        - name : value to assign to the "contingency_name" column
+
+    Returns
+    -------
+    pd.DataFrame
+        A new DataFrame with updated MultiIndex and added "contingency_name" column.
+    """
+    df_copy = df.copy()
+
+    idx = df_copy.index.to_frame(index=False)
+    idx["contingency"] = contingency.unique_id
+    df_copy.index = pd.MultiIndex.from_frame(idx)
+
+    df_copy["contingency_name"] = contingency.name
+    return df_copy
+
+
 @pa.check_types
 def run_single_outage(
     net: pp.pandapowerNet,
@@ -125,17 +153,22 @@ def run_single_outage(
     va_diff_dfs = []
     regulating_elements_dfs = []
     element_name_map = monitored_elements["name"].to_dict()
+    first_contingency = grouped_contingency.contingencies[0]
+    branch_results_df, node_results_df, va_diff_results = get_element_results_df(
+        net, first_contingency, monitored_elements, timestep, status, basecase_voltage
+    )
+    reg_element_result = get_regulating_element_results(timestep, monitored_elements, first_contingency)
 
     for contingency in grouped_contingency.contingencies:
-        branch_results_df, node_results_df, va_diff_results = get_element_results_df(
-            net, contingency, monitored_elements, timestep, status, basecase_voltage
-        )
-        reg_element_result = get_regulating_element_results(timestep, monitored_elements, contingency)
+        br_df_copy = _apply_contingency_to_index(branch_results_df, contingency)
+        node_df_copy = _apply_contingency_to_index(node_results_df, contingency)
+        va_diff_df_copy = _apply_contingency_to_index(va_diff_results, contingency)
+        reg_el_df_copy = _apply_contingency_to_index(reg_element_result, contingency)
 
-        branch_dfs.append(update_results_with_names(contingency, branch_results_df, element_name_map))
-        node_dfs.append(update_results_with_names(contingency, node_results_df, element_name_map))
-        va_diff_dfs.append(update_results_with_names(contingency, va_diff_results, element_name_map))
-        regulating_elements_dfs.append(update_results_with_names(contingency, reg_element_result, element_name_map))
+        branch_dfs.append(update_results_with_names(contingency, br_df_copy, element_name_map))
+        node_dfs.append(update_results_with_names(contingency, node_df_copy, element_name_map))
+        va_diff_dfs.append(update_results_with_names(contingency, va_diff_df_copy, element_name_map))
+        regulating_elements_dfs.append(update_results_with_names(contingency, reg_el_df_copy, element_name_map))
 
     branch_results_df = pd.concat(branch_dfs) if branch_dfs else pd.DataFrame()
     node_results_df = pd.concat(node_dfs) if node_dfs else pd.DataFrame()
@@ -465,20 +498,10 @@ def run_contingency_analysis_parallel(
     list[LoadflowResults]
         A list of the results per contingency
     """
-    n_outages = len(n_minus_1_definition.grouped_contingencies)
+    n_outages = len(n_minus_1_definition.contingencies)
     if batch_size is None:
         batch_size = math.ceil(n_outages / n_processes)
-    work = []
-    for i in range(0, n_outages, batch_size):
-        grouped_batch = n_minus_1_definition.grouped_contingencies[i : i + batch_size]
-        work.append(
-            n_minus_1_definition.model_copy(
-                update={
-                    "contingencies": [],
-                    "grouped_contingencies": grouped_batch,
-                }
-            )
-        )
+    work = [n_minus_1_definition[i : i + batch_size] for i in range(0, n_outages, batch_size)]
 
     # Schedule work until the handle list is too long, then wait for the first result and continue
     handles = []

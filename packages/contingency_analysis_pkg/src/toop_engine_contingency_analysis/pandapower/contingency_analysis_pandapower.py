@@ -160,20 +160,20 @@ def run_single_outage(
     reg_element_result = get_regulating_element_results(timestep, monitored_elements, first_contingency)
 
     for contingency in grouped_contingency.contingencies:
-        br_df_copy = _apply_contingency_to_index(branch_results_df, contingency)
-        node_df_copy = _apply_contingency_to_index(node_results_df, contingency)
-        va_diff_df_copy = _apply_contingency_to_index(va_diff_results, contingency)
-        reg_el_df_copy = _apply_contingency_to_index(reg_element_result, contingency)
-
-        branch_dfs.append(update_results_with_names(contingency, br_df_copy, element_name_map))
-        node_dfs.append(update_results_with_names(contingency, node_df_copy, element_name_map))
-        va_diff_dfs.append(update_results_with_names(contingency, va_diff_df_copy, element_name_map))
-        regulating_elements_dfs.append(update_results_with_names(contingency, reg_el_df_copy, element_name_map))
+        branch_dfs.append(_apply_contingency_to_index(branch_results_df, contingency))
+        node_dfs.append(_apply_contingency_to_index(node_results_df, contingency))
+        va_diff_dfs.append(_apply_contingency_to_index(va_diff_results, contingency))
+        regulating_elements_dfs.append(_apply_contingency_to_index(reg_element_result, contingency))
 
     branch_results_df = pd.concat(branch_dfs) if branch_dfs else pd.DataFrame()
     node_results_df = pd.concat(node_dfs) if node_dfs else pd.DataFrame()
     va_diff_results = pd.concat(va_diff_dfs) if va_diff_dfs else pd.DataFrame()
     regulating_elements_df = pd.concat(regulating_elements_dfs) if regulating_elements_dfs else pd.DataFrame()
+
+    update_results_with_names(branch_results_df, element_name_map)
+    update_results_with_names(node_results_df, element_name_map)
+    update_results_with_names(va_diff_results, element_name_map)
+    update_results_with_names(regulating_elements_df, element_name_map)
 
     restore_outaged_circuit_breakers(net, opened_cb_indices)
     restore_elements_to_service(net, outaged_elements, were_in_service)
@@ -191,19 +191,16 @@ def run_single_outage(
 
 
 def update_results_with_names(
-    contingency: PandapowerContingency,
     df: pd.DataFrame,
     element_name_map: dict[str, str],
 ) -> pd.DataFrame:
     """
-    Enrich results DataFrame with element and contingency names.
+    Enrich results DataFrame with element names.
 
     This function fills missing values in the `element_name` column using a
-    provided mapping from element indices to human-readable names. It also
-    annotates all rows with the corresponding contingency name.
+    provided mapping from element indices to human-readable names.
 
     Args:
-        contingency: PandapowerContingency object providing the `name` attribute.
         df: Results DataFrame. Expected to have:
             - a MultiIndex containing level `"element"`
             - a column `"element_name"`
@@ -221,7 +218,6 @@ def update_results_with_names(
     """
     no_name_yet = (df["element_name"] == "") | (df["element_name"].isna())
     df.loc[no_name_yet, "element_name"] = df.loc[no_name_yet].index.get_level_values("element").map(element_name_map)
-    df["contingency_name"] = contingency.name
     return df
 
 

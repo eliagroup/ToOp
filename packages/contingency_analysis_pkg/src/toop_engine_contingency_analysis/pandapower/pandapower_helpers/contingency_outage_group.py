@@ -13,10 +13,13 @@ belonging to those components, and converts them into PandapowerElements objects
 Used to expand initial contingencies into full topology-aware outage groups.
 """
 
+from collections import defaultdict
+
 import pandapower as pp
 from beartype.typing import Iterable, Set, Tuple
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
+    PandapowerContingencyGroup,
     PandapowerElements,
 )
 from toop_engine_grid_helpers.pandapower.outage_group import (
@@ -102,40 +105,46 @@ def _elements_in_component(comps: Iterable[Iterable[str]], comp_idx: int) -> Set
 
 def get_outage_group_for_contingency(
     net: pp.pandapowerNet, contingencies: list[PandapowerContingency]
-) -> list[PandapowerContingency]:
+) -> list[PandapowerContingencyGroup]:
     """
-    Build outage groups for each contingency based on network connected components.
+    Group contingencies by affected network connected components.
 
-    For every contingency, all its elements are mapped to the connected component(s)
-    they belong to. A new contingency is then created whose elements are the union
-    of all grid elements contained in those component(s).
+    This function maps each contingency to the connected component(s) of the
+    network that its elements belong to. Contingencies affecting the same set
+    of components are grouped together into a single outage group.
+
+    For each resulting outage group:
+    - All original contingencies sharing the same component signature are collected.
+    - The resulting group elements are the union of all grid elements contained
+      in the corresponding connected components.
 
     If an element cannot be mapped to any existing component, a new single-node
-    component is created for it (typically representing an isolated busbar outage).
+    component is created for it (e.g., isolated busbar outages).
 
     Args:
         net (pp.pandapowerNet):
-            The pandapower network model used to compute connected components and
+            Pandapower network model used to compute connected components and
             retrieve grid elements.
-        contingencies (List[PandapowerContingency]):
-            List of contingencies. Each contingency contains a set of elements
-            (with `id` and `type`) that define the initial outage.
+
+        contingencies (list[PandapowerContingency]):
+            List of contingencies, where each contingency contains a set of
+            elements (identified by `table` and `table_id`) defining the outage.
 
     Returns
     -------
-        List[PandapowerContingency]:
-            A list of new contingencies where each contingency contains all elements
-            belonging to the outage group(s) (connected component unions) associated
-            with the original contingency. Metadata such as `unique_id`, `name`,
-            and `va_diff_info` are preserved.
+        list[PandapowerContingencyGroup]:
+            A list of outage groups. Each group contains:
+            - `contingencies`: original contingencies mapped to the same set
+              of connected components.
+            - `elements`: all grid elements belonging to those components.
     """
     # --- Step 1: Build a fast lookup map from node -> component index ---
     connected_components = build_connected_components_for_contingency_analysis(net)
     node_to_component = {node: comp_idx for comp_idx, component in enumerate(connected_components) for node in component}
 
     # --- Step 2: Track results ---
-    grouped_contingencies: list[PandapowerContingency] = []
-    total_outage_groups: list[tuple[PandapowerContingency, set[int]]] = []
+    grouped_contingencies: list[PandapowerContingencyGroup] = []
+    total_outage_groups = defaultdict(list)
 
     # --- Step 3: Map each contingency to its component(s) ---
     for contingency in contingencies:
@@ -158,11 +167,12 @@ def get_outage_group_for_contingency(
                 comp_idx = node_to_component[node_id]
 
             contingency_components.add(comp_idx)
-
-        total_outage_groups.append((contingency, contingency_components))
+        # Canonical outage-groups signature for this contingency
+        signature = tuple(sorted(contingency_components))
+        total_outage_groups[signature].append(contingency)
 
     # --- Step 4: Build grouped contingencies ---
-    for contingency, outage_group in total_outage_groups:
+    for outage_group, group_contingencies in total_outage_groups.items():
         res_elements = []
         for comp_idx in outage_group:
             res_elements.extend(_elements_in_component(connected_components, comp_idx))
@@ -171,13 +181,10 @@ def get_outage_group_for_contingency(
         elements = []
         for el_id, el_type in res_elements:
             elements.append(get_grid_element(net, el_id, el_type))
-
         grouped_contingencies.append(
-            PandapowerContingency(
-                unique_id=contingency.unique_id,
-                name=contingency.name,
+            PandapowerContingencyGroup(
+                contingencies=group_contingencies,
                 elements=elements,
-                va_diff_info=contingency.va_diff_info,
             )
         )
 

@@ -101,6 +101,29 @@ class PandapowerContingency(BaseModel):
         return len(self.elements) == 0
 
 
+class PandapowerContingencyGroup(BaseModel):
+    """
+    Represents a group of contingencies affecting the same set of network components.
+
+    This model aggregates multiple contingencies that map to the same connected
+    component signature (i.e., they impact the same parts of the grid). It also
+    contains the full set of grid elements belonging to those components.
+
+    Attributes
+    ----------
+        contingencies (list[PandapowerContingency]):
+            List of original contingencies that affect the same connected
+            component(s) and are therefore grouped together.
+
+        elements (list[PandapowerElements]):
+            Union of all grid elements contained in the connected component(s)
+            associated with this group. These represent the full outage scope.
+    """
+
+    contingencies: list[PandapowerContingency]
+    elements: list[PandapowerElements]
+
+
 class PandapowerNMinus1Definition(BaseModel):
     """A Pandapower N-1 definition.
 
@@ -112,6 +135,9 @@ class PandapowerNMinus1Definition(BaseModel):
 
     contingencies: list[PandapowerContingency]
     """The outages to be considered. Maps contingency id to outaged element ids."""
+
+    grouped_contingencies: Optional[list[PandapowerContingencyGroup]] = None
+    """Optional grouped outages to be considered."""
 
     missing_contingencies: list[Contingency]
     """A list of contingencies that were not found in the network."""
@@ -134,33 +160,6 @@ class PandapowerNMinus1Definition(BaseModel):
             if contingency.is_basecase():
                 return contingency
         return None
-
-    def __getitem__(self, key: str | int | slice) -> "PandapowerNMinus1Definition":
-        """Get a subset of the nminus1definition based on the contingencies.
-
-        If a string is given, the contingency id must be in the contingencies list.
-        If an integer or slice is given, the case id will be indexed by the integer or slice.
-        """
-        if isinstance(key, str):
-            contingency_ids = [contingency.unique_id for contingency in self.contingencies]
-            if key not in contingency_ids:
-                raise KeyError(f"Contingency id {key} not in contingencies.")
-            index = contingency_ids.index(key)
-            index = slice(index, index + 1)
-        elif isinstance(key, int):
-            index = slice(key, key + 1)
-        elif isinstance(key, slice):
-            index = key
-        else:
-            raise TypeError("Key must be a string, int or slice.")
-
-        updated_definition = self.model_copy(
-            update={
-                "contingencies": self.contingencies[index],
-            }
-        )
-        # pylint: disable=unsubscriptable-object
-        return PandapowerNMinus1Definition.model_validate(updated_definition)
 
 
 class ParallelConfig(BaseModel):

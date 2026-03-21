@@ -35,39 +35,6 @@ from toop_engine_interfaces.loadflow_results import (
 )
 
 
-def _select_monitored_open_cb_bus_bus_switches(
-    net: pandapowerNet,
-    monitored_elements: pd.DataFrame,
-) -> pd.DataFrame:
-    """
-    Select monitored open circuit breakers connecting bus-to-bus (et == 'b').
-
-    Filters ``net.switch`` to switches that:
-      - are present in ``monitored_elements`` with ``kind == 'switch'``
-      - are circuit breakers (``type == 'CB'``)
-      - are open (``closed == False``)
-      - connect bus-to-bus (``et == 'b'``)
-
-    Parameters
-    ----------
-    net : pandapowerNet
-        Pandapower network containing the ``switch`` table.
-    monitored_elements : pd.DataFrame
-        DataFrame of monitored elements (e.g., ``PandapowerMonitoredElementSchema``) with
-        at least columns ``kind`` and ``table_id``. Switch ids are taken from rows where
-        ``kind == 'switch'``.
-
-    Returns
-    -------
-    pd.DataFrame
-        Subset of ``net.switch`` containing only the monitored, open CB bus-bus switches.
-    """
-    monitored_switch_ids = monitored_elements.query("kind == 'switch'")["table_id"]
-    switches = net.switch.loc[net.switch.index.isin(monitored_switch_ids)]
-    open_cb = switches.loc[(switches["type"] == "CB") & (~switches["closed"]) & (switches["et"] == "b")]
-    return open_cb
-
-
 def _get_bus_va_series(net: pandapowerNet) -> pd.Series:
     """
     Return a Series of bus voltage angles indexed by bus id.
@@ -1435,7 +1402,7 @@ def get_va_diff_results(
         The voltage angle difference results for the given network and contingency
 
     """
-    open_cb = _select_monitored_open_cb_bus_bus_switches(net, monitored_elements)
+    open_cb = net.switch.loc[(net.switch["type"] == "CB") & (~net.switch["closed"]) & (net.switch["et"] == "b")]
     va_deg = _get_bus_va_series(net)
 
     va_diff_both, open_cb_rest = _compute_va_diff_both_ends(open_cb, va_deg)
@@ -1451,14 +1418,16 @@ def get_va_diff_results(
 
     va_diff_by_switch = _combine_switch_va_diffs(va_diff_both, va_diff_one_side, va_diff_pst)
 
+    monitored_switch_ids = monitored_elements.query("kind == 'switch'")["table_id"]
+    va_diff_by_switch = va_diff_by_switch[va_diff_by_switch.index.isin(monitored_switch_ids)]
+
+    # add filtering  here montored
     out = _format_switch_va_diff_output(va_diff_by_switch, timestep, contingency)
 
     va_diff_df = get_empty_dataframe_from_model(VADiffResultSchema)
     if out.empty:
         return va_diff_df
     va_diff_df = pd.concat([va_diff_df, out], axis=0)
-
-    va_diff_df = _apply_contingency_va_diff_info(net, va_diff_df, timestep, contingency)
 
     return va_diff_df
 

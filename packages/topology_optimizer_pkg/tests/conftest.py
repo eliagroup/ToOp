@@ -4,7 +4,6 @@
 # If a copy of the MPL was not distributed with this file,
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
-
 import logging
 import os
 import shutil
@@ -26,7 +25,7 @@ from docker.models.containers import Container
 from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Int
 from omegaconf import DictConfig
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_dc_solver.example_grids import (
     case14_pandapower,
@@ -50,7 +49,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     PreprocessParameters,
 )
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
-from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
+from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_topo_data
 
@@ -423,10 +422,11 @@ def preprocessing_parameters() -> DictConfig:
 
 @pytest.fixture
 def session() -> Generator[Session, None, None]:
-    engine = create_engine("sqlite:///:memory:")
-    SQLModel.metadata.create_all(engine, tables=[ACOptimTopology.__table__])
-    with Session(engine) as session:
-        yield session
+    db_session = create_session()
+    try:
+        yield db_session
+    finally:
+        db_session.close()
 
 
 @pytest.fixture
@@ -701,11 +701,18 @@ def _synthetic_action_set(
             unsplit_mask.append(is_unsplit)
 
     n_total_actions = n_subs * n_actions_per_sub
+    n_actions_per_sub_array = jnp.full((n_subs,), n_actions_per_sub, dtype=int)
 
     return ActionSet(
         branch_actions=jnp.array(branch_actions, dtype=bool),
         inj_actions=jnp.array(inj_actions, dtype=bool),
-        n_actions_per_sub=jnp.full((n_subs,), n_actions_per_sub, dtype=int),
+        n_actions_per_sub=n_actions_per_sub_array,
+        action_start_indices=jnp.concatenate(
+            [
+                jnp.array([0], dtype=n_actions_per_sub_array.dtype),
+                jnp.cumsum(n_actions_per_sub_array[:-1]),
+            ]
+        ),
         substation_correspondence=jnp.array(substation_correspondence, dtype=int),
         unsplit_action_mask=jnp.array(unsplit_mask, dtype=bool),
         reassignment_distance=jnp.arange(n_total_actions, dtype=int),

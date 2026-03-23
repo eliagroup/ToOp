@@ -66,7 +66,7 @@ class NodalInjectionMutationConfig(eqx.Module):
     pst_mutation_sigma: float = eqx.field(static=True)
     """The sigma to use for the normal distribution to sample the PST tap mutation from."""
 
-    pst_n_taps: Int[Array, " num_psts"] = eqx.field(static=True)
+    pst_n_taps: Int[Array, " num_psts"]
     """The number of taps for each PST, used to determine the valid range of tap positions for mutation."""
 
 
@@ -92,5 +92,5 @@ class MutationConfig(eqx.Module):
     disconnection_mutation_config: DisconnectionMutationConfig = eqx.field(static=True)
     """The configuration for the disconnection mutation operation."""
 
-    nodal_injection_mutation_config: Optional[NodalInjectionMutationConfig] = eqx.field(static=True)
+    nodal_injection_mutation_config: Optional[NodalInjectionMutationConfig]
     """The configuration for the nodal injection mutation operation."""

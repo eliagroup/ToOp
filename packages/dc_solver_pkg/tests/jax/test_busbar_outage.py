@@ -270,7 +270,7 @@ def test_perform_rel_bb_outage_single_topo_with_no_inj_reassignments(
 ) -> None:
     topo_indices, static_information = jax_inputs_oberrhein
     di = static_information.dynamic_information
-    topo_indices = topo_indices[0]
+    topo_indices = topo_indices[1]
 
     # test = pad_out_action_indices_to_all_subs(topo_indices.action, di.action_set)
     # branch_actions = di.action_set.branch_actions.at[test].get(mode="fill", fill_value=False)

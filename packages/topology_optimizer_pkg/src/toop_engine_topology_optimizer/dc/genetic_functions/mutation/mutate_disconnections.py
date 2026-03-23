@@ -12,13 +12,19 @@ import jax.numpy as jnp
 from jaxtyping import Array, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import int_max
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import DisconnectionMutationConfig
-from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import do_nothing, get_random_true_idx
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.utils import (
+    do_nothing,
+    get_random_true_idx,
+    sample_new_id,
+)
 
 
 def change_disconnected_branch(
     random_key: PRNGKeyArray, disconnections: Int[Array, " max_num_disconnections"], n_disconnectable_branches: int
 ) -> tuple[Int[Array, " "], Int[Array, " "]]:
     """Change a disconnected branch in the topology to a different one.
+
+    This assumes, that one branch is already disconnected, otherwise there would be nothing to change.
 
     Parameters
     ----------
@@ -42,13 +48,7 @@ def change_disconnected_branch(
     is_disconnected = disconnections != int_max_value
     disc_idx = get_random_true_idx(random_index_key, is_disconnected, int_max_value)
 
-    disconnectable = jnp.zeros(n_disconnectable_branches, dtype=bool).at[disconnections].set(True, mode="drop")
-    disconnectable = disconnectable.at[disconnections[disc_idx]].set(
-        False, mode="drop"
-    )  # make sure the currently disconnected branch is not sampled again
-
-    new_disc_id: Int[Array, " "] = jax.random.categorical(random_disc_key, jnp.log(1 - disconnectable.astype(float)))
-    new_disc_id = jnp.where(jnp.all(~disconnectable), int_max_value, new_disc_id)
+    new_disc_id = sample_new_id(random_disc_key, disconnections, n_disconnectable_branches, disc_idx)
     return disc_idx, new_disc_id
 
 
@@ -83,6 +83,8 @@ def disconnect_additional_branch(
 ) -> tuple[Int[Array, " "], Int[Array, " "]]:
     """Add a new disconnection to the topology.
 
+    This assumes, that there is still room to add a disconnection, otherwise there would be no valid branch to add.
+
     Parameters
     ----------
     random_key : jax.random.PRNGKey
@@ -105,13 +107,8 @@ def disconnect_additional_branch(
     # List available disconnections
     is_disconnectable = disconnections == int_max_value
     disc_idx = get_random_true_idx(random_index_key, is_disconnectable, int_max_value)
-    already_disconnected = jnp.zeros(n_disconnectable_branches, dtype=bool).at[disconnections].set(True, mode="drop")
-    all_disconnected = jnp.all(already_disconnected)
 
-    # Sample a new substation from the substations which have not been split yet for every topology
-    # in the batch
-    new_disc_id: Int[Array, " "] = jax.random.categorical(random_disc_key, jnp.log(1 - already_disconnected.astype(float)))
-    new_disc_id = jnp.where(all_disconnected, int_max_value, new_disc_id)
+    new_disc_id = sample_new_id(random_disc_key, disconnections, n_disconnectable_branches, int_max_value)
     return disc_idx, new_disc_id
 
 
@@ -122,6 +119,10 @@ def mutate_disconnections(
     disconnection_mutation_config: DisconnectionMutationConfig,
 ) -> Int[Array, " max_num_disconnections"]:
     """Mutate the disconnections of a single topology.
+
+    Impossible mutations (e.g. adding a disconnection when there is no room to add one,
+    or removing a disconnection when there are none) are handled by setting the probabilities
+    for these mutations to zero, and adding them to the remain probability.
 
     Parameters
     ----------
@@ -150,7 +151,6 @@ def mutate_disconnections(
     add_disconnection_prob = disconnection_mutation_config.add_disconnection_prob
     change_disconnection_prob = disconnection_mutation_config.change_disconnection_prob
     remove_disconnection_prob = disconnection_mutation_config.remove_disconnection_prob
-    remain_prob = 1 - add_disconnection_prob - change_disconnection_prob - remove_disconnection_prob
 
     n_disconnectable_branches = disconnection_mutation_config.n_disconnectable_branches
 
@@ -170,24 +170,28 @@ def mutate_disconnections(
     # We only allow to change a disconnection if there is at least one disconnection,
     # otherwise there is nothing to change
     allow_replace = n_disconnections > 0
-    # We always allow to remain unchanged, but this might be overriden below
-    allow_remain = True
 
+    allow_remain = True  # We can always choose to remain unchanged
+    # We temporarily set the remain probability to 0, because we will add the probabilities
+    # of the illegal actions to the remain probability later, after we set the illegal action probabilities to 0.
+    temp_remain_prob = 0.0
     # Create an array of the probabilities for the different operations,
     # and set the probabilities to 0 for the operations that are not allowed.
     probs = jnp.array(
-        [add_disconnection_prob, remove_disconnection_prob, change_disconnection_prob, remain_prob], dtype=float
+        [add_disconnection_prob, remove_disconnection_prob, change_disconnection_prob, temp_remain_prob], dtype=float
     )
     allowed = jnp.array([allow_add, allow_remove, allow_replace, allow_remain], dtype=bool)
     probs = jnp.where(allowed, probs, 0.0)
 
+    # Replace all "illegal" operations with "remain unchanged".
+    prob_sum = jnp.sum(probs)
     # If there are no splits, always add a disconnection
     # Otherwise, normalise the allowed probabilities to sum to 1
     # If probs are negative, only the remain option is considered
     probs = jnp.where(
         (~has_splits) & allow_add & (n_disconnections == 0),
         jnp.array([1.0, 0.0, 0.0, 0.0]),
-        jnp.where(jnp.sum(probs) > 0, probs / jnp.sum(probs), jnp.array([0.0, 0.0, 0.0, 1.0])),
+        probs.at[3].set(1.0 - prob_sum),
     )
 
     # Randomly choose which operation to perform based on the probabilities

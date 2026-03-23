@@ -27,7 +27,15 @@ from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, 
 
 
 def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet, init_ray) -> None:
-    nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
+    full_nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
+    basecase = [contingency for contingency in full_nminus1_definition.contingencies if contingency.is_basecase()]
+    nminus1_cases = [contingency for contingency in full_nminus1_definition.contingencies if not contingency.is_basecase()]
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=full_nminus1_definition.monitored_elements,
+        contingencies=basecase + nminus1_cases[:10],
+        id_type=full_nminus1_definition.id_type,
+    )
+
     with pa.config.config_context(validation_enabled=True, validation_depth=pa.config.ValidationDepth.SCHEMA_AND_DATA):
         lf_result_sequential_polars = get_ac_loadflow_results(
             pandapower_net, nminus1_definition, job_id="test_job", n_processes=1

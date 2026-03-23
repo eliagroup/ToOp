@@ -7,8 +7,6 @@
 
 """Mutation functions for the genetic algorithm."""
 
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Int, PRNGKeyArray
@@ -65,12 +63,13 @@ def mutate_topology(
     """
     random_key, substation_key, disconnection_key = jax.random.split(random_key, 3)
     max_num_splits = sub_ids.shape[0]
+    # Randomly decide how many mutation steps should be applied to this substation, at least 1 and at most max_num_splits
     n_subs_mutated = jax.random.poisson(
         substation_key, lam=mutate_config.substation_mutation_config.n_subs_mutated_lambda, shape=()
     )
     n_subs_mutated = jnp.clip(n_subs_mutated, 1, max_num_splits)
 
-    # Mutate sub_ids, action and injection_topo n_subs_mutated times
+    # Mutate sub_ids, action n_subs_mutated times
     sub_ids, action, random_key = jax.lax.fori_loop(
         0,
         n_subs_mutated,
@@ -87,6 +86,8 @@ def mutate_topology(
             substation_key,
         ),
     )
+    # mutate disconnections after the substations,
+    # so that the disconnection mutation can take into account the mutated substation topology.
     if (disconnections_topo.size > 0) and mutate_config.disconnection_mutation_config.n_disconnectable_branches > 0:
         disconnections_topo = mutate_disconnections(
             random_key=disconnection_key,
@@ -137,89 +138,30 @@ def create_random_topology(
     """
     unsplit_key, subs_key, actions_key, not_disc_key, disc_key, random_key = jax.random.split(random_key, 6)
 
+    # Extract the number of splits and disconnections to sample from the input,
+    # so we can create a random topology with the same number of splits and disconnections as the input topology.
     max_num_splits = sub_ids.shape[0]
     max_disconnections = disconnections.shape[0]
 
+    # Sample random substation splits first, override some with int_max to not split all
     unsplit_mask = jax.random.bernoulli(unsplit_key, p=0.5, shape=(max_num_splits,))
-    random_subs = jax.random.permutation(subs_key, n_rel_subs)[:max_num_splits].astype(int)
-
+    random_subs = jax.random.choice(subs_key, shape=(max_num_splits,), a=jnp.arange(n_rel_subs), replace=False)
     sub_ids = jnp.where(unsplit_mask, int_max(), random_subs)
+
+    # Sample actions for the chosen substations
     action = jax.vmap(lambda sub_id, key: sample_action_index_from_branch_actions(key, sub_id, action_set))(
         sub_ids,
         jax.random.split(actions_key, max_num_splits),
     )
 
+    # Sample disconnections
     not_disconnected_mask = jax.random.bernoulli(not_disc_key, p=0.5, shape=(max_disconnections,))
-    random_disconnections = jax.random.permutation(disc_key, n_disconnectable_branches)[:max_disconnections].astype(int)
+    random_disconnections = jax.random.choice(
+        disc_key, shape=(max_disconnections,), a=jnp.arange(n_disconnectable_branches), replace=False
+    )
     disconnections = jnp.where(not_disconnected_mask, int_max(), random_disconnections)
 
     return sub_ids, action, disconnections, random_key
-
-
-def modify_single_topology(
-    sub_ids: Int[Array, " max_num_splits"],
-    action: Int[Array, " max_num_splits"],
-    disconnections_topo: Int[Array, " max_num_disconnections"],
-    random_key: PRNGKeyArray,
-    mutate_config: MutationConfig,
-    action_set: ActionSet,
-) -> tuple[
-    Int[Array, " max_num_splits"],
-    Int[Array, " max_num_splits"],
-    Int[Array, " max_num_disconnections"],
-]:
-    """Mutate a single topology and update disconnections.
-
-    Parameters
-    ----------
-    sub_ids : Int[Array, " max_num_splits"]
-        The substation ids before the mutation
-    action : Int[Array, " max_num_splits"]
-        The actions before the mutation
-    disconnections_topo : Int[Array, " max_num_disconnections"]
-        The disconnections before the mutation
-    random_key : PRNGKeyArray
-        The random key to use for the mutation
-    mutate_config : MutationConfig
-        The mutation configuration
-    action_set : ActionSet
-        The set of possible actions
-
-    Returns
-    -------
-    Int[Array, " max_num_splits"],
-        The splits substation ids after the mutation
-    Int[Array, " max_num_splits"],
-        The action ids after the mutation
-    Int[Array, " max_num_disconnections"],
-        The disconnections after the mutation
-    """
-    operation_key, mutation_key, random_key = jax.random.split(random_key, 3)
-    mutate_op = jax.random.bernoulli(
-        operation_key,
-        p=(1.0 - mutate_config.random_topo_prob),
-    )
-    sub_ids, action, disconnections_topo, random_key = jax.lax.cond(
-        mutate_op,
-        lambda: mutate_topology(
-            random_key=mutation_key,
-            sub_ids=sub_ids,
-            disconnections_topo=disconnections_topo,
-            action=action,
-            mutate_config=mutate_config,
-            action_set=action_set,
-        ),
-        lambda: create_random_topology(
-            random_key=mutation_key,
-            sub_ids=sub_ids,
-            disconnections=disconnections_topo,
-            action_set=action_set,
-            n_rel_subs=mutate_config.substation_mutation_config.n_rel_subs,
-            n_disconnectable_branches=mutate_config.disconnection_mutation_config.n_disconnectable_branches,
-        ),
-    )
-
-    return sub_ids, action, disconnections_topo
 
 
 def mutate(
@@ -256,29 +198,82 @@ def mutate(
         The new random key
     """
     topologies = fix_dtypes(topologies)
-    batch_size = len(topologies.action_index)
+    batch_size = topologies.action_index.shape[0]
 
     # Repeat the topologies to increase the chance of getting unique mutations
     repeated_topologies = repeat_topologies(topologies, batch_size, mutation_config.mutation_repetition)
     n_mutations = batch_size * mutation_config.mutation_repetition
-    mutation_key, pst_key, random_key = jax.random.split(random_key, 3)
+    mutation_key, replacement_key, pst_key, random_key = jax.random.split(random_key, 4)
     sub_ids = extract_sub_ids(
         repeated_topologies.action_index,
         action_set,
     )
+    n_random_topologies = round(mutation_config.random_topo_prob * n_mutations)
 
-    mutate_single_topo = partial(
-        modify_single_topology,
-        action_set=action_set,
-        mutate_config=mutation_config,
+    # Setup batch functions for mutation and random topology creation
+    mutate_topologies_batch = jax.vmap(
+        lambda sub_id, action_single, disconnection_single, key: mutate_topology(
+            random_key=key,
+            sub_ids=sub_id,
+            disconnections_topo=disconnection_single,
+            action=action_single,
+            mutate_config=mutation_config,
+            action_set=action_set,
+        )
     )
 
-    sub_ids, action, disconnections_topo = jax.vmap(mutate_single_topo)(
-        sub_ids,
-        repeated_topologies.action_index,
-        repeated_topologies.disconnections,
-        jax.random.split(mutation_key, n_mutations),
+    create_random_topologies_batch = jax.vmap(
+        lambda sub_id, disconnection_single, key: create_random_topology(
+            random_key=key,
+            sub_ids=sub_id,
+            disconnections=disconnection_single,
+            action_set=action_set,
+            n_rel_subs=mutation_config.substation_mutation_config.n_rel_subs,
+            n_disconnectable_branches=mutation_config.disconnection_mutation_config.n_disconnectable_branches,
+        )
     )
+    # If n_random_topologies is 0, we only mutate.
+    if n_random_topologies == 0:
+        sub_ids, action, disconnections_topo, _ = mutate_topologies_batch(
+            sub_ids,
+            repeated_topologies.action_index,
+            repeated_topologies.disconnections,
+            jax.random.split(mutation_key, n_mutations),
+        )
+    # If n_random_topologies is equal to n_mutations, we only create random topologies.
+    elif n_random_topologies == n_mutations:
+        sub_ids, action, disconnections_topo, _ = create_random_topologies_batch(
+            sub_ids,
+            repeated_topologies.disconnections,
+            jax.random.split(replacement_key, n_mutations),
+        )
+    # If n_random_topologies is between 0 and n_mutations, we mutate all topologies and
+    # then replace a random subset of them with random topologies.
+    else:
+        sub_ids, action, disconnections_topo, _ = mutate_topologies_batch(
+            sub_ids,
+            repeated_topologies.action_index,
+            repeated_topologies.disconnections,
+            jax.random.split(mutation_key, n_mutations),
+        )
+
+        replacement_idx_key, replacement_topology_key = jax.random.split(replacement_key)
+        replacement_indices = jax.random.choice(
+            replacement_idx_key,
+            n_mutations,
+            shape=(n_random_topologies,),
+            replace=False,
+        )
+
+        random_sub_ids, random_action, random_disconnections, _ = create_random_topologies_batch(
+            sub_ids[replacement_indices],
+            disconnections_topo[replacement_indices],
+            jax.random.split(replacement_topology_key, n_random_topologies),
+        )
+
+        sub_ids = sub_ids.at[replacement_indices].set(random_sub_ids)
+        action = action.at[replacement_indices].set(random_action)
+        disconnections_topo = disconnections_topo.at[replacement_indices].set(random_disconnections)
 
     nodal_injections_optimized = mutate_nodal_injections(
         random_key=pst_key,

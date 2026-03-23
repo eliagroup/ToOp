@@ -95,6 +95,11 @@ class GridFile(BaseModel):
         return Path(self.grid_folder) / PREPROCESSING_PATHS["action_set_file_path"]
 
     @property
+    def action_set_diff_file(self) -> Path:
+        """The path to the stored action set diff file"""
+        return Path(self.grid_folder) / PREPROCESSING_PATHS["action_set_diff_path"]
+
+    @property
     def nminus1_definition_file(self) -> Path:
         """The path to the n-1 definition file"""
         return Path(self.grid_folder) / PREPROCESSING_PATHS["nminus1_definition_file_path"]

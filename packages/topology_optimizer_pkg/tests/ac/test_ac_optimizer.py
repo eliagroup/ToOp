@@ -22,6 +22,7 @@ from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import load_action_set_fs, random_actions
 from toop_engine_topology_optimizer.ac.optimizer import (
     AcNotConvergedError,
+    OptimizerData,
     initialize_optimization,
     make_runner,
     run_epoch,
@@ -74,7 +75,12 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
     # Load the network datas
     action_sets = [
-        load_action_set_fs(filesystem=processed_gridfile_fs, file_path=grid_file.action_set_file) for grid_file in grid_files
+        load_action_set_fs(
+            filesystem=processed_gridfile_fs,
+            json_file_path=grid_file.action_set_file,
+            diff_file_path=grid_file.action_set_diff_file,
+        )
+        for grid_file in grid_files
     ]
     nminus1_definitions = [
         load_pydantic_model_fs(
@@ -232,7 +238,7 @@ def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_re
 
 def test_wait_for_first_dc_results_timeout() -> None:
     with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
-        poll_mock.return_value = ([], [])
+        poll_mock.return_value = ({}, [])
 
         heartbeat_counter = 0
 
@@ -249,6 +255,28 @@ def test_wait_for_first_dc_results_timeout() -> None:
                 heartbeat_fn=_heartbeat_fn,
             )
         assert heartbeat_counter > 0
+
+
+def test_wait_for_first_dc_results_success_with_topology_counts() -> None:
+    with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
+        poll_mock.return_value = ({"test": 3}, [])
+
+        heartbeat_counter = 0
+
+        def _heartbeat_fn() -> None:
+            nonlocal heartbeat_counter
+            heartbeat_counter += 1
+
+        wait_for_first_dc_results(
+            results_consumer=Mock(spec=LongRunningKafkaConsumer),
+            session=Mock(spec=Session),
+            max_wait_time=1,
+            optimization_id="test",
+            heartbeat_fn=_heartbeat_fn,
+        )
+
+        assert poll_mock.called
+        assert heartbeat_counter == 0
 
 
 def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:
@@ -316,3 +344,38 @@ def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:
     assert sum(topo.unsplit for topo in ac_topos) == 1
     assert sum(not topo.unsplit for topo in ac_topos) == 1
     assert all(topo.get_loadflow_reference() is not None for topo in ac_topos)
+
+
+def test_run_epoch_on_error() -> None:
+
+    results = []
+
+    def mocked_send_result_fn(result):
+        results.append(result)
+
+    def mocked_scoring_function(*args, **kwargs):
+        raise Exception("Simulated scoring error")
+
+    optimizer_data = Mock(spec=OptimizerData)
+    optimizer_data.params = ACOptimizerParameters(
+        ga_config=ACGAParameters(
+            runtime_seconds=10, pull_prob=1.0, reconnect_prob=0.0, close_coupler_prob=0.0, seed=42, enable_ac_rejection=False
+        )
+    )
+    optimizer_data.scoring_fn = mocked_scoring_function
+    optimizer_data.session = Mock(spec=Session)
+
+    def mocked_evolution_fn(*args, **kwargs):
+        return [ACOptimTopology(id=1, actions=[1, 2], disconnections=[], timestep=0)]
+
+    optimizer_data.evolution_fn = mocked_evolution_fn
+    with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
+        poll_mock.return_value = ({}, [])
+        run_epoch(
+            optimizer_data=optimizer_data,
+            results_consumer=Mock(spec=LongRunningKafkaConsumer),
+            send_result_fn=mocked_send_result_fn,
+            epoch=0,
+        )
+    assert len(results) == 1
+    assert results[0].reason.criterion == "error"

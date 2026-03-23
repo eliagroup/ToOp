@@ -32,6 +32,7 @@ from toop_engine_topology_optimizer.interfaces.messages.commands import (
 )
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.heartbeats import HeartbeatUnion, OptimizationStartedHeartbeat
+from toop_engine_topology_optimizer.interfaces.messages.heartbeats import StartupHeartbeat as CanonicalStartupHeartbeat
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
     OptimizationStartedResult,
@@ -103,10 +104,123 @@ def test_main_simple(
         )
 
 
+@pytest.mark.timeout(60)
+def test_main_warmup_processes_many_results_and_exits_via_mocked_idle_loop(
+    kafka_command_topic: str,
+    kafka_heartbeat_topic: str,
+    kafka_results_topic: str,
+    kafka_connection_str: str,
+    processed_gridfile_folder: Path,
+    loadflow_result_folder: Path,
+    create_consumer: Callable,
+    create_producer: Callable,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Validate that AC worker warmup consumes many pre-existing results before entering idle loop."""
+
+    class StopIdleLoop(RuntimeError):
+        """Artificial stop for the infinite main loop."""
+
+    n_topologies = 100
+    processed_count = {"n": 0}
+
+    def patched_idle_loop(
+        worker_data: WorkerData,
+        send_heartbeat_fn: Callable[[HeartbeatUnion], None],
+        send_result_fn: Callable[[ResultUnion, str], None],
+        heartbeat_interval_ms: int,
+        max_command_age_hours: float,
+    ) -> StartOptimizationCommand:
+        del send_heartbeat_fn, heartbeat_interval_ms
+        processed_count["n"] = len(worker_data.db.exec(select(ACOptimTopology)).all())
+        raise StopIdleLoop()
+
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.worker.idle_loop", patched_idle_loop)
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.worker.StartupHeartbeat", CanonicalStartupHeartbeat)
+
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(processed_gridfile_folder))
+    instance_id = str(uuid4())
+    command_consumer = create_consumer(
+        "LongRunningKafkaConsumer",
+        topic=kafka_command_topic,
+        group_id=f"test-ac-worker-command-{instance_id}",
+        bootstrap_servers=kafka_connection_str,
+        client_id=f"test-ac-worker-command-client-{instance_id}",
+    )
+    result_consumer = create_consumer(
+        "LongRunningKafkaConsumer",
+        topic=kafka_results_topic,
+        group_id=f"test-ac-worker-results-{instance_id}",
+        bootstrap_servers=kafka_connection_str,
+        client_id=f"test-ac-worker-results-client-{instance_id}",
+    )
+
+    rng = np.random.default_rng(123)
+    seeded_producer = Producer(
+        {
+            "bootstrap.servers": kafka_connection_str,
+            "log_level": 2,
+        }
+    )
+    optimization_id = "warmup-opt"
+    for idx in range(n_topologies):
+        topology = Topology(
+            actions=[idx],
+            disconnections=[],
+            pst_setpoints=None,
+            metrics=Metrics(
+                fitness=float(rng.normal()),
+                extra_scores={
+                    "overload_energy_n_1": float(rng.random()),
+                    "top_k_overloads_n_1": float(rng.random()),
+                },
+                worst_k_contingency_cases=[f"cont_{idx}", f"cont_{idx + 1}"],
+            ),
+        )
+        result_message = Result(
+            result=TopologyPushResult(strategies=[Strategy(timesteps=[topology])]),
+            optimization_id=optimization_id,
+            optimizer_type=OptimizerType.DC,
+            instance_id="dc_optimizer_warmup",
+        )
+        seeded_producer.produce(
+            kafka_results_topic,
+            value=serialize_message(result_message.model_dump_json()),
+            key=optimization_id.encode(),
+        )
+    seeded_producer.flush()
+
+    try:
+        with pytest.raises(StopIdleLoop):
+            main(
+                args=Args(
+                    optimizer_command_topic=kafka_command_topic,
+                    optimizer_heartbeat_topic=kafka_heartbeat_topic,
+                    optimizer_results_topic=kafka_results_topic,
+                    heartbeat_interval_ms=50,
+                    kafka_broker=kafka_connection_str,
+                ),
+                loadflow_result_fs=loadflow_result_fs,
+                processed_gridfile_fs=processed_gridfile_fs,
+                producer=create_producer(kafka_connection_str, instance_id, log_level=2),
+                command_consumer=command_consumer,
+                result_consumer=result_consumer,
+            )
+    finally:
+        command_consumer.close()
+        result_consumer.close()
+
+    assert processed_count["n"] == n_topologies
+
+
 @pytest.fixture
 def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Result:
     # Generate random DC topologies to pull
-    action_set = load_action_set(grid_folder / "case57" / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        grid_folder / "case57" / PREPROCESSING_PATHS["action_set_file_path"],
+        grid_folder / "case57" / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     assert len(action_set.local_actions)
     network_data = load_network_data(grid_folder / "case57" / PREPROCESSING_PATHS["network_data_file_path"])
     assert network_data.branch_action_set is not None

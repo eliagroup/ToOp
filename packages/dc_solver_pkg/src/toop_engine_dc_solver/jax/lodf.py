@@ -61,28 +61,21 @@ def calc_lodf(
     from_node_outage = from_node.at[branch_to_outage].get(mode="fill", fill_value=int_max())
     to_node_outage = to_node.at[branch_to_outage].get(mode="fill", fill_value=int_max())
 
-    # Denominator, use .at to ensure that the branch that is outaged has a value of 1
+    # Denominator
     denom = (
         1
         - ptdf.at[branch_to_outage, from_node_outage].get(mode="fill", fill_value=0.0)
         + ptdf.at[branch_to_outage, to_node_outage].get(mode="fill", fill_value=0.0)
     )
-
     # Nominator
-    nom = ptdf.at[:, from_node_outage].get(mode="fill", fill_value=0.0) - ptdf.at[:, to_node_outage].get(
+    branches_monitored = jnp.arange(ptdf.shape[0]) if branches_monitored is None else branches_monitored
+    ptdf_monitored = ptdf[branches_monitored]
+    nom = ptdf_monitored.at[:, from_node_outage].get(mode="fill", fill_value=0.0) - ptdf_monitored.at[:, to_node_outage].get(
         mode="fill", fill_value=0.0
     )
+    nom = jnp.where(branches_monitored == branch_to_outage, -denom, nom)
 
-    # The lodf of the outaged branch must be -1,
-    # so we ensure this
-    nom = nom.at[branch_to_outage].set(-denom, mode="drop")
-
-    # Check if the network does not split (the network splits if denom is 0)
     success = jnp.abs(denom) > 1e-11
-
-    if branches_monitored is not None:
-        nom = nom.at[branches_monitored].get(mode="fill", fill_value=0)
-
     return nom / denom, success
 
 

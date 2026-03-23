@@ -52,7 +52,7 @@ class BatchedMEParameters(BaseModel):
 
     ### MUTATION CONFIGURATION ###
 
-    mutation_repetition: PositiveInt = 2
+    mutation_repetition: PositiveInt = 1
     """More chance to get unique mutations by mutating multiple copies of the repertoire"""
 
     random_topo_prob: confloat(ge=0.0, le=1.0) = 0.1

@@ -29,18 +29,18 @@ def int_max_value() -> int:
 
 
 @pytest.mark.parametrize(
-    "sub_ids,n_subs_rel",
+    "sub_ids,n_rel_subs",
     [
         (jnp.array([1, 2, 999]), 5),  # Some split, some not
         (jnp.array([999, 999, 999]), 5),  # None split
         (jnp.array([0, 1, 2]), 3),  # All split
     ],
 )
-def test_change_split_substation_shapes(random_key, sub_ids, n_subs_rel, int_max_value):
+def test_change_split_substation_shapes(random_key, sub_ids, n_rel_subs, int_max_value):
     split_idx, new_substation_idx = change_split_substation(
         random_key=random_key,
         sub_ids=sub_ids,
-        n_subs_rel=n_subs_rel,
+        n_rel_subs=n_rel_subs,
         int_max_value=int_max_value,
     )
     assert isinstance(split_idx, int) or split_idx.shape == ()
@@ -51,43 +51,42 @@ def test_change_split_substation_shapes(random_key, sub_ids, n_subs_rel, int_max
 def test_change_split_substation_resplits(random_key, int_max_value):
     # All substations already split, should allow resplit
     sub_ids = jnp.array([0, 1, 2])
-    n_subs_rel = 3
+    n_rel_subs = 3
     split_idx, new_substation_idx = change_split_substation(
         random_key=random_key,
         sub_ids=sub_ids,
-        n_subs_rel=n_subs_rel,
+        n_rel_subs=n_rel_subs,
         int_max_value=int_max_value,
     )
     assert split_idx >= 0 and split_idx < sub_ids.shape[0]
-    assert new_substation_idx >= 0 and new_substation_idx < n_subs_rel
+    assert new_substation_idx >= 0 and new_substation_idx < n_rel_subs
 
 
 def test_change_split_substation_no_split(random_key, int_max_value):
     # No substations split, should give split_idx int_max_value
     sub_ids = jnp.array([int_max_value, int_max_value, int_max_value])
-    n_subs_rel = 5
+    n_rel_subs = 5
     split_idx, new_substation_idx = change_split_substation(
         random_key=random_key,
         sub_ids=sub_ids,
-        n_subs_rel=n_subs_rel,
+        n_rel_subs=n_rel_subs,
         int_max_value=int_max_value,
     )
     assert split_idx == int_max_value
-    assert new_substation_idx < n_subs_rel
 
 
 def test_change_split_substation_partial_split(random_key, int_max_value):
     # Some substations split, some not
     sub_ids = jnp.array([int_max_value, 2, int_max_value])
-    n_subs_rel = 4
+    n_rel_subs = 4
     split_idx, new_substation_idx = change_split_substation(
         random_key=random_key,
         sub_ids=sub_ids,
-        n_subs_rel=n_subs_rel,
+        n_rel_subs=n_rel_subs,
         int_max_value=int_max_value,
     )
     assert split_idx >= 0 and split_idx < sub_ids.shape[0]
-    assert new_substation_idx >= 0 and new_substation_idx < n_subs_rel
+    assert new_substation_idx >= 0 and new_substation_idx < n_rel_subs
 
 
 @pytest.mark.parametrize(
@@ -151,7 +150,7 @@ def test_unsplit_substation_all_split(random_key):
 
 
 @pytest.mark.parametrize(
-    "sub_ids,n_subs_rel,int_max_value",
+    "sub_ids,n_rel_subs,int_max_value",
     [
         (jnp.array([999, 999, 999]), 5, 999),  # None split
         (jnp.array([1, 2, 999]), 5, 999),  # Some split, some not
@@ -159,11 +158,11 @@ def test_unsplit_substation_all_split(random_key):
         (jnp.array([5, 999, 999]), 6, 999),  # One split, rest not
     ],
 )
-def test_split_additional_sub_shapes(random_key, sub_ids, n_subs_rel, int_max_value):
+def test_split_additional_sub_shapes(random_key, sub_ids, n_rel_subs, int_max_value):
     split_idx, new_substation_idx = split_additional_sub(
         random_key=random_key,
         sub_ids=sub_ids,
-        n_subs_rel=n_subs_rel,
+        n_rel_subs=n_rel_subs,
         int_max_value=int_max_value,
     )
     assert isinstance(split_idx, int) or split_idx.shape == ()
@@ -174,31 +173,30 @@ def test_split_additional_sub_shapes(random_key, sub_ids, n_subs_rel, int_max_va
 def test_split_additional_sub_all_split(random_key):
     # All substations already split, should set split_idx to int_max_value
     sub_ids = jnp.array([0, 1, 2])
-    n_subs_rel = 3
+    n_rel_subs = 3
     int_max_value = 999
     split_idx, new_substation_idx = split_additional_sub(
         random_key=random_key,
         sub_ids=sub_ids,
-        n_subs_rel=n_subs_rel,
+        n_rel_subs=n_rel_subs,
         int_max_value=int_max_value,
     )
     assert split_idx == int_max_value
-    assert new_substation_idx >= 0 and new_substation_idx < n_subs_rel
 
 
 def test_split_additional_sub_no_split(random_key):
     # No substations split, should select one to split
     sub_ids = jnp.array([999, 999, 999])
-    n_subs_rel = 5
+    n_rel_subs = 5
     int_max_value = 999
     split_idx, new_substation_idx = split_additional_sub(
         random_key=random_key,
         sub_ids=sub_ids,
-        n_subs_rel=n_subs_rel,
+        n_rel_subs=n_rel_subs,
         int_max_value=int_max_value,
     )
     assert split_idx >= 0 and split_idx < sub_ids.shape[0]
-    assert new_substation_idx >= 0 and new_substation_idx < n_subs_rel
+    assert new_substation_idx >= 0 and new_substation_idx < n_rel_subs
 
 
 def test_split_additional_sub_partial_split(random_key):
@@ -206,30 +204,30 @@ def test_split_additional_sub_partial_split(random_key):
     int_max_value = 999
 
     sub_ids = jnp.array([int_max_value, 2, int_max_value])
-    n_subs_rel = 4
+    n_rel_subs = 4
     split_idx, new_substation_idx = split_additional_sub(
         random_key=random_key,
         sub_ids=sub_ids,
-        n_subs_rel=n_subs_rel,
+        n_rel_subs=n_rel_subs,
         int_max_value=int_max_value,
     )
     assert split_idx >= 0 and split_idx < len(sub_ids)
-    assert new_substation_idx >= 0 and new_substation_idx < n_subs_rel
+    assert new_substation_idx >= 0 and new_substation_idx < n_rel_subs
 
 
 def test_split_additional_sub_one_split(random_key):
     # One split, rest not
     sub_ids = jnp.array([5, 999, 999])
-    n_subs_rel = 6
+    n_rel_subs = 6
     int_max_value = 999
     split_idx, new_substation_idx = split_additional_sub(
         random_key=random_key,
         sub_ids=sub_ids,
-        n_subs_rel=n_subs_rel,
+        n_rel_subs=n_rel_subs,
         int_max_value=int_max_value,
     )
     assert (split_idx == int_max_value) or (split_idx >= 0 and split_idx < sub_ids.shape[0])
-    assert new_substation_idx >= 0 and new_substation_idx < n_subs_rel
+    assert new_substation_idx >= 0 and new_substation_idx < n_rel_subs
 
 
 def dummy_sample_action_index_from_branch_actions(rng_key, sub_id, branch_action_set):

@@ -9,7 +9,41 @@
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Bool, Int, PRNGKeyArray
+from jaxtyping import Array, ArrayLike, Bool, Int, PRNGKeyArray
+from toop_engine_dc_solver.jax.types import int_max
+
+
+def sample_new_id(
+    random_key: PRNGKeyArray,
+    already_used_ids: Int[Array, " n_splits_or_disconnections"],
+    n_available_ids: int,
+    ignored_idx: Int[ArrayLike, " "],
+) -> Int[Array, " "]:
+    """Sample a relevant id that is not already used in the active split slots.
+
+    Parameters
+    ----------
+    random_key : PRNGKeyArray
+        Random key used for sampling.
+    already_used_ids : Int[Array, " max_num_splits"]
+        Current ids that should not be sampled again.
+    n_available_ids : int
+        Number of available ids that may be selected.
+    ignored_idx : Int[Array, " "]
+        Index in ``already_used_ids`` to ignore while checking duplicates. This is used for branch replacement,
+        where the currently replaced split must not block its own id.
+
+    Returns
+    -------
+    Int[Array, " "]
+        A valid new substation id, or ``int_max()`` if none are available.
+    """
+    int_max_value = int_max()
+    available_mask = jnp.ones((n_available_ids,), dtype=bool).at[already_used_ids].set(False, mode="drop")
+    available_mask = available_mask.at[already_used_ids.at[ignored_idx].get(mode="fill", fill_value=int_max_value)].set(
+        True, mode="drop"
+    )
+    return get_random_true_idx(random_key, available_mask, int_max_value)
 
 
 def get_random_true_idx(
@@ -35,13 +69,13 @@ def get_random_true_idx(
         A random index of a True entry in boolean_array, or int_max_value if all entries
         are False.
     """
-    # Pad the array with a False value at the end, so that we can sample from it even if its empty before
-    boolean_array = jnp.pad(boolean_array, (0, 1), constant_values=False)
-
-    logits = jnp.where(boolean_array, 0.0, -jnp.inf)
-    any_match = jnp.any(boolean_array)
-    idx = jax.random.categorical(random_key, logits=logits)
-    return jnp.where(any_match, idx, jnp.array(int_max_value))
+    n_possibilities = boolean_array.shape[0]
+    candidate_indices = jnp.nonzero(boolean_array, size=n_possibilities, fill_value=int_max_value)[0]
+    n_candidates = jnp.sum(boolean_array)
+    safe_n_candidates = jnp.maximum(n_candidates, 1)
+    sampled_position = jax.random.randint(random_key, shape=(), minval=0, maxval=safe_n_candidates)
+    sampled_index = candidate_indices[sampled_position]
+    return jnp.where(n_candidates > 0, sampled_index, jnp.array(int_max_value))
 
 
 def do_nothing(int_max_value: int) -> tuple[Int[Array, " "], Int[Array, " "]]:

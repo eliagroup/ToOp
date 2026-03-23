@@ -251,6 +251,19 @@ def validate_static_information(
     assert di.action_set.inj_actions.shape == (n_actions, max_inj_per_sub)
 
     assert jnp.all(di.action_set.reassignment_distance >= 0)
+    sum_of_actions = 0
+    for n_actions, starting_idx in zip(di.action_set.n_actions_per_sub, di.action_set.action_start_indices, strict=True):
+        assert n_actions >= 0
+        assert starting_idx == sum_of_actions, (
+            f"Action start indices should point to the first action of a substation, "
+            f"so should be cumulative sum of n_actions_per_sub. {sum_of_actions} vs {starting_idx}"
+        )
+        sum_of_actions += n_actions
+    for action_idx in di.action_set.action_start_indices:
+        assert not jnp.any(di.action_set.branch_actions[action_idx]), (
+            "Action start indices should point to the first action of a substation, which should not have any branch actions"
+        )
+
     assert len(di.multi_outage_branches) == len(di.multi_outage_nodes)
     for branch_arr, node_arr in zip(di.multi_outage_branches, di.multi_outage_nodes, strict=True):
         assert branch_arr.shape[0] == node_arr.shape[0]
@@ -508,6 +521,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             "action_set_reassignment_distance",
             data=dynamic_information.action_set.reassignment_distance,
         )
+        file.create_dataset(
+            "action_set_action_start_indices",
+            data=dynamic_information.action_set.action_start_indices,
+        )
 
         if dynamic_information.n2_baseline_analysis is not None:
             baseline = dynamic_information.n2_baseline_analysis
@@ -749,6 +766,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                         substation_correspondence=jnp.array(file["action_set_substation_correspondence"][:]),
                         unsplit_action_mask=jnp.array(file["action_set_unsplit_action_mask"][:]),
                         reassignment_distance=jnp.array(file["action_set_reassignment_distance"][:]),
+                        action_start_indices=jnp.array(file["action_set_action_start_indices"][:]),
                         rel_bb_outage_data=RelBBOutageData(
                             branch_outage_set=jnp.array(file["action_set_rel_bb_outage_data_branch_outage_set"][:]),
                             nodal_indices=jnp.array(file["action_set_rel_bb_outage_data_nodal_indices"][:]),

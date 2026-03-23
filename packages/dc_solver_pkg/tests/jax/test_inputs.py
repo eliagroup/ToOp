@@ -8,6 +8,7 @@
 import os
 import pickle
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jax_dataclasses import replace
@@ -103,22 +104,20 @@ def test_load_save(
     save_static_information(os.path.join(tmp_path, "test2.hdf5"), static_information)
     loaded = load_static_information(os.path.join(tmp_path, "test2.hdf5"))
     validate_static_information(loaded)
-    assert jnp.array_equal(
-        static_information.dynamic_information.multi_outage_branches[0],
-        loaded.dynamic_information.multi_outage_branches[0],
+    compare_dynamic = jax.tree.map(
+        lambda x, y: jnp.array_equal(x, y, equal_nan=True),
+        static_information.dynamic_information,
+        loaded.dynamic_information,
     )
-    assert jnp.array_equal(
-        static_information.dynamic_information.multi_outage_nodes[0],
-        loaded.dynamic_information.multi_outage_nodes[0],
+    flattened, _ = jax.tree_util.tree_flatten_with_path(compare_dynamic)
+    for key_path, is_equal in flattened:
+        assert is_equal, f"DynamicInformation field {jax.tree_util.keystr(key_path)} should be equal after load/save"
+    assert eqx.tree_equal(static_information.dynamic_information, loaded.dynamic_information, rtol=1e-5, atol=1e-8), (
+        "DynamicInformations are not equal after load/save"
     )
-    assert jnp.array_equal(
-        static_information.dynamic_information.action_set.branch_actions,
-        loaded.dynamic_information.action_set.branch_actions,
-    )
-    assert jnp.array_equal(
-        static_information.dynamic_information.action_set.n_actions_per_sub,
-        loaded.dynamic_information.action_set.n_actions_per_sub,
-    )
+
+    for key, value in static_information.solver_config.__dict__.items():
+        assert value == getattr(loaded.solver_config, key, None), f"SolverConfig field {key} should be equal after load/save"
 
 
 def test_pickle_static_information(

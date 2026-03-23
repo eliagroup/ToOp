@@ -23,6 +23,46 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import Reass
 logger = logbook.Logger(__name__)
 
 
+@partial(jax.jit, static_argnames=("batch_size", "choice_heuristic"))
+def _compute_switching_tables_for_actions(
+    local_branch_action_set: Bool[Array, " n_combinations n_assets"],
+    current_coupler_state: Bool[Array, " n_couplers"],
+    separation_set: Bool[Array, " n_separations 2 n_assets"],
+    coupler_states: Bool[Array, " n_separations n_couplers"],
+    busbar_mapping: Bool[Array, " n_separations n_busbars"],
+    current_switching_table: Bool[Array, " n_busbars n_assets"],
+    asset_connectivity: Bool[Array, " n_busbars n_assets"],
+    batch_size: int,
+    choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"],
+) -> tuple[
+    Bool[Array, " n_combinations n_busbars n_assets"],
+    Bool[Array, " n_combinations n_couplers"],
+    Bool[Array, " n_combinations n_busbars"],
+    Int[Array, " n_combinations"],
+    Int[Array, " n_combinations"],
+    Bool[Array, " n_combinations"],
+]:
+    """Compute switching tables for a batch of local branch actions.
+
+    This helper exists so JAX can cache the traced program across repeated calls with the same
+    station-local argument shapes instead of recompiling a new closure for every station.
+    """
+    return jax.lax.map(
+        lambda local_action: compute_switching_table(
+            local_action=local_action,
+            current_coupler_state=current_coupler_state,
+            separation_set=separation_set,
+            coupler_states=coupler_states,
+            busbar_mapping=busbar_mapping,
+            current_switching_table=current_switching_table,
+            asset_connectivity=asset_connectivity,
+            choice_heuristic=choice_heuristic,
+        ),
+        local_branch_action_set,
+        batch_size=batch_size,
+    )
+
+
 def heuristic_first(
     requires_addition: Bool[Array, " n_assets"],
     current_switching_table: Bool[Array, " n_busbars n_assets"],
@@ -406,19 +446,16 @@ def realise_ba_to_physical_topo_per_station_jax(
             _el_reassignment_distance,
             phy_reassignment_distance,
             failed_assignments,
-        ) = jax.lax.map(
-            f=partial(
-                compute_switching_table,
-                current_coupler_state=jnp.array(current_coupler_state, dtype=bool),
-                separation_set=jnp.array(separation_set, dtype=bool),
-                coupler_states=jnp.array(coupler_states, dtype=bool),
-                busbar_mapping=jnp.array(busbar_b_array, dtype=bool),
-                current_switching_table=jnp.array(asset_switching_table, dtype=bool),
-                asset_connectivity=jnp.array(asset_connectivity, dtype=bool),
-                choice_heuristic=choice_heuristic,
-            ),
-            xs=jnp.array(local_branch_action_set, dtype=bool),
+        ) = _compute_switching_tables_for_actions(
+            local_branch_action_set=jnp.array(local_branch_action_set, dtype=bool),
+            current_coupler_state=jnp.array(current_coupler_state, dtype=bool),
+            separation_set=jnp.array(separation_set, dtype=bool),
+            coupler_states=jnp.array(coupler_states, dtype=bool),
+            busbar_mapping=jnp.array(busbar_b_array, dtype=bool),
+            current_switching_table=jnp.array(asset_switching_table, dtype=bool),
+            asset_connectivity=jnp.array(asset_connectivity, dtype=bool),
             batch_size=batch_size,
+            choice_heuristic=choice_heuristic,
         )
 
     # Remove failed assignments from the local branch action set

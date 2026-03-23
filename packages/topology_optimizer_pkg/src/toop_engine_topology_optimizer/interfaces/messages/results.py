@@ -101,7 +101,7 @@ class Strategy(BaseModel):
 
 
 RejectionCriterion: TypeAlias = Literal[
-    "convergence", "voltage-magnitude", "voltage-angle", "overload-energy", "critical-branch-count", "other"
+    "convergence", "voltage-magnitude", "voltage-angle", "overload-energy", "critical-branch-count", "error", "other"
 ]
 
 
@@ -149,6 +149,7 @@ def get_topology_rejection_message(result: TopologyRejectionReason) -> str:
         "critical-branch-count": "Rejecting topology due to critical branches increasing too much",
         "voltage-magnitude": "Rejecting topology due to voltage magnitude violation",
         "voltage-angle": "Rejecting topology due to voltage angle violation",
+        "error": f"Rejecting topology due to error: {result.description}",
         "other": "Rejecting topology due to other reason",
     }
 

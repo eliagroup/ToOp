@@ -70,6 +70,8 @@ jobs:
     if: success()
     permissions:
       contents: read
+      pull-requests: read
+
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code

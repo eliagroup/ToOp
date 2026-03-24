@@ -16,7 +16,6 @@ from pathlib import Path
 
 import jax
 import jax.numpy as jnp
-import logbook
 import numpy as np
 from beartype.typing import Callable, Literal, Optional
 from fsspec import AbstractFileSystem
@@ -62,6 +61,7 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData, save_netw
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -72,7 +72,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def convert_relevant_injections(

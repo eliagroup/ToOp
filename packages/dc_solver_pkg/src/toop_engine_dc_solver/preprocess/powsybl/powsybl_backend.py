@@ -10,7 +10,6 @@
 import functools
 from pathlib import Path
 
-import logbook
 import numpy as np
 import pandas as pd
 import pandera.typing as pat
@@ -26,6 +25,7 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_tie_lines,
     get_trafos,
 )
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.asset_topology import Topology
@@ -36,7 +36,7 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 INJECTION_COLUMNS = ["name", "p", "bus_id_int", "for_nminus1", "type"]
 

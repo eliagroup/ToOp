@@ -17,7 +17,6 @@ Note: this module currently ignores the asset_setpoints.
 import io
 from copy import deepcopy
 
-import logbook
 import numpy as np
 import pandas as pd
 import pandera as pa
@@ -31,6 +30,7 @@ from toop_engine_dc_solver.export.dgs_v7_definitions import (
     DgsElmCoupSchema,
     DgsGeneralSchema,
 )
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.asset_topology import (
     BusbarCoupler,
     PowsyblSwitchValues,
@@ -39,7 +39,7 @@ from toop_engine_interfaces.asset_topology import (
 )
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 class SwitchUpdateSchema(pa.DataFrameModel):

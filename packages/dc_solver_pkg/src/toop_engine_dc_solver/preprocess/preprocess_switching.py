@@ -14,7 +14,6 @@ import itertools
 from dataclasses import dataclass
 
 import jax.numpy as jnp
-import logbook
 import networkx as nx
 import numpy as np
 from beartype.typing import Literal, Optional, Sequence
@@ -24,6 +23,7 @@ from networkx.algorithms.components import (
     number_connected_components,
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import hamming_distance
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
@@ -41,7 +41,7 @@ from toop_engine_interfaces.asset_topology_helpers import (
     order_topology,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

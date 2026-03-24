@@ -9,7 +9,6 @@
 
 from dataclasses import replace
 
-import logbook
 import networkx as nx
 import numpy as np
 from beartype.typing import Optional, Union
@@ -19,10 +18,11 @@ from toop_engine_dc_solver.preprocess.network_data import (
     OutageData,
     get_relevant_stations,
 )
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.asset_topology import Station, SwitchableAsset
 from toop_engine_interfaces.asset_topology_helpers import find_station_by_id, get_connected_assets
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def get_total_injection_along_stub_branch(

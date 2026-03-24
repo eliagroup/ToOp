@@ -41,7 +41,6 @@ Created: 05/2024
 
 import time
 from dataclasses import dataclass
-from logging import getLogger
 from pathlib import Path
 
 import pandapower
@@ -54,6 +53,7 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pandapower_from_fs
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
@@ -76,7 +76,7 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
 )
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -140,8 +140,8 @@ def idle_loop(
 
     Returns
     -------
-    StartOptimizationCommand
-        The start optimization command to start the optimization run with
+    StartCalculationCommand
+        The start calculation command to start the loadflow calculation with
     """
     send_heartbeat_fn()
     logger.info("Entering idle loop")

@@ -5,7 +5,16 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Factory for creating OTel-structured loggers."""
+"""Factory for creating OTel-structured loggers.
+
+Usage:
+```python
+from toop_engine_grid_helpers.logging.logger import get_logger
+
+logger = get_logger(__name__)
+logger.info("Grid loaded")
+```
+"""
 
 from typing import Any
 

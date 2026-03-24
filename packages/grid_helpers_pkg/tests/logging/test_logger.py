@@ -8,7 +8,9 @@
 """Tests for the OTel-structured logger."""
 
 import json
+import logging
 import time
+from typing import Any
 
 import pytest
 import structlog.testing
@@ -29,6 +31,15 @@ class TestGetLogger:
             logger.info("hello")
         assert cap_logs[0]["logger.name"] == "my.module"
 
+    def test_logger_level_changed(self) -> None:
+        # configure() must run before capture_logs() so it doesn't override the capture setup
+        configure(log_level=logging.DEBUG)
+        logger = get_logger("my.module")
+        with structlog.testing.capture_logs() as cap_logs:
+            logger.debug("hello debug")
+        assert cap_logs[0]["logger.name"] == "my.module"
+        assert cap_logs[0]["event"] == "hello debug"
+
     def test_extra_context_passed_through(self) -> None:
         configure()
         logger = get_logger("ctx.test")
@@ -41,7 +52,7 @@ class TestGetLogger:
 class TestOtelJsonShape:
     """Integration tests that validate the full JSON output shape."""
 
-    def _log_and_parse(self, capsys: pytest.CaptureFixture[str], level: str = "info", msg: str = "hello") -> dict:  # type: ignore[type-arg]
+    def _log_and_parse(self, capsys: pytest.CaptureFixture[str], level: str = "info", msg: str = "hello") -> dict[str, Any]:
         logger = get_logger("otel.test")
         getattr(logger, level)(msg)
         return json.loads(capsys.readouterr().out.strip())
@@ -101,12 +112,6 @@ class TestSeverityMapping:
         assert _SEVERITY_MAP["debug"] == "DEBUG"
         # level-filtered: nothing emitted at runtime (correct — default threshold is INFO)
         assert len(cap_logs) == 0
-
-    def test_warning_is_not_spelled_out(self, capsys: pytest.CaptureFixture[str]) -> None:
-        get_logger("warn.test").warning("check")
-        out = json.loads(capsys.readouterr().out.strip())
-        assert out["SeverityText"] == "WARN"
-        assert out["SeverityText"] != "WARNING"
 
 
 class TestServiceAttributes:

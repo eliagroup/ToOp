@@ -7,13 +7,15 @@
 
 """Pytest fixtures for logging tests."""
 
+from typing import Iterator
+
 import pytest
 import structlog
 import toop_engine_grid_helpers.logging.config as log_config
 
 
 @pytest.fixture(autouse=True)
-def reset_structlog() -> None:  # type: ignore[return]
+def reset_structlog() -> Iterator[None]:
     """Reset structlog and the configuration flag between tests."""
     structlog.reset_defaults()
     log_config._configured = False

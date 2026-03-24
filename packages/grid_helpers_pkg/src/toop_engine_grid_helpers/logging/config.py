@@ -5,7 +5,12 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Structlog configuration for the OTel Logs Data Model."""
+"""Structlog configuration for the OTel Logs Data Model.
+
+The logging level is set to 20 (INFO) by default, but can be overridden by setting the LOG_LEVEL env var.
+Valid level names or numbers can be found in: https://docs.python.org/3/library/logging.html#levels.
+.
+"""
 
 import functools
 import os
@@ -111,8 +116,15 @@ def _to_otel_shape(_logger: Any, _method: str, event_dict: _EventDict) -> dict[s
 # --- configuration ---
 
 
-def configure() -> None:
-    """Configure structlog with the OTel processor chain. Idempotent."""
+def configure(log_level: int = 20) -> None:
+    """Configure structlog with the OTel processor chain. Idempotent.
+
+    Find common log levels here: https://docs.python.org/3/library/logging.html#levels
+
+    Args:
+        log_level: The minimum log level to emit, as an int or valid level name string. Default is 20 (INFO).
+
+    """
     global _configured  # noqa: PLW0603
     if _configured:
         return
@@ -126,7 +138,7 @@ def configure() -> None:
             _to_otel_shape,
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(20),  # INFO
+        wrapper_class=structlog.make_filtering_bound_logger(log_level),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,

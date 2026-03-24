@@ -8,6 +8,7 @@
 """Kafka worker for the genetic algorithm optimization."""
 
 import time
+from datetime import datetime, timedelta
 from functools import partial
 from uuid import uuid4
 
@@ -67,11 +68,17 @@ class Args(BaseModel):
     heartbeat_interval_ms: int = 1000
     """The interval in milliseconds to send heartbeats."""
 
+    max_command_age_hours: float = 3.0
+    """The maximum age of a command in hours. If a command is received that is older than this,
+    the command will be ignored."""
+
 
 def idle_loop(
     consumer: LongRunningKafkaConsumer,
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
+    send_result_fn: Callable[[ResultUnion, str], None],
     heartbeat_interval_ms: int,
+    max_command_age_hours: float,
 ) -> StartOptimizationCommand:
     """Run idle loop of the worker.
 
@@ -85,13 +92,19 @@ def idle_loop(
         The initialized Kafka consumer to listen for commands on.
     send_heartbeat_fn : Callable[[HeartbeatUnion], None]
         A function to call when there were no messages received for a while.
+    send_result_fn : Callable[[ResultUnion, str], None]
+        A function to call to send results back to the results topic, used to send a message in case a command is too old.
     heartbeat_interval_ms : int
         The time to wait for a new command in milliseconds. If no command has been received, a
         heartbeat will be sent and then the receiver will wait for commands again.
+    max_command_age_hours: float
+        The maximum age of a command in hours.
+        If a command is received that is older than this, the command will be ignored
+        and a message will be sent to the results topic.
 
     Returns
     -------
-    StartOptimizationCommand
+    StartOptimizationCommand,
         The start optimization command to start the optimization run with
 
     Raises
@@ -111,14 +124,27 @@ def idle_loop(
 
         command = Command.model_validate_json(deserialize_message(message.value()))
 
-        if isinstance(command.command, StartOptimizationCommand):
-            return command.command
-
         if isinstance(command.command, ShutdownCommand):
             logger.info("Shutting down due to ShutdownCommand")
             consumer.commit()
             consumer.consumer.close()
             raise SystemExit(command.command.exit_code)
+        if isinstance(command.command, StartOptimizationCommand):
+            time_of_command = datetime.fromisoformat(command.timestamp)
+            if time_of_command < datetime.now() - timedelta(hours=max_command_age_hours):
+                logger.warning(
+                    f"Received command with timestamp from the past (timestamp: {time_of_command}, "
+                    f"now: {datetime.now()}), skipping command"
+                )
+                send_result_fn(
+                    OptimizationStoppedResult(
+                        reason="command-too-old", message=f"Received outdated command: {command}. Skipping.."
+                    ),
+                    command.command.optimization_id,
+                )
+                consumer.commit()
+                continue
+            return command.command
 
         # If we are here, we received a command that we do not know
         logger.warning(f"Received unknown command, dropping: {command} / {message.value}")
@@ -203,7 +229,7 @@ def optimization_loop(
                 logger.warning("No strategies extracted, skipping push.")
 
     logger.info(f"Starting optimization {optimization_id}")
-    epoch = 0
+    epoch = 1
     running = True
     start_time = time.time()
     while running:
@@ -218,12 +244,6 @@ def optimization_loop(
             return
         epoch += 1
 
-        if time.time() - start_time > dc_params.ga_config.runtime_seconds:
-            logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
-            send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
-            running = False
-            break
-
         send_heartbeat_fn(
             OptimizationStatsHeartbeat(
                 optimization_id=optimization_id,
@@ -233,6 +253,12 @@ def optimization_loop(
                 num_injection_topologies_tried=optimizer_data.jax_data.emitter_state.total_inj_combis.sum().item(),
             )
         )
+
+        if time.time() - start_time > dc_params.ga_config.runtime_seconds:
+            logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
+            send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
+            running = False
+            break
 
 
 def main(
@@ -302,8 +328,11 @@ def main(
         command = idle_loop(
             consumer=command_consumer,
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=False),
+            send_result_fn=send_result,
             heartbeat_interval_ms=args.heartbeat_interval_ms,
+            max_command_age_hours=args.max_command_age_hours,
         )
+
         command_consumer.start_processing()
         optimization_loop(
             dc_params=command.dc_params,

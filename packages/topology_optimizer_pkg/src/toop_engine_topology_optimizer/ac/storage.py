@@ -37,6 +37,21 @@ class ACOptimTopology(BaseDBTopology, table=True):
     """Whether the strategy was accepted or not."""
 
 
+class FinishedOptimizations(SQLModel, table=True):
+    """A table to store finished optimizations, to prevent picking up old topologies from previous optimizations"""
+
+    __tablename__ = "finished_optimizations"
+
+    optimization_id: str = Field(primary_key=True)
+    """The optimization ID of the finished optimization as sent via kafka"""
+
+    optimizer_type: OptimizerType = Field(primary_key=True)
+    """Which optimizer type has finished"""
+
+    finished_at: datetime = Field(default_factory=datetime.now)
+    """When the optimization was marked as finished in the database"""
+
+
 def convert_single_topology(
     topology: Topology,
     optimization_id: str,
@@ -133,7 +148,7 @@ def create_session() -> Session:
         The created session with the in-memory SQLite database
     """
     engine = create_engine("sqlite:///:memory:")
-    SQLModel.metadata.create_all(engine, tables=[ACOptimTopology.__table__])
+    SQLModel.metadata.create_all(engine, tables=[ACOptimTopology.__table__, FinishedOptimizations.__table__])
     session = Session(engine)
     return session
 

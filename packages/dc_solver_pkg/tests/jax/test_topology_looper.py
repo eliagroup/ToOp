@@ -477,6 +477,13 @@ def test_run_solver_symmetric_with_bb_outage(
 ) -> None:
     static_information = convert_to_jax(network_data_preprocessed, enable_bb_outage=True, bb_outage_as_nminus1=False)
     action_index_topo: ActionIndexComputations = random_topology(
+        jax.random.PRNGKey(41),
+        branch_action_set=static_information.dynamic_information.action_set,
+        limit_n_subs=2,
+        batch_size=static_information.solver_config.batch_size_bsdf,
+        topo_vect_format=False,
+    )
+    action_index_topo2: ActionIndexComputations = random_topology(
         jax.random.PRNGKey(42),
         branch_action_set=static_information.dynamic_information.action_set,
         limit_n_subs=2,

@@ -14,6 +14,7 @@ from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.stored_action_set import save_action_set_fs
 
 
 def write_aux_data(
@@ -49,10 +50,11 @@ def write_aux_data_fs(
         Filesystem where the auxiliary data is persisted using PREPROCESSING_PATHS
     """
     action_set = extract_action_set(network_data)
-    save_pydantic_model_fs(
+    save_action_set_fs(
         filesystem=filesystem,
-        file_path=PREPROCESSING_PATHS["action_set_file_path"],
-        pydantic_model=action_set,
+        json_file_path=PREPROCESSING_PATHS["action_set_file_path"],
+        diff_file_path=PREPROCESSING_PATHS["action_set_diff_path"],
+        action_set=action_set,
     )
 
     nminus1_definition = extract_nminus1_definition(network_data)

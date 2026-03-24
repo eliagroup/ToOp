@@ -10,6 +10,7 @@
 import time
 import traceback
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from functools import partial
 from uuid import uuid4
 
@@ -38,6 +39,7 @@ from toop_engine_topology_optimizer.interfaces.messages.heartbeats import (
     IdleHeartbeat,
     OptimizationStartedHeartbeat,
     OptimizationStatsHeartbeat,
+    StartupHeartbeat,
 )
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     OptimizationStartedResult,
@@ -181,27 +183,29 @@ def optimization_loop(
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return
 
+        send_heartbeat_fn(
+            OptimizationStatsHeartbeat(
+                optimization_id=optimization_id,
+                wall_time=time.time() - start_time,
+                iteration=epoch,
+                num_branch_topologies_tried=epoch - 1,  # Exactly one branch topology per epoch but we increment before
+                num_injection_topologies_tried=0,
+            )
+        )
+
         if time.time() - start_time > ac_params.ga_config.runtime_seconds:
             logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
             send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
             running = False
             break
 
-        send_heartbeat_fn(
-            OptimizationStatsHeartbeat(
-                optimization_id=optimization_id,
-                wall_time=time.time() - start_time,
-                iteration=epoch,
-                num_branch_topologies_tried=0,
-                num_injection_topologies_tried=0,
-            )
-        )
-
 
 def idle_loop(
     worker_data: WorkerData,
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
+    send_result_fn: Callable[[ResultUnion, str], None],
     heartbeat_interval_ms: int,
+    max_command_age_hours: float,
 ) -> StartOptimizationCommand:
     """Run idle loop of the AC optimizer worker.
 
@@ -215,9 +219,16 @@ def idle_loop(
         The dataclass with the command consumer, results consumer and database
     send_heartbeat_fn : Callable[[HeartbeatUnion], None]
         A function to call when there were no messages received for a while.
+    send_result_fn : Callable[[ResultUnion, str], None]
+        A function to call to send results back to the results topic,
+        used to send a message in case a command is too old.
     heartbeat_interval_ms : int
         The time to wait for a new command in milliseconds. If no command has been received, a
         heartbeat will be sent and then the receiver will wait for commands again.
+    max_command_age_hours: float
+        The maximum age of a command in hours.
+        If a command is received that is older than this, the command will be ignored
+        and a message will be sent to the results topic.
 
 
     Returns
@@ -247,18 +258,71 @@ def idle_loop(
 
         command = Command.model_validate_json(deserialize_message(message.value()))
 
-        if isinstance(command.command, StartOptimizationCommand):
-            return command.command
-
         if isinstance(command.command, ShutdownCommand):
             logger.info("Shutting down due to ShutdownCommand")
             worker_data.command_consumer.close()
             worker_data.result_consumer.close()
             raise SystemExit(command.command.exit_code)
 
+        if isinstance(command.command, StartOptimizationCommand):
+            time_of_command = datetime.fromisoformat(command.timestamp)
+            if time_of_command < datetime.now() - timedelta(hours=max_command_age_hours):
+                logger.warning(
+                    f"Received command with timestamp from the past (timestamp: {time_of_command}, "
+                    f"now: {datetime.now()}), skipping command"
+                )
+                send_result_fn(
+                    OptimizationStoppedResult(
+                        reason="command-too-old", message=f"Received outdated command: {command}. Skipping.."
+                    ),
+                    command.command.optimization_id,
+                )
+                worker_data.command_consumer.commit()
+                continue
+            return command.command
+
         # If we are here, we received a command that we do not know
         logger.warning(f"Received unknown command, dropping: {command} / {message.value}")
         worker_data.command_consumer.commit()
+
+
+def warmup_result_storage(
+    worker_data: WorkerData,
+    heartbeat_fn: Callable[[HeartbeatUnion], None],
+    heartbeat_interval_ms: int = 5000,
+) -> None:
+    """Go through the results topic and stores all published topology results in the database
+
+    This way, when an optimization run starts, the local in-memory results storage is already populated with results, so
+    no time is wasted in spooling through the results topic.
+
+    Parameters
+    ----------
+    worker_data : WorkerData
+        The dataclass with the results consumer and database
+    heartbeat_fn : Callable[[HeartbeatUnion], None]
+        A function to call to send heartbeats during the warmup loop, as it can take a while if there are many results to
+        spool through.
+    heartbeat_interval_ms : int
+        The time interval in milliseconds to send heartbeats during the warmup loop, by default 5000 ms
+    """
+    logger.info("Starting warmup loop to spool through results topic and populate database")
+    first_poll = True
+    last_heartbeat_time = time.time()
+    while True:
+        added_topos, _ = poll_results_topic(
+            db=worker_data.db,
+            consumer=worker_data.result_consumer,
+            first_poll=first_poll,
+        )
+        first_poll = False
+
+        if added_topos == {}:
+            break
+
+        if time.time() - last_heartbeat_time > heartbeat_interval_ms / 1000:
+            heartbeat_fn(StartupHeartbeat())
+            last_heartbeat_time = time.time()
 
 
 def main(
@@ -298,7 +362,9 @@ def main(
         If the worker receives a ShutdownCommand
     """
     instance_id = str(uuid4())
-    logger.info(f"Starting AC worker {instance_id} with config {args}")
+    logger.info(
+        f"Starting AC worker {instance_id} with config {args}, spooling through results topic to warm up result storage"
+    )
 
     # We create two separate consumers for the command and result topics as we don't want to
     # catch results during the idle loop.
@@ -342,12 +408,25 @@ def main(
         )
         worker_data.producer.flush()
 
+    send_heartbeat(StartupHeartbeat(), ping_commands=False)
+    worker_data.command_consumer.start_processing()
+    warmup_result_storage(
+        worker_data=worker_data,
+        heartbeat_fn=partial(send_heartbeat, ping_commands=True),
+        heartbeat_interval_ms=args.heartbeat_interval_ms,
+    )
+    worker_data.command_consumer.stop_processing()
+
+    logger.info("Finished warmup loop, entering main loop to wait for commands and run optimizations")
+
     while True:
         # During the idle loop, the result consumer is paused and only the command consumer is active
         command = idle_loop(
             worker_data=worker_data,
             send_heartbeat_fn=partial(send_heartbeat, ping_commands=False),
+            send_result_fn=send_result,
             heartbeat_interval_ms=args.heartbeat_interval_ms,
+            max_command_age_hours=args.max_command_age_hours,
         )
 
         # During the optimization loop, the command consumer is paused and the result consumer is active

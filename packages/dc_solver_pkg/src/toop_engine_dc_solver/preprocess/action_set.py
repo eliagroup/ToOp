@@ -46,6 +46,50 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import Reass
 logger = logbook.Logger(__name__)
 
 
+@partial(jax.jit, static_argnames=("batch_size",))
+def _filter_splits_by_bsdf_valid_mask(  # noqa: PLR0913
+    repo: Bool[Array, " possible_configurations sub_degree"],
+    ptdf: Float[Array, " n_branches n_bus"],
+    i_stat: Int[Array, ""],
+    i_stat_rel: Int[Array, ""],
+    tot_stat: Int[Array, " sub_degree"],
+    from_stat_bool: Bool[Array, " sub_degree"],
+    to_node: Int[Array, " n_branches"],
+    from_node: Int[Array, " n_branches"],
+    susceptance: Float[Array, " n_branches"],
+    slack: Int[Array, ""],
+    n_stat: Int[Array, ""],
+    branches_to_outage: Int[Array, " n_branches_to_outage"],
+    multi_outage_branches: tuple[Int[Array, " n_multi_outages n_branches_failed"], ...],
+    batch_size: int,
+) -> Bool[Array, " possible_configurations"]:
+    """Return the valid-mask for BSDF/LODF split filtering.
+
+    This helper exists so JAX can cache the traced program across repeated calls with the same
+    argument shapes instead of recompiling a new closure for every substation.
+    """
+    valid_mask = jax.lax.map(
+        lambda substation_topology: is_valid_bsdf_lodf(
+            substation_topology=substation_topology,
+            ptdf=ptdf,
+            i_stat=i_stat,
+            i_stat_rel=i_stat_rel,
+            tot_stat=tot_stat,
+            from_stat_bool=from_stat_bool,
+            to_node=to_node,
+            from_node=from_node,
+            susceptance=susceptance,
+            slack=slack,
+            n_stat=n_stat,
+            branches_to_outage=branches_to_outage,
+            multi_outage_branches=list(multi_outage_branches),
+        ),
+        repo,
+        batch_size=batch_size,
+    )
+    return valid_mask | ~jnp.any(repo, axis=1)
+
+
 def set_unsplit_action_as_first(
     action_repo: Bool[np.ndarray, " n_configurations sub_degree"],
 ) -> Bool[np.ndarray, " n_configurations sub_degree"]:
@@ -339,9 +383,8 @@ def filter_splits_by_bsdf(
 
     assert tot_stat.shape == from_stat_bool.shape == (repo.shape[1],)
     assert network_data.split_multi_outage_branches is not None
-
-    is_valid_fn = partial(
-        is_valid_bsdf_lodf,
+    valid_mask = _filter_splits_by_bsdf_valid_mask(
+        repo=jnp.array(repo),
         ptdf=ptdf,
         i_stat=jnp.array(network_data.relevant_nodes[sub_id]),
         i_stat_rel=jnp.array(sub_id),
@@ -353,18 +396,10 @@ def filter_splits_by_bsdf(
         slack=jnp.array(network_data.slack),
         n_stat=jnp.array(network_data.n_original_nodes),
         branches_to_outage=jnp.flatnonzero(network_data.outaged_branch_mask),
-        multi_outage_branches=[jnp.array(x) for x in network_data.split_multi_outage_branches],
-    )
-
-    # Vmap doesn't work due to memory issues.
-    valid_mask = jax.lax.map(
-        is_valid_fn,
-        repo,
+        multi_outage_branches=tuple(jnp.array(x) for x in network_data.split_multi_outage_branches),
         batch_size=batch_size,
     )
-    has_splits = np.any(repo, axis=1)
-    valid_mask = valid_mask | ~has_splits
-    return repo[valid_mask, :]
+    return repo[np.asarray(valid_mask), :]
 
 
 def enumerate_branch_actions_for_sub(
@@ -553,6 +588,12 @@ def pad_out_action_set(
         substation_correspondence=jnp.array(substation_correspondence),
         unsplit_action_mask=unsplit_action_mask,
         reassignment_distance=jnp.array(padded_reassignments),
+        action_start_indices=jnp.concatenate(
+            [
+                jnp.array([0], dtype=n_actions_per_sub.dtype),
+                jnp.cumsum(n_actions_per_sub[:-1]),
+            ]
+        ),
         inj_actions=jnp.array(padded_injection_actions),
         rel_bb_outage_data=None,
     )

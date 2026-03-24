@@ -182,7 +182,10 @@ def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
     validate_static_information(static_information)
     assert static_information.dynamic_information.nodal_injection_information.shift_degree_max.shape == (3,)
 
-    action_set = load_action_set(folder / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        folder / PREPROCESSING_PATHS["action_set_file_path"],
+        folder / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     assert len(action_set.pst_ranges) == 3
 
 
@@ -202,7 +205,10 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
         jnp.max(pst_n_taps),
     )
 
-    action_set = load_action_set(folder / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        folder / PREPROCESSING_PATHS["action_set_file_path"],
+        folder / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     assert len(action_set.pst_ranges) == 2
 
 

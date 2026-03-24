@@ -148,6 +148,21 @@ def test_edges_for_branch_element_line():
     assert all(isinstance(x, np.int64) for x in edges[0])
 
 
+def test_edges_for_branch_element_impedance():
+    net = _net_with_n_buses(3)
+    impedance_id = pp.create_impedance(
+        net,
+        from_bus=0,
+        to_bus=2,
+        rft_pu=0.01,
+        xft_pu=0.02,
+        sn_mva=100.0,
+    )
+    edges = _edges_for_branch_element(net, "impedance", int(impedance_id))
+    assert edges == [(0, 2)]
+    assert all(isinstance(x, np.int64) for x in edges[0])
+
+
 def test_edges_for_branch_element_trafo():
     net = _net_with_n_buses(3)
     trafo_id = pp.create_transformer_from_parameters(

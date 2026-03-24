@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -31,6 +32,7 @@ from toop_engine_topology_optimizer.interfaces.messages.commands import (
 )
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.heartbeats import HeartbeatUnion, OptimizationStartedHeartbeat
+from toop_engine_topology_optimizer.interfaces.messages.heartbeats import StartupHeartbeat as CanonicalStartupHeartbeat
 from toop_engine_topology_optimizer.interfaces.messages.results import (
     Metrics,
     OptimizationStartedResult,
@@ -102,10 +104,123 @@ def test_main_simple(
         )
 
 
+@pytest.mark.timeout(60)
+def test_main_warmup_processes_many_results_and_exits_via_mocked_idle_loop(
+    kafka_command_topic: str,
+    kafka_heartbeat_topic: str,
+    kafka_results_topic: str,
+    kafka_connection_str: str,
+    processed_gridfile_folder: Path,
+    loadflow_result_folder: Path,
+    create_consumer: Callable,
+    create_producer: Callable,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Validate that AC worker warmup consumes many pre-existing results before entering idle loop."""
+
+    class StopIdleLoop(RuntimeError):
+        """Artificial stop for the infinite main loop."""
+
+    n_topologies = 100
+    processed_count = {"n": 0}
+
+    def patched_idle_loop(
+        worker_data: WorkerData,
+        send_heartbeat_fn: Callable[[HeartbeatUnion], None],
+        send_result_fn: Callable[[ResultUnion, str], None],
+        heartbeat_interval_ms: int,
+        max_command_age_hours: float,
+    ) -> StartOptimizationCommand:
+        del send_heartbeat_fn, heartbeat_interval_ms
+        processed_count["n"] = len(worker_data.db.exec(select(ACOptimTopology)).all())
+        raise StopIdleLoop()
+
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.worker.idle_loop", patched_idle_loop)
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.worker.StartupHeartbeat", CanonicalStartupHeartbeat)
+
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(processed_gridfile_folder))
+    instance_id = str(uuid4())
+    command_consumer = create_consumer(
+        "LongRunningKafkaConsumer",
+        topic=kafka_command_topic,
+        group_id=f"test-ac-worker-command-{instance_id}",
+        bootstrap_servers=kafka_connection_str,
+        client_id=f"test-ac-worker-command-client-{instance_id}",
+    )
+    result_consumer = create_consumer(
+        "LongRunningKafkaConsumer",
+        topic=kafka_results_topic,
+        group_id=f"test-ac-worker-results-{instance_id}",
+        bootstrap_servers=kafka_connection_str,
+        client_id=f"test-ac-worker-results-client-{instance_id}",
+    )
+
+    rng = np.random.default_rng(123)
+    seeded_producer = Producer(
+        {
+            "bootstrap.servers": kafka_connection_str,
+            "log_level": 2,
+        }
+    )
+    optimization_id = "warmup-opt"
+    for idx in range(n_topologies):
+        topology = Topology(
+            actions=[idx],
+            disconnections=[],
+            pst_setpoints=None,
+            metrics=Metrics(
+                fitness=float(rng.normal()),
+                extra_scores={
+                    "overload_energy_n_1": float(rng.random()),
+                    "top_k_overloads_n_1": float(rng.random()),
+                },
+                worst_k_contingency_cases=[f"cont_{idx}", f"cont_{idx + 1}"],
+            ),
+        )
+        result_message = Result(
+            result=TopologyPushResult(strategies=[Strategy(timesteps=[topology])]),
+            optimization_id=optimization_id,
+            optimizer_type=OptimizerType.DC,
+            instance_id="dc_optimizer_warmup",
+        )
+        seeded_producer.produce(
+            kafka_results_topic,
+            value=serialize_message(result_message.model_dump_json()),
+            key=optimization_id.encode(),
+        )
+    seeded_producer.flush()
+
+    try:
+        with pytest.raises(StopIdleLoop):
+            main(
+                args=Args(
+                    optimizer_command_topic=kafka_command_topic,
+                    optimizer_heartbeat_topic=kafka_heartbeat_topic,
+                    optimizer_results_topic=kafka_results_topic,
+                    heartbeat_interval_ms=50,
+                    kafka_broker=kafka_connection_str,
+                ),
+                loadflow_result_fs=loadflow_result_fs,
+                processed_gridfile_fs=processed_gridfile_fs,
+                producer=create_producer(kafka_connection_str, instance_id, log_level=2),
+                command_consumer=command_consumer,
+                result_consumer=result_consumer,
+            )
+    finally:
+        command_consumer.close()
+        result_consumer.close()
+
+    assert processed_count["n"] == n_topologies
+
+
 @pytest.fixture
 def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Result:
     # Generate random DC topologies to pull
-    action_set = load_action_set(grid_folder / "case57" / PREPROCESSING_PATHS["action_set_file_path"])
+    action_set = load_action_set(
+        grid_folder / "case57" / PREPROCESSING_PATHS["action_set_file_path"],
+        grid_folder / "case57" / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
     assert len(action_set.local_actions)
     network_data = load_network_data(grid_folder / "case57" / PREPROCESSING_PATHS["network_data_file_path"])
     assert network_data.branch_action_set is not None
@@ -167,7 +282,9 @@ def test_idle_loop_no_message() -> None:
         idle_loop(
             worker_data=worker_data,
             send_heartbeat_fn=lambda hb: heartbeats.append(hb),
+            send_result_fn=lambda result, optimization_id: None,
             heartbeat_interval_ms=100,
+            max_command_age_hours=2.0,
         )
     assert len(heartbeats) == 2
     assert worker_data.command_consumer.poll.call_count == 2
@@ -189,7 +306,8 @@ def test_idle_loop_optimization_started() -> None:
             ac_params=ACOptimizerParameters(),
             grid_files=[GridFile(framework=Framework.PYPOWSYBL, grid_folder="not/exist")],
             optimization_id="test",
-        )
+        ),
+        timestamp=(datetime.now() - timedelta(hours=1)).isoformat(),
     )
     start_message = Mock()
     start_message.value.return_value = serialize_message(start_command.model_dump_json())
@@ -199,7 +317,9 @@ def test_idle_loop_optimization_started() -> None:
     parsed_start_command = idle_loop(
         worker_data=worker_data,
         send_heartbeat_fn=lambda hb: heartbeats.append(hb),
+        send_result_fn=lambda result, optimization_id: None,
         heartbeat_interval_ms=100,
+        max_command_age_hours=2.0,
     )
     assert parsed_start_command.grid_files[0].grid_folder == "not/exist"
 
@@ -208,6 +328,49 @@ def test_idle_loop_optimization_started() -> None:
     assert worker_data.result_consumer.consume.call_count == 0
     assert worker_data.result_consumer.close.call_count == 0
     assert worker_data.command_consumer.close.call_count == 0
+
+
+def test_idle_loop_optimization_started_command_too_old() -> None:
+    worker_data = WorkerData(
+        db=create_session(),
+        command_consumer=Mock(spec=LongRunningKafkaConsumer),
+        result_consumer=Mock(spec=LongRunningKafkaConsumer),
+        producer=Mock(spec=Producer),
+    )
+    shutdown_command = Command(command=ShutdownCommand())
+    # Make poll() return an OptimizationStartedCommand message
+    start_command = Command(
+        command=StartOptimizationCommand(
+            ac_params=ACOptimizerParameters(),
+            grid_files=[GridFile(framework=Framework.PYPOWSYBL, grid_folder="not/exist")],
+            optimization_id="test",
+        ),
+        timestamp=(datetime.now() - timedelta(hours=1)).isoformat(),
+    )
+    start_message = Mock()
+    start_message.value.return_value = serialize_message(start_command.model_dump_json())
+    shutdown_message = Mock()
+    shutdown_message.value.return_value = serialize_message(shutdown_command.model_dump_json())
+
+    worker_data.command_consumer.poll.side_effect = [start_message, shutdown_message]
+    results = []
+    heartbeats = []
+
+    def send_result_fn(result: ResultUnion, optimization_id: str) -> None:
+        results.append((result, optimization_id))
+
+    with pytest.raises(SystemExit):
+        idle_loop(
+            worker_data=worker_data,
+            send_heartbeat_fn=lambda hb: heartbeats.append(hb),
+            send_result_fn=send_result_fn,
+            heartbeat_interval_ms=100,
+            max_command_age_hours=0.5,
+        )
+    assert len(results) == 1
+    assert isinstance(results[0][0], OptimizationStoppedResult)
+    assert results[0][1] == "test"
+    assert results[0][0].reason == "command-too-old"
 
 
 def test_optimization_loop(

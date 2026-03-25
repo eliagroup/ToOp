@@ -21,7 +21,7 @@ from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
 @pytest.mark.parametrize("method", ["dc", "ac"])
-def test_benchmark(preprocessed_data_folder: Path, method: str) -> None:
+def test_benchmark(preprocessed_data_folder: Path, method: str, init_ray) -> None:
     runner, topologies = setup_benchmark(
         grid_path=preprocessed_data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"],
         network_data_path=preprocessed_data_folder / PREPROCESSING_PATHS["network_data_file_path"],

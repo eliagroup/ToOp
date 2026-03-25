@@ -6,7 +6,6 @@
 # Mozilla Public License, version 2.0
 
 import bz2
-import gc
 import json
 import logging
 import os
@@ -130,14 +129,12 @@ config = pandera.config.PanderaConfig(
 pandera.config.reset_config_context(config)
 
 
-@pytest.fixture(autouse=True)
-def shutdown_ray():
-    yield
-    # If we're running on CI, we regularly run out of memory
-    # Hence, we cleanup ray after each test where ray was used
-    if "CLEANUP_RAY_AFTER_TESTS" in os.environ and ray.is_initialized():
-        ray.shutdown()
-        gc.collect()
+@pytest.fixture(scope="session")
+def init_ray() -> Generator[bool, None, None]:
+    ray.init(runtime_env={"working_dir": Path(__file__).parent}, ignore_reinit_error=True, include_dashboard=False)
+    # Return a dummy bool so it can be used as a fixture on only those tests that need ray, autouse is a bit overkill
+    yield True
+    ray.shutdown()
 
 
 @pytest.fixture(scope="session")

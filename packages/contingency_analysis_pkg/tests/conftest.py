@@ -40,10 +40,11 @@ from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPol
 
 
 @pytest.fixture(scope="session")
-def init_ray() -> bool:
+def init_ray() -> Generator[bool, None, None]:
     ray.init(runtime_env={"working_dir": Path(__file__).parent}, ignore_reinit_error=True, include_dashboard=False)
     # Return a dummy bool so it can be used as a fixture on only those tests that need ray, autouse is a bit overkill
-    return True
+    yield True
+    ray.shutdown()
 
 
 @pytest.fixture(scope="session")

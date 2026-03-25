@@ -23,6 +23,7 @@ from .results import (
 )
 from .schemas import (
     PandapowerContingency,
+    PandapowerContingencyGroup,
     PandapowerElements,
     PandapowerMonitoredElementSchema,
     PandapowerNMinus1Definition,

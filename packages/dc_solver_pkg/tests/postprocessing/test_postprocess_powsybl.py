@@ -110,7 +110,6 @@ def test_apply_topology_matches_loadflows(
     request,
     fixture_name: str,
 ) -> None:
-    # Sometimes ray crashes during this test, make sure it is shut down.
     data_folder = request.getfixturevalue(fixture_name)
     assert isinstance(data_folder, Path)
 

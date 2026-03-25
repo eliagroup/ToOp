@@ -133,12 +133,6 @@ repos:
         args: [-q]
   - repo: local
     hooks:
-      - id: uv-secure-disabled
-        name: uv-secure (temporarily disabled)
-        entry: bash -c 'echo "Skipping uv-secure temporarily"; exit 0'
-        language: system
-        pass_filenames: false
-        always_run: true
       - id: check-sensitive-files
         name: Check for sensitive file types
         description: Blocks potentially sensitive file types (.uct, .xml, .zip, .json, .xiidm, .veragrid, .hdf5) unless whitelisted

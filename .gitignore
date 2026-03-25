@@ -211,6 +211,11 @@ cython_debug/
 
 experiments.ipynb
 data/IT*
+data/case57_data_powsybl/**
+data/complex_grid/**
+!data/complex_grid/**/grid.xiidm
+data/grid_node_breaker/**
+!data/grid_node_breaker/grid.xiidm
 # mkdocs documentation
 /site
 docs/source/_autosummary

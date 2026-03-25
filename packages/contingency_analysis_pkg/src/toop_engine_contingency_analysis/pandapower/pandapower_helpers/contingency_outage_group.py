@@ -29,38 +29,61 @@ from toop_engine_grid_helpers.pandapower.outage_group import (
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 
+BUS_RELATED_ELEMENT_TYPES = {"gen", "ext_grid", "sgen", "shunt", "ward", "xward"}
 
-def get_grid_element(net: pp.pandapowerNet, element: int, el_type: str) -> PandapowerElements:
+
+def get_grid_element(
+    net: pp.pandapowerNet,
+    element: int,
+    el_type: str,
+) -> PandapowerElements:
     """
-    Retrieve a grid element from a pandapower network and wrap it into a PandapowerElements object.
+    Resolve a pandapower element to its effective table representation and
 
-    The function accesses the corresponding pandapower table (e.g. "line",
-    "bus", "trafo") using the provided element type, extracts the row by index,
-    and constructs a PandapowerElements instance with a globally unique ID.
+    return it as a PandapowerElements object.
+
+    Some element types (e.g. gen, ext_grid, sgen, shunt, ward, xward) are
+    internally mapped to their corresponding bus. In such cases:
+        - table is set to "bus"
+        - table_id becomes the associated bus index
+        - unique_id is generated for the bus
+        - name is taken from the bus
+
+    For all other element types:
+        - table remains el_type
+        - table_id is the original element index
+        - unique_id is generated for that element
+        - name is taken from the element
 
     Args:
-        net (pp.pandapowerNet):
-            The pandapower network containing element tables.
-        element (int):
-            Row index of the element in the corresponding pandapower table.
-        el_type (str):
-            Name of the pandapower table where the element is stored
-            (e.g. "bus", "line", "trafo", "switch").
+        net (pp.pandapowerNet): The pandapower network.
+        element (int): Index of the element in its table.
+        el_type (str): Name of the pandapower element table (e.g. "line", "bus", "gen").
 
     Returns
     -------
-        PandapowerElements:
-            A wrapped representation of the grid element containing:
-            - unique_id: Globally unique identifier
-            - table: Table name (element type)
-            - table_id: Row index within the table
-            - name: Element name from the pandapower table
+        PandapowerElements: Normalized representation of the element.
     """
     el_df = getattr(net, el_type)
     el = el_df.loc[element]
-    global_id = get_globally_unique_id(element, el_type)
 
-    return PandapowerElements(unique_id=global_id, table=el_type, table_id=element, name=str(el["name"]))
+    if el_type in BUS_RELATED_ELEMENT_TYPES:
+        bus_id = int(el.bus)
+        bus = net.bus.loc[bus_id]
+
+        return PandapowerElements(
+            unique_id=get_globally_unique_id(bus_id, "bus"),
+            table="bus",
+            table_id=bus_id,
+            name=str(bus["name"]),
+        )
+
+    return PandapowerElements(
+        unique_id=get_globally_unique_id(element, el_type),
+        table=el_type,
+        table_id=element,
+        name=str(el["name"]),
+    )
 
 
 def _elements_in_component(comps: Iterable[Iterable[str]], comp_idx: int) -> Set[Tuple[int, str]]:

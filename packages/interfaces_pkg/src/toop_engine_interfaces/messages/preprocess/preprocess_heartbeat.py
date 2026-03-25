@@ -10,11 +10,11 @@
 import uuid
 from datetime import datetime
 
-import logbook
 from beartype.typing import Literal, Optional, TypeAlias
 from pydantic import BaseModel, Field
+from toop_engine_grid_helpers.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 ConvertToJaxStage: TypeAlias = Literal[
     "convert_to_jax_started",

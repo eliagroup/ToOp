@@ -22,12 +22,12 @@ import json
 import re
 from pathlib import Path
 
-import logbook
 import pandas as pd
 from beartype.typing import Any
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def process_file(

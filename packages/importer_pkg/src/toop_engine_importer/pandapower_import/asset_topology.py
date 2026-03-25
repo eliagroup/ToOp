@@ -14,11 +14,11 @@ Created: 2024-10-01
 
 import datetime
 
-import logbook
 import numpy as np
 import pandapower as pp
 import pandas as pd
 from beartype.typing import List, Literal, Optional, Tuple, Union
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_asset_switching_table,
@@ -37,7 +37,7 @@ from toop_engine_interfaces.asset_topology import (
     Topology,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def get_busses_from_station(

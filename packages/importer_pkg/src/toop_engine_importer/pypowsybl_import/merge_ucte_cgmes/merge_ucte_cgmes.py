@@ -18,16 +18,16 @@ E.g. inner German will not merge with this function. Convert the inner German li
 
 """
 
-import logbook
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Optional
 from pydantic import BaseModel, Field, model_validator
 from pypowsybl.network.impl.network import Network
+from toop_engine_grid_helpers.logging.logger import get_logger
 from typing_extensions import Self
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 class TieLineSchema(pa.DataFrameModel):

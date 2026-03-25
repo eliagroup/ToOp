@@ -5,20 +5,17 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import logging
-import sys
-from logging import getLogger
 from multiprocessing import Process, set_start_method
 from pathlib import Path
 from uuid import uuid4
 
-import logbook
 import pytest
 from beartype.typing import Literal, Union
 from confluent_kafka import Consumer, Producer
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.worker.worker import Args, idle_loop, main
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
@@ -36,12 +33,9 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 )
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
+logger = get_logger(__name__)
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
-
-
-logger = logbook.Logger(__name__)
-logbook.StreamHandler(sys.stdout, level=logging.INFO).push_application()
 
 
 def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> Producer:
@@ -51,7 +45,7 @@ def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> 
             "client.id": instance_id,
             "log_level": log_level,
         },
-        logger=getLogger(f"ac_worker_producer_{instance_id}"),
+        logger=get_logger(f"ac_worker_producer_{instance_id}"),
     )
     return producer
 
@@ -321,7 +315,7 @@ def main_wrapper(
             "client.id": instance_id,
             "log_level": 2,
         },
-        logger=getLogger("confluent_kafka.producer"),
+        logger=get_logger("confluent_kafka.producer"),
     )
 
     main(

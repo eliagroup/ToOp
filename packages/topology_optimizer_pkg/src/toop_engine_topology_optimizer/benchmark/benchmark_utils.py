@@ -22,7 +22,6 @@ from multiprocessing.connection import Connection
 from pathlib import Path
 
 import jax
-import logbook
 import pandapower
 
 # Domain-specific imports (may raise if not available in the environment)
@@ -52,6 +51,7 @@ from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
     apply_topology as powsybl_apply_topology,
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_grid_helpers.powsybl.single_line_diagram.get_single_line_diagram_custom import (
     get_single_line_diagram_custom,
@@ -89,8 +89,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 jax.config.update("jax_enable_x64", True)
 
 # Logging setup
-logger = logbook.Logger(__name__)
-logbook.StderrHandler().push_application()
+logger = get_logger(__name__)
 
 
 @dataclass

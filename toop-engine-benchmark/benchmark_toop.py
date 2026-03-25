@@ -25,14 +25,13 @@ Outputs:
 """
 
 import json
-import sys
 import time
 from pathlib import Path
 from statistics import mean
 
 import hydra
-import logbook
 from omegaconf import DictConfig
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     PipelineConfig,
@@ -42,9 +41,8 @@ from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     run_dc_optimization_stage,
     run_preprocessing,
 )
-from toop_engine_topology_optimizer.benchmark.benchmark_utils import logger as utils_logger
 
-logger = logbook.Logger("ToOp Benchmark")
+logger = get_logger(__name__)
 
 
 class PhaseTimer:
@@ -248,8 +246,6 @@ def main(cfg: DictConfig) -> None:
 
     The grid config should be provided via group `grid=config_grid_node_breaker` or similar.
     """
-    logbook.StreamHandler(sys.stdout, level=cfg.get("logging_level", "INFO")).push_application()
-
     grid_path = Path(cfg.grid.grid_file)
     hydra_output_dirname = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     preprocess_params = PreprocessParameters(action_set_clip=2**10, enable_bb_outage=True, bb_outage_as_nminus1=False)
@@ -314,5 +310,4 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    utils_logger.level = logbook.WARNING
     main()

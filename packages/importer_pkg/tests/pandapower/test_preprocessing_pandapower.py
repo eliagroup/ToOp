@@ -9,18 +9,16 @@ import math
 from copy import deepcopy
 from unittest.mock import MagicMock
 
-import logbook
 import pandapower as pp
 import pandas as pd
 import pytest
+import structlog.testing
 from toop_engine_importer.pandapower_import import (
     asset_topology,
     pandapower_toolset_node_breaker,
     preprocessing,
 )
 from toop_engine_interfaces.asset_topology import Topology
-
-logger = logbook.Logger(__name__)
 
 
 def test_handle_switches(pp_network_w_switches):
@@ -234,11 +232,11 @@ def test_validate(pp_network_w_switches):
     topology_model = preprocessing.preprocess_net_step2(net, topology_model)
     # conversion to bus-branch model completed
     # validate network model
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         with pytest.raises(ValueError):
             preprocessing.validate_asset_topology(net, topology_model)
         # ext_grid is there and not supported as a connection
-        assert "Station 0%%bus has 1 assets but only 2 connections in the network" in "".join(caplog.formatted_records)
+        assert "Station 0%%bus has 1 assets but only 2 connections in the network" in "".join(e["event"] for e in cap_logs)
 
 
 def test_validate_trafo_model(pp_network_w_switches):
@@ -246,10 +244,10 @@ def test_validate_trafo_model(pp_network_w_switches):
     net.trafo.loc[0, "tap_dependent_impedance"] = True
     assert net.trafo.loc[0, "tap_side"] is None, "setup of test failed"
     assert net.trafo.loc[0, "tap_dependent_impedance"], "setup of test failed"
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         preprocessing.validate_trafo_model(net)
         assert (
             r"Error in trafo model: ['EHV-HV-Trafo']: tap_side = None and tap_dependent_impedance = True. Changing to tap_dependent_impedance = False"
-            in "".join(caplog.formatted_records)
+            in "".join(e["event"] for e in cap_logs)
         ), "Error message not found in log"
     assert not net.trafo.loc[0, "tap_dependent_impedance"], "tap_dependent_impedance not changed"

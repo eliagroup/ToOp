@@ -7,11 +7,11 @@
 
 """Selection strategy for AC optimization topologies."""
 
-import logbook
 import numpy as np
 import pandas as pd
 from beartype.typing import Callable, Optional, Sequence
 from numpy.random import Generator as Rng
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.types import MetricType, OperationMetric
 from toop_engine_topology_optimizer.ac.storage import BaseDBTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, OptimizerType
@@ -19,7 +19,7 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import (
     metrics_dataframe,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def select_strategy(

@@ -10,7 +10,6 @@ from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-import logbook
 import pandapower as pp
 import pandas as pd
 import pypowsybl
@@ -18,6 +17,7 @@ from beartype.typing import Optional
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
@@ -126,7 +126,7 @@ def test_convert_file(ucte_file):
         temp_dir = Path(temp_dir)
 
         # def parameters for function
-        logger = logbook.Logger(__name__)
+        logger = get_logger(__name__)
 
         def heartbeat_working(
             stage: PreprocessStage,
@@ -214,7 +214,7 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_n
         pypowsybl.network.create_static_var_compensator_bay(basic_node_breaker_network_powsybl_network_graph, df=svc)
         basic_node_breaker_network_powsybl_network_graph.save(temp_grid_file)
         # def parameters for function
-        logger = logbook.Logger(__name__)
+        logger = get_logger(__name__)
 
         def heartbeat_working(
             stage: PreprocessStage,

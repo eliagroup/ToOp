@@ -7,10 +7,10 @@
 
 from datetime import datetime
 
-import logbook
 import numpy as np
 import pandapower
 import pytest
+import structlog.testing
 from toop_engine_importer.pandapower_import import asset_topology
 from toop_engine_interfaces.asset_topology import (
     AssetBay,
@@ -216,7 +216,7 @@ def test_get_branches_from_station(pp_network_w_switches):
 
 
 def test_get_branches_from_station_edge_cases(pp_network_w_switches):
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         net = pp_network_w_switches
         net.switch.drop(23, inplace=True)
         net.switch.loc[31, "element"] = 19
@@ -236,7 +236,7 @@ def test_get_branches_from_station_edge_cases(pp_network_w_switches):
         ) = asset_topology.get_branches_from_station(network=net, station_buses=station_buses, foreign_key="name")
         assert (
             "No closed switch found (Element is disconnected and will be dropped) for element_type:sgen element"
-            in "".join(caplog.formatted_records)
+            in "".join(e["event"] for e in cap_logs)
         )
         assert asset_connection[1] == expected_path
 
@@ -256,8 +256,8 @@ def test_get_branches_from_station_edge_cases(pp_network_w_switches):
             switching_matrix,
             asset_connection,
         ) = asset_topology.get_branches_from_station(network=net, station_buses=station_buses, foreign_key="name")
-        assert "Expected one closed switch for element_type" in "".join(caplog.formatted_records)
-        assert "Using the first one." in "".join(caplog.formatted_records)
+        assert "Expected one closed switch for element_type" in "".join(e["event"] for e in cap_logs)
+        assert "Using the first one." in "".join(e["event"] for e in cap_logs)
         assert asset_connection == expected_path
 
 

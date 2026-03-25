@@ -15,18 +15,18 @@ Created: 2025-05-13
 
 from pathlib import Path
 
-import logbook
 import pandas as pd
 import pandera.typing as pat
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.contingency_from_power_factory.power_factory_data_class import (
     AllGridElementsSchema,
     ContingencyImportSchemaPowerFactory,
     ContingencyMatchSchema,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def get_contingencies_from_file(

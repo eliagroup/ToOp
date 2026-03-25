@@ -12,7 +12,6 @@ from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 
-import logbook
 import numpy as np
 import pypowsybl
 from beartype.typing import Callable, Optional
@@ -27,6 +26,7 @@ from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import Lo
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -58,7 +58,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
 )
 from toop_engine_topology_optimizer.interfaces.models.base_storage import convert_db_topo_to_message_topo, hash_topologies
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 class AcNotConvergedError(Exception):

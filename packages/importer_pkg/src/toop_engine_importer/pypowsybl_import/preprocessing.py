@@ -17,7 +17,6 @@ from copy import deepcopy
 from itertools import product
 from pathlib import Path
 
-import logbook
 import pypowsybl
 from beartype.typing import (
     Any,  # noqa: F401
@@ -29,6 +28,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     DISTRIBUTED_SLACK,
     POWSYBL_LOADFLOW_PARAM_PF,
@@ -59,7 +59,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 )
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
 

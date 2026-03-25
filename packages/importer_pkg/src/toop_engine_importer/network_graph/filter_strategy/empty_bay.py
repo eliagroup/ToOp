@@ -14,8 +14,8 @@ These empty bays need to be identified, so couplers can be found and categorized
 The main function is `set_empty_bay_weights`, which sets the bay weight for empty bays.
 """
 
-import logbook
 import networkx as nx
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.network_graph.data_classes import WeightValues
 from toop_engine_importer.network_graph.network_graph import (
     flatten_list_of_mixed_entries,
@@ -27,7 +27,7 @@ from toop_engine_importer.network_graph.network_graph_helper_functions import (
     get_pair_tuples_from_list,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def set_empty_bay_weights(graph: nx.Graph) -> None:

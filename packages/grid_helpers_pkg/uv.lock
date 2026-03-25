@@ -1026,23 +1026,6 @@ wheels = [
 ]
 
 [[package]]
-name = "logbook"
-version = "1.8.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/44/ec/550889606cdf60623627e3b05719b47895900932113d919beafcb97cd62f/logbook-1.8.2.tar.gz", hash = "sha256:6d19797c1646ef2f518fe207ae88d2415487085044f5fa5f1cd725b9ab0dd329", size = 368141, upload-time = "2025-06-14T17:25:31.083Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/fd/e08ad9e077313eb48f7db7c43d46313415f2eeccd2e518b3865b5f917319/logbook-1.8.2-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:46b00a73c626c0a14863b5c773eaf832d1d4b8c3d4d455ef7a2bd042ee25e20b", size = 189140, upload-time = "2025-06-14T17:24:39.189Z" },
-    { url = "https://files.pythonhosted.org/packages/f6/d0/47ed31e8b611a5157caff04399d1ff9109f5bfefcf5e4fe9ebaec7d755bc/logbook-1.8.2-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:b4043f3ab7d9a46a94c69267af2ce40f61e19d75038106f6b53d2aef4f1f85bc", size = 129589, upload-time = "2025-06-14T17:24:40.511Z" },
-    { url = "https://files.pythonhosted.org/packages/0b/9e/516b7e0762371b5c023009c9007522eb7309e2021577160ab2bacb3f091f/logbook-1.8.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:48be336595d1d57769f90cf263b04fe4220d16921b39f3bea2eebd923ec58e5f", size = 124068, upload-time = "2025-06-14T17:24:41.744Z" },
-    { url = "https://files.pythonhosted.org/packages/30/b6/2d86443f4ca574c1393e34dc9356ce9f7a49782bdbeebaefbce04b30d645/logbook-1.8.2-cp311-cp311-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:37562c1c26579f9b7f22eabcc92f4fd80dd0765e5418df2a9d34422da45d530f", size = 509744, upload-time = "2025-06-14T17:24:43.394Z" },
-    { url = "https://files.pythonhosted.org/packages/67/0f/cb83246fe44eaacad38b0e4bf79ab749b2415e9d91d0ac6c5eccff1b3236/logbook-1.8.2-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:8e2a6e97fac5e56f5a33d4d9b5733a852e15a91aa85ebf7e2346f6614d267f3c", size = 513657, upload-time = "2025-06-14T17:24:44.838Z" },
-    { url = "https://files.pythonhosted.org/packages/e5/66/5f54389ec54c8d96fa4216d1173b97be13d84629f2f6505b9f4023d99be3/logbook-1.8.2-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:2eff4f16feb5577cf68aa09470fa33b8d8e68abe0fb3ac9dee1a822837c6c5df", size = 489955, upload-time = "2025-06-14T17:24:46.469Z" },
-    { url = "https://files.pythonhosted.org/packages/e4/d7/09b04e4f2ed6c767338cc09902505effb3b22bd053f089fa0a0c06399ce6/logbook-1.8.2-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:0162091df9b175cfd24fe558d15c8bdddfbc1f9a23c3d080eaade5de0f5663ae", size = 494037, upload-time = "2025-06-14T17:24:47.946Z" },
-    { url = "https://files.pythonhosted.org/packages/7c/a4/8080f7bf945742b310b4e9cfb285de3bc2668e004066e32784684a124e83/logbook-1.8.2-cp311-cp311-win32.whl", hash = "sha256:1d7c132c6152c8088af59550b730757dbcfd88bd3e860ddac204d8968dffea34", size = 112937, upload-time = "2025-06-14T17:24:49.62Z" },
-    { url = "https://files.pythonhosted.org/packages/1f/f1/6bef2af775cbc15c3d91a166efa8924b786200b150a927e2bd6989d400b0/logbook-1.8.2-cp311-cp311-win_amd64.whl", hash = "sha256:49d2b1c337e16f875507a159f1d062badbf6d1ecbd03eca8d205bb2978afbb87", size = 119845, upload-time = "2025-06-14T17:24:50.884Z" },
-]
-
-[[package]]
 name = "lxml"
 version = "6.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1970,19 +1953,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pytest-logbook"
-version = "1.2.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "logbook" },
-    { name = "pytest" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d0/1a/d3d5c361d6c5030ea2b0165081cb43e95d9e1624065dc383fb1cf35f4792/pytest-logbook-1.2.0.tar.gz", hash = "sha256:9454453230989a3d5149689c3449445554808d429b651a3d89c4464054a4c2dc", size = 5987, upload-time = "2015-11-23T18:51:24.887Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/74/585cf76ac05324380cd7c847a824736d40b90882825c4d735f37190b596f/pytest_logbook-1.2.0-py3-none-any.whl", hash = "sha256:e2e79cf188fdae3fc7c857a168a9f18a5d9cca6234f38795b3ff628d23e2be17", size = 7354, upload-time = "2015-11-23T18:51:01.334Z" },
-]
-
-[[package]]
 name = "pytest-mock"
 version = "3.15.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2347,6 +2317,15 @@ wheels = [
 ]
 
 [[package]]
+name = "structlog"
+version = "24.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/78/a3/e811a94ac3853826805253c906faa99219b79951c7d58605e89c79e65768/structlog-24.4.0.tar.gz", hash = "sha256:b27bfecede327a6d2da5fbc96bd859f114ecc398a6389d664f62085ee7ae6fc4", size = 1348634, upload-time = "2024-07-17T12:38:43.483Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/65/813fc133609ebcb1299be6a42e5aea99d6344afb35ccb43f67e7daaa3b92/structlog-24.4.0-py3-none-any.whl", hash = "sha256:597f61e80a91cc0749a9fd2a098ed76715a1c8a01f73e336b746504d1aad7610", size = 67180, upload-time = "2024-07-17T12:38:41.043Z" },
+]
+
+[[package]]
 name = "tables"
 version = "3.10.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2423,6 +2402,7 @@ dependencies = [
     { name = "pandas", extra = ["hdf5"] },
     { name = "polars" },
     { name = "pyarrow" },
+    { name = "structlog" },
     { name = "toop-engine-interfaces" },
 ]
 
@@ -2450,7 +2430,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-env" },
-    { name = "pytest-logbook" },
     { name = "pytest-mock" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
@@ -2471,6 +2450,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.33.0" },
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.13.0" },
+    { name = "structlog", specifier = ">=24.4.0,<25.0.0" },
     { name = "toop-engine-interfaces", editable = "../interfaces_pkg" },
 ]
 provides-extras = ["pandapower", "pypowsybl"]
@@ -2491,7 +2471,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-env" },
-    { name = "pytest-logbook", specifier = ">=1.2.0" },
     { name = "pytest-mock" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
@@ -2509,7 +2488,6 @@ dependencies = [
     { name = "fsspec" },
     { name = "h5py" },
     { name = "jaxtyping" },
-    { name = "logbook" },
     { name = "mypy-protobuf" },
     { name = "networkx" },
     { name = "numpy" },
@@ -2529,7 +2507,6 @@ requires-dist = [
     { name = "fsspec", specifier = ">=2024.0.0" },
     { name = "h5py", specifier = ">=3.0.0" },
     { name = "jaxtyping", specifier = ">=0.2.22,<0.3.0" },
-    { name = "logbook", specifier = ">=1.8.1,<1.9.0" },
     { name = "mypy-protobuf", specifier = ">=3.7.0" },
     { name = "networkx", specifier = ">=2.5.0" },
     { name = "numpy", specifier = ">=1.26.0,<2.0.0" },
@@ -2559,7 +2536,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-env" },
-    { name = "pytest-logbook", specifier = ">=1.2.0" },
     { name = "pytest-mock" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },

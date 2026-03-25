@@ -14,10 +14,10 @@ Created: 2024-Q1
 
 from pathlib import Path
 
-import logbook
 import pandas as pd
 from fsspec import AbstractFileSystem
 from pypowsybl.network.impl.network import Network
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.pypowsybl_import import dacf_whitelists, powsybl_masks
 from toop_engine_importer.pypowsybl_import.dacf_whitelists import (
     apply_white_list_to_operational_limits,
@@ -26,7 +26,7 @@ from toop_engine_importer.pypowsybl_import.data_classes import (
     PreProcessingStatistics,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def convert_low_impedance_lines(net: Network, voltage_level_prefix: str, x_threshold_line: float = 0.05) -> pd.DataFrame:

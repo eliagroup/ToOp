@@ -9,9 +9,9 @@ import tempfile
 from copy import deepcopy
 from pathlib import Path
 
-import logbook
 import pandas as pd
 import pytest
+import structlog.testing
 from toop_engine_importer.exporter.asset_topology_to_ucte import (
     asset_topo_to_uct,
     change_busbar_coupler_state,
@@ -376,12 +376,12 @@ def test_update_coupler_state():
     # warning gives you a hint that you tried to close a couple, that is not of type coupler
     row = pd.Series({"status": "1", "coupler_state_ucte": "8", "grid_model_id": "line3"})
     expected = pd.Series({"status": "9", "coupler_state_ucte": "8", "grid_model_id": "line3"})
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         result = update_coupler_state(row)
         pd.testing.assert_series_equal(result, expected)
 
-        assert "has a status different from 2 or 7 with status" in caplog.formatted_records[0]
-        assert len(caplog.formatted_records) == 1
+        assert "has a status different from 2 or 7 with status" in cap_logs[0]["event"]
+        assert len(cap_logs) == 1
 
 
 def test_change_busbar_coupler_state():
@@ -473,11 +473,11 @@ def test_change_busbar_coupler_state():
             "order": ["1", "1"],
         }
     )
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         change_busbar_coupler_state(lines_df, change_df)
         pd.testing.assert_frame_equal(lines_df, expected)
-        assert "has a status different from 2 or 7 with status" in caplog.formatted_records[0]
-        assert len(caplog.formatted_records) == 1
+        assert "has a status different from 2 or 7 with status" in cap_logs[0]["event"]
+        assert len(cap_logs) == 1
 
 
 def test_disconnect_asset_from_ucte():

@@ -13,9 +13,9 @@ The default strategy fills:
     - EdgeConnectionInfo
 """
 
-import logbook
 import networkx as nx
 from beartype.typing import Union
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.network_graph.data_classes import WeightValues
 from toop_engine_importer.network_graph.filter_strategy.empty_bay import set_empty_bay_weights
 from toop_engine_importer.network_graph.filter_strategy.helper_functions import (
@@ -40,7 +40,7 @@ from toop_engine_importer.network_graph.network_graph_helper_functions import (
     reverse_dict_list,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def run_default_filter_strategy(graph: nx.Graph) -> None:

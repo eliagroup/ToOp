@@ -20,6 +20,7 @@ from toop_engine_dc_solver.preprocess.network_data import load_network_data
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
+@pytest.mark.xdist_group("ray_bench_postprocessing")
 @pytest.mark.parametrize("method", ["dc", "ac"])
 def test_benchmark(preprocessed_data_folder: Path, method: str) -> None:
     runner, topologies = setup_benchmark(
@@ -44,6 +45,7 @@ def test_benchmark(preprocessed_data_folder: Path, method: str) -> None:
     assert time > 0
 
 
+@pytest.mark.xdist_group("ray_bench_postprocessing")
 def test_main(preprocessed_data_folder: Path) -> None:
     with TemporaryDirectory() as res_folder:
         res_file = Path(res_folder) / "results.json"

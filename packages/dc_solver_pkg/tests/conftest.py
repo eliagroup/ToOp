@@ -10,11 +10,12 @@ import json
 import logging
 import os
 import shutil
-import tempfile
 import time
 import uuid
 from copy import deepcopy
 from pathlib import Path
+
+os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 import chex
 import docker
@@ -132,11 +133,10 @@ pandera.config.reset_config_context(config)
 
 @pytest.fixture(scope="module")
 def init_ray(worker_id) -> Generator[bool, None, None]:
-    path_to_ray_tmp = Path(tempfile.gettempdir()) / "toop-ray" / worker_id
+    path_to_ray_tmp = Path("/tmp") / f"tr-{worker_id}"
     path_to_ray_tmp.mkdir(parents=True, exist_ok=True)
-    os.environ["RAY_TMPDIR"] = str(path_to_ray_tmp)
     ray.init(
-        runtime_env={"working_dir": Path(__file__).parent},
+        _temp_dir=str(path_to_ray_tmp),
         ignore_reinit_error=True,
         include_dashboard=False,
         namespace=f"pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'local')}",

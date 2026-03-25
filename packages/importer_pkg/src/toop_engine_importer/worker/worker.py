@@ -93,8 +93,8 @@ def idle_loop(
 
     Returns
     -------
-    StartOptimizationCommand
-        The start optimization command to start the optimization run with
+    StartPreprocessingCommand
+        The start preprocessing command to start the preprocessing run with
     """
     send_heartbeat_fn()
     logger.info("Entering idle loop")

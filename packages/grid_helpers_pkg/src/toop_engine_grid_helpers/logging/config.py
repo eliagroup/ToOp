@@ -9,7 +9,6 @@
 
 The logging level is set to 20 (INFO) by default, but can be overridden by setting the LOG_LEVEL env var.
 Valid level names or numbers can be found in: https://docs.python.org/3/library/logging.html#levels.
-.
 """
 
 import functools

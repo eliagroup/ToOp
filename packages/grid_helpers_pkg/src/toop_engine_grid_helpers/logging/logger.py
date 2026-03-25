@@ -12,7 +12,7 @@ Usage:
 from toop_engine_grid_helpers.logging.logger import get_logger
 
 logger = get_logger(__name__)
-logger.info("Grid loaded")
+logger.info("Grid loaded", any_context="goes here")
 ```
 """
 

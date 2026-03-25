@@ -20,6 +20,7 @@ from toop_engine_dc_solver.preprocess.network_data import load_network_data
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
+@pytest.mark.xdist_group("ray")
 @pytest.mark.parametrize("method", ["dc", "ac"])
 def test_benchmark(preprocessed_data_folder: Path, method: str, init_ray) -> None:
     runner, topologies = setup_benchmark(

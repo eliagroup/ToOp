@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import os
 import time
 import uuid
 from copy import deepcopy
@@ -40,8 +41,17 @@ from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPol
 
 
 @pytest.fixture(scope="session")
-def init_ray() -> Generator[bool, None, None]:
-    ray.init(runtime_env={"working_dir": Path(__file__).parent}, ignore_reinit_error=True, include_dashboard=False)
+def init_ray(worker_id, tmp_path) -> Generator[bool, None, None]:
+    path_to_ray_tmp = tmp_path / worker_id
+    path_to_ray_tmp.mkdir(parents=True, exist_ok=True)
+    os.environ["RAY_TMPDIR"] = str(path_to_ray_tmp)
+    ray.init(
+        runtime_env={"working_dir": Path(__file__).parent},
+        ignore_reinit_error=True,
+        include_dashboard=False,
+        namespace=f"pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'local')}",
+        # optional (works too): _temp_dir=str(ray_tmp),
+    )
     # Return a dummy bool so it can be used as a fixture on only those tests that need ray, autouse is a bit overkill
     yield True
     ray.shutdown()

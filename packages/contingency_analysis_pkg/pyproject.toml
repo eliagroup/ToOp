@@ -95,5 +95,8 @@ ENABLE_BEARTYPE="true"
 toop_engine_interfaces = { path = "../interfaces_pkg", editable = true }
 toop_engine_grid_helpers = { path = "../grid_helpers_pkg", editable = true }
 
+[tool.uv-secure.vulnerability_criteria]
+show_severity = true # Defaults to false. Set true to show severity in columns output.
+ignore_unfixed = true # if there is no fix available, ignore
+desc = true # Describe Vulnerability in output
 [tool.uv-secure.ignore_packages]
-ray = [] # Ignore issues with all versions of the ray package

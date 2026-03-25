@@ -18,7 +18,6 @@ from toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     ContingencyAnalysisConfig,
-    PandapowerContingency,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.loadflow_result_helpers import extract_branch_results
@@ -48,9 +47,7 @@ def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet
     assert lf_result_sequential_polars_no_val == lf_result_sequential_polars
 
 
-def test_update_results_with_names_sets_missing_values_and_contingency_name() -> None:
-    contingency = PandapowerContingency(unique_id="cont1", name="Contingency A", elements=[])
-
+def test_update_results_with_names_sets_missing_values() -> None:
     branch_index = pd.MultiIndex.from_tuples(
         [(0, "cont1", "branch_1", 1), (0, "cont1", "branch_2", 1)],
         names=["timestep", "contingency", "element", "side"],
@@ -62,7 +59,6 @@ def test_update_results_with_names_sets_missing_values_and_contingency_name() ->
             "q": [0.1, 0.2],
             "loading": [50.0, 60.0],
             "element_name": ["", "Existing Branch"],
-            "contingency_name": ["", ""],
         },
         index=branch_index,
     )
@@ -80,7 +76,6 @@ def test_update_results_with_names_sets_missing_values_and_contingency_name() ->
             "q": [1.0],
             "vm_basecase_deviation": [0.0],
             "element_name": [np.nan],
-            "contingency_name": [""],
         },
         index=node_index,
     )
@@ -93,7 +88,6 @@ def test_update_results_with_names_sets_missing_values_and_contingency_name() ->
         {
             "va_diff": [1.5],
             "element_name": [""],
-            "contingency_name": [""],
         },
         index=va_diff_index,
     )
@@ -107,7 +101,6 @@ def test_update_results_with_names_sets_missing_values_and_contingency_name() ->
             "value": [0.5],
             "regulating_element_type": [RegulatingElementType.OTHER.value],
             "element_name": [""],
-            "contingency_name": [""],
         },
         index=regulating_index,
     )
@@ -120,11 +113,19 @@ def test_update_results_with_names_sets_missing_values_and_contingency_name() ->
         "reg_1": "Reg 1",
     }
 
-    regulating_elements_df, branch_results_df, node_results_df, va_diff_results = update_results_with_names(
-        contingency,
+    regulating_elements_df = update_results_with_names(
         regulating_elements_df,
+        element_name_map,
+    )
+    branch_results_df = update_results_with_names(
         branch_results_df,
+        element_name_map,
+    )
+    node_results_df = update_results_with_names(
         node_results_df,
+        element_name_map,
+    )
+    va_diff_results = update_results_with_names(
         va_diff_results,
         element_name_map,
     )
@@ -134,11 +135,6 @@ def test_update_results_with_names_sets_missing_values_and_contingency_name() ->
     assert node_results_df.loc[(0, "cont1", "node_1"), "element_name"] == "Node 1"
     assert va_diff_results.loc[(0, "cont1", "va_1"), "element_name"] == "VA 1"
     assert regulating_elements_df.loc[(0, "cont1", "reg_1"), "element_name"] == "Reg 1"
-
-    assert branch_results_df["contingency_name"].unique().tolist() == ["Contingency A"]
-    assert node_results_df["contingency_name"].unique().tolist() == ["Contingency A"]
-    assert va_diff_results["contingency_name"].unique().tolist() == ["Contingency A"]
-    assert regulating_elements_df["contingency_name"].unique().tolist() == ["Contingency A"]
 
 
 @pytest.mark.xdist_group("performance")

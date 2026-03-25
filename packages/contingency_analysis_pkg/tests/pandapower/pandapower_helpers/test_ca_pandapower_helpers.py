@@ -109,52 +109,8 @@ def test_panda_power_n_minus_1_definition():
     )
 
     # get by string
-    sliced_nminus1 = nminus1_definition["basecase"]
-    assert sliced_nminus1.contingencies[0].unique_id == "basecase", "The id of the contingency should match the key"
-    assert len(sliced_nminus1.contingencies) == 1, "Only one contingency should be returned"
-    assert sliced_nminus1.monitored_elements.equals(nminus1_definition.monitored_elements), (
-        "The monitored elements should match the original definition"
-    )
-    assert sliced_nminus1.missing_elements == nminus1_definition.missing_elements, (
-        "The missing elements should match the original definition"
-    )
-    assert sliced_nminus1.missing_contingencies == nminus1_definition.missing_contingencies, (
-        "The missing contingencies should match the original definition"
-    )
-
-    # by index
-    sliced_nminus1 = nminus1_definition[0]
-    assert sliced_nminus1.contingencies[0].unique_id == "contingency_1", "The id of the contingency should match the key"
-    assert len(sliced_nminus1.contingencies) == 1, "Only one contingency should be returned"
-    assert sliced_nminus1.monitored_elements.equals(nminus1_definition.monitored_elements), (
-        "The monitored elements should match the original definition"
-    )
-    assert sliced_nminus1.missing_elements == nminus1_definition.missing_elements, (
-        "The missing elements should match the original definition"
-    )
-    assert sliced_nminus1.missing_contingencies == nminus1_definition.missing_contingencies, (
-        "The missing contingencies should match the original definition"
-    )
-
-    # by slice
-    sliced_nminus1 = nminus1_definition[1:]
-    assert len(sliced_nminus1.contingencies) == 2, "Two contingencies should be returned"
-    assert sliced_nminus1.contingencies[0].unique_id == "basecase", "The id of the first contingency should match the key"
-    assert sliced_nminus1.contingencies[1].unique_id == "contingency_2", (
-        "The id of the second contingency should match the key"
-    )
-    assert sliced_nminus1.monitored_elements.equals(nminus1_definition.monitored_elements), (
-        "The monitored elements should match the original definition"
-    )
-    assert sliced_nminus1.missing_elements == nminus1_definition.missing_elements, (
-        "The missing elements should match the original definition"
-    )
-    assert sliced_nminus1.missing_contingencies == nminus1_definition.missing_contingencies, (
-        "The missing contingencies should match the original definition"
-    )
-
-    with pytest.raises(KeyError):
-        _ = nminus1_definition["non_existing_key"], "Accessing a non-existing key should raise a KeyError"
+    base_case = nminus1_definition.base_case
+    assert base_case.unique_id == "basecase", "The id of the contingency should match the key"
 
 
 def test_translate_monitored_elements(pandapower_net: pp.pandapowerNet):

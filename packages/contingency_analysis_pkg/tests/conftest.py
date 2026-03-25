@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import os
+import tempfile
 import time
 import uuid
 from copy import deepcopy
@@ -41,8 +42,8 @@ from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPol
 
 
 @pytest.fixture(scope="session")
-def init_ray(worker_id, tmp_path) -> Generator[bool, None, None]:
-    path_to_ray_tmp = tmp_path / worker_id
+def init_ray(worker_id) -> Generator[bool, None, None]:
+    path_to_ray_tmp = Path(tempfile.gettempdir()) / "toop-ray" / worker_id
     path_to_ray_tmp.mkdir(parents=True, exist_ok=True)
     os.environ["RAY_TMPDIR"] = str(path_to_ray_tmp)
     ray.init(

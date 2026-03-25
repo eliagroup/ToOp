@@ -140,8 +140,8 @@ def idle_loop(
 
     Returns
     -------
-    StartCalculationCommand
-        The start calculation command to start the loadflow calculation with
+    StartOptimizationCommand
+        The start optimization command to start the optimization run with
     """
     send_heartbeat_fn()
     logger.info("Entering idle loop")

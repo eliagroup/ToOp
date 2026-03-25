@@ -120,7 +120,7 @@ repos:
         args: [--config, pyproject.toml, "-iii", "-lll"] # Only report HIGH severity & HIGH confidence
 
   - repo: https://github.com/owenlamont/uv-secure
-    rev: 0.14.4
+    rev: 0.17.0
     hooks:
       - id: uv-secure
         name: "Scan uv.lock for vulnerabilities"

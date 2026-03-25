@@ -88,5 +88,3 @@ ENABLE_BEARTYPE="true"
 [tool.uv-secure.vulnerability_criteria]
 show_severity = true # Defaults to false. Set true to show severity in columns output.
 ignore_unfixed = true
-
-[tool.uv-secure.ignore_packages]

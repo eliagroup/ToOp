@@ -130,7 +130,7 @@ config = pandera.config.PanderaConfig(
 pandera.config.reset_config_context(config)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def init_ray(worker_id) -> Generator[bool, None, None]:
     path_to_ray_tmp = Path(tempfile.gettempdir()) / "toop-ray" / worker_id
     path_to_ray_tmp.mkdir(parents=True, exist_ok=True)

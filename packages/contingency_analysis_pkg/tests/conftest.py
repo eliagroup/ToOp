@@ -41,7 +41,7 @@ from toop_engine_interfaces.loadflow_results import BranchResultSchema
 from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def init_ray(worker_id) -> Generator[bool, None, None]:
     path_to_ray_tmp = Path(tempfile.gettempdir()) / "toop-ray" / worker_id
     path_to_ray_tmp.mkdir(parents=True, exist_ok=True)

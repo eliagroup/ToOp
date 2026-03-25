@@ -7,7 +7,6 @@
 
 from copy import deepcopy
 
-import logbook
 import pandapower as pp
 import pandas as pd
 import pytest
@@ -138,7 +137,7 @@ def test_remove_out_of_service() -> None:
     assert net.shunt.in_service.sum() == len(net.shunt)
 
 
-def test_drop_elements_connected_to_one_bus():
+def test_drop_elements_connected_to_one_bus(capsys: pytest.CaptureFixture[str]):
     net = pp.networks.example_multivoltage()
     net.switch.loc[0, "bus"] = 0
     net.switch.loc[0, "element"] = 0
@@ -162,9 +161,8 @@ def test_drop_elements_connected_to_one_bus():
     assert "Three winding transformer with same hv == lv or hv == mv bus found in" in e_info.value.args[0]
 
     net.trafo3w.loc[0, "hv_bus"] = 0
-    with logbook.handlers.TestHandler() as caplog:
-        drop_elements_connected_to_one_bus(net)
-        assert "Three winding transformer with same mv and lv bus found in" in "".join(caplog.formatted_records)
+    drop_elements_connected_to_one_bus(net)
+    assert "Three winding transformer with same mv and lv bus found in" in "".join(capsys.readouterr().out)
 
 
 def test_drop_elements_connected_to_one_bus_attr_not_exist():

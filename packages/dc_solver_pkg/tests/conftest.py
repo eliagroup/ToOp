@@ -668,7 +668,8 @@ def _node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPat
     tmp_path = tmp_path_factory.mktemp("node_breaker_grid_preprocessed")
     node_breaker_folder_powsybl(tmp_path)
     filesystem_dir = DirFileSystem(str(tmp_path))
-    stats, static_information, _ = load_grid(filesystem_dir, lf_params=DISTRIBUTED_SLACK)
+    stats, static_information, network_data = load_grid(filesystem_dir, lf_params=DISTRIBUTED_SLACK)
+    save_network_data(tmp_path / "network_data.pkl", network_data)
     assert stats.n_relevant_subs > 0
 
     best_actions = random_topology(
@@ -1252,12 +1253,13 @@ def three_node_pst_example_data_folder(tmp_path_factory: pytest.TempPathFactory)
     tmp_path = tmp_path_factory.mktemp("three_node_pst_example")
     three_node_pst_example_folder_powsybl(tmp_path)
     filesystem_dir = DirFileSystem(str(tmp_path))
-    _info, _static_information, _ = load_grid(
+    _info, _static_information, network_data = load_grid(
         data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
         parameters=PreprocessParameters(),
     )
+    save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
 
@@ -1316,13 +1318,14 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> N
 
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
     filesystem_dir = DirFileSystem(str(folder))
-    _info, _static_information, _ = load_grid(
+    _info, _static_information, network_data = load_grid(
         data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,
         lf_params=DISTRIBUTED_SLACK,
     )
+    save_network_data(folder / "network_data.pkl", network_data)
     save_lf_params_to_fs(DISTRIBUTED_SLACK, filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
@@ -1366,11 +1369,12 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
 
     filesystem_dir = DirFileSystem(str(folder))
-    _info, _static_information, _ = load_grid(
+    _info, _static_information, network_data = load_grid(
         data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,
         lf_params=DISTRIBUTED_SLACK,
     )
+    save_network_data(folder / "network_data.pkl", network_data)
     save_lf_params_to_fs(DISTRIBUTED_SLACK, filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))

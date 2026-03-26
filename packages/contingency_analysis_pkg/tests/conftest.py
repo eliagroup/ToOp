@@ -5,10 +5,13 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import os
 import time
 import uuid
 from copy import deepcopy
 from pathlib import Path
+
+os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 import docker
 import numpy as np
@@ -39,11 +42,20 @@ from toop_engine_interfaces.loadflow_results import BranchResultSchema
 from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars
 
 
-@pytest.fixture(scope="session")
-def init_ray() -> bool:
-    ray.init(runtime_env={"working_dir": Path(__file__).parent}, ignore_reinit_error=True, include_dashboard=False)
+@pytest.fixture(scope="module")
+def init_ray(worker_id) -> Generator[bool, None, None]:
+    path_to_ray_tmp = Path("/tmp") / f"tr-{worker_id}"
+    path_to_ray_tmp.mkdir(parents=True, exist_ok=True)
+    ray.init(
+        _temp_dir=str(path_to_ray_tmp),
+        ignore_reinit_error=True,
+        include_dashboard=False,
+        namespace=f"pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'local')}",
+        # optional (works too): _temp_dir=str(ray_tmp),
+    )
     # Return a dummy bool so it can be used as a fixture on only those tests that need ray, autouse is a bit overkill
-    return True
+    yield True
+    ray.shutdown()
 
 
 @pytest.fixture(scope="session")

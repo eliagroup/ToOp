@@ -25,6 +25,7 @@ from toop_engine_interfaces.loadflow_results import RegulatingElementType
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 
 
+@pytest.mark.xdist_group("ray")
 def test_run_ac_contingency_analysis_pandapower(pandapower_net: pp.pandapowerNet, init_ray) -> None:
     full_nminus1_definition = get_full_nminus1_definition_pandapower(pandapower_net)
     basecase = [contingency for contingency in full_nminus1_definition.contingencies if contingency.is_basecase()]

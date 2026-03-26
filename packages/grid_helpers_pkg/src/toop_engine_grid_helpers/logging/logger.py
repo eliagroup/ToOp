@@ -17,11 +17,10 @@ logger.info("Grid loaded", any_context="goes here")
 """
 
 import structlog
-from structlog.types import BindableLogger
 from toop_engine_grid_helpers.logging.config import configure
 
 
-def get_logger(name: str) -> type[BindableLogger]:
+def get_logger(name: str) -> structlog.BoundLoggerBase:
     """Return a structlog BoundLogger emitting OTel-structured JSON.
 
     Configures structlog on first call (idempotent). The logger.name attribute

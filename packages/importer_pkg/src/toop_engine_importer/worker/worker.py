@@ -13,17 +13,18 @@ Created: 2024
 """
 
 import time
-import traceback
 from functools import partial
 from uuid import uuid4
 
 import jax
-import logbook
 from beartype.typing import Callable, Optional
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_grid_helpers.logging import bind_context, clear_context
+from toop_engine_grid_helpers.logging.kafka_context import context_to_headers
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.worker.preprocessor import import_grid_model, preprocess
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     Command,
@@ -45,7 +46,7 @@ from toop_engine_interfaces.messages.protobuf_message_factory import (
     serialize_message,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 class Args(BaseModel):
@@ -204,6 +205,7 @@ def main(
             send_heartbeat_fn=heartbeat_idle,
             heartbeat_interval_ms=args.heartbeat_interval_ms,
         )
+        bind_context(preprocess_id=command.preprocess_id)
         consumer.start_processing()
 
         start_time = time.time()
@@ -222,6 +224,7 @@ def main(
                 ).model_dump_json()
             ),
             key=command.preprocess_id.encode(),
+            headers=context_to_headers(),
         )
         producer.flush()
         heartbeat_fn("start", "Preprocessing run started")
@@ -254,10 +257,10 @@ def main(
                     ).model_dump_json()
                 ),
                 key=command.preprocess_id.encode(),
+                headers=context_to_headers(),
             )
         except Exception as e:
-            logger.error(f"Error while processing {command.preprocess_id}", e)
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error(f"Error while processing {command.preprocess_id}", exc_info=e)
             producer.produce(
                 topic=args.importer_results_topic,
                 value=serialize_message(
@@ -268,6 +271,8 @@ def main(
                     ).model_dump_json()
                 ),
                 key=command.preprocess_id.encode(),
+                headers=context_to_headers(),
             )
         producer.flush()
         consumer.stop_processing()
+        clear_context()

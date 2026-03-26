@@ -13,12 +13,14 @@ from functools import partial
 from uuid import uuid4
 
 import jax
-import logbook
 from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_grid_helpers.logging import bind_context, clear_context
+from toop_engine_grid_helpers.logging.kafka_context import context_to_headers, headers_to_context
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
@@ -47,7 +49,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     ResultUnion,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 class Args(BaseModel):
@@ -144,6 +146,8 @@ def idle_loop(
                 )
                 consumer.commit()
                 continue
+            bind_context(**headers_to_context(message.headers()))
+            bind_context(optimization_id=command.command.optimization_id)
             return command.command
 
         # If we are here, we received a command that we do not know
@@ -321,6 +325,7 @@ def main(
             args.optimizer_results_topic,
             value=serialize_message(result.model_dump_json()),
             key=optimization_id.encode(),
+            headers=context_to_headers(),
         )
         producer.flush()
 
@@ -343,3 +348,4 @@ def main(
             processed_gridfile_fs=processed_gridfile_fs,
         )
         command_consumer.stop_processing()
+        clear_context()

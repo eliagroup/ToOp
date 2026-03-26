@@ -14,12 +14,14 @@ from datetime import datetime, timedelta
 from functools import partial
 from uuid import uuid4
 
-import logbook
 from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_grid_helpers.logging import bind_context, clear_context
+from toop_engine_grid_helpers.logging.kafka_context import context_to_headers, headers_to_context
+from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.optimizer import (
@@ -48,7 +50,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     ResultUnion,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 class Args(DCArgs):
@@ -279,6 +281,8 @@ def idle_loop(
                 )
                 worker_data.command_consumer.commit()
                 continue
+            bind_context(**headers_to_context(message.headers()))
+            bind_context(optimization_id=command.command.optimization_id)
             return command.command
 
         # If we are here, we received a command that we do not know
@@ -405,6 +409,7 @@ def main(
             args.optimizer_results_topic,
             value=serialize_message(result.model_dump_json()),
             key=result.optimization_id.encode(),
+            headers=context_to_headers(),
         )
         worker_data.producer.flush()
 
@@ -442,4 +447,5 @@ def main(
             processed_gridfile_fs=processed_gridfile_fs,
         )
         worker_data.command_consumer.stop_processing()
+        clear_context()
         scrub_db(worker_data.db)

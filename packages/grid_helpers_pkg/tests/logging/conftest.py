@@ -12,15 +12,18 @@ from typing import Iterator
 import pytest
 import structlog
 import toop_engine_grid_helpers.logging.config as log_config
+from toop_engine_grid_helpers.logging.context import clear_context
 
 
 @pytest.fixture(autouse=True)
 def reset_structlog() -> Iterator[None]:
-    """Reset structlog and the configuration flag between tests."""
+    """Reset structlog, the configuration flag, and job context between tests."""
     structlog.reset_defaults()
     log_config._configured = False
     log_config._service_attrs.cache_clear()
+    clear_context()
     yield
     structlog.reset_defaults()
     log_config._configured = False
     log_config._service_attrs.cache_clear()
+    clear_context()

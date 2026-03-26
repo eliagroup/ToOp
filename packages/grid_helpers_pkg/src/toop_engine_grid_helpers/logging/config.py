@@ -21,6 +21,7 @@ from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
+from toop_engine_grid_helpers.logging.context import _add_job_context
 
 _SEVERITY_MAP: dict[str, str] = {
     "trace": "TRACE",
@@ -134,6 +135,7 @@ def configure(log_level: int = 20) -> None:
             _add_service_attributes,
             _add_thread_name,
             _format_exception,
+            _add_job_context,
             _to_otel_shape,
             structlog.processors.JSONRenderer(),
         ],

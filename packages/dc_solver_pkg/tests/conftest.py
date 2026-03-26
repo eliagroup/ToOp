@@ -372,8 +372,6 @@ def _preprocessed_data_folder(_data_folder: Path, tmp_path_factory: pytest.TempP
     tmp_path = tmp_path_factory.mktemp("result")
     tmp_grid_file_path_pandapower = tmp_path / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     tmp_grid_file_path_pandapower.parent.mkdir(parents=True, exist_ok=True)
-    temp_network_data_file_path = tmp_path / PREPROCESSING_PATHS["network_data_file_path"]
-    temp_network_data_file_path.parent.mkdir(parents=True, exist_ok=True)
     temp_static_information_file_path = tmp_path / PREPROCESSING_PATHS["static_information_file_path"]
     temp_static_information_file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -387,10 +385,10 @@ def _preprocessed_data_folder(_data_folder: Path, tmp_path_factory: pytest.TempP
     fs_dir = DirFileSystem(str(_data_folder))
     backend = PandaPowerBackend(fs_dir)
     network_data = preprocess(backend)
-    save_network_data(temp_network_data_file_path, network_data)
+    save_network_data(tmp_path / "network_data.pkl", network_data)
     static_information = convert_to_jax(network_data, enable_bb_outage=False)
     save_static_information(temp_static_information_file_path, static_information)
-    write_aux_data(data_folder=_data_folder, network_data=network_data)
+    write_aux_data(data_folder=tmp_path, network_data=network_data)
 
     # Generate random "optimization results"
     static_information = replace(
@@ -581,7 +579,7 @@ def _preprocessed_powsybl_data_folder(_powsybl_data_folder: Path, tmp_path_facto
     tmp_path = tmp_path_factory.mktemp("powsybl_result")
     tmp_grid_file_path = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_network_data_file_path = tmp_path / PREPROCESSING_PATHS["network_data_file_path"]
+    temp_network_data_file_path = tmp_path / "network_data.pkl"
     temp_network_data_file_path.parent.mkdir(parents=True, exist_ok=True)
     temp_static_information_file_path = tmp_path / PREPROCESSING_PATHS["static_information_file_path"]
     temp_static_information_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1092,7 +1090,7 @@ def overlapping_branch_data(
     """
     Fixture to load the network data for testing non-overlapping branch masks.
     """
-    network_data = load_network_data(_preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     outage_mask = network_data.outaged_branch_mask
     # Make sure all branch masks are identical
     updated_outage_mask = outage_mask
@@ -1137,7 +1135,7 @@ def non_overlapping_branch_data(
     """
     Fixture to load the network data for testing non-overlapping branch masks.
     """
-    network_data = load_network_data(_preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
     monitored_branch_mask = network_data.monitored_branch_mask
@@ -1181,7 +1179,7 @@ def overlapping_monitored_and_disconnected_branch_data(
     """
     Fixture to load the network data for testing partially overlapping branch masks.
     """
-    network_data = load_network_data(_preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
     monitored_branch_mask = network_data.monitored_branch_mask

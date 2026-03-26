@@ -222,7 +222,7 @@ def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Res
         grid_folder / "case57" / PREPROCESSING_PATHS["action_set_diff_path"],
     )
     assert len(action_set.local_actions)
-    network_data = load_network_data(grid_folder / "case57" / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(grid_folder / "case57" / "network_data.pkl")
     assert network_data.branch_action_set is not None
 
     rng = np.random.default_rng(42)

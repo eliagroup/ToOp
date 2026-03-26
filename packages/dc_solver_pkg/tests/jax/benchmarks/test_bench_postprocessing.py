@@ -8,16 +8,18 @@
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import cast
 
 import pytest
 from toop_engine_dc_solver.jax.benchmarks.bench_postprocessing import (
     Args,
+    LoadflowType,
     main,
     run_benchmark,
     setup_benchmark,
 )
-from toop_engine_dc_solver.preprocess.network_data import load_network_data
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 
 
 @pytest.mark.xdist_group("ray")
@@ -25,7 +27,7 @@ from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 def test_benchmark(preprocessed_data_folder: Path, method: str, init_ray) -> None:
     runner, topologies = setup_benchmark(
         grid_path=preprocessed_data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"],
-        network_data_path=preprocessed_data_folder / PREPROCESSING_PATHS["network_data_file_path"],
+        data_folder=preprocessed_data_folder,
         n_topologies=4,
         n_substations_split=2,
         n_processes_per_topology=2,
@@ -33,14 +35,14 @@ def test_benchmark(preprocessed_data_folder: Path, method: str, init_ray) -> Non
         framework="pandapower",
     )
 
-    n_loadflows, n_success, time = run_benchmark(runner, topologies, method=method)
+    n_loadflows, n_success, time = run_benchmark(runner, topologies, method=cast(LoadflowType, method))
 
-    network_data = load_network_data(preprocessed_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
-    assert n_loadflows == 4 * (
-        +network_data.outaged_branch_mask.sum()
-        + network_data.outaged_injection_mask.sum()
-        + len(network_data.multi_outage_ids)
-    ), "Number of Loadflows does not match the expected number of outages. Basecase is not included here!"
+    nminus1_definition = load_nminus1_definition(
+        preprocessed_data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]
+    )
+    assert n_loadflows == 4 * (len(nminus1_definition.contingencies) - 1), (
+        "Number of loadflows does not match the expected number of contingencies. Basecase is not included here!"
+    )
     assert n_success >= n_loadflows * 0.9
     assert time > 0
 
@@ -49,7 +51,7 @@ def test_main(preprocessed_data_folder: Path) -> None:
     with TemporaryDirectory() as res_folder:
         res_file = Path(res_folder) / "results.json"
         args = Args(
-            network_data_file=str(preprocessed_data_folder / PREPROCESSING_PATHS["network_data_file_path"]),
+            data_folder=str(preprocessed_data_folder),
             grid_file=str(preprocessed_data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]),
             framework="pandapower",
             n_topologies=4,

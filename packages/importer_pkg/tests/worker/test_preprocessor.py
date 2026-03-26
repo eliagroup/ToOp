@@ -217,7 +217,7 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
         )
 
         static_info_path = ucte_importer_parameters.data_folder / PREPROCESSING_PATHS["static_information_file_path"]
-        network_data_path = ucte_importer_parameters.data_folder / PREPROCESSING_PATHS["network_data_file_path"]
+        network_data_path = ucte_importer_parameters.data_folder / "network_data.pkl"
 
         assert static_info_path.exists()
         assert network_data_path.exists()

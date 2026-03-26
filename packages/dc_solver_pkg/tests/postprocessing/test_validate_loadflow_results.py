@@ -38,12 +38,12 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver
 
 
 def test_validate_loadflow_results_unsplit(preprocessed_powsybl_data_folder: Path) -> None:
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
     static_information = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
     )
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
     action_set = extract_action_set(network_data)
     nminus1_definition = extract_nminus1_definition(network_data)
 
@@ -71,7 +71,7 @@ def test_validate_loadflow_results_unsplit(preprocessed_powsybl_data_folder: Pat
 
 
 def test_validate_loadflow_results(preprocessed_powsybl_data_folder: Path) -> None:
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
     static_information = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
     )
@@ -81,7 +81,7 @@ def test_validate_loadflow_results(preprocessed_powsybl_data_folder: Path) -> No
         / POSTPROCESSING_PATHS["dc_optimizer_snapshots_path"]
         / OUTPUT_FILE_NAMES["multiple_topologies"]
     )
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
 
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     action_set = extract_action_set(network_data)

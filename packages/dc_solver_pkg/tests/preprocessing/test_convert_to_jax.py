@@ -165,7 +165,7 @@ def test_load_grid(data_folder: Path) -> None:
             pandapower=True,
         )
         static_information_path = temp_dir / PREPROCESSING_PATHS["static_information_file_path"]
-        network_data_path = temp_dir / PREPROCESSING_PATHS["network_data_file_path"]
+        network_data_path = temp_dir / "network_data.pkl"
         assert os.path.exists(static_information_path)
         assert os.path.exists(network_data_path)
         validate_static_information(static_information)

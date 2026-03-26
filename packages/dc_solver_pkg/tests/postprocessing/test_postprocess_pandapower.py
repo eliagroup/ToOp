@@ -383,7 +383,7 @@ def test_compute_n_1_ac(data_folder: str, init_ray) -> None:
 @pytest.mark.timeout(600)
 def test_runner_matches_split_loadflows(preprocessed_data_folder: str) -> None:
     data_path = Path(preprocessed_data_folder)
-    network_data = load_network_data(data_path / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(data_path / "network_data.pkl")
     action_set = extract_action_set(network_data)
     grid_file_path = Path(preprocessed_data_folder) / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     runner = PandapowerRunner(n_processes=8)
@@ -443,7 +443,7 @@ def test_compute_cross_coupler_flows(preprocessed_data_folder: str, init_ray) ->
     backend = PandaPowerBackend(filesystem_dir)
     net = backend.net
     data_path = Path(preprocessed_data_folder)
-    network_data = load_network_data(data_path / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(data_path / "network_data.pkl")
     action_set = extract_action_set(network_data)
     post_process_file_path = (
         data_path / POSTPROCESSING_PATHS["dc_optimizer_snapshots_path"] / OUTPUT_FILE_NAMES["multiple_topologies"]

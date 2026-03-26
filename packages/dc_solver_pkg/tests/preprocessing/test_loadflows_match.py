@@ -84,7 +84,7 @@ def test_nminus1_results_one_timestep(data_folder: Path, preprocessed_data_folde
     filesystem_dir = DirFileSystem(str(data_folder))
     backend = PandaPowerBackend(filesystem_dir)
     pp.rundcpp(backend.net)
-    network_data = load_network_data(preprocessed_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_data_folder / "network_data.pkl")
     static_information = load_static_information(
         preprocessed_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
     )

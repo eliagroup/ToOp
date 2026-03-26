@@ -275,15 +275,14 @@ def validate_asset_topology(net: pp.pandapowerNet, topology_model: Topology) -> 
         len_connection = len([element for key in connection_dict for element in connection_dict[key]])
         if len_connection != len(station.assets):
             logger.warning(
-                f"Station {station.grid_model_id} has {len(station.assets)} assets but only "
-                + f"{len_connection} connections in the network"
+                f"Station {s_id} has {len(station.assets)} assets but only "
+                + f"{len_connection} connections in the network",
+                **connection_dict,
             )
-            logger.warning(connection_dict)
             for asset in station.assets:
-                logger.warning(asset)
+                logger.warning(f"Station {s_id} with assets: {asset}", asset=asset)
             raise ValueError(
-                f"Station {station.grid_model_id} has {len(station.assets)} assets but only "
-                + f"{len_connection} connections in the network"
+                f"Station {s_id} has {len(station.assets)} assets but only " + f"{len_connection} connections in the network"
             )
 
 

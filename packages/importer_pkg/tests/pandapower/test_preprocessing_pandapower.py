@@ -236,7 +236,7 @@ def test_validate(pp_network_w_switches):
         with pytest.raises(ValueError):
             preprocessing.validate_asset_topology(net, topology_model)
         # ext_grid is there and not supported as a connection
-        assert "Station 0%%bus has 1 assets but only 2 connections in the network" in "".join(e["event"] for e in cap_logs)
+        assert "Station 0 has 1 assets but only 2 connections in the network" in "".join(e["event"] for e in cap_logs)
 
 
 def test_validate_trafo_model(pp_network_w_switches):

@@ -37,6 +37,7 @@ runs:
           --cov-report xml:coverage-${{ inputs.package }}.xml
       env:
         CLEANUP_RAY_AFTER_TESTS: true
+        RAY_ENABLE_UV_RUN_RUNTIME_ENV: "0"
         UV_PROJECT: packages/${{ inputs.package }}
 
     - name: Upload coverage report

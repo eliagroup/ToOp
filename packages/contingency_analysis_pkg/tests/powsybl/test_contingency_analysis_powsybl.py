@@ -45,7 +45,7 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
 
 
 @pytest.mark.parametrize("powsybl_net", ["powsybl_bus_breaker_net", "powsybl_node_breaker_net"])
-def test_run_ac_contingency_analysis_powsybl(powsybl_net: str, request, init_ray) -> None:
+def test_run_ac_contingency_analysis_powsybl(powsybl_net: str, request) -> None:
     net = request.getfixturevalue(powsybl_net)
     nminus1_definition = get_full_nminus1_definition_powsybl(net)
 
@@ -90,7 +90,7 @@ def test_contingency_analysis_validated_or_not(powsybl_node_breaker_net: pypowsy
 
 
 @pytest.mark.parametrize("powsybl_net", ["powsybl_bus_breaker_net", "powsybl_node_breaker_net"])
-def test_contingency_analysis_ray_vs_powsybl(powsybl_net: str, request):
+def test_contingency_analysis_ray_vs_powsybl(powsybl_net: str, request, init_ray) -> None:
     net = request.getfixturevalue(powsybl_net)
 
     nminus1_definition = get_full_nminus1_definition_powsybl(net)

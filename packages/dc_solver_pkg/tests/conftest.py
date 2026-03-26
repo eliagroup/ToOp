@@ -6,7 +6,6 @@
 # Mozilla Public License, version 2.0
 
 import bz2
-import gc
 import json
 import os
 import shutil
@@ -14,6 +13,8 @@ import time
 import uuid
 from copy import deepcopy
 from pathlib import Path
+
+os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 import chex
 import docker
@@ -131,14 +132,20 @@ config = pandera.config.PanderaConfig(
 pandera.config.reset_config_context(config)
 
 
-@pytest.fixture(autouse=True)
-def shutdown_ray():
-    yield
-    # If we're running on CI, we regularly run out of memory
-    # Hence, we cleanup ray after each test where ray was used
-    if "CLEANUP_RAY_AFTER_TESTS" in os.environ and ray.is_initialized():
-        ray.shutdown()
-        gc.collect()
+@pytest.fixture(scope="module")
+def init_ray(worker_id) -> Generator[bool, None, None]:
+    path_to_ray_tmp = Path("/tmp") / f"tr-{worker_id}"
+    path_to_ray_tmp.mkdir(parents=True, exist_ok=True)
+    ray.init(
+        _temp_dir=str(path_to_ray_tmp),
+        ignore_reinit_error=True,
+        include_dashboard=False,
+        namespace=f"pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'local')}",
+        # optional (works too): _temp_dir=str(ray_tmp),
+    )
+    # Return a dummy bool so it can be used as a fixture on only those tests that need ray, autouse is a bit overkill
+    yield True
+    ray.shutdown()
 
 
 @pytest.fixture(scope="session")

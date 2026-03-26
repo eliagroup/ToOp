@@ -19,7 +19,6 @@ import pypowsybl
 import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
 import pytest
-import ray
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
@@ -111,8 +110,6 @@ def test_apply_topology_matches_loadflows(
     request,
     fixture_name: str,
 ) -> None:
-    # Sometimes ray crashes during this test, make sure it is shut down.
-    ray.shutdown()
     data_folder = request.getfixturevalue(fixture_name)
     assert isinstance(data_folder, Path)
 
@@ -371,7 +368,6 @@ def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
     assert np.allclose(n_0, n_0_mp)
     assert n_1.shape == n_1_mp.shape
     assert np.allclose(n_1, n_1_mp)
-    ray.shutdown()
 
 
 def test_compute_cross_coupler_flows(preprocessed_powsybl_data_folder: Path) -> None:

@@ -178,7 +178,11 @@ def main(
         preprocess_id: str,
         start_time: float,
     ) -> None:
-        logger.info(f"Preprocessing stage {stage} for job {preprocess_id} after {time.time() - start_time}s: {message}")
+        logger.info(
+            f"Preprocessing stage {stage} for job {preprocess_id} after {time.time() - start_time}s: {message}",
+            preprocess_stage=stage,
+            preprocess_id=preprocess_id,
+        )
         producer.produce(
             args.importer_heartbeat_topic,
             value=serialize_message(

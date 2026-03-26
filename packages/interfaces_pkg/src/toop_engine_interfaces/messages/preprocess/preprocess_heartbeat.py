@@ -132,6 +132,6 @@ def empty_status_update_fn(stage: PreprocessStage, message: Optional[str]) -> No
     Use this function when no status_update_fn is provided.
     """
     if message is None:
-        logger.info(f"Preprocessing stage {stage}")
+        logger.info(f"Preprocessing stage {stage}", preprocess_stage=stage)
     else:
-        logger.info(f"Preprocessing stage {stage}, {message}")
+        logger.info(f"Preprocessing stage {stage}, {message}", preprocess_stage=stage, message=message)

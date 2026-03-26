@@ -382,6 +382,7 @@ def main(
     )
 
     def send_heartbeat(message: HeartbeatUnion, ping_commands: bool) -> None:
+        logger.info(f"Sending heartbeat: {message}", message_type=type(message).__name__)
         heartbeat = Heartbeat(
             optimizer_type=OptimizerType.AC,
             instance_id=instance_id,
@@ -398,6 +399,11 @@ def main(
             worker_data.command_consumer.heartbeat()
 
     def send_result(message: ResultUnion, optimization_id: str) -> None:
+        logger.info(
+            f"Sending result for optimization {optimization_id}: {message}",
+            optimization_id=optimization_id,
+            result_type=type(message).__name__,
+        )
         result = Result(
             result=message,
             optimization_id=optimization_id,

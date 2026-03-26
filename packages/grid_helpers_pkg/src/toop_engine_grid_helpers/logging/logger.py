@@ -16,13 +16,12 @@ logger.info("Grid loaded", any_context="goes here")
 ```
 """
 
-from typing import Any
-
 import structlog
+from structlog.types import FilteringBoundLogger
 from toop_engine_grid_helpers.logging.config import configure
 
 
-def get_logger(name: str) -> Any:  # noqa: ANN401
+def get_logger(name: str) -> FilteringBoundLogger:
     """Return a structlog BoundLogger emitting OTel-structured JSON.
 
     Configures structlog on first call (idempotent). The logger.name attribute

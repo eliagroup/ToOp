@@ -482,7 +482,9 @@ class PandaPowerBackend(BackendInterface):
             except FileNotFoundError:
                 logger.info(
                     f"No file '{branch_type}_for_reward.npy' in given grid path '{self._get_masks_path()}'. "
-                    f"In this case, {branch_type}s are not taken into account for the reward"
+                    f"In this case, {branch_type}s are not taken into account for the reward",
+                    branch_type=branch_type,
+                    grid_path=self._get_masks_path(),
                 )
                 continue
             except KeyError:
@@ -525,9 +527,10 @@ class PandaPowerBackend(BackendInterface):
                 ppc_branch_mask[branch_start_index:branch_end_index] = branch_type_mask
             except FileNotFoundError:
                 logger.info(
-                    "No file '%{branch_type}_disconnectable.npy' in given grid path '%{grid_path}s'. "
-                    "In this case, %{branch_type}s are not taken into account for the disconnectable branches",
-                    {"branch_type": branch_type, "grid_path": self._get_masks_path()},
+                    f"No file '{branch_type}_disconnectable.npy' in given grid path '{self._get_masks_path()}'. "
+                    f"In this case, {branch_type}s are not taken into account for the disconnectable branches",
+                    branch_type=branch_type,
+                    grid_path=self._get_masks_path(),
                 )
                 continue
             except KeyError:
@@ -563,9 +566,10 @@ class PandaPowerBackend(BackendInterface):
                 ppc_branch_mask[branch_start_index:branch_end_index] = branch_type_mask
             except FileNotFoundError:
                 logger.info(
-                    "No file '%{branch_type}_for_nminus1.npy' in given grid path '%{grid_path}s'. "
-                    "In this case, %{branch_type}s are not taken into account in the N-1 analysis",
-                    {"branch_type": branch_type, "grid_path": self._get_masks_path()},
+                    f"No file '{branch_type}_for_nminus1.npy' in given grid path '{self._get_masks_path()}'. "
+                    f"In this case, {branch_type}s are not taken into account in the N-1 analysis",
+                    branch_type=branch_type,
+                    grid_path=self._get_masks_path(),
                 )
                 continue
         return ppc_branch_mask[ppc_branch_inservice]
@@ -601,9 +605,9 @@ class PandaPowerBackend(BackendInterface):
             )
         except FileNotFoundError:
             logger.info(
-                "No file 'trafo3w_for_nminus1.npy' in given grid path '%{grid_path}s'. "
-                "In this case, trafo3ws are not taken into account in the multi outage N-1 analysis",
-                {"grid_path": self._get_masks_path()},
+                f"No file 'trafo3w_for_nminus1.npy' in given grid path '{self._get_masks_path()}'. "
+                f"In this case, trafo3ws are not taken into account in the multi outage N-1 analysis",
+                grid_path=self._get_masks_path(),
             )
             return (
                 np.empty((0, self.ppci["branch"].shape[0]), dtype=bool),
@@ -661,9 +665,9 @@ class PandaPowerBackend(BackendInterface):
             )
         except FileNotFoundError:
             logger.info(
-                "No file 'busbar_for_nminus1.npy' in given grid path '%{grid_path}s'. "
-                "In this case, busbars are not taken into account in the multi outage N-1 analysis",
-                {"grid_path": self._get_masks_path()},
+                f"No file 'busbar_for_nminus1.npy' in given grid path '{self._get_masks_path()}'. "
+                f"In this case, busbars are not taken into account in the multi outage N-1 analysis",
+                grid_path=self._get_masks_path(),
             )
             return (
                 np.empty((0, self.ppci["branch"].shape[0]), dtype=bool),

@@ -732,10 +732,6 @@ def load_grid(
         PREPROCESSING_PATHS["static_information_file_path"], static_information, filesystem=data_folder_dirfs
     )
 
-    # data_folder_dirfs.makedirs(Path("network_data.pkl").parent.as_posix(), exist_ok=True)
-    # save_network_data_fs(
-    #     filesystem=data_folder_dirfs, filename="network_data.pkl", network_data=network_data
-    # )
     write_aux_data_fs(filesystem=data_folder_dirfs, network_data=network_data)
 
     save_pydantic_model_fs(

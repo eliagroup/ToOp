@@ -26,7 +26,6 @@ from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 @pytest.mark.parametrize("method", ["dc", "ac"])
 def test_benchmark(preprocessed_data_folder: Path, method: str, init_ray) -> None:
     runner, topologies = setup_benchmark(
-        grid_path=preprocessed_data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"],
         data_folder=preprocessed_data_folder,
         n_topologies=4,
         n_substations_split=2,
@@ -52,7 +51,6 @@ def test_main(preprocessed_data_folder: Path) -> None:
         res_file = Path(res_folder) / "results.json"
         args = Args(
             data_folder=str(preprocessed_data_folder),
-            grid_file=str(preprocessed_data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]),
             framework="pandapower",
             n_topologies=4,
             n_substations_split=2,

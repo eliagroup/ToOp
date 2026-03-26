@@ -14,13 +14,16 @@ AC power flows on pandapower using simple ray parallelization.
 import datetime
 import json
 import time
-from itertools import groupby
 from pathlib import Path
+from typing import cast
 
-import numpy as np
+import jax
 import tyro
 from beartype.typing import Literal, Optional, TypeAlias
 from pydantic import BaseModel, PositiveInt
+from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.jax.topology_computations import random_topology
+from toop_engine_dc_solver.jax.types import ActionIndexComputations
 from toop_engine_dc_solver.postprocess.abstract_runner import (
     AbstractLoadflowRunner,
 )
@@ -66,15 +69,16 @@ def compute_loadflows(
     """
     converged = []
     failures = []
+    nminus1_definition = runner.get_nminus1_definition()
     for action in topologies:
         if method == "dc":
             res = runner.run_dc_loadflow(action, [])
-            _, _, success = extract_solver_matrices_polars(res, runner.nminus1_definition, 0)
+            _, _, success = extract_solver_matrices_polars(res, nminus1_definition, 0)
             converged.append(success.sum().item())
             failures.append((~success).sum().item())
         elif method == "ac":
             res = runner.run_ac_loadflow(action, [])
-            _, _, success = extract_solver_matrices_polars(res, runner.nminus1_definition, 0)
+            _, _, success = extract_solver_matrices_polars(res, nminus1_definition, 0)
             converged.append(success.sum().item())
             failures.append((~success).sum().item())
         elif method == "ac_cross_coupler":
@@ -89,7 +93,6 @@ def compute_loadflows(
 
 
 def setup_benchmark(
-    grid_path: Path,
     data_folder: Path,
     n_topologies: int,
     n_substations_split: int,
@@ -102,8 +105,6 @@ def setup_benchmark(
 
     Parameters
     ----------
-    grid_path : Path
-        Path to the grid file
     data_folder : Path
         Path to the preprocessing folder containing the persisted action set and N-1 definition
     n_topologies : int
@@ -126,6 +127,7 @@ def setup_benchmark(
     list[list[int]]
         A list of topologies of length n_topologies with actions to try
     """
+    grid_path = data_folder / PREPROCESSING_PATHS[f"grid_file_path_{framework}"]
     if framework == "pandapower":
         runner = PandapowerRunner(n_processes=n_processes_per_topology, batch_size=batch_size_per_topology)
     else:
@@ -135,12 +137,16 @@ def setup_benchmark(
     runner.store_action_set(action_set)
     runner.store_nminus1_definition(nminus1_definition)
 
-    actions = sample_topologies(
-        action_set=action_set,
+    topology = sample_topologies(
+        data_folder=data_folder,
         n_topologies=n_topologies,
         n_substations_split=n_substations_split,
         seed=seed,
     )
+    actions = [
+        [int(action) for action in topology_row if action < len(action_set.local_actions)]
+        for topology_row in topology.action
+    ]
 
     return runner, actions
 
@@ -156,33 +162,23 @@ def load_benchmark_aux_data(data_folder: Path) -> tuple[ActionSet, Nminus1Defini
 
 
 def sample_topologies(
-    action_set: ActionSet,
+    data_folder: Path,
     n_topologies: int,
     n_substations_split: int,
     seed: int,
-) -> list[list[int]]:
-    """Sample topology actions directly from the persisted postprocessing action set."""
-    grouped_action_indices = [
-        [action_idx for action_idx, _station in station_group]
-        for _station_id, station_group in groupby(
-            enumerate(action_set.local_actions),
-            key=lambda item: item[1].grid_model_id,
-        )
-    ]
-
-    if n_substations_split > len(grouped_action_indices):
-        raise ValueError(
-            f"Requested {n_substations_split} substations to split, but only {len(grouped_action_indices)} are available"
-        )
-
-    rng = np.random.default_rng(seed)
-    topologies: list[list[int]] = []
-    for _ in range(n_topologies):
-        chosen_substations = rng.choice(len(grouped_action_indices), size=n_substations_split, replace=False)
-        topology = [int(rng.choice(grouped_action_indices[substation_idx])) for substation_idx in chosen_substations]
-        topologies.append(topology)
-
-    return topologies
+) -> ActionIndexComputations:
+    """Sample topology actions using the persisted static information action set."""
+    static_information = load_static_information(data_folder / PREPROCESSING_PATHS["static_information_file_path"])
+    return cast(
+        ActionIndexComputations,
+        random_topology(
+            rng_key=jax.random.PRNGKey(seed),
+            branch_action_set=static_information.dynamic_information.action_set,
+            limit_n_subs=n_substations_split,
+            batch_size=n_topologies,
+            topo_vect_format=False,
+        ),
+    )
 
 
 def run_benchmark(
@@ -234,11 +230,8 @@ class Args(BaseModel):
     data_folder: str
     """Path to the preprocessing folder containing the stored action set and N-1 definition"""
 
-    grid_file: str
-    """Path to the grid file, either a .json file for pandapower or a .xiidm file for powsybl"""
-
     framework: Literal["pandapower", "powsybl"]
-    """Framework to use, should match the grid file"""
+    """Framework to use, which also determines the grid file path inside the preprocessing folder"""
 
     n_topologies: PositiveInt
     """Number of topologies to generate"""
@@ -268,7 +261,6 @@ def main(args: Args) -> None:
     """Execute a benchmark and saves the results to a json file"""
     setup_start = time.time()
     runner, topologies = setup_benchmark(
-        grid_path=Path(args.grid_file),
         data_folder=Path(args.data_folder),
         n_topologies=args.n_topologies,
         n_substations_split=args.n_substations_split,

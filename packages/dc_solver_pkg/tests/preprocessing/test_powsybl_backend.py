@@ -13,6 +13,7 @@ import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
+from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.example_grids import case30_with_psts_powsybl
 from toop_engine_dc_solver.jax.injections import get_all_injection_outage_deltap
 from toop_engine_dc_solver.jax.inputs import load_static_information
@@ -30,7 +31,6 @@ from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
     extract_nminus1_definition,
     load_lf_params,
-    load_network_data,
     validate_network_data,
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend

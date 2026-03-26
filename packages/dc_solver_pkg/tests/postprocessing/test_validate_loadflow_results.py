@@ -13,6 +13,7 @@ import jax.numpy as jnp
 import numpy as np
 import pypowsybl
 import pytest
+from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
 from toop_engine_dc_solver.jax.types import ActionIndexComputations, StaticInformation
@@ -27,7 +28,6 @@ from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
     extract_nminus1_definition,
     load_lf_params,
-    load_network_data,
 )
 from toop_engine_interfaces.folder_structure import (
     OUTPUT_FILE_NAMES,

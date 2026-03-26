@@ -35,6 +35,7 @@ from docker.models.containers import Container
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from pypowsybl.network import Network
+from tests.network_data_pickle import load_network_data, save_network_data
 from toop_engine_dc_solver.example_classes import (
     get_basic_node_breaker_topology,
 )
@@ -73,8 +74,6 @@ from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     extract_network_data_from_interface,
-    load_network_data,
-    save_network_data,
 )
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend

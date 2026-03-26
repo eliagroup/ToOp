@@ -14,6 +14,7 @@ import pandapower as pp
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from pandapower.pypower.idx_brch import PF
+from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import load_static_information
@@ -29,7 +30,6 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
     find_n_minus_2_safe_branches,
 )
-from toop_engine_dc_solver.preprocess.network_data import load_network_data
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (

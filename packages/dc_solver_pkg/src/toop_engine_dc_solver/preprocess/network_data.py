@@ -7,14 +7,12 @@
 
 """The network data class that holds the necessary information about the grid."""
 
-import pickle
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import pypowsybl
 from beartype.typing import NamedTuple, Optional, Sequence, Union
-from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
@@ -420,74 +418,6 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         phase_shift_low_tap=interface.get_phase_shift_low_taps(),
         busbar_outage_map=interface.get_busbar_outage_map(),
     )
-
-
-def save_network_data_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], network_data: NetworkData) -> None:
-    """Save the network data to a file system.
-
-    Parameters
-    ----------
-    filesystem : AbstractFileSystem
-        The file system to save the network data to
-    filename : Union[str, Path]
-        The filename to save the network data to
-    network_data : NetworkData
-        The network data to save
-
-    """
-    with filesystem.open(str(filename), "wb") as file:
-        pickle.dump(network_data, file)
-
-
-def save_network_data(filename: Union[str, Path], network_data: NetworkData) -> None:
-    """Save the network data to a file.
-
-    Calls save_network_data_fs with a LocalFileSystem.
-
-    Parameters
-    ----------
-    filename : Union[str, Path]
-        The filename to save the network data to
-    network_data : NetworkData
-        The network data to save
-
-    """
-    save_network_data_fs(LocalFileSystem(), filename, network_data)
-
-
-def load_network_data_fs(filesystem: AbstractFileSystem, filename: Union[str, Path]) -> NetworkData:
-    """Load the network data from a file system.
-
-    Parameters
-    ----------
-    filesystem : AbstractFileSystem
-        The file system to load the network data from
-    filename : Union[str, Path]
-        The filename to load the network data from
-
-    Returns
-    -------
-    NetworkData
-        The loaded network data
-    """
-    with filesystem.open(str(filename), "rb") as file:
-        return pickle.load(file)
-
-
-def load_network_data(filename: Union[str, Path]) -> NetworkData:
-    """Load the network data from a file.
-
-    Parameters
-    ----------
-    filename : Union[str, Path]
-        The filename to load the network data from
-
-    Returns
-    -------
-    NetworkData
-        The loaded network data
-    """
-    return load_network_data_fs(LocalFileSystem(), filename)
 
 
 def load_lf_params(filename: Union[str, Path]) -> pypowsybl.loadflow.Parameters:

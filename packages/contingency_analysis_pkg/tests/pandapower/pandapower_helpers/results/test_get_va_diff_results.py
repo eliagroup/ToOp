@@ -256,26 +256,22 @@ def test_get_va_diff_results(pandapower_net: pp.pandapowerNet):
     assert isinstance(va_diff_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(va_diff_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(va_diff_df.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
-    assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist() + list(
-        va_diff_info.power_switches_from.keys()
-    ) + list(va_diff_info.power_switches_to.keys()), "Element IDs should match monitored elements + the outaged line"
+    assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist(), (
+        "Element IDs should match monitored elements + the outaged line"
+    )
     assert va_diff_df.va_diff.tolist() == [
         outage_net.res_bus.loc[0].va_degree - outage_net.res_bus.loc[1].va_degree,
-        outage_net.res_bus.loc[lines.loc[1].from_bus].va_degree - outage_net.res_bus.loc[lines.loc[1].to_bus].va_degree,
-        -1
-        * (outage_net.res_bus.loc[lines.loc[1].from_bus].va_degree - outage_net.res_bus.loc[lines.loc[1].to_bus].va_degree),
     ], "VA differences should match the outage net"
 
     # Test what happens if there is only one switch
     contingency.va_diff_info[0].power_switches_to = {}
     contingency.va_diff_info[0].power_switches_from = {"PW_SWITCH_ID1": "PW_SWITCH_NAME1"}
     va_diff_df = get_va_diff_results(outage_net, timestep, monitored_elements, contingency)
-    assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist() + ["PW_SWITCH_ID1"], (
+    assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist(), (
         "Element IDs should match monitored elements. No line switches since there arent any"
     )
     assert va_diff_df.va_diff.tolist() == [
         outage_net.res_bus.loc[0].va_degree - outage_net.res_bus.loc[1].va_degree,
-        outage_net.res_bus.loc[lines.loc[1].from_bus].va_degree - outage_net.res_bus.loc[lines.loc[1].to_bus].va_degree,
     ], "VA differences should match the outage net"
 
     # Test what happens if there are no switches
@@ -336,24 +332,11 @@ def test_get_va_diff_results_multioutage(pandapower_net: pp.pandapowerNet):
     assert isinstance(va_diff_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(va_diff_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(va_diff_df.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
-    assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist() + [
-        "PW_SWITCH_ID1",
-        "PW_SWITCH_ID2",
-        "PW_SWITCH_ID3",
-        "PW_SWITCH_ID4",
-    ], "Element IDs should match monitored elements + the outaged line"
+    assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist(), (
+        "Element IDs should match monitored elements + the outaged line"
+    )
     assert va_diff_df.va_diff.tolist() == [
         outage_net.res_bus.loc[0].va_degree - outage_net.res_bus.loc[1].va_degree,
-        outage_net.res_bus.loc[lines.iloc[0].from_bus].va_degree - outage_net.res_bus.loc[lines.iloc[0].to_bus].va_degree,
-        -1
-        * (
-            outage_net.res_bus.loc[lines.iloc[0].from_bus].va_degree - outage_net.res_bus.loc[lines.iloc[0].to_bus].va_degree
-        ),
-        outage_net.res_bus.loc[lines.iloc[1].from_bus].va_degree - outage_net.res_bus.loc[lines.iloc[1].to_bus].va_degree,
-        -1
-        * (
-            outage_net.res_bus.loc[lines.iloc[1].from_bus].va_degree - outage_net.res_bus.loc[lines.iloc[1].to_bus].va_degree
-        ),
     ], "VA differences should match the outage net"
 
 

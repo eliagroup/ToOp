@@ -118,14 +118,6 @@ repos:
         name: "Bandit: scan for security issues"
         description: Security linter for Python code.
         args: [--config, pyproject.toml, "-iii", "-lll"] # Only report HIGH severity & HIGH confidence
-
-  # - repo: https://github.com/owenlamont/uv-secure
-  #   rev: 0.17.0
-  #   hooks:
-  #     - id: uv-secure
-  #       name: "Scan uv.lock for vulnerabilities"
-  #       description: Scan your uv.lock file for dependencies with known vulnerabilities.
-  #       exclude: ^requirements\.txt$
   - repo: https://github.com/tcort/markdown-link-check
     rev: v3.14.2
     hooks:
@@ -133,12 +125,6 @@ repos:
         args: [-q]
   - repo: local
     hooks:
-      - id: uv-secure-disabled
-        name: uv-secure (temporarily disabled)
-        entry: bash -c 'echo "Skipping uv-secure temporarily"; exit 0'
-        language: system
-        pass_filenames: false
-        always_run: true
       - id: check-sensitive-files
         name: Check for sensitive file types
         description: Blocks potentially sensitive file types (.uct, .xml, .zip, .json, .xiidm, .veragrid, .hdf5) unless whitelisted

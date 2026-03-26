@@ -2794,7 +2794,6 @@ dependencies = [
     { name = "pandas", extra = ["hdf5"] },
     { name = "polars" },
     { name = "pyarrow" },
-    { name = "structlog" },
     { name = "toop-engine-interfaces" },
 ]
 
@@ -2810,7 +2809,6 @@ requires-dist = [
     { name = "polars", specifier = ">=1.33.0" },
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.13.0" },
-    { name = "structlog", specifier = ">=24.4.0,<25.0.0" },
     { name = "toop-engine-interfaces", editable = "../interfaces_pkg" },
 ]
 provides-extras = ["pandapower", "pypowsybl"]
@@ -2858,6 +2856,7 @@ dependencies = [
     { name = "protobuf" },
     { name = "pyarrow" },
     { name = "pydantic" },
+    { name = "structlog" },
 ]
 
 [package.metadata]
@@ -2879,6 +2878,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pydantic", specifier = ">=1.10.3,<3.0.0" },
     { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.13.0" },
+    { name = "structlog", specifier = ">=24.4.0,<25.0.0" },
 ]
 provides-extras = ["pandapower", "pypowsybl"]
 

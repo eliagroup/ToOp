@@ -23,9 +23,9 @@ from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_grid_helpers.logging import bind_context, clear_context
-from toop_engine_grid_helpers.logging.kafka_context import context_to_headers
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.worker.preprocessor import import_grid_model, preprocess
+from toop_engine_interfaces.logging.kafka_context import context_to_headers
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     Command,
     ShutdownCommand,

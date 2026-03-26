@@ -9,7 +9,7 @@
 
 Usage:
 ```python
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 logger.info("Grid loaded", any_context="goes here")
@@ -17,7 +17,7 @@ logger.info("Grid loaded", any_context="goes here")
 """
 
 import structlog
-from toop_engine_grid_helpers.logging.config import configure
+from toop_engine_interfaces.logging.config import configure
 
 
 def get_logger(name: str) -> structlog.BoundLoggerBase:
@@ -35,7 +35,7 @@ def get_logger(name: str) -> structlog.BoundLoggerBase:
 
     Example::
 
-        from toop_engine_grid_helpers.logging.logger import get_logger
+        from toop_engine_interfaces.logging.logger import get_logger
         logger = get_logger(__name__)
         logger.info("Grid loaded", n_buses=42)
     """

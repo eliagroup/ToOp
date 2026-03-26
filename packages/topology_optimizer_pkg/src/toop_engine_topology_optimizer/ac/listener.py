@@ -19,7 +19,7 @@ not to messages by itself. Hence a filtering mechanic is added.
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, delete
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, FinishedOptimizations, convert_message_topo_to_db_topo
 from toop_engine_topology_optimizer.interfaces.messages.results import (

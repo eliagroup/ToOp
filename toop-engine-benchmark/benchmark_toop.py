@@ -31,7 +31,7 @@ from statistics import mean
 
 import hydra
 from omegaconf import DictConfig
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     PipelineConfig,

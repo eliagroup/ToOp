@@ -31,7 +31,7 @@ import hydra
 
 # Logging setup
 from omegaconf import DictConfig, OmegaConf
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

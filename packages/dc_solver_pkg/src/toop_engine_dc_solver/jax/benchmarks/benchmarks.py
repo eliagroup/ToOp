@@ -28,7 +28,7 @@ from toop_engine_dc_solver.jax.topology_looper import (
 )
 from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.preprocess.convert_to_jax import extract_static_information_stats
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -21,7 +21,6 @@ import pandapower as pp
 from beartype.typing import Optional
 from jaxtyping import ArrayLike, Bool, Int
 from pandas import Index
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker import (
     get_coupler_types_of_substation,
     get_type_b_nodes,
@@ -30,6 +29,7 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

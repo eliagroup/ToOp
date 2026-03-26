@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 import structlog.testing
-from toop_engine_grid_helpers.logging.config import _SEVERITY_MAP, configure
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.config import _SEVERITY_MAP, configure
+from toop_engine_interfaces.logging.logger import get_logger
 
 
 class TestGetLogger:

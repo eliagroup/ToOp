@@ -15,9 +15,9 @@ from confluent_kafka import Consumer, Producer
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.worker.worker import Args, idle_loop, main
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     Command,
     PreprocessParameters,

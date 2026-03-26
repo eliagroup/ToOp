@@ -11,7 +11,6 @@ import networkx as nx
 import pandas as pd
 import pandera.typing as pat
 from pandapower.auxiliary import pandapowerNet
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     NetworkGraphData,
@@ -22,6 +21,7 @@ from toop_engine_importer.network_graph.data_classes import (
 from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
 from toop_engine_importer.network_graph.network_graph import generate_graph, set_substation_id
 from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

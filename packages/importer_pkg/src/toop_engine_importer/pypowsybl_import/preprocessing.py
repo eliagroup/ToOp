@@ -28,7 +28,6 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     DISTRIBUTED_SLACK,
     POWSYBL_LOADFLOW_PARAM_PF,
@@ -45,6 +44,7 @@ from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks, ma
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
     CgmesImporterParameters,

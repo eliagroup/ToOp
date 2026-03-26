@@ -18,9 +18,9 @@ from toop_engine_dc_solver.preprocess.network_data import (
     OutageData,
     get_relevant_stations,
 )
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.asset_topology import Station, SwitchableAsset
 from toop_engine_interfaces.asset_topology_helpers import find_station_by_id, get_connected_assets
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

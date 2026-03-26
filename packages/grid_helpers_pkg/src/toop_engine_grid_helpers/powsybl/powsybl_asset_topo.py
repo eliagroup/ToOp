@@ -19,7 +19,6 @@ import pandas as pd
 from beartype.typing import Optional, Union
 from jaxtyping import Bool
 from pypowsybl.network.impl.network import Network
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import change_dangling_to_tie, get_voltage_level_with_region
 from toop_engine_interfaces.asset_topology import (
     AssetBay,
@@ -29,6 +28,7 @@ from toop_engine_interfaces.asset_topology import (
     SwitchableAsset,
     Topology,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 from toop_engine_grid_helpers.logging import bind_context, clear_context, context_to_headers, get_context, headers_to_context
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 
 
 class TestBindContext:

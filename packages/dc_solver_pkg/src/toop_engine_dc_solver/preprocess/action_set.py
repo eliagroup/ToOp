@@ -38,9 +38,9 @@ from toop_engine_dc_solver.preprocess.helpers.ptdf import (
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import min_hamming_distance_matrix
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, get_relevant_stations
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.asset_topology import Station
 from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = get_logger(__name__)

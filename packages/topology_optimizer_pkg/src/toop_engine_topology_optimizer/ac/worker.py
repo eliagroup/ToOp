@@ -20,8 +20,8 @@ from fsspec import AbstractFileSystem
 from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_grid_helpers.logging import bind_context, clear_context
-from toop_engine_grid_helpers.logging.kafka_context import context_to_headers, headers_to_context
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.kafka_context import context_to_headers, headers_to_context
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.optimizer import (

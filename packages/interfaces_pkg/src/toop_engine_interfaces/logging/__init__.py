@@ -7,8 +7,8 @@
 
 """Structured logging conforming to the OTel Logs Data Model."""
 
-from toop_engine_grid_helpers.logging.context import bind_context, clear_context, get_context
-from toop_engine_grid_helpers.logging.kafka_context import context_to_headers, headers_to_context
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.context import bind_context, clear_context, get_context
+from toop_engine_interfaces.logging.kafka_context import context_to_headers, headers_to_context
+from toop_engine_interfaces.logging.logger import get_logger
 
 __all__ = ["bind_context", "clear_context", "context_to_headers", "get_context", "get_logger", "headers_to_context"]

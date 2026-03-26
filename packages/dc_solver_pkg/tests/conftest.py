@@ -120,7 +120,7 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_logging_level", "WARNING")
 
 # NUMBA
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

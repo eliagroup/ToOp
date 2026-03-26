@@ -50,8 +50,8 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 from beartype.typing import Iterable, Optional, Union
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import move_elements_based_on_labels
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

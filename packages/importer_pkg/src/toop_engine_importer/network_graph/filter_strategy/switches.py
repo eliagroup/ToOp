@@ -53,7 +53,6 @@ from itertools import pairwise
 
 import networkx as nx
 from beartype.typing import Literal, Union
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.network_graph.data_classes import EDGE_ID, WeightValues
 from toop_engine_importer.network_graph.filter_strategy.helper_functions import (
     calculate_asset_bay_for_node_assets,
@@ -73,6 +72,7 @@ from toop_engine_importer.network_graph.network_graph_helper_functions import (
     remove_path_multiple_busbars,
     reverse_dict_list,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

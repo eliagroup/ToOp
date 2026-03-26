@@ -23,7 +23,6 @@ from networkx.algorithms.components import (
     number_connected_components,
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import hamming_distance
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
@@ -40,6 +39,7 @@ from toop_engine_interfaces.asset_topology_helpers import (
     order_station_assets,
     order_topology,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

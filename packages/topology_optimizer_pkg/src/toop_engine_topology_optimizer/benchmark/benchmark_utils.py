@@ -51,7 +51,6 @@ from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
     apply_topology as powsybl_apply_topology,
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_grid_helpers.powsybl.single_line_diagram.get_single_line_diagram_custom import (
     get_single_line_diagram_custom,
@@ -60,6 +59,7 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,

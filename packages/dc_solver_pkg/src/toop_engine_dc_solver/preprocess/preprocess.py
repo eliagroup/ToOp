@@ -71,9 +71,9 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_optimal_separation_set,
     prepare_for_separation_set,
 )
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.asset_topology_helpers import order_topology
 from toop_engine_interfaces.backend import BackendInterface
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters, ReassignmentLimits
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,

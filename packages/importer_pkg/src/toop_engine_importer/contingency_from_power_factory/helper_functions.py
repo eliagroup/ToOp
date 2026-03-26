@@ -12,8 +12,8 @@ Created: 2025-05-13
 """
 
 import pandera.typing as pat
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.contingency_from_power_factory.power_factory_data_class import ContingencyMatchSchema
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

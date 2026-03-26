@@ -18,7 +18,6 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 from beartype.typing import List, Literal, Optional, Tuple, Union
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_asset_switching_table,
@@ -36,6 +35,7 @@ from toop_engine_interfaces.asset_topology import (
     Station,
     Topology,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from beartype.typing import Callable, Optional, Sequence
 from numpy.random import Generator as Rng
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.types import MetricType, OperationMetric
 from toop_engine_topology_optimizer.ac.storage import BaseDBTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, OptimizerType

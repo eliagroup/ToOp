@@ -7,7 +7,7 @@
 
 """Helpers for propagating logging context across Kafka message boundaries via headers."""
 
-from toop_engine_grid_helpers.logging.context import _job_context
+from toop_engine_interfaces.logging.context import _job_context
 
 _PREFIX = "x-toop-"
 

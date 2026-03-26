@@ -40,7 +40,6 @@ The preprocessing is done in several steps:
 import numpy as np
 import pandapower as pp
 from beartype.typing import Optional
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import (
     drop_elements_connected_to_one_bus,
@@ -54,6 +53,7 @@ from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker impo
     get_coupler_types_of_substation,
 )
 from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

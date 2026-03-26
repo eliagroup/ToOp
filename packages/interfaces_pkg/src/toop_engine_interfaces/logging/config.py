@@ -21,7 +21,7 @@ from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
-from toop_engine_grid_helpers.logging.context import _add_job_context
+from toop_engine_interfaces.logging.context import _add_job_context
 
 _SEVERITY_MAP: dict[str, str] = {
     "trace": "TRACE",

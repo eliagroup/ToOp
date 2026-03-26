@@ -16,7 +16,6 @@ import polars as pl
 from beartype.typing import Collection, Optional, Sequence
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import compute_metrics as compute_metrics_lfs
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_interfaces.asset_topology import RealizedTopology
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
@@ -25,6 +24,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
 )
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, get_contingency_indices_from_ids
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology

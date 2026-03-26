@@ -14,7 +14,6 @@ import pandas as pd
 import pandera.typing as pat
 from pydantic import ValidationError
 from pypowsybl.network.impl.network import Network
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_all_element_names,
     get_list_of_busbars_from_df,
@@ -53,6 +52,7 @@ from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import (
 )
 from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
 from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 
 logger = get_logger(__name__)

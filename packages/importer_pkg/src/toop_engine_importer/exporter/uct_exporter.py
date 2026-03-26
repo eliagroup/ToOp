@@ -24,8 +24,8 @@ from pathlib import Path
 
 import pandas as pd
 from beartype.typing import Any
-from toop_engine_grid_helpers.logging.logger import get_logger
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

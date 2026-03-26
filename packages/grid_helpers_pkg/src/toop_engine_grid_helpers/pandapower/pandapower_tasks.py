@@ -11,7 +11,7 @@ import numpy as np
 import pandapower as pp
 from jaxtyping import Float, Int
 from pandapower.pypower.idx_brch import F_BUS, T_BUS
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

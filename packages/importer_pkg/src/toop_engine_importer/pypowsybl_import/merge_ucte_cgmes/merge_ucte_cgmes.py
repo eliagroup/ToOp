@@ -24,7 +24,7 @@ import pandera.typing as pat
 from beartype.typing import Optional
 from pydantic import BaseModel, Field, model_validator
 from pypowsybl.network.impl.network import Network
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 from typing_extensions import Self
 
 logger = get_logger(__name__)

@@ -12,7 +12,7 @@ from datetime import datetime
 
 from beartype.typing import Literal, Optional, TypeAlias
 from pydantic import BaseModel, Field
-from toop_engine_grid_helpers.logging.logger import get_logger
+from toop_engine_interfaces.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

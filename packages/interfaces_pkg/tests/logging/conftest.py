@@ -11,8 +11,8 @@ from typing import Iterator
 
 import pytest
 import structlog
-import toop_engine_grid_helpers.logging.config as log_config
-from toop_engine_grid_helpers.logging.context import clear_context
+import toop_engine_interfaces.logging.config as log_config
+from toop_engine_interfaces.logging.context import clear_context
 
 
 @pytest.fixture(autouse=True)

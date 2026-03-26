@@ -13,7 +13,6 @@ import jax.numpy as jnp
 import numpy as np
 import pandapower as pp
 import pytest
-import ray
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.injections import default_injection
@@ -110,7 +109,7 @@ def test_apply_disconnections(data_folder: str) -> None:
         )
 
 
-def test_compute_n_1_dc(data_folder: str) -> None:
+def test_compute_n_1_dc(data_folder: str, init_ray) -> None:
     filesystem_dir = DirFileSystem(str(data_folder))
     backend = PandaPowerBackend(filesystem_dir)
     network_data = preprocess(backend)
@@ -293,10 +292,9 @@ def test_compute_n_1_dc(data_folder: str) -> None:
 
     offset += len(network_data.rel_io_global_inj_index)
     assert offset == n_1.shape[0]
-    ray.shutdown()
 
 
-def test_compute_n_1_ac(data_folder: str) -> None:
+def test_compute_n_1_ac(data_folder: str, init_ray) -> None:
     filesystem_dir = DirFileSystem(str(data_folder))
     backend = PandaPowerBackend(filesystem_dir)
     backend.net
@@ -380,6 +378,7 @@ def test_compute_n_1_ac(data_folder: str) -> None:
         assert np.allclose(va_n1[i + offset], monitored_buses_reindexed.va_degree.values, equal_nan=True)
 
 
+@pytest.mark.xdist_group("ray")
 @pytest.mark.xdist_group("performance")
 @pytest.mark.timeout(600)
 def test_runner_matches_split_loadflows(preprocessed_data_folder: str) -> None:
@@ -437,10 +436,9 @@ def test_runner_matches_split_loadflows(preprocessed_data_folder: str) -> None:
         assert np.allclose(n_0, n_0_ref)
         assert n_1.shape == n_1_ref.shape
         assert np.allclose(n_1, n_1_ref)
-    ray.shutdown()
 
 
-def test_compute_cross_coupler_flows(preprocessed_data_folder: str) -> None:
+def test_compute_cross_coupler_flows(preprocessed_data_folder: str, init_ray) -> None:
     filesystem_dir = DirFileSystem(str(preprocessed_data_folder))
     backend = PandaPowerBackend(filesystem_dir)
     net = backend.net

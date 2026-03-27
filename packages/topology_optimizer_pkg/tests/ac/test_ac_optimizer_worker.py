@@ -309,7 +309,6 @@ def test_idle_loop_optimization_started() -> None:
     )
     start_message = FakeMessage(
         value_bytes=serialize_message(start_command.model_dump_json()),
-        headers=[("x-toop-optimization_id", b"test")],
     )
     worker_data.command_consumer.poll.return_value = start_message
     worker_data.result_consumer.consume.return_value = []
@@ -349,11 +348,9 @@ def test_idle_loop_optimization_started_command_too_old() -> None:
     )
     start_message = FakeMessage(
         value_bytes=serialize_message(start_command.model_dump_json()),
-        headers=[("x-toop-optimization_id", b"test")],
     )
     shutdown_message = FakeMessage(
         value_bytes=serialize_message(shutdown_command.model_dump_json()),
-        headers=[("x-toop-optimization_id", b"shutdown")],
     )
 
     worker_data.command_consumer.poll.side_effect = [start_message, shutdown_message]

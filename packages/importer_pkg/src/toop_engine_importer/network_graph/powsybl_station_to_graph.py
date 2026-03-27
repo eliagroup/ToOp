@@ -9,7 +9,6 @@
 
 import datetime
 
-import logbook
 import networkx as nx
 import pandas as pd
 import pandera.typing as pat
@@ -53,9 +52,10 @@ from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import (
 )
 from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
 from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def node_breaker_topology_to_graph_data(net: Network, substation_info: SubstationInformation) -> NetworkGraphData:

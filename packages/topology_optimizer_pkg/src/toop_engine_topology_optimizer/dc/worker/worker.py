@@ -13,12 +13,13 @@ from functools import partial
 from uuid import uuid4
 
 import jax
-import logbook
 from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_interfaces.logging import bind_context, clear_context
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
@@ -47,7 +48,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     ResultUnion,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 class Args(BaseModel):
@@ -144,6 +145,7 @@ def idle_loop(
                 )
                 consumer.commit()
                 continue
+            bind_context(optimization_id=command.command.optimization_id)
             return command.command
 
         # If we are here, we received a command that we do not know
@@ -296,6 +298,7 @@ def main(
     jax.config.update("jax_logging_level", "INFO")
 
     def send_heartbeat(message: HeartbeatUnion, ping_consumer: bool) -> None:
+        logger.info(f"Sending heartbeat: {message}", message_type=type(message).__name__)
         heartbeat = Heartbeat(
             optimizer_type=OptimizerType.DC,
             instance_id=instance_id,
@@ -311,6 +314,11 @@ def main(
             command_consumer.heartbeat()
 
     def send_result(message: ResultUnion, optimization_id: str) -> None:
+        logger.info(
+            f"Sending result for optimization {optimization_id}: {message}",
+            optimization_id=optimization_id,
+            result_type=type(message).__name__,
+        )
         result = Result(
             result=message,
             optimization_id=optimization_id,
@@ -343,3 +351,4 @@ def main(
             processed_gridfile_fs=processed_gridfile_fs,
         )
         command_consumer.stop_processing()
+        clear_context()

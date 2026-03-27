@@ -14,7 +14,6 @@ Created: 2024-10-01
 
 import datetime
 
-import logbook
 import numpy as np
 import pandapower as pp
 import pandas as pd
@@ -36,8 +35,9 @@ from toop_engine_interfaces.asset_topology import (
     Station,
     Topology,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def get_busses_from_station(

@@ -22,7 +22,6 @@ from multiprocessing.connection import Connection
 from pathlib import Path
 
 import jax
-import logbook
 import pandapower
 
 # Domain-specific imports (may raise if not available in the environment)
@@ -60,6 +59,7 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
@@ -89,8 +89,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 jax.config.update("jax_enable_x64", True)
 
 # Logging setup
-logger = logbook.Logger(__name__)
-logbook.StderrHandler().push_application()
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -382,7 +381,7 @@ def run_preprocessing(
     zip_path = data_folder / "static_information.zip"
     shutil.make_archive(str(zip_path).replace(".zip", ""), "zip", root_dir=file_to_zip.parent, base_dir=file_to_zip.name)
 
-    logger.notice("Preprocessing completed.")
+    logger.info("Preprocessing completed.")
     return info, static_information
 
 
@@ -487,7 +486,7 @@ def apply_topology_and_save(
         modified_net = base_net
 
     modified_net.save(save_path) if not is_pandapower_grid else modified_net.to_json(save_path)
-    logger.notice(f"Saved modified network to {save_path}")
+    logger.info(f"Saved modified network to {save_path}")
     return modified_net
 
 
@@ -678,7 +677,7 @@ def perform_ac_analysis(
         res = json.load(f)
 
     best_topos = res["best_topos"]
-    logger.notice("Starting AC validation stage...")
+    logger.info("Starting AC validation stage...")
     if len(best_topos) == 0 or best_topos is None:
         logger.warning("No topologies found in DC optimization results. Skipping AC analysis.")
         return []
@@ -689,7 +688,7 @@ def perform_ac_analysis(
         )
 
     n_assessed_topos = min(ac_validation_cfg.get("k_best_topos", 1), len(best_topos))
-    logger.notice(f"Performing AC analysis on the top {n_assessed_topos} topologies...")
+    logger.info(f"Performing AC analysis on the top {n_assessed_topos} topologies...")
 
     topology_paths = []
     for topology_index in range(n_assessed_topos):
@@ -711,7 +710,7 @@ def perform_ac_analysis(
         modified_net = apply_topology_and_save(grid_path, actions, disconnections, action_set, out_modified)
         loadflow_runner.load_base_grid(out_modified)
 
-        logger.notice("Running AC loadflow...")
+        logger.info("Running AC loadflow...")
         calculate_and_save_loadflow_results(loadflow_runner, topology_path, actions, disconnections)
 
         logger.info("Saving SLDs of split stations...")
@@ -720,7 +719,7 @@ def perform_ac_analysis(
             # Only for powsybl networks, we get the SLDs for the split stations
             save_slds_of_split_stations(action_set, actions, topology_path, modified_net)
         topology_paths.append(topology_path)
-    logger.notice("AC validation completed.")
+    logger.info("AC validation completed.")
     return topology_paths
 
 
@@ -743,9 +742,9 @@ def run_dc_optimization_stage(
     Path
         Path to the directory of this run's results.
     """
-    logger.notice("Running DC optimization...")
+    logger.info("Running DC optimization...")
     optimisation_result = run_dc_optimization(dc_optim_config=dc_optim_config)
-    logger.notice("DC optimization completed.")
+    logger.info("DC optimization completed.")
 
     # Save optimizer results as res.json in optimizer_snapshot folder inside grid_path
     # Find next available run directory inside optimizer_snapshot_dir
@@ -760,7 +759,7 @@ def run_dc_optimization_stage(
     res_json_path = run_dir / "res.json"
     with open(res_json_path, "w") as f:
         json.dump(optimisation_result, f, indent=2, default=str)
-    logger.notice(f"Saved optimizer results to {res_json_path}")
+    logger.info(f"Saved optimizer results to {res_json_path}")
     return run_dir
 
 
@@ -812,13 +811,13 @@ def run_pipeline(
     - The optimizer results are saved as a JSON file in a new run directory under the optimizer snapshot directory.
     - AC validation is performed if optimization results are available.
     """
-    logger.notice(f"Starting pipeline with config: {pipeline_cfg}")
+    logger.info(f"Starting pipeline with config: {pipeline_cfg}")
     iteration_path, file_path, data_folder, optimizer_snapshot_dir = get_paths(pipeline_cfg)
-    logger.notice(f"Paths resolved: iteration_path={iteration_path}, file_path={file_path}, data_folder={data_folder}")
+    logger.info(f"Paths resolved: iteration_path={iteration_path}, file_path={file_path}, data_folder={data_folder}")
 
     # Copy initial topology
     if run_preprocessing_stage:
-        logger.notice("Running preprocessing stage...")
+        logger.info("Running preprocessing stage...")
         run_preprocessing(
             importer_parameters,
             data_folder,
@@ -826,7 +825,7 @@ def run_pipeline(
             is_pandapower_net=True if pipeline_cfg.grid_type == "pandapower" else False,
         )
     else:
-        logger.notice("Skipping preprocessing stage as per configuration.")
+        logger.info("Skipping preprocessing stage as per configuration.")
 
     if run_optimization_stage:
         # DC Optimization stage. Can be skipped if results already exist. But if this is set to False, a valid
@@ -837,8 +836,8 @@ def run_pipeline(
             optimizer_snapshot_dir,
         )
     else:
-        logger.notice("Skipping DC optimization stage as per configuration.")
-        logger.notice("Using run directory passed as input for AC validation stage.")
+        logger.info("Skipping DC optimization stage as per configuration.")
+        logger.info("Using run directory passed as input for AC validation stage.")
         run_dir = optimisation_run_dir
         if run_dir is None or (not run_dir.exists() and run_ac_validation_stage):
             raise ValueError(
@@ -855,7 +854,7 @@ def run_pipeline(
             pandapower_runner=True if pipeline_cfg.grid_type == "pandapower" else False,
         )
     else:
-        logger.notice("Skipping AC validation stage as per configuration.")
-    logger.notice("Pipeline completed.")
+        logger.info("Skipping AC validation stage as per configuration.")
+    logger.info("Pipeline completed.")
 
     return topology_paths

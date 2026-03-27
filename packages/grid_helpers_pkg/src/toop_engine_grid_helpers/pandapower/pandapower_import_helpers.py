@@ -12,13 +12,13 @@ Author:
 Created:
 """
 
-import logbook
 import numpy as np
 import pandapower as pp
 import pandas as pd
 from beartype.typing import Optional
+from toop_engine_interfaces.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def fuse_closed_switches_fast(

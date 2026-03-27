@@ -17,7 +17,6 @@ Note: this module currently ignores the asset_setpoints.
 import io
 from copy import deepcopy
 
-import logbook
 import numpy as np
 import pandas as pd
 import pandera as pa
@@ -38,8 +37,9 @@ from toop_engine_interfaces.asset_topology import (
     Topology,
 )
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 class SwitchUpdateSchema(pa.DataFrameModel):

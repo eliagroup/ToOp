@@ -11,11 +11,11 @@ Author: Benjamin Petrick
 Created: 2025-05-13
 """
 
-import logbook
 import pandera.typing as pat
 from toop_engine_importer.contingency_from_power_factory.power_factory_data_class import ContingencyMatchSchema
+from toop_engine_interfaces.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def get_stats_n1_list_found(processed_n1_definition: pat.DataFrame[ContingencyMatchSchema]) -> dict:

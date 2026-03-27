@@ -34,6 +34,8 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     TopologyPushResult,
 )
 
+from packages.topology_optimizer_pkg.tests.fake_kafka import FakeMessage
+
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
 
@@ -146,10 +148,12 @@ def test_idle_loop_optimization_started_command_too_old() -> None:
         ),
         timestamp=(datetime.now() - timedelta(hours=1)).isoformat(),
     )
-    start_message = Mock()
-    start_message.value.return_value = serialize_message(start_command.model_dump_json())
-    shutdown_message = Mock()
-    shutdown_message.value.return_value = serialize_message(shutdown_command.model_dump_json())
+    start_message = FakeMessage(
+        value_bytes=serialize_message(start_command.model_dump_json()),
+    )
+    shutdown_message = FakeMessage(
+        value_bytes=serialize_message(shutdown_command.model_dump_json()),
+    )
 
     mock_consumer.poll.side_effect = [start_message, shutdown_message]
     results = []

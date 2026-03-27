@@ -7,7 +7,6 @@
 
 """Creates a Asset Topology from a Network Graph."""
 
-import logbook
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -26,8 +25,9 @@ from toop_engine_importer.network_graph.data_classes import (
 from toop_engine_interfaces.asset_topology import (
     AssetBay,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd.DataFrame:

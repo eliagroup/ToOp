@@ -13,7 +13,6 @@ export and a bus/branch way which reassigns the elements to their new locations.
 
 from dataclasses import dataclass
 
-import logbook
 import numpy as np
 import pandapower as pp
 from beartype.typing import Iterable
@@ -29,8 +28,9 @@ from toop_engine_interfaces.asset_topology import (
     Topology,
 )
 from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs, find_busbars_for_coupler
+from toop_engine_interfaces.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def reassign_asset_to_bus(

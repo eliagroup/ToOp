@@ -5,12 +5,12 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import logbook
 import numpy as np
 import pandas as pd
 import pandera
 import pandera.errors
 import pytest
+import structlog.testing
 from toop_engine_importer.contingency_from_power_factory.contingency_from_file import (
     get_contingencies_from_file,
     match_contingencies,
@@ -193,7 +193,7 @@ def test_match_contingencies() -> None:
 
 def test_match_contingencies_by_index() -> None:
     """Test the match_contingencies_by_index function."""
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         # Example contingency data
         contingency_data, all_element_names, _ = get_contingency_test_data()
 
@@ -224,7 +224,7 @@ def test_match_contingencies_by_index() -> None:
         )
         assert list(res["grid_model_name"].values) == [np.nan, np.nan, np.nan, np.nan]
         assert "No elements found in the grid model via CIM id. Check the grid model and the contingency file." in "".join(
-            caplog.formatted_records
+            e["event"] for e in cap_logs
         )
 
 

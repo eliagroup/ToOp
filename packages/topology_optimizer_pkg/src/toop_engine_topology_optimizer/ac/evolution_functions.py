@@ -20,7 +20,6 @@ coupler in all timesteps. The idea is that the DC part might have too many open 
 try to simplify the topology by closing a single coupler.
 """
 
-import logbook
 import pandas as pd
 from beartype.typing import Collection, Optional, Sequence
 from numpy.random import Generator as Rng
@@ -28,6 +27,7 @@ from sqlalchemy import exists
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, select
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.select_strategy import select_strategy
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
@@ -37,7 +37,7 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import (
     is_unsplit_topologies,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def select_repertoire(

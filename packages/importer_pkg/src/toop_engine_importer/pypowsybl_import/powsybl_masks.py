@@ -16,7 +16,6 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
-import logbook
 import numpy as np
 import pandas as pd
 import pandera.typing as pat
@@ -40,12 +39,13 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     UcteImporterParameters,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,6 @@
 
 import bz2
 import json
-import logging
 import os
 import shutil
 import time
@@ -121,7 +120,9 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_logging_level", "WARNING")
 
 # NUMBA
-logging.getLogger("numba").setLevel(logging.WARNING)
+from toop_engine_interfaces.logging.logger import get_logger
+
+logger = get_logger(__name__)
 
 # pandera
 config = pandera.config.PanderaConfig(

@@ -25,7 +25,6 @@ specific configurations based on user-defined rules or constraints.
 from functools import partial
 
 import jax
-import logbook
 import numpy as np
 from beartype.typing import Optional
 from jax import numpy as jnp
@@ -41,9 +40,10 @@ from toop_engine_dc_solver.preprocess.helpers.switching_distance import min_hamm
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, get_relevant_stations
 from toop_engine_interfaces.asset_topology import Station
 from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 @partial(jax.jit, static_argnames=("batch_size",))

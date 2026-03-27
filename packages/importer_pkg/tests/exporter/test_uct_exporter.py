@@ -5,9 +5,9 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import logbook
 import pandas as pd
 import pytest
+import structlog.testing
 from toop_engine_importer.exporter import uct_exporter
 from toop_engine_importer.ucte_toolset.ucte_io import parse_ucte
 
@@ -436,9 +436,9 @@ def test_get_switch_group_number(ucte_file_exporter_test):
         switches = uct_exporter.find_switches(lines, busbars[0:7])
         grouped_switches = uct_exporter.group_switches(switches)
 
-        with logbook.handlers.TestHandler() as caplog:
+        with structlog.testing.capture_logs() as cap_logs:
             reassignment_key = uct_exporter.get_switch_group_number(grouped_switches)
-            assert "has more than 2 busbars" in "".join(caplog.formatted_records)
+            assert "has more than 2 busbars" in "".join(e["event"] for e in cap_logs)
 
         # manuel check:
         # display(grouped_switches) # -> look for least amount of switches

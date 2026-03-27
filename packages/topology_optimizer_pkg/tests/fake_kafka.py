@@ -12,7 +12,9 @@ class FakeProducer(Producer):
     def __init__(self):
         self.messages = {}
 
-    def produce(self, topic: str, value: bytes, key: str | bytes | None = None):
+    def produce(
+        self, topic: str, value: bytes, key: str | bytes | None = None, headers: list[tuple[str, bytes]] | None = None
+    ):
         if topic not in self.messages:
             self.messages[topic] = []
         self.messages[topic].append(value)
@@ -28,11 +30,15 @@ class FakeConsumerEmptyException(Exception):
 class FakeMessage:
     """Mock Kafka Message for testing"""
 
-    def __init__(self, value_bytes: bytes):
+    def __init__(self, value_bytes: bytes, headers: list[tuple[str, bytes]] | None = None):
         self._value = value_bytes
+        self._headers: list[tuple[str, bytes]] | None = headers if headers is not None else [("FakeHeader", value_bytes)]
 
     def value(self) -> bytes:
         return self._value
+
+    def headers(self) -> list[tuple[str, bytes]] | None:
+        return self._headers
 
 
 class FakeConsumer(LongRunningKafkaConsumer):

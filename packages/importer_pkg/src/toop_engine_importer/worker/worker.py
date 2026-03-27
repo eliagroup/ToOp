@@ -13,18 +13,18 @@ Created: 2024
 """
 
 import time
-import traceback
 from functools import partial
 from uuid import uuid4
 
 import jax
-import logbook
 from beartype.typing import Callable, Optional
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_importer.worker.preprocessor import import_grid_model, preprocess
+from toop_engine_interfaces.logging import bind_context, clear_context
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     Command,
     ShutdownCommand,
@@ -45,7 +45,7 @@ from toop_engine_interfaces.messages.protobuf_message_factory import (
     serialize_message,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 class Args(BaseModel):
@@ -93,8 +93,8 @@ def idle_loop(
 
     Returns
     -------
-    StartOptimizationCommand
-        The start optimization command to start the optimization run with
+    StartPreprocessingCommand
+        The start preprocessing command to start the preprocessing run with
     """
     send_heartbeat_fn()
     logger.info("Entering idle loop")
@@ -177,7 +177,11 @@ def main(
         preprocess_id: str,
         start_time: float,
     ) -> None:
-        logger.info(f"Preprocessing stage {stage} for job {preprocess_id} after {time.time() - start_time}s: {message}")
+        logger.info(
+            f"Preprocessing stage {stage} for job {preprocess_id} after {time.time() - start_time}s: {message}",
+            preprocess_stage=stage,
+            preprocess_id=preprocess_id,
+        )
         producer.produce(
             args.importer_heartbeat_topic,
             value=serialize_message(
@@ -204,6 +208,7 @@ def main(
             send_heartbeat_fn=heartbeat_idle,
             heartbeat_interval_ms=args.heartbeat_interval_ms,
         )
+        bind_context(preprocess_id=command.preprocess_id)
         consumer.start_processing()
 
         start_time = time.time()
@@ -256,8 +261,7 @@ def main(
                 key=command.preprocess_id.encode(),
             )
         except Exception as e:
-            logger.error(f"Error while processing {command.preprocess_id}", e)
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error(f"Error while processing {command.preprocess_id}", exc_info=e)
             producer.produce(
                 topic=args.importer_results_topic,
                 value=serialize_message(
@@ -271,3 +275,4 @@ def main(
             )
         producer.flush()
         consumer.stop_processing()
+        clear_context()

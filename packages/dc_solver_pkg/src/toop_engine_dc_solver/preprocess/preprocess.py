@@ -17,7 +17,6 @@ network_data is not needed for running the solver itself.
 
 from dataclasses import replace
 
-import logbook
 import numpy as np
 from beartype.typing import Callable, Optional
 from jaxtyping import Bool, Int
@@ -74,13 +73,14 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
 )
 from toop_engine_interfaces.asset_topology_helpers import order_topology
 from toop_engine_interfaces.backend import BackendInterface
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters, ReassignmentLimits
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,
     empty_status_update_fn,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def compute_ptdf_if_not_given(network_data: NetworkData) -> NetworkData:
@@ -898,8 +898,9 @@ def remove_relevant_subs(
 
     irrelevant_node_ids = np.array(network_data.node_ids)[original_relevant_nodes[~keep_mask]]
     logger.info(
-        f"Removed {len(irrelevant_node_ids)} from relevant nodes, ",
-        f"since they had no branch_actions: {irrelevant_node_ids}",
+        f"Removed {len(irrelevant_node_ids)} from relevant nodes "
+        f"since they had no branch_actions {np.array2string(irrelevant_node_ids)}",
+        irrelevant_node_ids=np.array2string(irrelevant_node_ids),
     )
     relevant_node_mask = np.zeros_like(network_data.relevant_node_mask, dtype=bool)
     relevant_node_mask[relevant_nodes] = True

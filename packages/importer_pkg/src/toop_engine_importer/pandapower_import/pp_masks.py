@@ -16,7 +16,6 @@ from dataclasses import asdict, dataclass
 from numbers import Integral
 from pathlib import Path
 
-import logbook
 import numpy as np
 import pandapower as pp
 from beartype.typing import Optional
@@ -30,8 +29,9 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

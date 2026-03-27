@@ -10,7 +10,7 @@ import time
 from functools import partial
 from pathlib import Path
 
-import logbook
+import structlog.testing
 from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -36,9 +36,6 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
     PreprocessingSuccessResult,
 )
-
-# Set up logging for the test
-logger = logbook.Logger("test_preprocessor")
 
 
 def test_run_initial_loadflow(imported_ucte_file_data_folder, ucte_importer_parameters: UcteImporterParameters, tmp_path):
@@ -137,7 +134,7 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
         preprocess_id="test_ID",
     )
 
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         import_result = preprocessor.import_grid_model(
             start_command=start_command,
             status_update_fn=heartbeat_fn,
@@ -158,7 +155,7 @@ def test_import_ucte(ucte_importer_parameters: UcteImporterParameters):
         assert isinstance(import_result, ImportResult)
 
         # Filter and assert logs
-        logs = [record for record in caplog.formatted_records]
+        logs = list(cap_logs)
         assert len(logs) > 0, "No logs found"
         # Check if all stages are logged
         for record in logged_messages:
@@ -207,7 +204,7 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
 
     processed_gridfile_fs = LocalFileSystem()
     loadflow_result_fs = DirFileSystem(str(tmp_path))
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         preprocess_result = preprocessor.preprocess(
             start_command=start_command,
             import_results=import_result,
@@ -223,7 +220,7 @@ def test_preprocess(imported_ucte_file_data_folder, ucte_importer_parameters: Uc
         assert preprocess_result.importer_results == import_result
 
         # Filter and assert logs
-        logs = [record for record in caplog.formatted_records]
+        logs = list(cap_logs)
         assert len(logs) > 0, "No logs found"
         # Check if all stages are logged
         for record in logged_messages:

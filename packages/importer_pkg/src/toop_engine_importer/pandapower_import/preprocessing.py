@@ -37,7 +37,6 @@ The preprocessing is done in several steps:
 
 """
 
-import logbook
 import numpy as np
 import pandapower as pp
 from beartype.typing import Optional
@@ -54,8 +53,9 @@ from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker impo
     get_coupler_types_of_substation,
 )
 from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def modify_constan_z_load(net: pp.pandapowerNet, value: float = 0.0) -> None:
@@ -275,15 +275,14 @@ def validate_asset_topology(net: pp.pandapowerNet, topology_model: Topology) -> 
         len_connection = len([element for key in connection_dict for element in connection_dict[key]])
         if len_connection != len(station.assets):
             logger.warning(
-                f"Station {station.grid_model_id} has {len(station.assets)} assets but only "
-                + f"{len_connection} connections in the network"
+                f"Station {s_id} has {len(station.assets)} assets but only "
+                + f"{len_connection} connections in the network",
+                **connection_dict,
             )
-            logger.warning(connection_dict)
             for asset in station.assets:
-                logger.warning(asset)
+                logger.warning(f"Station {s_id} with assets: {asset}", asset=asset)
             raise ValueError(
-                f"Station {station.grid_model_id} has {len(station.assets)} assets but only "
-                + f"{len_connection} connections in the network"
+                f"Station {s_id} has {len(station.assets)} assets but only " + f"{len_connection} connections in the network"
             )
 
 

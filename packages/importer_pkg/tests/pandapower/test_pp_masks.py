@@ -9,10 +9,10 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
-import logbook
 import numpy as np
 import pandapower as pp
 import pytest
+import structlog.testing
 from pandas import Index
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import fuse_closed_switches_fast
 from toop_engine_importer.pandapower_import.pp_masks import (
@@ -36,8 +36,6 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
-
-logger = logbook.Logger(__name__)
 
 
 def test_make_pp_masks(pp_network_w_switches):
@@ -575,26 +573,26 @@ def test_validate_network_masks(pp_network_w_switches):
     masks = create_default_network_masks(net)
     assert validate_network_masks(net, masks)
 
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         assert not validate_network_masks.__wrapped__(net, 1)
-        assert "network_masks are not of type NetworkMasks" in "".join(caplog.formatted_records)
+        assert "network_masks are not of type NetworkMasks" in "".join(e["event"] for e in cap_logs)
 
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         masks.relevant_subs = 1
         assert not validate_network_masks.__wrapped__(net, masks)
-        assert "Mask relevant_subs is not a numpy array" in "".join(caplog.formatted_records)
+        assert "Mask relevant_subs is not a numpy array" in "".join(e["event"] for e in cap_logs)
 
     masks = create_default_network_masks(net)
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         masks.relevant_subs = np.array([1])
         assert not validate_network_masks.__wrapped__(net, masks)
-        assert "Shape of mask relevant_subs is not correct" in "".join(caplog.formatted_records)
+        assert "Shape of mask relevant_subs is not correct" in "".join(e["event"] for e in cap_logs)
 
     masks = create_default_network_masks(net)
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         masks.relevant_subs = np.zeros(len(net.bus), dtype=int)
         assert not validate_network_masks.__wrapped__(net, masks)
-        assert "Dtype of mask relevant_subs is not correct" in "".join(caplog.formatted_records)
+        assert "Dtype of mask relevant_subs is not correct" in "".join(e["event"] for e in cap_logs)
 
 
 def test_save_masks_to_files(pp_network_w_switches):

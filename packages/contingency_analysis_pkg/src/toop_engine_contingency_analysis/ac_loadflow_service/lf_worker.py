@@ -41,7 +41,6 @@ Created: 05/2024
 
 import time
 from dataclasses import dataclass
-from logging import getLogger
 from pathlib import Path
 
 import pandapower
@@ -61,6 +60,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     save_loadflow_results_polars,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.lf_service.loadflow_commands import (
     LoadflowServiceCommand,
     ShutdownCommand,
@@ -76,7 +76,7 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
 )
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

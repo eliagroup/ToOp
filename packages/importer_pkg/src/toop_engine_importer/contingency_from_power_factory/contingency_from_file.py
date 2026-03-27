@@ -15,7 +15,6 @@ Created: 2025-05-13
 
 from pathlib import Path
 
-import logbook
 import pandas as pd
 import pandera.typing as pat
 from fsspec import AbstractFileSystem
@@ -25,8 +24,9 @@ from toop_engine_importer.contingency_from_power_factory.power_factory_data_clas
     ContingencyImportSchemaPowerFactory,
     ContingencyMatchSchema,
 )
+from toop_engine_interfaces.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 def get_contingencies_from_file(

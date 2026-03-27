@@ -10,11 +10,11 @@
 import uuid
 from datetime import datetime
 
-import logbook
 from beartype.typing import Literal, Optional, TypeAlias
 from pydantic import BaseModel, Field
+from toop_engine_interfaces.logging.logger import get_logger
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 ConvertToJaxStage: TypeAlias = Literal[
     "convert_to_jax_started",
@@ -132,6 +132,6 @@ def empty_status_update_fn(stage: PreprocessStage, message: Optional[str]) -> No
     Use this function when no status_update_fn is provided.
     """
     if message is None:
-        logger.info(f"Preprocessing stage {stage}")
+        logger.info(f"Preprocessing stage {stage}", preprocess_stage=stage)
     else:
-        logger.info(f"Preprocessing stage {stage}, {message}")
+        logger.info(f"Preprocessing stage {stage}, {message}", preprocess_stage=stage, message=message)

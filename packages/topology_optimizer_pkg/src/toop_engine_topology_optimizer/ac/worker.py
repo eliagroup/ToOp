@@ -14,12 +14,13 @@ from datetime import datetime, timedelta
 from functools import partial
 from uuid import uuid4
 
-import logbook
 from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from sqlmodel import Session
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_interfaces.logging import bind_context, clear_context
+from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.optimizer import (
@@ -48,7 +49,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     ResultUnion,
 )
 
-logger = logbook.Logger(__name__)
+logger = get_logger(__name__)
 
 
 class Args(DCArgs):
@@ -279,6 +280,7 @@ def idle_loop(
                 )
                 worker_data.command_consumer.commit()
                 continue
+            bind_context(optimization_id=command.command.optimization_id)
             return command.command
 
         # If we are here, we received a command that we do not know
@@ -378,6 +380,7 @@ def main(
     )
 
     def send_heartbeat(message: HeartbeatUnion, ping_commands: bool) -> None:
+        logger.info(f"Sending heartbeat: {message}", message_type=type(message).__name__)
         heartbeat = Heartbeat(
             optimizer_type=OptimizerType.AC,
             instance_id=instance_id,
@@ -394,6 +397,11 @@ def main(
             worker_data.command_consumer.heartbeat()
 
     def send_result(message: ResultUnion, optimization_id: str) -> None:
+        logger.info(
+            f"Sending result for optimization {optimization_id}: {message}",
+            optimization_id=optimization_id,
+            result_type=type(message).__name__,
+        )
         result = Result(
             result=message,
             optimization_id=optimization_id,
@@ -442,4 +450,5 @@ def main(
             processed_gridfile_fs=processed_gridfile_fs,
         )
         worker_data.command_consumer.stop_processing()
+        clear_context()
         scrub_db(worker_data.db)

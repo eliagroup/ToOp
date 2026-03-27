@@ -14,6 +14,7 @@ import pytest
 from beartype.typing import Literal, Union
 from confluent_kafka import Consumer, Producer
 from fsspec.implementations.dirfs import DirFileSystem
+from tests.fake_kafka import FakeMessage
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.worker import Args, idle_loop, main, optimization_loop
@@ -146,10 +147,16 @@ def test_idle_loop_optimization_started_command_too_old() -> None:
         ),
         timestamp=(datetime.now() - timedelta(hours=1)).isoformat(),
     )
-    start_message = Mock()
-    start_message.value.return_value = serialize_message(start_command.model_dump_json())
-    shutdown_message = Mock()
-    shutdown_message.value.return_value = serialize_message(shutdown_command.model_dump_json())
+    start_message = FakeMessage(
+        value_bytes=serialize_message(start_command.model_dump_json()),
+        headers=[("x-toop-optimization_id", b"test")],
+    )
+    start_message.value.return_value = start_message.value_bytes
+    shutdown_message = FakeMessage(
+        value_bytes=serialize_message(shutdown_command.model_dump_json()),
+        headers=[("x-toop-optimization_id", b"shutdown")],
+    )
+    shutdown_message.value.return_value = shutdown_message.value_bytes
 
     mock_consumer.poll.side_effect = [start_message, shutdown_message]
     results = []

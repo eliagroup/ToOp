@@ -22,6 +22,7 @@ import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
+from tests.network_data_pickle import load_network_data
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import set_target_values_to_lf_values_incl_distributed_slack
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.injections import default_injection
@@ -42,7 +43,6 @@ from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
     extract_nminus1_definition,
     load_lf_params,
-    load_network_data,
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
@@ -61,7 +61,7 @@ from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
 
 def test_apply_topology(preprocessed_powsybl_data_folder: Path) -> None:
     # Load grid, network data and topology
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
     action_set = extract_action_set(network_data)
     post_process_file_path = (
         preprocessed_powsybl_data_folder
@@ -114,7 +114,7 @@ def test_apply_topology_matches_loadflows(
     assert isinstance(data_folder, Path)
 
     net = pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    network_data = load_network_data(data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(data_folder / "network_data.pkl")
     lf_params = load_lf_params(data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     action_set = extract_action_set(network_data)
     runner = PowsyblRunner(lf_params=lf_params)
@@ -163,7 +163,7 @@ def test_apply_disconnections_matches_loadflows(
     preprocessed_powsybl_data_folder: Path,
 ) -> None:
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
     lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     runner = PowsyblRunner(lf_params=lf_params)
     runner.replace_grid(net)
@@ -243,7 +243,7 @@ def test_change_pst_matches_loadflows(
 
     preprocessed_powsybl_data_folder = request.getfixturevalue(fixture_name)
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
     runner = PowsyblRunner()
     runner.replace_grid(net)
     runner.store_action_set(extract_action_set(network_data))
@@ -374,7 +374,7 @@ def test_compute_cross_coupler_flows(preprocessed_powsybl_data_folder: Path) -> 
     fs_dir = DirFileSystem(str(preprocessed_powsybl_data_folder))
     backend = PowsyblBackend(fs_dir)
     net = backend.net
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
     action_set = extract_action_set(network_data)
     post_process_file_path = (
         preprocessed_powsybl_data_folder
@@ -424,7 +424,7 @@ def test_compute_cross_coupler_flows(preprocessed_powsybl_data_folder: Path) -> 
 def test_compute_n_1_ac(data_folder_fixture: str, request) -> None:
     data_folder = request.getfixturevalue(data_folder_fixture)
 
-    network_data = load_network_data(data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(data_folder / "network_data.pkl")
     grid_file_path = Path(data_folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     runner = PowsyblRunner()
     runner.load_base_grid(grid_file_path)
@@ -607,7 +607,7 @@ def test_compute_n_1_ac(data_folder_fixture: str, request) -> None:
 
 
 def test_n0_in_ac_unsplit(preprocessed_powsybl_data_folder: Path) -> None:
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
 
     static_information_dc = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
@@ -685,7 +685,7 @@ def test_n0_in_ac_split_ignoring_disconnections(preprocessed_powsybl_data_folder
     # Due to the random nature of the topologies, this may or may not fail. We need a better way to test this.
     # For most random seeds, this should have at least more than 50% success rate. If this suddenly drops to 0% you
     # probably broke something
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
 
     post_process_file_path = (
         preprocessed_powsybl_data_folder
@@ -770,7 +770,7 @@ def test_n0_in_ac_split_ignoring_disconnections(preprocessed_powsybl_data_folder
 
 @pytest.mark.parametrize("topo_idx", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 def test_n0_in_ac_split_with_disconnections(preprocessed_powsybl_data_folder: Path, topo_idx: int) -> None:
-    network_data = load_network_data(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
 
     post_process_file_path = (
         preprocessed_powsybl_data_folder

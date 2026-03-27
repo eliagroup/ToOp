@@ -85,11 +85,6 @@ class GridFile(BaseModel):
         raise NotImplementedError(f"Grid file for framework {self.framework} not implemented.")
 
     @property
-    def network_data_file(self) -> Path:
-        """The path to the network data file"""
-        return Path(self.grid_folder) / PREPROCESSING_PATHS["network_data_file_path"]
-
-    @property
     def action_set_file(self) -> Path:
         """The path to the stored action set file"""
         return Path(self.grid_folder) / PREPROCESSING_PATHS["action_set_file_path"]

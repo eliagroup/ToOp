@@ -17,7 +17,6 @@ from confluent_kafka import Producer
 from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_dc_solver.preprocess.network_data import load_network_data
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_interfaces.stored_action_set import load_action_set, random_actions
@@ -223,8 +222,6 @@ def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Res
         grid_folder / "case57" / PREPROCESSING_PATHS["action_set_diff_path"],
     )
     assert len(action_set.local_actions)
-    network_data = load_network_data(grid_folder / "case57" / PREPROCESSING_PATHS["network_data_file_path"])
-    assert network_data.branch_action_set is not None
 
     rng = np.random.default_rng(42)
     contingency_ids_sorted = sorted(contingency_ids_case_57)

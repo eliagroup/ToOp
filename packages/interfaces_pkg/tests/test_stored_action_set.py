@@ -141,6 +141,40 @@ def test_store_and_load_station_diff_io_empty_list(tmp_path: Path):
     assert loaded == []
 
 
+def test_station_diff_array_raises_for_mismatched_action_count() -> None:
+    with pytest.raises(ValueError, match="same n_actions dimension"):
+        StationDiffArray(
+            grid_model_id="station_1",
+            coupler_open=np.zeros((5, 1), dtype=bool),
+            switching_table=np.zeros((10, 2, 7), dtype=bool),
+        )
+
+
+def test_store_and_load_station_diff_io_supports_different_station_action_counts(tmp_path: Path) -> None:
+    filesystem = DirFileSystem(str(tmp_path))
+    station_diffs = [
+        StationDiffArray(
+            grid_model_id="station_1",
+            coupler_open=np.zeros((5, 1), dtype=bool),
+            switching_table=np.zeros((5, 2, 7), dtype=bool),
+        ),
+        StationDiffArray(
+            grid_model_id="station_2",
+            coupler_open=np.zeros((10, 2), dtype=bool),
+            switching_table=np.zeros((10, 3, 4), dtype=bool),
+        ),
+    ]
+
+    store_station_diff_fs(filesystem, station_diffs, "station_diffs.hdf5")
+    loaded = load_station_diff_fs(filesystem, "station_diffs.hdf5")
+
+    assert [(station_diff.grid_model_id, station_diff.coupler_open.shape) for station_diff in loaded] == [
+        ("station_1", (5, 1)),
+        ("station_2", (10, 2)),
+    ]
+    assert [station_diff.switching_table.shape for station_diff in loaded] == [(5, 2, 7), (10, 3, 4)]
+
+
 def test_validate_actions_grouped_accepts_grouped_actions():
     station_s1 = Station.model_construct(
         grid_model_id="s1",

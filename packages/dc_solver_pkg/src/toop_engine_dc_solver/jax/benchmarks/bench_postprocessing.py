@@ -15,14 +15,15 @@ import datetime
 import json
 import time
 from pathlib import Path
+from typing import cast
 
 import jax
 import tyro
 from beartype.typing import Literal, Optional, TypeAlias
 from pydantic import BaseModel, PositiveInt
-from toop_engine_dc_solver.jax.topology_computations import (
-    random_topology,
-)
+from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.jax.topology_computations import random_topology
+from toop_engine_dc_solver.jax.types import ActionIndexComputations
 from toop_engine_dc_solver.postprocess.abstract_runner import (
     AbstractLoadflowRunner,
 )
@@ -32,9 +33,10 @@ from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
     PowsyblRunner,
 )
-from toop_engine_dc_solver.preprocess.action_set import pad_out_action_set
-from toop_engine_dc_solver.preprocess.network_data import extract_action_set, extract_nminus1_definition, load_network_data
+from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
+from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
+from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
 
 LoadflowType: TypeAlias = Literal["ac", "dc", "ac_cross_coupler", "dc_cross_coupler"]
 
@@ -67,15 +69,16 @@ def compute_loadflows(
     """
     converged = []
     failures = []
+    nminus1_definition = runner.get_nminus1_definition()
     for action in topologies:
         if method == "dc":
             res = runner.run_dc_loadflow(action, [])
-            _, _, success = extract_solver_matrices_polars(res, runner.nminus1_definition, 0)
+            _, _, success = extract_solver_matrices_polars(res, nminus1_definition, 0)
             converged.append(success.sum().item())
             failures.append((~success).sum().item())
         elif method == "ac":
             res = runner.run_ac_loadflow(action, [])
-            _, _, success = extract_solver_matrices_polars(res, runner.nminus1_definition, 0)
+            _, _, success = extract_solver_matrices_polars(res, nminus1_definition, 0)
             converged.append(success.sum().item())
             failures.append((~success).sum().item())
         elif method == "ac_cross_coupler":
@@ -90,8 +93,7 @@ def compute_loadflows(
 
 
 def setup_benchmark(
-    grid_path: Path,
-    network_data_path: Path,
+    data_folder: Path,
     n_topologies: int,
     n_substations_split: int,
     n_processes_per_topology: int,
@@ -103,10 +105,8 @@ def setup_benchmark(
 
     Parameters
     ----------
-    grid_path : Path
-        Path to the grid file
-    network_data_path : Path
-        Path to the network data file
+    data_folder : Path
+        Path to the preprocessing folder containing the persisted action set and N-1 definition
     n_topologies : int
         Number of topologies to generate
     n_substations_split : int
@@ -127,32 +127,58 @@ def setup_benchmark(
     list[list[int]]
         A list of topologies of length n_topologies with actions to try
     """
+    grid_path = data_folder / PREPROCESSING_PATHS[f"grid_file_path_{framework}"]
     if framework == "pandapower":
         runner = PandapowerRunner(n_processes=n_processes_per_topology, batch_size=batch_size_per_topology)
     else:
         runner = PowsyblRunner(n_processes=n_processes_per_topology, batch_size=batch_size_per_topology)
     runner.load_base_grid(grid_path)
-    network_data = load_network_data(network_data_path)
-    runner.store_action_set(extract_action_set(network_data))
-    runner.store_nminus1_definition(extract_nminus1_definition(network_data))
+    action_set, nminus1_definition = load_benchmark_aux_data(data_folder)
+    runner.store_action_set(action_set)
+    runner.store_nminus1_definition(nminus1_definition)
 
-    action_set = pad_out_action_set(
-        branch_actions=network_data.branch_action_set,
-        injection_actions=network_data.injection_action_set,
-        reassignment_distance=network_data.branch_action_set_switching_distance,
+    topology = sample_topologies(
+        data_folder=data_folder,
+        n_topologies=n_topologies,
+        n_substations_split=n_substations_split,
+        seed=seed,
     )
-
-    topology = random_topology(
-        rng_key=jax.random.PRNGKey(seed),
-        branch_action_set=action_set,
-        limit_n_subs=n_substations_split,
-        batch_size=n_topologies,
-        topo_vect_format=False,
-    )
-
-    actions = [[int(x) for x in action if x <= len(action_set)] for action in topology.action]
+    actions = [
+        [int(action) for action in topology_row if action < len(action_set.local_actions)]
+        for topology_row in topology.action
+    ]
 
     return runner, actions
+
+
+def load_benchmark_aux_data(data_folder: Path) -> tuple[ActionSet, Nminus1Definition]:
+    """Load the persisted preprocessing artifacts needed for postprocessing benchmarks."""
+    action_set = load_action_set(
+        data_folder / PREPROCESSING_PATHS["action_set_file_path"],
+        data_folder / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
+    nminus1_definition = load_nminus1_definition(data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    return action_set, nminus1_definition
+
+
+def sample_topologies(
+    data_folder: Path,
+    n_topologies: int,
+    n_substations_split: int,
+    seed: int,
+) -> ActionIndexComputations:
+    """Sample topology actions using the persisted static information action set."""
+    static_information = load_static_information(data_folder / PREPROCESSING_PATHS["static_information_file_path"])
+    return cast(
+        ActionIndexComputations,
+        random_topology(
+            rng_key=jax.random.PRNGKey(seed),
+            branch_action_set=static_information.dynamic_information.action_set,
+            limit_n_subs=n_substations_split,
+            batch_size=n_topologies,
+            topo_vect_format=False,
+        ),
+    )
 
 
 def run_benchmark(
@@ -201,14 +227,11 @@ class Args(BaseModel):
     file and measures the time it took to compute.
     """
 
-    network_data_file: str
-    """Path to the network_data.pkl file"""
-
-    grid_file: str
-    """Path to the grid file, either a .json file for pandapower or a .xiidm file for powsybl"""
+    data_folder: str
+    """Path to the preprocessing folder containing the stored action set and N-1 definition"""
 
     framework: Literal["pandapower", "powsybl"]
-    """Framework to use, should match the grid file"""
+    """Framework to use, which also determines the grid file path inside the preprocessing folder"""
 
     n_topologies: PositiveInt
     """Number of topologies to generate"""
@@ -238,8 +261,7 @@ def main(args: Args) -> None:
     """Execute a benchmark and saves the results to a json file"""
     setup_start = time.time()
     runner, topologies = setup_benchmark(
-        grid_path=Path(args.grid_file),
-        network_data_path=Path(args.network_data_file),
+        data_folder=Path(args.data_folder),
         n_topologies=args.n_topologies,
         n_substations_split=args.n_substations_split,
         n_processes_per_topology=args.n_processes_per_topology,

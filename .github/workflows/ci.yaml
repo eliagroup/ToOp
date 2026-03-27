@@ -7,7 +7,7 @@
 
 name: Continuous Integration
 
-on: 
+on:
   push:
     branches:
       - main
@@ -24,6 +24,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  stability-days:
+    permissions:
+      pull-requests: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure PR does not have stability-days label
+        if: >-
+          github.event_name == 'pull_request' &&
+          contains(github.event.pull_request.labels.*.name, 'stability-days')
+        run: |
+          echo "Pull request has 'stability-days' label. Failing the check." 
+          exit 1
+
   test-packages-toop-runner:
     timeout-minutes: 30
     permissions:
@@ -207,6 +220,7 @@ jobs:
   ci-success-check:
     needs:
       [
+        stability-days,
         code-quality-checks,
         fossa-scan,
         license-headers,
@@ -223,6 +237,7 @@ jobs:
     steps:
       - name: Check all job results
         run: |
+          echo "Stability Days Label Check: ${{ needs.stability-days.result }}"
           echo "Code Quality: ${{ needs.code-quality-checks.result }}"
           echo "FOSSA Scan: ${{ needs.fossa-scan.result }}"
           echo "License Headers: ${{ needs.license-headers.result }}"
@@ -232,7 +247,8 @@ jobs:
           echo "Test Packages (GitHub Runner): ${{ needs.test-packages-github-runner.result }}"
           echo "Test Packages (ToOp Runner): ${{ needs.test-packages-toop-runner.result }}"
 
-          if [[ "${{ needs.code-quality-checks.result }}" != "success" ]] || \
+           if [[ "${{ needs.stability-days.result }}" != "success" ]] || \
+             [[ "${{ needs.code-quality-checks.result }}" != "success" ]] || \
              [[ "${{ needs.fossa-scan.result }}" != "success" ]] || \
              [[ "${{ needs.license-headers.result }}" != "success" ]] || \
              [[ "${{ needs.sonarqube.result }}" != "success" ]] || \

@@ -15,6 +15,7 @@ import pandapower as pp
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
+from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.topology_computations import (
@@ -32,7 +33,6 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
 from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
     extract_nminus1_definition,
-    load_network_data,
 )
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
@@ -383,7 +383,7 @@ def test_compute_n_1_ac(data_folder: str, init_ray) -> None:
 @pytest.mark.timeout(600)
 def test_runner_matches_split_loadflows(preprocessed_data_folder: str) -> None:
     data_path = Path(preprocessed_data_folder)
-    network_data = load_network_data(data_path / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(data_path / "network_data.pkl")
     action_set = extract_action_set(network_data)
     grid_file_path = Path(preprocessed_data_folder) / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     runner = PandapowerRunner(n_processes=8)
@@ -443,7 +443,7 @@ def test_compute_cross_coupler_flows(preprocessed_data_folder: str, init_ray) ->
     backend = PandaPowerBackend(filesystem_dir)
     net = backend.net
     data_path = Path(preprocessed_data_folder)
-    network_data = load_network_data(data_path / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(data_path / "network_data.pkl")
     action_set = extract_action_set(network_data)
     post_process_file_path = (
         data_path / POSTPROCESSING_PATHS["dc_optimizer_snapshots_path"] / OUTPUT_FILE_NAMES["multiple_topologies"]

@@ -18,8 +18,6 @@ from .network_data import (
     NetworkData,
     assert_network_data,
     extract_network_data_from_interface,
-    load_network_data,
-    save_network_data,
 )
 from .pandapower.pandapower_backend import PandaPowerBackend
 from .powsybl.powsybl_backend import PowsyblBackend
@@ -60,9 +58,7 @@ __all__ = [
     "extract_network_data_from_interface",
     "filter_relevant_nodes_branch_count",
     "load_grid",
-    "load_network_data",
     "pad_out_action_set",
     "preprocess",
     "reduce_branch_dimension",
-    "save_network_data",
 ]

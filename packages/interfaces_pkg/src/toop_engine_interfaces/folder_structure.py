@@ -17,7 +17,6 @@ from beartype.typing import Final
 PREPROCESSING_PATHS: Final[dict[str, str]] = {
     "grid_file_path_powsybl": "grid.xiidm",
     "grid_file_path_pandapower": "grid.json",
-    "network_data_file_path": "network_data.pkl",
     "masks_path": "masks",
     "static_information_file_path": "static_information.hdf5",
     "importer_auxiliary_file_path": "importer_auxiliary_data.json",

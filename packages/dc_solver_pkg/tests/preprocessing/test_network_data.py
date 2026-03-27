@@ -11,14 +11,13 @@ from pathlib import Path
 import numpy as np
 import pandapower as pp
 from fsspec.implementations.dirfs import DirFileSystem
+from tests.network_data_pickle import load_network_data, save_network_data
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     extract_network_data_from_interface,
     get_monitored_node_ids,
     get_relevant_stations,
-    load_network_data,
     map_branch_injection_ids,
-    save_network_data,
 )
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS

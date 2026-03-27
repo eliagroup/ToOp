@@ -34,7 +34,6 @@ topology into the action set.
 
 import io
 import itertools
-from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
@@ -43,7 +42,7 @@ from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.nminus1_definition import GridElement
@@ -119,8 +118,7 @@ class ActionSet(BaseModel):
         return self
 
 
-@dataclass
-class StationDiffArray:
+class StationDiffArray(BaseModel):
     """A difference between copies of a station in the local action set and the starting topology.
 
     So that the action set does not have to store copies of the full station with all associated information, we only store
@@ -131,17 +129,39 @@ class StationDiffArray:
     A full action set consists of station diffs for every switchable station in the grid.
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     grid_model_id: str
     """The grid model id of the station."""
 
-    coupler_open: Bool[np.ndarray, " n_actions n_couplers"]
+    coupler_open: Bool[np.ndarray, " _n_actions _n_couplers"]
     """The state of the "open" field for every coupler in the station. The array dimension n_couplers is equivalent to
     station.couplers in length and order and the entries correspond to open (True) and closed (False). The n_actions
     dimension provides an entry per action in the action set."""
 
-    switching_table: Bool[np.ndarray, " n_actions n_busbars n_assets"]
+    switching_table: Bool[np.ndarray, " _n_actions _n_busbars _n_assets"]
     """The switching table of the station. The array dimensions n_busbars and n_assets are equivalent to the
     switching table in the station, """
+
+    @model_validator(mode="after")
+    def _validate_station_diff_arrays(self) -> "StationDiffArray":
+        """Validate stored station diff array shapes.
+
+        Different stations can legitimately have different action counts, so the relevant invariant is
+        local to each station diff: coupler_open and switching_table must agree on their first
+        dimension per station. However, the beartype checker invokes the checks in such a way that a global instantiation of
+        dimension values was happening, raising. Hence, we check the shapes manually here.
+        """
+        if self.coupler_open.ndim != 2:
+            raise ValueError("coupler_open must be a 2D array of shape (n_actions, n_couplers)")
+        if self.switching_table.ndim != 3:
+            raise ValueError("switching_table must be a 3D array of shape (n_actions, n_busbars, n_assets)")
+        if self.coupler_open.shape[0] != self.switching_table.shape[0]:
+            raise ValueError(
+                "coupler_open and switching_table must have the same n_actions dimension, got "
+                f"{self.coupler_open.shape[0]} and {self.switching_table.shape[0]}"
+            )
+        return self
 
 
 def validate_actions_grouped(actions: list[Station]) -> None:

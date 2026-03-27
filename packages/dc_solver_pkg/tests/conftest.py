@@ -35,6 +35,7 @@ from docker.models.containers import Container
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from pypowsybl.network import Network
+from tests.network_data_pickle import load_network_data, save_network_data
 from toop_engine_dc_solver.example_classes import (
     get_basic_node_breaker_topology,
 )
@@ -73,8 +74,6 @@ from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     extract_network_data_from_interface,
-    load_network_data,
-    save_network_data,
 )
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
@@ -372,8 +371,6 @@ def _preprocessed_data_folder(_data_folder: Path, tmp_path_factory: pytest.TempP
     tmp_path = tmp_path_factory.mktemp("result")
     tmp_grid_file_path_pandapower = tmp_path / PREPROCESSING_PATHS["grid_file_path_pandapower"]
     tmp_grid_file_path_pandapower.parent.mkdir(parents=True, exist_ok=True)
-    temp_network_data_file_path = tmp_path / PREPROCESSING_PATHS["network_data_file_path"]
-    temp_network_data_file_path.parent.mkdir(parents=True, exist_ok=True)
     temp_static_information_file_path = tmp_path / PREPROCESSING_PATHS["static_information_file_path"]
     temp_static_information_file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -387,10 +384,10 @@ def _preprocessed_data_folder(_data_folder: Path, tmp_path_factory: pytest.TempP
     fs_dir = DirFileSystem(str(_data_folder))
     backend = PandaPowerBackend(fs_dir)
     network_data = preprocess(backend)
-    save_network_data(temp_network_data_file_path, network_data)
+    save_network_data(tmp_path / "network_data.pkl", network_data)
     static_information = convert_to_jax(network_data, enable_bb_outage=False)
     save_static_information(temp_static_information_file_path, static_information)
-    write_aux_data(data_folder=_data_folder, network_data=network_data)
+    write_aux_data(data_folder=tmp_path, network_data=network_data)
 
     # Generate random "optimization results"
     static_information = replace(
@@ -581,7 +578,7 @@ def _preprocessed_powsybl_data_folder(_powsybl_data_folder: Path, tmp_path_facto
     tmp_path = tmp_path_factory.mktemp("powsybl_result")
     tmp_grid_file_path = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_network_data_file_path = tmp_path / PREPROCESSING_PATHS["network_data_file_path"]
+    temp_network_data_file_path = tmp_path / "network_data.pkl"
     temp_network_data_file_path.parent.mkdir(parents=True, exist_ok=True)
     temp_static_information_file_path = tmp_path / PREPROCESSING_PATHS["static_information_file_path"]
     temp_static_information_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -671,7 +668,8 @@ def _node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPat
     tmp_path = tmp_path_factory.mktemp("node_breaker_grid_preprocessed")
     node_breaker_folder_powsybl(tmp_path)
     filesystem_dir = DirFileSystem(str(tmp_path))
-    stats, static_information, _ = load_grid(filesystem_dir, lf_params=DISTRIBUTED_SLACK)
+    stats, static_information, network_data = load_grid(filesystem_dir, lf_params=DISTRIBUTED_SLACK)
+    save_network_data(tmp_path / "network_data.pkl", network_data)
     assert stats.n_relevant_subs > 0
 
     best_actions = random_topology(
@@ -1092,7 +1090,7 @@ def overlapping_branch_data(
     """
     Fixture to load the network data for testing non-overlapping branch masks.
     """
-    network_data = load_network_data(_preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     outage_mask = network_data.outaged_branch_mask
     # Make sure all branch masks are identical
     updated_outage_mask = outage_mask
@@ -1137,7 +1135,7 @@ def non_overlapping_branch_data(
     """
     Fixture to load the network data for testing non-overlapping branch masks.
     """
-    network_data = load_network_data(_preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
     monitored_branch_mask = network_data.monitored_branch_mask
@@ -1181,7 +1179,7 @@ def overlapping_monitored_and_disconnected_branch_data(
     """
     Fixture to load the network data for testing partially overlapping branch masks.
     """
-    network_data = load_network_data(_preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["network_data_file_path"])
+    network_data = load_network_data(_preprocessed_powsybl_data_folder / "network_data.pkl")
     disconnection_mask = network_data.disconnectable_branch_mask
     outage_mask = network_data.outaged_branch_mask
     monitored_branch_mask = network_data.monitored_branch_mask
@@ -1255,12 +1253,13 @@ def three_node_pst_example_data_folder(tmp_path_factory: pytest.TempPathFactory)
     tmp_path = tmp_path_factory.mktemp("three_node_pst_example")
     three_node_pst_example_folder_powsybl(tmp_path)
     filesystem_dir = DirFileSystem(str(tmp_path))
-    _info, _static_information, _ = load_grid(
+    _info, _static_information, network_data = load_grid(
         data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
         parameters=PreprocessParameters(),
     )
+    save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
 
@@ -1319,13 +1318,14 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> N
 
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
     filesystem_dir = DirFileSystem(str(folder))
-    _info, _static_information, _ = load_grid(
+    _info, _static_information, network_data = load_grid(
         data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,
         lf_params=DISTRIBUTED_SLACK,
     )
+    save_network_data(folder / "network_data.pkl", network_data)
     save_lf_params_to_fs(DISTRIBUTED_SLACK, filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
@@ -1369,11 +1369,12 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
 
     filesystem_dir = DirFileSystem(str(folder))
-    _info, _static_information, _ = load_grid(
+    _info, _static_information, network_data = load_grid(
         data_folder_dirfs=filesystem_dir,
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,
         lf_params=DISTRIBUTED_SLACK,
     )
+    save_network_data(folder / "network_data.pkl", network_data)
     save_lf_params_to_fs(DISTRIBUTED_SLACK, filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))

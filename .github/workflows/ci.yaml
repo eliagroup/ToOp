@@ -10,7 +10,6 @@ name: Continuous Integration
 on:
   push:
     branches:
-      - ci/check-stability-days-validate
       - main
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]

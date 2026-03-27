@@ -152,12 +152,10 @@ def test_idle_loop_optimization_started_command_too_old() -> None:
         value_bytes=serialize_message(start_command.model_dump_json()),
         headers=[("x-toop-optimization_id", b"test")],
     )
-    start_message.value.return_value = start_message.value_bytes
     shutdown_message = FakeMessage(
         value_bytes=serialize_message(shutdown_command.model_dump_json()),
         headers=[("x-toop-optimization_id", b"shutdown")],
     )
-    shutdown_message.value.return_value = shutdown_message.value_bytes
 
     mock_consumer.poll.side_effect = [start_message, shutdown_message]
     results = []

@@ -39,6 +39,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     create_busbar_b_in_ieee,
     extract_station_info_powsybl,
     powsybl_case30_with_psts,
+    powsybl_case1354,
     powsybl_case9241,
     powsybl_extended_case57,
     three_node_pst_example,
@@ -626,7 +627,7 @@ def case300_pandapower(folder: Path) -> None:
     save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
-def case300_powsybl(folder: Path) -> None:
+def case300_powsybl(folder: Path, first_fifty_stations: bool = True) -> None:
     """The case300 network with a powsybl grid"""
     net = pypowsybl.network.create_ieee300()
     create_busbar_b_in_ieee(net)
@@ -638,8 +639,9 @@ def case300_powsybl(folder: Path) -> None:
     output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
     output_path_masks.mkdir(parents=True, exist_ok=True)
 
-    rel_sub_mask = np.zeros(len(net.get_buses()), dtype=bool)
-    rel_sub_mask[0:50] = True
+    rel_sub_mask = np.ones(len(net.get_buses()), dtype=bool)
+    if first_fifty_stations:
+        rel_sub_mask[50:] = False
     np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
 
     line_mask = np.ones(len(net.get_lines()), dtype=bool)
@@ -896,6 +898,44 @@ def case9241_powsybl(folder: Path) -> None:
     all_trafos = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], all_trafos)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], all_trafos)
+
+    extract_station_info_powsybl(net, folder)
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
+
+
+def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
+    net = powsybl_case1354()
+    create_busbar_b_in_ieee(net)
+    os.makedirs(folder, exist_ok=True)
+    grid_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_path)
+
+    output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
+    output_path_masks.mkdir(parents=True, exist_ok=True)
+
+    rel_sub_mask = np.ones(len(net.get_buses()), dtype=bool)
+    if n_stations:
+        assert n_stations < len(rel_sub_mask), "n_stations must be less than the total number of buses"
+        assert n_stations > 0, "n_stations must be greater than 0"
+        rel_sub_mask[n_stations:] = False
+
+    # Exclude the slack bus from the relevant substations
+    rel_sub_mask[net.get_buses().index.get_loc("sub_639_0")] = False
+    np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
+
+    line_mask = np.ones(len(net.get_lines()), dtype=bool)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
+
+    trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
+
+    gen_mask = np.ones(len(net.get_generators()), dtype=bool)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(

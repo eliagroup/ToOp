@@ -13,6 +13,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     create_complex_substation_layout_grid,
     powsybl_case30_with_psts,
+    powsybl_case1354,
     powsybl_case9241,
     powsybl_extended_case57,
 )
@@ -71,3 +72,12 @@ def test_create_complex_substation_layout_grid_converges():
     assert result_dc[0].status_text == "Converged"
     result_ac = run_ac(net)
     assert result_ac[0].status_text == "Converged"
+
+
+def test_powsybl_case1354_converges():
+    net = powsybl_case1354()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
+    assert len(net.get_operational_limits())

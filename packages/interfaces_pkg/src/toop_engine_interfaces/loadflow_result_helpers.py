@@ -235,6 +235,7 @@ def get_failed_branch_results(
     # add empty element_name and contingency_name columns to match the schema
     converted_branch_results["element_name"] = ""
     converted_branch_results["contingency_name"] = ""
+    converted_branch_results["group_id"] = ""
     return converted_branch_results
 
 
@@ -279,6 +280,7 @@ def get_failed_node_results(
     failed_node_results["vm_basecase_deviation"] = np.nan
     failed_node_results["element_name"] = ""
     failed_node_results["contingency_name"] = ""
+    failed_node_results["group_id"] = ""
     return failed_node_results
 
 

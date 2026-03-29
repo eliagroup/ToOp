@@ -151,6 +151,7 @@ class BranchResultSchema(pa.DataFrameModel):
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
+    group_id: Series[str] = pa.Field(default="")
 
 
 class NodeResultSchema(pa.DataFrameModel):
@@ -218,6 +219,7 @@ class NodeResultSchema(pa.DataFrameModel):
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
+    group_id: Series[str] = pa.Field(default="")
 
 
 class VADiffResultSchema(pa.DataFrameModel):
@@ -248,6 +250,7 @@ class VADiffResultSchema(pa.DataFrameModel):
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
+    group_id: Series[str] = pa.Field(default="")
 
 
 class RegulatingElementResultSchema(pa.DataFrameModel):
@@ -281,6 +284,7 @@ class RegulatingElementResultSchema(pa.DataFrameModel):
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
+    group_id: Series[str] = pa.Field(default="")
 
 
 class ConvergedSchema(pa.DataFrameModel):

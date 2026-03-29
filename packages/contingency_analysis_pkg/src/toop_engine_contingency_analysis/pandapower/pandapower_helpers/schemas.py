@@ -122,6 +122,7 @@ class PandapowerContingencyGroup(BaseModel):
 
     contingencies: list[PandapowerContingency]
     elements: list[PandapowerElements]
+    group_id: str
 
 
 class PandapowerNMinus1Definition(BaseModel):

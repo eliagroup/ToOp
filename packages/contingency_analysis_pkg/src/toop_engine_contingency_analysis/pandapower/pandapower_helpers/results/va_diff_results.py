@@ -1484,5 +1484,5 @@ def get_failed_va_diff_results(
         failed_va_diff_results.index.get_level_values("element").map(all_power_switches).fillna("")
     )
     failed_va_diff_results["contingency_name"] = ""
-    failed_va_diff_results["group_id"] = ""
+    failed_va_diff_results["outage_group_id"] = ""
     return failed_va_diff_results

@@ -208,7 +208,7 @@ def get_outage_group_for_contingency(
             PandapowerContingencyGroup(
                 contingencies=group_contingencies,
                 elements=elements,
-                group_id="_".join(str(c) for c in outage_group),
+                outage_group_id="_".join(str(c) for c in outage_group),
             )
         )
 

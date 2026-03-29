@@ -155,10 +155,10 @@ def run_single_outage(
     element_name_map = monitored_elements["name"].to_dict()
     first_contingency = grouped_contingency.contingencies[0]
     branch_results_df, node_results_df, va_diff_results = get_element_results_df(
-        net, first_contingency, monitored_elements, timestep, status, basecase_voltage, grouped_contingency.group_id
+        net, first_contingency, monitored_elements, timestep, status, basecase_voltage, grouped_contingency.outage_group_id
     )
     reg_element_result = get_regulating_element_results(
-        timestep, monitored_elements, first_contingency, grouped_contingency.group_id
+        timestep, monitored_elements, first_contingency, grouped_contingency.outage_group_id
     )
 
     for contingency in grouped_contingency.contingencies:
@@ -648,7 +648,7 @@ def run_contingency_analysis_pandapower(
         )
     else:
         pp_n1_definition.grouped_contingencies = [
-            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, group_id=ind)
+            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, outage_group_id=str(ind))
             for ind, cont in enumerate(pp_n1_definition.contingencies)
         ]
 

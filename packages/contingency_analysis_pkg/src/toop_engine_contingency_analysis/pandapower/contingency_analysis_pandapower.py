@@ -177,10 +177,10 @@ def run_single_outage(
     update_results_with_names(va_diff_results, element_name_map)
     update_results_with_names(regulating_elements_df, element_name_map)
 
-    branch_results_df["group_id"] = grouped_contingency.group_id
-    node_results_df["group_id"] = node_results_df.group_id
-    va_diff_results["group_id"] = va_diff_results.group_id
-    regulating_elements_df["group_id"] = regulating_elements_df.group_id
+    branch_results_df["outage_group_id"] = grouped_contingency.outage_group_id
+    node_results_df["outage_group_id"] = node_results_df.outage_group_id
+    va_diff_results["outage_group_id"] = va_diff_results.outage_group_id
+    regulating_elements_df["outage_group_id"] = regulating_elements_df.outage_group_id
 
     restore_outaged_circuit_breakers(net, opened_cb_indices)
     restore_elements_to_service(net, outaged_elements, were_in_service)

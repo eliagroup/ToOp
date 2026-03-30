@@ -388,6 +388,7 @@ def test_get_va_diff_results():
     blank_va_diff_with_buses["element"] = ["element_1", "element_2", "element_1", "element_2"]
     blank_va_diff_with_buses["bus_breaker_bus1_id"] = ["bus_1", "bus_2", "bus_2", "bus_2"]
     blank_va_diff_with_buses["bus_breaker_bus2_id"] = ["bus_2", "bus_1", "bus_1", "bus_1"]
+    blank_va_diff_with_buses["outage_group_id"] = "test_outage_group_id"
     blank_va_diff_with_buses.set_index(["contingency", "element"], inplace=True)
 
     bus_results = pd.DataFrame()
@@ -397,6 +398,7 @@ def test_get_va_diff_results():
     bus_results["bus_id"] = ["bus_1", "bus_2", "bus_1", "bus_2"]
     bus_results["v_mag"] = [10.0] * 4
     bus_results["v_angle"] = [180.0, 0, 10, np.nan]
+    bus_results["outage_group_id"] = "test_outage_group_id"
     bus_results.set_index(["contingency_id", "operator_strategy_id", "voltage_level_id", "bus_id"], inplace=True)
     bus_map = pd.DataFrame(
         index=["bus_1", "bus_2"],
@@ -696,6 +698,7 @@ def test_get_node_results_dc():
     bus_results["bus_id"] = ["bus_1", "bus_2", "bus_1", "bus_2"]
     bus_results["v_mag"] = [10.0, 10.0, 10.0, np.nan]
     bus_results["v_angle"] = [180.0, 0, 10, np.nan]
+    bus_results["outage_group_id"] = "test_outage_group_id"
     bus_results.set_index(["contingency_id", "operator_strategy_id", "voltage_level_id", "bus_id"], inplace=True)
 
     voltage_levels = pd.DataFrame(
@@ -757,6 +760,7 @@ def test_get_node_results_ac():
     bus_results["bus_id"] = ["bus_1", "bus_2", "bus_1", "bus_2"]
     bus_results["v_mag"] = [10.0, 11.0, 9.0, np.nan]
     bus_results["v_angle"] = [180.0, 0, 10, np.nan]
+    bus_results["outage_group_id"] = "test_outage_group_id"
     bus_results.set_index(["contingency_id", "operator_strategy_id", "voltage_level_id", "bus_id"], inplace=True)
 
     voltage_levels = pd.DataFrame(

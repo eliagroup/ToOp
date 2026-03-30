@@ -162,6 +162,12 @@ def run_contingency_analysis_polars(
 
     branch_limit_polars = pl.from_pandas(pow_n1_definition.branch_limits, include_index=True, nan_to_null=False).lazy()
 
+    # TODO: implement outage group logic in powsybl
+    branch_results = branch_results.with_columns(outage_group_id=pl.lit(""))
+    pow_n1_definition.blank_va_diff["outage_group_id"] = ""
+    three_windings_transformer_results = three_windings_transformer_results.with_columns(outage_group_id=pl.lit(""))
+    bus_results = bus_results.with_columns(outage_group_id=pl.lit(""))
+
     branch_results_df = get_branch_results_polars(
         branch_results,
         three_windings_transformer_results,
@@ -171,6 +177,7 @@ def run_contingency_analysis_polars(
         timestep,
         branch_limit_polars,
     )
+
     node_results_df = get_node_results_polars(
         bus_results,
         monitored_elements["buses"],
@@ -184,6 +191,7 @@ def run_contingency_analysis_polars(
         monitored_elements["buses"], timestep=timestep, basecase_name=basecase_id
     )
     regulating_elements_df = pl.from_pandas(regulating_elements_df, include_index=True, nan_to_null=False).lazy()
+
     va_diff_results_df = get_va_diff_results_polars(
         bus_results=bus_results,
         outages=all_outage_ids,

@@ -118,10 +118,18 @@ class PandapowerContingencyGroup(BaseModel):
         elements (list[PandapowerElements]):
             Union of all grid elements contained in the connected component(s)
             associated with this group. These represent the full outage scope.
+        outage_group_id : str
+            Identifier of the outage group.
+            An outage group represents a set of elements that is separated from
+            the rest of the grid by circuit breakers. In contingency analysis,
+            if one element from such a group is taken out of service, the whole
+            outage group is considered disconnected and all elements in that
+            group become unavailable together.
     """
 
     contingencies: list[PandapowerContingency]
     elements: list[PandapowerElements]
+    outage_group_id: str
 
 
 class PandapowerNMinus1Definition(BaseModel):

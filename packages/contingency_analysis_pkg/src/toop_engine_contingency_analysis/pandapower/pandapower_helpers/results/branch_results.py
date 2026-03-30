@@ -29,6 +29,7 @@ def get_branch_results(
     contingency: PandapowerContingency,
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     timestep: int,
+    outage_group_id: str,
 ) -> pat.DataFrame[BranchResultSchema]:
     """Get the branch results for the given network and contingency
 
@@ -42,6 +43,13 @@ def get_branch_results(
         The list of monitored elements including branches
     timestep : int
         The timestep of the results
+    outage_group_id : str
+        Identifier of the outage group.
+        An outage group represents a set of elements that is separated from
+        the rest of the grid by circuit breakers. In contingency analysis,
+        if one element from such a group is taken out of service, the whole
+        outage group is considered disconnected and all elements in that
+        group become unavailable together.
 
     Returns
     -------
@@ -88,4 +96,5 @@ def get_branch_results(
     # fill missing columns with NaN
     branch_element_df["element_name"] = ""
     branch_element_df["contingency_name"] = ""
+    branch_element_df["outage_group_id"] = outage_group_id
     return branch_element_df

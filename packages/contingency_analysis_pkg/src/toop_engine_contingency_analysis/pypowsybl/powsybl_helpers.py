@@ -630,6 +630,9 @@ def get_regulating_element_results(
         regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "regulating_element_type"] = (
             RegulatingElementType.SLACK_P.value
         )
+
+        # TODO implement outage group logic in powsybl
+        regulating_elements["outage_group_id"] = ""
     return regulating_elements
 
 
@@ -720,6 +723,8 @@ def get_node_results(
     all_node_results["vm_basecase_deviation"] = np.nan
     all_node_results["element_name"] = ""
     all_node_results["contingency_name"] = ""
+    # TODO: implement outage group logic in powsybl
+    all_node_results["outage_group_id"] = ""
 
     return all_node_results
 

@@ -151,6 +151,14 @@ class BranchResultSchema(pa.DataFrameModel):
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
+    outage_group_id: Series[str] = pa.Field(default="")
+    """Identifier of the outage group.
+        An outage group represents a set of elements that is separated from
+        the rest of the grid by circuit breakers. In contingency analysis,
+        if one element from such a group is taken out of service, the whole
+        outage group is considered disconnected and all elements in that
+        group become unavailable together.
+    """
 
 
 class NodeResultSchema(pa.DataFrameModel):
@@ -218,6 +226,14 @@ class NodeResultSchema(pa.DataFrameModel):
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
+    outage_group_id: Series[str] = pa.Field(default="")
+    """Identifier of the outage group.
+        An outage group represents a set of elements that is separated from
+        the rest of the grid by circuit breakers. In contingency analysis,
+        if one element from such a group is taken out of service, the whole
+        outage group is considered disconnected and all elements in that
+        group become unavailable together.
+    """
 
 
 class VADiffResultSchema(pa.DataFrameModel):
@@ -247,6 +263,14 @@ class VADiffResultSchema(pa.DataFrameModel):
     contingency_name: Series[str] = pa.Field(default="")
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
+    """
+    outage_group_id: Series[str] = pa.Field(default="")
+    """Identifier of the outage group.
+        An outage group represents a set of elements that is separated from
+        the rest of the grid by circuit breakers. In contingency analysis,
+        if one element from such a group is taken out of service, the whole
+        outage group is considered disconnected and all elements in that
+        group become unavailable together.
     """
 
 
@@ -280,6 +304,14 @@ class RegulatingElementResultSchema(pa.DataFrameModel):
     contingency_name: Optional[Series[str]] = pa.Field(default="")
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
+    """
+    outage_group_id: Series[str] = pa.Field(default="")
+    """Identifier of the outage group.
+        An outage group represents a set of elements that is separated from
+        the rest of the grid by circuit breakers. In contingency analysis,
+        if one element from such a group is taken out of service, the whole
+        outage group is considered disconnected and all elements in that
+        group become unavailable together.
     """
 
 

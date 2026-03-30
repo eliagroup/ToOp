@@ -1381,6 +1381,7 @@ def get_va_diff_results(
     timestep: int,
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     contingency: PandapowerContingency,
+    outage_group_id: str,
 ) -> pat.DataFrame[VADiffResultSchema]:
     """Get the voltage angle difference results for the given network and contingency.
 
@@ -1395,6 +1396,13 @@ def get_va_diff_results(
     contingency : PandapowerContingency
         The contingency to compute the voltage angle difference results for.
         Will also calculate the va_diff of the outaged elements if they are lines or transformers
+    outage_group_id : str
+        Identifier of the outage group.
+        An outage group represents a set of elements that is separated from
+        the rest of the grid by circuit breakers. In contingency analysis,
+        if one element from such a group is taken out of service, the whole
+        outage group is considered disconnected and all elements in that
+        group become unavailable together.
 
     Returns
     -------
@@ -1428,6 +1436,8 @@ def get_va_diff_results(
     if out.empty:
         return va_diff_df
     va_diff_df = pd.concat([va_diff_df, out], axis=0)
+
+    va_diff_df["outage_group_id"] = outage_group_id
 
     return va_diff_df
 
@@ -1474,4 +1484,5 @@ def get_failed_va_diff_results(
         failed_va_diff_results.index.get_level_values("element").map(all_power_switches).fillna("")
     )
     failed_va_diff_results["contingency_name"] = ""
+    failed_va_diff_results["outage_group_id"] = ""
     return failed_va_diff_results

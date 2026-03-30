@@ -158,6 +158,7 @@ def get_node_results_polars(
             "vm_basecase_deviation",
             "element_name",
             "contingency_name",
+            "outage_group_id",
         ]
     )
     all_node_results = pl.concat([node_results, failed_node_results])
@@ -207,8 +208,8 @@ def get_branch_results_polars(
     side_one_results = (
         pl.concat(
             [
-                branch_results.select(["contingency", "element", "p1", "q1", "i1"]),
-                three_winding_results.select(["contingency", "element", "p1", "q1", "i1"]),
+                branch_results.select(["contingency", "element", "p1", "q1", "i1", "outage_group_id"]),
+                three_winding_results.select(["contingency", "element", "p1", "q1", "i1", "outage_group_id"]),
             ]
         )
         .with_columns(side=pl.lit(BranchSide.ONE.value))
@@ -217,15 +218,15 @@ def get_branch_results_polars(
     side_two_results = (
         pl.concat(
             [
-                branch_results.select(["contingency", "element", "p2", "q2", "i2"]),
-                three_winding_results.select(["contingency", "element", "p2", "q2", "i2"]),
+                branch_results.select(["contingency", "element", "p2", "q2", "i2", "outage_group_id"]),
+                three_winding_results.select(["contingency", "element", "p2", "q2", "i2", "outage_group_id"]),
             ]
         )
         .with_columns(side=pl.lit(BranchSide.TWO.value))
         .rename({"p2": "p", "q2": "q", "i2": "i"})
     )
     side_three_results = (
-        three_winding_results.select(["contingency", "element", "p3", "q3", "i3"])
+        three_winding_results.select(["contingency", "element", "p3", "q3", "i3", "outage_group_id"])
         .with_columns(side=pl.lit(BranchSide.THREE.value))
         .rename({"p3": "p", "q3": "q", "i3": "i"})
     )
@@ -274,6 +275,7 @@ def get_branch_results_polars(
             "loading",
             "element_name",
             "contingency_name",
+            "outage_group_id",
         ]
     )
     converted_branch_results = pl.concat([converted_branch_results, failed_branch_results])
@@ -357,6 +359,7 @@ def get_va_diff_results_polars(
             "va_diff",
             "element_name",
             "contingency_name",
+            "outage_group_id",
         ]
     )
 

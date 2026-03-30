@@ -34,6 +34,7 @@ def test_get_va_diff_results():
             "element": ["element_1", "element_2", "element_1", "element_2"],
             "bus_breaker_bus1_id": ["bus_1", "bus_2", "bus_2", "bus_2"],
             "bus_breaker_bus2_id": ["bus_2", "bus_1", "bus_1", "bus_1"],
+            "outage_group_id": "test_outage_group_id",
         }
     )
 
@@ -108,6 +109,7 @@ def test_get_branch_results():
             "q2": [40.0, 90.0, 0.0, np.nan],
             "i2": [5.0, 10.0, 0.0, np.nan],
             "flow_transfer": [np.nan] * 4,
+            "outage_group_id": "test_outage_group_id",
         }
     )
 
@@ -125,6 +127,7 @@ def test_get_branch_results():
             "q3": [40.0, 90.0, 0.0, np.nan],
             "i3": [5.0, 10.0, 0.0, np.nan],
             "flow_transfer": [np.nan] * 4,
+            "outage_group_id": "test_outage_group_id",
         }
     )
     monitored_branches = ["branch_1", "branch_2"]
@@ -267,6 +270,7 @@ def test_get_node_results_dc():
             "bus_id": ["bus_1", "bus_2", "bus_1", "bus_2"],
             "v_mag": [10.0, 10.0, 10.0, np.nan],
             "v_angle": [180.0, 0, 10, np.nan],
+            "outage_group_id": "test_outage_group_id",
         }
     )
 
@@ -379,6 +383,7 @@ def test_get_node_results_ac():
             "bus_id": ["bus_1", "bus_2", "bus_1", "bus_2"],
             "v_mag": [10.0, 11.0, 9.0, np.nan],
             "v_angle": [180.0, 0, 10, np.nan],
+            "outage_group_id": "test_outage_group_id",
         }
     )
 

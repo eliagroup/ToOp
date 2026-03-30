@@ -99,7 +99,7 @@ class LoadflowResultsPolars(BaseModel):
     Considers the ends of the outaged branch, aswell as all open switches in monitored elements.
     """
 
-    connectivity_result: Union[patpl.LazyFrame[ConnectivityResultSchemaPolars], pl.LazyFrame] = None
+    connectivity_result: Union[patpl.LazyFrame[ConnectivityResultSchemaPolars], pl.LazyFrame, None] = None
     """Connectivity mapping between contingencies and affected grid elements.
         This DataFrame defines which elements become unavailable for each contingency,
         based on outage group logic. Each row represents a (contingency, element) pair,

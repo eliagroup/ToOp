@@ -648,7 +648,7 @@ def build_connectivity_df(groups: list[PandapowerContingencyGroup]) -> pat.DataF
         Each row indicates that a given element is affected by a given
         contingency through their shared outage group.
     """
-    records = [(c.id, e.id, g.outage_group_id) for g in groups for c in g.contingencies for e in g.elements]
+    records = [(c.unique_id, e.unique_id, g.outage_group_id) for g in groups for c in g.contingencies for e in g.elements]
 
     return pd.DataFrame(records, columns=["contingency", "element", "outage_group_id"]).set_index(["contingency", "element"])
 

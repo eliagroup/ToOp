@@ -630,6 +630,7 @@ def get_regulating_element_results(
         regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "regulating_element_type"] = (
             RegulatingElementType.SLACK_P.value
         )
+        regulating_elements["outage_group_id"] = ""
     return regulating_elements
 
 

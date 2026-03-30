@@ -720,6 +720,7 @@ def get_node_results(
     all_node_results["vm_basecase_deviation"] = np.nan
     all_node_results["element_name"] = ""
     all_node_results["contingency_name"] = ""
+    all_node_results["outage_group_id"] = ""
 
     return all_node_results
 

@@ -236,6 +236,14 @@ class NodeResultSchema(pa.DataFrameModel):
     """
 
 
+class ConnectivityResultSchema(pa.DataFrameModel):
+    """A schema for the connectivity results table."""
+
+    contingency: Index[str]
+    element: Index[str]
+    outage_group_id: str
+
+
 class VADiffResultSchema(pa.DataFrameModel):
     """A schema for the voltage angle results.
 
@@ -380,6 +388,14 @@ class LoadflowResults(BaseModel):
     va_diff_results: DataFrame[VADiffResultSchema] = None
     """The voltage angle difference results for each timestep and contingency.
     Considers the ends of the outaged branch, aswell as all open switches in monitored elements.
+    """
+
+    connectivity_result: DataFrame[ConnectivityResultSchema] = None
+    """Connectivity mapping between contingencies and affected grid elements.
+        This DataFrame defines which elements become unavailable for each contingency,
+        based on outage group logic. Each row represents a (contingency, element) pair,
+        indicating that the element is part of the outage group triggered by the
+        contingency.
     """
 
     warnings: Optional[list[str]] = Field(default_factory=list)

@@ -200,13 +200,7 @@ def test_get_impedance_results(pandapower_net_with_impedance: pp.pandapowerNet, 
     outage_net = deepcopy(pandapower_net_with_impedance)
     outage_net.line.loc[outage_net.line.index[:1], "in_service"] = False  # Simulate an outage for the branch
     pp.runpp(outage_net)
-    branch_results = get_branch_results(
-        outage_net,
-        contingency,
-        monitored_elements,
-        timestep=timestep,
-        outage_group_id="test_outage_group_id",
-    )
+    branch_results = get_branch_results(outage_net, contingency, monitored_elements, timestep=timestep)
     assert isinstance(branch_results, pd.DataFrame), "The result should be a DataFrame"
     assert all(branch_results.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(branch_results.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
@@ -250,9 +244,7 @@ def test_get_branch_results(pandapower_net: pp.pandapowerNet, n_1_definition_uni
     outage_net = deepcopy(pandapower_net)
     outage_net.line.loc[outage_net.line.index[:1], "in_service"] = False  # Simulate an outage for the branch
     pp.runpp(outage_net)
-    branch_results = get_branch_results(
-        outage_net, contingency, monitored_elements, timestep=timestep, outage_group_id="test_outage_group_id"
-    )
+    branch_results = get_branch_results(outage_net, contingency, monitored_elements, timestep=timestep)
     assert isinstance(branch_results, pd.DataFrame), "The result should be a DataFrame"
     assert all(branch_results.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(branch_results.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
@@ -297,9 +289,7 @@ def test_get_branch_results_basecase(pandapower_net: pp.pandapowerNet, n_1_defin
     timestep = 1
     outage_net = deepcopy(pandapower_net)
     pp.runpp(outage_net)
-    branch_results = get_branch_results(
-        outage_net, contingency, monitored_elements, timestep=timestep, outage_group_id="test_outage_group_id"
-    )
+    branch_results = get_branch_results(outage_net, contingency, monitored_elements, timestep=timestep)
     assert isinstance(branch_results, pd.DataFrame), "The result should be a DataFrame"
     assert all(branch_results.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(branch_results.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
@@ -354,9 +344,7 @@ def test_get_branch_results_multi_outage(pandapower_net: pp.pandapowerNet, n_1_d
     outage_net = deepcopy(pandapower_net)
     outage_net.line.loc[pandapower_net.line.index[:2], "in_service"] = False  # Simulate an outage for the branch
     pp.runpp(outage_net)
-    branch_results = get_branch_results(
-        outage_net, contingency, monitored_elements, timestep=timestep, outage_group_id="test_outage_group_id"
-    )
+    branch_results = get_branch_results(outage_net, contingency, monitored_elements, timestep=timestep)
 
     assert isinstance(branch_results, pd.DataFrame), "The result should be a DataFrame"
     assert all(branch_results.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
@@ -412,9 +400,7 @@ def test_get_branch_results_no_monitored(pandapower_net: pp.pandapowerNet):
     outage_net = deepcopy(pandapower_net)
     outage_net.line.loc[lines.index[:2], "in_service"] = False  # Simulate an outage for the branch
     pp.runpp(outage_net)
-    branch_results = get_branch_results(
-        outage_net, contingency, monitored_elements, timestep=timestep, outage_group_id="test_outage_group_id"
-    )
+    branch_results = get_branch_results(outage_net, contingency, monitored_elements, timestep=timestep)
     assert branch_results.empty, "The result should be empty if no monitored elements are provided"
 
 
@@ -458,7 +444,6 @@ def test_get_node_results(
         monitored_buses,
         timestep=timestep,
         basecase_voltage=outage_net.res_bus.vm_pu,
-        outage_group_id="test_outage_group_id",
     )
     assert isinstance(node_result_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(node_result_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
@@ -490,7 +475,6 @@ def test_get_node_results_basecase(
         monitored_buses,
         timestep=timestep,
         basecase_voltage=outage_net.res_bus.vm_pu,
-        outage_group_id="test_outage_group_id",
     )
     assert isinstance(node_result_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(node_result_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
@@ -530,7 +514,6 @@ def test_get_node_results_multi_outage(
         monitored_buses,
         timestep=timestep,
         basecase_voltage=outage_net.res_bus.vm_pu,
-        outage_group_id="test_outage_group_id",
     )
     assert isinstance(node_result_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(node_result_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
@@ -567,7 +550,6 @@ def test_get_node_results_no_monitored(pandapower_net: pp.pandapowerNet):
         monitored_elements,
         timestep=timestep,
         basecase_voltage=outage_net.res_bus.vm_pu,
-        outage_group_id="test_outage_group_id",
     )
     assert node_result_df.empty, "The result should be empty if no monitored elements are provided"
 
@@ -679,7 +661,6 @@ def test_get_regulating_element_results():
         timestep,
         get_empty_dataframe_from_model(PandapowerMonitoredElementSchema),
         base_case,
-        outage_group_id="test_outage_group_id",
     )
     assert regulating_element_results.empty, "The result should be empty if no monitored elements are provided"
 
@@ -687,7 +668,6 @@ def test_get_regulating_element_results():
         timestep,
         monitored_elements,
         base_case,
-        outage_group_id="test_outage_group_id",
     )
     assert all(regulating_element_results.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(regulating_element_results.index.get_level_values("contingency") == base_case.unique_id), (
@@ -704,7 +684,6 @@ def test_get_regulating_element_results():
         timestep,
         monitored_elements,
         single_contingency,
-        outage_group_id="test_outage_group_id",
     )
     assert regulating_element_results.empty, "The result should be empty for single contingency as it is not implemented yet"
 
@@ -712,7 +691,6 @@ def test_get_regulating_element_results():
         timestep,
         monitored_elements,
         multi_contingency,
-        outage_group_id="test_outage_group_id",
     )
     assert regulating_element_results.empty, "The result should be empty for multi contingency as it is not implemented yet"
 

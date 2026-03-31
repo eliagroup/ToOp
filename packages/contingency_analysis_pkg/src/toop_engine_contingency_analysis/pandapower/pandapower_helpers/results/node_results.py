@@ -29,7 +29,6 @@ def get_node_result_df(
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     timestep: int,
     basecase_voltage: pat.Series[float],
-    outage_group_id: str,
 ) -> pat.DataFrame[NodeResultSchema]:
     """Get the node results for the given network and contingency
 
@@ -45,13 +44,6 @@ def get_node_result_df(
         The timestep of the results
     basecase_voltage: pat.DataFrame[float]
         The basecase voltage results
-    outage_group_id : str
-        Identifier of the outage group.
-        An outage group represents a set of elements that is separated from
-        the rest of the grid by circuit breakers. In contingency analysis,
-        if one element from such a group is taken out of service, the whole
-        outage group is considered disconnected and all elements in that
-        group become unavailable together.
 
     Returns
     -------
@@ -79,5 +71,4 @@ def get_node_result_df(
     # fill missing columns with NaN
     node_results_df["element_name"] = ""
     node_results_df["contingency_name"] = ""
-    node_results_df["outage_group_id"] = outage_group_id
     return node_results_df

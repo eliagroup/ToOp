@@ -151,14 +151,6 @@ class BranchResultSchema(pa.DataFrameModel):
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
-    outage_group_id: Series[str] = pa.Field(default="")
-    """Identifier of the outage group.
-        An outage group represents a set of elements that is separated from
-        the rest of the grid by circuit breakers. In contingency analysis,
-        if one element from such a group is taken out of service, the whole
-        outage group is considered disconnected and all elements in that
-        group become unavailable together.
-    """
 
 
 class NodeResultSchema(pa.DataFrameModel):
@@ -226,22 +218,38 @@ class NodeResultSchema(pa.DataFrameModel):
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
-    outage_group_id: Series[str] = pa.Field(default="")
-    """Identifier of the outage group.
-        An outage group represents a set of elements that is separated from
-        the rest of the grid by circuit breakers. In contingency analysis,
-        if one element from such a group is taken out of service, the whole
-        outage group is considered disconnected and all elements in that
-        group become unavailable together.
-    """
 
 
 class ConnectivityResultSchema(pa.DataFrameModel):
-    """A schema for the connectivity results table."""
+    """
+    Schema defining the contingency-to-element connectivity mapping.
+
+    Each row represents a relationship between a contingency and an affected
+    grid element, based on outage group logic.
+    """
 
     contingency: Index[str]
+    """Global unique identifier of the contingency event.
+
+    Represents the triggering outage (e.g., line, transformer, generator).
+    This is the first level of the MultiIndex.
+    """
+
     element: Index[str]
+    """Global unique identifier of a grid element affected by the contingency.
+
+    Each element listed here belongs to the outage group associated with the
+    contingency and is therefore considered disconnected when the contingency occurs.
+    This is the second level of the MultiIndex.
+    """
+
     outage_group_id: str
+    """Identifier of the outage group shared by the contingency and element.
+
+    Outage groups represent sets of elements that become de-energized together
+    when separated from the rest of the network by circuit breakers.
+    Multiple contingencies may map to the same outage group.
+    """
 
 
 class VADiffResultSchema(pa.DataFrameModel):
@@ -271,14 +279,6 @@ class VADiffResultSchema(pa.DataFrameModel):
     contingency_name: Series[str] = pa.Field(default="")
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
-    """
-    outage_group_id: Series[str] = pa.Field(default="")
-    """Identifier of the outage group.
-        An outage group represents a set of elements that is separated from
-        the rest of the grid by circuit breakers. In contingency analysis,
-        if one element from such a group is taken out of service, the whole
-        outage group is considered disconnected and all elements in that
-        group become unavailable together.
     """
 
 
@@ -312,14 +312,6 @@ class RegulatingElementResultSchema(pa.DataFrameModel):
     contingency_name: Optional[Series[str]] = pa.Field(default="")
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
-    """
-    outage_group_id: Series[str] = pa.Field(default="")
-    """Identifier of the outage group.
-        An outage group represents a set of elements that is separated from
-        the rest of the grid by circuit breakers. In contingency analysis,
-        if one element from such a group is taken out of service, the whole
-        outage group is considered disconnected and all elements in that
-        group become unavailable together.
     """
 
 

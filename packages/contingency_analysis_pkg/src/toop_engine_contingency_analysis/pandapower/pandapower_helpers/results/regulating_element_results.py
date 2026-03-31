@@ -23,10 +23,7 @@ from toop_engine_interfaces.loadflow_results import (
 
 @pa.check_types
 def get_regulating_element_results(
-    timestep: int,
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
-    contingency: PandapowerContingency,
-    outage_group_id: str,
+    timestep: int, monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema], contingency: PandapowerContingency
 ) -> pat.DataFrame[RegulatingElementResultSchema]:
     """Get the regulating element results for the given network and contingency.
 
@@ -40,13 +37,6 @@ def get_regulating_element_results(
         The dataframe containing the monitored elements
     contingency: PandapowerContingency
         The contingency to compute the regulating element results for
-    outage_group_id : str
-        Identifier of the outage group.
-        An outage group represents a set of elements that is separated from
-        the rest of the grid by circuit breakers. In contingency analysis,
-        if one element from such a group is taken out of service, the whole
-        outage group is considered disconnected and all elements in that
-        group become unavailable together.
 
     Returns
     -------
@@ -69,6 +59,4 @@ def get_regulating_element_results(
         ] = RegulatingElementType.SLACK_P.value
     regulating_elements["element_name"] = ""
     regulating_elements["contingency_name"] = ""
-    regulating_elements["outage_group_id"] = outage_group_id
-
     return regulating_elements

@@ -8,6 +8,7 @@
 """Compute the N-1 AC/DC power flow for the pandapower network."""
 
 import math
+import uuid
 from copy import deepcopy
 
 import pandapower as pp
@@ -156,11 +157,9 @@ def run_single_outage(
     element_name_map = monitored_elements["name"].to_dict()
     first_contingency = grouped_contingency.contingencies[0]
     branch_results_df, node_results_df, va_diff_results = get_element_results_df(
-        net, first_contingency, monitored_elements, timestep, status, basecase_voltage, grouped_contingency.outage_group_id
+        net, first_contingency, monitored_elements, timestep, status, basecase_voltage
     )
-    reg_element_result = get_regulating_element_results(
-        timestep, monitored_elements, first_contingency, grouped_contingency.outage_group_id
-    )
+    reg_element_result = get_regulating_element_results(timestep, monitored_elements, first_contingency)
 
     for contingency in grouped_contingency.contingencies:
         branch_dfs.append(_apply_contingency_to_index(branch_results_df, contingency))
@@ -177,11 +176,6 @@ def run_single_outage(
     update_results_with_names(node_results_df, element_name_map)
     update_results_with_names(va_diff_results, element_name_map)
     update_results_with_names(regulating_elements_df, element_name_map)
-
-    branch_results_df["outage_group_id"] = grouped_contingency.outage_group_id
-    node_results_df["outage_group_id"] = node_results_df.outage_group_id
-    va_diff_results["outage_group_id"] = va_diff_results.outage_group_id
-    regulating_elements_df["outage_group_id"] = regulating_elements_df.outage_group_id
 
     restore_outaged_circuit_breakers(net, opened_cb_indices)
     restore_elements_to_service(net, outaged_elements, were_in_service)
@@ -275,7 +269,6 @@ def get_element_results_df(
     timestep: int,
     status: ConvergenceStatus,
     basecase_voltage: pat.Series[float],
-    outage_group_id: str,
 ) -> tuple[pat.DataFrame[BranchResultSchema], pat.DataFrame[NodeResultSchema], pat.DataFrame[VADiffResultSchema]]:
     """Get the element results dataframes for the given contingency and monitored elements.
 
@@ -295,13 +288,6 @@ def get_element_results_df(
         The voltage results from the basecase run.
         Contains computed voltages if the basecase converged,
         otherwise a series of NaN values.
-    outage_group_id : str
-        Identifier of the outage group.
-        An outage group represents a set of elements that is separated from
-        the rest of the grid by circuit breakers. In contingency analysis,
-        if one element from such a group is taken out of service, the whole
-        outage group is considered disconnected and all elements in that
-        group become unavailable together.
 
     Returns
     -------
@@ -309,11 +295,9 @@ def get_element_results_df(
         The branch results dataframe, node results dataframe and va diff results dataframe
     """
     if status == ConvergenceStatus.CONVERGED:
-        branch_results_df = get_branch_results(net, contingency, monitored_elements, timestep, outage_group_id)
-        node_results_df = get_node_result_df(
-            net, contingency, monitored_elements, timestep, basecase_voltage, outage_group_id
-        )
-        va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency, outage_group_id)
+        branch_results_df = get_branch_results(net, contingency, monitored_elements, timestep)
+        node_results_df = get_node_result_df(net, contingency, monitored_elements, timestep, basecase_voltage)
+        va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
     else:
         monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()
         monitored_branches = monitored_elements.query("kind == 'branch' & table != 'trafo3w'").index.to_list()
@@ -688,8 +672,8 @@ def run_contingency_analysis_pandapower(
         )
     else:
         pp_n1_definition.grouped_contingencies = [
-            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, outage_group_id=str(ind))
-            for ind, cont in enumerate(pp_n1_definition.contingencies)
+            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, outage_group_id=str(uuid.uuid4()))
+            for cont in pp_n1_definition.contingencies
         ]
 
     net_graph = top.create_nxgraph(net)

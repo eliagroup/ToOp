@@ -8,6 +8,7 @@
 """Compute the N-1 AC/DC power flow for the pandapower network."""
 
 import math
+import uuid
 from copy import deepcopy
 
 import pandapower as pp
@@ -46,6 +47,7 @@ from toop_engine_interfaces.loadflow_result_helpers import (
 )
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
+    ConnectivityResultSchema,
     ConvergenceStatus,
     LoadflowResults,
     NodeResultSchema,
@@ -596,6 +598,45 @@ def _run_base_case_loadflow(
         pass
 
 
+def build_connectivity_df(groups: list[PandapowerContingencyGroup]) -> pat.DataFrame[ConnectivityResultSchema]:
+    """
+    Build a connectivity result table mapping contingencies to affected elements.
+
+    This function flattens a list of PandapowerContingencyGroup objects into a
+    tabular representation where each row corresponds to a pair
+    (contingency, element) along with the associated outage group identifier.
+
+    For each contingency in a group, all elements of that outage group are
+    considered affected. This reflects the modeling assumption that outage
+    groups represent sets of elements that become unavailable together when
+    separated from the grid by circuit breakers.
+
+    Parameters
+    ----------
+    groups : list[PandapowerContingencyGroup]
+        List of contingency groups. Each group contains:
+        - multiple contingencies affecting the same connected component(s),
+        - a set of elements representing the full outage scope,
+        - a unique outage_group_id.
+
+    Returns
+    -------
+    pat.DataFrame[ConnectivityResultSchema]
+        A Pandas DataFrame with:
+        - MultiIndex:
+            * contingency (str): contingency identifier
+            * element (str): element identifier
+        - Column:
+            * outage_group_id (str): identifier of the outage group
+
+        Each row indicates that a given element is affected by a given
+        contingency through their shared outage group.
+    """
+    records = [(c.unique_id, e.unique_id, g.outage_group_id) for g in groups for c in g.contingencies for e in g.elements]
+
+    return pd.DataFrame(records, columns=["contingency", "element", "outage_group_id"]).set_index(["contingency", "element"])
+
+
 def run_contingency_analysis_pandapower(
     net: pp.pandapowerNet,
     n_minus_1_definition: Nminus1Definition,
@@ -631,7 +672,7 @@ def run_contingency_analysis_pandapower(
         )
     else:
         pp_n1_definition.grouped_contingencies = [
-            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements)
+            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, outage_group_id=str(uuid.uuid4()))
             for cont in pp_n1_definition.contingencies
         ]
 
@@ -693,6 +734,10 @@ def run_contingency_analysis_pandapower(
         *missing_contingency_warnings,
         *lf_result.warnings,
     ]
+
+    if cfg.apply_outage_grouping:
+        lf_result.connectivity_result = build_connectivity_df(pp_n1_definition.grouped_contingencies)
+
     if not cfg.polars:
         return lf_result
     return convert_pandas_loadflow_results_to_polars(lf_result)

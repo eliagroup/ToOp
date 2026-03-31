@@ -13,6 +13,7 @@ belonging to those components, and converts them into PandapowerElements objects
 Used to expand initial contingencies into full topology-aware outage groups.
 """
 
+import uuid
 from collections import defaultdict
 
 import pandapower as pp
@@ -208,6 +209,7 @@ def get_outage_group_for_contingency(
             PandapowerContingencyGroup(
                 contingencies=group_contingencies,
                 elements=elements,
+                outage_group_id=str(uuid.uuid4()),
             )
         )
 

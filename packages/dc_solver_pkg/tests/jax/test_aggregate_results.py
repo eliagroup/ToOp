@@ -947,7 +947,8 @@ def test_get_pst_switching_distance() -> None:
 
     # Case 2: PST optimization enabled but no initial taps provided
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[0, 1, 2, 3, 4]], dtype=int)  # shape: (n_timesteps=1, n_controllable_pst)
+        # shape: (n_timesteps=1, n_controllable_pst)
+        pst_tap_idx=jnp.array([[0, 1, 2, 3, 4]], dtype=int)
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=None)
     assert switching_distance == 0.0, "Switching distance should be 0 when initial tap indices are not provided"
@@ -955,7 +956,8 @@ def test_get_pst_switching_distance() -> None:
     # Case 3: No switching_distance - optimized taps match initial taps
     initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[2, 3, 4, 5, 6]], dtype=int)  # shape: (n_timesteps=1, n_controllable_pst)
+        # shape: (n_timesteps=1, n_controllable_pst)
+        pst_tap_idx=jnp.array([[2, 3, 4, 5, 6]], dtype=int)
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
     assert switching_distance == 0.0, "Switching distance should be 0 when taps haven't changed"
@@ -963,10 +965,12 @@ def test_get_pst_switching_distance() -> None:
     # Case 4: Simple switching_distance case - single timestep
     initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[3, 4, 5, 6, 7]], dtype=int)  # All shifted by +1
+        # All shifted by +1
+        pst_tap_idx=jnp.array([[3, 4, 5, 6, 7]], dtype=int)
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_switching_distance = 5.0  # Sum of (3-2)^2 + (4-3)^2 + (5-4)^2 + (6-5)^2 + (7-6)^2 = 1+1+1+1+1 = 5
+    # Sum of (3-2)^2 + (4-3)^2 + (5-4)^2 + (6-5)^2 + (7-6)^2 = 1+1+1+1+1 = 5
+    expected_switching_distance = 5.0
     assert switching_distance == expected_switching_distance, (
         f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
     )
@@ -974,7 +978,8 @@ def test_get_pst_switching_distance() -> None:
     # Case 5: Mixed positive and negative switching distances
     initial_tap_idx = jnp.array([5, 5, 5, 5, 5], dtype=int)
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[3, 7, 5, 4, 8]], dtype=int)  # switching distances: -2, +2, 0, -1, +3
+        # switching distances: -2, +2, 0, -1, +3
+        pst_tap_idx=jnp.array([[3, 7, 5, 4, 8]], dtype=int)
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
     expected_switching_distance = (
@@ -989,7 +994,8 @@ def test_get_pst_switching_distance() -> None:
     optimized_taps = NodalInjOptimResults(
         pst_tap_idx=jnp.array(
             [
-                [3, 4, 5, 6],  # First timestep: small switching_distance: 1^2 + 1^2 + 1^2 + 1^2 = 4
+                # First timestep: small switching_distance: 1^2 + 1^2 + 1^2 + 1^2 = 4
+                [3, 4, 5, 6],
                 [10, 10, 10, 10],  # Second timestep: 8^2 + 7^2 + 6^2 + 5^2 = 174
                 [0, 0, 0, 0],  # Third timestep: 2^2 + 3^2 + 4^2 + 5^2 = 54
             ],
@@ -997,7 +1003,8 @@ def test_get_pst_switching_distance() -> None:
         )  # shape: (n_timesteps=3, n_controllable_pst=4)
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_switching_distance = 4.0 + 174.0 + 54.0  # Should sum switching distances across all timesteps
+    # Should sum switching distances across all timesteps
+    expected_switching_distance = 4.0 + 174.0 + 54.0
     assert switching_distance == expected_switching_distance, (
         f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
     )
@@ -1063,22 +1070,46 @@ def test_get_pst_startup_cost() -> None:
 
 def test_aggregate_to_metric_pst_startup_cost() -> None:
     """Test aggregate_to_metric routing for pst_startup_cost."""
+    n_batch = 8
+    n_timesteps = 5
+    n_failures = 30
+    n_branch = 50
+    n_splits = 10
+    n_subs_rel = 60
+    max_branch_per_sub = 6
+    max_inj_per_sub = 4
+
+    keys = jax.random.split(jax.random.PRNGKey(0), 5)
+
+    flow = jax.random.exponential(keys[0], (n_batch, n_timesteps, n_failures, n_branch))
+    max_mw_flow = jax.random.exponential(keys[1], (n_branch,))
+    branch_topologies = jax.random.randint(keys[2], (n_batch, n_splits, max_branch_per_sub), 0, 2).astype(bool)
+    sub_ids = jax.random.randint(keys[2], (n_batch, n_splits), 0, n_subs_rel)
+    injections = jax.random.randint(keys[3], (n_batch, n_splits, max_inj_per_sub), 0, 2).astype(bool)
+    cross_coupler_flow = jax.random.exponential(keys[3], (n_batch, n_splits, n_timesteps))
+    max_flow_coupler = jax.random.exponential(keys[4], (n_subs_rel,))
+
+    branch_limits = BranchLimits(
+        max_mw_flow=max_mw_flow,
+        max_mw_flow_limited=max_mw_flow * 0.9,
+        coupler_limits=max_flow_coupler,
+    )
 
     lf_res = SolverLoadflowResults(
-        n_0_matrix=jnp.zeros((1, 1)),
-        n_1_matrix=jnp.zeros((1, 1, 1)),
-        branch_action_index=jnp.array([], dtype=int),
-        branch_topology=jnp.array([], dtype=int),
-        disconnections=jnp.array([], dtype=int),
-        cross_coupler_flows=None,
-        sub_ids=jnp.array([], dtype=int),
+        n_0_matrix=flow[:, :, 0, :],
+        n_1_matrix=flow,
+        cross_coupler_flows=cross_coupler_flow,
+        branch_action_index=None,
+        branch_topology=branch_topologies,
+        sub_ids=sub_ids,
+        injection_topology=injections,
         nodal_injections_optimized=NodalInjOptimResults(pst_tap_idx=jnp.array([[1, 0, 3]], dtype=int)),
         n_2_penalty=None,
+        disconnections=None,
         bb_outage_penalty=None,
         bb_outage_overload=None,
         bb_outage_splits=None,
     )
-    branch_limits = BranchLimits(max_mw_flow=jnp.ones((1,)))
 
     startup_cost = aggregate_to_metric(
         lf_res=lf_res,

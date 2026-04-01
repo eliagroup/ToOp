@@ -599,6 +599,37 @@ def get_pst_switching_distance(
     return switching_distance
 
 
+def get_pst_startup_cost(
+    optimized_taps: Optional[NodalInjOptimResults],
+    initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
+) -> Float[Array, " "]:
+    """Compute the startup cost induced by PST tap changes.
+
+    The startup cost is defined as the number of controllable PSTs whose optimized tap index
+    differs from the initial tap index, summed across all timesteps. This implements an implicit
+    unit cost; any additional weighting is applied by the optimizer fitness weights.
+
+    Parameters
+    ----------
+    optimized_taps : Optional[NodalInjOptimResults]
+        The optimized PST tap positions from the solver. If None, returns 0.0.
+    initial_tap_idx : Optional[Int[Array, " n_controllable_pst"]]
+        The initial tap positions for each controllable PST as indices. If None, returns 0.0.
+
+    Returns
+    -------
+    Float[Array, " "]
+        The number of PST tap positions that changed relative to the initial taps across all
+        timesteps. Returns 0.0 if PST optimization is disabled or PST data is unavailable.
+    """
+    if optimized_taps is None or initial_tap_idx is None:
+        return jnp.array(0.0)
+
+    optimized_tap_idx = optimized_taps.pst_tap_idx
+    tap_changed = optimized_tap_idx != initial_tap_idx[None, :]
+    return jnp.sum(tap_changed).astype(float)
+
+
 def get_n_2_penalty(
     n_2_penalty: Optional[Float[Array, " "]],
 ) -> Float[Array, " "]:
@@ -679,8 +710,8 @@ def aggregate_to_metric_batched(
     metric : MetricType = "max_flow_n_1"
         The metric to use for aggregation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
-        The initial tap positions for PSTs. Required for computing pst_switching_distance metric.
-        If None, pst_switching_distance will return 0.0
+        The initial tap positions for PSTs. Required for computing PST-based metrics.
+        If None, pst_switching_distance and pst_startup_cost will return 0.0
 
     Returns
     -------
@@ -750,7 +781,7 @@ def aggregate_matrix_to_metric(
     )
 
 
-def aggregate_to_metric(  # noqa: C901 # Conditions of the same type permitted
+def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type permitted
     lf_res: SolverLoadflowResults,
     branch_limits: BranchLimits,
     reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
@@ -783,8 +814,8 @@ def aggregate_to_metric(  # noqa: C901 # Conditions of the same type permitted
         This is useful if you want to ignore failures that are not relevant for the metric,
         e.g. if you want to ignore busbar outage failures in the overload energy calculation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
-        The initial tap positions for PSTs. Required for computing pst_switching_distance metric.
-        If None, pst_switching_distance will return 0.0
+        The initial tap positions for PSTs. Required for computing PST-based metrics.
+        If None, pst_switching_distance and pst_startup_cost will return 0.0
 
     Returns
     -------
@@ -805,6 +836,11 @@ def aggregate_to_metric(  # noqa: C901 # Conditions of the same type permitted
             )
         case "pst_switching_distance":
             retval = get_pst_switching_distance(
+                optimized_taps=lf_res.nodal_injections_optimized,
+                initial_tap_idx=initial_pst_tap_idx,
+            )
+        case "pst_startup_cost":
+            retval = get_pst_startup_cost(
                 optimized_taps=lf_res.nodal_injections_optimized,
                 initial_tap_idx=initial_pst_tap_idx,
             )

@@ -468,7 +468,7 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
         action_set=action_set,
     )
 
-    (_, _, metrics_mutated, _, _, _) = scoring_function(
+    (_, _, metrics, _, _, _) = scoring_function(
         topologies_mutated,
         key,
         (static_information.dynamic_information,),
@@ -484,9 +484,9 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
 
     # With PST mutation, at least some topologies should have non-zero distances
     # (though it's possible all mutations result in the same tap due to clipping)
-    assert "pst_switching_distance" in metrics_mutated, "Metric should be computed"
-    assert jnp.all(jnp.isfinite(metrics_mutated["pst_switching_distance"])), "All distances should be finite"
-    assert jnp.all(metrics_mutated["pst_switching_distance"] >= 0.0), "distances should be non-negative"
+    assert "pst_switching_distance" in metrics, "Metric should be computed"
+    assert jnp.all(jnp.isfinite(metrics["pst_switching_distance"])), "All distances should be finite"
+    assert jnp.all(metrics["pst_switching_distance"] >= 0.0), "distances should be non-negative"
 
 
 def test_pst_switching_distance_in_target_metrics(static_information_file_complex: str) -> None:
@@ -600,7 +600,6 @@ def test_pst_switching_distance_without_pst_optimization(static_information_file
     static_information = load_static_information(static_information_file)
 
     action_set = static_information.dynamic_information.action_set
-    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
 
     max_num_splits = 2
     batch_size = 4
@@ -668,3 +667,219 @@ def test_pst_switching_distance_without_pst_optimization(static_information_file
     assert jnp.all(metrics["pst_switching_distance"] == 0.0), (
         "PST switching distance should be 0 when PST optimization is disabled"
     )
+
+
+def test_pst_startup_cost_metric_integration(static_information_file_complex: str) -> None:
+    """Test that pst_startup_cost metric works in the scoring function."""
+    static_information = load_static_information(static_information_file_complex)
+
+    if (
+        static_information.dynamic_information.nodal_injection_information is None
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
+    ):
+        pytest.skip("No controllable PSTs in this grid")
+
+    action_set = static_information.dynamic_information.action_set
+    batch_size = 8
+    n_timesteps = static_information.dynamic_information.n_timesteps
+
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
+    )
+
+    starting_taps = static_information.dynamic_information.nodal_injection_information.starting_tap_idx
+
+    topologies = empty_repertoire(
+        batch_size,
+        2,
+        0,
+        n_timesteps,
+        starting_taps,
+    )
+
+    key = jax.random.PRNGKey(7)
+    no_pst_mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.0,
+            change_split_prob=0.0,
+            remove_split_prob=0.0,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.0,
+            change_disconnection_prob=0.0,
+            remove_disconnection_prob=0.0,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=NodalInjectionMutationConfig(
+            pst_mutation_sigma=0.0,
+            pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+        ),
+    )
+    topologies_zero, key = mutate(
+        topologies=topologies,
+        random_key=key,
+        mutation_config=no_pst_mutation_config,
+        action_set=action_set,
+    )
+
+    (_, _, metrics_zero, _, _, _) = scoring_function(
+        topologies_zero,
+        key,
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
+        target_metrics=(("overload_energy_n_1", 1.0),),
+        observed_metrics=(
+            "overload_energy_n_1",
+            "switching_distance",
+            "pst_startup_cost",
+        ),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    assert "pst_startup_cost" in metrics_zero
+    assert metrics_zero["pst_startup_cost"].shape == (batch_size,)
+    assert jnp.all(metrics_zero["pst_startup_cost"] == 0.0)
+
+    pst_mutation_config = replace(
+        no_pst_mutation_config,
+        nodal_injection_mutation_config=NodalInjectionMutationConfig(
+            pst_mutation_sigma=2.0,
+            pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+        ),
+    )
+    topologies_mutated, key = mutate(
+        topologies=topologies,
+        random_key=key,
+        mutation_config=pst_mutation_config,
+        action_set=action_set,
+    )
+
+    (_, _, metrics, _, _, _) = scoring_function(
+        topologies_mutated,
+        key,
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
+        target_metrics=(("overload_energy_n_1", 1.0),),
+        observed_metrics=(
+            "overload_energy_n_1",
+            "pst_startup_cost",
+            "pst_switching_distance",
+            "switching_distance",
+        ),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    assert jnp.all(jnp.isfinite(metrics["pst_startup_cost"]))
+    assert jnp.all(metrics["pst_startup_cost"] >= 0.0)
+    assert jnp.all(metrics["pst_startup_cost"] <= metrics["pst_switching_distance"])
+
+
+def test_pst_startup_cost_in_target_metrics(static_information_file_complex: str) -> None:
+    """Test that pst_startup_cost contributes to fitness when targeted."""
+    static_information = load_static_information(static_information_file_complex)
+
+    if (
+        static_information.dynamic_information.nodal_injection_information is None
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
+    ):
+        pytest.skip("No controllable PSTs in this grid")
+
+    action_set = static_information.dynamic_information.action_set
+    batch_size = 8
+    n_timesteps = static_information.dynamic_information.n_timesteps
+
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=batch_size),
+    )
+
+    starting_taps = static_information.dynamic_information.nodal_injection_information.starting_tap_idx
+    topologies = empty_repertoire(batch_size, 2, 0, n_timesteps, starting_taps)
+
+    key = jax.random.PRNGKey(21)
+    mutation_config = MutationConfig(
+        random_topo_prob=0.0,
+        mutation_repetition=1,
+        substation_mutation_config=SubstationMutationConfig(
+            n_subs_mutated_lambda=1.0,
+            add_split_prob=0.0,
+            change_split_prob=0.0,
+            remove_split_prob=0.0,
+            n_rel_subs=static_information.dynamic_information.n_sub_relevant,
+        ),
+        disconnection_mutation_config=DisconnectionMutationConfig(
+            add_disconnection_prob=0.0,
+            change_disconnection_prob=0.0,
+            remove_disconnection_prob=0.0,
+            n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
+        ),
+        nodal_injection_mutation_config=NodalInjectionMutationConfig(
+            pst_mutation_sigma=2.0,
+            pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+        ),
+    )
+    topologies, key = mutate(
+        topologies=topologies,
+        random_key=key,
+        mutation_config=mutation_config,
+        action_set=action_set,
+    )
+
+    fitness_low_weight, _, metrics, _, _, _ = scoring_function(
+        topologies,
+        key,
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_startup_cost", 0.1)),
+        observed_metrics=("overload_energy_n_1", "pst_startup_cost", "switching_distance"),
+        descriptor_metrics=("switching_distance",),
+    )
+    fitness_high_weight, _, _, _, _, _ = scoring_function(
+        topologies,
+        key,
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_startup_cost", 10.0)),
+        observed_metrics=("overload_energy_n_1", "pst_startup_cost", "switching_distance"),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    assert jnp.all(metrics["pst_startup_cost"] >= 0.0)
+    assert jnp.less_equal(fitness_high_weight, fitness_low_weight).all()
+
+
+def test_pst_startup_cost_without_pst_optimization(static_information_file: str) -> None:
+    """Test that pst_startup_cost returns 0 when PST optimization is disabled."""
+    static_information = load_static_information(static_information_file)
+
+    dynamic_info_no_pst = replace(
+        static_information.dynamic_information,
+        nodal_injection_information=None,
+    )
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=4),
+        dynamic_information=dynamic_info_no_pst,
+    )
+
+    topologies = empty_repertoire(4, 2, 0, static_information.dynamic_information.n_timesteps)
+    key = jax.random.PRNGKey(100)
+
+    fitness, _, metrics, _, _, _ = scoring_function(
+        topologies,
+        key,
+        (static_information.dynamic_information,),
+        (static_information.solver_config,),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_startup_cost", 1.0)),
+        observed_metrics=("overload_energy_n_1", "pst_startup_cost", "switching_distance"),
+        descriptor_metrics=("switching_distance",),
+    )
+
+    assert "pst_startup_cost" in metrics
+    assert jnp.all(metrics["pst_startup_cost"] == 0.0)
+    assert jnp.all(jnp.isfinite(fitness))

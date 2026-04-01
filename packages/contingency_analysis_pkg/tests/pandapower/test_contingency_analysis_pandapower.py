@@ -364,6 +364,25 @@ def test_outage_grouping_combines_connected_elements_into_single_contingency():
     assert l1_loading.isna().all()
     assert l2_loading.isna().all()
 
+    # ------------------------------------------------------------------
+    # Validate connectivity_result
+    # ------------------------------------------------------------------
+    assert res.connectivity_result is not None
+
+    connectivity_result = res.connectivity_result.reset_index()
+
+    expected_contingency = str(l2)
+    expected_elements = {"4%%bus", "1%%line", "3%%bus", "0%%line", "2%%bus", "1%%bus"}
+
+    # there should be exactly one contingency mapped to both outage-group elements
+    contingency_rows = connectivity_result.loc[connectivity_result["contingency"] == expected_contingency]
+
+    assert not contingency_rows.empty
+    assert set(contingency_rows["element"]) == expected_elements
+
+    # both elements should belong to the same outage group
+    assert contingency_rows["outage_group_id"].nunique() == 1
+
 
 def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase_converges():
     # ------------------------------------------------------------------
@@ -485,3 +504,8 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
 
     assert not node_results.empty
     assert node_results["vm_basecase_deviation"].notna().all()
+
+    # ------------------------------------------------------------------
+    # Validate connectivity_result
+    # ------------------------------------------------------------------
+    assert res.connectivity_result is None

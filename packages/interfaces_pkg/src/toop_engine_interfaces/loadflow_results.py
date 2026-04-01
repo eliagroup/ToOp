@@ -220,6 +220,38 @@ class NodeResultSchema(pa.DataFrameModel):
     """
 
 
+class ConnectivityResultSchema(pa.DataFrameModel):
+    """
+    Schema defining the contingency-to-element connectivity mapping.
+
+    Each row represents a relationship between a contingency and an affected
+    grid element, based on outage group logic.
+    """
+
+    contingency: Index[str]
+    """Global unique identifier of the contingency event.
+
+    Represents the triggering outage (e.g., line, transformer, generator).
+    This is the first level of the MultiIndex.
+    """
+
+    element: Index[str]
+    """Global unique identifier of a grid element affected by the contingency.
+
+    Each element listed here belongs to the outage group associated with the
+    contingency and is therefore considered disconnected when the contingency occurs.
+    This is the second level of the MultiIndex.
+    """
+
+    outage_group_id: str
+    """Identifier of the outage group shared by the contingency and element.
+
+    Outage groups represent sets of elements that become de-energized together
+    when separated from the rest of the network by circuit breakers.
+    Multiple contingencies may map to the same outage group.
+    """
+
+
 class VADiffResultSchema(pa.DataFrameModel):
     """A schema for the voltage angle results.
 
@@ -318,6 +350,7 @@ LoadflowResultTable = Union[
     pat.DataFrame[NodeResultSchema],
     pat.DataFrame[BranchResultSchema],
     pat.DataFrame[VADiffResultSchema],
+    pat.DataFrame[ConnectivityResultSchema],
     pat.DataFrame[RegulatingElementResultSchema],
     pat.DataFrame[ConvergedSchema],
 ]
@@ -348,6 +381,14 @@ class LoadflowResults(BaseModel):
     va_diff_results: DataFrame[VADiffResultSchema] = None
     """The voltage angle difference results for each timestep and contingency.
     Considers the ends of the outaged branch, aswell as all open switches in monitored elements.
+    """
+
+    connectivity_result: DataFrame[ConnectivityResultSchema] = None
+    """Connectivity mapping between contingencies and affected grid elements.
+        This DataFrame defines which elements become unavailable for each contingency,
+        based on outage group logic. Each row represents a (contingency, element) pair,
+        indicating that the element is part of the outage group triggered by the
+        contingency.
     """
 
     warnings: Optional[list[str]] = Field(default_factory=list)

@@ -468,7 +468,7 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
         action_set=action_set,
     )
 
-    (_, _, metrics, _, _, _) = scoring_function(
+    (_, _, metrics_mutated, _, _, _) = scoring_function(
         topologies_mutated,
         key,
         (static_information.dynamic_information,),
@@ -484,9 +484,9 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
 
     # With PST mutation, at least some topologies should have non-zero distances
     # (though it's possible all mutations result in the same tap due to clipping)
-    assert "pst_switching_distance" in metrics, "Metric should be computed"
-    assert jnp.all(jnp.isfinite(metrics["pst_switching_distance"])), "All distances should be finite"
-    assert jnp.all(metrics["pst_switching_distance"] >= 0.0), "distances should be non-negative"
+    assert "pst_switching_distance" in metrics_mutated, "Metric should be computed"
+    assert jnp.all(jnp.isfinite(metrics_mutated["pst_switching_distance"])), "All distances should be finite"
+    assert jnp.all(metrics_mutated["pst_switching_distance"] >= 0.0), "distances should be non-negative"
 
 
 def test_pst_switching_distance_in_target_metrics(static_information_file_complex: str) -> None:
@@ -600,6 +600,7 @@ def test_pst_switching_distance_without_pst_optimization(static_information_file
     static_information = load_static_information(static_information_file)
 
     action_set = static_information.dynamic_information.action_set
+    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
 
     max_num_splits = 2
     batch_size = 4

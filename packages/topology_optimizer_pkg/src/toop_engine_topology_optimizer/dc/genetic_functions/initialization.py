@@ -427,7 +427,8 @@ def initialize_genetic_algorithm(
     algo = DiscreteMapElites(
         scoring_function=scoring_function_partial,
         emitter=emitter,
-        metrics_function=default_ga_metrics,  # TODO: Why do we set this to default and not observed?
+        # TODO: Why do we set this to default and not observed?
+        metrics_function=default_ga_metrics,
         distributed=distributed,
         n_cells_per_dim=tuple([desc.num_cells for desc in me_descriptors]),
         cell_depth=cell_depth,
@@ -635,7 +636,7 @@ def algo_setup(
     if not ga_args.enable_nodal_inj_optim and pst_metrics_without_optimization:
         logger.warning(
             (
-                f"The target metrics include {sorted(pst_metrics_without_optimization)} but nodal injection optimization "
+                f"The target metrics include {pst_metrics_without_optimization} but nodal injection optimization "
                 "is disabled. This will lead to these metrics being always 0 and not optimized for. "
                 "Consider enabling nodal injection optimization or removing these metrics from the target metrics. "
             )

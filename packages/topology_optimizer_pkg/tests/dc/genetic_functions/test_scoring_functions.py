@@ -142,7 +142,6 @@ def test_scoring_function(static_information_file: str) -> None:
     static_information = load_static_information(static_information_file)
 
     action_set = static_information.dynamic_information.action_set
-    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
 
     max_num_splits = 3
     n_disconnections = 0
@@ -215,8 +214,6 @@ def test_summarize(static_information_file: str) -> None:
     static_information = load_static_information(static_information_file)
 
     action_set = static_information.dynamic_information.action_set
-    disconnectable_branches = static_information.dynamic_information.disconnectable_branches
-    n_disconnectable_branches = len(disconnectable_branches)
 
     max_num_splits = 3
     batch_size = 16
@@ -364,7 +361,6 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
         pytest.skip("No controllable PSTs in this grid")
 
     action_set = static_information.dynamic_information.action_set
-    n_disconnectable_branches = len(static_information.dynamic_information.disconnectable_branches)
 
     max_num_splits = 2
     n_disconnections = 0

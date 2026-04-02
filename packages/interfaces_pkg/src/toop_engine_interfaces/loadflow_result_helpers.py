@@ -612,6 +612,7 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         regulating_element_results=pandas_to_polars(loadflow_results.regulating_element_results, lazy=True),
         converged=pandas_to_polars(loadflow_results.converged, lazy=True),
         va_diff_results=pandas_to_polars(loadflow_results.va_diff_results, lazy=True),
+        connectivity_result=pandas_to_polars(loadflow_results.connectivity_result, lazy=True),
         warnings=loadflow_results.warnings,
         additional_information=loadflow_results.additional_information,
         lazy=True,

@@ -18,6 +18,7 @@ from polars.testing import assert_frame_equal
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
+    ConnectivityResultSchema,
     ConvergedSchema,
     NodeResultSchema,
     RegulatingElementResultSchema,
@@ -33,6 +34,12 @@ class BranchResultSchemaPolars(pal.DataFrameModel, BranchResultSchema):
 
 class NodeResultSchemaPolars(pal.DataFrameModel, NodeResultSchema):
     """Polars variant of NodeResultSchema."""
+
+    pass
+
+
+class ConnectivityResultSchemaPolars(pal.DataFrameModel, ConnectivityResultSchema):
+    """Polars variant of ConnectivityResultSchema."""
 
     pass
 
@@ -59,6 +66,7 @@ LoadflowResultTablePolars = Union[
     patpl.LazyFrame[NodeResultSchemaPolars],
     patpl.LazyFrame[BranchResultSchemaPolars],
     patpl.LazyFrame[VADiffResultSchemaPolars],
+    patpl.LazyFrame[ConnectivityResultSchemaPolars],
     patpl.LazyFrame[RegulatingElementResultSchemaPolars],
     patpl.LazyFrame[ConvergedSchemaPolars],
 ]
@@ -89,6 +97,14 @@ class LoadflowResultsPolars(BaseModel):
     va_diff_results: Union[patpl.LazyFrame[VADiffResultSchemaPolars], pl.LazyFrame] = None
     """The voltage angle difference results for each timestep and contingency.
     Considers the ends of the outaged branch, aswell as all open switches in monitored elements.
+    """
+
+    connectivity_result: Union[patpl.LazyFrame[ConnectivityResultSchemaPolars], pl.LazyFrame, None] = None
+    """Connectivity mapping between contingencies and affected grid elements.
+        This DataFrame defines which elements become unavailable for each contingency,
+        based on outage group logic. Each row represents a (contingency, element) pair,
+        indicating that the element is part of the outage group triggered by the
+        contingency.
     """
 
     warnings: list[str] = Field(default_factory=list)

@@ -108,20 +108,24 @@ class PandapowerContingencyGroup(BaseModel):
     This model aggregates multiple contingencies that map to the same connected
     component signature (i.e., they impact the same parts of the grid). It also
     contains the full set of grid elements belonging to those components.
-
-    Attributes
-    ----------
-        contingencies (list[PandapowerContingency]):
-            List of original contingencies that affect the same connected
-            component(s) and are therefore grouped together.
-
-        elements (list[PandapowerElements]):
-            Union of all grid elements contained in the connected component(s)
-            associated with this group. These represent the full outage scope.
     """
 
     contingencies: list[PandapowerContingency]
+    """A list of original contingencies that affect the same connected
+            component(s) and are therefore grouped together.
+    """
+
     elements: list[PandapowerElements]
+    """A list of all grid elements contained in the connected component(s)
+            associated with this group. These represent the full outage scope."""
+
+    outage_group_id: str
+    """Identifier of the outage group.
+            An outage group represents a set of elements that is separated from
+            the rest of the grid by circuit breakers. In contingency analysis,
+            if one element from such a group is taken out of service, the whole
+            outage group is considered disconnected and all elements in that
+            group become unavailable together."""
 
 
 class PandapowerNMinus1Definition(BaseModel):

@@ -36,7 +36,7 @@ from toop_engine_dc_solver.jax.aggregate_results import (
     get_number_of_disconnections,
     get_number_of_splits,
     get_overload_energy_n_1_matrix,
-    get_pst_startup_cost,
+    get_pst_activated,
     get_pst_switching_distance,
     get_switching_distance,
     get_transport_n_1_matrix,
@@ -1019,23 +1019,23 @@ def test_get_pst_switching_distance() -> None:
     assert switching_distance_jitted == 3.0, f"Expected switching_distance 3.0, got {switching_distance_jitted}"
 
 
-def test_get_pst_startup_cost() -> None:
+def test_get_pst_activated() -> None:
     """Test the PST startup cost metric."""
 
-    startup_cost = get_pst_startup_cost(optimized_taps=None, initial_tap_idx=None)
+    startup_cost = get_pst_activated(optimized_taps=None, initial_tap_idx=None)
     assert startup_cost == 0.0, "Startup cost should be 0 when PST optimization is disabled"
 
     optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[0, 1, 2, 3, 4]], dtype=int))
-    startup_cost = get_pst_startup_cost(optimized_taps=optimized_taps, initial_tap_idx=None)
+    startup_cost = get_pst_activated(optimized_taps=optimized_taps, initial_tap_idx=None)
     assert startup_cost == 0.0, "Startup cost should be 0 when initial tap indices are not provided"
 
     initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
     optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[2, 3, 4, 5, 6]], dtype=int))
-    startup_cost = get_pst_startup_cost(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    startup_cost = get_pst_activated(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
     assert startup_cost == 0.0, "Startup cost should be 0 when taps have not changed"
 
     optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[2, 4, 4, 6, 7]], dtype=int))
-    startup_cost = get_pst_startup_cost(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    startup_cost = get_pst_activated(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
     assert startup_cost == 3.0, f"Expected startup_cost 3.0, got {startup_cost}"
 
     optimized_taps = NodalInjOptimResults(
@@ -1049,20 +1049,20 @@ def test_get_pst_startup_cost() -> None:
         )
     )
     initial_tap_idx = jnp.array([2, 3, 4, 5], dtype=int)
-    startup_cost = get_pst_startup_cost(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    startup_cost = get_pst_activated(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
     assert startup_cost == 4.0, f"Expected startup_cost 4.0, got {startup_cost}"
 
     @jax.jit
     def jitted_startup_cost(optimized_taps, initial_tap_idx):
-        return get_pst_startup_cost(optimized_taps, initial_tap_idx)
+        return get_pst_activated(optimized_taps, initial_tap_idx)
 
     startup_cost_jitted = jitted_startup_cost(optimized_taps, initial_tap_idx)
-    startup_cost_normal = get_pst_startup_cost(optimized_taps, initial_tap_idx)
+    startup_cost_normal = get_pst_activated(optimized_taps, initial_tap_idx)
     assert jnp.allclose(startup_cost_jitted, startup_cost_normal), "JIT and non-JIT startup cost should produce same result"
 
 
-def test_aggregate_to_metric_pst_startup_cost() -> None:
-    """Test aggregate_to_metric routing for pst_startup_cost."""
+def test_aggregate_to_metric_pst_activated() -> None:
+    """Test aggregate_to_metric routing for pst_activated."""
     n_batch = 8
     n_timesteps = 5
     n_failures = 30
@@ -1109,7 +1109,7 @@ def test_aggregate_to_metric_pst_startup_cost() -> None:
         branch_limits=branch_limits,
         reassignment_distance=None,
         n_relevant_subs=0,
-        metric="pst_startup_cost",
+        metric="pst_activated",
         initial_pst_tap_idx=jnp.array([1, 1, 3], dtype=int),
     )
 

@@ -663,8 +663,8 @@ def test_pst_switching_distance_without_pst_optimization(static_information_file
     )
 
 
-def test_pst_startup_cost_metric_integration(static_information_file_complex: str) -> None:
-    """Test that pst_startup_cost metric works in the scoring function."""
+def test_pst_activated_metric_integration(static_information_file_complex: str) -> None:
+    """Test that pst_activated metric works in the scoring function."""
     static_information = load_static_information(static_information_file_complex)
 
     if (
@@ -730,14 +730,14 @@ def test_pst_startup_cost_metric_integration(static_information_file_complex: st
         observed_metrics=(
             "overload_energy_n_1",
             "switching_distance",
-            "pst_startup_cost",
+            "pst_activated",
         ),
         descriptor_metrics=("switching_distance",),
     )
 
-    assert "pst_startup_cost" in metrics_zero
-    assert metrics_zero["pst_startup_cost"].shape == (batch_size,)
-    assert jnp.all(metrics_zero["pst_startup_cost"] == 0.0)
+    assert "pst_activated" in metrics_zero
+    assert metrics_zero["pst_activated"].shape == (batch_size,)
+    assert jnp.all(metrics_zero["pst_activated"] == 0.0)
 
     pst_mutation_config = replace(
         no_pst_mutation_config,
@@ -761,20 +761,20 @@ def test_pst_startup_cost_metric_integration(static_information_file_complex: st
         target_metrics=(("overload_energy_n_1", 1.0),),
         observed_metrics=(
             "overload_energy_n_1",
-            "pst_startup_cost",
+            "pst_activated",
             "pst_switching_distance",
             "switching_distance",
         ),
         descriptor_metrics=("switching_distance",),
     )
 
-    assert jnp.all(jnp.isfinite(metrics["pst_startup_cost"]))
-    assert jnp.all(metrics["pst_startup_cost"] >= 0.0)
-    assert jnp.all(metrics["pst_startup_cost"] <= metrics["pst_switching_distance"])
+    assert jnp.all(jnp.isfinite(metrics["pst_activated"]))
+    assert jnp.all(metrics["pst_activated"] >= 0.0)
+    assert jnp.all(metrics["pst_activated"] <= metrics["pst_switching_distance"])
 
 
-def test_pst_startup_cost_in_target_metrics(static_information_file_complex: str) -> None:
-    """Test that pst_startup_cost contributes to fitness when targeted."""
+def test_pst_activated_in_target_metrics(static_information_file_complex: str) -> None:
+    """Test that pst_activated contributes to fitness when targeted."""
     static_information = load_static_information(static_information_file_complex)
 
     if (
@@ -829,8 +829,8 @@ def test_pst_startup_cost_in_target_metrics(static_information_file_complex: str
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_startup_cost", 0.1)),
-        observed_metrics=("overload_energy_n_1", "pst_startup_cost", "switching_distance"),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_activated", 0.1)),
+        observed_metrics=("overload_energy_n_1", "pst_activated", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
     fitness_high_weight, _, _, _, _, _ = scoring_function(
@@ -838,17 +838,17 @@ def test_pst_startup_cost_in_target_metrics(static_information_file_complex: str
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_startup_cost", 10.0)),
-        observed_metrics=("overload_energy_n_1", "pst_startup_cost", "switching_distance"),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_activated", 10.0)),
+        observed_metrics=("overload_energy_n_1", "pst_activated", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
 
-    assert jnp.all(metrics["pst_startup_cost"] >= 0.0)
+    assert jnp.all(metrics["pst_activated"] >= 0.0)
     assert jnp.less_equal(fitness_high_weight, fitness_low_weight).all()
 
 
-def test_pst_startup_cost_without_pst_optimization(static_information_file: str) -> None:
-    """Test that pst_startup_cost returns 0 when PST optimization is disabled."""
+def test_pst_activated_without_pst_optimization(static_information_file: str) -> None:
+    """Test that pst_activated returns 0 when PST optimization is disabled."""
     static_information = load_static_information(static_information_file)
 
     dynamic_info_no_pst = replace(
@@ -869,11 +869,11 @@ def test_pst_startup_cost_without_pst_optimization(static_information_file: str)
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_startup_cost", 1.0)),
-        observed_metrics=("overload_energy_n_1", "pst_startup_cost", "switching_distance"),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_activated", 1.0)),
+        observed_metrics=("overload_energy_n_1", "pst_activated", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
 
-    assert "pst_startup_cost" in metrics
-    assert jnp.all(metrics["pst_startup_cost"] == 0.0)
+    assert "pst_activated" in metrics
+    assert jnp.all(metrics["pst_activated"] == 0.0)
     assert jnp.all(jnp.isfinite(fitness))

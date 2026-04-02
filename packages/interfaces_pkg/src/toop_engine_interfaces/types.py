@@ -46,7 +46,7 @@ OperationMetric: TypeAlias = Literal[
     "disconnected_branches",
     "fitness",
     "pst_switching_distance",
-    "pst_startup_cost",
+    "pst_activated",
 ]
 
 OtherMetric: TypeAlias = Literal[

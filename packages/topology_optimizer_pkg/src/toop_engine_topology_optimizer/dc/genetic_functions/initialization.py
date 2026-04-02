@@ -630,7 +630,7 @@ def algo_setup(
         )
 
     pst_metrics_without_optimization = {
-        metric for metric, _ in ga_args.target_metrics if metric in {"pst_switching_distance", "pst_startup_cost"}
+        metric for metric, _ in ga_args.target_metrics if metric in {"pst_switching_distance", "pst_activated"}
     }
     if not ga_args.enable_nodal_inj_optim and pst_metrics_without_optimization:
         logger.warning(

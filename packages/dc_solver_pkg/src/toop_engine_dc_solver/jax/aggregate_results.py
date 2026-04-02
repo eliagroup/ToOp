@@ -599,7 +599,7 @@ def get_pst_switching_distance(
     return switching_distance
 
 
-def get_pst_startup_cost(
+def get_pst_activated(
     optimized_taps: Optional[NodalInjOptimResults],
     initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
 ) -> Float[Array, " "]:
@@ -711,7 +711,7 @@ def aggregate_to_metric_batched(
         The metric to use for aggregation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
         The initial tap positions for PSTs. Required for computing PST-based metrics.
-        If None, pst_switching_distance and pst_startup_cost will return 0.0
+        If None, pst_switching_distance and pst_activated will return 0.0
 
     Returns
     -------
@@ -815,7 +815,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
         e.g. if you want to ignore busbar outage failures in the overload energy calculation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
         The initial tap positions for PSTs. Required for computing PST-based metrics.
-        If None, pst_switching_distance and pst_startup_cost will return 0.0
+        If None, pst_switching_distance and pst_activated will return 0.0
 
     Returns
     -------
@@ -839,8 +839,8 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
                 optimized_taps=lf_res.nodal_injections_optimized,
                 initial_tap_idx=initial_pst_tap_idx,
             )
-        case "pst_startup_cost":
-            retval = get_pst_startup_cost(
+        case "pst_activated":
+            retval = get_pst_activated(
                 optimized_taps=lf_res.nodal_injections_optimized,
                 initial_tap_idx=initial_pst_tap_idx,
             )

@@ -625,6 +625,7 @@ def get_pst_activated(
     if optimized_taps is None or initial_tap_idx is None:
         return jnp.array(0.0)
 
+    # Shape: (n_timesteps, n_controllable_pst)
     optimized_tap_idx = optimized_taps.pst_tap_idx
     tap_changed = optimized_tap_idx != initial_tap_idx[None, :]
     return jnp.sum(tap_changed).astype(float)

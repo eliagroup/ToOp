@@ -42,7 +42,10 @@ dependencies = [
     "fsspec>=2024.0.0",
     "protobuf>=5,<8",
     "mypy-protobuf>=3.7.0",
-    "fonttools>=4.60.2"
+    "fonttools>=4.60.2",
+    "rich>=14.3.3",
+    "opentelemetry-distro>=0.61b0",
+    "opentelemetry-exporter-otlp>=1.40.0",
 ]
 
 [build-system]

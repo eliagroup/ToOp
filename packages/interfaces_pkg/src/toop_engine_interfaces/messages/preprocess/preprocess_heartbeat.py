@@ -12,9 +12,7 @@ from datetime import datetime
 
 from beartype.typing import Literal, Optional, TypeAlias
 from pydantic import BaseModel, Field
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
+from toop_engine_interfaces.logging import logger
 
 ConvertToJaxStage: TypeAlias = Literal[
     "convert_to_jax_started",

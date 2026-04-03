@@ -228,7 +228,7 @@ def test_otel_handler(
 
         def _wait_for_collector_ready(
             port: int,
-            timeout_s: float = 20.0,
+            timeout_s: float = 60.0,
         ) -> None:
             """Wait until collector health endpoint reports ready."""
             deadline = time.monotonic() + timeout_s

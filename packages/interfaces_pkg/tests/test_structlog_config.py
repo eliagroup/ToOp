@@ -287,12 +287,10 @@ def test_otel_handler(
         )
 
         # Poll the health endpoint until the collector is ready to receive logs
-        _wait_for_collector_ready(
-            port=host_health_port,
-        )
-
         try:
-            _wait_for_collector_ready(port=health_port)
+            _wait_for_collector_ready(
+                port=host_health_port,
+            )
         except Exception:
             container.reload()
             print("Collector status:", container.status)

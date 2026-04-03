@@ -136,6 +136,76 @@ def test_otel_handler(
         -  the log message as the body
     """
 
+    def _wait_for_collector_port(
+        container: docker.models.containers.Container,
+        container_port: str,
+        timeout_s: float = 20.0,
+    ) -> int:
+        """Wait until the collector exposes a given container port and return host port."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            container.reload()
+            port_binding = container.attrs.get("NetworkSettings", {}).get("Ports", {}).get(container_port)
+            if port_binding and port_binding[0].get("HostPort"):
+                return int(port_binding[0]["HostPort"])
+            time.sleep(0.2)
+        raise TimeoutError(f"OTEL collector did not expose port {container_port} in time")
+
+    def _wait_for_collector_ready(
+        port: int,
+        timeout_s: float = 60.0,
+    ) -> None:
+        """Wait until collector health endpoint reports ready."""
+        deadline = time.monotonic() + timeout_s
+        url = f"http://127.0.0.1:{port}/"
+        while time.monotonic() < deadline:
+            try:
+                with urlopen(url, timeout=1) as response:  # noqa: S310
+                    if response.status == 200:
+                        return
+            except (URLError, OSError):
+                # Collector can transiently reset/close sockets while booting.
+                pass
+            time.sleep(0.2)
+        raise TimeoutError("OTEL collector health endpoint did not become ready in time")
+
+    def _get_otel_log(
+        log_file: Path,
+        marker: str,
+        timeout_s: float = 60.0,
+    ) -> dict:
+        """Wait until the collector output file contains a specific marker string."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if log_file.exists():
+                content = log_file.read_text(encoding="utf-8")
+                if marker in content:
+                    return json.loads(content)
+            time.sleep(0.2)
+        raise TimeoutError(f"Collector output did not contain marker: {marker}")
+
+    def _get_otel_scoped_log(
+        scope_logs: list[dict],
+        scope: str,
+    ) -> dict:
+        for log in scope_logs:
+            if log["scope"]["name"] == scope:
+                return log
+        raise ValueError(f"No log found for scope: {scope}")
+
+    def _assert_otel_attribute_value(
+        attributes: list[dict],
+        key: str,
+        value: str,
+    ) -> None:
+        for attr in attributes:
+            if attr["key"] == key:
+                assert attr["value"]["stringValue"] == value, (
+                    f"Expected value '{value}' for attribute '{key}', but found '{attr['value']['stringValue']}'"
+                )
+                return
+        raise ValueError(f"Attribute with key '{key}' not found")
+
     container_name = "test_otel_collector"
 
     docker_client = docker.from_env()
@@ -150,20 +220,24 @@ def test_otel_handler(
     collector_config = tmp_path / "otel-collector.yaml"
     collector_output = tmp_path / "collector-logs.json"
 
+    health_port = 13133
+    otlp_port = 4318
+
     collector_config.write_text(
         textwrap.dedent(
-            """
+            f"""
                         receivers:
                             otlp:
                                 protocols:
                                     http:
-                                        endpoint: 0.0.0.0:4318
+                                        endpoint: 0.0.0.0:{otlp_port}
 
                         extensions:
-                            health_check: {}
+                            health_check:
+                                endpoint: 0.0.0.0:{health_port}
 
                         processors:
-                            batch: {}
+                            batch: {{}}
 
                         exporters:
                             file:
@@ -185,7 +259,7 @@ def test_otel_handler(
     try:
         # Start OTEL collector in a docker container with the config and wait until it's ready to receive logs
         container = docker_client.containers.run(
-            image="otel/opentelemetry-collector-contrib:0.103.1",
+            image="otel/opentelemetry-collector-contrib:0.149.0",
             command=["--config=/etc/otelcol/config.yaml"],
             name=container_name,
             detach=True,
@@ -202,51 +276,19 @@ def test_otel_handler(
             },
         )
 
-        def _wait_for_collector_port(
-            container: docker.models.containers.Container,
-            container_port: str,
-            timeout_s: float = 20.0,
-        ) -> int:
-            """Wait until the collector exposes a given container port and return host port."""
-            deadline = time.monotonic() + timeout_s
-            while time.monotonic() < deadline:
-                container.reload()
-                port_binding = container.attrs.get("NetworkSettings", {}).get("Ports", {}).get(container_port)
-                if port_binding and port_binding[0].get("HostPort"):
-                    return int(port_binding[0]["HostPort"])
-                time.sleep(0.2)
-            raise TimeoutError(f"OTEL collector did not expose port {container_port} in time")
-
         # Wait for the collector to expose the ports and get the host ports mapped to the container ports
-        host_port, health_port = (
+
+        host_otlp_port, host_health_port = (
             _wait_for_collector_port(
                 container=container,
                 container_port=port,
             )
-            for port in ("4318/tcp", "13133/tcp")
+            for port in (f"{otlp_port}/tcp", f"{health_port}/tcp")
         )
-
-        def _wait_for_collector_ready(
-            port: int,
-            timeout_s: float = 60.0,
-        ) -> None:
-            """Wait until collector health endpoint reports ready."""
-            deadline = time.monotonic() + timeout_s
-            url = f"http://127.0.0.1:{port}/"
-            while time.monotonic() < deadline:
-                try:
-                    with urlopen(url, timeout=1) as response:  # noqa: S310
-                        if response.status == 200:
-                            return
-                except (URLError, OSError):
-                    # Collector can transiently reset/close sockets while booting.
-                    pass
-                time.sleep(0.2)
-            raise TimeoutError("OTEL collector health endpoint did not become ready in time")
 
         # Poll the health endpoint until the collector is ready to receive logs
         _wait_for_collector_ready(
-            port=health_port,
+            port=host_health_port,
         )
 
         # Configure environment variables for OTEL auto-instrumentation to send logs to our collector
@@ -257,7 +299,7 @@ def test_otel_handler(
             "OTEL_LOGS_EXPORTER": "otlp",
             "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED": "true",
             "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
-            "OTEL_EXPORTER_OTLP_ENDPOINT": f"http://127.0.0.1:{host_port}",
+            "OTEL_EXPORTER_OTLP_ENDPOINT": f"http://127.0.0.1:{host_otlp_port}",
         }.items():
             monkeypatch.setenv(
                 name=key,
@@ -290,21 +332,6 @@ def test_otel_handler(
                 **extra_vars,
             )
 
-        def _get_otel_log(
-            log_file: Path,
-            marker: str,
-            timeout_s: float = 60.0,
-        ) -> dict:
-            """Wait until the collector output file contains a specific marker string."""
-            deadline = time.monotonic() + timeout_s
-            while time.monotonic() < deadline:
-                if log_file.exists():
-                    content = log_file.read_text(encoding="utf-8")
-                    if marker in content:
-                        return json.loads(content)
-                time.sleep(0.2)
-            raise TimeoutError(f"Collector output did not contain marker: {marker}")
-
         # Wait for the collector to export the logs and read the output
         otel_log = _get_otel_log(
             log_file=collector_output,
@@ -321,16 +348,7 @@ def test_otel_handler(
         assert logger_name in (log["scope"]["name"] for log in resource_log["scopeLogs"])
 
         # Get scoped log
-        def _get_scoped_log(
-            scope_logs: list[dict],
-            scope: str,
-        ) -> dict:
-            for log in scope_logs:
-                if log["scope"]["name"] == scope:
-                    return log
-            raise ValueError(f"No log found for scope: {scope}")
-
-        scoped_log = _get_scoped_log(
+        scoped_log = _get_otel_scoped_log(
             scope_logs=resource_log["scopeLogs"],
             scope=logger_name,
         )
@@ -353,21 +371,9 @@ def test_otel_handler(
             assert key in attribute_keys, f"Expected attribute '{key}' not found in log record attributes"
 
         # Validate attribute values
-        def _assert_attribute_value(
-            attributes: list[dict],
-            key: str,
-            value: str,
-        ) -> None:
-            for attr in attributes:
-                if attr["key"] == key:
-                    assert attr["value"]["stringValue"] == value, (
-                        f"Expected value '{value}' for attribute '{key}', but found '{attr['value']['stringValue']}'"
-                    )
-                    return
-            raise ValueError(f"Attribute with key '{key}' not found")
 
         for key, value in expected_attributes.items():
-            _assert_attribute_value(
+            _assert_otel_attribute_value(
                 attributes=log["attributes"],
                 key=key,
                 value=value,

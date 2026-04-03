@@ -220,6 +220,12 @@ def test_otel_handler(
     collector_config = tmp_path / "otel-collector.yaml"
     collector_output = tmp_path / "collector-logs.json"
 
+    # The collector container runs as non-root on CI; make bind-mounted paths writable.
+    tmp_path.chmod(0o777)
+    collector_output.touch(exist_ok=True)
+    collector_output.chmod(0o666)
+
+    # Declare ports
     health_port = 13133
     otlp_port = 4318
 
@@ -277,7 +283,6 @@ def test_otel_handler(
         )
 
         # Wait for the collector to expose the ports and get the host ports mapped to the container ports
-
         host_otlp_port, host_health_port = (
             _wait_for_collector_port(
                 container=container,
@@ -287,16 +292,9 @@ def test_otel_handler(
         )
 
         # Poll the health endpoint until the collector is ready to receive logs
-        try:
-            _wait_for_collector_ready(
-                port=host_health_port,
-            )
-        except Exception:
-            container.reload()
-            print("Collector status:", container.status)
-            print("Collector attrs state:", container.attrs.get("State"))
-            print("Collector logs:\n", container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace"))
-            raise
+        _wait_for_collector_ready(
+            port=host_health_port,
+        )
 
         # Configure environment variables for OTEL auto-instrumentation to send logs to our collector
         for key, value in {

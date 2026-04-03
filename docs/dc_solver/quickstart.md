@@ -153,6 +153,7 @@ The possible aggregation metrics can be found [`here`][toop_engine_interfaces.ty
 | "switching_distance"                      | The amount of switching actions have to take place from the original to the proposed topology                                                                              |
 | "split_subs"                              | The amount of busbar couplers were opened                                                                                                                                  |
 | "pst_switching_distance"                  | Squared distance from initial PST tap indices to optimized PST tap indices (summed over PSTs and timesteps)                                                                |
+| "pst_activated"                        | Number of PST tap indices that changed compared to the initial taps (implicit unit cost, weighted through `target_metrics`)                                                |
 
 #### Branch Weights
 

@@ -30,6 +30,7 @@ from toop_engine_dc_solver.export.dgs_v7_definitions import (
     DgsElmCoupSchema,
     DgsGeneralSchema,
 )
+from toop_engine_dc_solver.logger import logger
 from toop_engine_interfaces.asset_topology import (
     BusbarCoupler,
     PowsyblSwitchValues,
@@ -37,9 +38,6 @@ from toop_engine_interfaces.asset_topology import (
     Topology,
 )
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 class SwitchUpdateSchema(pa.DataFrameModel):

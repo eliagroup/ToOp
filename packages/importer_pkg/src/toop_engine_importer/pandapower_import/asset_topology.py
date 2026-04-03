@@ -25,6 +25,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_coupler_from_df,
     get_list_of_switchable_assets_from_df,
 )
+from toop_engine_importer.logger import logger
 from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker import (
     get_all_switches_from_bus_ids,
     get_closed_switch,
@@ -35,9 +36,6 @@ from toop_engine_interfaces.asset_topology import (
     Station,
     Topology,
 )
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 def get_busses_from_station(

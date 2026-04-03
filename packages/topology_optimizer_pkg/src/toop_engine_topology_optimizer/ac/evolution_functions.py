@@ -27,7 +27,6 @@ from sqlalchemy import exists
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, select
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.select_strategy import select_strategy
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
@@ -36,8 +35,7 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import (
     hash_topologies,
     is_unsplit_topologies,
 )
-
-logger = get_logger(__name__)
+from toop_engine_topology_optimizer.logger import logger
 
 
 def select_repertoire(

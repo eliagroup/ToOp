@@ -17,6 +17,7 @@ import pypowsybl as pp
 from beartype.typing import Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
+from toop_engine_dc_solver.logger import logger
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     BranchModel,
     get_lines,
@@ -34,9 +35,6 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 INJECTION_COLUMNS = ["name", "p", "bus_id_int", "for_nminus1", "type"]
 

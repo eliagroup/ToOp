@@ -24,13 +24,11 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
 )
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, get_contingency_indices_from_ids
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, TopologyRejectionReason
-
-logger = get_logger(__name__)
+from toop_engine_topology_optimizer.logger import logger
 
 
 def get_early_stopping_contingency_ids(

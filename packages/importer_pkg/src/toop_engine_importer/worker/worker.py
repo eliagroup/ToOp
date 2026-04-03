@@ -17,14 +17,14 @@ from functools import partial
 from uuid import uuid4
 
 import jax
+import structlog
 from beartype.typing import Callable, Optional
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
+from toop_engine_importer.logger import logger
 from toop_engine_importer.worker.preprocessor import import_grid_model, preprocess
-from toop_engine_interfaces.logging import bind_context, clear_context
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     Command,
     ShutdownCommand,
@@ -44,8 +44,6 @@ from toop_engine_interfaces.messages.protobuf_message_factory import (
     deserialize_message,
     serialize_message,
 )
-
-logger = get_logger(__name__)
 
 
 class Args(BaseModel):
@@ -208,71 +206,73 @@ def main(
             send_heartbeat_fn=heartbeat_idle,
             heartbeat_interval_ms=args.heartbeat_interval_ms,
         )
-        bind_context(preprocess_id=command.preprocess_id)
-        consumer.start_processing()
 
-        start_time = time.time()
-        heartbeat_fn = partial(
-            heartbeat_working,
+        with structlog.contextvars.bound_contextvars(
             preprocess_id=command.preprocess_id,
-            start_time=start_time,
-        )
-        producer.produce(
-            args.importer_results_topic,
-            value=serialize_message(
-                Result(
-                    preprocess_id=command.preprocess_id,
-                    runtime=0,
-                    result=PreprocessingStartedResult(),
-                ).model_dump_json()
-            ),
-            key=command.preprocess_id.encode(),
-        )
-        producer.flush()
-        heartbeat_fn("start", "Preprocessing run started")
+        ):
+            consumer.start_processing()
 
-        try:
-            importer_results = import_grid_model(
-                start_command=command,
-                status_update_fn=heartbeat_fn,
-                unprocessed_gridfile_fs=unprocessed_gridfile_fs,
-                processed_gridfile_fs=processed_gridfile_fs,
+            start_time = time.time()
+            heartbeat_fn = partial(
+                heartbeat_working,
+                preprocess_id=command.preprocess_id,
+                start_time=start_time,
             )
-
-            result = preprocess(
-                start_command=command,
-                import_results=importer_results,
-                status_update_fn=heartbeat_fn,
-                loadflow_result_fs=loadflow_result_fs,
-                processed_gridfile_fs=processed_gridfile_fs,
-            )
-
-            heartbeat_fn("end", "Preprocessing run done")
-
             producer.produce(
-                topic=args.importer_results_topic,
+                args.importer_results_topic,
                 value=serialize_message(
                     Result(
                         preprocess_id=command.preprocess_id,
-                        runtime=time.time() - start_time,
-                        result=result,
+                        runtime=0,
+                        result=PreprocessingStartedResult(),
                     ).model_dump_json()
                 ),
                 key=command.preprocess_id.encode(),
             )
-        except Exception as e:
-            logger.error(f"Error while processing {command.preprocess_id}", exc_info=e)
-            producer.produce(
-                topic=args.importer_results_topic,
-                value=serialize_message(
-                    Result(
-                        preprocess_id=command.preprocess_id,
-                        runtime=time.time() - start_time,
-                        result=ErrorResult(error=str(e)),
-                    ).model_dump_json()
-                ),
-                key=command.preprocess_id.encode(),
-            )
-        producer.flush()
-        consumer.stop_processing()
-        clear_context()
+            producer.flush()
+            heartbeat_fn("start", "Preprocessing run started")
+
+            try:
+                importer_results = import_grid_model(
+                    start_command=command,
+                    status_update_fn=heartbeat_fn,
+                    unprocessed_gridfile_fs=unprocessed_gridfile_fs,
+                    processed_gridfile_fs=processed_gridfile_fs,
+                )
+
+                result = preprocess(
+                    start_command=command,
+                    import_results=importer_results,
+                    status_update_fn=heartbeat_fn,
+                    loadflow_result_fs=loadflow_result_fs,
+                    processed_gridfile_fs=processed_gridfile_fs,
+                )
+
+                heartbeat_fn("end", "Preprocessing run done")
+
+                producer.produce(
+                    topic=args.importer_results_topic,
+                    value=serialize_message(
+                        Result(
+                            preprocess_id=command.preprocess_id,
+                            runtime=time.time() - start_time,
+                            result=result,
+                        ).model_dump_json()
+                    ),
+                    key=command.preprocess_id.encode(),
+                )
+            except Exception as e:
+                logger.error(f"Error while processing {command.preprocess_id}", exc_info=e)
+                producer.produce(
+                    topic=args.importer_results_topic,
+                    value=serialize_message(
+                        Result(
+                            preprocess_id=command.preprocess_id,
+                            runtime=time.time() - start_time,
+                            result=ErrorResult(error=str(e)),
+                        ).model_dump_json()
+                    ),
+                    key=command.preprocess_id.encode(),
+                )
+            producer.flush()
+            consumer.stop_processing()

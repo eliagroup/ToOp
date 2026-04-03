@@ -13,6 +13,7 @@ import pandas as pd
 import pandera.typing as pat
 from beartype.typing import Literal, Optional, Union
 from jaxtyping import ArrayLike, Bool
+from toop_engine_importer.logger import logger
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     BusbarConnectionInfo,
@@ -25,9 +26,6 @@ from toop_engine_importer.network_graph.data_classes import (
 from toop_engine_interfaces.asset_topology import (
     AssetBay,
 )
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd.DataFrame:

@@ -27,10 +27,8 @@ from toop_engine_dc_solver.jax.topology_looper import (
     run_solver_symmetric,
 )
 from toop_engine_dc_solver.jax.types import StaticInformation
+from toop_engine_dc_solver.logger import logger
 from toop_engine_dc_solver.preprocess.convert_to_jax import extract_static_information_stats
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 def load_static_information_from_dict(config: dict) -> StaticInformation:

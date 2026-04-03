@@ -23,9 +23,7 @@ the ability to consume multiple topics.
 
 from beartype.typing import Optional
 from confluent_kafka import Consumer, Message, TopicPartition
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
+from toop_engine_contingency_analysis.logger import logger
 
 
 class LongRunningKafkaConsumer:
@@ -72,7 +70,7 @@ class LongRunningKafkaConsumer:
             consumer_config.update(kafka_auth_config)
         self.consumer = Consumer(
             consumer_config,
-            logger=get_logger(f"consumer_{client_id}"),
+            logger=logger.bind(consumer=client_id),
         )
         self.client_id = client_id
         self.assignment: list[TopicPartition] = []

@@ -8,8 +8,6 @@
 """Configuration for structured logging including OTEL compatibility.
 
 The logging level is set to INFO by default, but can be configured.
-
-Includes a singleton logger instance for the Interfaces package, which can be imported and used directly.
 """
 
 import logging
@@ -154,7 +152,7 @@ def _build_common_processors(
 # --- configuration ---
 
 
-def configure_structure_logging(
+def configure_structured_logging(
     log_level: int = logging.INFO,
     custom_processors: list[structlog.types.Processor] | None = None,
     show_locals_in_stacktrace: bool = False,
@@ -264,7 +262,3 @@ def configure_structure_logging(
     handler.setFormatter(stream_formatter)
     root_logger.addHandler(handler)
     root_logger.setLevel(log_level)
-
-
-# Singleton logger instance for Interfaces package.
-logger = structlog.get_logger("toop_engine_interfaces")

@@ -5,13 +5,9 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Testing fixtures."""
+"""A singleton logger instance for the Topology Optimizer package."""
 
-import pytest
 import structlog
 
-
-@pytest.fixture(autouse=True)
-def reset_structlog() -> None:
-    """Reset structlog between tests."""
-    structlog.reset_defaults()
+# Singleton logger instance for Topology Optimizer package.
+logger = structlog.get_logger("toop_engine_topology_optimizer")

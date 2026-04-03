@@ -59,7 +59,6 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
@@ -81,15 +80,13 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     BatchedMEParameters,
     LoadflowSolverParameters,
 )
+from toop_engine_topology_optimizer.logger import logger
 from tqdm import tqdm
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 # JAX configuration
 jax.config.update("jax_enable_x64", True)
-
-# Logging setup
-logger = get_logger(__name__)
 
 
 @dataclass

@@ -24,9 +24,7 @@ from toop_engine_importer.contingency_from_power_factory.power_factory_data_clas
     ContingencyImportSchemaPowerFactory,
     ContingencyMatchSchema,
 )
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
+from toop_engine_importer.logger import logger
 
 
 def get_contingencies_from_file(

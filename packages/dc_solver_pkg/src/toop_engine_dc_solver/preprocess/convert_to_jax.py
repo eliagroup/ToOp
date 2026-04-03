@@ -53,6 +53,7 @@ from toop_engine_dc_solver.jax.types import (
     int_max,
 )
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
+from toop_engine_dc_solver.logger import logger
 from toop_engine_dc_solver.postprocess.write_aux_data import write_aux_data_fs
 from toop_engine_dc_solver.preprocess.action_set import (
     pad_out_action_set,
@@ -64,15 +65,12 @@ from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,
     empty_status_update_fn,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
-
-logger = get_logger(__name__)
 
 
 def convert_relevant_injections(

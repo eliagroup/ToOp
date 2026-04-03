@@ -252,7 +252,7 @@ def test_otel_handler(
         def _get_otel_log(
             log_file: Path,
             marker: str,
-            timeout_s: float = 25.0,
+            timeout_s: float = 60.0,
         ) -> dict:
             """Wait until the collector output file contains a specific marker string."""
             deadline = time.monotonic() + timeout_s

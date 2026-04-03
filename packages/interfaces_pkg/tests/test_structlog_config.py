@@ -291,6 +291,15 @@ def test_otel_handler(
             port=host_health_port,
         )
 
+        try:
+            _wait_for_collector_ready(port=health_port)
+        except Exception:
+            container.reload()
+            print("Collector status:", container.status)
+            print("Collector attrs state:", container.attrs.get("State"))
+            print("Collector logs:\n", container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace"))
+            raise
+
         # Configure environment variables for OTEL auto-instrumentation to send logs to our collector
         for key, value in {
             "OTEL_SERVICE_NAME": "interfaces-otel-e2e",

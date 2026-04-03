@@ -12,6 +12,8 @@ import logging
 import textwrap
 import time
 from pathlib import Path
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import docker
 import pytest
@@ -151,26 +153,30 @@ def test_otel_handler(
     collector_config.write_text(
         textwrap.dedent(
             """
-            receivers:
-              otlp:
-                protocols:
-                  http:
-                    endpoint: 0.0.0.0:4318
+                        receivers:
+                            otlp:
+                                protocols:
+                                    http:
+                                        endpoint: 0.0.0.0:4318
 
-            processors:
-              batch: {}
+                        extensions:
+                            health_check: {}
 
-            exporters:
-              file:
-                path: /tmp/otel/collector-logs.json
+                        processors:
+                            batch: {}
 
-            service:
-              pipelines:
-                logs:
-                  receivers: [otlp]
-                  processors: [batch]
-                  exporters: [file]
-            """
+                        exporters:
+                            file:
+                                path: /tmp/otel/collector-logs.json
+
+                        service:
+                            extensions: [health_check]
+                            pipelines:
+                                logs:
+                                    receivers: [otlp]
+                                    processors: [batch]
+                                    exporters: [file]
+                    """
         ).strip()
         + "\n",
         encoding="utf-8",
@@ -183,7 +189,10 @@ def test_otel_handler(
             command=["--config=/etc/otelcol/config.yaml"],
             name=container_name,
             detach=True,
-            ports={"4318/tcp": None},  # Map to random host port, we will discover it later
+            ports={
+                "4318/tcp": None,  # Map to random host port, we will discover it later
+                "13133/tcp": None,  # health check endpoint
+            },
             volumes={
                 str(collector_config): {
                     "bind": "/etc/otelcol/config.yaml",
@@ -194,26 +203,58 @@ def test_otel_handler(
         )
 
         def _wait_for_collector_port(
-            container,
+            container: docker.models.containers.Container,
+            container_port: str,
             timeout_s: float = 20.0,
         ) -> int:
-            """Wait until the collector exposes port 4318 and return host port."""
+            """Wait until the collector exposes a given container port and return host port."""
             deadline = time.monotonic() + timeout_s
             while time.monotonic() < deadline:
                 container.reload()
-                port_binding = container.attrs.get("NetworkSettings", {}).get("Ports", {}).get("4318/tcp")
+                port_binding = container.attrs.get("NetworkSettings", {}).get("Ports", {}).get(container_port)
                 if port_binding and port_binding[0].get("HostPort"):
                     return int(port_binding[0]["HostPort"])
                 time.sleep(0.2)
-            raise TimeoutError("OTEL collector did not expose port 4318 in time")
+            raise TimeoutError(f"OTEL collector did not expose port {container_port} in time")
 
-        host_port = _wait_for_collector_port(container)
+        # Wait for the collector to expose the ports and get the host ports mapped to the container ports
+        host_port, health_port = (
+            _wait_for_collector_port(
+                container=container,
+                container_port=port,
+            )
+            for port in ("4318/tcp", "13133/tcp")
+        )
 
+        def _wait_for_collector_ready(
+            port: int,
+            timeout_s: float = 20.0,
+        ) -> None:
+            """Wait until collector health endpoint reports ready."""
+            deadline = time.monotonic() + timeout_s
+            url = f"http://127.0.0.1:{port}/"
+            while time.monotonic() < deadline:
+                try:
+                    with urlopen(url, timeout=1) as response:  # noqa: S310
+                        if response.status == 200:
+                            return
+                except (URLError, OSError):
+                    # Collector can transiently reset/close sockets while booting.
+                    pass
+                time.sleep(0.2)
+            raise TimeoutError("OTEL collector health endpoint did not become ready in time")
+
+        # Poll the health endpoint until the collector is ready to receive logs
+        _wait_for_collector_ready(
+            port=health_port,
+        )
+
+        # Configure environment variables for OTEL auto-instrumentation to send logs to our collector
         for key, value in {
             "OTEL_SERVICE_NAME": "interfaces-otel-e2e",
             "OTEL_TRACES_EXPORTER": "none",
             "OTEL_METRICS_EXPORTER": "none",
-            "OTEL_LOG_EXPORTER": "otlp",
+            "OTEL_LOGS_EXPORTER": "otlp",
             "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED": "true",
             "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
             "OTEL_EXPORTER_OTLP_ENDPOINT": f"http://127.0.0.1:{host_port}",
@@ -332,7 +373,8 @@ def test_otel_handler(
                 value=value,
             )
     finally:
-        container.remove(
-            v=True,
-            force=True,
-        )
+        if container is not None:
+            container.remove(
+                v=True,
+                force=True,
+            )

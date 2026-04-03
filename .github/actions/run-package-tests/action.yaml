@@ -31,7 +31,6 @@ runs:
       run: |
         uv run pytest -n ${{ inputs.workers }} packages/${{ inputs.package }}/tests \
           --dist loadgroup \
-          -s \
           --cov=packages/${{ inputs.package }}/src \
           --cov-config=.coveragerc \
           --cov-report term-missing \

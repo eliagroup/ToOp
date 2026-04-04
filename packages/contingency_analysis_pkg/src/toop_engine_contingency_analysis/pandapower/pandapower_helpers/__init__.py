@@ -19,6 +19,7 @@ from .results import (
     get_failed_va_diff_results,
     get_node_result_df,
     get_regulating_element_results,
+    get_switch_results,
     get_va_diff_results,
 )
 from .schemas import (

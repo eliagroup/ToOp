@@ -172,6 +172,7 @@ def concatenate_loadflow_results(
     regulating_element_results = pd.concat([res.regulating_element_results for res in loadflow_results_list], axis=0)
     converged = pd.concat([res.converged for res in loadflow_results_list], axis=0)
     va_diff_results = pd.concat([res.va_diff_results for res in loadflow_results_list], axis=0)
+    switch_results = pd.concat([res.switch_results for res in loadflow_results_list], axis=0)
     warnings = [warning for lf_results in loadflow_results_list for warning in lf_results.warnings]
     additional_information = [
         additional_information
@@ -185,6 +186,7 @@ def concatenate_loadflow_results(
         regulating_element_results=regulating_element_results,
         converged=converged,
         va_diff_results=va_diff_results,
+        switch_results=switch_results,
         warnings=warnings,
         additional_information=additional_information,
     )

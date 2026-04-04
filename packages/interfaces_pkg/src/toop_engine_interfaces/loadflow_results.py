@@ -282,6 +282,99 @@ class VADiffResultSchema(pa.DataFrameModel):
     """
 
 
+class SwitchResultsSchema(pa.DataFrameModel):
+    """A schema for the voltage angle results.
+
+    Holds information about the voltage angle difference between busses that could be (re)connected by power switches.
+    """
+
+    timestep: Index[int]
+    """The timestep of this result. This indexes into the timesteps that were loaded"""
+
+    contingency: Index[str]
+    """The critical contingency that caused this loadflow. For N-0 results, the special CO 'BASECASE' is used."""
+
+    element: Index[str]
+    """The element over which the voltage angle difference is computed. Can be either an open switch or any switch or branch
+    under N-1. If under N-1, then element and contingency are the same."""
+
+    p: Series[float] = pa.Field(nullable=True)
+    """The accumulated absolute active power at the node in MW, obtained by summing the absolute active power of all branches
+    and injections connected to the node.
+
+    If the engine does not support the computation of this value, the column can be omitted.
+    """
+
+    q: Series[float] = pa.Field(nullable=True)
+    """The accumulated absolute reactive power at the node in MVar, obtained by summing the absolute reactive power of all
+    branches and injections connected to the node
+
+    If the engine does not support the computation of this value, the column can be omitted.
+    """
+
+    vm: Series[float] = pa.Field(nullable=True)
+    """The voltage magnitude at the node in kV.
+
+    In DC, this should be the nominal voltage of the node.
+    This should only be NaN if the node does not have a connection to the slack bus.
+    """
+
+    i: Series[float] = pa.Field(nullable=True)
+    """The current in the branch in A
+
+    This should only be NaN if the branch has no connection to the slack bus.
+    """
+
+    element_name: Series[str] = pa.Field(default="")
+    """The name of the Branch or Switch, if available. This is not used for the loadflow computation,
+    but can be used for display purposes. If no name is available, this should be set to an empty string.
+    """
+    contingency_name: Series[str] = pa.Field(default="")
+    """The name of the contingency, if available. This is not used for the loadflow computation,
+    but can be used for display purposes. If no name is available, this should be set to an empty string.
+    """
+
+
+class SwitchElementMappingSchema(pa.DataFrameModel):
+    """Schema for mapping switches to connected elements.
+
+    This table defines which elements are electrically connected to each switch.
+    It is used to aggregate branch flows and node injections when computing
+    switch-level results.
+
+    The mapping includes both:
+    - branch-like elements (lines, trafos, impedances, etc.)
+    - buses
+
+    If no switches are mapped, this is an empty DataFrame.
+    """
+
+    switch_id: Series[int] = pa.Field(nullable=False)
+    """The pandapower index of the switch.
+
+    This identifies the switch for which connected elements are collected and
+    used in result aggregation.
+    """
+
+    element: Series[str] = pa.Field(nullable=False)
+    """The globally unique identifier of the connected element.
+
+    This can represent either:
+    - a branch-like element (e.g. "12__line", "5__trafo")
+    - a bus (e.g. "3__bus")
+    """
+
+    side: Series[float] = pa.Field(nullable=True)
+    """The side of the branch element.
+
+    - For branch-like elements:
+        Indicates the terminal of the element connected to the bus
+        (e.g. BranchSide.ONE, BranchSide.TWO, BranchSide.THREE).
+    - For bus entries:
+        This value is NaN, since buses do not have sides.
+    """
+
+
 class RegulatingElementResultSchema(pa.DataFrameModel):
     """A schema for the regulating elements.
 
@@ -382,6 +475,8 @@ class LoadflowResults(BaseModel):
     """The voltage angle difference results for each timestep and contingency.
     Considers the ends of the outaged branch, aswell as all open switches in monitored elements.
     """
+
+    switch_results: DataFrame[SwitchResultsSchema] = None
 
     connectivity_result: DataFrame[ConnectivityResultSchema] = None
     """Connectivity mapping between contingencies and affected grid elements.

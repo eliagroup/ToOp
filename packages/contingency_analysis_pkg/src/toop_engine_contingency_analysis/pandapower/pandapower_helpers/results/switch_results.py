@@ -286,7 +286,7 @@ def _get_elements_for_buses(
 
 
 def _get_switch_mapped_elements_by_origin_ids(
-    net: pp.pandapowerNet, switches_origin_ids: list[str], side: Literal["bus", "element"]
+    net: pp.pandapowerNet, switches_ids: list[int], side: Literal["bus", "element"]
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Compute switch-to-element mappings for given switch origin IDs.
 
@@ -301,9 +301,9 @@ def _get_switch_mapped_elements_by_origin_ids(
     ----------
     net : pp.pandapowerNet
         Pandapower network containing switches, buses, and branch elements.
-    switches_origin_ids : list[str]
-        List of switch origin IDs identifying which switches to process.
-        Only switches with matching ``origin_id`` and ``closed == True`` are used.
+    switches_ids : list[int]
+        List of switch IDs identifying which switches to process.
+        Only switches with matching ``id`` and ``closed == True`` are used.
     side : Literal["bus", "element"]
         Defines from which side of each switch the topology traversal starts:
 
@@ -332,7 +332,10 @@ def _get_switch_mapped_elements_by_origin_ids(
     buses_map: list[tuple[int, str]] = []
     graph = create_closed_bb_switches_graph(net)
 
-    switches = net.switch.loc[net.switch.origin_id.isin(set(switches_origin_ids)) & net.switch.closed]
+    switch_mask = net.switch.index.isin(switches_ids)
+    closed_mask = net.switch.closed
+
+    switches = net.switch.loc[switch_mask & closed_mask]
     if switches.empty:
         return (
             pd.DataFrame(columns=["switch_id", "element", "side"]),
@@ -509,10 +512,9 @@ def get_switch_mapped_elements(
         - a branch-like element with a defined ``side``
         - a bus (with ``side = NaN``)
     """
-    monitored_switches = monitored_elements.query("kind == 'switch'")["table_id"]
-    switches_origin_ids = net.switch.loc[net.switch.index.isin(monitored_switches), "origin_id"].tolist()
+    monitored_switches = monitored_elements.query("kind == 'switch'")["table_id"].to_list()
 
-    branch_map_df, bus_map_df = _get_switch_mapped_elements_by_origin_ids(net, switches_origin_ids, side)
+    branch_map_df, bus_map_df = _get_switch_mapped_elements_by_origin_ids(net, monitored_switches, side)
 
     result_df = pd.concat([branch_map_df, bus_map_df], ignore_index=True)
 

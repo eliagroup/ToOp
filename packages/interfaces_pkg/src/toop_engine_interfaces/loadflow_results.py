@@ -477,6 +477,18 @@ class LoadflowResults(BaseModel):
     """
 
     switch_results: DataFrame[SwitchResultsSchema] = None
+    """The results for the switches.
+
+    Contains aggregated power flow and injection results per switch for each
+    timestep and contingency.
+
+    Switch results are computed by aggregating contributions from all elements
+    (branches and buses) electrically connected to one side of the switch.
+    This represents the power flowing through the switch.
+
+    If no switches are monitored, this is the empty DataFrame.
+    For non-converging contingencies/timesteps, result values are present but set to NaN.
+    """
 
     connectivity_result: DataFrame[ConnectivityResultSchema] = None
     """Connectivity mapping between contingencies and affected grid elements.

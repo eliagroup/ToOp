@@ -432,9 +432,23 @@ def _compute_switch_flow_and_injection_results(
         - ``s``: apparent power
         - ``i``: current
     """
-    merged = branch_results.merge(switch_element_mapping, on=["element", "side"], how="inner")
-    switch_flow = merged.groupby(["switch_id"], as_index=False).sum()
-    switch_flow = switch_flow[["switch_id", "p", "q"]]
+    # Branch contribution
+    if branch_results.empty:
+        switch_flow = pd.DataFrame(
+            {
+                "switch_id": pd.Series(dtype="int64"),
+                "p": pd.Series(dtype="float64"),
+                "q": pd.Series(dtype="float64"),
+            }
+        )
+    else:
+        merged = branch_results.merge(
+            switch_element_mapping,
+            on=["element", "side"],
+            how="inner",
+        )
+        switch_flow = merged.groupby("switch_id", as_index=False)[["p", "q"]].sum()
+        switch_flow = switch_flow[["switch_id", "p", "q"]]
 
     merged = node_results.merge(switch_element_mapping, on="element", how="inner")
     merged = merged[["switch_id", "p", "q", "vm"]]
@@ -496,9 +510,32 @@ def get_switch_mapped_elements(
         - a bus (with ``side = NaN``)
     """
     monitored_switches = monitored_elements.query("kind == 'switch'")["table_id"]
-    switches_origin_ids = net.switch[net.switch.index.isin(monitored_switches)]["origin_id"].tolist()
+    switches_origin_ids = net.switch.loc[net.switch.index.isin(monitored_switches), "origin_id"].tolist()
+
     branch_map_df, bus_map_df = _get_switch_mapped_elements_by_origin_ids(net, switches_origin_ids, side)
+
     result_df = pd.concat([branch_map_df, bus_map_df], ignore_index=True)
+
+    # Ensure schema-compatible empty output
+    if result_df.empty:
+        return pd.DataFrame(
+            {
+                "switch_id": pd.Series(dtype="int64"),
+                "element": pd.Series(dtype="object"),
+                "side": pd.Series(dtype="float64"),
+            }
+        )
+
+    # Ensure schema-compatible column set and dtypes also for non-empty output
+    result_df = result_df.reindex(columns=["switch_id", "element", "side"])
+    result_df = result_df.astype(
+        {
+            "switch_id": "int64",
+            "element": "object",
+            "side": "float64",
+        }
+    )
+
     return result_df
 
 

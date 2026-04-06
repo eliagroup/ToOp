@@ -15,10 +15,13 @@ from .extractors import (
 )
 from .result_builders import get_convergence_df, get_full_nminus1_definition_pandapower
 from .results import (
+    create_closed_bb_switches_graph,
     get_branch_results,
+    get_failed_switch_results,
     get_failed_va_diff_results,
     get_node_result_df,
     get_regulating_element_results,
+    get_switch_mapped_elements,
     get_switch_results,
     get_va_diff_results,
 )

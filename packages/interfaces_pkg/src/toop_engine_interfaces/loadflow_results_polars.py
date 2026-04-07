@@ -22,6 +22,7 @@ from toop_engine_interfaces.loadflow_results import (
     ConvergedSchema,
     NodeResultSchema,
     RegulatingElementResultSchema,
+    SwitchResultsSchema,
     VADiffResultSchema,
 )
 
@@ -46,6 +47,12 @@ class ConnectivityResultSchemaPolars(pal.DataFrameModel, ConnectivityResultSchem
 
 class VADiffResultSchemaPolars(pal.DataFrameModel, VADiffResultSchema):
     """Polars variant of VADiffResultSchema."""
+
+    pass
+
+
+class SwitchResultsSchemaPolars(pal.DataFrameModel, SwitchResultsSchema):
+    """Polars variant of SwitchResultsSchema."""
 
     pass
 
@@ -97,6 +104,20 @@ class LoadflowResultsPolars(BaseModel):
     va_diff_results: Union[patpl.LazyFrame[VADiffResultSchemaPolars], pl.LazyFrame] = None
     """The voltage angle difference results for each timestep and contingency.
     Considers the ends of the outaged branch, aswell as all open switches in monitored elements.
+    """
+
+    switch_results: Union[patpl.LazyFrame[SwitchResultsSchemaPolars], pl.LazyFrame] = None
+    """The results for the switches.
+
+    Contains aggregated power flow and injection results per switch for each
+    timestep and contingency.
+
+    Switch results are computed by aggregating contributions from all elements
+    (branches and buses) electrically connected to one side of the switch.
+    This represents the power flowing through the switch.
+
+    If no switches are monitored, this is the empty DataFrame.
+    For non-converging contingencies/timesteps, result values are present but set to NaN.
     """
 
     connectivity_result: Union[patpl.LazyFrame[ConnectivityResultSchemaPolars], pl.LazyFrame, None] = None

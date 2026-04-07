@@ -137,12 +137,19 @@ def _build_common_processors(
     - StreamHandler for foreign log records
     """
     common_processors: list[structlog.typing.Processor] = [
+        structlog.contextvars.merge_contextvars,  # Should be first, see its doc
+        structlog.processors.CallsiteParameterAdder(
+            [
+                structlog.processors.CallsiteParameter.FILENAME,
+                structlog.processors.CallsiteParameter.FUNC_NAME,
+                structlog.processors.CallsiteParameter.LINENO,
+            ]
+        ),
         structlog.processors.add_log_level,
         structlog.stdlib.add_logger_name,
         _add_timestamp,
         _add_thread_name,
         _format_exception,
-        structlog.contextvars.merge_contextvars,
     ]
     if custom_processors:
         common_processors += custom_processors

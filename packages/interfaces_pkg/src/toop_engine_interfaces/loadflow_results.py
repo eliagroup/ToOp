@@ -444,6 +444,7 @@ LoadflowResultTable = Union[
     pat.DataFrame[BranchResultSchema],
     pat.DataFrame[VADiffResultSchema],
     pat.DataFrame[ConnectivityResultSchema],
+    pat.DataFrame[SwitchResultsSchema],
     pat.DataFrame[RegulatingElementResultSchema],
     pat.DataFrame[ConvergedSchema],
 ]

@@ -74,6 +74,7 @@ LoadflowResultTablePolars = Union[
     patpl.LazyFrame[BranchResultSchemaPolars],
     patpl.LazyFrame[VADiffResultSchemaPolars],
     patpl.LazyFrame[ConnectivityResultSchemaPolars],
+    patpl.LazyFrame[SwitchResultsSchemaPolars],
     patpl.LazyFrame[RegulatingElementResultSchemaPolars],
     patpl.LazyFrame[ConvergedSchemaPolars],
 ]
@@ -106,7 +107,7 @@ class LoadflowResultsPolars(BaseModel):
     Considers the ends of the outaged branch, aswell as all open switches in monitored elements.
     """
 
-    switch_results: Union[patpl.LazyFrame[SwitchResultsSchemaPolars], pl.LazyFrame] = None
+    switch_results: Union[patpl.LazyFrame[SwitchResultsSchemaPolars], pl.LazyFrame, None] = None
     """The results for the switches.
 
     Contains aggregated power flow and injection results per switch for each

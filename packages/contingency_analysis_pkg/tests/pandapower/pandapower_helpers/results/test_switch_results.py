@@ -208,18 +208,18 @@ def create_test_net_for_bus_to_branch_map():
         name="TRAFO3W_HV_4_MV_2_LV_1",
     )
     return net, {
-        "b_hv_1": b_hv_1,
-        "b_hv_2": b_hv_2,
-        "b_hv_3": b_hv_3,
-        "b_hv_4": b_hv_4,
-        "b_mv_1": b_mv_1,
-        "b_mv_2": b_mv_2,
-        "b_lv_1": b_lv_1,
-        "imp_0": imp_0,
-        "line_0": line_0,
-        "line_1": line_1,
-        "trafo_0": trafo_0,
-        "trafo3w_0": trafo3w_0,
+        "b_hv_1": int(b_hv_1),
+        "b_hv_2": int(b_hv_2),
+        "b_hv_3": int(b_hv_3),
+        "b_hv_4": int(b_hv_4),
+        "b_mv_1": int(b_mv_1),
+        "b_mv_2": int(b_mv_2),
+        "b_lv_1": int(b_lv_1),
+        "imp_0": int(imp_0),
+        "line_0": int(line_0),
+        "line_1": int(line_1),
+        "trafo_0": int(trafo_0),
+        "trafo3w_0": int(trafo3w_0),
     }
 
 
@@ -515,13 +515,13 @@ def create_test_net_for_get_elements():
     trafo_0 = pp.create_transformer(net, hv_bus=b3, lv_bus=b4, std_type="25 MVA 110/20 kV")
 
     return net, {
-        "b1": b1,
-        "b2": b2,
-        "b3": b3,
-        "b4": b4,
-        "line_0": line_0,
-        "imp_0": imp_0,
-        "trafo_0": trafo_0,
+        "b1": int(b1),
+        "b2": int(b2),
+        "b3": int(b3),
+        "b4": int(b4),
+        "line_0": int(line_0),
+        "imp_0": int(imp_0),
+        "trafo_0": int(trafo_0),
     }
 
 
@@ -666,19 +666,19 @@ def create_test_net_for_switch_mapped_elements():
     trafo_0 = pp.create_transformer(net, hv_bus=b2, lv_bus=b4, std_type="25 MVA 110/10 kV", name="trafo_0")
 
     return net, {
-        "b0": b0,
-        "b1": b1,
-        "b2": b2,
-        "b3": b3,
-        "b4": b4,
-        "b5": b5,
-        "sw0": sw0,
-        "sw1": sw1,
-        "sw2": sw2,
-        "sw3": sw3,
-        "line_0": line_0,
-        "imp_0": imp_0,
-        "trafo_0": trafo_0,
+        "b0": int(b0),
+        "b1": int(b1),
+        "b2": int(b2),
+        "b3": int(b3),
+        "b4": int(b4),
+        "b5": int(b5),
+        "sw0": int(sw0),
+        "sw1": int(sw1),
+        "sw2": int(sw2),
+        "sw3": int(sw3),
+        "line_0": int(line_0),
+        "imp_0": int(imp_0),
+        "trafo_0": int(trafo_0),
     }
 
 
@@ -845,11 +845,11 @@ def create_test_net_for_switch_results():
     sw2 = pp.create_switch(net, bus=b2, element=b3, et="b", closed=True, type="CB", name="switch_2")
 
     return net, {
-        "b1": b1,
-        "b2": b2,
-        "b3": b3,
-        "sw1": sw1,
-        "sw2": sw2,
+        "b1": int(b1),
+        "b2": int(b2),
+        "b3": int(b3),
+        "sw1": int(sw1),
+        "sw2": int(sw2),
     }
 
 

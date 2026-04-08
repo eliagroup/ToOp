@@ -813,10 +813,6 @@ def run_pipeline(
     logger.info(f"Starting pipeline with config: {pipeline_cfg}")
     iteration_path, file_path, data_folder, optimizer_snapshot_dir = get_paths(pipeline_cfg)
     logger.info(f"Paths resolved: iteration_path={iteration_path}, file_path={file_path}, data_folder={data_folder}")
-    logger.error("Test error")
-    raise ValueError(
-        "This is a test error to check logging configuration. Remove this line after confirming logs are working."
-    )
     # Copy initial topology
     if run_preprocessing_stage:
         logger.info("Running preprocessing stage...")

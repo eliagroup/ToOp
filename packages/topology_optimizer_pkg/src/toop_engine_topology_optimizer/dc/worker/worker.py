@@ -299,7 +299,7 @@ def main(
     jax.config.update("jax_logging_level", "INFO")
 
     def send_heartbeat(message: HeartbeatUnion, ping_consumer: bool) -> None:
-        logger.info(f"Sending heartbeat: {message}", message_type=type(message).__name__)
+        logger.debug(f"Sending heartbeat: {message}", message_type=type(message).__name__)
         heartbeat = Heartbeat(
             optimizer_type=OptimizerType.DC,
             instance_id=instance_id,

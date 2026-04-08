@@ -240,10 +240,10 @@ def _connected_component_without_edge(
 
 
 def _get_elements_for_buses(
-    switch_id: int,
-    sw_buses: set[int],
+    switch_id: int | np.int64,
+    sw_buses: set[int | np.int64],
     bus_to_branch_map: dict[int, list[tuple[str, int]]],
-) -> list[tuple[int, str, int]]:
+) -> list[tuple[int | np.int64, str, int | np.int64]]:
     """Collect branch-like elements connected to a set of buses for a switch.
 
     This function retrieves all branch-like elements (lines, impedances,

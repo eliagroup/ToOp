@@ -181,7 +181,7 @@ def _connected_component_without_edge(
     graph: nx.Graph,
     source: int,
     blocked_edge: tuple[int, int] | None = None,
-) -> set[int]:
+) -> set[int | np.int64]:
     """Return the connected component of a node while optionally ignoring one edge.
 
     This function computes all nodes reachable from a given ``source`` node in

@@ -277,10 +277,9 @@ def _get_elements_for_buses(
         - ``side`` (int): branch side identifier
     """
     matches: list[tuple[str, int]] = []
-    extend = matches.extend
 
     for bus in sw_buses:
-        extend(bus_to_branch_map.get(int(bus), ()))
+        matches.extend(bus_to_branch_map.get(int(bus), ()))
 
     return [(switch_id, element_uid, side) for element_uid, side in matches]
 
@@ -345,25 +344,20 @@ def _get_switch_mapped_elements_by_origin_ids(
     bus_to_branch_map = _build_bus_to_branch_map(net)
     bus_uid_map = {int(bus): get_globally_unique_id(int(bus), "bus") for bus in net.bus.index}
 
-    # Cache list.extend methods locally to avoid repeated attribute lookup in loop
-    # (micro-optimization for performance)
-    sw_els_map_extend = sw_els_map.extend
-    buses_map_extend = buses_map.extend
-
     for sw in switches.itertuples():
         candidate_bus = sw.bus if side == "bus" else sw.element
 
         blocked_edge = (sw.bus, sw.element) if graph.has_edge(sw.bus, sw.element) else None
         reachable_buses = _connected_component_without_edge(graph, candidate_bus, blocked_edge)
 
-        sw_els_map_extend(
+        sw_els_map.extend(
             _get_elements_for_buses(
                 switch_id=sw.Index,
                 sw_buses=reachable_buses,
                 bus_to_branch_map=bus_to_branch_map,
             )
         )
-        buses_map_extend((sw.Index, bus_uid_map[int(bus)]) for bus in reachable_buses)
+        buses_map.extend((sw.Index, bus_uid_map[int(bus)]) for bus in reachable_buses)
 
     branch_map_df = pd.DataFrame(sw_els_map, columns=["switch_id", "element", "side"])
     bus_map_df = pd.DataFrame(buses_map, columns=["switch_id", "element"])

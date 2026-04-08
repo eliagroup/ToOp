@@ -12,7 +12,7 @@ inputs:
   uv-version:
     description: "Version of uv to install"
     required: false
-    default: "0.11.1"
+    default: "0.11.2"
 
 runs:
   using: "composite"

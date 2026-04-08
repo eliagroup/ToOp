@@ -36,15 +36,23 @@ from toop_engine_interfaces.loadflow_results import BranchResultSchema, BranchSi
 
 
 class SwitchElementMappingSchema(pa.DataFrameModel):
-    """Schema for mapping switches to connected elements.
+    """Schema for mapping switches to electrically connected elements.
 
-    This table defines which elements are electrically connected to each switch.
+    This table defines which elements belong to the electrically connected
+    component of each switch side. The component is built by traversing
+    zero-impedance connections, i.e. buses/busbars and closed switches
+    (CBs and disconnectors).
+
+    The traversal stops when an element with non-zero impedance is reached,
+    such as a line, transformer (2W/3W), or impedance element. These elements
+    form the boundary of the connected component and are included in the mapping.
+
+    The mapping may therefore include:
+    - buses connected through zero-impedance paths
+    - branch-like boundary elements (lines, trafos, 3W trafos, impedances, etc.)
+
     It is used to aggregate branch flows and node injections when computing
     switch-level results.
-
-    The mapping includes both:
-    - branch-like elements (lines, trafos, impedances, etc.)
-    - buses
 
     If no switches are mapped, this is an empty DataFrame.
     """

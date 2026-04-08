@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pandera.typing as pat
+import structlog
 from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -29,7 +30,6 @@ from toop_engine_importer.contingency_from_power_factory.contingency_from_file i
     match_contingencies,
     match_contingencies_with_suffix,
 )
-from toop_engine_importer.logger import logger
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_region_for_df
 from toop_engine_importer.pypowsybl_import.cgmes.powsybl_masks_cgmes import get_switchable_buses_cgmes
 from toop_engine_importer.pypowsybl_import.contingency_from_file.contingency_file_models import ContingencyImportSchema
@@ -44,6 +44,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     UcteImporterParameters,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)

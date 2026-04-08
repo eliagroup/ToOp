@@ -23,7 +23,6 @@ from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_importer.logger import logger
 from toop_engine_importer.worker.preprocessor import import_grid_model, preprocess
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     Command,
@@ -44,6 +43,8 @@ from toop_engine_interfaces.messages.protobuf_message_factory import (
     deserialize_message,
     serialize_message,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 class Args(BaseModel):

@@ -18,10 +18,12 @@ Note: this module currently ignores generator and load reassignments.
 from pathlib import Path
 
 import pandas as pd
+import structlog
 from beartype.typing import Optional, Union
-from toop_engine_importer.logger import logger
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
 from toop_engine_interfaces.asset_topology import BusbarCoupler, Station, Topology
+
+logger = structlog.get_logger(__name__)
 
 # For parsing the UCTE format we need those colspecs, which are taken from
 # https://eepublicdownloads.entsoe.eu/clean-documents/pre2015/publications/ce/otherreports/UCTE-format.pdf

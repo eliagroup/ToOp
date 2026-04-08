@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
+import structlog
 from beartype.typing import Optional
 from pypowsybl.network import Network
 from toop_engine_dc_solver.export.dgs_v7_definitions import (
@@ -30,7 +31,6 @@ from toop_engine_dc_solver.export.dgs_v7_definitions import (
     DgsElmCoupSchema,
     DgsGeneralSchema,
 )
-from toop_engine_dc_solver.logger import logger
 from toop_engine_interfaces.asset_topology import (
     BusbarCoupler,
     PowsyblSwitchValues,
@@ -38,6 +38,8 @@ from toop_engine_interfaces.asset_topology import (
     Topology,
 )
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+
+logger = structlog.get_logger(__name__)
 
 
 class SwitchUpdateSchema(pa.DataFrameModel):

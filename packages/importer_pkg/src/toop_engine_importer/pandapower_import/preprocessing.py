@@ -39,6 +39,7 @@ The preprocessing is done in several steps:
 
 import numpy as np
 import pandapower as pp
+import structlog
 from beartype.typing import Optional
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import (
@@ -48,12 +49,13 @@ from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import (
     replace_zero_branches,
     select_connected_subnet,
 )
-from toop_engine_importer.logger import logger
 from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker import (
     fuse_closed_switches_by_bus_ids,
     get_coupler_types_of_substation,
 )
 from toop_engine_interfaces.asset_topology import Topology
+
+logger = structlog.get_logger(__name__)
 
 
 def modify_constan_z_load(net: pp.pandapowerNet, value: float = 0.0) -> None:

@@ -26,6 +26,7 @@ import pandapower
 
 # Domain-specific imports (may raise if not available in the environment)
 import pypowsybl
+import structlog
 from beartype.typing import Literal, Optional, Tuple
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -80,8 +81,9 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     BatchedMEParameters,
     LoadflowSolverParameters,
 )
-from toop_engine_topology_optimizer.logger import logger
 from tqdm import tqdm
+
+logger = structlog.get_logger(__name__)
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -811,7 +813,10 @@ def run_pipeline(
     logger.info(f"Starting pipeline with config: {pipeline_cfg}")
     iteration_path, file_path, data_folder, optimizer_snapshot_dir = get_paths(pipeline_cfg)
     logger.info(f"Paths resolved: iteration_path={iteration_path}, file_path={file_path}, data_folder={data_folder}")
-
+    logger.error("Test error")
+    raise ValueError(
+        "This is a test error to check logging configuration. Remove this line after confirming logs are working."
+    )
     # Copy initial topology
     if run_preprocessing_stage:
         logger.info("Running preprocessing stage...")

@@ -18,10 +18,10 @@ from pathlib import Path
 
 import numpy as np
 import pandapower as pp
+import structlog
 from beartype.typing import Optional
 from jaxtyping import ArrayLike, Bool, Int
 from pandas import Index
-from toop_engine_importer.logger import logger
 from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker import (
     get_coupler_types_of_substation,
     get_type_b_nodes,
@@ -30,6 +30,8 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

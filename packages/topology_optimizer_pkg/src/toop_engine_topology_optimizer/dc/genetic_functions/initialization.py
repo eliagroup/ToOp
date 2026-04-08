@@ -14,6 +14,7 @@ import equinox as eqx
 import jax
 import jax.experimental
 import jax.numpy as jnp
+import structlog
 from beartype.typing import Iterable, Optional, Sequence
 from fsspec import AbstractFileSystem
 from jax_dataclasses import replace
@@ -56,7 +57,8 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     DescriptorDef,
     LoadflowSolverParameters,
 )
-from toop_engine_topology_optimizer.logger import logger
+
+logger = structlog.get_logger(__name__)
 
 
 class JaxOptimizerData(eqx.Module):

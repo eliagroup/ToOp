@@ -47,7 +47,8 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     Result,
     ResultUnion,
 )
-from toop_engine_topology_optimizer.logger import logger
+
+logger = structlog.get_logger(__name__)
 
 
 class Args(DCArgs):

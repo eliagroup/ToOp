@@ -17,6 +17,7 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import numpy as np
+import structlog
 from beartype.typing import Callable, Literal, Optional
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
@@ -53,7 +54,6 @@ from toop_engine_dc_solver.jax.types import (
     int_max,
 )
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
-from toop_engine_dc_solver.logger import logger
 from toop_engine_dc_solver.postprocess.write_aux_data import write_aux_data_fs
 from toop_engine_dc_solver.preprocess.action_set import (
     pad_out_action_set,
@@ -71,6 +71,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     empty_status_update_fn,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
+
+logger = structlog.get_logger(__name__)
 
 
 def convert_relevant_injections(

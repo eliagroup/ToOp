@@ -26,6 +26,7 @@ from functools import partial
 
 import jax
 import numpy as np
+import structlog
 from beartype.typing import Optional
 from jax import numpy as jnp
 from jaxtyping import Array, ArrayLike, Bool, Float, Int
@@ -33,7 +34,6 @@ from toop_engine_dc_solver.jax.bsdf import calc_bsdf, update_from_to_node
 from toop_engine_dc_solver.jax.lodf import calc_lodf_matrix
 from toop_engine_dc_solver.jax.multi_outages import build_modf_matrices
 from toop_engine_dc_solver.jax.types import ActionSet
-from toop_engine_dc_solver.logger import logger
 from toop_engine_dc_solver.preprocess.helpers.ptdf import (
     get_extended_ptdf,
 )
@@ -42,6 +42,8 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData, get_relev
 from toop_engine_interfaces.asset_topology import Station
 from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
+
+logger = structlog.get_logger(__name__)
 
 
 @partial(jax.jit, static_argnames=("batch_size",))

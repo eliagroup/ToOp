@@ -21,9 +21,11 @@ listening to the assignment changes and pausing or resuming the new TPs accordin
 the ability to consume multiple topics.
 """
 
+import structlog
 from beartype.typing import Optional
 from confluent_kafka import Consumer, Message, TopicPartition
-from toop_engine_contingency_analysis.logger import logger
+
+logger = structlog.get_logger(__name__)
 
 
 class LongRunningKafkaConsumer:

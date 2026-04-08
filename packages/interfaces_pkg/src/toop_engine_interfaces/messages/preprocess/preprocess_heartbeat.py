@@ -10,9 +10,11 @@
 import uuid
 from datetime import datetime
 
+import structlog
 from beartype.typing import Literal, Optional, TypeAlias
 from pydantic import BaseModel, Field
-from toop_engine_interfaces.logger import logger
+
+logger = structlog.get_logger(__name__)
 
 ConvertToJaxStage: TypeAlias = Literal[
     "convert_to_jax_started",

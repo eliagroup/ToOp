@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandapower
+import structlog
 import tyro
 from beartype.typing import Callable, Literal
 from confluent_kafka import Producer
@@ -53,7 +54,6 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_contingency_analysis.logger import logger
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import load_pandapower_from_fs
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
@@ -75,6 +75,8 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
     LoadflowSuccessResult,
 )
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

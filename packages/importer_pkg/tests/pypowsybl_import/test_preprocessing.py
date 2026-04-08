@@ -13,11 +13,11 @@ from tempfile import TemporaryDirectory
 import pandapower as pp
 import pandas as pd
 import pypowsybl
+import structlog
 from beartype.typing import Optional
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
-from toop_engine_importer.logger import logger
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
@@ -39,6 +39,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
     StaticInformationStats,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 def test_save_load_preprocessing_statistics():

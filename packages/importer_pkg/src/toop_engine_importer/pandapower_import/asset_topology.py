@@ -17,6 +17,7 @@ import datetime
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import structlog
 from beartype.typing import List, Literal, Optional, Tuple, Union
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
@@ -25,7 +26,6 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_coupler_from_df,
     get_list_of_switchable_assets_from_df,
 )
-from toop_engine_importer.logger import logger
 from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker import (
     get_all_switches_from_bus_ids,
     get_closed_switch,
@@ -36,6 +36,8 @@ from toop_engine_interfaces.asset_topology import (
     Station,
     Topology,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 def get_busses_from_station(

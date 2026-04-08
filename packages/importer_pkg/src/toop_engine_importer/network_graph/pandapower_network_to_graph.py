@@ -10,8 +10,8 @@
 import networkx as nx
 import pandas as pd
 import pandera.typing as pat
+import structlog
 from pandapower.auxiliary import pandapowerNet
-from toop_engine_importer.logger import logger
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     NetworkGraphData,
@@ -22,6 +22,8 @@ from toop_engine_importer.network_graph.data_classes import (
 from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
 from toop_engine_importer.network_graph.network_graph import generate_graph, set_substation_id
 from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
+
+logger = structlog.get_logger(__name__)
 
 
 def get_network_graph_data(net: pandapowerNet, only_relevant_col: bool = True) -> NetworkGraphData:

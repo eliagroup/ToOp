@@ -18,6 +18,7 @@ from itertools import product
 from pathlib import Path
 
 import pypowsybl
+import structlog
 from beartype.typing import (
     Any,  # noqa: F401
     Callable,
@@ -34,7 +35,6 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_topology
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, save_lf_params_to_fs, save_powsybl_to_fs
-from toop_engine_importer.logger import logger
 from toop_engine_importer.network_graph import powsybl_station_to_graph
 from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
@@ -58,6 +58,9 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
 )
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+
+logger = structlog.get_logger(__name__)
+
 
 CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
 

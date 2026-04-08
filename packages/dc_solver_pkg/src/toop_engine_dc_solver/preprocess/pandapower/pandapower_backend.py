@@ -12,12 +12,12 @@ from pathlib import Path
 
 import numpy as np
 import pandapower as pp
+import structlog
 from beartype.typing import Iterable, Optional
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from pandapower.pypower.idx_brch import F_BUS, SHIFT, T_BUS
 from pandapower.pypower.makeBdc import calc_b_from_branch
-from toop_engine_dc_solver.logger import logger
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_dc_bus_voltage,
     get_pandapower_branch_loadflow_results_sequence,
@@ -44,6 +44,8 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 def convert_to_string_list(data: Iterable) -> list[str]:

@@ -18,9 +18,9 @@ network_data is not needed for running the solver itself.
 from dataclasses import replace
 
 import numpy as np
+import structlog
 from beartype.typing import Callable, Optional
 from jaxtyping import Bool, Int
-from toop_engine_dc_solver.logger import logger
 from toop_engine_dc_solver.preprocess.action_set import (
     determine_injection_topology,
     enumerate_branch_actions,
@@ -79,6 +79,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessStage,
     empty_status_update_fn,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 def compute_ptdf_if_not_given(network_data: NetworkData) -> NetworkData:

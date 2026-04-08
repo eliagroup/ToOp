@@ -21,6 +21,7 @@ try to simplify the topology by closing a single coupler.
 """
 
 import pandas as pd
+import structlog
 from beartype.typing import Collection, Optional, Sequence
 from numpy.random import Generator as Rng
 from sqlalchemy import exists
@@ -35,7 +36,8 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import (
     hash_topologies,
     is_unsplit_topologies,
 )
-from toop_engine_topology_optimizer.logger import logger
+
+logger = structlog.get_logger(__name__)
 
 
 def select_repertoire(

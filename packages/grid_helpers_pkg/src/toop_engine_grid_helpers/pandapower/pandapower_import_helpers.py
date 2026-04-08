@@ -15,8 +15,10 @@ Created:
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import structlog
 from beartype.typing import Optional
-from toop_engine_grid_helpers.logger import logger
+
+logger = structlog.get_logger(__name__)
 
 
 def fuse_closed_switches_fast(

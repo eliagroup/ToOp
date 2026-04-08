@@ -12,6 +12,7 @@ import time
 
 import jax
 import jax.numpy as jnp
+import structlog
 from jax_dataclasses import replace
 from jaxtyping import PRNGKeyArray
 from toop_engine_dc_solver.jax.disconnections import random_disconnections
@@ -27,8 +28,9 @@ from toop_engine_dc_solver.jax.topology_looper import (
     run_solver_symmetric,
 )
 from toop_engine_dc_solver.jax.types import StaticInformation
-from toop_engine_dc_solver.logger import logger
 from toop_engine_dc_solver.preprocess.convert_to_jax import extract_static_information_stats
+
+logger = structlog.get_logger(__name__)
 
 
 def load_static_information_from_dict(config: dict) -> StaticInformation:

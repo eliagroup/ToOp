@@ -36,6 +36,7 @@ from functools import partial
 
 import jax
 import numpy as np
+import structlog
 import tyro
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -62,8 +63,9 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     DoubleLimitsSetpoint,
     LoadflowSolverParameters,
 )
-from toop_engine_topology_optimizer.logger import logger
 from tqdm import tqdm
+
+logger = structlog.get_logger(__name__)
 
 
 class CLIArgs(BaseModel):

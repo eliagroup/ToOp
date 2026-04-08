@@ -17,6 +17,7 @@ from toop_engine_interfaces.loadflow_results import (
     NodeResultSchema,
     RegulatingElementResultSchema,
     RegulatingElementType,
+    SwitchResultsSchema,
     VADiffResultSchema,
 )
 
@@ -88,6 +89,7 @@ def get_loadflow_results_example(
     regulating_element_results = get_empty_dataframe_from_model(RegulatingElementResultSchema)
     va_diff_results = get_empty_dataframe_from_model(VADiffResultSchema)
     converged = get_empty_dataframe_from_model(ConvergedSchema)
+    switch_results = get_empty_dataframe_from_model(SwitchResultsSchema)
     if contingencies is None:
         contingencies = ["contingency"]
     for i, contingency in enumerate(contingencies):
@@ -105,6 +107,7 @@ def get_loadflow_results_example(
         regulating_element_results=regulating_element_results,
         va_diff_results=va_diff_results,
         converged=converged,
+        switch_results=switch_results,
         additional_information=["This is generated test data"],
         warnings=["warning1"],
     )

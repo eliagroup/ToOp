@@ -358,6 +358,7 @@ def run_preprocessing(
             f"lines reward: {import_result.n_line_for_reward}, "
             f"trafos reward: {import_result.n_trafo_for_reward}, "
             f"lines disconnectable: {import_result.n_line_disconnectable}, "
+            f"trafos disconnectable: {import_result.n_trafo_disconnectable}, "
             f"low impedance lines: {import_result.n_low_impedance_lines}, "
             f"branches across switch: {import_result.n_branch_across_switch}"
         )

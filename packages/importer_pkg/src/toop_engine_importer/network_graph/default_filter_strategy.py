@@ -38,9 +38,6 @@ from toop_engine_importer.network_graph.network_graph_helper_functions import (
     find_shortest_path_ids,
     reverse_dict_list,
 )
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 def run_default_filter_strategy(graph: nx.Graph) -> None:

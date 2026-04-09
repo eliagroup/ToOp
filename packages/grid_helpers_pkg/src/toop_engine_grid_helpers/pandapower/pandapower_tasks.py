@@ -11,9 +11,6 @@ import numpy as np
 import pandapower as pp
 from jaxtyping import Float, Int
 from pandapower.pypower.idx_brch import F_BUS, T_BUS
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 def get_max_line_flow(net: pp.pandapowerNet) -> Float[np.ndarray, " n_pp_lines"]:

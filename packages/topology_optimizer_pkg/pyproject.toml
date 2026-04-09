@@ -31,6 +31,7 @@ dependencies=[
     "toop_engine_interfaces=={{ version }}",
     "toop_engine_grid_helpers=={{ version }}",
     "toop_engine_contingency_analysis=={{ version }}",
+    "structlog (>=24.4.0,<25.0.0)",
     "jax-dataclasses (>=1.6.2,<2.0.0)",
     "polars>=1.33.0",
     "orjson>=3.11.3",

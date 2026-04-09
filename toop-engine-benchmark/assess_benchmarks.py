@@ -28,12 +28,12 @@ __beartype__ = False
 
 # Hydra imports
 import hydra
+import structlog
 
 # Logging setup
 from omegaconf import DictConfig, OmegaConf
-from toop_engine_interfaces.logging.logger import get_logger
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Accept ints and floats (beartype strictness) and None values
 Numeric = float | int

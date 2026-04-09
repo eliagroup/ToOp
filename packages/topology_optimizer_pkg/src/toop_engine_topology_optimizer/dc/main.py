@@ -36,12 +36,12 @@ from functools import partial
 
 import jax
 import numpy as np
+import structlog
 import tyro
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel, Field
 from tensorboardX import SummaryWriter
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.dc.ga_helpers import (
     EmitterState,
@@ -65,7 +65,7 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
 )
 from tqdm import tqdm
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class CLIArgs(BaseModel):

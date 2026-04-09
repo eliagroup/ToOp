@@ -323,12 +323,23 @@ def get_element_results_df(
         The branch results dataframe, node results dataframe and va diff results dataframe
     """
     if status == ConvergenceStatus.CONVERGED:
-        branch_results_df = get_branch_results(net, contingency, monitored_elements, timestep)
-        node_results_df = get_node_result_df(net, contingency, monitored_elements, timestep, basecase_voltage)
+        branch_results_df = get_branch_results(net, contingency, timestep)
+        node_results_df = get_node_result_df(net, contingency, timestep, basecase_voltage)
         va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
+        # IMPORTANT:
+        # Do NOT filter branch/node results before this step.
+        # Switch result calculation depends on connectivity and may require data
+        # from non-monitored branches/nodes (e.g. a monitored switch connected to
+        # an unmonitored line/trafo). Therefore we pass full result sets here.
         sw_results_df = get_switch_results(
             net, contingency, timestep, branch_results_df, node_results_df, switch_element_mapping
         )
+
+        branch_results_df = branch_results_df[branch_results_df.element.isin(monitored_elements.index)]
+        node_results_df = node_results_df[node_results_df.element.isin(monitored_elements.index)]
+        node_results_df.set_index(["timestep", "contingency", "element"], inplace=True)
+        branch_results_df.set_index(["timestep", "contingency", "element", "side"], inplace=True)
+
     else:
         monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()
         monitored_branches = monitored_elements.query("kind == 'branch' & table != 'trafo3w'").index.to_list()

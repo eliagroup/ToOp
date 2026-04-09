@@ -14,22 +14,17 @@ import pandera.typing as pat
 from pandapower import pandapowerNet
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
-    PandapowerMonitoredElementSchema,
 )
-from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
-from toop_engine_interfaces.loadflow_results import (
-    NodeResultSchema,
-)
+from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id_from_index
 
 
 @pa.check_types
 def get_node_result_df(
     net: pandapowerNet,
     contingency: PandapowerContingency,
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     timestep: int,
     basecase_voltage: pat.Series[float],
-) -> pat.DataFrame[NodeResultSchema]:
+) -> pat.DataFrame:
     """Get the node results for the given network and contingency
 
     Parameters
@@ -38,8 +33,6 @@ def get_node_result_df(
         The network to compute the node results for
     contingency: PandapowerContingency
         The contingency to compute the node results for
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
-        The list of monitored elements including buses
     timestep : int
         The timestep of the results
     basecase_voltage: pat.DataFrame[float]
@@ -50,23 +43,18 @@ def get_node_result_df(
     pat.DataFrame[NodeResultSchema]
         The node results for the given network and contingency
     """
-    monitored_buses = monitored_elements.query("kind == 'bus'")
-    if monitored_buses.empty:
-        # If no buses are monitored, return an empty dataframe
-        return get_empty_dataframe_from_model(NodeResultSchema)
-    table_ids = monitored_buses.table_id.to_list()
-    unique_ids = monitored_buses.index.to_list()
     # Add logic for 5% ΔV voltage limit
     net.res_bus["vm_basecase_deviation"] = (
         abs(net.res_bus["vm_pu"] - basecase_voltage) / basecase_voltage.replace(0, np.nan)
     ) * 100
-    node_results_df = net.res_bus.reindex(table_ids)
+    node_results_df = net.res_bus
+    unique_ids = get_globally_unique_id_from_index(node_results_df.index, element_type="bus")
     node_results_df = node_results_df.assign(timestep=timestep, contingency=contingency.unique_id, element=unique_ids)
-    node_results_df.set_index(["timestep", "contingency", "element"], inplace=True)
+
     max_allowed_deviation = 0.2  # 20% voltage deviation is considered acceptable
     node_results_df["vm_loading"] = (node_results_df["vm_pu"] - 1) / max_allowed_deviation
     node_results_df.rename(columns={"vm_pu": "vm", "va_degree": "va", "p_mw": "p", "q_mvar": "q"}, inplace=True)
-    voltage_levels = net.bus.reindex(table_ids)["vn_kv"].values
+    voltage_levels = net.bus["vn_kv"].values
     node_results_df["vm"] *= voltage_levels
     # fill missing columns with NaN
     node_results_df["element_name"] = ""

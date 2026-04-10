@@ -445,7 +445,7 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
 
     monitored_elements += [
         GridElement(
-            id=get_globally_unique_id(int(index), "line"),
+            id=get_globally_unique_id(int(index), "bus"),
             name=str(row.name),
             kind="bus",
             type="bus",

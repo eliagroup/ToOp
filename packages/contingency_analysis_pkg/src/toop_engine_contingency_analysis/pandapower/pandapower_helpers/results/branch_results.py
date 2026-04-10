@@ -10,12 +10,16 @@
 import numpy as np
 import pandas as pd
 import pandera as pa
+import pandera.typing as pat
 from pandapower import pandapowerNet
 from pandapower.toolbox import res_power_columns
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id_from_index
+from toop_engine_interfaces.loadflow_results import (
+    BranchResultSchema,
+)
 
 
 @pa.check_types
@@ -23,7 +27,7 @@ def get_branch_results(
     net: pandapowerNet,
     contingency: PandapowerContingency,
     timestep: int,
-) -> pd.DataFrame:
+) -> pat.DataFrame[BranchResultSchema]:
     """Get the branch results for the given network and contingency
 
     Parameters
@@ -61,7 +65,7 @@ def get_branch_results(
             branch_df = branch_df.assign(
                 timestep=timestep, contingency=contingency.unique_id, side=side + 1, element=unique_ids
             )
-
+            branch_df.set_index(["timestep", "contingency", "element", "side"], inplace=True)
             branch_df.rename(columns=dict(zip(columns, ["p", "q", "i", "loading"], strict=True)), inplace=True)
             # Fix kA -> A and % -> 1 scale only if present
             if "i" in branch_df.columns:

@@ -335,10 +335,8 @@ def get_element_results_df(
             net, contingency, timestep, branch_results_df, node_results_df, switch_element_mapping
         )
 
-        branch_results_df = branch_results_df[branch_results_df.element.isin(monitored_elements.index)]
-        node_results_df = node_results_df[node_results_df.element.isin(monitored_elements.index)]
-        node_results_df.set_index(["timestep", "contingency", "element"], inplace=True)
-        branch_results_df.set_index(["timestep", "contingency", "element", "side"], inplace=True)
+        branch_results_df = branch_results_df[branch_results_df.index.isin(monitored_elements.index, level="element")]
+        node_results_df = node_results_df[node_results_df.index.isin(monitored_elements.index, level="element")]
 
     else:
         monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()

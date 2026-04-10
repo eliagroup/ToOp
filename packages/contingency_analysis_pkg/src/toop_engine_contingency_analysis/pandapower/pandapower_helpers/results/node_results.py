@@ -16,6 +16,9 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     PandapowerContingency,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id_from_index
+from toop_engine_interfaces.loadflow_results import (
+    NodeResultSchema,
+)
 
 
 @pa.check_types
@@ -24,7 +27,7 @@ def get_node_result_df(
     contingency: PandapowerContingency,
     timestep: int,
     basecase_voltage: pat.Series[float],
-) -> pat.DataFrame:
+) -> pat.DataFrame[NodeResultSchema]:
     """Get the node results for the given network and contingency
 
     Parameters
@@ -50,7 +53,7 @@ def get_node_result_df(
     node_results_df = net.res_bus
     unique_ids = get_globally_unique_id_from_index(node_results_df.index, element_type="bus")
     node_results_df = node_results_df.assign(timestep=timestep, contingency=contingency.unique_id, element=unique_ids)
-
+    node_results_df.set_index(["timestep", "contingency", "element"], inplace=True)
     max_allowed_deviation = 0.2  # 20% voltage deviation is considered acceptable
     node_results_df["vm_loading"] = (node_results_df["vm_pu"] - 1) / max_allowed_deviation
     node_results_df.rename(columns={"vm_pu": "vm", "va_degree": "va", "p_mw": "p", "q_mvar": "q"}, inplace=True)

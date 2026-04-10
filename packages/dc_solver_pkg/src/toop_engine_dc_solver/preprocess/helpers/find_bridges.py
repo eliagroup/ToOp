@@ -103,6 +103,7 @@ def find_n_minus_2_safe_branches(
     number_of_branches: int,
     number_of_nodes: int,
     cases_to_check: Optional[Int[np.ndarray, " n_cases"]] = None,
+    outage_cases: Optional[Int[np.ndarray, " n_outage_cases"]] = None,
     n_processes: Optional[int] = 1,
 ) -> Bool[np.ndarray, " n_cases"]:
     """Return a boolean array of length branch that is true for all branches that are n-2 safe.
@@ -126,6 +127,8 @@ def find_n_minus_2_safe_branches(
         How many busbars are in the system
     cases_to_check: Optional[Int[np.ndarray, " n_cases"]]
         A list of cases that should be checked. If None, all branches are checked
+    outage_cases: Optional[Int[np.ndarray, " n_outage_cases"]]
+        A list of outage cases that should be checked. If None, all branches are checked
     n_processes: Optional[int]
         Number of processes to use for parallelization. Uses ray if n_processes > 1. Default is 1.
 
@@ -136,16 +139,21 @@ def find_n_minus_2_safe_branches(
     """
     if cases_to_check is None:
         cases_to_check = np.arange(number_of_branches)
+    if outage_cases is None:
+        outage_cases = np.arange(number_of_branches)
+
+    outage_edges = set((int(from_node[outage_case]), int(to_node[outage_case])) for outage_case in outage_cases)
+    outage_edges |= set((int(to_node[outage_case]), int(from_node[outage_case])) for outage_case in outage_cases)
 
     base_case = get_graph(from_node, to_node, number_of_branches, number_of_nodes)
-    n_bridges = len(list(nx.bridges(base_case)))
+    n_bridges = len(set(nx.bridges(base_case)) & outage_edges)
     if n_processes == 1:
         n_bridge_per_outage_case = get_number_of_bridges_after_outage(
-            cases_to_check, from_node, to_node, number_of_branches, number_of_nodes
+            cases_to_check, outage_edges, from_node, to_node, number_of_branches, number_of_nodes
         )
     else:
         n_bridge_per_outage_case = get_number_of_bridges_after_outage_parallel(
-            cases_to_check, from_node, to_node, number_of_branches, number_of_nodes, n_processes
+            cases_to_check, outage_edges, from_node, to_node, number_of_branches, number_of_nodes, n_processes
         )
     n_minus_2_safe = n_bridge_per_outage_case == n_bridges
     return n_minus_2_safe
@@ -153,6 +161,7 @@ def find_n_minus_2_safe_branches(
 
 def get_number_of_bridges_after_outage(
     cases_to_check: Int[np.ndarray, " n_cases"],
+    outage_edges: set[tuple[int, int]],
     from_node: Int[np.ndarray, " n_branch"],
     to_node: Int[np.ndarray, " n_branch"],
     number_of_branches: int,
@@ -164,6 +173,8 @@ def get_number_of_bridges_after_outage(
     ----------
     cases_to_check: Int[np.ndarray, " n_cases"]
         A list of cases that should be checked.
+    outage_edges: set[tuple[int, int]]
+        A set of edges that are considered outages. Only bridges in the outage_edges are counted.
     from_node : Int[np.ndarray, " n_branch"]
         The from-nodes vector. Changes if the topology changes, e.g. the
         from-bus of a branch can be set to the second bus of a substation.
@@ -185,12 +196,14 @@ def get_number_of_bridges_after_outage(
         from_node_temp = np.delete(from_node, branch)
         to_node_temp = np.delete(to_node, branch)
         temp_graph = get_graph(from_node_temp, to_node_temp, number_of_branches - 1, number_of_nodes)
-        n_bridges[index] = len(set(nx.bridges(temp_graph)))
+        bridges = set(nx.bridges(temp_graph))
+        n_bridges[index] = len(bridges & outage_edges)
     return n_bridges
 
 
 def get_number_of_bridges_after_outage_parallel(
     cases_to_check: Int[np.ndarray, " n_cases"],
+    outage_edges: set[tuple[int, int]],
     from_node: Int[np.ndarray, " n_branch"],
     to_node: Int[np.ndarray, " n_branch"],
     number_of_branches: int,
@@ -205,6 +218,8 @@ def get_number_of_bridges_after_outage_parallel(
     ----------
     cases_to_check: Int[np.ndarray, " n_cases"]
         A list of cases that should be checked.
+    outage_edges: set[tuple[int, int]]
+        A set of edges that are considered outages. Only bridges in the outage_edges are counted.
     from_node : Int[np.ndarray, " n_branch"]
         The from-nodes vector. Changes if the topology changes, e.g. the
         from-bus of a branch can be set to the second bus of a substation.
@@ -229,7 +244,9 @@ def get_number_of_bridges_after_outage_parallel(
     run_n_2_count_bridges_parallel_worker = ray.remote(get_number_of_bridges_after_outage)
     for batch in work:
         handles.append(
-            run_n_2_count_bridges_parallel_worker.remote(batch, from_node, to_node, number_of_branches, number_of_nodes)
+            run_n_2_count_bridges_parallel_worker.remote(
+                batch, outage_edges, from_node, to_node, number_of_branches, number_of_nodes
+            )
         )
     results = ray.get(handles)
     n_bridges_after_outage = np.concatenate(results)

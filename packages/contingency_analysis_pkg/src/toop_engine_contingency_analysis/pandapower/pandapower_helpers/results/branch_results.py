@@ -15,9 +15,8 @@ from pandapower import pandapowerNet
 from pandapower.toolbox import res_power_columns
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
-    PandapowerMonitoredElementSchema,
 )
-from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id_from_index
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
 )
@@ -27,7 +26,6 @@ from toop_engine_interfaces.loadflow_results import (
 def get_branch_results(
     net: pandapowerNet,
     contingency: PandapowerContingency,
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     timestep: int,
 ) -> pat.DataFrame[BranchResultSchema]:
     """Get the branch results for the given network and contingency
@@ -38,8 +36,6 @@ def get_branch_results(
         The network to compute the branch results for
     contingency: PandapowerContingency
         The contingency to compute the branch results for
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema]
-        The list of monitored elements including branches
     timestep : int
         The timestep of the results
 
@@ -48,17 +44,10 @@ def get_branch_results(
     pat.DataFrame[BranchResultSchema]
         The branch results for the given network and contingency
     """
-    monitored_branches = monitored_elements.query("kind == 'branch'")
-    if monitored_branches.empty:
-        # If no elements are monitored, return an empty dataframe
-        return get_empty_dataframe_from_model(BranchResultSchema)
     max_amount_of_sides = 3
     branch_element_list = []
 
-    for branch_type in monitored_branches.table.unique():
-        branch_type_df = monitored_elements.loc[monitored_elements.table == branch_type]
-        table_ids = branch_type_df.table_id.values
-        unique_ids = branch_type_df.index.values
+    for branch_type in ("line", "trafo", "trafo3w", "impedance"):
         for side in range(max_amount_of_sides):
             try:
                 columns = res_power_columns(branch_type, side=side)
@@ -70,10 +59,17 @@ def get_branch_results(
                 # This means all sides were considered
                 break
             common_columns = net[f"res_{branch_type}"].columns.intersection(columns)
-            branch_df = net[f"res_{branch_type}"].loc[table_ids, common_columns]
+            branch_df = net[f"res_{branch_type}"][common_columns]
+
+            unique_ids = get_globally_unique_id_from_index(branch_df.index, element_type=branch_type)
             branch_df = branch_df.assign(
                 timestep=timestep, contingency=contingency.unique_id, side=side + 1, element=unique_ids
             )
+            side_map = {1: "_hv", 2: "_mv", 3: "_lv"}
+
+            mask = branch_df.element.str.contains("trafo3w")
+            branch_df.loc[mask, "element"] = branch_df.loc[mask, "element"] + branch_df.loc[mask, "side"].map(side_map)
+
             branch_df.set_index(["timestep", "contingency", "element", "side"], inplace=True)
             branch_df.rename(columns=dict(zip(columns, ["p", "q", "i", "loading"], strict=True)), inplace=True)
             # Fix kA -> A and % -> 1 scale only if present

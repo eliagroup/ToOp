@@ -88,6 +88,7 @@ dev = [
     "types-confluent-kafka>=1.3.3",
     "pypowsybl-jupyter>=1.0.0",
     "docker>=7.1.0",
+    "structlog (>=24.4.0,<25.0.0)",
 ]
 
 [tool.pytest_env]

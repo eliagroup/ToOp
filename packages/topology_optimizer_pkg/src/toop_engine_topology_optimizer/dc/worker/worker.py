@@ -13,13 +13,12 @@ from functools import partial
 from uuid import uuid4
 
 import jax
+import structlog
 from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_interfaces.logging import bind_context, clear_context
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
@@ -48,7 +47,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     ResultUnion,
 )
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class Args(BaseModel):
@@ -145,8 +144,10 @@ def idle_loop(
                 )
                 consumer.commit()
                 continue
-            bind_context(optimization_id=command.command.optimization_id)
-            return command.command
+            with structlog.contextvars.bound_contextvars(
+                optimization_id=command.command.optimization_id,
+            ):
+                return command.command
 
         # If we are here, we received a command that we do not know
         logger.warning(f"Received unknown command, dropping: {command} / {message.value}")
@@ -351,4 +352,3 @@ def main(
             processed_gridfile_fs=processed_gridfile_fs,
         )
         command_consumer.stop_processing()
-        clear_context()

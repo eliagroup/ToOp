@@ -39,9 +39,6 @@ from toop_engine_interfaces.asset_topology_helpers import (
     order_station_assets,
     order_topology,
 )
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 @dataclass

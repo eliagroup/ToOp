@@ -26,6 +26,7 @@ import pandapower
 
 # Domain-specific imports (may raise if not available in the environment)
 import pypowsybl
+import structlog
 from beartype.typing import Literal, Optional, Tuple
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -59,7 +60,6 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
@@ -83,13 +83,12 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
 )
 from tqdm import tqdm
 
+logger = structlog.get_logger(__name__)
+
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 # JAX configuration
 jax.config.update("jax_enable_x64", True)
-
-# Logging setup
-logger = get_logger(__name__)
 
 
 @dataclass
@@ -814,7 +813,6 @@ def run_pipeline(
     logger.info(f"Starting pipeline with config: {pipeline_cfg}")
     iteration_path, file_path, data_folder, optimizer_snapshot_dir = get_paths(pipeline_cfg)
     logger.info(f"Paths resolved: iteration_path={iteration_path}, file_path={file_path}, data_folder={data_folder}")
-
     # Copy initial topology
     if run_preprocessing_stage:
         logger.info("Running preprocessing stage...")

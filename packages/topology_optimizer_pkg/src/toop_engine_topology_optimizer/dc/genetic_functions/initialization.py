@@ -14,6 +14,7 @@ import equinox as eqx
 import jax
 import jax.experimental
 import jax.numpy as jnp
+import structlog
 from beartype.typing import Iterable, Optional, Sequence
 from fsspec import AbstractFileSystem
 from jax_dataclasses import replace
@@ -32,7 +33,6 @@ from toop_engine_dc_solver.jax.types import (
     StaticInformation,
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import StaticInformationStats, extract_static_information_stats
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.crossover import (
     crossover,
@@ -58,7 +58,7 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     LoadflowSolverParameters,
 )
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class JaxOptimizerData(eqx.Module):

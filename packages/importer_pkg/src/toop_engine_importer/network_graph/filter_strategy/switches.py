@@ -72,9 +72,6 @@ from toop_engine_importer.network_graph.network_graph_helper_functions import (
     remove_path_multiple_busbars,
     reverse_dict_list,
 )
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 def set_all_busbar_coupling_switches(

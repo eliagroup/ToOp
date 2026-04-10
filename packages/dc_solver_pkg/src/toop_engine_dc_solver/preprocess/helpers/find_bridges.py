@@ -108,7 +108,8 @@ def find_n_minus_2_safe_branches(
 ) -> Bool[np.ndarray, " n_cases"]:
     """Return a boolean array of length branch that is true for all branches that are n-2 safe.
 
-    N-2 safe means that the number of bridges in the network does not increase when the branch is
+    N-2 safe means that when disconnecting the cases to check, no islanding is happening when the outage_cases are outaged.
+    Other branches may still be bridges, but if they are not considered for outaging, this does not matter.
     removed. This way, branches that are not N-1 safe can be ignored.
     This method works by removing each branch and checking if the number of bridges stays the same.
     Hence, it might be slow for large networks.
@@ -242,10 +243,11 @@ def get_number_of_bridges_after_outage_parallel(
     work = [cases_to_check[i : i + batch_size] for i in range(0, len(cases_to_check), batch_size)]
     handles = []
     run_n_2_count_bridges_parallel_worker = ray.remote(get_number_of_bridges_after_outage)
+    outage_edges_ref = ray.put(outage_edges)
     for batch in work:
         handles.append(
             run_n_2_count_bridges_parallel_worker.remote(
-                batch, outage_edges, from_node, to_node, number_of_branches, number_of_nodes
+                batch, outage_edges_ref, from_node, to_node, number_of_branches, number_of_nodes
             )
         )
     results = ray.get(handles)

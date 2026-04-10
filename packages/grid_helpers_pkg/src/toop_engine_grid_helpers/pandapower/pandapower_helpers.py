@@ -587,6 +587,64 @@ def check_for_splits(
     return isnan
 
 
+def get_number_of_islands(
+    net: pp.pandapowerNet,
+    consider: tuple[str, ...] = ("l", "s", "t", "t3", "i"),
+    respect_switches: bool = True,
+    respect_in_service: bool = True,
+) -> int:
+    """Return the number of electrical islands in the pandapower network.
+
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network to analyse.
+    consider : tuple[str, ...]
+        The element types to consider when traversing connectivity. Defaults to lines,
+        switches, two-winding transformers, three-winding transformers and impedances.
+        Uses the same codes as `pandapower.toolbox.get_connected_buses`.
+    respect_switches : bool
+        Whether to treat open switches as disconnected. Defaults to True.
+    respect_in_service : bool
+        Whether to ignore out-of-service elements and buses. Defaults to True.
+
+    Returns
+    -------
+    int
+        Number of connected components among in-scope buses.
+    """
+    if respect_in_service and "in_service" in net.bus.columns:
+        candidate_buses = net.bus.index[net.bus.in_service]
+    else:
+        candidate_buses = net.bus.index
+
+    candidate_bus_ids = {int(bus_id) for bus_id in candidate_buses}
+    n_islands = 0
+    while len(candidate_bus_ids) > 0:
+        seed_bus = next(iter(candidate_bus_ids))
+        connected_buses = {seed_bus}
+        while True:
+            new_buses = {
+                int(bus_id)
+                for bus_id in get_connected_buses(
+                    net=net,
+                    buses=connected_buses,
+                    consider=consider,
+                    respect_switches=respect_switches,
+                    respect_in_service=respect_in_service,
+                )
+            }
+            updated_buses = connected_buses.union(new_buses)
+            if updated_buses == connected_buses:
+                break
+            connected_buses = updated_buses
+
+        n_islands += 1
+        candidate_bus_ids -= connected_buses
+
+    return n_islands
+
+
 def get_dc_bus_voltage(net: pp.pandapowerNet) -> pd.Series:
     """Get the bus voltage of all buses in the network under DC conditions
 

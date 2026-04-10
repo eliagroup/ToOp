@@ -151,23 +151,41 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      FOSSA_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
       - name: Check out repository code
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
-      - name: Patch uv lock files for FOSSA
-        run: python3 scripts/patch_uv_lock_for_fossa.py
+      - uses: ./.github/actions/install-uv
+
+      - name: Export requirements.txt for FOSSA
+        shell: bash
+        run: |
+          rm -rf .fossa-ci
+          mkdir -p .fossa-ci
+          cp .fossa.yml .fossa-ci/.fossa.yml
+          uv export \
+            --no-hashes \
+            --frozen \
+            --format=requirements.txt \
+            --output-file .fossa-ci/requirements.txt \
+            --quiet
 
       - id: fossa-analyze
         uses: fossas/fossa-action@c414b9ad82eaad041e47a7cf62a4f02411f427a0 # Use a specific version if locking is preferred
         with:
           api-key: ${{secrets.FOSSA_API_KEY}}
+          branch: ${{ env.FOSSA_BRANCH }}
+          working-directory: .fossa-ci
           run-tests: false # Add another run with run-tests: true if ci should fail on issues
 
       - id: fossa-test
         uses: fossas/fossa-action@c414b9ad82eaad041e47a7cf62a4f02411f427a0 # Use a specific version if locking is preferred
         with:
           api-key: ${{secrets.FOSSA_API_KEY}}
+          branch: ${{ env.FOSSA_BRANCH }}
+          working-directory: .fossa-ci
           run-tests: true # Add another run with run-tests: true if ci should fail on issues
 
   test-docs-build:

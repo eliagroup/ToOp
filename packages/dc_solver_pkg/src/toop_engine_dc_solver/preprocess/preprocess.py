@@ -610,12 +610,14 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
 def filter_disconnectable_branches_nminus2(network_data: NetworkData, n_processes: int = 1) -> NetworkData:
     """Filter the disconnectable branch mask to only include N-2 safe branches"""
     disconnectable_branches = np.flatnonzero(network_data.disconnectable_branch_mask)
+    outage_cases = np.flatnonzero(network_data.outaged_branch_mask)
     n_minus_2_safe = find_n_minus_2_safe_branches(
         from_node=network_data.from_nodes,
         to_node=network_data.to_nodes,
         number_of_branches=len(network_data.branch_ids),
         number_of_nodes=len(network_data.node_ids),
         cases_to_check=disconnectable_branches,
+        outage_cases=outage_cases,
         n_processes=n_processes,
     )
     disconnectable_branches = disconnectable_branches[n_minus_2_safe]

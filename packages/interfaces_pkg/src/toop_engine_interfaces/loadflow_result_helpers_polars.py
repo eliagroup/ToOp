@@ -452,7 +452,7 @@ def extract_solver_matrices_polars(
     not_basecase_filter = pl.col("contingency") != basecase.id
     # A contingency is considered successful if it converged or if no calculation was performed
     # (e.g. for disconnected elements)
-    is_success = pl.col("status").is_in([ConvergenceStatus.CONVERGED.value, ConvergenceStatus.NO_CALCULATION.value])
+    is_success = pl.col("status").is_in([ConvergenceStatus.CONVERGED.value])
 
     filtered_converged = loadflow_results.converged.filter(timestep_filter & not_basecase_filter)
     sorted_converged = filtered_converged.sort(pl.col("contingency").cast(pl.Enum(contingency_order)))

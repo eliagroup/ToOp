@@ -37,10 +37,12 @@ from toop_engine_dc_solver.preprocess.network_data import (
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
+    get_number_of_islands,
     get_pandapower_loadflow_results_in_ppc,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     get_globally_unique_id,
+    parse_globally_unique_id,
     table_ids,
 )
 from toop_engine_interfaces.folder_structure import (
@@ -404,13 +406,14 @@ def test_runner_matches_split_loadflows(preprocessed_data_folder: str) -> None:
     )
     with open(post_process_file_path, "r", encoding="utf-8") as f:
         optim_res = json.load(f)
+    beginning_islands = get_number_of_islands(runner.net)
     for i in range(len(optim_res["best_topos"])):
         actions = optim_res["best_topos"][i]["actions"]
         disconnections = optim_res["best_topos"][i]["disconnection"]
 
         disconnections_jax = jnp.array(disconnections)[None]
 
-        (n_0, n_1), success = run_solver_symmetric(
+        (n_0, n_1), solver_success = run_solver_symmetric(
             ActionIndexComputations(action=jnp.array([actions], dtype=int), pad_mask=jnp.array([True])),
             disconnections_jax,
             None,
@@ -420,22 +423,43 @@ def test_runner_matches_split_loadflows(preprocessed_data_folder: str) -> None:
         )
         n_0 = np.abs(n_0[0, 0])
         n_1 = np.abs(n_1[0, 0])
-        assert np.all(success)
 
         res = runner.run_dc_loadflow(actions, disconnections)
         assert runner.get_last_action_info() is not None
-        n_0_ref, n_1_ref, success = extract_solver_matrices_polars(
+        n_0_ref, n_1_ref, post_success = extract_solver_matrices_polars(
             loadflow_results=res,
             nminus1_definition=extract_nminus1_definition(network_data),
             timestep=0,
         )
-        assert np.all(success)
+
         n_0_ref = np.abs(n_0_ref)
         n_1_ref = np.abs(n_1_ref)
+
         assert n_0.shape == n_0_ref.shape
         assert np.allclose(n_0, n_0_ref)
+
         assert n_1.shape == n_1_ref.shape
-        assert np.allclose(n_1, n_1_ref)
+
+        diff = np.abs(n_1_ref - n_1)
+        significant_diff = np.abs(diff).max(axis=1) > 1e-6
+        assert np.allclose(n_1[~significant_diff], n_1_ref[~significant_diff])
+        if any(significant_diff):
+            disco_net = apply_disconnections(runner.net, disconnections, runner.action_set)
+            topo_net, action_info = apply_topology(disco_net, actions, runner.action_set)
+            assert not np.all(solver_success)
+            outaged_branches = np.array(network_data.branch_ids)[network_data.outaged_branch_mask]
+            for branch in outaged_branches[np.where(significant_diff)[0]]:
+                branch_id, branch_type = parse_globally_unique_id(branch)
+                copy_topo_net = deepcopy(topo_net)
+                copy_disco_net = deepcopy(disco_net)
+                copy_topo_net[branch_type].loc[int(branch_id), "in_service"] = False
+                copy_disco_net[branch_type].loc[int(branch_id), "in_service"] = False
+                n_islands_disco = get_number_of_islands(copy_disco_net)
+                assert n_islands_disco == beginning_islands, "The disconnection should not have n-2 issues"
+                n_islands = get_number_of_islands(copy_topo_net)
+                assert n_islands > beginning_islands, (
+                    "The topology should have n-2 issues, leading to more islands. Otherwise the solver would have been successful"
+                )
 
 
 def test_compute_cross_coupler_flows(preprocessed_data_folder: str, init_ray) -> None:

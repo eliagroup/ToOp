@@ -65,6 +65,11 @@ def get_branch_results(
             branch_df = branch_df.assign(
                 timestep=timestep, contingency=contingency.unique_id, side=side + 1, element=unique_ids
             )
+            side_map = {1: "_hv", 2: "_mv", 3: "_lv"}
+
+            mask = branch_df.element.str.contains("trafo3w")
+            branch_df.loc[mask, "element"] = branch_df.loc[mask, "element"] + branch_df.loc[mask, "side"].map(side_map)
+
             branch_df.set_index(["timestep", "contingency", "element", "side"], inplace=True)
             branch_df.rename(columns=dict(zip(columns, ["p", "q", "i", "loading"], strict=True)), inplace=True)
             # Fix kA -> A and % -> 1 scale only if present

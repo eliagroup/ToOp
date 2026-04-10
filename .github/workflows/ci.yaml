@@ -184,7 +184,6 @@ jobs:
         uses: fossas/fossa-action@c414b9ad82eaad041e47a7cf62a4f02411f427a0 # Use a specific version if locking is preferred
         with:
           api-key: ${{secrets.FOSSA_API_KEY}}
-          branch: ${{ env.FOSSA_BRANCH }}
           working-directory: .fossa-ci
           run-tests: true # Add another run with run-tests: true if ci should fail on issues
 

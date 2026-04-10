@@ -245,6 +245,8 @@ def pandapower_net(_pandapower_net: pandapower.pandapowerNet) -> pandapower.pand
             "vk_lv_percent",
         ]
     )
+
+    _pandapower_net.switch["origin_id"] = [str(uuid.uuid4()) for _ in _pandapower_net.switch.index]
     return deepcopy(_pandapower_net)
 
 

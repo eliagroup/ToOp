@@ -18,6 +18,7 @@ from pathlib import Path
 
 import numpy as np
 import pandapower as pp
+import structlog
 from beartype.typing import Optional
 from jaxtyping import ArrayLike, Bool, Int
 from pandas import Index
@@ -29,9 +30,8 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.logging.logger import get_logger
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

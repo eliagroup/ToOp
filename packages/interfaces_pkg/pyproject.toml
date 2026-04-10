@@ -42,7 +42,7 @@ dependencies = [
     "fsspec>=2024.0.0",
     "protobuf>=5,<8",
     "mypy-protobuf>=3.7.0",
-    "fonttools>=4.60.2"
+    "fonttools>=4.60.2",
 ]
 
 [build-system]

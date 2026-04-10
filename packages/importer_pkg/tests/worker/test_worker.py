@@ -10,6 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import structlog
 from beartype.typing import Literal, Union
 from confluent_kafka import Consumer, Producer
 from fsspec.implementations.dirfs import DirFileSystem
@@ -17,7 +18,6 @@ from fsspec.implementations.local import LocalFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_importer.worker.worker import Args, idle_loop, main
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     Command,
     PreprocessParameters,
@@ -33,9 +33,11 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 )
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
-logger = get_logger(__name__)
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
+
+
+logger = structlog.get_logger()
 
 
 def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> Producer:
@@ -45,7 +47,7 @@ def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> 
             "client.id": instance_id,
             "log_level": log_level,
         },
-        logger=get_logger(f"ac_worker_producer_{instance_id}"),
+        logger=logger.bind(ac_worker_producer=instance_id),
     )
     return producer
 
@@ -315,7 +317,7 @@ def main_wrapper(
             "client.id": instance_id,
             "log_level": 2,
         },
-        logger=get_logger("confluent_kafka.producer"),
+        logger=logger.bind(client_id=instance_id),
     )
 
     main(

@@ -20,9 +20,6 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_separation_set,
 )
 from toop_engine_interfaces.asset_topology import Station
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 # TODO: A different rule could take precedent here. I would first check for parallel lines/trafos

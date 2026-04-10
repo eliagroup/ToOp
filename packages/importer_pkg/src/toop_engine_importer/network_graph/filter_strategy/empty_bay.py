@@ -25,9 +25,6 @@ from toop_engine_importer.network_graph.network_graph_helper_functions import (
     find_longest_path_ids,
     get_pair_tuples_from_list,
 )
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 def set_empty_bay_weights(graph: nx.Graph) -> None:

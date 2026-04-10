@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 import pypowsybl
+import structlog
 from beartype.typing import Callable, Optional
 from fsspec import AbstractFileSystem
 from numpy.random import Generator as Rng
@@ -31,7 +32,6 @@ from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
@@ -58,7 +58,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
 )
 from toop_engine_topology_optimizer.interfaces.models.base_storage import convert_db_topo_to_message_topo, hash_topologies
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AcNotConvergedError(Exception):

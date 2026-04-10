@@ -119,11 +119,6 @@ jax.config.update("jax_enable_x64", True)
 # JAX
 jax.config.update("jax_logging_level", "WARNING")
 
-# NUMBA
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
-
 # pandera
 config = pandera.config.PanderaConfig(
     validation_enabled=True, validation_depth=pandera.config.ValidationDepth.SCHEMA_AND_DATA

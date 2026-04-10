@@ -12,10 +12,10 @@ Created: 2025-05-13
 """
 
 import pandera.typing as pat
+import structlog
 from toop_engine_importer.contingency_from_power_factory.power_factory_data_class import ContingencyMatchSchema
-from toop_engine_interfaces.logging.logger import get_logger
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_stats_n1_list_found(processed_n1_definition: pat.DataFrame[ContingencyMatchSchema]) -> dict:

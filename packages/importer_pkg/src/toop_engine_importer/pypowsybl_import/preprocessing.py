@@ -18,6 +18,7 @@ from itertools import product
 from pathlib import Path
 
 import pypowsybl
+import structlog
 from beartype.typing import (
     Any,  # noqa: F401
     Callable,
@@ -44,7 +45,6 @@ from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks, ma
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     BaseImporterParameters,
     CgmesImporterParameters,
@@ -59,7 +59,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 )
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
+
 
 CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
 

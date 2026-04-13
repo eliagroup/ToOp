@@ -18,11 +18,14 @@ import numpy as np
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
+import structlog
 from beartype.typing import Optional
 from pandera import DataFrameModel, Field
 from pandera.typing import Index, Series
 from pypowsybl.network import Network
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+
+logger = structlog.get_logger(__name__)
 
 
 class BranchModel(DataFrameModel):
@@ -77,12 +80,19 @@ def get_cgmes_ids(merged_net: Network) -> list[str]:
     list[str]
         The list of CGMES IDs from the CGMES sub-network.
     """
+    cgmes_nets = []
     for sub_net_id in merged_net.get_sub_networks().index.values:
         sub_net = merged_net.get_sub_network(sub_net_id)
         if sub_net._source_format == "CGMES":
-            cgmes_ids = sub_net.get_identifiables()
-            return cgmes_ids.index.tolist()
-    raise ValueError("No CGMES sub-network found in the merged network.")
+            cgmes_nets.append(sub_net)
+    if len(cgmes_nets) == 0:
+        raise ValueError("No CGMES sub-network found in the merged network.")
+    if len(cgmes_nets) > 1:
+        logger.warning(
+            f"Multiple CGMES sub-networks found in the merged network. Returning IDs from the first one. "
+            f"Sub-network IDs: {[net.get_id() for net in cgmes_nets]}"
+        )
+    return cgmes_nets[0].get_identifiables().index.tolist()
 
 
 def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:

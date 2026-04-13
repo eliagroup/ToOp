@@ -18,23 +18,23 @@ from toop_engine_importer.pypowsybl_import.merge_ucte_cgmes.merge_ucte_cgmes imp
 )
 
 
-def test_remove_station_node_breaker(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_remove_station_node_breaker(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     for station in net.get_substations().index:
         remove_station(net, station)
 
     assert len(net.get_substations()) == 0
 
 
-def test_schmea(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_schmea(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
 
     TieLineSchema.validate(net.get_tie_lines())
     DanglingLineSchema.validate(net.get_dangling_lines())
 
 
-def test_ucte_cgmes_merge_class(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_ucte_cgmes_merge_class(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     UcteCgmesMerge(
         ucte_area_name="test",
         country_name=None,

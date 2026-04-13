@@ -45,8 +45,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 
-def test_node_breaker_topology_to_graph(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_node_breaker_topology_to_graph(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)
     graph_data = node_breaker_topology_to_graph_data(net, substation_information)
@@ -58,16 +58,16 @@ def test_node_breaker_topology_to_graph(basic_node_breaker_network_powsyblV2):
     assert len(graph.edges) == len(nbt.switches)
 
 
-def test_get_switches(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_get_switches(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     switches_df = get_switches(switches_df=nbt.switches)
     switches_df["in_service"] = True
     SwitchSchema.validate(switches_df)
 
 
-def test_get_nodes(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_get_nodes(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     switches_df = get_switches(switches_df=nbt.switches)
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
@@ -82,15 +82,15 @@ def test_get_nodes(basic_node_breaker_network_powsyblV2):
     NodeSchema.validate(nodes_df)
 
 
-def test_get_helper_branches(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_get_helper_branches(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     helper_branches = get_helper_branches(internal_connections_df=nbt.internal_connections)
     HelperBranchSchema.validate(helper_branches)
 
 
-def test_get_node_assets(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     names_dict = {
         "L1": "",

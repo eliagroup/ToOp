@@ -12,7 +12,6 @@ Author:  Benjamin Petrick
 Created: 2024-08-13
 """
 
-from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
@@ -1142,9 +1141,11 @@ def _is_disconnectable(network: Network, grid_model_id: list[str]) -> np.ndarray
     np.ndarray
         A boolean NumPy array indicating if the grid_model_id is disconnectable.
     """
-    network_copy = deepcopy(network)
+    network.clone_variant("InitialState", "disconnectable_check")
+    network.set_working_variant("disconnectable_check")
     disconnectable = np.zeros(len(grid_model_id), dtype=bool)
     for idx, switch_id in enumerate(grid_model_id):
-        disconnectable[idx] = network_copy.disconnect(switch_id)
-
+        disconnectable[idx] = network.disconnect(switch_id)
+    network.remove_variant("disconnectable_check")
+    network.set_working_variant("InitialState")
     return disconnectable

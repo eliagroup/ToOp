@@ -24,6 +24,7 @@ from beartype.typing import Generator
 from confluent_kafka import Consumer
 from docker import DockerClient
 from docker.models.containers import Container
+from pypowsybl.network import Network
 from toop_engine_grid_helpers.pandapower.example_grids import (
     example_multivoltage_cross_coupler,
 )
@@ -511,120 +512,8 @@ def network_graph_data_test1(get_graph_input_dicts) -> NetworkGraphData:
 
 
 @pytest.fixture(scope="function")
-def basic_node_breaker_network_powsybl_network_graph():
-    net = pypowsybl.network.create_empty()
-
-    n_subs = 5
-    n_vls = 5
-    # substation_id : number of buses
-    n_buses = {1: 3, 2: 3, 3: 2, 4: 2, 5: 1}
-    n_busbar_coupler = {1: 2, 2: 3, 3: 2, 4: 2, 5: 1}
-
-    stations = pd.DataFrame.from_records(
-        index="id", data=[{"id": f"S{i + 1}", "country": "BE", "name": f"Station{i + 1}"} for i in range(n_subs)]
-    )
-    voltage_levels = pd.DataFrame.from_records(
-        index="id",
-        data=[
-            {
-                "substation_id": f"S{i + 1}",
-                "id": f"VL{i + 1}",
-                "topology_kind": "NODE_BREAKER",
-                "nominal_v": 225,
-                "name": f"VLevel{i + 1}",
-            }
-            for i in range(n_vls)
-        ],
-    )
-    busbars = pd.DataFrame.from_records(
-        index="id",
-        data=[
-            {"voltage_level_id": f"VL{sub_id}", "id": f"BBS{sub_id}_{bus_id}", "node": bus_id - 1, "name": f"bus{bus_id}"}
-            for sub_id, num_buses in n_buses.items()
-            for bus_id in range(1, num_buses + 1)
-        ],
-    )
-    busbarSectionPosition = pd.DataFrame.from_records(
-        index="id",
-        data=[
-            {"id": f"BBS{sub_id}_{bus_id}", "section_index": 1, "busbar_index": bus_id}
-            for sub_id, num_buses in n_buses.items()
-            for bus_id in range(1, num_buses + 1)
-        ],
-    )
-
-    net.create_substations(stations)
-    net.create_voltage_levels(voltage_levels)
-    net.create_busbar_sections(busbars)
-    net.create_extensions("busbarSectionPosition", busbarSectionPosition)
-
-    lines = pd.DataFrame.from_records(
-        data=[
-            {"bus_or_busbar_section_id_1": "BBS1_1", "bus_or_busbar_section_id_2": "BBS2_1"},
-            {"bus_or_busbar_section_id_1": "BBS1_2", "bus_or_busbar_section_id_2": "BBS2_2"},
-            {"bus_or_busbar_section_id_1": "BBS1_3", "bus_or_busbar_section_id_2": "BBS3_1"},
-            {"bus_or_busbar_section_id_1": "BBS1_3", "bus_or_busbar_section_id_2": "BBS4_1"},
-            {"bus_or_busbar_section_id_1": "BBS1_2", "bus_or_busbar_section_id_2": "BBS4_2"},
-            {"bus_or_busbar_section_id_1": "BBS2_1", "bus_or_busbar_section_id_2": "BBS3_1"},
-            {"bus_or_busbar_section_id_1": "BBS2_2", "bus_or_busbar_section_id_2": "BBS3_2"},
-            {"bus_or_busbar_section_id_1": "BBS2_1", "bus_or_busbar_section_id_2": "BBS4_1"},
-            {"bus_or_busbar_section_id_1": "BBS3_1", "bus_or_busbar_section_id_2": "BBS5_1"},
-        ]
-    )
-    lines["r"] = 0.1
-    lines["x"] = 10
-    lines["g1"] = 0
-    lines["b1"] = 0
-    lines["g2"] = 0
-    lines["b2"] = 0
-    lines["position_order_1"] = 1
-    lines["position_order_2"] = 1
-    for i, line in lines.iterrows():
-        lines.loc[i, "id"] = f"L{i + 1}"
-    lines = lines.set_index("id")
-    pypowsybl.network.create_line_bays(net, lines)
-    pypowsybl.network.create_coupling_device(
-        net, bus_or_busbar_section_id_1=["BBS1_1", "BBS1_2"], bus_or_busbar_section_id_2=["BBS1_2", "BBS1_3"]
-    )
-    pypowsybl.network.create_coupling_device(
-        net, bus_or_busbar_section_id_1=["BBS2_1"], bus_or_busbar_section_id_2=["BBS2_2"]
-    )
-    pypowsybl.network.create_coupling_device(
-        net, bus_or_busbar_section_id_1=["BBS2_2"], bus_or_busbar_section_id_2=["BBS2_3"]
-    )
-    pypowsybl.network.create_coupling_device(
-        net, bus_or_busbar_section_id_1=["BBS3_1"], bus_or_busbar_section_id_2=["BBS3_2"]
-    )
-    pypowsybl.network.create_coupling_device(
-        net, bus_or_busbar_section_id_1=["BBS4_1"], bus_or_busbar_section_id_2=["BBS4_2"]
-    )
-    pypowsybl.network.create_load_bay(net, id="load1", bus_or_busbar_section_id="BBS2_1", p0=100, q0=10, position_order=1)
-    pypowsybl.network.create_load_bay(net, id="load2", bus_or_busbar_section_id="BBS3_2", p0=100, q0=10, position_order=2)
-    pypowsybl.network.create_generator_bay(
-        net,
-        id="generator1",
-        max_p=1000,
-        min_p=0,
-        voltage_regulator_on=True,
-        target_p=100,
-        target_q=10,
-        target_v=225,
-        bus_or_busbar_section_id="BBS1_1",
-        position_order=1,
-    )
-    pypowsybl.network.create_generator_bay(
-        net,
-        id="generator2",
-        max_p=1000,
-        min_p=0,
-        voltage_regulator_on=True,
-        target_p=100,
-        target_q=10,
-        target_v=225,
-        bus_or_busbar_section_id="BBS5_1",
-        position_order=2,
-    )
-
+def basic_node_breaker_network_powsybl_grid() -> Network:
+    net = basic_node_breaker_network_powsybl()
     return net
 
 

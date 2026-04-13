@@ -26,7 +26,7 @@ def test_remove_station_node_breaker(basic_node_breaker_network_powsybl_grid):
     assert len(net.get_substations()) == 0
 
 
-def test_schmea(basic_node_breaker_network_powsybl_grid):
+def test_schema(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
 
     TieLineSchema.validate(net.get_tie_lines())

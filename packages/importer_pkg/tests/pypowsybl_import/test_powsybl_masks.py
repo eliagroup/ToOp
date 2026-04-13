@@ -259,9 +259,7 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
 
 
-def test_update_bus_masks_node_breaker_select_station(
-    basic_node_breaker_network_powsybl_grid: Network, cgmes_importer_parameters: CgmesImporterParameters
-):
+def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network_powsybl_grid: Network):
     network = basic_node_breaker_network_powsybl_grid
     importer_parameters = CgmesImporterParameters(
         grid_model_file=Path("cgmes_file.zip"),

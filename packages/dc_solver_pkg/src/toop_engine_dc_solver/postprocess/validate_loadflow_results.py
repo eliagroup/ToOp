@@ -432,7 +432,7 @@ def get_solver_results(
         The actions that are taken in the grid, as indices into the action set.
     disconnections : list[int] | None
         The disconnections as indices into the disconnectable branches set. Can be None if no dis
-    connections are taken.
+        connections are taken.
     timestep : int
         The timestep to get the results for.
     dynamic_information : DynamicInformation

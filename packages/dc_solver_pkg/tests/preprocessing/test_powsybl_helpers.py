@@ -149,7 +149,7 @@ def test_get_tie_lines_empty():
 def test_get_tie_lines_hybrid(ucte_file: Path) -> None:
     net = pypowsybl.network.load(ucte_file)
     net._source_format = "hybrid"
-    tie_lines_orig = net.get_tie_lines(net)
+    tie_lines_orig = net.get_tie_lines(all_attributes=True)
     with pytest.raises(ValueError, match="No CGMES sub-network"):
         get_tie_lines(net)
 
@@ -158,7 +158,7 @@ def test_get_tie_lines_hybrid(ucte_file: Path) -> None:
 
     assert np.array_equal(tie_lines["name"].values, tie_lines_orig.index.values)
 
-    dangline_lines = net.get_dangling_lines(net)
+    dangline_lines = net.get_dangling_lines(all_attributes=True)
     with mock.patch(
         "toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers.get_cgmes_ids",
         return_value=dangline_lines.index.values.tolist(),

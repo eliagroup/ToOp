@@ -12,6 +12,7 @@ import networkx as nx
 import pandas as pd
 import pypowsybl
 import pytest
+from pypowsybl.network import Network
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 from toop_engine_importer.network_graph.data_classes import (
     HelperBranchSchema,
@@ -44,8 +45,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 
-def test_node_breaker_topology_to_graph(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_node_breaker_topology_to_graph(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)
     graph_data = node_breaker_topology_to_graph_data(net, substation_information)
@@ -57,16 +58,16 @@ def test_node_breaker_topology_to_graph(basic_node_breaker_network_powsyblV2):
     assert len(graph.edges) == len(nbt.switches)
 
 
-def test_get_switches(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_get_switches(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     switches_df = get_switches(switches_df=nbt.switches)
     switches_df["in_service"] = True
     SwitchSchema.validate(switches_df)
 
 
-def test_get_nodes(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_get_nodes(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     switches_df = get_switches(switches_df=nbt.switches)
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
@@ -81,15 +82,15 @@ def test_get_nodes(basic_node_breaker_network_powsyblV2):
     NodeSchema.validate(nodes_df)
 
 
-def test_get_helper_branches(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_get_helper_branches(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     helper_branches = get_helper_branches(internal_connections_df=nbt.internal_connections)
     HelperBranchSchema.validate(helper_branches)
 
 
-def test_get_node_assets(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     names_dict = {
         "L1": "",
@@ -125,10 +126,10 @@ def test_get_node_assets(basic_node_breaker_network_powsyblV2):
     NodeAssetSchema.validate(node_assets_df)
 
 
-def test_get_station(basic_node_breaker_network_powsybl_network_graph):
+def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL3"}
     station_info = SubstationInformation(**station_info)
-    res = get_station(basic_node_breaker_network_powsybl_network_graph, "VL3_0", station_info)
+    res = get_station(basic_node_breaker_network_powsybl_grid, "VL3_0", station_info)
     assert isinstance(res, Station)
     assert res.name == "Station_ID"
     assert res.grid_model_id == "VL3_0"
@@ -579,8 +580,8 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     )
 
 
-def test_get_topo_integration(basic_node_breaker_network_powsybl_network_graph):
-    net = basic_node_breaker_network_powsybl_network_graph
+def test_get_topo_integration(basic_node_breaker_network_powsybl_grid: Network):
+    net = basic_node_breaker_network_powsybl_grid
     importer_parameters = CgmesImporterParameters(
         grid_model_file=Path("cgmes_file.zip"),
         data_folder="data_folder",

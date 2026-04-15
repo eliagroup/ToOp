@@ -139,79 +139,6 @@ def get_islanding_contingencies_solver(
     return bridge_contingency_ids
 
 
-def _get_inactive_branch_contingency_ids(
-    static_information: StaticInformation,
-    actions: list[int],
-    disconnections: list[int] | None,
-    contingencies: list[Contingency],
-) -> set[str]:
-    """Get branch contingency ids that are already inactive in the active topology.
-
-    This is relevant for the validation, as such contingencies should not be expected to lead to a loadflow failure,
-    even if they are not marked as "islanding" contingencies.
-
-    The function works by checking which branches are inactive in the active topology
-    (either due to actions or disconnections) and then checking which contingencies correspond to those branches.
-
-    Parameters
-    ----------
-    static_information : StaticInformation
-        The static information of the problem, containing the mapping from contingencies to branches.
-    actions : list[int]
-        The actions that are taken in the grid, as indices into the action set.
-    disconnections : list[int] | None
-        The disconnections as indices into the disconnectable branches set. Can be None if no disconnections are taken.
-    contingencies : list[Contingency]
-        The list of contingencies to check against.
-
-    Returns
-    -------
-    set[str]
-        The set of contingency ids that correspond to branches that are already inactive in the active topology.
-    """
-    if len(actions) == 0 and (disconnections is None or len(disconnections) == 0):
-        return set()
-
-    dynamic_information = static_information.dynamic_information
-    solver_branch_contingency_ids = static_information.solver_config.contingency_ids[: dynamic_information.n_outages]
-
-    topology = ActionIndexComputations(
-        action=jnp.array([actions], dtype=int),
-        pad_mask=jnp.array([True]),
-    )
-    bitvector_topology = convert_action_set_index_to_topo(topology, dynamic_information.action_set)
-    disconnection_array = None
-    if disconnections is not None and len(disconnections) > 0:
-        disconnection_array = dynamic_information.disconnectable_branches.at[jnp.array(disconnections, dtype=int)].get(
-            mode="fill"
-        )[None]
-
-    topo_res = compute_bsdf_lodf_static_flows(
-        topology_batch=bitvector_topology,
-        disconnection_batch=disconnection_array,
-        dynamic_information=dynamic_information,
-        solver_config=static_information.solver_config,
-    )
-
-    from_node = np.asarray(topo_res.from_node[0])
-    to_node = np.asarray(topo_res.to_node[0])
-    inactive_branch_mask = (
-        (from_node < 0)
-        | (to_node < 0)
-        | (from_node >= dynamic_information.n_nodes)
-        | (to_node >= dynamic_information.n_nodes)
-    )
-
-    contingencies_by_id = {contingency.id: contingency for contingency in contingencies}
-    inactive_contingency_ids: set[str] = set()
-    for contingency_id, branch_index in zip(
-        solver_branch_contingency_ids, np.asarray(dynamic_information.branches_to_fail), strict=True
-    ):
-        if inactive_branch_mask[int(branch_index)] and contingency_id in contingencies_by_id:
-            inactive_contingency_ids.add(contingency_id)
-    return inactive_contingency_ids
-
-
 def validate_loadflow_results(
     static_information: StaticInformation,
     nminus1_definition: Nminus1Definition,
@@ -396,25 +323,6 @@ def assert_shapes(
     assert len(case_contingencies) == len(success_solver), (
         f"Number of solver success entries ({len(success_solver)}) does not match number of contingencies"
     )
-
-
-def _get_inactive_branches_powsybl(active_topology_network: Network) -> set[str]:
-    """Get the set of branch ids that are inactive in the active topology according to powsybl.
-
-    Parameters
-    ----------
-    active_topology_network : Network
-        The active topology as a powsybl Network object.
-
-    Returns
-    -------
-    set[str]
-        The set of branch ids that are inactive in the active topology according to powsybl
-    """
-    branches = active_topology_network.get_branches(attributes=["connected1", "connected2"])
-    branches = branches[~branches.connected1 | ~branches.connected2]
-    out_of_service_branches_powsybl = set(branches.index)
-    return out_of_service_branches_powsybl
 
 
 def get_solver_results(

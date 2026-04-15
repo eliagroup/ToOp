@@ -23,6 +23,7 @@ from pandapower.converter.cim.cim2pp.from_cim import from_cim
 from pandapower.converter.ucte.from_ucte import from_ucte
 from pandapower.pypower.idx_brch import SHIFT
 from pandapower.toolbox import get_connected_buses
+from pandapower.topology import connected_components, create_nxgraph
 
 
 def get_phaseshift_key(trafo_type: str) -> str:
@@ -613,35 +614,25 @@ def get_number_of_islands(
     int
         Number of connected components among in-scope buses.
     """
-    if respect_in_service and "in_service" in net.bus.columns:
-        candidate_buses = net.bus.index[net.bus.in_service]
-    else:
-        candidate_buses = net.bus.index
-
-    candidate_bus_ids = {int(bus_id) for bus_id in candidate_buses}
     n_islands = 0
-    while len(candidate_bus_ids) > 0:
-        seed_bus = next(iter(candidate_bus_ids))
-        connected_buses = {seed_bus}
-        while True:
-            new_buses = {
-                int(bus_id)
-                for bus_id in get_connected_buses(
-                    net=net,
-                    buses=connected_buses,
-                    consider=consider,
-                    respect_switches=respect_switches,
-                    respect_in_service=respect_in_service,
-                )
-            }
-            updated_buses = connected_buses.union(new_buses)
-            if updated_buses == connected_buses:
-                break
-            connected_buses = updated_buses
+    include_lines = "l" in consider
+    include_switches = "s" in consider
+    include_trafos = "t" in consider
+    include_trafos3w = "t3" in consider
+    include_impedances = "i" in consider
+    mg = create_nxgraph(
+        net,
+        respect_switches=respect_switches,
+        include_out_of_service=not respect_in_service,
+        include_lines=include_lines,
+        include_switches=include_switches,
+        include_trafos=include_trafos,
+        include_trafo3ws=include_trafos3w,
+        include_impedances=include_impedances,
+    )
 
-        n_islands += 1
-        candidate_bus_ids -= connected_buses
-
+    cc = connected_components(mg)
+    n_islands = len(list(cc))
     return n_islands
 
 

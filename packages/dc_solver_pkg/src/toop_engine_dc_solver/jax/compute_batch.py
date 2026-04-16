@@ -195,9 +195,6 @@ def compute_bsdf_lodf_static_flows(
         single_outage_cases_to_zero = topo_res.failure_cases_to_zero[:, : lodf_success.shape[1]]
         lodf_success = jnp.where(single_outage_cases_to_zero, True, lodf_success)
 
-    base_success = topo_res.success
-    single_outage_success = base_success[:, None] & lodf_success
-
     # Compute multi-outages
     outage_modf, outage_modf_success = jax.vmap(
         build_modf_matrices,
@@ -214,24 +211,10 @@ def compute_bsdf_lodf_static_flows(
         dynamic_information.multi_outage_branches,
     )
 
-    multi_outage_success = base_success[:, None] & outage_modf_success
-    injection_outage_success = jnp.broadcast_to(
-        base_success[:, None],
-        (base_success.shape[0], dynamic_information.n_inj_failures),
-    )
-    bb_outage_success = jnp.broadcast_to(
-        base_success[:, None],
-        (
-            base_success.shape[0],
-            dynamic_information.n_bb_outages if dynamic_information.bb_outage_baseline_analysis is None else 0,
-        ),
-    )
     contingency_success = jnp.concatenate(
         [
-            single_outage_success,
-            multi_outage_success,
-            injection_outage_success,
-            bb_outage_success,
+            lodf_success,
+            outage_modf_success,
         ],
         axis=1,
     )
@@ -241,7 +224,7 @@ def compute_bsdf_lodf_static_flows(
         outage_modf=outage_modf,
         lodf=lodf,
         contingency_success=contingency_success,
-        success=jnp.all(contingency_success, axis=1),
+        success=topo_res.success[:, None] & jnp.all(contingency_success, axis=1),
     )
 
 

@@ -210,11 +210,23 @@ def compute_bsdf_lodf_static_flows(
         topo_res.to_node,
         dynamic_information.multi_outage_branches,
     )
-
+    injection_outage_success = jnp.broadcast_to(
+        topo_res.success[:, None],
+        (topo_res.success.shape[0], dynamic_information.n_inj_failures),
+    )
+    bb_outage_success = jnp.broadcast_to(
+        topo_res.success[:, None],
+        (
+            topo_res.success.shape[0],
+            dynamic_information.n_bb_outages if dynamic_information.bb_outage_baseline_analysis is None else 0,
+        ),
+    )
     contingency_success = jnp.concatenate(
         [
             lodf_success,
             outage_modf_success,
+            injection_outage_success,
+            bb_outage_success,
         ],
         axis=1,
     )
@@ -224,7 +236,7 @@ def compute_bsdf_lodf_static_flows(
         outage_modf=outage_modf,
         lodf=lodf,
         contingency_success=contingency_success,
-        success=topo_res.success[:, None] & jnp.all(contingency_success, axis=1),
+        success=topo_res.success & jnp.all(contingency_success, axis=1),
     )
 
 

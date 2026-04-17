@@ -28,7 +28,8 @@ UCTERegionType: TypeAlias = Literal[
 CGMESRegionType: TypeAlias = Literal[
     "AL","AD","AM","AT","AZ","BY","BE","BA","BG","HR","CY","CZ","DK","EE","FI","FR",
     "GE","DE","GR","HU","IS","IE","IT","LV","LI","LT","LU","MT","MD","MC","ME","NL",
-    "MK","NO","PL","PT","RO","RU","SM","RS","SK","SI","ES","SE","CH","TR","UA","GB","VA"
+    "MK","NO","PL","PT","RO","RU","SM","RS","SK","SI","ES","SE","CH","TR","UA","GB","VA",
+    "HK"
     ]
 
 # fmt: on

@@ -1092,6 +1092,13 @@ class TopologyResults(eqx.Module):
     disconnection_modf: Optional[MODFMatrix]
     """If disconnections are applied, this holds the MODF matrices for the disconnections."""
 
+    contingency_success: Optional[Bool[ArrayLike, " ... n_failures"]] = None
+    """Whether each N-1 contingency case was successful for a topology.
+
+    This is ordered like `SolverLoadflowResults.n_1_matrix`: simple branch outages first, then
+    multi-outages, then injection outages, then busbar outages if included as N-1 cases.
+    """
+
 
 class NodalInjOptimResults(eqx.Module):
     """A container for the results of the nodal injection optimization.
@@ -1187,12 +1194,16 @@ class SolverLoadflowResults(eqx.Module):
     nodal_injections_optimized: Optional[NodalInjOptimResults] = None
     """The results of the nodal injection optimization, if any was performed."""
 
+    contingency_success: Optional[Bool[ArrayLike, " ... n_failures"]] = None
+    """Whether each N-1 contingency case converged for the corresponding topology."""
+
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "SolverLoadflowResults":
         """Access the first batch dimension of the loadflow matrices"""
         assert self.n_0_matrix.ndim >= 3, "Only works if a batch dimension is present"
         return SolverLoadflowResults(
             n_0_matrix=self.n_0_matrix[key],
             n_1_matrix=self.n_1_matrix[key],
+            contingency_success=(self.contingency_success[key] if self.contingency_success is not None else None),
             cross_coupler_flows=(self.cross_coupler_flows[key] if self.cross_coupler_flows is not None else None),
             branch_action_index=(self.branch_action_index[key] if self.branch_action_index is not None else None),
             branch_topology=self.branch_topology[key],

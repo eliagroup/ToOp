@@ -28,9 +28,6 @@ from toop_engine_interfaces.asset_topology import (
     SwitchableAsset,
     Topology,
 )
-from toop_engine_interfaces.logging.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 def get_all_element_names(network: Network, line_trafo_name_col: str = "elementName") -> pd.Series:

@@ -14,6 +14,7 @@ import equinox as eqx
 import jax
 import jax.experimental
 import jax.numpy as jnp
+import structlog
 from beartype.typing import Iterable, Optional, Sequence
 from fsspec import AbstractFileSystem
 from jax_dataclasses import replace
@@ -32,7 +33,6 @@ from toop_engine_dc_solver.jax.types import (
     StaticInformation,
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import StaticInformationStats, extract_static_information_stats
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.crossover import (
     crossover,
@@ -58,7 +58,7 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     LoadflowSolverParameters,
 )
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class JaxOptimizerData(eqx.Module):
@@ -629,12 +629,15 @@ def algo_setup(
             ]
         )
 
-    if not ga_args.enable_nodal_inj_optim and "pst_switching_distance" in [metric for metric, _ in ga_args.target_metrics]:
+    pst_metrics_without_optimization = {
+        metric for metric, _ in ga_args.target_metrics if metric in {"pst_switching_distance", "pst_activated"}
+    }
+    if not ga_args.enable_nodal_inj_optim and pst_metrics_without_optimization:
         logger.warning(
             (
-                "The target metrics include pst_switching_distance but nodal injection optimization is disabled. "
-                "This will lead to pst_switching_distance being always 0 and not optimized for. "
-                "Consider enabling nodal injection optimization or removing pst_switching_distance from the target metrics. "
+                f"The target metrics include {pst_metrics_without_optimization} but nodal injection optimization "
+                "is disabled. This will lead to these metrics being always 0 and not optimized for. "
+                "Consider enabling nodal injection optimization or removing these metrics from the target metrics. "
             )
         )
     n_rel_subs = static_informations[0].dynamic_information.n_sub_relevant

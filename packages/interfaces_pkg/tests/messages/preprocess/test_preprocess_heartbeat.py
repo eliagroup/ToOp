@@ -42,6 +42,7 @@ def test_preprocess_heartbeat_with_status_info():
 
 
 def test_empty_status_update_fn_logs(capsys: pytest.CaptureFixture[str]):
+
     stage = "preprocess_started"
     empty_status_update_fn(stage, None)
     captured = capsys.readouterr()

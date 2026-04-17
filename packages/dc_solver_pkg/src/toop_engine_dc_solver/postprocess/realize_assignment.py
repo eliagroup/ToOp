@@ -12,15 +12,15 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import numpy as np
+import structlog
 from beartype.typing import Literal, Optional
 from jaxtyping import Array, Bool, Int
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_station_switching_distance
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_interfaces.asset_topology import Station
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @partial(jax.jit, static_argnames=("batch_size", "choice_heuristic"))

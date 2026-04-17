@@ -48,6 +48,8 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **pst_switching_distance**: Squared distance from the initial PST setpoints to the current optimized ones.
 
+- **pst_activated**: Number of PST tap positions that differ from their initial tap position (implicit unit cost). This counts changed PST setpoints and can be weighted in `target_metrics`.
+
 ## Other Metrics
 
 - **n0_n1_delta**: Penalty for exceeding the maximum allowed flow change between N-0 and N-1 cases. Computed as the sum of MW exceeding `n0_n1_max_diff` limits across all branches and timesteps. Useful for operational constraints that limit how much flow can shift during contingencies.

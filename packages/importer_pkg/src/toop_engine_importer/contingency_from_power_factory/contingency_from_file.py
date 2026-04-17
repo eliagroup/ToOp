@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 import pandera.typing as pat
+import structlog
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_importer.contingency_from_power_factory.power_factory_data_class import (
@@ -24,9 +25,8 @@ from toop_engine_importer.contingency_from_power_factory.power_factory_data_clas
     ContingencyImportSchemaPowerFactory,
     ContingencyMatchSchema,
 )
-from toop_engine_interfaces.logging.logger import get_logger
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_contingencies_from_file(

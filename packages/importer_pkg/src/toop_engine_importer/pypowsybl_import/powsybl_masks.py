@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pandera.typing as pat
+import structlog
 from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -39,13 +40,12 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.logging.logger import get_logger
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     UcteImporterParameters,
 )
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)

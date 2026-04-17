@@ -17,6 +17,7 @@ import datetime
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import structlog
 from beartype.typing import List, Literal, Optional, Tuple, Union
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
@@ -35,9 +36,8 @@ from toop_engine_interfaces.asset_topology import (
     Station,
     Topology,
 )
-from toop_engine_interfaces.logging.logger import get_logger
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_busses_from_station(

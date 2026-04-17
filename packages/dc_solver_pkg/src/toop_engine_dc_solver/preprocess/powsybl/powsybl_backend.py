@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import pandera.typing as pat
 import pypowsybl as pp
+import structlog
 from beartype.typing import Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
@@ -34,9 +35,8 @@ from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
-from toop_engine_interfaces.logging.logger import get_logger
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 INJECTION_COLUMNS = ["name", "p", "bus_id_int", "for_nminus1", "type"]
 

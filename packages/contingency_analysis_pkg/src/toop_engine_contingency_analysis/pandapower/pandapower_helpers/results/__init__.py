@@ -9,4 +9,10 @@
 from .branch_results import get_branch_results
 from .node_results import get_node_result_df
 from .regulating_element_results import get_regulating_element_results
+from .switch_results import (
+    create_closed_bb_switches_graph,
+    get_failed_switch_results,
+    get_switch_mapped_elements,
+    get_switch_results,
+)
 from .va_diff_results import get_failed_va_diff_results, get_va_diff_results

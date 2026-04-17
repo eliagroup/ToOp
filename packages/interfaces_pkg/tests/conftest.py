@@ -5,12 +5,13 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-version: 3
+"""Testing fixtures."""
 
-paths:
-  exclude:
-    - "**/.venv/**"
+import pytest
+import structlog
 
-project:
-  name: "Topology Optimizer"
-  team: "Sub-Chapter AI & Data Science"
+
+@pytest.fixture(autouse=True)
+def reset_structlog() -> None:
+    """Reset structlog between tests."""
+    structlog.reset_defaults()

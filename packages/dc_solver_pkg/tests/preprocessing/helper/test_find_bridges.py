@@ -81,5 +81,42 @@ def test_find_n_minus_2_safe_branches() -> None:
         ],
         dtype=bool,
     )
+    assert np.array_equal(n_minus_2_safe, expected_n_minus_2_safe)
 
+    # Make sure only the cases we want to check are checked.
+    cases_to_check = np.array([1, 4])
+    n_minus_2_safe = find_n_minus_2_safe_branches(from_node, to_node, 5, 4, cases_to_check)
+    expected_n_minus_2_safe = np.array(
+        [
+            False,
+            True,
+        ],
+        dtype=bool,
+    )
+    assert np.array_equal(n_minus_2_safe, expected_n_minus_2_safe)
+
+    # If we only want to outage the 0-3 branch, then the 1-2 branch is also n-2 safe
+    cases_to_check = np.array([1, 4])
+    cases_to_outage = np.array([3])
+    n_minus_2_safe = find_n_minus_2_safe_branches(from_node, to_node, 5, 4, cases_to_check, cases_to_outage)
+    expected_n_minus_2_safe = np.array(
+        [
+            True,
+            True,
+        ],
+        dtype=bool,
+    )
+    assert np.array_equal(n_minus_2_safe, expected_n_minus_2_safe)
+
+    # If we do not check any outages, then all branches are n-2 safe, since we do not check any outages
+    cases_to_check = np.array([1, 4])
+    cases_to_outage = np.array([], dtype=int)
+    n_minus_2_safe = find_n_minus_2_safe_branches(from_node, to_node, 5, 4, cases_to_check, cases_to_outage)
+    expected_n_minus_2_safe = np.array(
+        [
+            True,
+            True,
+        ],
+        dtype=bool,
+    )
     assert np.array_equal(n_minus_2_safe, expected_n_minus_2_safe)

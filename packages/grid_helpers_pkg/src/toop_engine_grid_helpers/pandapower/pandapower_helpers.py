@@ -23,6 +23,7 @@ from pandapower.converter.cim.cim2pp.from_cim import from_cim
 from pandapower.converter.ucte.from_ucte import from_ucte
 from pandapower.pypower.idx_brch import SHIFT
 from pandapower.toolbox import get_connected_buses
+from pandapower.topology import connected_components, create_nxgraph
 
 
 def get_phaseshift_key(trafo_type: str) -> str:
@@ -585,6 +586,54 @@ def check_for_splits(
         np.isnan(net[t][c].loc[i]) for t, c, i in zip(mapped_types, mapped_columns, monitored_branch_ids, strict=True)
     )
     return isnan
+
+
+def get_number_of_islands(
+    net: pp.pandapowerNet,
+    consider: tuple[str, ...] = ("l", "s", "t", "t3", "i"),
+    respect_switches: bool = True,
+    respect_in_service: bool = True,
+) -> int:
+    """Return the number of electrical islands in the pandapower network.
+
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        The pandapower network to analyse.
+    consider : tuple[str, ...]
+        The element types to consider when traversing connectivity. Defaults to lines,
+        switches, two-winding transformers, three-winding transformers and impedances.
+        Uses the same codes as `pandapower.toolbox.get_connected_buses`.
+    respect_switches : bool
+        Whether to treat open switches as disconnected. Defaults to True.
+    respect_in_service : bool
+        Whether to ignore out-of-service elements and buses. Defaults to True.
+
+    Returns
+    -------
+    int
+        Number of connected components among in-scope buses.
+    """
+    n_islands = 0
+    include_lines = "l" in consider
+    include_switches = "s" in consider
+    include_trafos = "t" in consider
+    include_trafos3w = "t3" in consider
+    include_impedances = "i" in consider
+    mg = create_nxgraph(
+        net,
+        respect_switches=respect_switches,
+        include_out_of_service=not respect_in_service,
+        include_lines=include_lines,
+        include_switches=include_switches,
+        include_trafos=include_trafos,
+        include_trafo3ws=include_trafos3w,
+        include_impedances=include_impedances,
+    )
+
+    cc = connected_components(mg)
+    n_islands = len(list(cc))
+    return n_islands
 
 
 def get_dc_bus_voltage(net: pp.pandapowerNet) -> pd.Series:

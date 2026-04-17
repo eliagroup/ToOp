@@ -518,6 +518,7 @@ def test_filter_disconnectable_branches_nminus2(
     assert np.all(network_data_new.disconnectable_branch_mask <= network_data_filled.disconnectable_branch_mask)
 
     disc_branch = np.flatnonzero(network_data_new.disconnectable_branch_mask)
+    outage_branch = np.flatnonzero(network_data_new.outaged_branch_mask)
     assert len(disc_branch) > 0
     mask = find_n_minus_2_safe_branches(
         network_data_new.from_nodes,
@@ -525,6 +526,7 @@ def test_filter_disconnectable_branches_nminus2(
         len(network_data_new.branch_ids),
         len(network_data_new.node_ids),
         disc_branch,
+        outage_branch,
     )
 
     assert np.all(mask)

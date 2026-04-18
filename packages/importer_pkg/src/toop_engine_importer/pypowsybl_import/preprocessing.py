@@ -618,6 +618,9 @@ def fill_statistics_for_network_masks(
     statistics.id_lists["line_disconnectable"] = network.get_lines(attributes=[])[
         network_masks.line_disconnectable
     ].index.to_list()
+    statistics.id_lists["trafo_disconnectable"] = network.get_2_windings_transformers(attributes=[])[
+        network_masks.trafo_disconnectable
+    ].index.to_list()
 
     statistics.import_result.n_relevant_subs = int(network_masks.relevant_subs.sum())
     statistics.import_result.n_line_for_nminus1 = int(network_masks.line_for_nminus1.sum())
@@ -626,7 +629,7 @@ def fill_statistics_for_network_masks(
 
     statistics.import_result.n_trafo_for_nminus1 = int(network_masks.trafo_for_nminus1.sum())
     statistics.import_result.n_trafo_for_reward = int(network_masks.trafo_for_reward.sum())
-    statistics.import_result.n_tie_line_disconnectable = int(network_masks.tie_line_disconnectable.sum())
+    statistics.import_result.n_trafo_disconnectable = int(network_masks.trafo_disconnectable.sum())
     statistics.import_result.n_tie_line_for_nminus1 = int(network_masks.tie_line_for_nminus1.sum())
     statistics.import_result.n_tie_line_for_reward = int(network_masks.tie_line_for_reward.sum())
     statistics.import_result.n_tie_line_disconnectable = int(network_masks.tie_line_disconnectable.sum())

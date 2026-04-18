@@ -29,6 +29,7 @@ from toop_engine_topology_optimizer.ac.optimizer import (
     wait_for_first_dc_results,
 )
 from toop_engine_topology_optimizer.ac.storage import create_session, scrub_db
+from toop_engine_topology_optimizer.ac.summary import write_summary
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commands import Command, ShutdownCommand, StartOptimizationCommand
@@ -197,6 +198,14 @@ def optimization_loop(
             logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
             send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
             running = False
+            logger.info(f"Writing summary for optimization {optimization_id}")
+            write_summary(
+                grid_files=grid_files,
+                db=worker_data.db,
+                processed_gridfile_fs=processed_gridfile_fs,
+                optimization_id=optimization_id,
+                action_sets=optimizer_data.action_sets,
+            )
             break
 
 

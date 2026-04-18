@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 import pandera.typing as pat
+import structlog
 from fsspec import AbstractFileSystem
 from pypowsybl.network import Network
 from sqlmodel import Session, select
@@ -21,6 +22,8 @@ from toop_engine_interfaces.folder_structure import POSTPROCESSING_PATHS
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
+
+logger = structlog.get_logger(__name__)
 
 
 def changing_switches_to_orao_dict(
@@ -142,7 +145,7 @@ def export_topology(
 
     # Write orao summary
     dict_repr = changing_switches_to_orao_dict(switch_updates=switch_updates)
-    hash_b64 = base64.b64encode(db_topology.strategy_hash).decode("utf-8")
+    hash_b64 = base64.urlsafe_b64encode(db_topology.strategy_hash).decode("utf-8").rstrip("=")
     summary_path = Path(root_folder) / POSTPROCESSING_PATHS["orao_summary"] / f"{hash_b64}.json"
     processed_gridfile_fs.makedirs(summary_path.parent.as_posix(), exist_ok=True)
     with processed_gridfile_fs.open(summary_path.as_posix(), "w") as f:
@@ -192,3 +195,8 @@ def write_summary(
                     processed_gridfile_fs=processed_gridfile_fs,
                     root_folder=grid_file.grid_folder,
                 )
+        else:
+            logger.warning(
+                f"Framework {grid_file.framework} is currently not supported for summary export, "
+                f"skipping summary export for grid file {grid_file.grid_file}"
+            )

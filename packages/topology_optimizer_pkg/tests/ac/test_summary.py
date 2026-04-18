@@ -82,7 +82,6 @@ def _sample_topologies(
     """Sample DB topologies from the stored action set until they trigger actual switch changes."""
 
     rng = np.random.default_rng(rng_seed)
-    n_substations = len({station.grid_model_id for station in action_set.local_actions})
     sampled_topologies: list[ACOptimTopology] = []
     seen_actions: set[tuple[int, ...]] = set()
 
@@ -186,7 +185,7 @@ def stored_topologies(complex_grid_summary_context: SummaryGridContext) -> Gener
 def _output_path(grid_root: Path, grid_file: GridFile, topology: ACOptimTopology) -> Path:
     """Return the expected JSON export path for a topology hash under the processed grid folder."""
 
-    hash_b64 = base64.b64encode(topology.strategy_hash).decode("utf-8")
+    hash_b64 = base64.urlsafe_b64encode(topology.strategy_hash).decode("utf-8").rstrip("=")
     return grid_root / grid_file.grid_folder / POSTPROCESSING_PATHS["orao_summary"] / f"{hash_b64}.json"
 
 

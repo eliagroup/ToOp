@@ -90,8 +90,13 @@ class ActionSet(BaseModel):
     asset topology simplifications but is just a copy of the importing result"""
 
     simplified_starting_topology: Topology
-    """The starting topology in a preprocessed form. This does include simplifications made and is the basis for
-    the local actions."""
+    """The starting topology in a preprocessed form.
+
+    This includes simplifications made during preprocessing and is the reference topology for
+    ``local_actions``. Stations and their assets keep the same ordering between this topology and
+    the corresponding local actions, so consumers that compare switching tables column-wise should
+    use this topology rather than ``starting_topology``.
+    """
 
     connectable_branches: list[GridElement]
     """A list of assets that can be connected as a remedial action."""
@@ -109,7 +114,8 @@ class ActionSet(BaseModel):
     local_actions: list[Station]
     """A list of split/reconfiguration actions that affect exactly one substation. These are must be ordered by station,
     i.e. actions affecting the same station are next to each other. The grid_model_id of
-    the station should be used to determine which substation it affects."""
+    the station should be used to determine which substation it affects. Within a station, asset
+    ordering matches the corresponding station in ``simplified_starting_topology``."""
 
     @model_validator(mode="after")
     def _validate_local_actions_grouped(self) -> "ActionSet":

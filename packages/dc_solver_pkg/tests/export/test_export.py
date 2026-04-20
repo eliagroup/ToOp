@@ -17,8 +17,8 @@ from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_
 from toop_engine_dc_solver.export.export import (
     get_changing_switches_from_action_set,
     get_changing_switches_from_actions,
-    get_changing_switches_from_topology,
 )
+from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_topology
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_dc_solver.preprocess.network_data import extract_action_set, extract_nminus1_definition, load_lf_params
 from toop_engine_interfaces.folder_structure import OUTPUT_FILE_NAMES, POSTPROCESSING_PATHS, PREPROCESSING_PATHS

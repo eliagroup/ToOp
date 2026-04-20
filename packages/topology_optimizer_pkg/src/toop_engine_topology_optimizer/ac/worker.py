@@ -199,13 +199,17 @@ def optimization_loop(
             send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
             running = False
             logger.info(f"Writing summary for optimization {optimization_id}")
-            write_summary(
-                grid_files=grid_files,
-                db=worker_data.db,
-                processed_gridfile_fs=processed_gridfile_fs,
-                optimization_id=optimization_id,
-                action_sets=optimizer_data.action_sets,
-            )
+            try:
+                write_summary(
+                    grid_files=grid_files,
+                    db=worker_data.db,
+                    processed_gridfile_fs=processed_gridfile_fs,
+                    optimization_id=optimization_id,
+                    action_sets=optimizer_data.action_sets,
+                )
+            except Exception as e:
+                logger.error(f"Error while writing summary for optimization {optimization_id}: {e}")
+                logger.error(f"Stack trace: {traceback.format_exc()}")
             break
 
 

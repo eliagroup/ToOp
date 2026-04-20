@@ -130,7 +130,9 @@ def export_topology(
     # Write orao summary
     dict_repr = changing_switches_to_orao_dict(switch_updates=switch_updates)
     hash_b64 = base64.urlsafe_b64encode(db_topology.strategy_hash).decode("utf-8").rstrip("=")
-    summary_path = Path(root_folder) / POSTPROCESSING_PATHS["orao_summary"] / f"{hash_b64}.json"
+    summary_path = (
+        Path(root_folder) / POSTPROCESSING_PATHS["orao_summary"] / f"{hash_b64}_timestep_{db_topology.timestep}.json"
+    )
     processed_gridfile_fs.makedirs(summary_path.parent.as_posix(), exist_ok=True)
     with processed_gridfile_fs.open(summary_path.as_posix(), "w") as f:
         json.dump(dict_repr, f)

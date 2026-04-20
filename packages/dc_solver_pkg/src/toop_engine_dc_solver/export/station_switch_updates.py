@@ -123,6 +123,7 @@ def _get_coupler_switch_diffs(
 def _get_asset_switch_diffs(
     changed_station: Station,
     starting_station: Station,
+    fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
     """Collect selector and breaker switch changes between two station states.
 
@@ -134,6 +135,9 @@ def _get_asset_switch_diffs(
         Station describing the reference asset-to-busbar assignments. The station assets must be
         in the same order as ``changed_station``. This is the ordering contract provided by
         ``ActionSet.simplified_starting_topology``.
+    fail_on_disconnect: bool
+        Fundamentally, the stations should never disconnect an element. If this is detected, we can either raise
+        or open the breaker. If fail_on_disconnect is true, a ValueError will be raised
 
     Returns
     -------
@@ -178,8 +182,13 @@ def _get_asset_switch_diffs(
         if changed_active == 0:
             breaker_id = asset_bay.dv_switch_grid_model_id
             # The asset was disconnected by disconnecting all entries in the switching table. This can only be represented
-            # through a breaker-open if there was exactly one active busbar in the starting state.
+            # through a breaker-open if there was at least one active busbar connection in the starting state.
             if starting_active > 0:
+                if fail_on_disconnect:
+                    raise ValueError(
+                        f"Station action in station {changed_station.grid_model_id} would disconnect "
+                        f"asset {changed_asset.grid_model_id}."
+                    )
                 diff_switches.append({"grid_model_id": breaker_id, "open": True})
             continue
 
@@ -267,6 +276,7 @@ def get_changing_switches_from_changed_stations(
         Starting topology containing the reference state for all stations. This is expected to be
         ``ActionSet.simplified_starting_topology`` so that station asset ordering matches the
         ordering used by ``ActionSet.local_actions``.
+
 
     Returns
     -------

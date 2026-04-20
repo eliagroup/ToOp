@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Shared schema for switch updates induced by a toplogy.
+"""Shared schema for switch updates induced by a topology.
 
 A switch update is a collection of switch ids in the grid model and their new open/closed state. The internal representation
 of actions does not follow this structure but instead reference the action set. To enable export of the actions to other

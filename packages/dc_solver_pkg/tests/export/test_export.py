@@ -51,8 +51,9 @@ def test_get_changing_switches_from_actions_matches_network_diff(
     expected = get_changing_switches_from_topology(network=net, target_topology=target_topology)
     result = get_changing_switches_from_actions(
         changed_stations=[changed_station],
-        starting_topology=starting_topology,
+        simplified_starting_topology=starting_topology,
         disconnections=disconnections,
+        full_starting_topology=starting_topology,
     )
 
     SwitchUpdateSchema.validate(result)
@@ -93,8 +94,9 @@ def test_get_changing_switches_from_action_set_matches_expanded_inputs(
     )
     expected = get_changing_switches_from_actions(
         changed_stations=[changed_station],
-        starting_topology=starting_topology,
+        simplified_starting_topology=starting_topology,
         disconnections=disconnection_elements,
+        full_starting_topology=starting_topology,
     )
 
     SwitchUpdateSchema.validate(result)
@@ -161,7 +163,7 @@ def test_switch_updates_match_runner_on_node_breaker_grid(
 
         switch_updates = get_changing_switches_from_actions(
             changed_stations=changed_stations,
-            starting_topology=action_set.simplified_starting_topology,
+            simplified_starting_topology=action_set.simplified_starting_topology,
             disconnections=[],
         )
 

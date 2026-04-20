@@ -95,8 +95,9 @@ def _get_disconnections_from_indices(
 @pa.check_types
 def get_changing_switches_from_actions(
     changed_stations: list[Station],
-    starting_topology: Topology,
+    simplified_starting_topology: Topology,
     disconnections: list[GridElement] | None = None,
+    full_starting_topology: Topology | None = None,
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get switch updates for changed stations and explicit disconnections.
 
@@ -109,24 +110,38 @@ def get_changing_switches_from_actions(
     ----------
     changed_stations : list[Station]
         Stations describing the target state for switchable substations.
-    starting_topology : Topology
+    simplified_starting_topology : Topology
         Simplified starting topology used as reference for station ordering and switch layout.
+        This should be action_set.simplified_starting_topology which has the same amount of
+        assets and stations as the changed stations from the action set.
     disconnections : list[GridElement] | None, optional
         Explicit branch disconnections requested for the target state.
+    full_starting_topology : Topology | None, optional
+        Full starting topology with all assets and stations detectable by the importing routine.
+        This is used to map out disconnections as disconnections can not be performed if the branch
+        is not in the simplified topology. Note that even with the full starting topology, disconnections
+        might be missed.
+        Use action_set.starting_topology for the unfiltered version.
+        If none, this falls back to use the simplified starting topology.
 
     Returns
     -------
     pat.DataFrame[SwitchUpdateSchema]
         Switch update rows representing both station actions and representable disconnections.
     """
+    if full_starting_topology is None:
+        full_starting_topology = simplified_starting_topology
     action_switch_updates = get_changing_switches_from_changed_stations(
         changed_stations=changed_stations,
-        starting_topology=starting_topology,
+        starting_topology=simplified_starting_topology,
     )
-    disconnection_switch_updates = get_changing_switches_from_disconnections(
-        starting_topology=starting_topology,
-        disconnections=disconnections,
-    )
+    if disconnections and len(disconnections) > 0:
+        disconnection_switch_updates = get_changing_switches_from_disconnections(
+            starting_topology=full_starting_topology,
+            disconnections=disconnections,
+        )
+    else:
+        disconnection_switch_updates = get_empty_dataframe_from_model(SwitchUpdateSchema)
 
     overlapping_switch_ids = sorted(
         set(action_switch_updates["grid_model_id"]).intersection(disconnection_switch_updates["grid_model_id"])
@@ -183,6 +198,7 @@ def get_changing_switches_from_action_set(
     disconnected_branches = _get_disconnections_from_indices(action_set=action_set, disconnections=disconnections)
     return get_changing_switches_from_actions(
         changed_stations=changed_stations,
-        starting_topology=action_set.simplified_starting_topology,
+        simplified_starting_topology=action_set.simplified_starting_topology,
         disconnections=disconnected_branches,
+        full_starting_topology=action_set.starting_topology,
     )

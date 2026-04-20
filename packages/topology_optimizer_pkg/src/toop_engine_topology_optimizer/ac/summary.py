@@ -22,6 +22,8 @@ from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
 
+from packages.topology_optimizer_pkg.src.toop_engine_topology_optimizer.interfaces.messages.commons import OptimizerType
+
 logger = structlog.get_logger(__name__)
 
 
@@ -167,6 +169,7 @@ def write_summary(
         topologies = db.exec(
             select(ACOptimTopology).where(
                 ACOptimTopology.optimization_id == optimization_id,
+                ACOptimTopology.optimizer_type == OptimizerType.AC,
                 ACOptimTopology.acceptance == True,  # noqa: E712
             )
         ).all()

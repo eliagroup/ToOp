@@ -187,7 +187,12 @@ def _output_path(grid_root: Path, grid_file: GridFile, topology: ACOptimTopology
     """Return the expected JSON export path for a topology hash under the processed grid folder."""
 
     hash_b64 = base64.urlsafe_b64encode(topology.strategy_hash).decode("utf-8").rstrip("=")
-    return grid_root / grid_file.grid_folder / POSTPROCESSING_PATHS["orao_summary"] / f"{hash_b64}.json"
+    return (
+        grid_root
+        / grid_file.grid_folder
+        / POSTPROCESSING_PATHS["orao_summary"]
+        / f"{hash_b64}_timestep_{topology.timestep}.json"
+    )
 
 
 def test_changing_switches_to_orao_dict_formats_switch_updates(

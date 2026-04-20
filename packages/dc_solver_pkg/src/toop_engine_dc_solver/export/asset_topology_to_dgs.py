@@ -118,7 +118,7 @@ def switch_dgs_schema_to_xlsx(
 
     This is the DGS dump function for the switch update schema.
     Consider only dumping changes to the network, not the whole network.
-    use the node-breaker topology helpers in ``apply_asset_topo_powsybl`` to get the changes.
+    use switch generation helpers in ``export.py`` to get the changed switches.
 
     Parameters
     ----------
@@ -151,7 +151,7 @@ def switch_dgs_schema_to_bytes_io(
 
     This is the DGS dump function for the switch update schema.
     Consider only dumping changes to the network, not the whole network.
-    use the node-breaker topology helpers in ``apply_asset_topo_powsybl`` to get the changes.
+    use switch generation helpers in ``export.py`` to get the changed switches.
 
     Parameters
     ----------

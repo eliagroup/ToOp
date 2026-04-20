@@ -18,10 +18,11 @@ import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from pypowsybl.network import Network
 from sqlmodel import Session
-from toop_engine_dc_solver.export.asset_topology_to_dgs import SwitchUpdateSchema, get_changing_switches_from_topology
+from toop_engine_dc_solver.export.export import get_changing_switches_from_actions
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.folder_structure import POSTPROCESSING_PATHS
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs, random_actions
+from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.ac.summary import (
     changing_switches_to_orao_dict,
@@ -117,7 +118,7 @@ def _sample_topologies(
             acceptance=True,
         )
         # Keep only topologies that produce a non-empty switch diff on the grid.
-        switch_updates = db_topology_to_changing_switches(network=network, db_topology=topology, action_set=action_set)
+        switch_updates = db_topology_to_changing_switches(db_topology=topology, action_set=action_set)
         if switch_updates.empty:
             continue
 
@@ -194,7 +195,6 @@ def test_changing_switches_to_orao_dict_formats_switch_updates(
     stored_topologies: StoredTopologyContext,
 ) -> None:
     switch_updates = db_topology_to_changing_switches(
-        network=complex_grid_summary_context.network,
         db_topology=stored_topologies.accepted_topologies[0],
         action_set=complex_grid_summary_context.action_set,
     )
@@ -227,21 +227,17 @@ def test_db_topology_to_changing_switches_matches_direct_grid_computation(
     db_topology = stored_topologies.accepted_topologies[0]
 
     result = db_topology_to_changing_switches(
-        network=complex_grid_summary_context.network,
         db_topology=db_topology,
         action_set=complex_grid_summary_context.action_set,
     )
-    # Rebuild the target topology the same way as the summary code, then compare against the low-level helper directly.
-    direct_target_topology = complex_grid_summary_context.action_set.starting_topology.model_copy(
-        update={
-            "stations": [
-                complex_grid_summary_context.action_set.local_actions[action_id] for action_id in db_topology.actions
-            ]
-        }
-    )
-    expected = get_changing_switches_from_topology(
-        network=complex_grid_summary_context.network,
-        target_topology=direct_target_topology,
+    expected = get_changing_switches_from_actions(
+        changed_stations=[
+            complex_grid_summary_context.action_set.local_actions[action_id] for action_id in db_topology.actions
+        ],
+        starting_topology=complex_grid_summary_context.action_set.simplified_starting_topology,
+        disconnections=[
+            complex_grid_summary_context.action_set.disconnectable_branches[index] for index in db_topology.disconnections
+        ],
     )
 
     SwitchUpdateSchema.validate(result)
@@ -257,7 +253,6 @@ def test_export_topology_writes_expected_json_for_grid(
 
     # This is the single-topology export path used internally by write_summary.
     export_topology(
-        network=complex_grid_summary_context.network,
         db_topology=db_topology,
         action_set=complex_grid_summary_context.action_set,
         processed_gridfile_fs=complex_grid_summary_context.filesystem,
@@ -265,7 +260,6 @@ def test_export_topology_writes_expected_json_for_grid(
     )
 
     expected_switch_updates = db_topology_to_changing_switches(
-        network=complex_grid_summary_context.network,
         db_topology=db_topology,
         action_set=complex_grid_summary_context.action_set,
     )
@@ -306,7 +300,6 @@ def test_write_summary_exports_only_accepted_topologies(
     expected_payloads = {
         path: changing_switches_to_orao_dict(
             db_topology_to_changing_switches(
-                network=complex_grid_summary_context.network,
                 db_topology=topology,
                 action_set=complex_grid_summary_context.action_set,
             )

@@ -7,13 +7,14 @@
 
 import numpy as np
 import pytest
-from toop_engine_dc_solver.export.asset_topology_to_dgs import SwitchUpdateSchema, get_changing_switches_from_topology
+from toop_engine_dc_solver.export.export import get_changing_switches_from_topology
 from toop_engine_dc_solver.export.station_switch_updates import (
     _get_asset_switch_diffs,
     _get_coupler_switch_diffs,
     _resolve_changed_stations,
     get_changing_switches_from_changed_stations,
 )
+from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
 def test_resolve_changed_stations_preserves_topology_order(basic_node_breaker_topology):

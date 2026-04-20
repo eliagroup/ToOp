@@ -14,12 +14,11 @@ from pathlib import Path
 import pandera.typing as pat
 import structlog
 from fsspec import AbstractFileSystem
-from pypowsybl.network import Network
 from sqlmodel import Session, select
-from toop_engine_dc_solver.export.asset_topology_to_dgs import SwitchUpdateSchema, get_changing_switches_from_topology
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
+from toop_engine_dc_solver.export.export import get_changing_switches_from_actions
 from toop_engine_interfaces.folder_structure import POSTPROCESSING_PATHS
 from toop_engine_interfaces.stored_action_set import ActionSet
+from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
 
@@ -82,38 +81,26 @@ def changing_switches_to_orao_dict(
 
 
 def db_topology_to_changing_switches(
-    network: Network,
     db_topology: ACOptimTopology,
     action_set: ActionSet,
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get the list of changing switches from a topology in the database
 
-    Runs by comparing the switch state in the network with the one in the topology
-
-    TODO this currently has the limitation of only considering switched stations, not disconnections.
-
     Parameters
     ----------
-    network : Network
-        The pypowsybl network object of the grid that was optimized, to read up
-        the current switch state and only store the ones that were changed.
     db_topology : ACOptimTopology
         The topology to be converted to the ORAO format
     action_set : ActionSet
         The action set that was applied to the topology, to read up the asset topology for the switched station
     """
-    asset_topo = action_set.starting_topology.model_copy(
-        update={"stations": [action_set.local_actions[action_id] for action_id in db_topology.actions]}
-    )
-
-    return get_changing_switches_from_topology(
-        network=network,
-        target_topology=asset_topo,
+    return get_changing_switches_from_actions(
+        changed_stations=[action_set.local_actions[action_id] for action_id in db_topology.actions],
+        starting_topology=action_set.simplified_starting_topology,
+        disconnections=[action_set.disconnectable_branches[index] for index in db_topology.disconnections],
     )
 
 
 def export_topology(
-    network: Network,
     db_topology: ACOptimTopology,
     action_set: ActionSet,
     processed_gridfile_fs: AbstractFileSystem,
@@ -127,9 +114,6 @@ def export_topology(
 
     Parameters
     ----------
-    network : Network
-        The pypowsybl network object of the grid that was optimized, to read up
-        the current switch state and only store the ones that were changed.
     db_topology : ACOptimTopology
         The topology that was explored during the optimization run for the given grid file.
     action_set : ActionSet
@@ -141,7 +125,7 @@ def export_topology(
     root_folder : str
         The root folder where the summary should be written to. This is typically the root folder of the processed grid file
     """
-    switch_updates = db_topology_to_changing_switches(network=network, db_topology=db_topology, action_set=action_set)
+    switch_updates = db_topology_to_changing_switches(db_topology=db_topology, action_set=action_set)
 
     # Write orao summary
     dict_repr = changing_switches_to_orao_dict(switch_updates=switch_updates)
@@ -186,10 +170,8 @@ def write_summary(
         ).all()
 
         if grid_file.framework == Framework.PYPOWSYBL:
-            network = load_powsybl_from_fs(processed_gridfile_fs, grid_file.grid_file)
             for topology in topologies:
                 export_topology(
-                    network=network,
                     db_topology=topology,
                     action_set=action_set,
                     processed_gridfile_fs=processed_gridfile_fs,

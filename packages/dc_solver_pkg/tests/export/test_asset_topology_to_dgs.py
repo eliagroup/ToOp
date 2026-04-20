@@ -13,18 +13,12 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pandera
+import pandera.typing as pat
 import pytest
+from beartype.typing import cast
 from toop_engine_dc_solver.export.asset_topology_to_dgs import (
     ForeignIdSchema,
-    SwitchUpdateSchema,
-    get_asset_bay_grid_model_id_list,
-    get_asset_switch_states_from_station,
-    get_busbar_lookup,
-    get_changing_switches_from_topology,
-    get_coupler_states_from_busbar_couplers,
     get_dgs_general_schema,
-    get_diff_switch_states,
-    get_switch_update_schema_from_topology,
     switch_dgs_schema_to_bytes_io,
     switch_dgs_schema_to_xlsx,
     switch_update_schema_to_dgs,
@@ -33,6 +27,16 @@ from toop_engine_dc_solver.export.dgs_v7_definitions import (
     DGS_GENERAL_SHEET_CONTENT_FID,
     DGS_GENERAL_SHEET_CONTENT_FID_CIM,
     DgsElmCoupSchema,
+)
+from toop_engine_dc_solver.export.export import (
+    SwitchUpdateSchema,
+    get_asset_bay_grid_model_id_list,
+    get_asset_switch_states_from_station,
+    get_busbar_lookup,
+    get_changing_switches_from_topology,
+    get_coupler_states_from_busbar_couplers,
+    get_diff_switch_states,
+    get_switch_update_schema_from_topology,
 )
 from toop_engine_interfaces.asset_topology import BusbarCoupler
 
@@ -73,12 +77,18 @@ def test_dgs_list_to_xlsx(tmp_path):
         ]
     )
     DgsElmCoupSchema.validate(dgs_df)
+    typed_dgs_df = cast(pat.DataFrame[DgsElmCoupSchema], dgs_df)
     file_name = os.path.join(tmp_path, "test_dgs.xlsx")
     assert not os.path.exists(file_name)
     sheet_name = "ElmCoup"
     general_info = DGS_GENERAL_SHEET_CONTENT_FID
     general_df = get_dgs_general_schema(general_info=general_info, cim=False)
-    switch_dgs_schema_to_xlsx(switch_dgs_schema=dgs_df, file_name=file_name, sheet_name=sheet_name, df_general=general_df)
+    switch_dgs_schema_to_xlsx(
+        switch_dgs_schema=typed_dgs_df,
+        file_name=file_name,
+        sheet_name=sheet_name,
+        df_general=general_df,
+    )
 
     assert os.path.exists(file_name)
 
@@ -91,7 +101,12 @@ def test_dgs_list_to_xlsx(tmp_path):
 
     # default general info
     file_name = os.path.join(tmp_path, "test2_dgs.xlsx")
-    switch_dgs_schema_to_xlsx(switch_dgs_schema=dgs_df, file_name=file_name, sheet_name=sheet_name, df_general=general_df)
+    switch_dgs_schema_to_xlsx(
+        switch_dgs_schema=typed_dgs_df,
+        file_name=file_name,
+        sheet_name=sheet_name,
+        df_general=general_df,
+    )
     assert os.path.exists(file_name)
 
     with pd.ExcelFile(file_name) as xls:
@@ -113,7 +128,7 @@ def test_get_coupler_states_from_busbar_couplers():
     mock_coupler_2.open = False
     mock_coupler_2.in_service = True
 
-    busbar_couplers = [mock_coupler_1, mock_coupler_2]
+    busbar_couplers = cast(list[BusbarCoupler], [mock_coupler_1, mock_coupler_2])
 
     result = get_coupler_states_from_busbar_couplers(busbar_couplers)
 
@@ -259,7 +274,8 @@ def test_switch_update_schema_to_dgs(basic_node_breaker_grid_v1, basic_node_brea
     foreign_ids["foreign_id"] = foreign_ids["grid_model_id"] + "_foreign_id"
     foreign_ids.drop(columns=["open"], inplace=True)
     ForeignIdSchema.validate(foreign_ids)
-    dgs_df = switch_update_schema_to_dgs(switch_update_schema, foreign_ids, cim=False)
+    typed_foreign_ids = cast(pat.DataFrame[ForeignIdSchema], foreign_ids)
+    dgs_df = switch_update_schema_to_dgs(switch_update_schema, typed_foreign_ids, cim=False)
 
     # check if dgs switch states are correct
     # dgs: on_off = 0 for open, 1 for closed
@@ -271,7 +287,7 @@ def test_switch_update_schema_to_dgs(basic_node_breaker_grid_v1, basic_node_brea
     assert list(dgs_df["OP"].unique()) == ["U"]
     assert len(dgs_df) == len(switch_update_schema)
 
-    dgs_df = switch_update_schema_to_dgs(switch_update_schema, foreign_ids, cim=True)
+    dgs_df = switch_update_schema_to_dgs(switch_update_schema, typed_foreign_ids, cim=True)
     foreign_ids["foreign_id"] = "_" + foreign_ids["foreign_id"]
     # check if dgs switch states are correct
     # dgs: on_off = 0 for open, 1 for closed
@@ -293,10 +309,11 @@ def test_switch_dgs_schema_to_bytes_io(tmp_path):
         ]
     )
     DgsElmCoupSchema.validate(dgs_df)
+    typed_dgs_df = cast(pat.DataFrame[DgsElmCoupSchema], dgs_df)
     general_df = get_dgs_general_schema(cim=False)
 
     # Call the function
-    output = switch_dgs_schema_to_bytes_io(dgs_df, general_df, sheet_name="ElmCoup")
+    output = switch_dgs_schema_to_bytes_io(typed_dgs_df, general_df, sheet_name="ElmCoup")
 
     # Check that output is a BytesIO and not empty
     assert isinstance(output, io.BytesIO)

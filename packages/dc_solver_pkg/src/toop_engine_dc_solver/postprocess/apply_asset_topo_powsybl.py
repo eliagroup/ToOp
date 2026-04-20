@@ -20,10 +20,7 @@ import numpy as np
 import pandera as pa
 from beartype.typing import Literal, Optional, Union
 from pypowsybl.network import Network
-from toop_engine_dc_solver.export.asset_topology_to_dgs import (
-    SwitchUpdateSchema,
-    get_changing_switches_from_topology,
-)
+from toop_engine_dc_solver.export.export import get_changing_switches_from_topology
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import assert_station_in_network
 from toop_engine_interfaces.asset_topology import (
     RealizedStation,
@@ -32,6 +29,7 @@ from toop_engine_interfaces.asset_topology import (
     Topology,
 )
 from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs
+from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
 def find_asset(net: Network, elem_id: str, voltage_level_id: str, bus_id: str) -> tuple[bool, bool, bool, Optional[str]]:

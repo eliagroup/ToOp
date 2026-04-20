@@ -14,10 +14,10 @@ import pandera.typing as pat
 import structlog
 from beartype.typing import cast
 from jaxtyping import Bool
-from toop_engine_dc_solver.export.asset_topology_to_dgs import SwitchUpdateSchema
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
+from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 logger = structlog.get_logger(__name__)
 

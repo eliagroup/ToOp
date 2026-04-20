@@ -17,12 +17,14 @@ import pandera as pa
 import pandera.typing as pat
 from beartype.typing import cast
 from jaxtyping import Bool
-from toop_engine_dc_solver.export.asset_topology_to_dgs import (
-    SwitchUpdateSchema,
-    get_busbar_lookup,
-)
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
+
+
+def _get_busbar_lookup(station: Station) -> dict[int, str]:
+    """Map busbar row indices in the switching table to busbar ids."""
+    return {index: busbar.grid_model_id for index, busbar in enumerate(station.busbars)}
 
 
 def _resolve_changed_stations(
@@ -151,7 +153,7 @@ def _get_asset_switch_diffs(
             f"{changed_station.grid_model_id}."
         )
 
-    changed_busbar_lookup = get_busbar_lookup(changed_station)
+    changed_busbar_lookup = _get_busbar_lookup(changed_station)
     changed_asset_ids = [asset.grid_model_id for asset in changed_station.assets]
     starting_asset_ids = [asset.grid_model_id for asset in starting_station.assets]
     if changed_asset_ids != starting_asset_ids:

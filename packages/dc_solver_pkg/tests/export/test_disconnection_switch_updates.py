@@ -8,15 +8,15 @@
 from unittest.mock import patch
 
 import numpy as np
-from toop_engine_dc_solver.export.asset_topology_to_dgs import SwitchUpdateSchema, get_changing_switches_from_topology
 from toop_engine_dc_solver.export.disconnection_switch_updates import (
     apply_disconnections_to_station_switching_table,
     get_changing_switches_from_disconnections,
     get_disconnected_asset_ids,
     get_station_ids_affected_by_disconnections,
 )
-from toop_engine_dc_solver.export.export import get_changing_switches_from_actions
+from toop_engine_dc_solver.export.export import get_changing_switches_from_actions, get_changing_switches_from_topology
 from toop_engine_interfaces.nminus1_definition import GridElement
+from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
 def test_get_disconnected_asset_ids_and_affected_stations(basic_node_breaker_topology):

@@ -19,9 +19,72 @@ from toop_engine_dc_solver.export.station_switch_updates import get_changing_swi
 from toop_engine_interfaces.asset_topology import BusbarCoupler, Station, Topology
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
+from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_changed_stations_from_action_indices(
+    action_set: ActionSet,
+    actions: list[int],
+) -> list[Station]:
+    """Resolve action indices to concrete changed stations.
+
+    Parameters
+    ----------
+    action_set : ActionSet
+        Stored action set containing local actions.
+    actions : list[int]
+        Requested indices into ``action_set.local_actions``.
+
+    Returns
+    -------
+    list[Station]
+        Concrete changed stations corresponding to ``actions``.
+
+    Raises
+    ------
+    ValueError
+        If any action index is negative or beyond the available range.
+    """
+    changed_stations: list[Station] = []
+    for action_index in actions:
+        if action_index < 0 or action_index >= len(action_set.local_actions):
+            raise ValueError(f"Action index {action_index} is out of bounds for the action set")
+        changed_stations.append(action_set.local_actions[action_index])
+    return changed_stations
+
+
+def _get_disconnections_from_indices(
+    action_set: ActionSet,
+    disconnections: list[int] | None,
+) -> list[GridElement]:
+    """Resolve disconnection indices to concrete grid elements.
+
+    Parameters
+    ----------
+    action_set : ActionSet
+        Stored action set containing disconnectable branches.
+    disconnections : list[int] | None
+        Requested indices into ``action_set.disconnectable_branches``.
+
+    Returns
+    -------
+    list[GridElement]
+        Concrete disconnected branches corresponding to ``disconnections``.
+
+    Raises
+    ------
+    ValueError
+        If any disconnection index is negative or beyond the available range.
+    """
+    disconnected_branches: list[GridElement] = []
+    for disconnection_index in [] if disconnections is None else disconnections:
+        if disconnection_index < 0 or disconnection_index >= len(action_set.disconnectable_branches):
+            raise ValueError(f"Disconnection index {disconnection_index} is out of bounds for the action set")
+        disconnected_branches.append(action_set.disconnectable_branches[disconnection_index])
+    return disconnected_branches
 
 
 @pa.check_types
@@ -219,3 +282,41 @@ def get_changing_switches_from_actions(
         combined_switch_updates = get_empty_dataframe_from_model(SwitchUpdateSchema)
     combined_switch_updates = combined_switch_updates.astype({"grid_model_id": str, "open": bool})
     return cast(pat.DataFrame[SwitchUpdateSchema], combined_switch_updates)
+
+
+@pa.check_types
+def get_changing_switches_from_action_set(
+    action_set: ActionSet,
+    actions: list[int],
+    disconnections: list[int] | None = None,
+) -> pat.DataFrame[SwitchUpdateSchema]:
+    """Get switch updates from stored ActionSet indices.
+
+    Parameters
+    ----------
+    action_set : ActionSet
+        Stored action set containing the simplified starting topology, local actions, and
+        disconnectable branches.
+    actions : list[int]
+        Indices into ``action_set.local_actions`` describing the selected station actions.
+    disconnections : list[int] | None, optional
+        Indices into ``action_set.disconnectable_branches`` describing explicit branch
+        disconnections.
+
+    Returns
+    -------
+    pat.DataFrame[SwitchUpdateSchema]
+        Switch update rows representing the requested indexed actions and disconnections.
+
+    Raises
+    ------
+    ValueError
+        If any action or disconnection index is out of bounds.
+    """
+    changed_stations = _get_changed_stations_from_action_indices(action_set=action_set, actions=actions)
+    disconnected_branches = _get_disconnections_from_indices(action_set=action_set, disconnections=disconnections)
+    return get_changing_switches_from_actions(
+        changed_stations=changed_stations,
+        starting_topology=action_set.simplified_starting_topology,
+        disconnections=disconnected_branches,
+    )

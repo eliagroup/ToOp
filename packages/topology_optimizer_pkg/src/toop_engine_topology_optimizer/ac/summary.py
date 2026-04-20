@@ -15,7 +15,7 @@ import pandera.typing as pat
 import structlog
 from fsspec import AbstractFileSystem
 from sqlmodel import Session, select
-from toop_engine_dc_solver.export.export import get_changing_switches_from_actions
+from toop_engine_dc_solver.export.export import get_changing_switches_from_action_set
 from toop_engine_interfaces.folder_structure import POSTPROCESSING_PATHS
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
@@ -93,10 +93,10 @@ def db_topology_to_changing_switches(
     action_set : ActionSet
         The action set that was applied to the topology, to read up the asset topology for the switched station
     """
-    return get_changing_switches_from_actions(
-        changed_stations=[action_set.local_actions[action_id] for action_id in db_topology.actions],
-        starting_topology=action_set.simplified_starting_topology,
-        disconnections=[action_set.disconnectable_branches[index] for index in db_topology.disconnections],
+    return get_changing_switches_from_action_set(
+        action_set=action_set,
+        actions=db_topology.actions,
+        disconnections=db_topology.disconnections,
     )
 
 

@@ -11,13 +11,19 @@ from pathlib import Path
 
 import numpy as np
 import pypowsybl
+import pytest
 from tests.network_data_pickle import load_network_data
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
-from toop_engine_dc_solver.export.export import get_changing_switches_from_actions, get_changing_switches_from_topology
+from toop_engine_dc_solver.export.export import (
+    get_changing_switches_from_action_set,
+    get_changing_switches_from_actions,
+    get_changing_switches_from_topology,
+)
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_dc_solver.preprocess.network_data import extract_action_set, extract_nminus1_definition, load_lf_params
 from toop_engine_interfaces.folder_structure import OUTPUT_FILE_NAMES, POSTPROCESSING_PATHS, PREPROCESSING_PATHS
 from toop_engine_interfaces.nminus1_definition import GridElement
+from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
@@ -51,6 +57,81 @@ def test_get_changing_switches_from_actions_matches_network_diff(
 
     SwitchUpdateSchema.validate(result)
     assert result.reset_index(drop=True).equals(expected.reset_index(drop=True))
+
+
+def test_get_changing_switches_from_action_set_matches_expanded_inputs(
+    basic_node_breaker_topology,
+) -> None:
+    target_station = basic_node_breaker_topology.stations[0]
+    changed_station = target_station.model_copy(
+        update={
+            "asset_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+        }
+    )
+    starting_station = target_station.model_copy(
+        update={
+            "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
+            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+        }
+    )
+    starting_topology = basic_node_breaker_topology.model_copy(update={"stations": [starting_station]})
+    disconnection_elements = [GridElement(id="L8", name="", type="LINE", kind="branch")]
+    action_set = ActionSet.model_construct(
+        starting_topology=starting_topology,
+        simplified_starting_topology=starting_topology,
+        connectable_branches=[],
+        disconnectable_branches=disconnection_elements,
+        pst_ranges=[],
+        hvdc_ranges=[],
+        local_actions=[changed_station],
+    )
+
+    result = get_changing_switches_from_action_set(
+        action_set=action_set,
+        actions=[0],
+        disconnections=[0],
+    )
+    expected = get_changing_switches_from_actions(
+        changed_stations=[changed_station],
+        starting_topology=starting_topology,
+        disconnections=disconnection_elements,
+    )
+
+    SwitchUpdateSchema.validate(result)
+    assert result.reset_index(drop=True).equals(expected.reset_index(drop=True))
+
+
+@pytest.mark.parametrize(
+    ("actions", "disconnections", "expected_message"),
+    [
+        ([1], [], "Action index 1 is out of bounds for the action set"),
+        ([-1], [], "Action index -1 is out of bounds for the action set"),
+        ([], [1], "Disconnection index 1 is out of bounds for the action set"),
+        ([], [-1], "Disconnection index -1 is out of bounds for the action set"),
+    ],
+)
+def test_get_changing_switches_from_action_set_validates_indices(
+    basic_node_breaker_topology,
+    actions: list[int],
+    disconnections: list[int],
+    expected_message: str,
+) -> None:
+    action_set = ActionSet.model_construct(
+        starting_topology=basic_node_breaker_topology,
+        simplified_starting_topology=basic_node_breaker_topology,
+        connectable_branches=[],
+        disconnectable_branches=[GridElement(id="L8", name="", type="LINE", kind="branch")],
+        pst_ranges=[],
+        hvdc_ranges=[],
+        local_actions=[basic_node_breaker_topology.stations[0]],
+    )
+
+    with pytest.raises(ValueError, match=expected_message):
+        get_changing_switches_from_action_set(
+            action_set=action_set,
+            actions=actions,
+            disconnections=disconnections,
+        )
 
 
 def test_switch_updates_match_runner_on_node_breaker_grid(

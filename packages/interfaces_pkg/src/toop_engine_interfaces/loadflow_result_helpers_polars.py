@@ -452,13 +452,16 @@ def extract_solver_matrices_polars(
     not_basecase_filter = pl.col("contingency") != basecase.id
     # A contingency is considered successful if it converged or if no calculation was performed
     # (e.g. for disconnected elements)
-    is_success = pl.col("status").is_in([ConvergenceStatus.CONVERGED.value, ConvergenceStatus.NO_CALCULATION.value])
-
-    filtered_converged = loadflow_results.converged.filter(timestep_filter & not_basecase_filter)
-    sorted_converged = filtered_converged.sort(pl.col("contingency").cast(pl.Enum(contingency_order)))
-    status_converged = sorted_converged.select(is_success).collect()
-
-    success = status_converged["status"].to_numpy()
+    filtered_converged = (
+        loadflow_results.converged.filter(timestep_filter & not_basecase_filter).select(["contingency", "status"]).collect()
+    )
+    success_by_contingency = {
+        row["contingency"]: row["status"] in {ConvergenceStatus.CONVERGED.value, ConvergenceStatus.NO_CALCULATION.value}
+        for row in filtered_converged.iter_rows(named=True)
+    }
+    success = np.array(
+        [success_by_contingency.get(contingency_id, False) for contingency_id in contingency_order], dtype=bool
+    )
 
     branch_elements = [elem for elem in nminus1_definition.monitored_elements if elem.kind == "branch"]
     n_0_vector, n1_matrix = extract_branch_results_polars(

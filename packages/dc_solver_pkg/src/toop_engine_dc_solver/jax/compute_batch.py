@@ -134,6 +134,7 @@ def compute_bsdf_lodf_static_flows(
         to_node=bsdf_res.to_node,
         lodf=None,
         success=bsdf_res.success,
+        contingency_success=None,
         outage_modf=None,
         failure_cases_to_zero=None,
         bsdf=bsdf_res.bsdf,
@@ -190,11 +191,9 @@ def compute_bsdf_lodf_static_flows(
         dynamic_information.branches_monitored,
     )
 
-    topo_res = replace(
-        topo_res,
-        lodf=lodf,
-        success=topo_res.success & jnp.all(lodf_success, axis=1),
-    )
+    if topo_res.failure_cases_to_zero is not None:
+        single_outage_cases_to_zero = topo_res.failure_cases_to_zero[:, : lodf_success.shape[1]]
+        lodf_success = jnp.where(single_outage_cases_to_zero, True, lodf_success)
 
     # Compute multi-outages
     outage_modf, outage_modf_success = jax.vmap(
@@ -211,11 +210,33 @@ def compute_bsdf_lodf_static_flows(
         topo_res.to_node,
         dynamic_information.multi_outage_branches,
     )
+    injection_outage_success = jnp.broadcast_to(
+        topo_res.success[:, None],
+        (topo_res.success.shape[0], dynamic_information.n_inj_failures),
+    )
+    bb_outage_success = jnp.broadcast_to(
+        topo_res.success[:, None],
+        (
+            topo_res.success.shape[0],
+            dynamic_information.n_bb_outages if dynamic_information.bb_outage_baseline_analysis is None else 0,
+        ),
+    )
+    contingency_success = jnp.concatenate(
+        [
+            lodf_success,
+            outage_modf_success,
+            injection_outage_success,
+            bb_outage_success,
+        ],
+        axis=1,
+    )
 
     return replace(
         topo_res,
         outage_modf=outage_modf,
-        success=topo_res.success & jnp.all(outage_modf_success, axis=1),
+        lodf=lodf,
+        contingency_success=contingency_success,
+        success=topo_res.success & jnp.all(contingency_success, axis=1),
     )
 
 
@@ -819,6 +840,7 @@ def compute_symmetric_batch(
         SolverLoadflowResults(
             n_0_matrix=n_0[:, :, dynamic_information.branches_monitored],
             n_1_matrix=n_1,
+            contingency_success=topo_res.contingency_success,
             cross_coupler_flows=cross_coupler_flows,
             branch_action_index=topology_batch.action,
             branch_topology=bitvector_topology.topologies,

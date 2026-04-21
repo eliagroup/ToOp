@@ -44,6 +44,64 @@ from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Defini
 from toop_engine_interfaces.stored_action_set import ActionSet
 
 
+def count_connected_components(net: Network) -> int:
+    """Count connected components in a powsybl network.
+
+    Parameters
+    ----------
+    net : Network
+        The powsybl network to analyze
+
+    Returns
+    -------
+    int
+        The number of connected components in the network
+    """
+    buses = net.get_buses(attributes=["connected_component"])
+    if buses.empty:
+        return 0
+    return int(buses["connected_component"].nunique())
+
+
+def get_islanding_contingency_ids(net: Network, nminus1_definition: Nminus1Definition) -> set[str]:
+    """Return single-outage contingency ids that increase the number of connected components.
+
+    Parameters
+    ----------
+    net : Network
+        The powsybl network to analyze, should be the base grid without any topology applied
+    nminus1_definition : Nminus1Definition
+        The N-1 definition containing the contingencies to analyze
+
+    Returns
+    -------
+    set[str]
+        The set of contingency ids that lead to islanding in the network.
+    """
+    base_connected_components = count_connected_components(net)
+    branches = net.get_branches(attributes=["connected1", "connected2"])
+    islanding_contingency_ids: set[str] = set()
+
+    for contingency in nminus1_definition.contingencies:
+        if contingency.is_basecase() or not contingency.is_single_outage():
+            continue
+
+        element = contingency.elements[0]
+        if element.kind != "branch" or element.id not in branches.index:
+            continue
+
+        branch = branches.loc[element.id]
+        if not bool(branch["connected1"] or branch["connected2"]):
+            continue
+
+        contingency_net = deepcopy(net)
+        contingency_net.update_branches(id=element.id, connected1=False, connected2=False)
+        if count_connected_components(contingency_net) > base_connected_components:
+            islanding_contingency_ids.add(contingency.id)
+
+    return islanding_contingency_ids
+
+
 def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> AdditionalActionInfo | None:
     """Apply actions to a powsybl network
 
@@ -102,8 +160,15 @@ def apply_disconnections(net: Network, disconnections: list[int], action_set: Ac
     for disconnection in disconnections:
         assert disconnection < len(action_set.disconnectable_branches), "Disconnection index out of range"
         elem = action_set.disconnectable_branches[disconnection]
-        if net.disconnect(elem.id) is False:
+        branches = net.get_branches(attributes=["connected1", "connected2"])
+        if elem.id not in branches.index:
             raise RuntimeError(f"Failed to disconnect {elem}")
+
+        branch = branches.loc[elem.id]
+        if not bool(branch["connected1"] or branch["connected2"]):
+            continue
+
+        net.update_branches(id=elem.id, connected1=False, connected2=False)
 
 
 def apply_pst_setpoints(net: Network, pst_setpoints: list[int], action_set: ActionSet) -> None:
@@ -250,9 +315,27 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self.action_set: Optional[ActionSet] = None
         self.nminus1_definition: Optional[Nminus1Definition] = None
         self.last_action_info: Optional[AdditionalActionInfo] = None
+        self.variant_id = "InitialState"
         if lf_params is None:
             lf_params = DISTRIBUTED_SLACK
         self.lf_params = deepcopy(lf_params)
+
+    def build_topology_network(
+        self,
+        actions: list[int],
+        disconnections: list[int],
+        pst_setpoints: Optional[list[int]] = None,
+    ) -> Network:
+        """Build a fresh network copy with the requested topology applied."""
+        assert self.net is not None, "Base grid must be loaded before building a topology network"
+        net = deepcopy(self.net)
+        if len(actions):
+            _ = apply_topology(net, actions, self.action_set)
+        if len(disconnections):
+            apply_disconnections(net, disconnections, self.action_set)
+        if pst_setpoints is not None and len(pst_setpoints):
+            apply_pst_setpoints(net, pst_setpoints, self.action_set)
+        return net
 
     @overrides
     def load_base_grid_fs(self, filesystem: AbstractFileSystem, grid_path: Path) -> None:
@@ -445,16 +528,14 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The results of the loadflow computation
         """
         assert self.net is not None, "Base grid must be loaded before running loadflow"
-
-        net = deepcopy(self.net)
         self.last_action_info = None
+        net = deepcopy(self.net)
         if len(actions):
             self.last_action_info = apply_topology(net, actions, self.action_set)
         if len(disconnections):
             apply_disconnections(net, disconnections, self.action_set)
         if pst_setpoints is not None and len(pst_setpoints):
             apply_pst_setpoints(net, pst_setpoints, self.action_set)
-
         return run_contingency_analysis_powsybl(
             net=net,
             n_minus_1_definition=self.nminus1_definition,

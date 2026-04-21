@@ -12,7 +12,6 @@ Author:  Benjamin Petrick
 Created: 2024-08-13
 """
 
-from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
@@ -494,7 +493,7 @@ def update_trafo_masks(
         >= importer_parameters.area_settings.cutoff_voltage
     )
 
-    # If any side is in HV we consider it a TSO trafo
+    is_3w_lower_leg = trafos_df.index.str.endswith(("Leg2", "Leg3"))
     hv_trafos = side_one_in_hv | side_two_in_hv
 
     trafos_with_limits = get_element_has_limits_mask(network, trafos_df)
@@ -517,9 +516,9 @@ def update_trafo_masks(
         trafos_df, importer_parameters.area_settings.view_area, region_colums[0], region_colums[1]
     )
     is_disconnectable = _is_disconnectable(network=network, grid_model_id=trafos_df.index.tolist())
-    disconnectable_mask = controllable_mask & hv_trafos & is_disconnectable
+    disconnectable_mask = controllable_mask & hv_trafos & is_disconnectable & ~is_3w_lower_leg
     pst_controllable_mask = controllable_mask & hv_trafos
-    outage_mask = nminus1_area_mask & hv_trafos
+    outage_mask = nminus1_area_mask & hv_trafos & ~is_3w_lower_leg
     reward_mask = view_area_mask & trafos_with_limits & hv_trafos
 
     # If only one side is in HV its a trafo from TSO to DSO
@@ -1142,9 +1141,11 @@ def _is_disconnectable(network: Network, grid_model_id: list[str]) -> np.ndarray
     np.ndarray
         A boolean NumPy array indicating if the grid_model_id is disconnectable.
     """
-    network_copy = deepcopy(network)
+    network.clone_variant("InitialState", "disconnectable_check")
+    network.set_working_variant("disconnectable_check")
     disconnectable = np.zeros(len(grid_model_id), dtype=bool)
     for idx, switch_id in enumerate(grid_model_id):
-        disconnectable[idx] = network_copy.disconnect(switch_id)
-
+        disconnectable[idx] = network.disconnect(switch_id)
+    network.remove_variant("disconnectable_check")
+    network.set_working_variant("InitialState")
     return disconnectable

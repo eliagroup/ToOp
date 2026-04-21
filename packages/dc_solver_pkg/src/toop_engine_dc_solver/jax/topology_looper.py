@@ -290,7 +290,7 @@ def run_solver(
 
     # We can use symmetric mode if there is exactly one injection per topology or if no injections were passed
     if injections is None or jnp.array_equal(injections.corresponding_topology, jnp.arange(len(topologies))):
-        results, success = run_solver_symmetric(
+        results, contingency_success = run_solver_symmetric(
             topologies,
             disconnections,
             injections.injection_topology if injections is not None else None,
@@ -302,7 +302,7 @@ def run_solver(
             n_0_results=results[0],
             n_1_results=results[1],
             best_inj_combi=injections.injection_topology if injections is not None else None,
-            success=success,
+            success=jnp.all(contingency_success, axis=-1),
         )
 
     results, best_inj_combi, success = run_solver_inj_bruteforce(
@@ -669,7 +669,7 @@ def run_solver_symmetric(
     solver_config: SolverConfig,
     aggregate_output_fn: AggregateOutputProtocol,
     nodal_inj_start_options: Optional[NodalInjStartOptions] = None,
-) -> tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies"]]:
+) -> tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies n_failures"]]:
     """Run the symmetric solver for a given set of topologies and injections.
 
     Symmetric means that there is exactly one injection topology per branch topology. You can pass
@@ -704,8 +704,8 @@ def run_solver_symmetric(
         The aggregated results for every topology according to the aggregate_output_fn. The results
         are obtained by applying aggregate_output_fn to the N-0 and N-1 matrices of every topology
         and then stacking the results.
-    Bool[Array, " n_topologies"]]
-        The success mask for every topology
+    Bool[Array, " n_topologies n_failures"]]
+        The success mask for every N-1 contingency of every topology.
     """
     if not topologies.action.size:
         topologies = default_topology(solver_config=solver_config)
@@ -773,7 +773,7 @@ def run_solver_symmetric(
             result_storage,
         )
 
-        results, success = jax.pmap(
+        results, contingency_success = jax.pmap(
             iterate_symmetric_sequential,
             in_axes=(
                 0,
@@ -800,9 +800,9 @@ def run_solver_symmetric(
         )
 
         results = jax.tree_util.tree_map(lambda x: jnp.concatenate(x, axis=0), results)
-        success = jnp.concatenate(success, axis=0)
+        contingency_success = jnp.concatenate(contingency_success, axis=0)
     else:
-        results, success = iterate_symmetric_sequential(
+        results, contingency_success = iterate_symmetric_sequential(
             topologies=topologies,
             disconnections=disconnections,
             injections=injections,
@@ -814,8 +814,8 @@ def run_solver_symmetric(
         )
 
     results = jax.tree_util.tree_map(lambda x: x[:n_topologies_orig], results)
-    success = success[:n_topologies_orig]
-    return results, success
+    contingency_success = contingency_success[:n_topologies_orig]
+    return results, contingency_success
 
 
 @partial(jax.jit, static_argnames=("solver_config", "aggregate_output_fn"))
@@ -828,7 +828,7 @@ def iterate_symmetric_sequential(
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
     aggregate_output_fn: AggregateOutputProtocol,
-) -> tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies"]]:
+) -> tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies n_failures"]]:
     """Iterate over already padded topologies and injections sequentially
 
     Parameters
@@ -858,21 +858,21 @@ def iterate_symmetric_sequential(
         The aggregated results for every topology according to the aggregate_output_fn. The results
         are obtained by applying aggregate_output_fn to the N-0 and N-1 matrices of every topology
         and then stacking the results. They are of the same dimension as the inputs
-    Bool[Array, " n_topologies"]
-        The success mask for every topology
+    Bool[Array, " n_topologies n_failures"]
+        The success mask for every contingency of every topology
     """
     n_topologies = len(topologies)
     batch_size = solver_config.batch_size_bsdf
     n_batches = n_topologies // batch_size
     assert n_topologies % batch_size == 0
 
-    success_storage = jnp.zeros(n_topologies, dtype=bool)
+    success_storage = jnp.zeros((n_topologies, dynamic_information.n_nminus1_cases), dtype=bool)
     storage = (result_storage, success_storage)
 
     def _run_single_iter(
         i: Int[Array, " "],
-        storage: tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies"]],
-    ) -> tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies"]]:
+        storage: tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies n_failures"]],
+    ) -> tuple[PyTree[Shaped[Array, " n_topologies ..."]], Bool[Array, " n_topologies n_failures"]]:
         topology_batch = slice_topologies_action_index(topologies, i, batch_size)
         disconnections_batch = (
             jax.lax.dynamic_slice_in_dim(disconnections, i * batch_size, batch_size, axis=0)
@@ -888,7 +888,7 @@ def iterate_symmetric_sequential(
             else None
         )
 
-        lf_res, new_succ = compute_symmetric_batch(
+        lf_res, _new_succ = compute_symmetric_batch(
             topology_batch,
             disconnections_batch,
             injections_batch,
@@ -903,7 +903,12 @@ def iterate_symmetric_sequential(
             stored_res,
             new_res,
         )
-        stored_succ = jax.lax.dynamic_update_slice_in_dim(stored_succ, new_succ, i * batch_size, axis=0)
+        stored_succ = jax.lax.dynamic_update_slice_in_dim(
+            stored_succ,
+            lf_res.contingency_success,
+            i * batch_size,
+            axis=0,
+        )
         return (stored_res, stored_succ)
 
     results, success = jax.lax.fori_loop(0, n_batches, _run_single_iter, storage)

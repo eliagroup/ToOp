@@ -85,7 +85,6 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     BatchedMEParameters,
     LoadflowSolverParameters,
 )
-from tqdm import tqdm
 
 logger = structlog.get_logger(__name__)
 
@@ -348,25 +347,10 @@ def run_preprocessing(
         The extracted static information from the grid.
     """
     logger.info("Starting file conversion via preprocessing.convert_file")
-    import_result = preprocessing.convert_file(
+    _import_result = preprocessing.convert_file(
         importer_parameters=importer_parameters, status_update_fn=empty_status_update_fn
     )
 
-    tqdm.write(
-        (
-            f"Converted {importer_parameters.grid_model_file.stem} - "
-            f"subs: {import_result.n_relevant_subs}, "
-            f"lines n-1: {import_result.n_line_for_nminus1}, "
-            f"trafos n-1: {import_result.n_trafo_for_nminus1}, "
-            f"lines reward: {import_result.n_line_for_reward}, "
-            f"trafos reward: {import_result.n_trafo_for_reward}, "
-            f"lines disconnectable: {import_result.n_line_disconnectable}, "
-            f"trafos disconnectable: {import_result.n_trafo_disconnectable}, "
-            f"tie lines disconnectable: {import_result.n_tie_line_disconnectable}, "
-            f"low impedance lines: {import_result.n_low_impedance_lines}, "
-            f"branches across switch: {import_result.n_branch_across_switch}"
-        )
-    )
     lf_params = load_lf_params_from_fs(
         DirFileSystem(data_folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )

@@ -528,6 +528,7 @@ def save_ac_metrics_summary(
     disconnections: list[int],
     additional_info: Optional[AdditionalActionInfo],
     dc_info: dict,
+    output_file_name: str = "ac_metrics.json",
 ) -> None:
     """Save the AC metrics for a topology as JSON.
 
@@ -547,6 +548,8 @@ def save_ac_metrics_summary(
         Additional action metadata captured during the AC loadflow.
     dc_info: dict
         Any additional data from the DC run that is added for awareness
+    output_file_name : str, optional
+        The name of the JSON file to write, by default "ac_metrics.json".
     """
     nminus1_definition = runner.get_nminus1_definition()
     base_case_id = nminus1_definition.base_case.id if nminus1_definition.base_case is not None else None
@@ -561,7 +564,7 @@ def save_ac_metrics_summary(
     res_dict = metrics.model_dump()
     res_dict["dc_info"] = dc_info
 
-    with (topology_path / "ac_metrics.json").open("w", encoding="utf-8") as file_handle:
+    with (topology_path / output_file_name).open("w", encoding="utf-8") as file_handle:
         json.dump(res_dict, file_handle, indent=2)
 
 
@@ -773,6 +776,27 @@ def perform_ac_analysis(
 
     n_assessed_topos = min(ac_validation_cfg.get("k_best_topos", 1), len(best_topos))
     logger.info(f"Performing AC analysis on the top {n_assessed_topos} topologies...")
+
+    unsplit_runner = create_loadflow_runner(
+        data_folder, grid_path, n_processes=ac_validation_cfg.get("n_processes", 1), pandaflow_runner=pandapower_runner
+    )
+    unsplit_loadflow_results = unsplit_runner.run_ac_loadflow([], [])
+    unsplit_action_info = unsplit_runner.get_last_action_info()
+    save_ac_metrics_summary(
+        runner=unsplit_runner,
+        topology_path=optimisation_run_path,
+        loadflow_results=unsplit_loadflow_results,
+        actions=[],
+        disconnections=[],
+        additional_info=unsplit_action_info,
+        dc_info={
+            "actions": [],
+            "disconnections": [],
+            "fitness": res.get("initial_fitness"),
+            "metrics": res.get("initial_metrics", {}),
+        },
+        output_file_name="unsplit_ac_metrics.json",
+    )
 
     topology_paths = []
     for topology_index in range(n_assessed_topos):

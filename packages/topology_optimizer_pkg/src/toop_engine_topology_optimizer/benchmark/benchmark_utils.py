@@ -79,12 +79,13 @@ from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_
 from toop_engine_topology_optimizer.ac.summary import changing_switches_to_orao_dict
 from toop_engine_topology_optimizer.dc.main import CLIArgs
 from toop_engine_topology_optimizer.dc.main import main as opt_main
-
-# Local project imports
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     BatchedMEParameters,
     LoadflowSolverParameters,
 )
+
+# Local project imports
+from toop_engine_topology_optimizer.interfaces.messages.results import Metrics
 
 logger = structlog.get_logger(__name__)
 
@@ -529,7 +530,7 @@ def save_ac_metrics_summary(
     additional_info: Optional[AdditionalActionInfo],
     dc_info: dict,
     output_file_name: str = "ac_metrics.json",
-) -> None:
+) -> Metrics:
     """Save the AC metrics for a topology as JSON.
 
     Parameters
@@ -550,6 +551,11 @@ def save_ac_metrics_summary(
         Any additional data from the DC run that is added for awareness
     output_file_name : str, optional
         The name of the JSON file to write, by default "ac_metrics.json".
+
+    Returns
+    -------
+    Metrics
+        The computed AC metrics for the topology.
     """
     nminus1_definition = runner.get_nminus1_definition()
     base_case_id = nminus1_definition.base_case.id if nminus1_definition.base_case is not None else None
@@ -566,6 +572,8 @@ def save_ac_metrics_summary(
 
     with (topology_path / output_file_name).open("w", encoding="utf-8") as file_handle:
         json.dump(res_dict, file_handle, indent=2)
+
+    return metrics
 
 
 def create_loadflow_runner(
@@ -799,6 +807,8 @@ def perform_ac_analysis(
     )
 
     topology_paths = []
+    best_ac_fitness: float | None = None
+    best_ac_topology_path: Path | None = None
     for topology_index in range(n_assessed_topos):
         topology_path = optimisation_run_path / f"topology_{topology_index}"
         topology_path.mkdir(parents=True, exist_ok=True)
@@ -822,7 +832,7 @@ def perform_ac_analysis(
         ac_loadflow_results, ac_action_info = calculate_and_save_loadflow_results(
             loadflow_runner, topology_path, actions, disconnections
         )
-        save_ac_metrics_summary(
+        ac_metrics = save_ac_metrics_summary(
             runner=loadflow_runner,
             topology_path=topology_path,
             loadflow_results=ac_loadflow_results,
@@ -831,6 +841,9 @@ def perform_ac_analysis(
             additional_info=ac_action_info,
             dc_info=best_topos[topology_index],
         )
+        if best_ac_fitness is None or ac_metrics.fitness < best_ac_fitness:
+            best_ac_fitness = ac_metrics.fitness
+            best_ac_topology_path = topology_path
 
         if not pandapower_runner:
             logger.info("Saving ORAO summary...")
@@ -847,13 +860,43 @@ def perform_ac_analysis(
             # Only for powsybl networks, we get the SLDs for the split stations
             save_slds_of_split_stations(action_set, actions, topology_path, modified_net)
         topology_paths.append(topology_path)
+    if best_ac_fitness is not None and best_ac_topology_path is not None:
+        logger.info(f"Best AC fitness {best_ac_fitness} found in folder: {best_ac_topology_path}")
     logger.info("AC validation completed.")
     return topology_paths
 
 
+def get_run_dir(optimizer_snapshot_dir: Path) -> Path:
+    """Get the next available run directory inside the optimizer snapshot directory.
+
+    This function checks for existing run directories (named 'run_0', 'run_1', etc.) inside the specified
+    optimizer snapshot directory and creates a new directory with the next available index.
+
+    Parameters
+    ----------
+    optimizer_snapshot_dir : Path
+        The path to the optimizer snapshot directory where run directories are stored.
+
+    Returns
+    -------
+    Path
+        The path to the newly created run directory (e.g., 'run_0', 'run_1', etc.).
+    """
+    # Find next available run directory inside optimizer_snapshot_dir
+
+    run_idx = 0
+    while True:
+        run_dir = optimizer_snapshot_dir / f"run_{run_idx}"
+        if not run_dir.exists():
+            run_dir.mkdir(parents=True)
+            break
+        run_idx += 1
+    return run_dir
+
+
 def run_dc_optimization_stage(
     dc_optim_config: dict | DictConfig,
-    optimizer_snapshot_dir: Path,
+    run_dir: Path,
 ) -> Path:
     """
     Run the DC optimization stage and save the results.
@@ -862,8 +905,9 @@ def run_dc_optimization_stage(
     ----------
     dc_optim_config : dict
         Configuration dictionary for the DC optimization stage.
-    optimizer_snapshot_dir : Path
-        Directory where the optimizer snapshot results will be saved.
+    run_dir: Path
+        The directory where the results of this optimization run will be saved. This should be an
+        empty folder, otherwise data will be overwritten.
 
     Returns
     -------
@@ -873,17 +917,7 @@ def run_dc_optimization_stage(
     logger.info("Running DC optimization...")
     optimisation_result = run_dc_optimization(dc_optim_config=dc_optim_config)
     logger.info("DC optimization completed.")
-
-    # Save optimizer results as res.json in optimizer_snapshot folder inside grid_path
-    # Find next available run directory inside optimizer_snapshot_dir
-    run_idx = 0
-    while True:
-        run_dir = optimizer_snapshot_dir / f"run_{run_idx}"
-        if not run_dir.exists():
-            run_dir.mkdir(parents=True)
-            break
-        run_idx += 1
-
+    # Save optimizer results as res.json in run_dir folder inside grid_path
     res_json_path = run_dir / "res.json"
     with open(res_json_path, "w") as f:
         json.dump(optimisation_result, f, indent=2, default=str)
@@ -958,9 +992,10 @@ def run_pipeline(
         # DC Optimization stage. Can be skipped if results already exist. But if this is set to False, a valid
         # optimisation_run_dir must be provided for the AC validation stage. The run_dir should contain a res.json file.
         # which will be used by the AC validation stage.
-        run_dir = run_dc_optimization_stage(
+        run_dir = get_run_dir(optimizer_snapshot_dir)
+        run_dc_optimization_stage(
             dc_optim_config,
-            optimizer_snapshot_dir,
+            run_dir,
         )
     else:
         logger.info("Skipping DC optimization stage as per configuration.")

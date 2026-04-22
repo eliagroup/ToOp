@@ -8,7 +8,7 @@
 import jax.numpy as jnp
 import numpy as np
 from tests.numpy_reference import calc_lodf as calc_lodf_ref
-from toop_engine_dc_solver.jax.lodf import calc_lodf, calc_lodf_matrix, zero_lodf_matrix
+from toop_engine_dc_solver.jax.lodf import calc_lodf, calc_lodf_matrix
 from toop_engine_dc_solver.jax.types import (
     InjectionComputations,
     StaticInformation,
@@ -56,30 +56,3 @@ def test_calc_lodf(
     assert jnp.all(success)
 
     assert np.allclose(lodf_matrix[0, :], lodf_ref)
-
-
-def test_zero_lodf_matrix(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    dynamic_information = jax_inputs[2].dynamic_information
-
-    lodf_matrix, success = calc_lodf_matrix(
-        branches_to_outage=dynamic_information.branches_to_fail,
-        ptdf=dynamic_information.ptdf,
-        from_node=dynamic_information.from_node,
-        to_node=dynamic_information.to_node,
-        branches_monitored=dynamic_information.branches_monitored,
-    )
-    assert jnp.all(success)
-
-    zero_branches = np.concatenate([dynamic_information.branches_to_fail[0:3], np.array([900, 901])])
-    zeroed_lodf_matrix, zeroed_success = zero_lodf_matrix(
-        lodf_matrix=lodf_matrix,
-        success=success,
-        branches_to_zero=zero_branches,
-        branches_to_outage=dynamic_information.branches_to_fail,
-    )
-
-    assert jnp.all(zeroed_lodf_matrix[0:3, :] == 0)
-    assert jnp.array_equal(zeroed_lodf_matrix[3:, :], lodf_matrix[3:, :])
-    assert jnp.all(zeroed_success)

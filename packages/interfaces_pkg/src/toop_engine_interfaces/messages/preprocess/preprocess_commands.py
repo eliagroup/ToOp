@@ -318,7 +318,7 @@ class PreprocessParameters(BaseModel):
     """If a large configuration table comes out of a substation, the table size can be reduced
     by removing configurations that are close to each other. This parameter sets the definition
     of close in terms of hamming distance, by default 0 (no reduction)."""
-    separation_set_clip_at_size: int = 100
+    separation_set_clip_at_size: int = 2**23
     """By what size a table is considered large. If the table is larger than this size, the
     clip_hamming_distance will be used to reduce the table size, by default 100. If a table is
     smaller, no reduction will be applied."""

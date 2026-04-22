@@ -30,10 +30,6 @@ from .pandapower_toolset_node_breaker import (
     get_substation_buses_from_bus_id,
     get_type_b_nodes,
 )
-from .pp_masks import (
-    get_relevant_subs,
-    make_pp_masks,
-)
 from .preprocessing import (
     preprocess_net_step1,
     preprocess_net_step2,
@@ -52,12 +48,10 @@ __all__ = [
     "get_closed_switch",
     "get_coupler_types_of_substation",
     "get_indirect_connected_switch",
-    "get_relevant_subs",
     "get_station_from_id",
     "get_station_id_list",
     "get_substation_buses_from_bus_id",
     "get_type_b_nodes",
-    "make_pp_masks",
     "move_elements_based_on_labels",
     "preprocess_net_step1",
     "preprocess_net_step2",

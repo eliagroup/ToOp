@@ -864,7 +864,6 @@ def compute_electrical_actions(
         clip_to_n_actions=clip_to_n_actions,
         reassignment_limits=reassignment_limits,
     )
-
     network_data = replace(
         network_data,
         branch_action_set=branch_actions,
@@ -1249,12 +1248,13 @@ def compute_separation_set_for_stations(
         The network data with the separation set computed
     """
     assert network_data.simplified_asset_topology is not None, "Please simplify the asset topology first"
-
+    actions = 0
     separation_sets_info: list[OptimalSeparationSetInfo] = []
     for station in network_data.simplified_asset_topology.stations:
         separation_set_info = make_optimal_separation_set(station, clip_hamming_distance, clip_at_size)
         separation_sets_info.append(separation_set_info)
-
+        actions += separation_set_info.separation_set.shape[0]
+    logger.info(f"Total actions: {actions}")
     return replace(
         network_data,
         separation_sets_info=separation_sets_info,

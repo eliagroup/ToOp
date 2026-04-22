@@ -318,24 +318,6 @@ def get_asset_bay_grid_model_id_list(station: Station) -> list[dict[str, str] | 
     return sr_switch_grid_model_id_list
 
 
-def get_busbar_lookup(station: Station) -> dict[int, str]:
-    """Get the busbar lookup for the given station.
-
-    Parameters
-    ----------
-    station : Station
-        The station object containing the busbars.
-
-    Returns
-    -------
-    dict[int, str]
-        Dictionary containing the busbar int ids and their corresponding grid_model_id.
-        The keys are the busbar int ids and the values are the grid_model_id.
-        The dictionary is empty if no busbars are found.
-    """
-    return {index: busbar.grid_model_id for index, busbar in enumerate(station.busbars)}
-
-
 @pa.check_types
 def get_switch_update_schema_from_topology(topology: Topology) -> pat.DataFrame[SwitchUpdateSchema]:
     """Translate a topology to the SwitchUpdateSchema format.

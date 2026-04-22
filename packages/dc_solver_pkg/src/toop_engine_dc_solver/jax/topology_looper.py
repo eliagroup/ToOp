@@ -21,20 +21,14 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 from beartype.typing import Optional
-from jax_dataclasses import replace
 from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree, Shaped
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric
 from toop_engine_dc_solver.jax.batching import (
-    count_injection_combinations_from_corresponding_topology,
-    get_injections_for_topo_range,
-    greedy_buffer_size_selection,
     pad_topologies_action_index,
     slice_nodal_inj_start_options,
     slice_topologies_action_index,
-    split_injections,
 )
 from toop_engine_dc_solver.jax.compute_batch import (
-    compute_batch,
     compute_symmetric_batch,
 )
 from toop_engine_dc_solver.jax.result_storage import prepare_result_storage, sparsify_results
@@ -280,14 +274,6 @@ def run_solver(
         fixed_hash=hash(solver_config),
     )
 
-    metric_fn = DefaultAggregateMetricsFn(
-        branch_limits=dynamic_information.branch_limits,
-        reassignment_distance=dynamic_information.action_set.reassignment_distance,
-        n_relevant_subs=dynamic_information.n_sub_relevant,
-        metric=solver_config.aggregation_metric,
-        fixed_hash=hash(solver_config),
-    )
-
     # We can use symmetric mode if there is exactly one injection per topology or if no injections were passed
     if injections is None or jnp.array_equal(injections.corresponding_topology, jnp.arange(len(topologies))):
         results, contingency_success = run_solver_symmetric(
@@ -304,23 +290,7 @@ def run_solver(
             best_inj_combi=injections.injection_topology if injections is not None else None,
             success=jnp.all(contingency_success, axis=-1),
         )
-
-    results, best_inj_combi, success = run_solver_inj_bruteforce(
-        topologies,
-        disconnections,
-        injections,
-        dynamic_information,
-        solver_config,
-        metric_fn,
-        output_fn,
-    )
-
-    return SparseSolverOutput(
-        n_0_results=results[0],
-        n_1_results=results[1],
-        best_inj_combi=best_inj_combi,
-        success=success,
-    )
+    raise RuntimeError("No solver found")
 
 
 def convert_topologies(
@@ -359,305 +329,6 @@ def convert_topologies(
         action_set_new = None
 
     return topologies, action_set_new
-
-
-def run_solver_inj_bruteforce(
-    topologies: ActionIndexComputations,
-    disconnections: Optional[Int[Array, " n_topologies n_disconnections"]],
-    injections: InjectionComputations,
-    dynamic_information: DynamicInformation,
-    solver_config: SolverConfig,
-    aggregate_metric_fn: AggregateMetricProtocol,
-    aggregate_output_fn: AggregateOutputProtocol,
-) -> tuple[
-    PyTree,
-    Bool[Array, " batch_size_bsdf n_splits max_inj_per_sub"],
-    Bool[Array, " batch_size_bsdf"],
-]:
-    """Run the solver for a given set of topologies and injections, using injection bruteforcing
-
-    This will run a bruteforce search for all possible injections for every topology in the input
-    and choose the best one according to the metric function.
-
-    Parameters
-    ----------
-    topologies : ActionIndexComputations
-        The topology computations to perform in action index format
-    disconnections : Optional[Int[Array, " n_topologies n_disconnections"]]
-        The disconnections to perform as topological measures. If None, no disconnections are performed
-    injections : InjectionComputations
-        The injection computations to perform, will overwrite the action index computations
-    dynamic_information : DynamicInformation
-        Dynamic information about the grid, such as the PTDF matrix
-    solver_config : SolverConfig
-        Configuration for the solver
-    aggregate_metric_fn : AggregateMetricProtocol
-        A function that takes the N-0 and N-1 matrices of a single topology (no batch dimension)
-        and returns a metric that should be maximized. The metric function must be vmappable. If
-        metrics_first_mode is False, the metric function will receive the output of
-        aggregate_output_fn as the third argument, otherwise it will be passed None.
-    aggregate_output_fn : AggregateOutputProtocol
-        A function that takes the N-0 and N-1 matrices of a single topology (no batch dimension)
-        and returns any aggregated information the user wishes to compute. The aggregate function
-        must be vmappable.
-
-
-    Returns
-    -------
-    PyTree[Shaped, " batch_size_bsdf ..."]
-        The results object for this batch according to aggregate_output_fn
-    Int[Array, " batch_size_bsdf n_subs_rel"]
-        The best injection combination for each topology
-    Bool[Array, " batch_size_bsdf"]
-        The success flag for each topology
-    """
-    if not topologies.action.size:
-        topologies = default_topology(solver_config=solver_config)
-    if disconnections is not None and disconnections.size == 0:
-        disconnections = None
-
-    # Pad out inputs to match the batch size / devices
-    distributed = solver_config.distributed
-    n_devices = len(jax.devices()) if distributed else 1
-    batch_size = solver_config.batch_size_bsdf * n_devices
-    n_topologies_orig = len(topologies)
-    n_topologies = math.ceil(n_topologies_orig / batch_size) * batch_size
-    pad_width = n_topologies - n_topologies_orig
-
-    topologies = pad_topologies_action_index(topologies, n_topologies)
-    disconnections = (
-        jnp.pad(
-            disconnections,
-            [[0, pad_width], [0, 0]],
-            mode="constant",
-            constant_values=-1,
-        )
-        if disconnections is not None
-        else None
-    )
-
-    # Compute buffer size if not given
-    if solver_config.buffer_size_injection is None:
-        n_injs_per_topo = count_injection_combinations_from_corresponding_topology(
-            corresponding_topology=injections.corresponding_topology,
-            batch_size_bsdf=solver_config.batch_size_bsdf,
-            n_topologies=n_topologies,
-        )
-
-        solver_config = replace(
-            solver_config,
-            buffer_size_injection=greedy_buffer_size_selection(
-                n_inj_combis_per_topo_batch=n_injs_per_topo,
-                batch_size_injection=solver_config.batch_size_injection,
-            ),
-        )
-
-    # Prepare storage for all results
-    result_storage = prepare_result_storage(
-        aggregate_output_fn,
-        n_timesteps=dynamic_information.n_timesteps,
-        n_branches_monitored=dynamic_information.n_branches_monitored,
-        n_failures=dynamic_information.n_nminus1_cases,
-        n_splits=topologies.action.shape[1],
-        n_disconnections=disconnections.shape[1] if disconnections is not None else None,
-        max_branch_per_sub=dynamic_information.max_branch_per_sub,
-        max_inj_per_sub=dynamic_information.max_inj_per_sub,
-        nminus2=dynamic_information.n2_baseline_analysis is not None,
-        bb_outage=solver_config.enable_bb_outages and not solver_config.bb_outage_as_nminus1,
-        size=n_topologies,
-    )
-
-    if distributed:
-        devices = jax.devices()
-        n_devices = len(devices)
-
-        topologies = jax.tree_util.tree_map(
-            lambda x: jax.device_put_sharded(jnp.split(x, n_devices, axis=0), devices),
-            topologies,
-        )
-        disconnections = (
-            jax.device_put_sharded(jnp.split(disconnections, n_devices, axis=0), devices)
-            if disconnections is not None
-            else None
-        )
-        # Splitting injections needs a bit more care as we need to split according to corresponding
-        # topology
-        n_topos_per_device = n_topologies // n_devices
-        injections = split_injections(
-            injections=injections,
-            n_splits=n_devices,
-            packet_size_injection=(
-                solver_config.batch_size_injection
-                * solver_config.buffer_size_injection
-                * math.ceil(n_topos_per_device / solver_config.batch_size_bsdf)
-            ),
-            n_topos_per_split=n_topos_per_device,
-        )
-        injections = jax.tree_util.tree_map(
-            lambda x: jax.device_put_sharded(jnp.split(x, n_devices, axis=0), devices),
-            injections,
-        )
-        result_storage = jax.tree_util.tree_map(
-            lambda x: jax.device_put_sharded(jnp.split(x, n_devices, axis=0), devices),
-            result_storage,
-        )
-
-        results = jax.pmap(
-            iterate_inj_bruteforce_sequential,
-            in_axes=(
-                0,
-                0 if disconnections is not None else None,
-                0,
-                0,
-                None,
-                None,
-                None,
-                None,
-            ),
-            static_broadcasted_argnums=(5, 6, 7),
-            donate_argnums=(3,),
-        )(
-            topologies,
-            disconnections,
-            injections,
-            result_storage,
-            dynamic_information,
-            solver_config,
-            aggregate_metric_fn,
-            aggregate_output_fn,
-        )
-
-        results = jax.tree_util.tree_map(lambda x: jnp.concatenate(x, axis=0), results)
-    else:
-        results = iterate_inj_bruteforce_sequential(
-            topologies=topologies,
-            disconnections=disconnections,
-            injections=injections,
-            result_storage=result_storage,
-            dynamic_information=dynamic_information,
-            solver_config=solver_config,
-            aggregate_metric_fn=aggregate_metric_fn,
-            aggregate_output_fn=aggregate_output_fn,
-        )
-    results = jax.tree_util.tree_map(lambda x: x[:n_topologies_orig], results)
-    return results
-
-
-@partial(
-    jax.jit,
-    static_argnames=(
-        "solver_config",
-        "aggregate_metric_fn",
-        "aggregate_output_fn",
-    ),
-)
-def iterate_inj_bruteforce_sequential(
-    topologies: ActionIndexComputations,
-    disconnections: Optional[Int[Array, " n_topologies n_disconnections"]],
-    injections: Optional[InjectionComputations],
-    result_storage: PyTree[Shaped[Array, " n_topologies ..."]],
-    dynamic_information: DynamicInformation,
-    solver_config: SolverConfig,
-    aggregate_metric_fn: AggregateMetricProtocol,
-    aggregate_output_fn: AggregateOutputProtocol,
-) -> tuple[
-    PyTree[Shaped[Array, " n_topologies ..."]],
-    Bool[Array, " n_topologies n_splits max_inj_per_sub"],
-    Bool[Array, " n_topologies"],
-]:
-    """Iterate over already padded topologies and injections sequentially
-
-    Parameters
-    ----------
-    topologies : ActionIndexBranchComputations
-        The topology computations to perform, padded to match the batch size
-    disconnections : Optional[Int[Array, " n_topologies n_disconnections"]]
-        The disconnections to perform, padded to match the batch size
-    injections: Optional[InjectionComputations]
-        The injection computations to perform, padded to match the batch size
-    result_storage : PyTree[Shaped[Array, " n_topologies ..."]]
-        An array with storage reserved for the results
-    dynamic_information : DynamicInformation
-        Dynamic information about the grid, such as the PTDF matrix
-    solver_config : SolverConfig
-        Configuration for the solver
-    aggregate_metric_fn : AggregateMetricProtocol
-        A function that aggregates the results to a metric
-    aggregate_output_fn : AggregateOutputProtocol
-        A function that aggregates the results to a user-defined output
-
-    Returns
-    -------
-    PyTree[Shaped[Array, " n_topologies ..."]]
-        The aggregated results for every topology according to the aggregate_output_fn. The results
-        are obtained by applying aggregate_output_fn to the N-0 and N-1 matrices of every topology
-        and then stacking the results. They are of the same dimension as the inputs
-    Int[Array, " n_topologies n_sub_relevant"]
-        The best injection combination for every topology
-    Bool[Array, " n_topologies"]
-        The success mask for every topology
-    """
-    n_topologies = len(topologies)
-    batch_size = solver_config.batch_size_bsdf
-    n_batches = n_topologies // batch_size
-    n_splits = topologies.action.shape[1]
-    assert n_topologies % batch_size == 0
-    assert solver_config.buffer_size_injection is not None
-
-    # Reserve storage for the results
-    best_inj_combi = jnp.zeros((n_topologies, n_splits, dynamic_information.max_inj_per_sub), dtype=bool)
-    success = jnp.zeros(n_topologies, dtype=bool)
-
-    def _run_single_iter(
-        i: Int[Array, " "],
-        storage: tuple[
-            PyTree[Shaped[Array, " n_topologies ..."]],
-            Bool[Array, " n_topologies n_splits max_inj_per_sub"],
-            Bool[Array, " n_topologies"],
-        ],
-    ) -> tuple[
-        PyTree[Shaped[Array, " n_topologies ..."]],
-        Bool[Array, " n_topologies n_splits max_inj_per_sub"],
-        Bool[Array, " n_topologies"],
-    ]:
-        topologies_cur = slice_topologies_action_index(topologies, i, batch_size)
-        disconnections_cur = (
-            jax.lax.dynamic_slice_in_dim(disconnections, i * batch_size, batch_size, axis=0)
-            if disconnections is not None
-            else None
-        )
-        injections_cur = get_injections_for_topo_range(
-            all_injections=injections,
-            topo_index=i,
-            batch_size_bsdf=batch_size,
-            batch_size_injection=solver_config.batch_size_injection,
-            buffer_size_injection=solver_config.buffer_size_injection,
-            return_relative_index=True,
-        )
-
-        output_new, best_inj_combi_new, success_new = compute_batch(
-            topologies_cur,
-            disconnections_cur,
-            injections_cur,
-            dynamic_information,
-            solver_config,
-            aggregate_metric_fn,
-            aggregate_output_fn,
-        )
-
-        output, best_inj_combi, success = storage
-        output = jax.tree_util.tree_map(
-            lambda stored, new: jax.lax.dynamic_update_slice_in_dim(stored, new, i * batch_size, axis=0),
-            output,
-            output_new,
-        )
-        best_inj_combi = jax.lax.dynamic_update_slice_in_dim(best_inj_combi, best_inj_combi_new, i * batch_size, axis=0)
-        success = jax.lax.dynamic_update_slice_in_dim(success, success_new, i * batch_size, axis=0)
-
-        return (output, best_inj_combi, success)
-
-    results = jax.lax.fori_loop(0, n_batches, _run_single_iter, (result_storage, best_inj_combi, success))
-    return results
 
 
 # sonar: noqa: S3776

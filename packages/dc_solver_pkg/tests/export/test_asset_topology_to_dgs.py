@@ -19,7 +19,6 @@ from toop_engine_dc_solver.export.asset_topology_to_dgs import (
     SwitchUpdateSchema,
     get_asset_bay_grid_model_id_list,
     get_asset_switch_states_from_station,
-    get_busbar_lookup,
     get_changing_switches_from_topology,
     get_coupler_states_from_busbar_couplers,
     get_dgs_general_schema,
@@ -197,13 +196,6 @@ def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
         {"BBS4_1": "L82_DISCONNECTOR_7_0", "BBS4_2": "L82_DISCONNECTOR_7_1"},
     ]
     assert asset_bay_sr_fid_list == expected
-
-
-def test_get_busbar_lookup(basic_node_breaker_topology):
-    station = basic_node_breaker_topology.stations[0]
-    busbar_lookup = get_busbar_lookup(station)
-    expected = {0: "BBS4_1", 1: "BBS4_2"}
-    assert busbar_lookup == expected
 
 
 def test_get_switch_update_schema_from_topology(basic_node_breaker_topology):

@@ -20,9 +20,7 @@ from toop_engine_interfaces.folder_structure import POSTPROCESSING_PATHS
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
-from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
-
-from packages.topology_optimizer_pkg.src.toop_engine_topology_optimizer.interfaces.messages.commons import OptimizerType
+from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 
 logger = structlog.get_logger(__name__)
 

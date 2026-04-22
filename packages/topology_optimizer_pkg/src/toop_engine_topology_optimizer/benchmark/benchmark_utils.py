@@ -31,6 +31,7 @@ from beartype.typing import Literal, Optional, Tuple
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from omegaconf import DictConfig
+from toop_engine_dc_solver.export.export import get_changing_switches_from_action_set
 from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
@@ -73,6 +74,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import Static
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.stored_action_set import load_action_set as load_stored_action_set
+from toop_engine_topology_optimizer.ac.summary import changing_switches_to_orao_dict
 from toop_engine_topology_optimizer.dc.main import CLIArgs
 from toop_engine_topology_optimizer.dc.main import main as opt_main
 
@@ -585,6 +587,53 @@ def create_loadflow_runner(
     return runner
 
 
+def save_orao_summary(
+    action_set: ActionSet,
+    output_dir: Path,
+    actions: Optional[list[int]] = None,
+    disconnections: Optional[list[int]] = None,
+) -> None:
+    """Save the switching actions for a topology in ORAO-compatible JSON format.
+
+    Parameters
+    ----------
+    action_set : ActionSet
+        The action set that contains the switch update definitions.
+    output_dir : Path
+        The directory where the ORAO summary JSON file should be written.
+    actions : Optional[list[int]], optional
+        The topology actions applied to the grid. Defaults to an empty list.
+    disconnections : Optional[list[int]], optional
+        The branch disconnections applied to the grid. Defaults to an empty list.
+    """
+    if actions is None:
+        actions = []
+    if disconnections is None:
+        disconnections = []
+
+    # The optimizer can emit multiple actions for the same station; the last one defines
+    # the effective final station state that should be exported.
+    effective_actions: list[int] = []
+    seen_station_ids: set[str] = set()
+    for action_index in reversed(actions):
+        station_id = action_set.local_actions[action_index].grid_model_id
+        if station_id in seen_station_ids:
+            continue
+        seen_station_ids.add(station_id)
+        effective_actions.append(action_index)
+    effective_actions.reverse()
+
+    switch_updates = get_changing_switches_from_action_set(
+        action_set=action_set,
+        actions=effective_actions,
+        disconnections=disconnections,
+    )
+    orao_summary = changing_switches_to_orao_dict(switch_updates)
+
+    with (output_dir / "orao_summary.json").open("w", encoding="utf-8") as file_handle:
+        json.dump(orao_summary, file_handle)
+
+
 def save_slds_of_split_stations(
     action_set: ActionSet, actions: list[int], output_dir: Path, network: pypowsybl.network.Network
 ) -> None:
@@ -713,6 +762,15 @@ def perform_ac_analysis(
 
         logger.info("Running AC loadflow...")
         calculate_and_save_loadflow_results(loadflow_runner, topology_path, actions, disconnections)
+
+        if not pandapower_runner:
+            logger.info("Saving ORAO summary...")
+            save_orao_summary(
+                action_set=action_set,
+                output_dir=topology_path,
+                actions=actions,
+                disconnections=disconnections,
+            )
 
         logger.info("Saving SLDs of split stations...")
 

@@ -33,7 +33,7 @@ from fsspec.implementations.local import LocalFileSystem
 from omegaconf import DictConfig
 from toop_engine_dc_solver.export.export import get_changing_switches_from_action_set
 from toop_engine_dc_solver.jax.types import StaticInformation
-from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
+from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
     PandapowerRunner,
 )
@@ -61,6 +61,7 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
@@ -74,6 +75,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import Static
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.stored_action_set import load_action_set as load_stored_action_set
+from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep
 from toop_engine_topology_optimizer.ac.summary import changing_switches_to_orao_dict
 from toop_engine_topology_optimizer.dc.main import CLIArgs
 from toop_engine_topology_optimizer.dc.main import main as opt_main
@@ -498,7 +500,7 @@ def calculate_and_save_loadflow_results(
     topology_path: Path,
     actions: Optional[list[int]] = None,
     disconnections: Optional[list[int]] = None,
-) -> None:
+) -> tuple[LoadflowResultsPolars, Optional[AdditionalActionInfo]]:
     """
     Calculate AC and DC loadflow results using the provided runner and saves the results as CSV files.
 
@@ -515,8 +517,9 @@ def calculate_and_save_loadflow_results(
 
     Returns
     -------
-    None
-        This function does not return anything. It saves the results to CSV files:
+    tuple[LoadflowResultsPolars, Optional[AdditionalActionInfo]]
+        The computed AC loadflow results and the action metadata captured for the AC run.
+        This function also saves the results to CSV files:
         - "ac_loadflow_results.csv"
         - "dc_loadflow_results.csv"
         in the specified `topology_path` directory.
@@ -526,9 +529,56 @@ def calculate_and_save_loadflow_results(
     if disconnections is None:
         disconnections = []
     ac_loadflow_results = runner.run_ac_loadflow(actions, disconnections)
+    ac_action_info = runner.get_last_action_info()
     ac_loadflow_results.branch_results.collect().write_csv(topology_path / "ac_loadflow_results.csv")
     dc_loadflow_results = runner.run_dc_loadflow(actions, disconnections)
     dc_loadflow_results.branch_results.collect().write_csv(topology_path / "dc_loadflow_results.csv")
+    return ac_loadflow_results, ac_action_info
+
+
+def save_ac_metrics_summary(
+    runner: AbstractLoadflowRunner,
+    topology_path: Path,
+    loadflow_results: LoadflowResultsPolars,
+    actions: list[int],
+    disconnections: list[int],
+    additional_info: Optional[AdditionalActionInfo],
+    dc_info: dict,
+) -> None:
+    """Save the AC metrics for a topology as JSON.
+
+    Parameters
+    ----------
+    runner : AbstractLoadflowRunner
+        The loadflow runner used to compute the loadflow results.
+    topology_path : Path
+        The output directory for the topology artifacts.
+    loadflow_results : LoadflowResultsPolars
+        The AC loadflow results for the topology.
+    actions : list[int]
+        The topology actions applied to the grid.
+    disconnections : list[int]
+        The branch disconnections applied to the grid.
+    additional_info : Optional[AdditionalActionInfo]
+        Additional action metadata captured during the AC loadflow.
+    dc_info: dict
+        Any additional data from the DC run that is added for awareness
+    """
+    nminus1_definition = runner.get_nminus1_definition()
+    base_case_id = nminus1_definition.base_case.id if nminus1_definition.base_case is not None else None
+    metrics = compute_metrics_single_timestep(
+        actions=actions,
+        disconnections=disconnections,
+        loadflow=loadflow_results,
+        additional_info=additional_info,
+        base_case_id=base_case_id,
+    )
+
+    res_dict = metrics.model_dump()
+    res_dict["dc_info"] = dc_info
+
+    with (topology_path / "ac_metrics.json").open("w", encoding="utf-8") as file_handle:
+        json.dump(res_dict, file_handle, indent=2)
 
 
 def create_loadflow_runner(
@@ -746,8 +796,8 @@ def perform_ac_analysis(
         topology_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Topology stored in: {topology_path}")
 
-        actions = best_topos[topology_index].get("actions")
-        disconnections = best_topos[topology_index].get("disconnections")
+        actions = best_topos[topology_index].get("actions") or []
+        disconnections = best_topos[topology_index].get("disconnections") or []
 
         out_modified = topology_path / "modified_network.xiidm"
 
@@ -761,7 +811,18 @@ def perform_ac_analysis(
         loadflow_runner.load_base_grid(out_modified)
 
         logger.info("Running AC loadflow...")
-        calculate_and_save_loadflow_results(loadflow_runner, topology_path, actions, disconnections)
+        ac_loadflow_results, ac_action_info = calculate_and_save_loadflow_results(
+            loadflow_runner, topology_path, actions, disconnections
+        )
+        save_ac_metrics_summary(
+            runner=loadflow_runner,
+            topology_path=topology_path,
+            loadflow_results=ac_loadflow_results,
+            actions=actions,
+            disconnections=disconnections,
+            additional_info=ac_action_info,
+            dc_info=best_topos[topology_index],
+        )
 
         if not pandapower_runner:
             logger.info("Saving ORAO summary...")

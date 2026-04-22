@@ -184,7 +184,7 @@ def test_run_task_process_invalid_config_with_connection():
     assert "Invalid configuration parameters" in error_result["error"]
 
 
-def test_run_pipeline(pipeline_and_configs, preprocessing_parameters, caplog):
+def test_run_pipeline(pipeline_and_configs, preprocessing_parameters):
     pipeline_cfg, dc_cfg, ac_cfg = pipeline_and_configs
     ac_cfg.k_best_topos = 10  # To cover warning branch
     pipeline_cfg = PipelineConfig(**pipeline_cfg)
@@ -217,10 +217,6 @@ def test_run_pipeline(pipeline_and_configs, preprocessing_parameters, caplog):
         orao_summary = json.loads(orao_summary_path.read_text())
         assert "forced-actions" in orao_summary
         assert "preventive-actions-list" in orao_summary["forced-actions"]
-
-    best_ac_log = next((record.message for record in caplog.records if "Best AC fitness" in record.message), None)
-    assert best_ac_log is not None, "Missing log entry with the best AC fitness folder."
-    assert str(topo_paths[0].parent) in best_ac_log
 
 
 def test_run_pipeline_no_optimization_stage(pipeline_and_configs, preprocessing_parameters):

@@ -62,9 +62,9 @@ def changing_switches_to_orao_dict(
     """
     actions = [
         {
-            "type": "TERMINALS_CONNECTION",
+            "type": "SWITCH",
             "id": f"{'Open' if switch_update['open'] else 'Close'} {switch_update['grid_model_id']}",
-            "elementId": switch_update["grid_model_id"],
+            "switchId": switch_update["grid_model_id"],
             "open": bool(switch_update["open"]),
         }
         for switch_update in switch_updates.to_dict(orient="records")

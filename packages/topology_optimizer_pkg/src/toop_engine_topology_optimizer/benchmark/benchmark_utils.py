@@ -12,6 +12,7 @@ Note that these methods are simply wrappers to use existing functionality in a s
 """
 
 import json
+import logging
 import os
 import shutil
 
@@ -31,6 +32,7 @@ from beartype.typing import Literal, Optional, Tuple
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from omegaconf import DictConfig
+from structlog import DropEvent
 from toop_engine_dc_solver.export.export import get_changing_switches_from_action_set
 from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
@@ -87,12 +89,43 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
 # Local project imports
 from toop_engine_topology_optimizer.interfaces.messages.results import Metrics
 
-logger = structlog.get_logger(__name__)
-
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 # JAX configuration
 jax.config.update("jax_enable_x64", True)
+
+
+def suppress_jax_logs() -> None:
+    """Disables jax debug logs spamming the console"""
+
+    def _drop_jax_logs(_logger, _method_name, event_dict: dict[str, str]) -> dict[str, str]:  # noqa: ANN001
+        logger_name = event_dict.get("logger", "")
+        if logger_name.startswith(("jax", "jaxlib", "xla", "absl")):
+            raise DropEvent
+        return event_dict
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    logging.getLogger("jax").setLevel(logging.WARNING)
+    logging.getLogger("jaxlib").setLevel(logging.WARNING)
+    logging.getLogger("xla").setLevel(logging.WARNING)
+    logging.getLogger("absl").setLevel(logging.WARNING)
+
+    structlog.configure(
+        processors=[
+            _drop_jax_logs,
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer(),
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+    )
+
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

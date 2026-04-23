@@ -144,7 +144,7 @@ def get_diff_switch_states(
     )
     if diff_switch_df["open_network"].isna().any():
         raise ValueError(
-            "Switch id not found in the networkSwitch id: "
+            "Switch id not found in the network - Switch id: "
             f"{diff_switch_df.loc[diff_switch_df['open_network'].isna(), 'grid_model_id']}"
         )
     diff_switch_df = diff_switch_df[diff_switch_df["open"] != diff_switch_df["open_network"]]

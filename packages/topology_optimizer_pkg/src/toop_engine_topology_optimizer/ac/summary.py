@@ -163,12 +163,13 @@ def write_summary(
     action_sets : list[ActionSet]
         The action sets that were applied during the optimization run, to be included in the summary. One for each grid file.
     """
-    for grid_file, action_set in zip(grid_files, action_sets, strict=True):
+    for timestep, (grid_file, action_set) in enumerate(zip(grid_files, action_sets, strict=True)):
         topologies = db.exec(
             select(ACOptimTopology).where(
                 ACOptimTopology.optimization_id == optimization_id,
                 ACOptimTopology.optimizer_type == OptimizerType.AC,
                 ACOptimTopology.acceptance == True,  # noqa: E712
+                ACOptimTopology.timestep == timestep,
             )
         ).all()
 

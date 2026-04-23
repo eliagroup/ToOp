@@ -689,21 +689,9 @@ def save_orao_summary(
     if disconnections is None:
         disconnections = []
 
-    # The optimizer can emit multiple actions for the same station; the last one defines
-    # the effective final station state that should be exported.
-    effective_actions: list[int] = []
-    seen_station_ids: set[str] = set()
-    for action_index in reversed(actions):
-        station_id = action_set.local_actions[action_index].grid_model_id
-        if station_id in seen_station_ids:
-            continue
-        seen_station_ids.add(station_id)
-        effective_actions.append(action_index)
-    effective_actions.reverse()
-
     switch_updates = get_changing_switches_from_action_set(
         action_set=action_set,
-        actions=effective_actions,
+        actions=actions,
         disconnections=disconnections,
     )
     orao_summary = changing_switches_to_orao_dict(switch_updates)

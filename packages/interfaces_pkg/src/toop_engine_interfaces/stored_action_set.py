@@ -47,6 +47,8 @@ from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.nminus1_definition import GridElement
 
+STATION_DIFF_ORDER_ATTR = "station_order"
+
 
 class PSTRange(GridElement):
     """Phase shifting transformers can be set within the scope of non-costly optimization.
@@ -251,6 +253,10 @@ def store_station_diff_fs(
 
     bytes_io = io.BytesIO()
     with h5py.File(bytes_io, mode="w") as file:
+        file.attrs[STATION_DIFF_ORDER_ATTR] = np.array(
+            [station_diff.grid_model_id for station_diff in station_diffs],
+            dtype=h5py.string_dtype(encoding="utf-8"),
+        )
         for station_diff in station_diffs:
             group = file.create_group(station_diff.grid_model_id)
             group.create_dataset("coupler_open", data=station_diff.coupler_open)
@@ -277,7 +283,15 @@ def _load_station_diff_io(binaryio: io.IOBase) -> list[StationDiffArray]:
     """
     station_diffs = []
     with h5py.File(binaryio, mode="r") as file:
-        for grid_model_id in file.keys():
+        if STATION_DIFF_ORDER_ATTR in file.attrs:
+            station_order = [
+                grid_model_id.decode("utf-8") if isinstance(grid_model_id, bytes) else str(grid_model_id)
+                for grid_model_id in file.attrs[STATION_DIFF_ORDER_ATTR]
+            ]
+        else:
+            station_order = list(file.keys())
+
+        for grid_model_id in station_order:
             group = file[grid_model_id]
             coupler_open = group["coupler_open"][:]
             switching_table = group["switching_table"][:]

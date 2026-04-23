@@ -14,7 +14,6 @@ Note that these methods are simply wrappers to use existing functionality in a s
 import json
 import logging
 import os
-import shutil
 
 # Keep warnings under control
 import warnings
@@ -398,11 +397,6 @@ def run_preprocessing(
     )
 
     logger.info(", ".join([f"{k}: {v}" for k, v in dict(info).items()]))
-
-    # Create zip archives for convenience (keeps original behaviour)
-    file_to_zip = data_folder / PREPROCESSING_PATHS["static_information_file_path"]
-    zip_path = data_folder / "static_information.zip"
-    shutil.make_archive(str(zip_path).replace(".zip", ""), "zip", root_dir=file_to_zip.parent, base_dir=file_to_zip.name)
 
     logger.info("Preprocessing completed.")
     return info, static_information

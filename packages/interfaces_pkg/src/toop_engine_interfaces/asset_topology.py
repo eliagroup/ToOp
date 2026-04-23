@@ -38,6 +38,7 @@ AssetBranchTypePowsybl: TypeAlias = Literal[
     "LINE",
     "TWO_WINDINGS_TRANSFORMER",
     "TIE_LINE",
+    "BOUNDARY_LINE",
 ]
 AssetBranchType: TypeAlias = Literal[AssetBranchTypePandapower, AssetBranchTypePowsybl]
 

@@ -16,7 +16,7 @@ from pypowsybl.network.impl.network import Network
 
 
 class DanglingLineCreationSchema(pa.DataFrameModel):
-    """A Schema for network.create_dangling_lines."""
+    """A Schema for network.create_boundary_lines."""
 
     name: pat.Series[str] = pa.Field(coerce=True)
     """The name of the line."""
@@ -52,12 +52,12 @@ class DanglingLineCreationSchema(pa.DataFrameModel):
     connected: pat.Series[bool] = pa.Field(coerce=True)
     """The connected attribute of the line.
          Note: This is a boolean value that indicates if the line is connected or not.
-         This determines if the bus_id or connectable_bus_id is used in network.create_dangling_lines.
+         This determines if the bus_id or connectable_bus_id is used in network.create_boundary_lines.
      """
 
 
 class DanglingGeneratorSchema(pa.DataFrameModel):
-    """A Schema for network.create_dangling_lines."""
+    """A Schema for network.create_boundary_lines."""
 
     id: pat.Index[str] = pa.Field(coerce=True)
     """The id of the generator."""
@@ -172,7 +172,7 @@ def get_dangling_creation_schema(
     elements = bus_breaker_topo.elements
     lines = elements[elements["type"] == "LINE"]
     generators = elements[elements["type"] == "GENERATOR"]
-    dangling_line_creation_df = get_dangling_lines_creation_schema(
+    dangling_line_creation_df = get_boundary_lines_creation_schema(
         network=network, bus_breaker_topo_lines=lines, dangling_voltage_level=dangling_voltage_level, name_col=name_col
     )
     dangling_generator_df = get_dangling_generator_creation_schema(network=network, generators=generators)
@@ -290,7 +290,7 @@ def set_dangling_generator_ids(
     dangling_generator_df = DanglingGeneratorSchema.validate(dangling_generator_df)
 
 
-def get_dangling_lines_creation_schema(
+def get_boundary_lines_creation_schema(
     network: Network, bus_breaker_topo_lines: pd.DataFrame, dangling_voltage_level: str, name_col: str = "elementName"
 ) -> pat.DataFrame[DanglingLineCreationSchema]:
     """Get the dangling lines dataframe for a given voltage level.
@@ -439,9 +439,9 @@ def replace_line_with_dangling_line(
         network.remove_elements(list((dangling_gen_creation_df["powsybl_gen_id"].unique())))
         dangling_gen_creation_df.drop(columns=["bus_id"], inplace=True)
         dangling_gen_creation_df.drop(columns=["powsybl_gen_id"], inplace=True)
-        network.create_dangling_lines(df=dangling_line_creation_df, generator_df=dangling_gen_creation_df)
+        network.create_boundary_lines(df=dangling_line_creation_df, generator_df=dangling_gen_creation_df)
     else:
-        network.create_dangling_lines(df=dangling_line_creation_df)
+        network.create_boundary_lines(df=dangling_line_creation_df)
 
     for disconnected_line in disconnected_lines.index:
         network.disconnect(disconnected_line)
@@ -471,10 +471,10 @@ def reconnect_dangling_as_tie_line(network: Network, new_dangling_df: pat.DataFr
                 f"Pairing key {pairing_key} has not 2 dangling lines. "
                 f"Found lines: {new_dangling_df[new_dangling_df['pairing_key']].index}"
             )
-        dangling_line1_id = new_dangling_df[new_dangling_df["pairing_key"] == pairing_key].index[0]
-        dangling_line2_id = new_dangling_df[new_dangling_df["pairing_key"] == pairing_key].index[1]
-        tie_id = f"{dangling_line1_id} + {dangling_line2_id}"
-        network.create_tie_lines(id=tie_id, dangling_line1_id=dangling_line1_id, dangling_line2_id=dangling_line2_id)
+        boundary_line1_id = new_dangling_df[new_dangling_df["pairing_key"] == pairing_key].index[0]
+        boundary_line2_id = new_dangling_df[new_dangling_df["pairing_key"] == pairing_key].index[1]
+        tie_id = f"{boundary_line1_id} + {boundary_line2_id}"
+        network.create_tie_lines(id=tie_id, boundary_line1_id=boundary_line1_id, boundary_line2_id=boundary_line2_id)
 
 
 def replace_voltage_level_with_tie_line(network: Network, voltage_level_id: str, name_col: str = "elementName") -> None:
@@ -497,6 +497,13 @@ def replace_voltage_level_with_tie_line(network: Network, voltage_level_id: str,
     replace_line_with_dangling_line(network, dangling_line_creation_df, dangling_gen_creation_df)
     reconnect_dangling_as_tie_line(network, dangling_line_creation_df)
     network.remove_elements(voltage_level_id)
+
+
+def get_dangling_lines_creation_schema(
+    network: Network, bus_breaker_topo_lines: pd.DataFrame, dangling_voltage_level: str, name_col: str = "elementName"
+) -> pat.DataFrame[DanglingLineCreationSchema]:
+    """Backward-compatible alias for get_boundary_lines_creation_schema."""
+    return get_boundary_lines_creation_schema(network, bus_breaker_topo_lines, dangling_voltage_level, name_col)
 
 
 def get_dangling_voltage_levels(

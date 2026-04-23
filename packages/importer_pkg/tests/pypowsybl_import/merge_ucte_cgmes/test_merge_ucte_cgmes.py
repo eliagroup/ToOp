@@ -9,7 +9,7 @@ import pypowsybl
 import pytest
 from pydantic_core._pydantic_core import ValidationError
 from toop_engine_importer.pypowsybl_import.merge_ucte_cgmes.merge_ucte_cgmes import (
-    DanglingLineSchema,
+    BoundaryLineSchema,
     TieLineSchema,
     UcteCgmesMerge,
     get_ucte_border_tie_lines,
@@ -30,7 +30,7 @@ def test_schmea(basic_node_breaker_network_powsyblV2):
     net = basic_node_breaker_network_powsyblV2
 
     TieLineSchema.validate(net.get_tie_lines())
-    DanglingLineSchema.validate(net.get_dangling_lines())
+    BoundaryLineSchema.validate(net.get_boundary_lines())
 
 
 def test_ucte_cgmes_merge_class(basic_node_breaker_network_powsyblV2):
@@ -39,7 +39,7 @@ def test_ucte_cgmes_merge_class(basic_node_breaker_network_powsyblV2):
         ucte_area_name="test",
         country_name=None,
         ucte_border_lines=net.get_tie_lines(),
-        cgmes_dangling_lines=net.get_dangling_lines(),
+        cgmes_dangling_lines=net.get_boundary_lines(),
         removed_tie_lines=[],
         removed_dangling_lines=[],
     )
@@ -48,7 +48,7 @@ def test_ucte_cgmes_merge_class(basic_node_breaker_network_powsyblV2):
         ucte_area_name=None,
         country_name="test",
         ucte_border_lines=net.get_tie_lines(),
-        cgmes_dangling_lines=net.get_dangling_lines(),
+        cgmes_dangling_lines=net.get_boundary_lines(),
         removed_tie_lines=[],
         removed_dangling_lines=[],
     )
@@ -57,7 +57,7 @@ def test_ucte_cgmes_merge_class(basic_node_breaker_network_powsyblV2):
             ucte_area_name=None,
             country_name=None,
             ucte_border_lines=net.get_tie_lines(),
-            cgmes_dangling_lines=net.get_dangling_lines(),
+            cgmes_dangling_lines=net.get_boundary_lines(),
             removed_tie_lines=[],
             removed_dangling_lines=[],
         )
@@ -80,7 +80,7 @@ def testremove_area_from_ucte(ucte_file_with_border):
         ucte_area_name="D8",
         country_name=None,
         ucte_border_lines=network.get_tie_lines(),
-        cgmes_dangling_lines=network.get_dangling_lines(),
+        cgmes_dangling_lines=network.get_boundary_lines(),
         removed_tie_lines=[],
         removed_dangling_lines=[],
     )

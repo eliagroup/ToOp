@@ -13,10 +13,10 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLA
 from toop_engine_importer.pypowsybl_import.merge_ucte_cgmes.replace_line_with_tie import (
     DanglingGeneratorSchema,
     DanglingLineCreationSchema,
+    get_boundary_lines_creation_schema,
     check_dangling_node,
     get_dangling_creation_schema,
     get_dangling_generator_creation_schema,
-    get_dangling_lines_creation_schema,
     get_dangling_voltage_levels,
     replace_voltage_level_with_tie_line,
     set_dangling_generator_ids,
@@ -167,7 +167,7 @@ def test_set_dangling_generation_ids(ucte_file_with_border):
     lines = elements[elements["type"] == "LINE"]
     generators = elements[elements["type"] == "GENERATOR"]
     name_col = "elementName"
-    dangling_line_creation_df = get_dangling_lines_creation_schema(
+    dangling_line_creation_df = get_boundary_lines_creation_schema(
         network=network, bus_breaker_topo_lines=lines, dangling_voltage_level=dangling_voltage_level, name_col=name_col
     )
     dangling_generator_df = get_dangling_generator_creation_schema(network=network, generators=generators)
@@ -187,7 +187,7 @@ def test_set_dangling_generation_ids(ucte_file_with_border):
     generators = elements[elements["type"] == "NO_GENERATOR"]
     assert generators.empty
     name_col = "elementName"
-    dangling_line_creation_df = get_dangling_lines_creation_schema(
+    dangling_line_creation_df = get_boundary_lines_creation_schema(
         network=network, bus_breaker_topo_lines=lines, dangling_voltage_level=dangling_voltage_level, name_col=name_col
     )
     dangling_generator_df = get_dangling_generator_creation_schema(network=network, generators=generators)

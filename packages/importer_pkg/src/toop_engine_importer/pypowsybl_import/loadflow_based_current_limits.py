@@ -91,13 +91,13 @@ def get_branches_including_limits_and_dangling_lines(
     operational_limits: pd.DataFrame
         The operational limits dataframe with the index "element_id" and the columns:name, value
     tie_lines_df: pd.DataFrame
-        The tie lines dataframe with the columns: dangling_line1_id, dangling_line2_id
+        The tie lines dataframe with the columns: boundary_line1_id, boundary_line2_id
 
     Returns
     -------
     pd.DataFrame
         The branches dataframe with the columns:
-        type, update_i, i1, i2, old_limit_n0, old_limit_n1, dangling_line1_id, dangling_line2_id
+        type, update_i, i1, i2, old_limit_n0, old_limit_n1, boundary_line1_id, boundary_line2_id
     """
     op_lims = operational_limits.reset_index()
     for side in [BranchSide.ONE, BranchSide.TWO]:
@@ -118,7 +118,7 @@ def get_branches_including_limits_and_dangling_lines(
             branches_df[f"n0_group_name_{side.value}"]
         )
 
-    branches_df[["dangling_line1_id", "dangling_line2_id"]] = tie_lines_df[["dangling_line1_id", "dangling_line2_id"]]
+    branches_df[["boundary_line1_id", "boundary_line2_id"]] = tie_lines_df[["boundary_line1_id", "boundary_line2_id"]]
     return branches_df
 
 
@@ -213,7 +213,7 @@ def get_loadflow_based_tie_line_limits(
     ----------
     tie_lines_df: pd.DataFrame
         The tie lines dataframe with the columns:
-        update_i, old_limit_n0, old_limit_n1, dangling_line1_id, dangling_line2_id
+        update_i, old_limit_n0, old_limit_n1, boundary_line1_id, boundary_line2_id
     limit_parameters: LimitAdjustmentParameters
         The parameters for the calculation of the new limits
     case: Case
@@ -229,7 +229,7 @@ def get_loadflow_based_tie_line_limits(
         return []
     border_dangling_limits = []
     tie_lines_df["update_i"] = tie_lines_df[["i1", "i2"]].max(axis=1)
-    for side_value, dangling_line_col in zip([1, 2], ["dangling_line1_id", "dangling_line2_id"], strict=True):
+    for side_value, dangling_line_col in zip([1, 2], ["boundary_line1_id", "boundary_line2_id"], strict=True):
         dangling_df = tie_lines_df.set_index(dangling_line_col)
         old_limit = dangling_df[[f"{case}_i1_max", f"{case}_i2_max"]].min(axis=1)
 
@@ -310,7 +310,7 @@ def get_all_border_line_limits(
         The branches dataframe with
             the current i_update,
             the current limits "old_limit_n0" and "old_limit_n1" and
-            the dangling_lines "dangling_line1_id", "dangling_line2_id"
+            the dangling_lines "boundary_line1_id", "boundary_line2_id"
     tso_border_factors: LimitAdjustmentParameters
         The parameters (factor and min) for the calculation of the new limits
     line_tso_border: np.ndarray
@@ -392,7 +392,7 @@ def create_new_border_limits(
     branches_df = get_branches_including_limits_and_dangling_lines(
         network.get_branches(attributes=["type", "i1", "i2"]),
         existing_limits,
-        network.get_tie_lines(attributes=["dangling_line1_id", "dangling_line2_id"]),
+        network.get_tie_lines(attributes=["boundary_line1_id", "boundary_line2_id"]),
     )
     # Exclude tie lines, since they cant be directly updated
     old_limits = [existing_limits[existing_limits.element_type != "TIE_LINE"]]

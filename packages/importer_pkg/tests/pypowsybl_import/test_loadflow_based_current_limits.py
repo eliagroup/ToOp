@@ -72,7 +72,7 @@ def test_get_branches_including_limits_and_dangling_lines():
 
     tie_line_df = pd.DataFrame(
         index=shared_index[1:],
-        data={"dangling_line1_id": ["d1"], "dangling_line2_id": ["d2"]},
+        data={"boundary_line1_id": ["d1"], "boundary_line2_id": ["d2"]},
     )
     updated_branch_df = get_branches_including_limits_and_dangling_lines(branch_df, operational_limits_df, tie_line_df)
 
@@ -85,11 +85,11 @@ def test_get_branches_including_limits_and_dangling_lines():
     assert np.array_equal(updated_branch_df["n1_i1_max"], [4.0, np.nan], equal_nan=True)
     assert np.array_equal(updated_branch_df["n1_i2_max"], [np.nan, 4.0], equal_nan=True)
 
-    assert updated_branch_df.loc["line1", "dangling_line1_id"] is np.nan
-    assert updated_branch_df.loc["tie_line1", "dangling_line1_id"] == "d1"
+    assert updated_branch_df.loc["line1", "boundary_line1_id"] is np.nan
+    assert updated_branch_df.loc["tie_line1", "boundary_line1_id"] == "d1"
 
-    assert updated_branch_df.loc["line1", "dangling_line2_id"] is np.nan
-    assert updated_branch_df.loc["tie_line1", "dangling_line2_id"] == "d2"
+    assert updated_branch_df.loc["line1", "boundary_line2_id"] is np.nan
+    assert updated_branch_df.loc["tie_line1", "boundary_line2_id"] == "d2"
 
 
 def test_get_new_limit_for_branch():
@@ -208,8 +208,8 @@ def test_get_loadflow_based_tie_line_limits():
             "n0_i2_max": [100.0],
             "n1_i1_max": [100.0],
             "n1_i2_max": [100.0],
-            "dangling_line1_id": ["d1"],
-            "dangling_line2_id": ["d2"],
+            "boundary_line1_id": ["d1"],
+            "boundary_line2_id": ["d2"],
             "n0_group_name_1": ["group_1"],
             "n0_group_name_2": ["group_2"],
             "n1_group_name_1": ["group_3"],

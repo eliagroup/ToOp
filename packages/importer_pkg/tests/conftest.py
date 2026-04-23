@@ -369,8 +369,8 @@ def limit_update_input() -> tuple[pd.DataFrame, LimitAdjustmentParameters, powsy
             "n1_group_name_1": ["group_3", "group_3", "group_3"],
             "n1_i2_max": [100.0, 100.0, 100.0],
             "n1_group_name_2": ["group_4", "group_4", "group_4"],
-            "dangling_line1_id": [np.nan, "d1", np.nan],
-            "dangling_line2_id": [np.nan, "d2", np.nan],
+            "boundary_line1_id": [np.nan, "d1", np.nan],
+            "boundary_line2_id": [np.nan, "d2", np.nan],
         },
     )
     limit_parameters = LimitAdjustmentParameters(n_0_factor=1.1, n_0_min_increase=0.1, n_1_factor=1.1, n_1_min_increase=0.1)

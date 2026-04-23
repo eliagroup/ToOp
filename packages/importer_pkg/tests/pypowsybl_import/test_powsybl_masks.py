@@ -668,7 +668,7 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
     network = pypowsybl.network.load(ucte_file_with_border)
     lines = network.get_lines()
     trafos = network.get_2_windings_transformers()
-    dangling_lines = network.get_dangling_lines()
+    dangling_lines = network.get_boundary_lines()
     tie_lines = network.get_tie_lines()
     # create a random boolean array of length lines
 

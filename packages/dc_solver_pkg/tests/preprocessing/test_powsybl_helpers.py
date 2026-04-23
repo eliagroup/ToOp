@@ -97,18 +97,18 @@ def test_get_tie_lines():
     net = pypowsybl.network.create_eurostag_tutorial_example1_with_tie_lines_and_areas()
     net_pu = get_network_as_pu(net)
     orig_tie_lines = net.get_tie_lines(all_attributes=True)
-    dangling_lines = net.get_dangling_lines(all_attributes=True)
+    dangling_lines = net.get_boundary_lines(all_attributes=True)
 
     tie_lines = get_tie_lines(net)
-    dangling_pu = net_pu.get_dangling_lines()
+    dangling_pu = net_pu.get_boundary_lines()
 
     assert len(tie_lines) == len(orig_tie_lines)
 
     for id in orig_tie_lines.index:
         assert id in tie_lines.index, f"Expected tie line {id} to be in dangling lines"
         connected_dangling_pu = dangling_pu[dangling_pu["tie_line_id"] == id]
-        dangling_1 = orig_tie_lines.loc[id, "dangling_line1_id"]
-        dangling_2 = orig_tie_lines.loc[id, "dangling_line2_id"]
+        dangling_1 = orig_tie_lines.loc[id, "boundary_line1_id"]
+        dangling_2 = orig_tie_lines.loc[id, "boundary_line2_id"]
         assert tie_lines.loc[id, "x"] == connected_dangling_pu["x"].sum(), (
             f"Expected x for tie line {id} to match sum of per unit dangling lines"
         )
@@ -158,7 +158,7 @@ def test_get_tie_lines_hybrid(ucte_file: Path) -> None:
 
     assert np.array_equal(tie_lines["name"].values, tie_lines_orig.index.values)
 
-    dangline_lines = net.get_dangling_lines(all_attributes=True)
+    dangline_lines = net.get_boundary_lines(all_attributes=True)
     with mock.patch(
         "toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers.get_cgmes_ids",
         return_value=dangline_lines.index.values.tolist(),

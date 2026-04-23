@@ -176,7 +176,7 @@ class PowsyblBackend(BackendInterface):
             [
                 self._get_generators(),
                 self._get_loads(),
-                self._get_dangling_lines(),
+                self._get_boundary_lines(),
                 self._get_battery(),
                 self._get_hvdc_lcc(),
                 self._get_hvdc_vsc(),
@@ -357,19 +357,19 @@ class PowsyblBackend(BackendInterface):
         return loads[INJECTION_COLUMNS]
 
     @functools.lru_cache
-    def _get_dangling_lines(self) -> pd.DataFrame:
+    def _get_boundary_lines(self) -> pd.DataFrame:
         """Get dangling lines from the grid.
 
         Get all dangling lines that are connected to a node in _get_nodes() and are not
         part of a tie line. These are injections in powsybl
         """
         nodes = self._get_nodes()
-        dangling = self.net.get_dangling_lines()
+        dangling = self.net.get_boundary_lines()
 
         dangling["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["dangling_line_for_nminus1"], False, len(dangling))
 
-        dangling.drop(self.net.get_tie_lines()["dangling_line1_id"].values, inplace=True)
-        dangling.drop(self.net.get_tie_lines()["dangling_line2_id"].values, inplace=True)
+        dangling.drop(self.net.get_tie_lines()["boundary_line1_id"].values, inplace=True)
+        dangling.drop(self.net.get_tie_lines()["boundary_line2_id"].values, inplace=True)
         dangling = dangling[dangling["bus_id"].isin(nodes.index) & (dangling["bus_id"] != self.slack_id)]
         dangling["bus_id_int"] = nodes.loc[dangling["bus_id"], "int_id"].values
         dangling["type"] = "BOUNDARY_LINE"

@@ -259,14 +259,14 @@ def get_tie_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFra
     -------
     pat.DataFrame[BranchModel]
     """
-    tie_lines_nopu = net.get_tie_lines(attributes=["dangling_line1_id", "dangling_line2_id", "pairing_key"])
+    tie_lines_nopu = net.get_tie_lines(attributes=["boundary_line1_id", "boundary_line2_id", "pairing_key"])
     if tie_lines_nopu.empty:
         return get_empty_dataframe_from_model(BranchModel)
     if net_pu is None:
         net_pu = get_network_as_pu(net)
 
-    dangling_lines_nopu = net.get_dangling_lines(all_attributes=True)
-    dangling_lines_pu = net_pu.get_dangling_lines()
+    dangling_lines_nopu = net.get_boundary_lines(all_attributes=True)
+    dangling_lines_pu = net_pu.get_boundary_lines()
     dangling_lines = pd.merge(
         left=dangling_lines_pu,
         right=dangling_lines_nopu.add_suffix("_nopu"),
@@ -278,14 +278,14 @@ def get_tie_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFra
     tie_lines = pd.merge(
         left=tie_lines_nopu,
         right=dangling_lines.add_suffix("_d1"),
-        left_on="dangling_line1_id",
+        left_on="boundary_line1_id",
         right_on="id",
         how="left",
     )
     tie_lines = pd.merge(
         left=tie_lines,
         right=dangling_lines.add_suffix("_d2"),
-        left_on="dangling_line2_id",
+        left_on="boundary_line2_id",
         right_on="id",
         how="left",
     )
@@ -298,7 +298,7 @@ def get_tie_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFra
         tie_lines["name"] = tie_lines["name_d1"] + " ## " + tie_lines["name_d2"]
     elif net._source_format == "hybrid":
         cgmes_ids = get_cgmes_ids(net)
-        is_cgmes = tie_lines.dangling_line1_id.isin(cgmes_ids) | tie_lines.dangling_line2_id.isin(cgmes_ids)
+        is_cgmes = tie_lines.boundary_line1_id.isin(cgmes_ids) | tie_lines.boundary_line2_id.isin(cgmes_ids)
         ucte_name = tie_lines.index
         cgmes_name = tie_lines["name_d1"] + " ## " + tie_lines["name_d2"]
         tie_lines["name"] = np.where(is_cgmes, cgmes_name, ucte_name)

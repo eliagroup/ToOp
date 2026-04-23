@@ -158,7 +158,7 @@ def create_default_network_masks(network: Network) -> NetworkMasks:
     lines_df = network.get_lines(attributes=[])
     trafo_df = network.get_2_windings_transformers(attributes=[])
     tie_df = network.get_tie_lines(attributes=[])
-    dangling_df = network.get_dangling_lines(attributes=[])
+    dangling_df = network.get_boundary_lines(attributes=[])
     generator_df = network.get_generators(attributes=[])
     load_df = network.get_loads(attributes=[])
     switches_df = network.get_switches(attributes=[])
@@ -641,7 +641,7 @@ def update_tie_and_dangling_line_masks(
     tie_lines_with_limits = get_element_has_limits_mask(network, tie_line_df)
 
     # Get relevant data from dangling lines.
-    dangling_lines_df = network.get_dangling_lines(attributes=["voltage_level_id", "tie_line_id"])
+    dangling_lines_df = network.get_boundary_lines(attributes=["voltage_level_id", "tie_line_id"])
     hv_dangling_mask = (
         get_voltage_from_voltage_level_id(network, dangling_lines_df["voltage_level_id"])
         >= importer_parameters.area_settings.cutoff_voltage
@@ -1038,7 +1038,7 @@ def update_masks_from_power_factory_contingency_list_file(
             generator_for_nminus1=generator_nminus1_mask,
             load_for_nminus1=load_nminus1_mask,
             switch_for_nminus1=network.get_switches().index.isin(grid_model_ids),
-            dangling_line_for_nminus1=network.get_dangling_lines().index.isin(grid_model_ids),
+            dangling_line_for_nminus1=network.get_boundary_lines().index.isin(grid_model_ids),
             busbar_for_nminus1=busbar_for_nminus1,
         )
     else:
@@ -1099,7 +1099,7 @@ def update_masks_from_contingency_list_file(
     trafo_for_nminus1 = trafo_orig_ids.isin(contingency_ids)
     trafo_for_reward = trafo_orig_ids.isin(monitored_ids)
 
-    dangling_lines = network.get_dangling_lines(attributes=["tie_line_id"])
+    dangling_lines = network.get_boundary_lines(attributes=["tie_line_id"])
     dangling_for_nminus1 = dangling_lines.index.isin(contingency_ids)
     dangling_for_reward = dangling_lines.index.isin(monitored_ids)
 

@@ -54,7 +54,7 @@ def get_all_element_names(network: Network, line_trafo_name_col: str = "elementN
     shunt_compensator_names = network.get_shunt_compensators(attributes=["name"]).name
     generator_names = network.get_generators(attributes=["name"]).name
     load_names = network.get_loads(attributes=["name"]).name
-    dangling_line_names = network.get_dangling_lines(attributes=["name"]).name
+    dangling_line_names = network.get_boundary_lines(attributes=["name"]).name
     tie_line_names = network.get_tie_lines(attributes=["name"]).name
     all_names = pd.concat(
         [
@@ -384,7 +384,7 @@ def get_relevant_network_data(
 
     element_names = get_all_element_names(network, line_trafo_name_col=element_name_col)
     switches = network.get_switches(attributes=["name"])
-    dangling_lines = network.get_dangling_lines(attributes=["tie_line_id"])
+    dangling_lines = network.get_boundary_lines(attributes=["tie_line_id"])
     return buses_with_substation_and_voltage, switches, dangling_lines, element_names
 
 

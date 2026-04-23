@@ -177,7 +177,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         for idx, row in tie_lines[network_masks.tie_line_for_nminus1].iterrows()
     ]
 
-    dangling_lines = network.get_dangling_lines(attributes=["name", "paired"])
+    dangling_lines = network.get_boundary_lines(attributes=["name", "paired"])
     outaged_dangling = [
         Contingency(
             id=idx,
@@ -603,7 +603,7 @@ def fill_statistics_for_network_masks(
     statistics.id_lists["tie_line_for_nminus1"] = network.get_tie_lines(attributes=[])[
         network_masks.tie_line_for_nminus1
     ].index.to_list()
-    statistics.id_lists["dangling_line_for_nminus1"] = network.get_dangling_lines(attributes=[])[
+    statistics.id_lists["dangling_line_for_nminus1"] = network.get_boundary_lines(attributes=[])[
         network_masks.dangling_line_for_nminus1
     ].index.to_list()
     statistics.id_lists["generator_for_nminus1"] = network.get_generators(attributes=[])[

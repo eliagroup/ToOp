@@ -42,7 +42,7 @@ GridElementType: TypeAlias = Literal[
     "GENERATOR",
     "LOAD",
     "SHUNT_COMPENSATOR",
-    "DANGLING_LINE",
+    "BOUNDARY_LINE",
     "TIE_LINE",
 ]
 

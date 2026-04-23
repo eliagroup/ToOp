@@ -111,7 +111,7 @@ def test_check_dangling_node_with_valid_topology(ucte_file_with_border):
         check_dangling_node(bus_breaker_topo)
 
     station_voltage_level = "D8SU1_2"
-    # contains TWO_WINDINGS_TRANSFORMER and DANGLING_LINE
+    # contains TWO_WINDINGS_TRANSFORMER and BOUNDARY_LINE
     bus_breaker_topo = network.get_bus_breaker_topology(station_voltage_level)
     with pytest.raises(ValueError, match="TWO_WINDINGS_TRANSFORMER"):
         check_dangling_node(bus_breaker_topo)

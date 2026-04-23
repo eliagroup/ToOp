@@ -183,7 +183,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
             id=idx,
             name=row["name"],
             elements=[
-                GridElement(id=idx, name=row["name"], type="DANGLING_LINE", kind="injection"),
+                GridElement(id=idx, name=row["name"], type="BOUNDARY_LINE", kind="injection"),
             ],
         )
         for idx, row in dangling_lines[network_masks.dangling_line_for_nminus1 & ~dangling_lines["paired"]].iterrows()

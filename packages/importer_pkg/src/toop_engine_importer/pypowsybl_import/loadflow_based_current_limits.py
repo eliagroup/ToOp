@@ -29,7 +29,7 @@ Case = Literal["n0", "n1"]
 
 def create_current_limits_df(
     new_limit_series: pd.Series,
-    element_type: Literal["LINE", "DANGLING_LINE", "TWO_WINDINGS_TRANSFORMER"],
+    element_type: Literal["LINE", "BOUNDARY_LINE", "TWO_WINDINGS_TRANSFORMER"],
     side: BranchSide,
     limit_name: str,
     acceptable_duration: int,
@@ -43,7 +43,7 @@ def create_current_limits_df(
     ----------
     new_limit_series: pd.Series
         The new limits for the elements including the element ids as indices and the new limits as values
-    element_type: Literal["LINE", "DANGLING_LINE", "TWO_WINDINGS_TRANSFORMER"]
+    element_type: Literal["LINE", "BOUNDARY_LINE", "TWO_WINDINGS_TRANSFORMER"]
         The type of the element. For Tielines always use the corresponding Dangling Lines
     side: Literal["ONE", "TWO", "NONE"]
         The side of the limit on the element
@@ -239,7 +239,7 @@ def get_loadflow_based_tie_line_limits(
         group_names = dangling_df[f"{case}_group_name_{side_value}"]
         dangling_limit_df = create_current_limits_df(
             new_limit[~old_limit.isna()],
-            element_type="DANGLING_LINE",
+            element_type="BOUNDARY_LINE",
             side=BranchSide.NONE,
             limit_name=f"loadflow_based_{case}",
             acceptable_duration=100 if case == "n0" else 200,

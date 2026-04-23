@@ -225,11 +225,11 @@ def test_get_loadflow_based_tie_line_limits():
     assert type(tie_line_limits) == list
     assert type(tie_line_limits[0]) == pd.DataFrame
     assert len(tie_line_limits) == 2
-    assert tie_line_limits[0].element_type.values == np.array(["DANGLING_LINE"])
+    assert tie_line_limits[0].element_type.values == np.array(["BOUNDARY_LINE"])
     assert tie_line_limits[0].index.get_level_values("side").values == np.array(["NONE"])
     assert tie_line_limits[0]["name"].values == np.array(["loadflow_based_n0"])
     assert tie_line_limits[1].index.get_level_values("side").values == np.array(["NONE"])
-    assert tie_line_limits[1].element_type.values == np.array(["DANGLING_LINE"])
+    assert tie_line_limits[1].element_type.values == np.array(["BOUNDARY_LINE"])
     assert tie_line_limits[1]["name"].values == np.array(["loadflow_based_n0"])
     assert tie_line_limits[0].index.get_level_values("group_name").values == np.array(["group_1"])
     assert tie_line_limits[1].index.get_level_values("group_name").values == np.array(["group_2"])
@@ -310,14 +310,14 @@ def test_get_all_border_line_limits(limit_update_input):
     assert len(new_limits) == 8  # (2 for each dangling Tie line, 2 for each side of the line) for each case (2)
 
     limit_df = pd.concat(new_limits)
-    assert np.array_equal(limit_df["element_type"].unique(), ["LINE", "DANGLING_LINE"])
+    assert np.array_equal(limit_df["element_type"].unique(), ["LINE", "BOUNDARY_LINE"])
     assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n0", "loadflow_based_n1"])
     assert np.array_equal(limit_df["value"].unique(), [20.0])
     assert np.array_equal(
-        limit_df[limit_df.element_type == "DANGLING_LINE"].index.get_level_values("side").unique(), ["NONE"]
+        limit_df[limit_df.element_type == "BOUNDARY_LINE"].index.get_level_values("side").unique(), ["NONE"]
     )
     assert np.array_equal(
-        limit_df[limit_df.element_type == "DANGLING_LINE"].index.get_level_values("group_name").unique(),
+        limit_df[limit_df.element_type == "BOUNDARY_LINE"].index.get_level_values("group_name").unique(),
         ["group_1", "group_2", "group_3", "group_4"],
     )
 
@@ -338,7 +338,7 @@ def test_get_all_border_line_limits_only_tie_lines(limit_update_input):
     assert len(new_limits) == 4  # ( 2 for each side of the line) for each case (2)
 
     limit_df = pd.concat(new_limits)
-    assert np.array_equal(limit_df["element_type"].unique(), ["DANGLING_LINE"])
+    assert np.array_equal(limit_df["element_type"].unique(), ["BOUNDARY_LINE"])
     assert np.array_equal(limit_df["name"].unique(), ["loadflow_based_n0", "loadflow_based_n1"])
     assert np.array_equal(limit_df["value"].unique(), [20.0])
     assert np.array_equal(limit_df.index.get_level_values("side").unique(), ["NONE"])

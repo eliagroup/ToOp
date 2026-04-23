@@ -60,7 +60,7 @@ def get_all_element_names(net: pypowsybl.network.Network) -> pat.DataFrame[AllGr
     shunt_compensators["element_type"] = "SHUNT_COMPENSATOR"
 
     dangling = net.get_dangling_lines(attributes=attributes)
-    dangling["element_type"] = "DANGLING_LINE"
+    dangling["element_type"] = "BOUNDARY_LINE"
 
     tie = net.get_tie_lines(attributes=attributes)
     tie["element_type"] = "TIE_LINE"

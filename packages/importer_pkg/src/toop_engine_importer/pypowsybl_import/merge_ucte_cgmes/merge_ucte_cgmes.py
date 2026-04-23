@@ -179,8 +179,8 @@ def remove_station(net: Network, station_name: str, ucte_cgmes_merge_info: Optio
         element_ids += list(elements.index)
         element_ids += list(bus_breaker_topology.switches.index)
         # handle existing tie lines
-        if any(elements["type"].isin(["DANGLING_LINE"])):
-            dangling_id = elements[elements["type"] == "DANGLING_LINE"].index
+        if any(elements["type"].isin(["BOUNDARY_LINE"])):
+            dangling_id = elements[elements["type"] == "BOUNDARY_LINE"].index
             if ucte_cgmes_merge_info is not None:
                 ucte_cgmes_merge_info.removed_dangling_lines += list(dangling_id)
             dangling_lines = net.get_dangling_lines().loc[dangling_id]

@@ -372,7 +372,7 @@ class PowsyblBackend(BackendInterface):
         dangling.drop(self.net.get_tie_lines()["dangling_line2_id"].values, inplace=True)
         dangling = dangling[dangling["bus_id"].isin(nodes.index) & (dangling["bus_id"] != self.slack_id)]
         dangling["bus_id_int"] = nodes.loc[dangling["bus_id"], "int_id"].values
-        dangling["type"] = "DANGLING_LINE"
+        dangling["type"] = "BOUNDARY_LINE"
 
         return dangling[INJECTION_COLUMNS]
 
@@ -563,7 +563,7 @@ class PowsyblBackend(BackendInterface):
         return self._get_branches()["type"].to_list()
 
     def get_injection_types(self) -> Sequence[str]:
-        """Injection types can be GENERATOR, LOAD or DANGLING_LINE"""
+        """Injection types can be GENERATOR, LOAD or BOUNDARY_LINE"""
         return self._get_injections()["type"].to_list()
 
     def get_multi_outage_types(self) -> Sequence[str]:

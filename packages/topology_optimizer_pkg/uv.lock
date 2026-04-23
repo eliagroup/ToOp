@@ -857,7 +857,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1f/cb/48e964c452ca2b92175a9b2dca037a553036cb053ba69e284650ce755f13/greenlet-3.3.0-cp311-cp311-macosx_11_0_universal2.whl", hash = "sha256:e29f3018580e8412d6aaf5641bb7745d38c85228dacf51a73bd4e26ddf2a6a8e", size = 274908, upload-time = "2025-12-04T14:23:26.435Z" },
     { url = "https://files.pythonhosted.org/packages/28/da/38d7bff4d0277b594ec557f479d65272a893f1f2a716cad91efeb8680953/greenlet-3.3.0-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:a687205fb22794e838f947e2194c0566d3812966b41c78709554aa883183fb62", size = 577113, upload-time = "2025-12-04T14:50:05.493Z" },
     { url = "https://files.pythonhosted.org/packages/3c/f2/89c5eb0faddc3ff014f1c04467d67dee0d1d334ab81fadbf3744847f8a8a/greenlet-3.3.0-cp311-cp311-manylinux_2_24_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:4243050a88ba61842186cb9e63c7dfa677ec146160b0efd73b855a3d9c7fcf32", size = 590338, upload-time = "2025-12-04T14:57:41.136Z" },
-    { url = "https://files.pythonhosted.org/packages/80/d7/db0a5085035d05134f8c089643da2b44cc9b80647c39e93129c5ef170d8f/greenlet-3.3.0-cp311-cp311-manylinux_2_24_s390x.manylinux_2_28_s390x.whl", hash = "sha256:670d0f94cd302d81796e37299bcd04b95d62403883b24225c6b5271466612f45", size = 601098, upload-time = "2025-12-04T15:07:11.898Z" },
     { url = "https://files.pythonhosted.org/packages/dc/a6/e959a127b630a58e23529972dbc868c107f9d583b5a9f878fb858c46bc1a/greenlet-3.3.0-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6cb3a8ec3db4a3b0eb8a3c25436c2d49e3505821802074969db017b87bc6a948", size = 590206, upload-time = "2025-12-04T14:26:01.254Z" },
     { url = "https://files.pythonhosted.org/packages/48/60/29035719feb91798693023608447283b266b12efc576ed013dd9442364bb/greenlet-3.3.0-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:2de5a0b09eab81fc6a382791b995b1ccf2b172a9fec934747a7a23d2ff291794", size = 1550668, upload-time = "2025-12-04T15:04:22.439Z" },
     { url = "https://files.pythonhosted.org/packages/0a/5f/783a23754b691bfa86bd72c3033aa107490deac9b2ef190837b860996c9f/greenlet-3.3.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:4449a736606bd30f27f8e1ff4678ee193bc47f6ca810d705981cfffd6ce0d8c5", size = 1615483, upload-time = "2025-12-04T14:27:28.083Z" },
@@ -2630,7 +2629,7 @@ wheels = [
 
 [[package]]
 name = "pypowsybl"
-version = "1.14.0"
+version = "1.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "networkx" },
@@ -2638,10 +2637,10 @@ dependencies = [
     { name = "prettytable" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/7c/578f5807067d973ca280cbc2e0a8915968f948435f1f61b7843987816d76/pypowsybl-1.14.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:d99274b3011ec126e9a8829d97d7061b275bc83a8ac705e7a45f9fdcf8d8287b", size = 72030547, upload-time = "2026-01-15T12:34:32.611Z" },
-    { url = "https://files.pythonhosted.org/packages/3e/ce/575c3c92553c6cc71d13671ac65f11d3f055d8fbcef657686bfec6bfbf57/pypowsybl-1.14.0-cp311-cp311-macosx_11_0_x86_64.whl", hash = "sha256:9d40f1da138402c0b6c440a0f81fbfd3946cbc0ae8be9464e9e2989cf9d82f31", size = 73169745, upload-time = "2026-01-15T12:34:53.491Z" },
-    { url = "https://files.pythonhosted.org/packages/14/97/7ec85b2a9c92adff0c019c826ceee5e0e24c9c446b0e7d6f0bfb3408a921/pypowsybl-1.14.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:edd2d194f4889550a163d286c03497a57f479babdddc142bc6fc04cd7666f723", size = 87300518, upload-time = "2026-01-15T12:35:16.161Z" },
-    { url = "https://files.pythonhosted.org/packages/ba/c8/0d6bba79bf7683331757e9df006edd0bf0ad6719c7460de0c02308fe5146/pypowsybl-1.14.0-cp311-cp311-win_amd64.whl", hash = "sha256:e0d48e886bc7f466de438f9e4b8df9a3233006728de854255769ce9a308ecdbf", size = 68940777, upload-time = "2026-01-15T12:35:38.147Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/00/1a57e7274c35ad1445f9b6950adaafba328112cfbbaefaf53130879e0661/pypowsybl-1.15.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:b5878246c4ae8ea020841b2423c957dbe331d9a021f53ed9187f3c7b1f8a4dd2", size = 70071991, upload-time = "2026-04-16T15:29:00.13Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/98/aef7c8d4c6ff9bd21d5cfae801cb80b12788613acef6c1f2c27e6e2d9465/pypowsybl-1.15.0-cp311-cp311-macosx_11_0_x86_64.whl", hash = "sha256:25feaf84790e0d3cc05c1828b2a8c7e3776e842352159ca14654f508141e1de5", size = 71256864, upload-time = "2026-04-16T15:29:24.36Z" },
+    { url = "https://files.pythonhosted.org/packages/26/bf/36c0c02c47aa96f983f99a2af6e20145e297d14ca79a5dbfcd08ba91190b/pypowsybl-1.15.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:904660e7cf54ab83a7eee5a4c7400107cc559b08da52920321d27b728adb7b94", size = 84735526, upload-time = "2026-04-16T15:29:48.179Z" },
+    { url = "https://files.pythonhosted.org/packages/20/16/cee08cbd7f80ce988ca803cfbbfbd0a042e50b962466bc1549a793747955/pypowsybl-1.15.0-cp311-cp311-win_amd64.whl", hash = "sha256:979af9fc896ff8cd0e7beff77e58cf517a0e9b03ab897a49299367eba8188ae2", size = 66921392, upload-time = "2026-04-16T15:30:12.46Z" },
 ]
 
 [[package]]
@@ -3396,7 +3395,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.33.0" },
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pydantic", specifier = ">=1.10.3,<3.0.0" },
-    { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.13.0" },
+    { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.15.0" },
     { name = "ray", specifier = ">=2.42.1,<3.0.0" },
     { name = "structlog", specifier = ">=24.4.0,<25.0.0" },
     { name = "toop-engine-grid-helpers", editable = "../grid_helpers_pkg" },
@@ -3481,7 +3480,7 @@ requires-dist = [
     { name = "pandas", extras = ["hdf5"], specifier = ">=2.2.3,<3.0.0" },
     { name = "pandera", specifier = ">=0.22.1,<0.23.0" },
     { name = "pydantic", specifier = ">=1.10.3,<3.0.0" },
-    { name = "pypowsybl", specifier = ">=1.13.0,<2.0.0" },
+    { name = "pypowsybl", specifier = ">=1.15.0,<2.0.0" },
     { name = "ray", specifier = ">=2.42.1,<3.0.0" },
     { name = "scipy", specifier = ">=1.11.3,<2.0.0" },
     { name = "toop-engine-contingency-analysis", editable = "../contingency_analysis_pkg" },
@@ -3541,7 +3540,7 @@ requires-dist = [
     { name = "pandas", extras = ["hdf5"], specifier = ">=2.2.3,<3.0.0" },
     { name = "polars", specifier = ">=1.33.0" },
     { name = "pyarrow", specifier = ">=21.0.0" },
-    { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.13.0" },
+    { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.15.0" },
     { name = "structlog", specifier = ">=24.4.0,<25.0.0" },
     { name = "toop-engine-interfaces", editable = "../interfaces_pkg" },
 ]
@@ -3611,7 +3610,7 @@ requires-dist = [
     { name = "protobuf", specifier = ">=5,<8" },
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pydantic", specifier = ">=1.10.3,<3.0.0" },
-    { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.13.0" },
+    { name = "pypowsybl", marker = "extra == 'pypowsybl'", specifier = ">=1.15.0" },
     { name = "structlog", specifier = ">=24.4.0,<25.0.0" },
 ]
 provides-extras = ["pandapower", "pypowsybl"]

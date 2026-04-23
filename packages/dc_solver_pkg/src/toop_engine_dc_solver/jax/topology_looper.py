@@ -290,7 +290,7 @@ def run_solver(
             best_inj_combi=injections.injection_topology if injections is not None else None,
             success=jnp.all(contingency_success, axis=-1),
         )
-    raise RuntimeError("No solver found")
+    raise ValueError("Non-1:1 corresponding_topology injection bruteforce is no longer supported")
 
 
 def convert_topologies(

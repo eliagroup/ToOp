@@ -72,7 +72,7 @@ static_information = replace(
 )
 ```
 
-If you instead require the full N-1 matrix, you can pass a custom `aggregate_outputs_fn` to the solver. Note that for this, you will have to know whether you have a [`run_solver_symmetric`][toop_engine_dc_solver.jax.run_solver_symmetric] or [`run_solver_inj_bruteforce`][toop_engine_dc_solver.jax.run_solver_inj_bruteforce] batch. Both methods accept an `aggregate_output_fn` which follows the signature of [`AggregateOutputProtocol`][toop_engine_dc_solver.jax.AggregateOutputProtocol]. Let's pass a simple aggregate output function that performs no aggregation at all and just passes through the N-0 and N-1 results:
+If you instead require the full N-1 matrix, you can pass a custom `aggregate_outputs_fn` to the solver. Note that for this, you will have to know whether you have a [`run_solver_symmetric`][toop_engine_dc_solver.jax.run_solver_symmetric] batch. This method accept an `aggregate_output_fn` which follows the signature of [`AggregateOutputProtocol`][toop_engine_dc_solver.jax.AggregateOutputProtocol]. Let's pass a simple aggregate output function that performs no aggregation at all and just passes through the N-0 and N-1 results:
 
 ```python
 custom_aggregate_fn = lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix)

@@ -139,7 +139,7 @@ def test_get_boundary_creation_schema(ucte_file_with_border):
     network = pypowsybl.network.load(ucte_file_with_border)
     dangling_voltage_level = "DXSU1_1"
     dangling_line_creation_df, dangling_generator_df = get_boundary_creation_schema(
-        network=network, dangling_voltage_level=dangling_voltage_level
+        network=network, boundary_voltage_level=dangling_voltage_level
     )
     assert isinstance(dangling_line_creation_df, pd.DataFrame)
     assert isinstance(dangling_generator_df, pd.DataFrame)
@@ -151,7 +151,7 @@ def test_get_boundary_creation_schema(ucte_file_with_border):
     # Note: not a true Dangling node, but has a generator to test
     dangling_voltage_level = "D7SU2_1"
     dangling_line_creation_df, dangling_generator_df = get_boundary_creation_schema(
-        network=network, dangling_voltage_level=dangling_voltage_level
+        network=network, boundary_voltage_level=dangling_voltage_level
     )
     # generator ids must match dangling line creation ids
     assert ["D8SU1_12 D7SU2_11 1", "DXSU1_12 D7SU2_11 1"] == dangling_generator_df.index.tolist()
@@ -168,19 +168,19 @@ def test_set_dangling_generation_ids(ucte_file_with_border):
     generators = elements[elements["type"] == "GENERATOR"]
     name_col = "elementName"
     dangling_line_creation_df = get_boundary_lines_creation_schema(
-        network=network, bus_breaker_topo_lines=lines, dangling_voltage_level=dangling_voltage_level, name_col=name_col
+        network=network, bus_breaker_topo_lines=lines, boundary_voltage_level=dangling_voltage_level, name_col=name_col
     )
     dangling_generator_df = get_dangling_generator_creation_schema(network=network, generators=generators)
     assert dangling_generator_df.index.to_list() == ["D7SU2_11_generator"]
     set_dangling_generator_ids(
-        dangling_line_creation_df=dangling_line_creation_df, dangling_generator_df=dangling_generator_df
+        boundary_line_creation_df=dangling_line_creation_df, dangling_generator_df=dangling_generator_df
     )
     assert ["D8SU1_12 D7SU2_11 1", "DXSU1_12 D7SU2_11 1"] == dangling_generator_df.index.tolist()
 
     # now the ids are set and will throw an error if tried to set again
     with pytest.raises(ValueError):
         set_dangling_generator_ids(
-            dangling_line_creation_df=dangling_line_creation_df, dangling_generator_df=dangling_generator_df
+            boundary_line_creation_df=dangling_line_creation_df, dangling_generator_df=dangling_generator_df
         )
 
     # test with empty dangling_generator_df
@@ -188,7 +188,7 @@ def test_set_dangling_generation_ids(ucte_file_with_border):
     assert generators.empty
     name_col = "elementName"
     dangling_line_creation_df = get_boundary_lines_creation_schema(
-        network=network, bus_breaker_topo_lines=lines, dangling_voltage_level=dangling_voltage_level, name_col=name_col
+        network=network, bus_breaker_topo_lines=lines, boundary_voltage_level=dangling_voltage_level, name_col=name_col
     )
     dangling_generator_df = get_dangling_generator_creation_schema(network=network, generators=generators)
     assert dangling_generator_df.empty

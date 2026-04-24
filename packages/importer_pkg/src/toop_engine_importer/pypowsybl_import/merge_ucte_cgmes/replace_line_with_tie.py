@@ -144,19 +144,19 @@ def check_dangling_node(bus_breaker_topo: BusBreakerTopology) -> None:
 
 
 def get_boundary_creation_schema(
-    network: Network, dangling_voltage_level: str, name_col: str = "elementName"
+    network: Network, boundary_voltage_level: str, name_col: str = "elementName"
 ) -> tuple[pat.DataFrame[DanglingLineCreationSchema], pat.DataFrame[DanglingGeneratorSchema]]:
     """Get the boundary lines and generator schema for a given voltage level.
 
-    This expects that the voltage level is a dangling node.
+    This expects that the voltage level is a boundary node.
     All lines that are connected will be converted to a boundary line dataframe.
 
     Parameters
     ----------
     network : Network
         The network to get the boundary lines from.
-    dangling_voltage_level : str
-        The id of the voltage level of the dangling node.
+    boundary_voltage_level : str
+        The id of the voltage level of the boundary node.
     name_col : str
         The column name to use for the name of the line. Default is "elementName".
 
@@ -167,17 +167,17 @@ def get_boundary_creation_schema(
     dangling_generator_df : pat.DataFrame[DanglingGeneratorSchema]
         Contains generators that can be converted to dangling generator.
     """
-    bus_breaker_topo = network.get_bus_breaker_topology(dangling_voltage_level)
+    bus_breaker_topo = network.get_bus_breaker_topology(boundary_voltage_level)
     check_dangling_node(bus_breaker_topo)
     elements = bus_breaker_topo.elements
     lines = elements[elements["type"] == "LINE"]
     generators = elements[elements["type"] == "GENERATOR"]
     boundary_line_creation_df = get_boundary_lines_creation_schema(
-        network=network, bus_breaker_topo_lines=lines, dangling_voltage_level=dangling_voltage_level, name_col=name_col
+        network=network, bus_breaker_topo_lines=lines, boundary_voltage_level=boundary_voltage_level, name_col=name_col
     )
     dangling_generator_df = get_dangling_generator_creation_schema(network=network, generators=generators)
     set_dangling_generator_ids(
-        dangling_line_creation_df=boundary_line_creation_df, dangling_generator_df=dangling_generator_df
+        boundary_line_creation_df=boundary_line_creation_df, dangling_generator_df=dangling_generator_df
     )
 
     return boundary_line_creation_df, dangling_generator_df
@@ -236,18 +236,18 @@ def get_dangling_generator_creation_schema(
 
 
 def set_dangling_generator_ids(
-    dangling_line_creation_df: pat.DataFrame[DanglingLineCreationSchema],
+    boundary_line_creation_df: pat.DataFrame[DanglingLineCreationSchema],
     dangling_generator_df: pat.DataFrame[DanglingGeneratorSchema],
 ) -> None:
     """Set the ids of the dangling_generator_df.
 
-    This will set the ids of the dangling_generator_df based on the dangling_line_creation_df.
+    This will set the ids of the dangling_generator_df based on the boundary_line_creation_df.
     A generator id must match a dangling line id to create a dangling line with generator
 
     Parameters
     ----------
-    dangling_line_creation_df : pat.DataFrame[DanglingLineCreationSchema]
-        The dataframe with the dangling lines to set the ids for.
+    boundary_line_creation_df : pat.DataFrame[DanglingLineCreationSchema]
+        The dataframe with the boundary lines to set the ids for.
     dangling_generator_df : pat.DataFrame[DanglingGeneratorSchema]
         The dataframe with the generators to set the ids for.
         Note: the ids are set in place: id, bus_id
@@ -261,29 +261,29 @@ def set_dangling_generator_ids(
     single_line = 1
     double_line = 2
     for index, row in dangling_generator_df.iterrows():
-        dangling_found = dangling_line_creation_df[dangling_line_creation_df["pairing_key"] == row["bus_id"]]
+        dangling_found = boundary_line_creation_df[boundary_line_creation_df["pairing_key"] == row["bus_id"]]
         if len(dangling_found) == single_line:
             dangling_generator_df.loc[index, "id"] = dangling_found.index[0]
             dangling_generator_df.loc[index, "bus_id"] = dangling_found["bus_id"].iloc[0]
         elif len(dangling_found) == double_line:
             # generator will be created for each dangling line
-            dangling_generator_df.loc[index, "id"] = dangling_line_creation_df[
-                dangling_line_creation_df["pairing_key"] == row["bus_id"]
+            dangling_generator_df.loc[index, "id"] = boundary_line_creation_df[
+                boundary_line_creation_df["pairing_key"] == row["bus_id"]
             ].index[0]
-            dangling_generator_df.loc[index, "bus_id"] = dangling_line_creation_df[
-                dangling_line_creation_df["pairing_key"] == row["bus_id"]
+            dangling_generator_df.loc[index, "bus_id"] = boundary_line_creation_df[
+                boundary_line_creation_df["pairing_key"] == row["bus_id"]
             ]["bus_id"].iloc[0]
             # add a new row to the dangling_generator_df with the same values as the first one
             new_row = dangling_generator_df.iloc[index].copy()
-            new_row["id"] = dangling_line_creation_df[dangling_line_creation_df["pairing_key"] == row["bus_id"]].index[1]
-            new_row["bus_id"] = dangling_line_creation_df[dangling_line_creation_df["pairing_key"] == row["bus_id"]][
+            new_row["id"] = boundary_line_creation_df[boundary_line_creation_df["pairing_key"] == row["bus_id"]].index[1]
+            new_row["bus_id"] = boundary_line_creation_df[boundary_line_creation_df["pairing_key"] == row["bus_id"]][
                 "bus_id"
             ].iloc[1]
             dangling_generator_df.loc[len(dangling_generator_df)] = new_row
         else:
             raise ValueError(
                 f"Generator {row['id']} has no matching line in "
-                f"dangling_line_creation_df or multiple matches found: {dangling_found.index}."
+                f"boundary_line_creation_df or multiple matches found: {dangling_found.index}."
             )
     # check schema
     dangling_generator_df.set_index("id", inplace=True)
@@ -291,11 +291,11 @@ def set_dangling_generator_ids(
 
 
 def get_boundary_lines_creation_schema(
-    network: Network, bus_breaker_topo_lines: pd.DataFrame, dangling_voltage_level: str, name_col: str = "elementName"
+    network: Network, bus_breaker_topo_lines: pd.DataFrame, boundary_voltage_level: str, name_col: str = "elementName"
 ) -> pat.DataFrame[DanglingLineCreationSchema]:
     """Get the boundary lines dataframe for a given voltage level.
 
-    This expects that the voltage level is a dangling node.
+    This expects that the voltage level is a boundary node.
     All lines that are connected will be converted to a boundary line dataframe.
 
     Parameters
@@ -304,8 +304,8 @@ def get_boundary_lines_creation_schema(
         The network to get the boundary lines from.
     bus_breaker_topo_lines : pd.DataFrame
         expects network.get_bus_breaker_topology(voltage_level).elements filtered for lines
-    dangling_voltage_level : str
-        The id of the voltage level of the dangling node.
+    boundary_voltage_level : str
+        The id of the voltage level of the boundary node.
     name_col : str
         The column name to use for the name of the line. Default is "elementName".
 
@@ -338,7 +338,7 @@ def get_boundary_lines_creation_schema(
 
     for index, row in new_dangling_df.query("type=='LINE'").iterrows():
         # define dangling information depending on the voltage level side
-        new_dangling_df = add_voltage_level_infos(dangling_voltage_level, new_dangling_df, index, row)
+        new_dangling_df = add_voltage_level_infos(boundary_voltage_level, new_dangling_df, index, row)
         new_dangling_df.loc[index, "b"] = row["b1"] + row["b2"]
         new_dangling_df.loc[index, "g"] = row["g1"] + row["g2"]
         # double check if connected is consistent
@@ -502,35 +502,35 @@ def replace_voltage_level_with_tie_line(network: Network, voltage_level_id: str,
 def get_boundary_voltage_levels(
     network: Network, external_border_mask: np.ndarray | pd.Series, area_codes: list[str]
 ) -> list[str]:
-    """Get the dangling voltage levels from the network.
+    """Get the boundary voltage levels from the network.
 
-    Get the dangling voltage levels from the network that are connected to the external border.
+    Get the boundary voltage levels from the network that are connected to the external border.
 
     Parameters
     ----------
     network : Network
-        The network to get the dangling lines from.
+        The network to get the boundary lines from.
     external_border_mask: np.ndarray
         A boolean array over all lines, that depicts outgoing border lines
     area_codes: list[str]
-        A list of area codes to check for. The area codes are used to check if the voltage level is a dangling voltage level.
+        A list of area codes to check for. The area codes are used to check if the voltage level is a boundary voltage level.
 
     Returns
     -------
-    dangling_voltage_levels : list[str]
-        A list of dangling voltage levels that are connected to the external border.
+    boundary_voltage_levels : list[str]
+        A list of boundary voltage levels that are connected to the external border.
     """
-    dangling_df = network.get_lines()[external_border_mask]
-    dangling_voltage_levels = []
+    boundary_df = network.get_lines()[external_border_mask]
+    boundary_voltage_levels = []
 
-    for index, row in dangling_df.iterrows():
+    for index, row in boundary_df.iterrows():
         for area_code in area_codes:
             if row["voltage_level1_id"][: len(area_code)] == area_code:
-                dangling_voltage_levels.append(row["voltage_level2_id"])
+                boundary_voltage_levels.append(row["voltage_level2_id"])
             elif row["voltage_level2_id"][: len(area_code)] == area_code:
-                dangling_voltage_levels.append(row["voltage_level1_id"])
+                boundary_voltage_levels.append(row["voltage_level1_id"])
             else:
                 raise ValueError(
                     f"Area code {area_code} not found in bus_breaker_bus1_id or bus_breaker_bus2_id in row {index}"
                 )
-    return list(set(dangling_voltage_levels))
+    return list(set(boundary_voltage_levels))

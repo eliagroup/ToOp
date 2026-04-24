@@ -143,18 +143,18 @@ def check_dangling_node(bus_breaker_topo: BusBreakerTopology) -> None:
             )
 
 
-def get_dangling_creation_schema(
+def get_boundary_creation_schema(
     network: Network, dangling_voltage_level: str, name_col: str = "elementName"
 ) -> tuple[pat.DataFrame[DanglingLineCreationSchema], pat.DataFrame[DanglingGeneratorSchema]]:
-    """Get the dangling lines and generator schema for a given voltage level.
+    """Get the boundary lines and generator schema for a given voltage level.
 
     This expects that the voltage level is a dangling node.
-    All lines that are connected will be converted to a dangling line dataframe.
+    All lines that are connected will be converted to a boundary line dataframe.
 
     Parameters
     ----------
     network : Network
-        The network to get the dangling lines from.
+        The network to get the boundary lines from.
     dangling_voltage_level : str
         The id of the voltage level of the dangling node.
     name_col : str
@@ -162,8 +162,8 @@ def get_dangling_creation_schema(
 
     Returns
     -------
-    dangling_line_creation_df : pat.DataFrame[DanglingLineCreationSchema]
-        Contains lines that can be converted to dangling lines.
+    boundary_line_creation_df : pat.DataFrame[DanglingLineCreationSchema]
+        Contains lines that can be converted to boundary lines.
     dangling_generator_df : pat.DataFrame[DanglingGeneratorSchema]
         Contains generators that can be converted to dangling generator.
     """
@@ -172,15 +172,15 @@ def get_dangling_creation_schema(
     elements = bus_breaker_topo.elements
     lines = elements[elements["type"] == "LINE"]
     generators = elements[elements["type"] == "GENERATOR"]
-    dangling_line_creation_df = get_boundary_lines_creation_schema(
+    boundary_line_creation_df = get_boundary_lines_creation_schema(
         network=network, bus_breaker_topo_lines=lines, dangling_voltage_level=dangling_voltage_level, name_col=name_col
     )
     dangling_generator_df = get_dangling_generator_creation_schema(network=network, generators=generators)
     set_dangling_generator_ids(
-        dangling_line_creation_df=dangling_line_creation_df, dangling_generator_df=dangling_generator_df
+        dangling_line_creation_df=boundary_line_creation_df, dangling_generator_df=dangling_generator_df
     )
 
-    return dangling_line_creation_df, dangling_generator_df
+    return boundary_line_creation_df, dangling_generator_df
 
 
 def get_dangling_generator_creation_schema(
@@ -293,15 +293,15 @@ def set_dangling_generator_ids(
 def get_boundary_lines_creation_schema(
     network: Network, bus_breaker_topo_lines: pd.DataFrame, dangling_voltage_level: str, name_col: str = "elementName"
 ) -> pat.DataFrame[DanglingLineCreationSchema]:
-    """Get the dangling lines dataframe for a given voltage level.
+    """Get the boundary lines dataframe for a given voltage level.
 
     This expects that the voltage level is a dangling node.
-    All lines that are connected will be converted to a dangling line dataframe.
+    All lines that are connected will be converted to a boundary line dataframe.
 
     Parameters
     ----------
     network : Network
-        The network to get the dangling lines from.
+        The network to get the boundary lines from.
     bus_breaker_topo_lines : pd.DataFrame
         expects network.get_bus_breaker_topology(voltage_level).elements filtered for lines
     dangling_voltage_level : str
@@ -312,7 +312,7 @@ def get_boundary_lines_creation_schema(
     Returns
     -------
     new_dangling_df : pat.DataFrame[DanglingLineCreationSchema]
-        Contains lines that can be converted to dangling lines.
+        Contains lines that can be converted to boundary lines.
     """
     # get the lines from the dangling voltage level
     new_dangling_df = bus_breaker_topo_lines.merge(
@@ -493,20 +493,13 @@ def replace_voltage_level_with_tie_line(network: Network, voltage_level_id: str,
     name_col : str
         The column name to use for the name of the line. Default is "elementName".
     """
-    dangling_line_creation_df, dangling_gen_creation_df = get_dangling_creation_schema(network, voltage_level_id, name_col)
-    replace_line_with_dangling_line(network, dangling_line_creation_df, dangling_gen_creation_df)
-    reconnect_dangling_as_tie_line(network, dangling_line_creation_df)
+    boundary_line_creation_df, dangling_gen_creation_df = get_boundary_creation_schema(network, voltage_level_id, name_col)
+    replace_line_with_dangling_line(network, boundary_line_creation_df, dangling_gen_creation_df)
+    reconnect_dangling_as_tie_line(network, boundary_line_creation_df)
     network.remove_elements(voltage_level_id)
 
 
-def get_dangling_lines_creation_schema(
-    network: Network, bus_breaker_topo_lines: pd.DataFrame, dangling_voltage_level: str, name_col: str = "elementName"
-) -> pat.DataFrame[DanglingLineCreationSchema]:
-    """Backward-compatible alias for get_boundary_lines_creation_schema."""
-    return get_boundary_lines_creation_schema(network, bus_breaker_topo_lines, dangling_voltage_level, name_col)
-
-
-def get_dangling_voltage_levels(
+def get_boundary_voltage_levels(
     network: Network, external_border_mask: np.ndarray | pd.Series, area_codes: list[str]
 ) -> list[str]:
     """Get the dangling voltage levels from the network.

@@ -14,10 +14,10 @@ from toop_engine_importer.pypowsybl_import.merge_ucte_cgmes.replace_line_with_ti
     DanglingGeneratorSchema,
     DanglingLineCreationSchema,
     get_boundary_lines_creation_schema,
+    get_boundary_creation_schema,
+    get_boundary_voltage_levels,
     check_dangling_node,
-    get_dangling_creation_schema,
     get_dangling_generator_creation_schema,
-    get_dangling_voltage_levels,
     replace_voltage_level_with_tie_line,
     set_dangling_generator_ids,
 )
@@ -135,10 +135,10 @@ def test_check_dangling_node_with_valid_topology(ucte_file_with_border):
         check_dangling_node(bus_breaker_topo)
 
 
-def test_get_dangling_creation_schema(ucte_file_with_border):
+def test_get_boundary_creation_schema(ucte_file_with_border):
     network = pypowsybl.network.load(ucte_file_with_border)
     dangling_voltage_level = "DXSU1_1"
-    dangling_line_creation_df, dangling_generator_df = get_dangling_creation_schema(
+    dangling_line_creation_df, dangling_generator_df = get_boundary_creation_schema(
         network=network, dangling_voltage_level=dangling_voltage_level
     )
     assert isinstance(dangling_line_creation_df, pd.DataFrame)
@@ -150,7 +150,7 @@ def test_get_dangling_creation_schema(ucte_file_with_border):
 
     # Note: not a true Dangling node, but has a generator to test
     dangling_voltage_level = "D7SU2_1"
-    dangling_line_creation_df, dangling_generator_df = get_dangling_creation_schema(
+    dangling_line_creation_df, dangling_generator_df = get_boundary_creation_schema(
         network=network, dangling_voltage_level=dangling_voltage_level
     )
     # generator ids must match dangling line creation ids
@@ -194,18 +194,18 @@ def test_set_dangling_generation_ids(ucte_file_with_border):
     assert dangling_generator_df.empty
 
 
-def test_get_dangling_voltage_levels(ucte_file_with_border):
+def test_get_boundary_voltage_levels(ucte_file_with_border):
     network = pypowsybl.network.load(ucte_file_with_border)
     area_codes = ["D8"]
     lines = network.get_lines()
     external_border_mask = lines["voltage_level1_id"].str.startswith("D8") & lines["voltage_level2_id"].str.startswith("DX")
-    dangling_voltage_level = get_dangling_voltage_levels(
+    dangling_voltage_level = get_boundary_voltage_levels(
         network=network, area_codes=area_codes, external_border_mask=external_border_mask
     )
     assert ["DXSU1_1"] == dangling_voltage_level
     # test with empty area_codes
     area_codes = []
-    dangling_voltage_level = get_dangling_voltage_levels(
+    dangling_voltage_level = get_boundary_voltage_levels(
         network=network, area_codes=area_codes, external_border_mask=external_border_mask
     )
     assert dangling_voltage_level == []
@@ -213,7 +213,7 @@ def test_get_dangling_voltage_levels(ucte_file_with_border):
     # test with empty external_border_mask
     area_codes = ["D8"]
     external_border_mask = np.array([False] * len(lines))
-    dangling_voltage_level = get_dangling_voltage_levels(
+    dangling_voltage_level = get_boundary_voltage_levels(
         network=network, area_codes=area_codes, external_border_mask=external_border_mask
     )
     assert dangling_voltage_level == []
@@ -222,6 +222,6 @@ def test_get_dangling_voltage_levels(ucte_file_with_border):
     area_codes = ["D8"]
     external_border_mask = lines["voltage_level1_id"].str.startswith("DX") | lines["voltage_level2_id"].str.startswith("DX")
     with pytest.raises(ValueError):
-        dangling_voltage_level = get_dangling_voltage_levels(
+        dangling_voltage_level = get_boundary_voltage_levels(
             network=network, area_codes=area_codes, external_border_mask=external_border_mask
         )

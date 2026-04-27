@@ -17,11 +17,15 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.extractors i
     extract_contingencies_with_unique_pandapower_id,
     extract_monitored_elements_with_cgmes_id,
     extract_monitored_elements_with_unique_pandapower_id,
+    extract_spps_rules_with_cgmes_id,
+    extract_spps_rules_with_unique_pandapower_id,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
     PandapowerMonitoredElementSchema,
     PandapowerNMinus1Definition,
+    SppsActionsPandapowerSchema,
+    SppsConditionsPandapowerSchema,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.va_diff_info import get_va_diff_info
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
@@ -33,6 +37,7 @@ from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
     Nminus1Definition,
+    SppsRule,
 )
 
 
@@ -146,6 +151,48 @@ def get_node_to_switch_map(net: pandapowerNet, id_type: PANDAPOWER_SUPPORTED_ID_
     return node_to_switch_map
 
 
+def translate_spps_rules(
+    net: pandapowerNet,
+    rules: list[SppsRule],
+    id_type: PANDAPOWER_SUPPORTED_ID_TYPES = "unique_pandapower",
+) -> tuple[
+    pat.DataFrame[SppsConditionsPandapowerSchema], pat.DataFrame[SppsActionsPandapowerSchema], list[SppsRule], list[str]
+]:
+    """Translate SpPS rules to pandapower-ready condition and action DataFrames.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        The pandapower network to use for the translation. Used to resolve
+        each condition's ``condition_element_unique_id`` and each action's
+        ``measure_element_unique_id`` into a pandapower
+        ``(table, table_id)`` pair.
+    rules : list[SppsRule]
+        The list of SpPS rules to translate.
+    id_type: PANDAPOWER_SUPPORTED_ID_TYPES
+        The type of ids to use for the contingencies. Currently, only "unique_pandapower" and "cgmes" are supported.
+
+    Returns
+    -------
+    pat.DataFrame[SppsConditionsPandapowerSchema]
+        One row per condition; uses ``scheme_name`` to group with actions.
+    pat.DataFrame[SppsActionsPandapowerSchema]
+        One row per action; uses ``scheme_name`` to group with conditions.
+    list[SppsRule]
+        SpPS rules that could not be translated because a referenced element
+        was not found in ``net`` (or, for ``"unique_pandapower"``, the id
+        could not be parsed).
+    list[str]
+        A list of ids that were not unique in the grid. This is only relevant
+        for cgmes ids.
+    """
+    if id_type == "unique_pandapower":
+        return extract_spps_rules_with_unique_pandapower_id(net, rules)
+    if id_type == "cgmes":
+        return extract_spps_rules_with_cgmes_id(net, rules)
+    raise ValueError(f"Unsupported id_type: {id_type}. Supported id_types are: ['unique_pandapower', 'cgmes']")
+
+
 def translate_contingencies(
     net: pandapowerNet, contingencies: list[Contingency], id_type: ELEMENT_ID_TYPES = "unique_pandapower"
 ) -> tuple[list[PandapowerContingency], list[Contingency], list[str]]:
@@ -249,10 +296,16 @@ def translate_nminus1_for_pandapower(
         net, n_minus_1_definition.contingencies, id_type=id_type
     )
 
+    spps_conditions, spps_actions, _missing_spps_rules, duplicated_spps_ids = translate_spps_rules(
+        net, n_minus_1_definition.spps_rules, id_type=id_type
+    )
+
     return PandapowerNMinus1Definition(
         monitored_elements=pandapower_monitored_elements,
         missing_elements=missing_elements,
         contingencies=contingencies,
         missing_contingencies=missing_contingencies,
-        duplicated_grid_elements=duplicated_monitored_ids + duplicated_outaged_element_ids,
+        spps_conditions=spps_conditions,
+        spps_actions=spps_actions,
+        duplicated_grid_elements=duplicated_monitored_ids + duplicated_outaged_element_ids + duplicated_spps_ids,
     )

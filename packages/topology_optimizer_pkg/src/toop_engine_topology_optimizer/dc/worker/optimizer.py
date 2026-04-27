@@ -13,7 +13,6 @@ from functools import partial
 from pathlib import Path
 
 import jax
-import structlog
 from beartype.typing import Any, Callable
 from fsspec import AbstractFileSystem
 from jax import lax
@@ -41,8 +40,6 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     Topology,
     TopologyPushResult,
 )
-
-logger = structlog.get_logger(__name__)
 
 
 @dataclass

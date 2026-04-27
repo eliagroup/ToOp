@@ -901,7 +901,7 @@ def remove_relevant_subs(
     irrelevant_node_ids = np.array(network_data.node_ids)[original_relevant_nodes[~keep_mask]]
     logger.info(
         f"Removed {len(irrelevant_node_ids)} from relevant nodes "
-        f"since they had no branch_actions {np.array2string(irrelevant_node_ids)}",
+        "since they had no branch_actions. Check irrelevant_node_ids log attribute for details",
         irrelevant_node_ids=np.array2string(irrelevant_node_ids),
     )
     relevant_node_mask = np.zeros_like(network_data.relevant_node_mask, dtype=bool)

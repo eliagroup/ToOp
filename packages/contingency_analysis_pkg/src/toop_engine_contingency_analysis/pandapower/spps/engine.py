@@ -326,7 +326,7 @@ def _evaluate_conditions(conditions: pat.DataFrame[SppsConditionsPandapowerSchem
     Parameters
     ----------
     conditions : pat.DataFrame[SppsConditionsPandapowerSchema]
-        Rule rows. Must have ``condition_check_type``, ``condition_element_value``,
+        Conditions rows. Must have ``condition_check_type``, ``condition_element_value``,
         ``condition_limit_value``, and for state checks the ``failed`` and
         ``energized`` columns from :func:`_populate_failed` and
         :func:`_populate_energized`. Mutated in place.
@@ -369,8 +369,7 @@ def _satisfied_scheme_names(conditions: pat.DataFrame[SppsConditionsPandapowerSc
     Parameters
     ----------
     conditions
-        Conditions SppsConditionsPandapowerSchema with ``is_condition`` populated by
-        :func:`_evaluate_conditions`.
+        Conditions SppsConditionsPandapowerSchema
     """
     satisfied = conditions["is_condition"].fillna(False).groupby(conditions["scheme_name"]).all()
     return set(satisfied[satisfied].index.tolist())
@@ -382,13 +381,27 @@ def _satisfied_scheme_names(conditions: pat.DataFrame[SppsConditionsPandapowerSc
 
 
 def _apply_switch_actions(actions: pd.DataFrame, net: pp.pandapowerNet) -> None:
-    """Apply every switch-targeted action by writing ``net.switch.closed``.
+    """Apply switch rows in *actions* by writing ``net.switch.closed``.
 
-    For string ``measure_value``, **closed** is recognized case-insensitively
-    (e.g. ``"closed"`` or ``"Closed"``). Any other string, including
-    ``"open"`` / ``"Open"``, sets ``closed = False``.
+    Only rows with ``measure_element_table == "switch"`` are considered.
+    ``measure_value`` is compared to :attr:`SppsSwitchActionTarget.CLOSED`
+    (wire value ``"closed"``); a match sets ``closed = True``, any other
+    value sets ``closed = False``. If there are no switch rows, this is a
+    no-op.
 
-    Mutates *net* in place.
+    Parameters
+    ----------
+    actions : pd.DataFrame
+        Must include ``measure_element_table``, ``measure_element_table_id``,
+        and ``measure_value``. Not modified.
+    net : pandapower.pandapowerNet
+        ``net.switch`` rows referenced by id are updated in place.
+
+    Returns
+    -------
+    None
+        *net.switch.closed* is written for the affected indices; *actions* is
+        unchanged.
     """
     sw = actions[actions["measure_element_table"] == "switch"]
     if sw.empty:
@@ -402,21 +415,29 @@ def _apply_switch_actions(actions: pd.DataFrame, net: pp.pandapowerNet) -> None:
 def _apply_actions(actions: pat.DataFrame[SppsActionsPandapowerSchema], net: pp.pandapowerNet) -> None:
     """Apply every action row in *actions* to *net*.
 
-    Dispatches as follows:
+    * Rows with ``measure_element_table == "switch"`` go to
+      :func:`_apply_switch_actions` (``net.switch.closed`` from ``measure_value``).
+    * All other supported ``(measure_element_table, measure_type)`` pairs are
+      resolved via :data:`ACTION_COLUMNS` to a column on ``net.<table>`` and
+      written with ``pd.to_numeric`` (``p_mw``, ``q_mvar``, ``vm_pu``, etc.).
 
-    * Switch rows → :func:`_apply_switch_actions` (string ``"Open"`` /
-      ``"Closed"``).
-    * Everything else → looked up in :data:`spps.schema.ACTION_COLUMNS` by
-      ``(measure_element_table, measure_type)`` and written as a numeric
-      value to the corresponding pandapower column (``p_mw``, ``q_mvar``,
-      ``vm_pu``, ...).
+    Voltage setpoints must already be in per-unit; see
+    :func:`spps.preprocessing.convert_voltage_rules_to_pu`. Combinations not
+    present in :data:`ACTION_COLUMNS` are skipped. If *actions* is empty,
+    this is a no-op.
 
-    Voltage ``measure_value`` must already be in per-unit — call
-    :func:`spps.preprocessing.convert_voltage_rules_to_pu` during
-    preprocessing. Rows whose ``(table, measure_type)`` pair isn't in
-    :data:`spps.schema.ACTION_COLUMNS` are silently skipped (no-op).
+    Parameters
+    ----------
+    actions : pat.DataFrame[SppsActionsPandapowerSchema]
+        One row per action to apply (``scheme_name``, ``measure_element_table``,
+        ``measure_element_table_id``, ``measure_type``, ``measure_value``).
+    net : pandapower.pandapowerNet
+        Network whose element and switch tables are updated in place.
 
-    Mutates *net* in place.
+    Returns
+    -------
+    None
+        *net* is mutated; *actions* is not modified.
     """
     if actions.empty:
         return

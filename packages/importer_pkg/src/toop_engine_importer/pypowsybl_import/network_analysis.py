@@ -216,5 +216,5 @@ def remove_branches_with_same_bus(network: Network) -> None:
     if len(same_bus_branches) > 0:
         logger.warning(
             f"Removed {len(same_bus_branches)} branches with the same bus id. Please check the network for inconsistencies.",
-            removed_branches=same_bus_branches.tolist(),
+            removed_branch_ids=same_bus_branches.tolist(),
         )

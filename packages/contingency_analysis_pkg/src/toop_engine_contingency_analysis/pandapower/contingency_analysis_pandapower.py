@@ -7,6 +7,7 @@
 
 """Compute the N-1 AC/DC power flow for the pandapower network."""
 
+import json
 import math
 import uuid
 from copy import deepcopy
@@ -52,6 +53,7 @@ from toop_engine_contingency_analysis.pandapower.spps import SppsPowerFlowError,
 from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
+from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_result_helpers import (
     concatenate_loadflow_results,
     convert_pandas_loadflow_results_to_polars,
@@ -64,6 +66,7 @@ from toop_engine_interfaces.loadflow_results import (
     ConvergenceStatus,
     LoadflowResults,
     NodeResultSchema,
+    SppsResultsSchema,
     SwitchResultsSchema,
     VADiffResultSchema,
 )
@@ -111,6 +114,7 @@ def run_single_outage(
     opened_cb_indices = open_outaged_circuit_breakers(net, outaged_elements)
 
     were_in_service = set_outaged_elements_out_of_service(net, outaged_elements)
+    spps_results = get_empty_dataframe_from_model(SppsResultsSchema)
     if not any(were_in_service):
         status = ConvergenceStatus.NO_CALCULATION
     else:
@@ -129,6 +133,18 @@ def run_single_outage(
                     max_iterations=ctx.spps_rules_max_iterations,
                     on_power_flow_error=ctx.on_power_flow_error,
                 )
+                spps_rows = [
+                    {
+                        "timestep": ctx.timestep,
+                        "contingency": contingency.unique_id,
+                        "iterations": spps_result.iterations,
+                        "activated_schemes_per_iter": json.dumps(spps_result.activated_schemes_per_iter),
+                        "max_iterations_reached": spps_result.max_iterations_reached,
+                        "power_flow_failed": spps_result.power_flow_failed,
+                    }
+                    for contingency in grouped_contingency.contingencies
+                ]
+                spps_results = SppsResultsSchema.validate(pd.DataFrame(spps_rows).set_index(["timestep", "contingency"]))
                 if spps_result.power_flow_failed or spps_result.max_iterations_reached:
                     status = ConvergenceStatus.FAILED
                 else:
@@ -206,6 +222,7 @@ def run_single_outage(
         va_diff_results=va_diff_results,
         switch_results=switch_df,
         warnings=[],
+        spps_results=spps_results,
     )
 
 

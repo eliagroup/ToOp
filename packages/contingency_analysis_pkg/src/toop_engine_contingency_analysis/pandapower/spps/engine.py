@@ -611,13 +611,16 @@ def run_spps(
     _run_power_flow(net, method, runpp_kwargs)
 
     for iteration in range(1, max_iterations + 1):
-        iterations = iteration
-
         _populate_failed(conditions, failed_elements, net)
         _extract_condition_values(conditions, net)
         _evaluate_conditions(conditions)
         candidate_schemes = _satisfied_scheme_names(conditions)
         new_schemes = sorted(n for n in candidate_schemes if n not in activated_scheme_names)
+        if not new_schemes:
+            logger.info("No new schemes triggered — stopping.")
+            break
+
+        iterations = iteration
         active_actions = actions[actions["scheme_name"].isin(new_schemes)].copy() if new_schemes else actions.iloc[0:0]
         active_actions = active_actions.assign(_iteration=iteration)
 
@@ -629,10 +632,6 @@ def run_spps(
             len(active_actions),
             new_schemes,
         )
-
-        if not new_schemes:
-            logger.info("No new schemes triggered — stopping.")
-            break
 
         switch_activations = active_actions[active_actions["measure_element_table"] == "switch"]
         if not switch_activations.empty:

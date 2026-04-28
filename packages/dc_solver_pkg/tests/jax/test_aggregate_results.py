@@ -967,7 +967,7 @@ def test_get_pst_switching_distance() -> None:
         pst_tap_idx=jnp.array([[3, 4, 5, 6, 7]], dtype=int)  # All shifted by +1
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_switching_distance = 5.0  # Sum of (3-2)^2 + (4-3)^2 + (5-4)^2 + (6-5)^2 + (7-6)^2 = 1+1+1+1+1 = 5
+    expected_switching_distance = 25.0  # (Sum of |3-2| + |4-3| + |5-4| + |6-5| + |7-6|)^2 = (1+1+1+1+1)^2 = 25
     assert switching_distance == expected_switching_distance, (
         f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
     )
@@ -978,9 +978,8 @@ def test_get_pst_switching_distance() -> None:
         pst_tap_idx=jnp.array([[3, 7, 5, 4, 8]], dtype=int)  # switching distances: -2, +2, 0, -1, +3
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_switching_distance = (
-        4.0 + 4.0 + 0.0 + 1.0 + 9.0
-    )  # Squared L2 distance = (-2)^2 + 2^2 + 0^2 + (-1)^2 + 3^2 = 18.0
+    # Square of L1 distance = (2 + 2 + 0 + 1 + 3)^2 = 64.0
+    expected_switching_distance = (2.0 + 2.0 + 0.0 + 1.0 + 3.0) ** 2
     assert switching_distance == expected_switching_distance, (
         f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
     )
@@ -990,15 +989,15 @@ def test_get_pst_switching_distance() -> None:
     optimized_taps = NodalInjOptimResults(
         pst_tap_idx=jnp.array(
             [
-                [3, 4, 5, 6],  # First timestep: small switching_distance: 1^2 + 1^2 + 1^2 + 1^2 = 4
-                [10, 10, 10, 10],  # Second timestep: 8^2 + 7^2 + 6^2 + 5^2 = 174
-                [0, 0, 0, 0],  # Third timestep: 2^2 + 3^2 + 4^2 + 5^2 = 54
+                [3, 4, 5, 6],  # First timestep: small switching_distance: (1+1+1+1)^2 = 16
+                [10, 10, 10, 10],  # Second timestep: (8+7+6+5)^2 = 676
+                [0, 0, 0, 0],  # Third timestep: (2+3+4+5)^2 = 196
             ],
             dtype=int,
         )  # shape: (n_timesteps=3, n_controllable_pst=4)
     )
     switching_distance = get_pst_switching_distance(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
-    expected_switching_distance = 4.0 + 174.0 + 54.0  # Should sum switching distances across all timesteps
+    expected_switching_distance = 16.0 + 676.0 + 196.0  # Should sum switching distances across all timesteps
     assert switching_distance == expected_switching_distance, (
         f"Expected switching_distance {expected_switching_distance}, got {switching_distance}"
     )
@@ -1017,7 +1016,7 @@ def test_get_pst_switching_distance() -> None:
     assert jnp.allclose(switching_distance_jitted, switching_distance_normal), (
         "JIT and non-JIT versions should produce same result"
     )
-    assert switching_distance_jitted == 3.0, f"Expected switching_distance 3.0, got {switching_distance_jitted}"
+    assert switching_distance_jitted == 9.0, f"Expected switching_distance 9.0, got {switching_distance_jitted}"
 
 
 def test_get_pst_activated() -> None:

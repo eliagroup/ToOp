@@ -592,11 +592,13 @@ def get_pst_switching_distance(
     optimized_tap_idx = optimized_taps.pst_tap_idx
 
     # TODO: Proper multi-timestep support.
-    # Compute squared L2 distance (Euclidean distance squared)
+    # Compute square of sum of absolute differences (L1 distance squared)
     diff = optimized_tap_idx.astype(float) - initial_tap_idx.astype(float)[None, :]
-    switching_distance = jnp.sum(jnp.square(diff))
+    abs_diff = jnp.abs(diff)
+    switching_distance = jnp.square(jnp.sum(abs_diff, axis=1))
+    switching_distance_all_timesteps = jnp.sum(switching_distance)
 
-    return switching_distance
+    return switching_distance_all_timesteps
 
 
 def get_pst_switching_distance_linear(

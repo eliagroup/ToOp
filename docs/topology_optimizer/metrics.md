@@ -48,6 +48,8 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **pst_switching_distance**: Squared distance from the initial PST setpoints to the current optimized ones.
 
+- **pst_switching_distance_linear**: Linear distance from the initial PST setpoints to the current optimized ones, computed as the sum of absolute tap changes.
+
 - **pst_activated**: Number of PST tap positions that differ from their initial tap position (implicit unit cost). This counts changed PST setpoints and can be weighted in `target_metrics`.
 
 ## Other Metrics

@@ -38,6 +38,7 @@ from toop_engine_dc_solver.jax.aggregate_results import (
     get_overload_energy_n_1_matrix,
     get_pst_activated,
     get_pst_switching_distance,
+    get_pst_switching_distance_linear,
     get_switching_distance,
     get_transport_n_1_matrix,
     get_underload_energy_n_1_matrix,
@@ -1114,3 +1115,115 @@ def test_aggregate_to_metric_pst_activated() -> None:
     )
 
     assert startup_cost == 1.0, f"Expected startup cost 1.0, got {startup_cost}"
+
+
+def test_get_pst_switching_distance_linear() -> None:
+    """Test the linear PST setpoint switching distance metric."""
+
+    switching_distance = get_pst_switching_distance_linear(optimized_taps=None, initial_tap_idx=None)
+    assert switching_distance == 0.0, "Linear switching distance should be 0 when PST optimization is disabled"
+
+    optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[0, 1, 2, 3, 4]], dtype=int))
+    switching_distance = get_pst_switching_distance_linear(optimized_taps=optimized_taps, initial_tap_idx=None)
+    assert switching_distance == 0.0, "Linear switching distance should be 0 when initial tap indices are not provided"
+
+    initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
+    optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[2, 3, 4, 5, 6]], dtype=int))
+    switching_distance = get_pst_switching_distance_linear(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    assert switching_distance == 0.0, "Linear switching distance should be 0 when taps have not changed"
+
+    optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[3, 4, 5, 6, 7]], dtype=int))
+    switching_distance = get_pst_switching_distance_linear(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    assert switching_distance == 5.0, f"Expected linear switching distance 5.0, got {switching_distance}"
+
+    initial_tap_idx = jnp.array([5, 5, 5, 5, 5], dtype=int)
+    optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[3, 7, 5, 4, 8]], dtype=int))
+    switching_distance = get_pst_switching_distance_linear(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    expected_switching_distance = 2.0 + 2.0 + 0.0 + 1.0 + 3.0
+    assert switching_distance == expected_switching_distance, (
+        f"Expected linear switching distance {expected_switching_distance}, got {switching_distance}"
+    )
+
+    initial_tap_idx = jnp.array([2, 3, 4, 5], dtype=int)
+    optimized_taps = NodalInjOptimResults(
+        pst_tap_idx=jnp.array(
+            [
+                [3, 4, 5, 6],
+                [10, 10, 10, 10],
+                [0, 0, 0, 0],
+            ],
+            dtype=int,
+        )
+    )
+    switching_distance = get_pst_switching_distance_linear(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
+    expected_switching_distance = 4.0 + 26.0 + 14.0
+    assert switching_distance == expected_switching_distance, (
+        f"Expected linear switching distance {expected_switching_distance}, got {switching_distance}"
+    )
+
+    @jax.jit
+    def jitted_switching_distance_linear(optimized_taps, initial_tap_idx):
+        return get_pst_switching_distance_linear(optimized_taps, initial_tap_idx)
+
+    initial_tap_idx = jnp.array([1, 2, 3], dtype=int)
+    optimized_taps = NodalInjOptimResults(pst_tap_idx=jnp.array([[2, 3, 4]], dtype=int))
+    switching_distance_jitted = jitted_switching_distance_linear(optimized_taps, initial_tap_idx)
+    switching_distance_normal = get_pst_switching_distance_linear(optimized_taps, initial_tap_idx)
+    assert jnp.allclose(switching_distance_jitted, switching_distance_normal), (
+        "JIT and non-JIT linear switching distance should produce same result"
+    )
+
+
+def test_aggregate_to_metric_pst_switching_distance_linear() -> None:
+    """Test aggregate_to_metric routing for pst_switching_distance_linear."""
+    n_batch = 8
+    n_timesteps = 5
+    n_failures = 30
+    n_branch = 50
+    n_splits = 10
+    n_subs_rel = 60
+    max_branch_per_sub = 6
+    max_inj_per_sub = 4
+
+    keys = jax.random.split(jax.random.PRNGKey(0), 5)
+
+    flow = jax.random.exponential(keys[0], (n_batch, n_timesteps, n_failures, n_branch))
+    max_mw_flow = jax.random.exponential(keys[1], (n_branch,))
+    branch_topologies = jax.random.randint(keys[2], (n_batch, n_splits, max_branch_per_sub), 0, 2).astype(bool)
+    sub_ids = jax.random.randint(keys[2], (n_batch, n_splits), 0, n_subs_rel)
+    injections = jax.random.randint(keys[3], (n_batch, n_splits, max_inj_per_sub), 0, 2).astype(bool)
+    cross_coupler_flow = jax.random.exponential(keys[3], (n_batch, n_splits, n_timesteps))
+    max_flow_coupler = jax.random.exponential(keys[4], (n_subs_rel,))
+
+    branch_limits = BranchLimits(
+        max_mw_flow=max_mw_flow,
+        max_mw_flow_limited=max_mw_flow * 0.9,
+        coupler_limits=max_flow_coupler,
+    )
+
+    lf_res = SolverLoadflowResults(
+        n_0_matrix=flow[:, :, 0, :],
+        n_1_matrix=flow,
+        cross_coupler_flows=cross_coupler_flow,
+        branch_action_index=None,
+        branch_topology=branch_topologies,
+        sub_ids=sub_ids,
+        injection_topology=injections,
+        nodal_injections_optimized=NodalInjOptimResults(pst_tap_idx=jnp.array([[1, 0, 5]], dtype=int)),
+        n_2_penalty=None,
+        disconnections=None,
+        bb_outage_penalty=None,
+        bb_outage_overload=None,
+        bb_outage_splits=None,
+    )
+
+    switching_distance_linear = aggregate_to_metric(
+        lf_res=lf_res,
+        branch_limits=branch_limits,
+        reassignment_distance=None,
+        n_relevant_subs=0,
+        metric="pst_switching_distance_linear",
+        initial_pst_tap_idx=jnp.array([1, 1, 3], dtype=int),
+    )
+
+    assert switching_distance_linear == 3.0, f"Expected linear switching distance 3.0, got {switching_distance_linear}"

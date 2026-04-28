@@ -53,6 +53,12 @@ def test_infer_missing_observed_metrics():
     assert "overload_energy_n_1" in params.observed_metrics
     assert "underload_energy_n_0" in params.observed_metrics
 
+    params = BatchedMEParameters(
+        target_metrics=(("pst_switching_distance_linear", 1.0),),
+        observed_metrics=("max_flow_n_0",),
+    )
+    assert "pst_switching_distance_linear" in params.observed_metrics
+
 
 def test_deserialization():
     with pytest.raises(ValueError):

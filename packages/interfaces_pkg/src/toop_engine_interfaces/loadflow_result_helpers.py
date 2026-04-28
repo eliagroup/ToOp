@@ -522,9 +522,6 @@ def select_timestep(loadflow_results: LoadflowResults, timestep: Integral) -> Lo
         regulating_element_results=safe_xs(loadflow_results.regulating_element_results),
         converged=safe_xs(loadflow_results.converged),
         va_diff_results=safe_xs(loadflow_results.va_diff_results),
-        spps_results=safe_xs(loadflow_results.spps_results)
-        if loadflow_results.spps_results is not None
-        else get_empty_dataframe_from_model(SppsResultsSchema),
     )
 
 
@@ -571,10 +568,6 @@ def convert_polars_loadflow_results_to_pandas(
             pdf = pdf.set_index(index_cols)
         return pdf
 
-    spps_pandas = polars_to_pandas(loadflow_results_polars.spps_results)
-    if spps_pandas is None:
-        spps_pandas = get_empty_dataframe_from_model(SppsResultsSchema)
-
     return LoadflowResults(
         job_id=loadflow_results_polars.job_id,
         branch_results=polars_to_pandas(loadflow_results_polars.branch_results),
@@ -584,7 +577,6 @@ def convert_polars_loadflow_results_to_pandas(
         va_diff_results=polars_to_pandas(loadflow_results_polars.va_diff_results),
         warnings=loadflow_results_polars.warnings,
         additional_information=loadflow_results_polars.additional_information,
-        spps_results=spps_pandas,
     )
 
 
@@ -625,9 +617,6 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
             df = df.lazy()  # Assume it's a pandas DataFrame
         return df  # Assume it's already a polars DataFrame
 
-    sps = loadflow_results.spps_results
-    if sps is None:
-        sps = get_empty_dataframe_from_model(SppsResultsSchema)
     return LoadflowResultsPolars(
         job_id=loadflow_results.job_id,
         branch_results=pandas_to_polars(loadflow_results.branch_results, lazy=True),
@@ -639,5 +628,5 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         connectivity_result=pandas_to_polars(loadflow_results.connectivity_result, lazy=True),
         warnings=loadflow_results.warnings,
         additional_information=loadflow_results.additional_information,
-        spps_results=pandas_to_polars(sps, lazy=True),
+        lazy=True,
     )

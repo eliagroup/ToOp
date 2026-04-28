@@ -64,35 +64,44 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 
 
-def _populate_energized(rules: pd.DataFrame, net: pp.pandapowerNet) -> None:
-    """Write an ``energized`` boolean column onto *rules* from the network state.
+def _populate_energized(conditions: pat.DataFrame[SppsConditionsPandapowerSchema], net: pp.pandapowerNet) -> None:
+    """Write an ``energized`` boolean column onto *conditions* from the network state.
 
-    For each rule row, look up the condition element in its pandapower table
-    and read a single "is it electrically alive?" flag:
+    For each row, the condition element is looked up in its pandapower table
+    and a single "electrically alive" flag is read:
 
-    * switches → ``net.switch.closed``
-    * everything else → ``net.<table>.in_service``
+    * ``switch`` → ``net.switch.closed`` (``True`` = closed = energized)
+    * any other table in :data:`ELEMENT_TABLES` → ``net.<table>.in_service``
 
-    The resulting ``energized`` column is used by both the ``"de_energized"``
-    check (``energized == False``) and the NaN-based failure auto-detection
-    inside :func:`_populate_failed` (only energized elements can legitimately
-    be flagged as "failed in place").
+    The ``energized`` column is used for the wire value ``de_energized`` in
+    :func:`_evaluate_conditions` and for NaN-based auto-detection in
+    :func:`_populate_failed` (only energized elements can be marked failed
+    in place from result tables). Tables not in :data:`ELEMENT_TABLES` leave
+    ``pd.NA`` for that row. Column dtype is nullable pandas ``"boolean"``.
 
-    Rules whose ``condition_element_table`` does not match any registered
-    table keep a ``pd.NA`` (no value). The column dtype is pandas'
-    ``"boolean"`` (nullable).
+    Parameters
+    ----------
+    conditions : pat.DataFrame[SppsConditionsPandapowerSchema]
+        Condition rows; must include ``condition_element_table`` and
+        ``condition_element_table_id``. Mutated in place.
+    net : pandapower.pandapowerNet
+        Network whose static element tables (``switch`` / ``in_service``) are
+        read. Not modified.
 
-    Mutates *rules* in place; does not touch *net*.
+    Returns
+    -------
+    None
+        *conditions* gains a new ``energized`` column; *net* is unchanged.
     """
-    rules["energized"] = pd.Series(pd.NA, index=rules.index, dtype="boolean")
+    conditions["energized"] = pd.Series(pd.NA, index=conditions.index, dtype="boolean")
     for table in ELEMENT_TABLES:
-        mask = rules["condition_element_table"] == table
+        mask = conditions["condition_element_table"] == table
         if not mask.any():
             continue
-        ids = rules.loc[mask, "condition_element_table_id"]
+        ids = conditions.loc[mask, "condition_element_table_id"]
         element_df = getattr(net, table)
         col = "closed" if table == "switch" else "in_service"
-        rules.loc[mask, "energized"] = element_df.loc[ids, col].to_numpy()
+        conditions.loc[mask, "energized"] = element_df.loc[ids, col].to_numpy()
 
 
 _FAILURE_RESULT_TABLES: Final[tuple[str, ...]] = (
@@ -111,11 +120,11 @@ _FAILURE_RESULT_TABLES: Final[tuple[str, ...]] = (
 
 
 def _populate_failed(
-    rules: pd.DataFrame,
+    conditions: pat.DataFrame[SppsConditionsPandapowerSchema],
     failed_elements: set[str],
     net: pp.pandapowerNet,
 ) -> None:
-    """Write a ``failed`` boolean column onto *rules* for ``"failed"`` checks.
+    """Write a ``failed`` boolean column onto *conditions* for ``"failed"`` checks.
 
     Only rows whose ``condition_check_type == "failed"`` are evaluated; every
     other row gets ``failed = False`` and is ignored by
@@ -133,36 +142,39 @@ def _populate_failed(
 
     Parameters
     ----------
-    rules
-        Rules DataFrame. Must already have ``energized`` populated (see
+    conditions
+        Conditions DataFrame. Must already have ``energized`` populated (see
         :func:`_populate_energized`). Mutated in place.
     failed_elements
         Set of compound uids (see :func:`spps.schema.make_element_uid`).
     net
         Pandapower network; only ``res_*`` tables are read.
     """
-    rules["failed"] = False
-    failed_type_mask = rules["condition_check_type"] == SppsConditionCheckType.FAILED
+    conditions["failed"] = False
+    failed_type_mask = conditions["condition_check_type"] == SppsConditionCheckType.FAILED
     if not failed_type_mask.any():
         return
 
-    uids = rules["condition_element_table_id"].astype(str) + SEPARATOR + rules["condition_element_table"].astype(str)
-    rules.loc[failed_type_mask, "failed"] = uids.loc[failed_type_mask].isin(failed_elements).to_numpy()
+    uids = (
+        conditions["condition_element_table_id"].astype(str) + SEPARATOR + conditions["condition_element_table"].astype(str)
+    )
 
-    energized = rules["energized"].fillna(False).astype(bool)
+    conditions.loc[failed_type_mask, "failed"] = uids.loc[failed_type_mask].isin(failed_elements).to_numpy()
+
+    energized = conditions["energized"].fillna(False).astype(bool)
 
     for table in _FAILURE_RESULT_TABLES:
-        mask = (rules["condition_element_table"] == table) & failed_type_mask
+        mask = (conditions["condition_element_table"] == table) & failed_type_mask
         if not mask.any():
             continue
         res = getattr(net, f"res_{table}", None)
         if res is None or res.empty:
             continue
 
-        ids = rules.loc[mask, "condition_element_table_id"]
+        ids = conditions.loc[mask, "condition_element_table_id"]
         has_nan = res.reindex(ids).isna().any(axis=1).to_numpy()
         auto = energized.loc[mask].to_numpy() & has_nan
-        rules.loc[mask, "failed"] = rules.loc[mask, "failed"].to_numpy() | auto
+        conditions.loc[mask, "failed"] = conditions.loc[mask, "failed"].to_numpy() | auto
 
 
 # --------------------------------------------------------------------------- #
@@ -226,43 +238,67 @@ def _extract_res_values(
             rules.loc[mask, "condition_element_value"] = res_table.loc[ids, col].abs().to_numpy()
 
 
-def _extract_bus_voltage(rules: pd.DataFrame, net: pp.pandapowerNet) -> None:
+def _extract_bus_voltage(conditions: pat.DataFrame[SppsConditionsPandapowerSchema], net: pp.pandapowerNet) -> None:
     """Copy bus voltage magnitudes (p.u.) into ``condition_element_value``.
 
-    Applies only to rows where ``condition_element_table == "bus"`` and
-    ``condition_type == "Voltage"``. The engine works entirely in p.u. for
-    voltage — callers must convert ``condition_limit_value`` to p.u.
-    up-front (see :func:`spps.preprocessing.convert_voltage_rules_to_pu`)
-    so the comparison in :func:`_evaluate_conditions` is unit-consistent.
+    Only rows with ``condition_element_table == "bus"`` and
+    ``condition_type`` equal to :attr:`SppsConditionType.VOLTAGE` are updated;
+    ``vm_pu`` is read from ``net.res_bus``. All voltages in this path are in
+    per-unit; ``condition_limit_value`` for those rows should already be in
+    p.u. (see :func:`spps.preprocessing.convert_voltage_rules_to_pu`) so
+    :func:`_evaluate_conditions` compares like units.
 
-    Mutates *rules* in place.
+    Parameters
+    ----------
+    conditions : pat.DataFrame[SppsConditionsPandapowerSchema]
+        Rule rows; must already have ``condition_element_value`` (typically
+        pre-filled by :func:`_extract_condition_values`). Mutated in place.
+    net : pandapower.pandapowerNet
+        Network with ``res_bus`` containing ``vm_pu`` for the current solve.
+        Not modified.
+
+    Returns
+    -------
+    None
+        Matching rows in *conditions* get ``condition_element_value`` from
+        ``res_bus``; other rows are left unchanged by this helper.
     """
-    mask = (rules["condition_element_table"] == "bus") & (rules["condition_type"] == SppsConditionType.VOLTAGE)
+    mask = (conditions["condition_element_table"] == "bus") & (conditions["condition_type"] == SppsConditionType.VOLTAGE)
     if not mask.any():
         return
-    ids = rules.loc[mask, "condition_element_table_id"]
-    rules.loc[mask, "condition_element_value"] = net.res_bus.loc[ids, "vm_pu"].to_numpy()
+    ids = conditions.loc[mask, "condition_element_table_id"]
+    conditions.loc[mask, "condition_element_value"] = net.res_bus.loc[ids, "vm_pu"].to_numpy()
 
 
-def _extract_condition_values(rules: pd.DataFrame, net: pp.pandapowerNet) -> None:
+def _extract_condition_values(conditions: pat.DataFrame[SppsConditionsPandapowerSchema], net: pp.pandapowerNet) -> None:
     """Populate ``condition_element_value`` with the current power-flow result.
 
-    Initialises the column to NaN, then fills it from ``net.res_*`` tables:
+    The column is initialised to NaN for every row, then values are filled from
+    ``net`` result tables: branch-style elements (line, trafo, trafo3w) use
+    :data:`RESULT_COLUMNS` via :func:`_extract_res_values`, and bus rows use
+    :func:`_extract_bus_voltage`. Unmatched ``(condition_element_table,
+    condition_type, condition_side)`` combinations stay NaN and fail numeric
+    checks in :func:`_evaluate_conditions`.
 
-    * lines / trafos / trafo3w via :data:`spps.schema.RESULT_COLUMNS` and
-      :func:`_extract_res_values`;
-    * bus voltages via :func:`_extract_bus_voltage`.
+    Parameters
+    ----------
+    conditions : pat.DataFrame[SppsConditionsPandapowerSchema]
+        Rule rows; must include ``condition_element_table`` and related
+        condition columns. Mutated in place.
+    net : pandapower.pandapowerNet
+        Network with converged or last-good ``res_*`` tables (``res_bus``,
+        ``res_line``, etc.) for the current solve. Not modified.
 
-    Rows whose ``(condition_element_table, condition_type)`` combination is
-    not supported keep NaN, which then evaluates to ``False`` in every
-    numeric check inside :func:`_evaluate_conditions`.
-
-    Mutates *rules* in place.
+    Returns
+    -------
+    None
+        *conditions* gains a ``condition_element_value`` column (float); *net*
+        is unchanged.
     """
-    rules["condition_element_value"] = pd.Series(float("nan"), index=rules.index, dtype="float64")
+    conditions["condition_element_value"] = pd.Series(float("nan"), index=conditions.index, dtype="float64")
     for element_type, col_map in RESULT_COLUMNS.items():
-        _extract_res_values(rules, net, element_type, col_map)
-    _extract_bus_voltage(rules, net)
+        _extract_res_values(conditions, net, element_type, col_map)
+    _extract_bus_voltage(conditions, net)
 
 
 # --------------------------------------------------------------------------- #
@@ -270,49 +306,60 @@ def _extract_condition_values(rules: pd.DataFrame, net: pp.pandapowerNet) -> Non
 # --------------------------------------------------------------------------- #
 
 
-def _evaluate_conditions(rules: pd.DataFrame) -> None:
+def _evaluate_conditions(conditions: pat.DataFrame[SppsConditionsPandapowerSchema]) -> None:
     """Evaluate every rule's check and write the result into ``is_condition``.
 
-    Supported ``condition_check_type`` values and their semantics:
+    For each row, ``condition_check_type`` (see :class:`SppsConditionCheckType`
+    wire values) selects the branch:
 
-    * ``">"``  — ``condition_element_value > condition_limit_value``
-    * ``"<"``  — ``condition_element_value < condition_limit_value``
-    * ``"="``  — ``condition_element_value == condition_limit_value``
-    * ``"failed"`` — the ``failed`` column populated by
-      :func:`_populate_failed`
-    * ``"de_energized"`` — the ``energized`` column from
-      :func:`_populate_energized` is explicitly ``False``
+    * :attr:`SppsConditionCheckType.GT` / LT / EQ — compare ``condition_element_value`` to
+      ``condition_limit_value`` for numeric thresholds.
+    * :attr:`SppsConditionCheckType.FAILED` — use the ``failed`` column from
+      :func:`_populate_failed`.
+    * :attr:`SppsConditionCheckType.DE_ENERGIZED` — use ``energized`` from
+      :func:`_populate_energized` (pass when ``energized`` is false).
 
-    Any NaN (e.g. unsupported element type, missing power-flow result)
-    evaluates to ``False`` — missing data is never treated as a passing
-    condition. Rows with an unknown check type silently keep
-    ``is_condition = False``; consider adding stricter validation upstream.
+    NaNs in value/limit/failed/energized comparisons yield ``False`` for that
+    row. Unknown or unsupported check types keep ``is_condition == False``
+    (consider validating upstream with :class:`SppsConditionsPandapowerSchema`).
 
-    Mutates *rules* in place.
+    Parameters
+    ----------
+    conditions : pat.DataFrame[SppsConditionsPandapowerSchema]
+        Rule rows. Must have ``condition_check_type``, ``condition_element_value``,
+        ``condition_limit_value``, and for state checks the ``failed`` and
+        ``energized`` columns from :func:`_populate_failed` and
+        :func:`_populate_energized`. Mutated in place.
+
+    Returns
+    -------
+    None
+        *conditions* gets a boolean column ``is_condition`` (overwritten in full
+        on each call).
     """
-    rules["is_condition"] = False
+    conditions["is_condition"] = False
 
-    check = rules["condition_check_type"]
-    value = rules["condition_element_value"]
-    limit = rules["condition_limit_value"]
+    check = conditions["condition_check_type"]
+    value = conditions["condition_element_value"]
+    limit = conditions["condition_limit_value"]
 
     gt_mask = check == SppsConditionCheckType.GT
-    rules.loc[gt_mask, "is_condition"] = (value[gt_mask] > limit[gt_mask]).fillna(False)
+    conditions.loc[gt_mask, "is_condition"] = (value[gt_mask] > limit[gt_mask]).fillna(False)
 
     lt_mask = check == SppsConditionCheckType.LT
-    rules.loc[lt_mask, "is_condition"] = (value[lt_mask] < limit[lt_mask]).fillna(False)
+    conditions.loc[lt_mask, "is_condition"] = (value[lt_mask] < limit[lt_mask]).fillna(False)
 
     eq_mask = check == SppsConditionCheckType.EQ
-    rules.loc[eq_mask, "is_condition"] = (value[eq_mask] == limit[eq_mask]).fillna(False)
+    conditions.loc[eq_mask, "is_condition"] = (value[eq_mask] == limit[eq_mask]).fillna(False)
 
     failed_mask = check == SppsConditionCheckType.FAILED
-    rules.loc[failed_mask, "is_condition"] = rules.loc[failed_mask, "failed"].fillna(False)
+    conditions.loc[failed_mask, "is_condition"] = conditions.loc[failed_mask, "failed"].fillna(False)
 
     de_mask = check == SppsConditionCheckType.DE_ENERGIZED
-    rules.loc[de_mask, "is_condition"] = (rules.loc[de_mask, "energized"] == False).fillna(False)  # noqa: E712
+    conditions.loc[de_mask, "is_condition"] = ~conditions.loc[de_mask, "energized"].fillna(False)
 
 
-def _satisfied_scheme_names(conditions: pd.DataFrame) -> set[str]:
+def _satisfied_scheme_names(conditions: pat.DataFrame[SppsConditionsPandapowerSchema]) -> set[str]:
     """Return the names of schemes for which every condition row passes.
 
     A scheme is satisfied when **all** of its condition rows have
@@ -322,7 +369,7 @@ def _satisfied_scheme_names(conditions: pd.DataFrame) -> set[str]:
     Parameters
     ----------
     conditions
-        Conditions DataFrame with ``is_condition`` populated by
+        Conditions SppsConditionsPandapowerSchema with ``is_condition`` populated by
         :func:`_evaluate_conditions`.
     """
     satisfied = conditions["is_condition"].fillna(False).groupby(conditions["scheme_name"]).all()
@@ -347,12 +394,12 @@ def _apply_switch_actions(actions: pd.DataFrame, net: pp.pandapowerNet) -> None:
     if sw.empty:
         return
     ids = sw["measure_element_table_id"]
-    closed = sw["measure_value"] == SppsSwitchActionTarget.CLOSED.value
+    closed = (sw["measure_value"] == SppsSwitchActionTarget.CLOSED.value).to_numpy()
     net.switch.loc[ids, "closed"] = closed
     logger.debug("Applied %d switch actions (ids=%s)", len(sw), ids.tolist())
 
 
-def _apply_actions(actions: pd.DataFrame, net: pp.pandapowerNet) -> None:
+def _apply_actions(actions: pat.DataFrame[SppsActionsPandapowerSchema], net: pp.pandapowerNet) -> None:
     """Apply every action row in *actions* to *net*.
 
     Dispatches as follows:
@@ -430,14 +477,30 @@ def _run_power_flow(
     method: Literal["ac", "dc"],
     runpp_kwargs: dict[str, Any],
 ) -> None:
-    """Dispatch to the right pandapower solver.
+    """Dispatch to the pandapower load-flow solver for *net*.
 
-    * ``method="ac"`` → :func:`pandapower.runpp` (Newton AC power flow).
-    * ``method="dc"`` → :func:`pandapower.rundcpp` (linear DC power flow).
+    * ``method="ac"`` — :func:`pandapower.runpp` (AC Newton power flow).
+    * ``method="dc"`` — :func:`pandapower.rundcpp` (linear DC power flow).
 
-    *runpp_kwargs* is forwarded verbatim. This helper exists so the
-    pre-loop call and every in-loop call go through the exact same code
-    path.
+    ``runpp_kwargs`` is forwarded unchanged. Used so the initial solve and every
+    in-loop solve share one code path. Exceptions (e.g. non-convergence) are
+    not caught here.
+
+    Parameters
+    ----------
+    net : pandapower.pandapowerNet
+        Network to solve; ``res_*`` and element tables are updated in place by
+        pandapower.
+    method : {"ac", "dc"}
+        ``"ac"`` for full AC, ``"dc"`` for DC approximation.
+    runpp_kwargs : dict[str, Any]
+        Extra keyword arguments for :func:`pandapower.runpp` or
+        :func:`pandapower.rundcpp` (empty dict is fine).
+
+    Returns
+    -------
+    None
+        *net* holds the solver result on success; on failure, pandapower raises.
     """
     if method == "dc":
         pp.rundcpp(net, **runpp_kwargs)

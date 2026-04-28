@@ -34,41 +34,41 @@ ELEMENT_TABLES: Final[tuple[str, ...]] = (
 
 RESULT_COLUMNS: Final[dict[str, dict[str, dict[str, str]]]] = {
     "trafo3w": {
-        "Current": {
-            "Primary": "i_hv_ka",
-            "Secondary": "i_mv_ka",
-            "Tertiary": "i_lv_ka",
+        "current": {
+            "primary": "i_hv_ka",
+            "secondary": "i_mv_ka",
+            "tertiary": "i_lv_ka",
         },
-        "Active power": {
-            "Primary": "p_hv_mw",
-            "Secondary": "p_mv_mw",
-            "Tertiary": "p_lv_mw",
+        "active_power": {
+            "primary": "p_hv_mw",
+            "secondary": "p_mv_mw",
+            "tertiary": "p_lv_mw",
         },
-        "Reactive power": {
-            "Primary": "q_hv_mvar",
-            "Secondary": "q_mv_mvar",
-            "Tertiary": "q_lv_mvar",
+        "reactive_power": {
+            "primary": "q_hv_mvar",
+            "secondary": "q_mv_mvar",
+            "tertiary": "q_lv_mvar",
         },
     },
     "trafo": {
-        "Current": {"Primary": "i_hv_ka", "Secondary": "i_lv_ka"},
-        "Active power": {"Primary": "p_hv_mw", "Secondary": "p_lv_mw"},
-        "Reactive power": {"Primary": "q_hv_mvar", "Secondary": "q_lv_mvar"},
+        "current": {"primary": "i_hv_ka", "secondary": "i_lv_ka"},
+        "active_power": {"primary": "p_hv_mw", "secondary": "p_lv_mw"},
+        "reactive_power": {"primary": "q_hv_mvar", "secondary": "q_lv_mvar"},
     },
     "line": {
-        "Current": {"Primary": "i_from_ka", "Secondary": "i_to_ka"},
-        "Active power": {"Primary": "p_from_mw", "Secondary": "p_to_mw"},
-        "Reactive power": {"Primary": "q_from_mvar", "Secondary": "q_to_mvar"},
+        "current": {"primary": "i_from_ka", "secondary": "i_to_ka"},
+        "active_power": {"primary": "p_from_mw", "secondary": "p_to_mw"},
+        "reactive_power": {"primary": "q_from_mvar", "secondary": "q_to_mvar"},
     },
 }
 
 ACTION_COLUMNS: Final[dict[str, dict[str, str]]] = {
-    "gen": {"Active power": "p_mw", "Voltage": "vm_pu"},
-    "sgen": {"Active power": "p_mw", "Reactive power": "q_mvar"},
-    "load": {"Active power": "p_mw", "Reactive power": "q_mvar"},
-    "shunt": {"Active power": "p_mw", "Reactive power": "q_mvar"},
-    "ward": {"Active power": "ps_mw", "Reactive power": "qs_mvar"},
-    "xward": {"Active power": "ps_mw", "Reactive power": "qs_mvar"},
+    "gen": {"active_power": "p_mw", "voltage": "vm_pu"},
+    "sgen": {"active_power": "p_mw", "reactive_power": "q_mvar"},
+    "load": {"active_power": "p_mw", "reactive_power": "q_mvar"},
+    "shunt": {"active_power": "p_mw", "reactive_power": "q_mvar"},
+    "ward": {"active_power": "ps_mw", "reactive_power": "qs_mvar"},
+    "xward": {"active_power": "ps_mw", "reactive_power": "qs_mvar"},
 }
 
 

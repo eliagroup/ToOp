@@ -7,6 +7,8 @@
 
 """Utilities for translating CGMES and globally unique IDs into pandapower tables, monitored elements."""
 
+from typing import Optional
+
 import numpy as np
 import pandapower
 import pandas as pd
@@ -264,8 +266,23 @@ def extract_contingencies_with_cgmes_id(
 def _resolve_unique_pandapower_element(net: pandapowerNet, unique_id: str) -> tuple[str, int]:
     """Resolve a pandapower globally unique id into a ``(table, table_id)`` pair.
 
-    Raises ``ValueError`` if the id cannot be parsed or the element is not
-    present in ``net``.
+    ``unique_id`` is parsed as ``"<table_id>%%<table>"``; the table is mapped to
+    the corresponding non-result DataFrame in ``net`` and ``table_id`` is
+    checked against that table's index. Raises ``ValueError`` if parsing fails
+    or the element is not present in ``net``.
+
+    Parameters
+    ----------
+    net : pandapowerNet
+        The network whose element tables are used to validate the resolved id.
+    unique_id : str
+        Pandapower globally unique id string (``"%%"``-separated id and type).
+
+    Returns
+    -------
+    tuple[str, int]
+        ``(table, table_id)`` where ``table`` is the pandapower element table
+        name and ``table_id`` the row index in that table.
     """
     pp_id, pp_type = parse_globally_unique_id(unique_id)
     table = get_element_table(pp_type, res_table=False)
@@ -278,7 +295,28 @@ def _build_spps_condition_rows(
     rule: SppsRule,
     resolved_conditions: list[tuple[Condition, str, int]],
 ) -> list[dict]:
-    """Build one DataFrame row per resolved condition, including ``scheme_name``."""
+    """Build one row dict per resolved condition for SpPS condition tables.
+
+    Each dict matches ``SppsConditionsPandapowerSchema`` column names, mixing
+    fields from the ``Condition`` with the resolved pandapower
+    ``(table, table_id)`` for the monitored element.
+
+    Parameters
+    ----------
+    rule : SppsRule
+        The rule; ``scheme_name`` is copied into every row.
+    resolved_conditions : list[tuple[Condition, str, int]]
+        For each condition, the ``Condition`` plus ``condition_element_table``
+        and ``condition_element_table_id`` after unique-id resolution.
+
+    Returns
+    -------
+    list[dict]
+        One mapping per condition, with keys including ``scheme_name``,
+        ``condition_type``, ``condition_check_type``, ``condition_side``,
+        ``condition_limit_value``, ``condition_element_table``, and
+        ``condition_element_table_id``.
+    """
     rows = []
     for condition, cond_table, cond_table_id in resolved_conditions:
         rows.append(
@@ -299,7 +337,27 @@ def _build_spps_action_rows(
     rule: SppsRule,
     resolved_actions: list[tuple[Action, str, int]],
 ) -> list[dict]:
-    """Build one DataFrame row per resolved action, including ``scheme_name``."""
+    """Build one row dict per resolved action for SpPS action tables.
+
+    Each dict matches ``SppsActionsPandapowerSchema`` column names, mixing
+    fields from the ``Action`` with the resolved pandapower ``(table, table_id)``
+    for the measure element.
+
+    Parameters
+    ----------
+    rule : SppsRule
+        The rule; ``scheme_name`` is copied into every row.
+    resolved_actions : list[tuple[Action, str, int]]
+        For each action, the ``Action`` plus ``measure_element_table`` and
+        ``measure_element_table_id`` after unique-id resolution.
+
+    Returns
+    -------
+    list[dict]
+        One mapping per action, with keys including ``scheme_name``,
+        ``measure_element_table``, ``measure_element_table_id``, ``measure_type``,
+        and ``measure_value``.
+    """
     rows = []
     for action, meas_table, meas_table_id in resolved_actions:
         rows.append(
@@ -317,7 +375,7 @@ def _build_spps_action_rows(
 @pa.check_types
 def extract_spps_rules_with_unique_pandapower_id(
     net: pandapowerNet,
-    rules: list[SppsRule],
+    rules: Optional[list[SppsRule]],
 ) -> tuple[
     pat.DataFrame[SppsConditionsPandapowerSchema], pat.DataFrame[SppsActionsPandapowerSchema], list[SppsRule], list[str]
 ]:
@@ -328,14 +386,15 @@ def extract_spps_rules_with_unique_pandapower_id(
     (``"<table_id>%%<table>"``) and resolved into ``(table, table_id)`` pairs.
     Resolved pairs are validated against ``net``.
 
-    Rules whose conditions or actions reference ids not present in ``net`` are
-    dropped from the result and returned in ``missing_rules``.
+    Rules with no conditions or no actions, and rules whose conditions or
+    actions reference ids not present in ``net``, are dropped from the result
+    and returned in ``missing_rules``.
 
     Parameters
     ----------
     net : pandapowerNet
         The pandapower network used to validate resolved condition / action ids.
-    rules : list[SppsRule]
+    rules : Optional[list[SppsRule]]
         The list of SpPS rules to translate.
 
     Returns
@@ -345,8 +404,9 @@ def extract_spps_rules_with_unique_pandapower_id(
     pat.DataFrame[SppsActionsPandapowerSchema]
         One row per action, keyed by ``scheme_name``.
     list[SppsRule]
-        SpPS rules dropped because a condition or action id could not be
-        parsed or the referenced element was not found in ``net``.
+        SpPS rules dropped because the rule has no conditions or no actions, a
+        condition or action id could not be parsed, or the referenced element
+        was not found in ``net``.
     list[str]
         A list of ids that were not unique in the grid. This is only relevant
         for cgmes ids and is always empty in this mode.
@@ -360,6 +420,9 @@ def extract_spps_rules_with_unique_pandapower_id(
         return empty_conditions, empty_actions, missing_rules, []
 
     for rule in rules:
+        if not rule.conditions or not rule.actions:
+            missing_rules.append(rule)
+            continue
         try:
             resolved_conditions = [
                 (c, *_resolve_unique_pandapower_element(net, c.condition_element_unique_id)) for c in rule.conditions
@@ -386,10 +449,28 @@ def _resolve_cgmes_element(
 ) -> tuple[str, int]:
     """Resolve a CGMES GUID into a pandapower ``(table, table_id)`` pair.
 
-    Appends ``guid`` to ``seen_duplicated_ids`` when it was flagged as
-    non-unique during the ``cgmes_ids`` lookup build.
+    ``cgmes_ids`` is the mapping from ``get_cgmes_id_to_table_df`` (index =
+    origin id, columns include ``table_id`` and ``table``). If ``guid`` was
+    marked as duplicated when that mapping was built, it is recorded in
+    ``seen_duplicated_ids`` so callers can report non-unique ids. Raises
+    ``KeyError`` if ``guid`` is not in ``cgmes_ids.index``.
 
-    Raises ``KeyError`` if the GUID is not present in ``cgmes_ids``.
+    Parameters
+    ----------
+    cgmes_ids : pd.DataFrame
+        DataFrame mapping CGMES / ``origin_id`` values to ``table`` and
+        ``table_id``, indexed by origin id (from ``get_cgmes_id_to_table_df``).
+    duplicated_ids : list[str]
+        Ids that appeared more than once when ``cgmes_ids`` was built.
+    seen_duplicated_ids : list[str]
+        Mutable list; ``guid`` is appended when it is in ``duplicated_ids``.
+    guid : str
+        The condition or action element id to look up in ``cgmes_ids``.
+
+    Returns
+    -------
+    tuple[str, int]
+        ``(table, table_id)`` for the pandapower element row.
     """
     if guid in duplicated_ids:
         seen_duplicated_ids.append(guid)
@@ -400,7 +481,7 @@ def _resolve_cgmes_element(
 @pa.check_types
 def extract_spps_rules_with_cgmes_id(
     net: pandapowerNet,
-    rules: list[SppsRule],
+    rules: Optional[list[SppsRule]],
 ) -> tuple[
     pat.DataFrame[SppsConditionsPandapowerSchema], pat.DataFrame[SppsActionsPandapowerSchema], list[SppsRule], list[str]
 ]:
@@ -411,16 +492,16 @@ def extract_spps_rules_with_cgmes_id(
     element. Both are resolved to pandapower ``(table, table_id)`` pairs via
     the network's ``origin_id`` columns.
 
-    Rules for which any condition or action GUID cannot be resolved to an
-    element in ``net`` are dropped from the result and returned in
-    ``missing_rules``.
+    Rules with no conditions or no actions, and rules for which any condition
+    or action GUID cannot be resolved to an element in ``net``, are dropped
+    from the result and returned in ``missing_rules``.
 
     Parameters
     ----------
     net : pandapowerNet
         The pandapower network used to resolve CGMES GUIDs into pandapower
         table names and row ids.
-    rules : list[SppsRule]
+    rules : Optional[list[SppsRule]]
         The list of SpPS rules to translate. Each condition's
         ``condition_element_unique_id`` and each action's
         ``measure_element_unique_id`` must contain the CGMES GUID of the
@@ -431,8 +512,9 @@ def extract_spps_rules_with_cgmes_id(
     pat.DataFrame[SppsConditionsPandapowerSchema]
     pat.DataFrame[SppsActionsPandapowerSchema]
     list[SppsRule]
-        The SpPS rules that were dropped because at least one of their
-        condition/action GUIDs could not be resolved in ``net``.
+        The SpPS rules that were dropped because the rule has no conditions or
+        no actions, or at least one condition/action GUID could not be resolved
+        in ``net``.
     list[str]
         A list of GUIDs that were not unique in the grid.
     """
@@ -449,6 +531,9 @@ def extract_spps_rules_with_cgmes_id(
         return empty_conditions, empty_actions, missing_rules, []
 
     for rule in rules:
+        if not rule.conditions or not rule.actions:
+            missing_rules.append(rule)
+            continue
         try:
             resolved_conditions = [
                 (c, *_resolve_cgmes_element(cgmes_ids, duplicated_ids, seen_duplicated_ids, c.condition_element_unique_id))

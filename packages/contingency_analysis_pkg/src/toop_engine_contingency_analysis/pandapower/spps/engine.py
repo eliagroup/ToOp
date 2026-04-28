@@ -1,3 +1,10 @@
+# Copyright 2026 50Hertz Transmission GmbH and Elia Transmission Belgium SA/NV
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+# If a copy of the MPL was not distributed with this file,
+# you can obtain one at https://mozilla.org/MPL/2.0/.
+# Mozilla Public License, version 2.0
+
 """Core rule-engine algorithm: ``run_spps`` and its private helpers.
 
 Mental model
@@ -41,6 +48,13 @@ from toop_engine_contingency_analysis.pandapower.spps.schema import (
     SppsResult,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
+from toop_engine_interfaces.spps_parameters import (
+    SppsConditionCheckType,
+    SppsConditionSide,
+    SppsConditionType,
+    SppsPowerFlowFailurePolicy,
+    SppsSwitchActionTarget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +73,7 @@ def _populate_energized(rules: pd.DataFrame, net: pp.pandapowerNet) -> None:
     * switches → ``net.switch.closed``
     * everything else → ``net.<table>.in_service``
 
-    The resulting ``energized`` column is used by both the ``"De-energized"``
+    The resulting ``energized`` column is used by both the ``"de_energized"``
     check (``energized == False``) and the NaN-based failure auto-detection
     inside :func:`_populate_failed` (only energized elements can legitimately
     be flagged as "failed in place").
@@ -101,11 +115,11 @@ def _populate_failed(
     failed_elements: set[str],
     net: pp.pandapowerNet,
 ) -> None:
-    """Write a ``failed`` boolean column onto *rules* for ``"Failed"`` checks.
+    """Write a ``failed`` boolean column onto *rules* for ``"failed"`` checks.
 
-    Only rows whose ``condition_check_type == "Failed"`` are evaluated; every
+    Only rows whose ``condition_check_type == "failed"`` are evaluated; every
     other row gets ``failed = False`` and is ignored by
-    :func:`_evaluate_conditions`'s "Failed" branch.
+    :func:`_evaluate_conditions`'s ``"failed"`` branch.
 
     A condition element is flagged as failed when **either**:
 
@@ -128,7 +142,7 @@ def _populate_failed(
         Pandapower network; only ``res_*`` tables are read.
     """
     rules["failed"] = False
-    failed_type_mask = rules["condition_check_type"] == "Failed"
+    failed_type_mask = rules["condition_check_type"] == SppsConditionCheckType.FAILED
     if not failed_type_mask.any():
         return
 
@@ -197,7 +211,7 @@ def _extract_res_values(
             continue
         all_cols = list(dict.fromkeys(sides.values()))
 
-        max_mask = type_mask & (rules["condition_side"] == "Maximum value")
+        max_mask = type_mask & (rules["condition_side"] == SppsConditionSide.MAXIMUM_VALUE)
         if max_mask.any():
             ids = rules.loc[max_mask, "condition_element_table_id"]
             vals = res_table.loc[ids, all_cols].abs()
@@ -223,7 +237,7 @@ def _extract_bus_voltage(rules: pd.DataFrame, net: pp.pandapowerNet) -> None:
 
     Mutates *rules* in place.
     """
-    mask = (rules["condition_element_table"] == "bus") & (rules["condition_type"] == "Voltage")
+    mask = (rules["condition_element_table"] == "bus") & (rules["condition_type"] == SppsConditionType.VOLTAGE)
     if not mask.any():
         return
     ids = rules.loc[mask, "condition_element_table_id"]
@@ -264,9 +278,9 @@ def _evaluate_conditions(rules: pd.DataFrame) -> None:
     * ``">"``  — ``condition_element_value > condition_limit_value``
     * ``"<"``  — ``condition_element_value < condition_limit_value``
     * ``"="``  — ``condition_element_value == condition_limit_value``
-    * ``"Failed"``       — the ``failed`` column populated by
+    * ``"failed"`` — the ``failed`` column populated by
       :func:`_populate_failed`
-    * ``"De-energized"`` — the ``energized`` column populated by
+    * ``"de_energized"`` — the ``energized`` column from
       :func:`_populate_energized` is explicitly ``False``
 
     Any NaN (e.g. unsupported element type, missing power-flow result)
@@ -282,19 +296,19 @@ def _evaluate_conditions(rules: pd.DataFrame) -> None:
     value = rules["condition_element_value"]
     limit = rules["condition_limit_value"]
 
-    gt_mask = check == ">"
+    gt_mask = check == SppsConditionCheckType.GT
     rules.loc[gt_mask, "is_condition"] = (value[gt_mask] > limit[gt_mask]).fillna(False)
 
-    lt_mask = check == "<"
+    lt_mask = check == SppsConditionCheckType.LT
     rules.loc[lt_mask, "is_condition"] = (value[lt_mask] < limit[lt_mask]).fillna(False)
 
-    eq_mask = check == "="
+    eq_mask = check == SppsConditionCheckType.EQ
     rules.loc[eq_mask, "is_condition"] = (value[eq_mask] == limit[eq_mask]).fillna(False)
 
-    failed_mask = check == "Failed"
+    failed_mask = check == SppsConditionCheckType.FAILED
     rules.loc[failed_mask, "is_condition"] = rules.loc[failed_mask, "failed"].fillna(False)
 
-    de_mask = check == "De-energized"
+    de_mask = check == SppsConditionCheckType.DE_ENERGIZED
     rules.loc[de_mask, "is_condition"] = (rules.loc[de_mask, "energized"] == False).fillna(False)  # noqa: E712
 
 
@@ -323,10 +337,9 @@ def _satisfied_scheme_names(conditions: pd.DataFrame) -> set[str]:
 def _apply_switch_actions(actions: pd.DataFrame, net: pp.pandapowerNet) -> None:
     """Apply every switch-targeted action by writing ``net.switch.closed``.
 
-    ``measure_value`` for switch rows is the string ``"Open"`` or
-    ``"Closed"``. Anything other than the literal string ``"Closed"`` is
-    interpreted as *open* (``closed = False``). Consider validating the
-    value upstream if you want strict error reporting on typos.
+    For string ``measure_value``, **closed** is recognized case-insensitively
+    (e.g. ``"closed"`` or ``"Closed"``). Any other string, including
+    ``"open"`` / ``"Open"``, sets ``closed = False``.
 
     Mutates *net* in place.
     """
@@ -334,7 +347,7 @@ def _apply_switch_actions(actions: pd.DataFrame, net: pp.pandapowerNet) -> None:
     if sw.empty:
         return
     ids = sw["measure_element_table_id"]
-    closed = (sw["measure_value"] == "Closed").to_numpy()
+    closed = sw["measure_value"] == SppsSwitchActionTarget.CLOSED.value
     net.switch.loc[ids, "closed"] = closed
     logger.debug("Applied %d switch actions (ids=%s)", len(sw), ids.tolist())
 
@@ -393,9 +406,9 @@ def _snapshot_res_tables(net: pp.pandapowerNet) -> dict[str, pd.DataFrame]:
 
     Each value is a full (deep) pandas ``DataFrame.copy()`` so subsequent
     solver calls cannot mutate it. Non-DataFrame entries under the ``res_``
-    prefix (if any) are ignored. Only used when
-    ``on_power_flow_error == "keep_previous"`` so the normal path pays no
-    copy cost.
+    prefix (if any) are ignored.     Only used when
+    :attr:`SppsPowerFlowFailurePolicy.KEEP_PREVIOUS` is selected so the normal
+    path pays no copy cost.
     """
     return {k: v.copy() for k, v in net.items() if k.startswith("res_") and isinstance(v, pd.DataFrame)}
 
@@ -445,7 +458,7 @@ def run_spps(
     method: Literal["ac", "dc"] = "ac",
     max_iterations: int = 1,
     runpp_kwargs: dict[str, Any] | None = None,
-    on_power_flow_error: Literal["raise", "keep_previous"] = "raise",
+    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE,
 ) -> SppsResult:
     """Execute the SpPS rule engine.
 
@@ -459,7 +472,7 @@ def run_spps(
         Action rows sharing ``scheme_name`` with *conditions*:
         :class:`SppsActionsPandapowerSchema`.
     failed_elements
-        Compound uids of elements considered failed (for ``"Failed"`` checks).
+        Compound uids of elements considered failed (for ``"failed"`` checks).
         Each uid must follow the format ``f"{elem_id}{SEPARATOR}{elem_type}"``
         (see :func:`spps.schema.make_element_uid`) and can reference
         ``switch``, ``line``, ``bus``, ``trafo``, ``trafo3w``, ``impedance``,
@@ -469,12 +482,13 @@ def run_spps(
         ``"ac"`` (default) runs ``pp.runpp``; ``"dc"`` runs ``pp.rundcpp``.
     max_iterations
         Upper bound on iterations. The loop stops early when no scheme triggers.
+        After each batch of actions (including on the final iteration), a
+        power flow is run so ``res_*`` matches the updated net.
     runpp_kwargs
         Keyword arguments forwarded to the power-flow solver on every call.
     on_power_flow_error
-        Strategy for power-flow failures *inside* the iteration loop
-        (the initial PF always raises, as there is no previous state to fall
-        back on):
+        Strategy for power-flow failures after applying actions (the initial PF
+        always raises, as there is no previous state to fall back on):
 
         * ``"raise"`` (default) — wrap the underlying exception in
           :class:`spps.errors.SppsPowerFlowError` and re-raise.
@@ -493,8 +507,9 @@ def run_spps(
     Raises
     ------
     SppsPowerFlowError
-        If the initial power flow fails, or an iteration-level power flow
-        fails while ``on_power_flow_error="raise"``.
+        If the initial power flow fails, or a post-action power flow fails
+        while ``on_power_flow_error="raise"``. Subclasses of :class:`SppsError`
+        raised by the solver path are not double-wrapped.
     """
     schemes_per_iter: list[list[str]] = []
     activated_scheme_names: set[str] = set()
@@ -509,10 +524,7 @@ def run_spps(
     # are handled as "failed" instead of updating energized status dynamically.
     _populate_energized(conditions, net)
 
-    try:
-        _run_power_flow(net, method, runpp_kwargs)
-    except Exception as exc:
-        raise SppsPowerFlowError(f"Initial power flow failed; cannot run SpPS: {exc}") from exc
+    _run_power_flow(net, method, runpp_kwargs)
 
     for iteration in range(1, max_iterations + 1):
         iterations = iteration
@@ -546,23 +558,23 @@ def run_spps(
         activated_scheme_names.update(new_schemes)
         _apply_actions(active_actions, net)
 
-        if iteration < max_iterations:
-            snapshot = _snapshot_res_tables(net) if on_power_flow_error == "keep_previous" else None
-            try:
-                _run_power_flow(net, method, runpp_kwargs)
-            except Exception as exc:
-                if on_power_flow_error == "raise":
-                    raise SppsPowerFlowError(f"Power flow failed on iteration {iteration}: {exc}") from exc
-                logger.warning(
-                    "Power flow failed on iteration %d; keeping previous res_* tables and stopping loop: %s",
-                    iteration,
-                    exc,
-                )
-                if snapshot is not None:
-                    _restore_res_tables(net, snapshot)
-                power_flow_failed = True
-                break
-        else:
+        snapshot = _snapshot_res_tables(net) if on_power_flow_error == SppsPowerFlowFailurePolicy.KEEP_PREVIOUS else None
+        try:
+            _run_power_flow(net, method, runpp_kwargs)
+        except Exception as exc:
+            if on_power_flow_error == SppsPowerFlowFailurePolicy.RAISE:
+                raise SppsPowerFlowError(f"Power flow failed on iteration {iteration}: {exc}") from exc
+            logger.warning(
+                "Power flow failed on iteration %d; keeping previous res_* tables and stopping loop: %s",
+                iteration,
+                exc,
+            )
+            if snapshot is not None:
+                _restore_res_tables(net, snapshot)
+            power_flow_failed = True
+            break
+
+        if iteration == max_iterations:
             max_iterations_reached = True
 
     if max_iterations_reached:
@@ -570,6 +582,11 @@ def run_spps(
             "SpPS exhausted max_iterations=%d while still activating schemes.",
             max_iterations,
         )
+
+        if on_power_flow_error == SppsPowerFlowFailurePolicy.RAISE:
+            raise SppsPowerFlowError(
+                f"SpPS exhausted max_iterations={max_iterations} while new schemes were still activating."
+            )
 
     return SppsResult(
         net=net,

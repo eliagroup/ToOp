@@ -48,7 +48,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     SequentialContingencyAnalysisContext,
     SingleOutageContext,
 )
-from toop_engine_contingency_analysis.pandapower.spps import run_spps
+from toop_engine_contingency_analysis.pandapower.spps import SppsPowerFlowError, run_spps
 from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
@@ -117,7 +117,7 @@ def run_single_outage(
         runpp_kwargs = ctx.runpp_kwargs or {}
         try:
             if not ctx.spps_conditions.empty:
-                run_spps(
+                spps_result = run_spps(
                     net=net,
                     conditions=ctx.spps_conditions,
                     actions=ctx.spps_actions,
@@ -127,11 +127,16 @@ def run_single_outage(
                     },
                     runpp_kwargs=runpp_kwargs,
                     max_iterations=ctx.spps_rules_max_iterations,
+                    on_power_flow_error=ctx.on_power_flow_error,
                 )
+                if spps_result.power_flow_failed or spps_result.max_iterations_reached:
+                    status = ConvergenceStatus.FAILED
+                else:
+                    status = ConvergenceStatus.CONVERGED
             else:
                 pp.rundcpp(net, **runpp_kwargs) if ctx.method == "dc" else pp.runpp(net, **runpp_kwargs)
-            status = ConvergenceStatus.CONVERGED
-        except pp.LoadflowNotConverged:
+                status = ConvergenceStatus.CONVERGED
+        except (pp.LoadflowNotConverged, SppsPowerFlowError):
             status = ConvergenceStatus.FAILED
 
     convergence_df = pd.concat(
@@ -434,6 +439,7 @@ def run_contingency_analysis_sequential(
         spps_conditions=ctx.spps_conditions,
         spps_actions=ctx.spps_actions,
         spps_rules_max_iterations=ctx.spps_rules_max_iterations,
+        on_power_flow_error=ctx.on_power_flow_error,
     )
 
     for grouped_contingency in n_minus_1_definition.grouped_contingencies:
@@ -499,6 +505,7 @@ def run_contingency_analysis_parallel(
         spps_conditions=ctx.spps_conditions,
         spps_actions=ctx.spps_actions,
         spps_rules_max_iterations=ctx.spps_rules_max_iterations,
+        on_power_flow_error=ctx.on_power_flow_error,
     )
 
     for batch in work:
@@ -690,6 +697,7 @@ def run_contingency_analysis_pandapower(
                 spps_conditions=pp_n1_definition.spps_conditions,
                 spps_actions=pp_n1_definition.spps_actions,
                 spps_rules_max_iterations=cfg.spps_rules_max_iterations,
+                on_power_flow_error=cfg.on_power_flow_error,
             ),
         )
     else:
@@ -707,6 +715,7 @@ def run_contingency_analysis_pandapower(
                 method=cfg.method,
                 runpp_kwargs=cfg.runpp_kwargs,
                 spps_rules_max_iterations=cfg.spps_rules_max_iterations,
+                on_power_flow_error=cfg.on_power_flow_error,
                 parallel=cfg.parallel,
             ),
         )

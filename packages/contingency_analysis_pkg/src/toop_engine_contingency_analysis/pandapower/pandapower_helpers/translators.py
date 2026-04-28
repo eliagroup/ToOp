@@ -7,6 +7,8 @@
 
 """Translation utilities for converting N-1 definitions into pandapower-ready monitored elements and contingencies."""
 
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import pandera.typing as pat
@@ -153,7 +155,7 @@ def get_node_to_switch_map(net: pandapowerNet, id_type: PANDAPOWER_SUPPORTED_ID_
 
 def translate_spps_rules(
     net: pandapowerNet,
-    rules: list[SppsRule],
+    rules: Optional[list[SppsRule]],
     id_type: PANDAPOWER_SUPPORTED_ID_TYPES = "unique_pandapower",
 ) -> tuple[
     pat.DataFrame[SppsConditionsPandapowerSchema], pat.DataFrame[SppsActionsPandapowerSchema], list[SppsRule], list[str]
@@ -163,11 +165,8 @@ def translate_spps_rules(
     Parameters
     ----------
     net : pandapowerNet
-        The pandapower network to use for the translation. Used to resolve
-        each condition's ``condition_element_unique_id`` and each action's
-        ``measure_element_unique_id`` into a pandapower
-        ``(table, table_id)`` pair.
-    rules : list[SppsRule]
+        The pandapower network to use for the translation.
+    rules : Optional[list[SppsRule]]
         The list of SpPS rules to translate.
     id_type: PANDAPOWER_SUPPORTED_ID_TYPES
         The type of ids to use for the contingencies. Currently, only "unique_pandapower" and "cgmes" are supported.
@@ -281,8 +280,8 @@ def translate_nminus1_for_pandapower(
 
     Returns
     -------
-    PowsyblNMinus1Definition
-        The translated N-1 definition that can be used in Powsybl.
+    PandapowerNMinus1Definition
+        The translated N-1 definition that can be used in Pandapower.
     """
     id_type = n_minus_1_definition.id_type or "unique_pandapower"
     # If no id_type is specified, we assume pandapower's unique ids

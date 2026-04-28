@@ -22,6 +22,12 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
+from toop_engine_interfaces.spps_parameters import (
+    SppsConditionCheckType,
+    SppsConditionSide,
+    SppsConditionType,
+    SppsMeasureType,
+)
 
 # The type of the ids used in the N-1 definition. This changes how the elements are identified in the grid.
 # - unique_pandapower:
@@ -110,13 +116,13 @@ class Contingency(BaseModel):
 class Condition(BaseModel):
     """Represents a single condition in a rule."""
 
-    condition_type: Literal["current", "active_power", "reactive_power", "voltage", "state"]
+    condition_type: SppsConditionType
     """Type of condition to evaluate."""
 
-    condition_check_type: Literal[">", "<", "=", "failed", "de_energized"]
+    condition_check_type: SppsConditionCheckType
     """Comparison operator or special check."""
 
-    condition_side: Literal["primary", "secondary", "tertiary", "maximum_value"]
+    condition_side: SppsConditionSide
     """Element side or aggregation mode."""
 
     condition_limit_value: Optional[float] = None
@@ -134,7 +140,7 @@ class Action(BaseModel):
     """Globally unique identifier of the element to apply the action to.
     """
 
-    measure_type: Literal["active_power", "reactive_power", "voltage", "switching_state"]
+    measure_type: SppsMeasureType
     """Type of action."""
 
     measure_value: Union[float, str]

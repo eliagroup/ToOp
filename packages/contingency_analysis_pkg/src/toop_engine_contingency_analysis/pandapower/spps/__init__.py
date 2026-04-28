@@ -8,13 +8,27 @@ from toop_engine_contingency_analysis.pandapower.spps.schema import (
     RESULT_COLUMNS,
     SppsResult,
 )
+from toop_engine_interfaces.spps_parameters import (
+    SppsConditionCheckType,
+    SppsConditionSide,
+    SppsConditionType,
+    SppsMeasureType,
+    SppsPowerFlowFailurePolicy,
+    SppsSwitchActionTarget,
+)
 
 __all__ = [
     "ACTION_COLUMNS",
     "ELEMENT_TABLES",
     "RESULT_COLUMNS",
+    "SppsConditionCheckType",
+    "SppsConditionSide",
+    "SppsConditionType",
     "SppsError",
+    "SppsMeasureType",
     "SppsPowerFlowError",
+    "SppsPowerFlowFailurePolicy",
     "SppsResult",
+    "SppsSwitchActionTarget",
     "run_spps",
 ]

@@ -22,6 +22,13 @@ from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
 )
+from toop_engine_interfaces.spps_parameters import (
+    SPPS_CONDITION_CHECK_TYPE_VALUES,
+    SPPS_CONDITION_SIDE_VALUES,
+    SPPS_CONDITION_TYPE_VALUES,
+    SPPS_MEASURE_TYPE_VALUES,
+    SppsPowerFlowFailurePolicy,
+)
 
 
 @dataclasses.dataclass
@@ -137,13 +144,13 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
     scheme_name: Series[str]
     """Name of the rule scheme: conditions with the same name are evaluated as one logical group."""
 
-    condition_type: Series[str] = pa.Field(isin=["current", "active_power", "reactive_power", "voltage", "state"])
+    condition_type: Series[str] = pa.Field(isin=SPPS_CONDITION_TYPE_VALUES)
     """What is being checked (e.g. current, power, voltage, or element state)."""
 
-    condition_check_type: Series[str] = pa.Field(isin=[">", "<", "=", "failed", "de_energized"])
+    condition_check_type: Series[str] = pa.Field(isin=SPPS_CONDITION_CHECK_TYPE_VALUES)
     """How the condition is evaluated (comparison or state check)."""
 
-    condition_side: Series[str] = pa.Field(isin=["primary", "secondary", "tertiary", "maximum_value"])
+    condition_side: Series[str] = pa.Field(isin=SPPS_CONDITION_SIDE_VALUES)
     """Which side or value of the element is used for the check."""
 
     condition_limit_value: Series[float] = pa.Field(
@@ -165,7 +172,7 @@ class SppsActionsPandapowerSchema(pa.DataFrameModel):
     scheme_name: Series[str]
     """Name of the rule scheme: actions in a scheme are applied when all its conditions pass."""
 
-    measure_type: Series[str] = pa.Field(isin=["active_power", "reactive_power", "voltage", "switching_state"])
+    measure_type: Series[str] = pa.Field(isin=SPPS_MEASURE_TYPE_VALUES)
     """What is applied when the scheme activates."""
 
     measure_value: Series[object]
@@ -310,6 +317,15 @@ class ContingencyAnalysisConfig(BaseModel):
     a single outage calculation.
     """
 
+    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE
+    """SpPS in-loop power-flow policy (ignored when there are no SpPS rules).
+
+    Forwarded to ``run_spps``. :attr:`~SppsPowerFlowFailurePolicy.RAISE` re-raises
+    solver failures as ``SppsPowerFlowError``;
+    :attr:`~SppsPowerFlowFailurePolicy.KEEP_PREVIOUS` keeps the last successful
+    ``res_*`` state on failure; see the SpPS engine for details.
+    """
+
 
 class SingleOutageContext(BaseModel):
     """Shared execution context for a single outage calculation.
@@ -386,6 +402,15 @@ class SingleOutageContext(BaseModel):
     :func:`pandapower.rundcpp` depending on the selected method.
     """
 
+    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE
+    """SpPS in-loop power-flow policy (ignored when there are no SpPS rules).
+
+        Forwarded to ``run_spps``. :attr:`~SppsPowerFlowFailurePolicy.RAISE` re-raises
+        solver failures as ``SppsPowerFlowError``;
+        :attr:`~SppsPowerFlowFailurePolicy.KEEP_PREVIOUS` keeps the last successful
+        ``res_*`` state on failure; see the SpPS engine for details.
+        """
+
 
 class SequentialContingencyAnalysisContext(BaseModel):
     """Shared context for sequential N-1 contingency analysis.
@@ -447,6 +472,15 @@ class SequentialContingencyAnalysisContext(BaseModel):
     runpp_kwargs: dict[str, Any] | None = None
     """Additional keyword arguments forwarded to pandapower load-flow execution."""
 
+    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE
+    """SpPS in-loop power-flow policy (ignored when there are no SpPS rules).
+
+        Forwarded to ``run_spps``. :attr:`~SppsPowerFlowFailurePolicy.RAISE` re-raises
+        solver failures as ``SppsPowerFlowError``;
+        :attr:`~SppsPowerFlowFailurePolicy.KEEP_PREVIOUS` keeps the last successful
+        ``res_*`` state on failure; see the SpPS engine for details.
+        """
+
 
 class ParallelContingencyAnalysisContext(BaseModel):
     """Shared context for parallel N-1 contingency analysis.
@@ -492,6 +526,15 @@ class ParallelContingencyAnalysisContext(BaseModel):
     Limits how many times rules can be evaluated and applied during
     a single outage calculation.
     """
+
+    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE
+    """SpPS in-loop power-flow policy (ignored when there are no SpPS rules).
+
+        Forwarded to ``run_spps``. :attr:`~SppsPowerFlowFailurePolicy.RAISE` re-raises
+        solver failures as ``SppsPowerFlowError``;
+        :attr:`~SppsPowerFlowFailurePolicy.KEEP_PREVIOUS` keeps the last successful
+        ``res_*`` state on failure; see the SpPS engine for details.
+        """
 
     parallel: ParallelConfig = Field(default_factory=ParallelConfig)
     """Parallel execution settings for contingency processing.

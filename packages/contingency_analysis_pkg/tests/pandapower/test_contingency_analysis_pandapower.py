@@ -151,47 +151,6 @@ def test_run_ac_contingency_analysis_pandapower_mt(pandapower_net: pp.pandapower
 
 def test_extract_branch_results_pandapower_disconnected():
     net = pp.networks.case14()
-    net.line.loc[0, "in_service"] = False  # Disconnect the first line
-    nminus1_def = Nminus1Definition(
-        monitored_elements=[
-            GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
-            for index, row in net.line.iterrows()
-        ],
-        contingencies=[
-            Contingency(
-                id=str(index),
-                elements=[
-                    GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
-                ],
-            )
-            for index, row in net.line.iterrows()
-        ],
-    )
-    cfg = ContingencyAnalysisConfig(method="dc")
-    res = run_contingency_analysis_pandapower(
-        net=net,
-        n_minus_1_definition=nminus1_def,
-        job_id="test_job",
-        timestep=0,
-        cfg=cfg,
-    )
-    contingencies = [contingency.id for contingency in nminus1_def.contingencies if not contingency.is_basecase()]
-    _, matrix = extract_branch_results(
-        branch_results=res.branch_results,
-        basecase="BASECASE",
-        contingencies=[contingency.id for contingency in nminus1_def.contingencies if not contingency.is_basecase()],
-        monitored_branches=[element for element in nminus1_def.monitored_elements if element.kind == "branch"],
-        timestep=0,
-    )
-    assert matrix.shape == (len(nminus1_def.contingencies), len(nminus1_def.monitored_elements))
-    assert matrix.dtype == float
-    assert np.all(np.isfinite(matrix))
-    assert np.all(matrix[0, :] == 0.0)  # Check that the disconnected branch has a loading of 0.0 in all contingencies
-    assert np.all(matrix[:, 0] == 0.0)  # Check that the first monitored branch has a loading of 0.0 in all contingencies
-
-
-def test_extract_branch_results_pandapower_disconnected():
-    net = pp.networks.case14()
 
     net.line.loc[0, "in_service"] = False  # Disconnect the first line
     nminus1_def = Nminus1Definition(

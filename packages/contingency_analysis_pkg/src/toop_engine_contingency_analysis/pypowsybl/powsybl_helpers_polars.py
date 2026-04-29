@@ -199,10 +199,26 @@ def get_branch_results_polars(
     patpl.DataFrame[BranchResultSchemaPolars]
         The polars branch results for the given outages and timestep
     """
+    # If pypowsybl returned no branch data (e.g. DC analysis with a disconnected element and no
+    # BASECASE contingency), fall back to NaN results for all failed outages immediately.
+    if not branch_results.collect_schema().names():
+        return get_failed_branch_results_polars(timestep, failed_outages, monitored_branches, monitored_trafo3w)
+
     # Align all indizes
     branch_results = branch_results.drop("operator_strategy_id")
     branch_results = branch_results.rename({"contingency_id": "contingency", "branch_id": "element"})
     three_winding_results = three_winding_results.rename({"contingency_id": "contingency", "transformer_id": "element"})
+
+    # Ensure all value columns are present.  pypowsybl omits q/i columns in DC mode.
+    branch_schema = branch_results.collect_schema().names()
+    for col in ["p1", "q1", "i1", "p2", "q2", "i2"]:
+        if col not in branch_schema:
+            branch_results = branch_results.with_columns(pl.lit(float("nan")).cast(pl.Float64).alias(col))
+
+    three_winding_schema = three_winding_results.collect_schema().names()
+    for col in ["p1", "q1", "i1", "p2", "q2", "i2", "p3", "q3", "i3"]:
+        if col not in three_winding_schema:
+            three_winding_results = three_winding_results.with_columns(pl.lit(float("nan")).cast(pl.Float64).alias(col))
 
     side_one_results = (
         pl.concat(

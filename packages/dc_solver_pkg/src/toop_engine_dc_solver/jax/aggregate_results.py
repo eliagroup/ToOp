@@ -559,7 +559,7 @@ def get_bb_outage_grid_splits(bb_outage_grid_splits: Optional[Int[Array, " "]]) 
     return bb_outage_grid_splits.astype(float)
 
 
-def get_pst_switching_distance(
+def get_pst_switching_distance_squared(
     optimized_taps: Optional[NodalInjOptimResults],
     initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
 ) -> Float[Array, " "]:
@@ -601,7 +601,7 @@ def get_pst_switching_distance(
     return switching_distance_all_timesteps
 
 
-def get_pst_switching_distance_linear(
+def get_pst_switching_distance(
     optimized_taps: Optional[NodalInjOptimResults],
     initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
 ) -> Float[Array, " "]:
@@ -610,7 +610,7 @@ def get_pst_switching_distance_linear(
     This metric measures how much the optimized PST tap positions deviate from the initial
     setpoints using L1 distance (sum of absolute differences). It is useful for penalizing
     solutions that require large changes to PST settings without the quadratic amplification
-    used by ``pst_switching_distance``.
+    used by ``pst_switching_distance_squared``.
 
     Parameters
     ----------
@@ -749,7 +749,7 @@ def aggregate_to_metric_batched(
         The metric to use for aggregation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
         The initial tap positions for PSTs. Required for computing PST-based metrics.
-        If None, pst_switching_distance, pst_switching_distance_linear and pst_activated will return 0.0
+        If None, pst_switching_distance, pst_switching_distance_squared and pst_activated will return 0.0
 
     Returns
     -------
@@ -853,7 +853,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
         e.g. if you want to ignore busbar outage failures in the overload energy calculation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
         The initial tap positions for PSTs. Required for computing PST-based metrics.
-        If None, pst_switching_distance, pst_switching_distance_linear and pst_activated will return 0.0
+        If None, pst_switching_distance, pst_switching_distance_squared and pst_activated will return 0.0
 
     Returns
     -------
@@ -877,8 +877,8 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
                 optimized_taps=lf_res.nodal_injections_optimized,
                 initial_tap_idx=initial_pst_tap_idx,
             )
-        case "pst_switching_distance_linear":
-            retval = get_pst_switching_distance_linear(
+        case "pst_switching_distance_squared":
+            retval = get_pst_switching_distance_squared(
                 optimized_taps=lf_res.nodal_injections_optimized,
                 initial_tap_idx=initial_pst_tap_idx,
             )

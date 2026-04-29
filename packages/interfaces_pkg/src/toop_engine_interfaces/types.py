@@ -46,7 +46,7 @@ OperationMetric: TypeAlias = Literal[
     "disconnected_branches",
     "fitness",
     "pst_switching_distance",
-    "pst_switching_distance_linear",
+    "pst_switching_distance_squared",
     "pst_activated",
 ]
 

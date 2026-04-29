@@ -879,8 +879,8 @@ def test_pst_activated_without_pst_optimization(static_information_file: str) ->
     assert jnp.all(jnp.isfinite(fitness))
 
 
-def test_pst_switching_distance_linear_metric_integration(static_information_file_complex: str) -> None:
-    """Test that pst_switching_distance_linear metric works in the scoring function."""
+def test_pst_switching_distance_squared_metric_integration(static_information_file_complex: str) -> None:
+    """Test that pst_switching_distance_squared metric works in the scoring function."""
     static_information = load_static_information(static_information_file_complex)
 
     if (
@@ -936,13 +936,13 @@ def test_pst_switching_distance_linear_metric_integration(static_information_fil
         (static_information.dynamic_information,),
         (static_information.solver_config,),
         target_metrics=(("overload_energy_n_1", 1.0),),
-        observed_metrics=("overload_energy_n_1", "switching_distance", "pst_switching_distance_linear"),
+        observed_metrics=("overload_energy_n_1", "switching_distance", "pst_switching_distance_squared"),
         descriptor_metrics=("switching_distance",),
     )
 
-    assert "pst_switching_distance_linear" in metrics_zero
-    assert metrics_zero["pst_switching_distance_linear"].shape == (batch_size,)
-    assert jnp.all(metrics_zero["pst_switching_distance_linear"] == 0.0)
+    assert "pst_switching_distance_squared" in metrics_zero
+    assert metrics_zero["pst_switching_distance_squared"].shape == (batch_size,)
+    assert jnp.all(metrics_zero["pst_switching_distance_squared"] == 0.0)
 
     pst_mutation_config = replace(
         no_pst_mutation_config,
@@ -966,7 +966,7 @@ def test_pst_switching_distance_linear_metric_integration(static_information_fil
         target_metrics=(("overload_energy_n_1", 1.0),),
         observed_metrics=(
             "overload_energy_n_1",
-            "pst_switching_distance_linear",
+            "pst_switching_distance_squared",
             "pst_switching_distance",
             "pst_activated",
             "switching_distance",
@@ -974,14 +974,17 @@ def test_pst_switching_distance_linear_metric_integration(static_information_fil
         descriptor_metrics=("switching_distance",),
     )
 
-    assert jnp.all(jnp.isfinite(metrics["pst_switching_distance_linear"]))
-    assert jnp.all(metrics["pst_switching_distance_linear"] >= 0.0)
-    assert jnp.all(metrics["pst_activated"] <= metrics["pst_switching_distance_linear"])
-    assert jnp.all(metrics["pst_switching_distance_linear"] <= metrics["pst_switching_distance"])
+    assert jnp.all(jnp.isfinite(metrics["pst_switching_distance"]))
+    assert jnp.all(jnp.isfinite(metrics["pst_switching_distance_squared"]))
+    assert jnp.all(metrics["pst_switching_distance"] >= 0.0)
+    assert jnp.all(metrics["pst_switching_distance_squared"] >= 0.0)
+    assert jnp.all(metrics["pst_activated"] <= metrics["pst_switching_distance"])
+    assert jnp.all(metrics["pst_activated"] <= metrics["pst_switching_distance_squared"])
+    assert jnp.all(metrics["pst_switching_distance"] <= metrics["pst_switching_distance_squared"])
 
 
-def test_pst_switching_distance_linear_in_target_metrics(static_information_file_complex: str) -> None:
-    """Test that pst_switching_distance_linear contributes to fitness when targeted."""
+def test_pst_switching_distance_squared_in_target_metrics(static_information_file_complex: str) -> None:
+    """Test that pst_switching_distance_squared contributes to fitness when targeted."""
     static_information = load_static_information(static_information_file_complex)
 
     if (
@@ -1036,8 +1039,8 @@ def test_pst_switching_distance_linear_in_target_metrics(static_information_file
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance_linear", 0.1)),
-        observed_metrics=("overload_energy_n_1", "pst_switching_distance_linear", "switching_distance"),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance_squared", 0.1)),
+        observed_metrics=("overload_energy_n_1", "pst_switching_distance_squared", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
     fitness_high_weight, _, _, _, _, _ = scoring_function(
@@ -1045,17 +1048,17 @@ def test_pst_switching_distance_linear_in_target_metrics(static_information_file
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance_linear", 10.0)),
-        observed_metrics=("overload_energy_n_1", "pst_switching_distance_linear", "switching_distance"),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance_squared", 10.0)),
+        observed_metrics=("overload_energy_n_1", "pst_switching_distance_squared", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
 
-    assert jnp.all(metrics["pst_switching_distance_linear"] >= 0.0)
+    assert jnp.all(metrics["pst_switching_distance_squared"] >= 0.0)
     assert jnp.less_equal(fitness_high_weight, fitness_low_weight).all()
 
 
-def test_pst_switching_distance_linear_without_pst_optimization(static_information_file: str) -> None:
-    """Test that pst_switching_distance_linear returns 0 when PST optimization is disabled."""
+def test_pst_switching_distance_squared_without_pst_optimization(static_information_file: str) -> None:
+    """Test that pst_switching_distance_squared returns 0 when PST optimization is disabled."""
     static_information = load_static_information(static_information_file)
 
     dynamic_info_no_pst = replace(
@@ -1076,11 +1079,11 @@ def test_pst_switching_distance_linear_without_pst_optimization(static_informati
         key,
         (static_information.dynamic_information,),
         (static_information.solver_config,),
-        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance_linear", 1.0)),
-        observed_metrics=("overload_energy_n_1", "pst_switching_distance_linear", "switching_distance"),
+        target_metrics=(("overload_energy_n_1", 1.0), ("pst_switching_distance_squared", 1.0)),
+        observed_metrics=("overload_energy_n_1", "pst_switching_distance_squared", "switching_distance"),
         descriptor_metrics=("switching_distance",),
     )
 
-    assert "pst_switching_distance_linear" in metrics
-    assert jnp.all(metrics["pst_switching_distance_linear"] == 0.0)
+    assert "pst_switching_distance_squared" in metrics
+    assert jnp.all(metrics["pst_switching_distance_squared"] == 0.0)
     assert jnp.all(jnp.isfinite(fitness))

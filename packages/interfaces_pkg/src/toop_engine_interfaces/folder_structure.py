@@ -47,6 +47,7 @@ POSTPROCESSING_PATHS: Final[dict[str, str]] = {
     "LF_CA_ac_path": "optimizer_snapshots/ac/LF_CA",
     "single_line_diagram_ac_path": "optimizer_snapshots/ac/single_line_diagram",
     "logs_path": "logs",
+    "orao_summary": "orao_summary",
 }
 
 

@@ -1056,7 +1056,7 @@ def update_masks_from_contingency_list_file(
     """Update the network masks from the contingency list file.
 
     Loads the contingency list file and updates the network masks accordingly.
-    Currenty only contains branches (monitored and contingency).
+    Currently the file only contains branches (monitored and contingency). Non-existing N-1 masks will be zeroed out.
     This replaces the default masks with the ones from the contingency list file.
 
     Parameters
@@ -1117,6 +1117,11 @@ def update_masks_from_contingency_list_file(
             dangling_line_for_nminus1=dangling_for_nminus1,
             tie_line_for_nminus1=tie_lines_for_nminus1,
             tie_line_for_reward=tie_lines_for_reward,
+            switch_for_nminus1=np.zeros_like(network_masks.switch_for_nminus1),
+            generator_for_nminus1=np.zeros_like(network_masks.generator_for_nminus1),
+            load_for_nminus1=np.zeros_like(network_masks.load_for_nminus1),
+            switch_for_reward=np.zeros_like(network_masks.switch_for_reward),
+            busbar_for_nminus1=np.zeros_like(network_masks.busbar_for_nminus1),
         )
     else:
         raise NotImplementedError("Multi-outages are not supported yet.")

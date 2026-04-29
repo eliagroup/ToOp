@@ -24,6 +24,7 @@ from toop_engine_interfaces.nminus1_definition import (
 )
 from toop_engine_interfaces.spps_parameters import (
     SPPS_CONDITION_CHECK_TYPE_VALUES,
+    SPPS_CONDITION_LOGIC_VALUES,
     SPPS_CONDITION_SIDE_VALUES,
     SPPS_CONDITION_TYPE_VALUES,
     SPPS_MEASURE_TYPE_VALUES,
@@ -144,6 +145,9 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
     scheme_name: Series[str]
     """Name of the rule scheme: conditions with the same name are evaluated as one logical group."""
 
+    condition_logic: Series[str] = pa.Field(isin=SPPS_CONDITION_LOGIC_VALUES)
+    """Per-row copy of the scheme's condition combination mode (``all`` vs ``any``); identical for all rows of a scheme."""
+
     condition_type: Series[str] = pa.Field(isin=SPPS_CONDITION_TYPE_VALUES)
     """What is being checked (e.g. current, power, voltage, or element state)."""
 
@@ -170,7 +174,7 @@ class SppsActionsPandapowerSchema(pa.DataFrameModel):
     """Pandera schema for resolved SpPS action rows (one row per action)."""
 
     scheme_name: Series[str]
-    """Name of the rule scheme: actions in a scheme are applied when all its conditions pass."""
+    """Name of the rule scheme: actions apply when that scheme's conditions pass per ``condition_logic``."""
 
     measure_type: Series[str] = pa.Field(isin=SPPS_MEASURE_TYPE_VALUES)
     """What is applied when the scheme activates."""
@@ -220,7 +224,8 @@ class PandapowerNMinus1Definition(BaseModel):
     Each row is one check (voltage, current, power, element state, etc.); columns
     follow the SpPS conditions schema (including ``scheme_name``). All rows with
     the same ``scheme_name`` belong to one scheme: that scheme is satisfied in an
-    engine iteration when every one of its conditions is met. This table is copied
+    engine iteration according to each row's ``condition_logic`` (``all`` or ``any``).
+    This table is copied
     into each per-outage execution context and evaluated against the post-outage
     network. If it is empty, no SpPS is run: each contingency uses a standard
     pandapower load flow only, and any ``spps_actions`` data are ignored.
@@ -231,8 +236,8 @@ class PandapowerNMinus1Definition(BaseModel):
 
      Each row is one control step (e.g. switch a device, set a tap) tied to
      ``scheme_name``; column meanings follow the SpPS actions schema. A scheme is
-     linked to the conditions table by the same ``scheme_name``: when all
-     conditions of that scheme are satisfied, the SpPS engine applies the ordered
+     linked to the conditions table by the same ``scheme_name``: when that scheme's
+     conditions pass (per ``condition_logic`` on condition rows), the SpPS engine applies the ordered
      set of actions for that scheme, then re-runs the load flow, and repeats until
      no scheme triggers or the iteration cap is hit. The table is passed through
      to each per-outage run. If ``spps_conditions`` is empty, a normal load flow is
@@ -408,7 +413,8 @@ class SingleOutageContext(BaseModel):
     Each row is one check (voltage, current, power, element state, etc.); columns
     follow the SpPS conditions schema (including ``scheme_name``). All rows with
     the same ``scheme_name`` belong to one scheme: that scheme is satisfied in an
-    engine iteration when every one of its conditions is met. This table is copied
+    engine iteration according to each row's ``condition_logic`` (``all`` or ``any``).
+    This table is copied
     into each per-outage execution context and evaluated against the post-outage
     network. If it is empty, no SpPS is run: each contingency uses a standard
     pandapower load flow only, and any ``spps_actions`` data are ignored.
@@ -419,8 +425,8 @@ class SingleOutageContext(BaseModel):
 
      Each row is one control step (e.g. switch a device, set a tap) tied to
      ``scheme_name``; column meanings follow the SpPS actions schema. A scheme is
-     linked to the conditions table by the same ``scheme_name``: when all
-     conditions of that scheme are satisfied, the SpPS engine applies the ordered
+     linked to the conditions table by the same ``scheme_name``: when that scheme's
+     conditions pass (per ``condition_logic`` on condition rows), the SpPS engine applies the ordered
      set of actions for that scheme, then re-runs the load flow, and repeats until
      no scheme triggers or the iteration cap is hit. The table is passed through
      to each per-outage run. If ``spps_conditions`` is empty, a normal load flow is
@@ -498,7 +504,8 @@ class SequentialContingencyAnalysisContext(BaseModel):
     Each row is one check (voltage, current, power, element state, etc.); columns
     follow the SpPS conditions schema (including ``scheme_name``). All rows with
     the same ``scheme_name`` belong to one scheme: that scheme is satisfied in an
-    engine iteration when every one of its conditions is met. This table is copied
+    engine iteration according to each row's ``condition_logic`` (``all`` or ``any``).
+    This table is copied
     into each per-outage execution context and evaluated against the post-outage
     network. If it is empty, no SpPS is run: each contingency uses a standard
     pandapower load flow only, and any ``spps_actions`` data are ignored.
@@ -509,8 +516,8 @@ class SequentialContingencyAnalysisContext(BaseModel):
 
     Each row is one control step (e.g. switch a device, set a tap) tied to
     ``scheme_name``; column meanings follow the SpPS actions schema. A scheme is
-    linked to the conditions table by the same ``scheme_name``: when all
-    conditions of that scheme are satisfied, the SpPS engine applies the ordered
+    linked to the conditions table by the same ``scheme_name``: when that scheme's
+    conditions pass (per ``condition_logic`` on condition rows), the SpPS engine applies the ordered
     set of actions for that scheme, then re-runs the load flow, and repeats until
     no scheme triggers or the iteration cap is hit. The table is passed through
     to each per-outage run. If ``spps_conditions`` is empty, a normal load flow is
@@ -576,7 +583,8 @@ class ParallelContingencyAnalysisContext(BaseModel):
     Each row is one check (voltage, current, power, element state, etc.); columns
     follow the SpPS conditions schema (including ``scheme_name``). All rows with
     the same ``scheme_name`` belong to one scheme: that scheme is satisfied in an
-    engine iteration when every one of its conditions is met. This table is copied
+    engine iteration according to each row's ``condition_logic`` (``all`` or ``any``).
+    This table is copied
     into each parallel worker and into each per-outage execution context, and is
     evaluated on the post-outage network. If it is empty, no SpPS is run: each
     contingency uses a standard pandapower load flow only, and any
@@ -587,8 +595,8 @@ class ParallelContingencyAnalysisContext(BaseModel):
 
     Each row is one control step (e.g. switch a device, set a tap) tied to
     ``scheme_name``; column meanings follow the SpPS actions schema. A scheme is
-    linked to the conditions table by the same ``scheme_name``: when all
-    conditions of that scheme are satisfied, the SpPS engine applies the ordered
+    linked to the conditions table by the same ``scheme_name``: when that scheme's
+    conditions pass (per ``condition_logic`` on condition rows), the SpPS engine applies the ordered
     set of actions for that scheme, then re-runs the load flow, and repeats until
     no scheme triggers or the iteration cap is hit. The same tables are used
     across all parallel workers and for each outage. If ``spps_conditions`` is

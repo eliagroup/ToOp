@@ -174,7 +174,7 @@ def translate_spps_rules(
     Returns
     -------
     pat.DataFrame[SppsConditionsPandapowerSchema]
-        One row per condition; uses ``scheme_name`` to group with actions.
+        One row per condition; uses ``scheme_name`` (and ``condition_logic``) to group with actions.
     pat.DataFrame[SppsActionsPandapowerSchema]
         One row per action; uses ``scheme_name`` to group with conditions.
     list[SppsRule]

@@ -11,9 +11,11 @@ Mental model
 ------------
 A *scheme* is a group of rows sharing the same ``scheme_name`` across the
 *conditions* and *actions* DataFrames. A scheme is activated on an iteration
-when **all** of its condition rows evaluate to ``True``; activation applies
-**every** action row with that ``scheme_name`` to the network, and the loop
-re-runs a power flow so the next iteration sees the new state.
+when its condition rows pass according to each row's ``condition_logic``:
+``all`` requires **every** condition to be true; ``any`` requires **at least
+one**. Activation applies **every** action row with that ``scheme_name`` to
+the network, and the loop re-runs a power flow so the next iteration sees the
+new state.
 
 Side effects
 ------------
@@ -50,6 +52,7 @@ from toop_engine_contingency_analysis.pandapower.spps.schema import (
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
+    SppsConditionLogic,
     SppsConditionSide,
     SppsConditionType,
     SppsPowerFlowFailurePolicy,
@@ -360,19 +363,34 @@ def _evaluate_conditions(conditions: pat.DataFrame[SppsConditionsPandapowerSchem
 
 
 def _satisfied_scheme_names(conditions: pat.DataFrame[SppsConditionsPandapowerSchema]) -> set[str]:
-    """Return the names of schemes for which every condition row passes.
+    """Return scheme names whose condition rows pass under that scheme's ``condition_logic``.
 
-    A scheme is satisfied when **all** of its condition rows have
-    ``is_condition == True`` (one row per :class:`SppsConditionsPandapowerSchema`
-    line).
+    For each ``scheme_name``, all condition rows carry the same ``condition_logic``
+    (``all`` = logical AND over ``is_condition``, ``any`` = logical OR).
+
+    If ``condition_logic`` is absent (legacy tables), ``all`` is assumed.
 
     Parameters
     ----------
     conditions
         Conditions SppsConditionsPandapowerSchema
     """
-    satisfied = conditions["is_condition"].fillna(False).groupby(conditions["scheme_name"]).all()
-    return set(satisfied[satisfied].index.tolist())
+    ic = conditions["is_condition"].fillna(False)
+    names = conditions["scheme_name"]
+    if "condition_logic" not in conditions.columns:
+        satisfied = ic.groupby(names).all()
+        return set(satisfied[satisfied].index.tolist())
+
+    out: set[str] = set()
+    for scheme_name, grp in conditions.groupby("scheme_name", sort=False):
+        mode = grp["condition_logic"].iloc[0]
+        g_ic = ic.loc[grp.index]
+        if mode == SppsConditionLogic.ANY.value:
+            if bool(g_ic.any()):
+                out.add(scheme_name)
+        elif bool(g_ic.all()):
+            out.add(scheme_name)
+    return out
 
 
 # --------------------------------------------------------------------------- #

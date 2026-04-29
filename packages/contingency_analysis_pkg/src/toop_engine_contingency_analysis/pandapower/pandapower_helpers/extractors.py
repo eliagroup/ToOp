@@ -313,7 +313,7 @@ def _build_spps_condition_rows(
     -------
     list[dict]
         One mapping per condition, with keys including ``scheme_name``,
-        ``condition_type``, ``condition_check_type``, ``condition_side``,
+        ``condition_logic``, ``condition_type``, ``condition_check_type``, ``condition_side``,
         ``condition_limit_value``, ``condition_element_table``, and
         ``condition_element_table_id``.
     """
@@ -322,6 +322,7 @@ def _build_spps_condition_rows(
         rows.append(
             {
                 "scheme_name": rule.scheme_name,
+                "condition_logic": rule.condition_logic.value,
                 "condition_type": condition.condition_type,
                 "condition_check_type": condition.condition_check_type,
                 "condition_side": condition.condition_side,

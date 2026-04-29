@@ -17,6 +17,7 @@ from toop_engine_contingency_analysis.pandapower.spps.schema import (
 )
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
+    SppsConditionLogic,
     SppsConditionSide,
     SppsConditionType,
     SppsMeasureType,
@@ -29,6 +30,7 @@ __all__ = [
     "ELEMENT_TABLES",
     "RESULT_COLUMNS",
     "SppsConditionCheckType",
+    "SppsConditionLogic",
     "SppsConditionSide",
     "SppsConditionType",
     "SppsError",

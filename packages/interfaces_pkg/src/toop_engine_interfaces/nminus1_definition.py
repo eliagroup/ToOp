@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
+    SppsConditionLogic,
     SppsConditionSide,
     SppsConditionType,
     SppsMeasureType,
@@ -153,8 +154,12 @@ class SppsRule(BaseModel):
     scheme_name: str
     """Unique scheme identifier."""
 
+    condition_logic: SppsConditionLogic = SppsConditionLogic.ALL
+    """Whether every condition must pass SppsConditionLogic.ALL
+    or at least one SppsConditionLogic.ANY for the scheme to activate."""
+
     conditions: list[Condition]
-    """All conditions must be satisfied for the rule to activate."""
+    """Condition rows for this scheme; combined according to `condition_logic`."""
 
     actions: list[Action]
     """Actions applied when the rule is activated."""

@@ -71,8 +71,19 @@ class SppsSwitchActionTarget(StrEnum):
     CLOSED = "closed"
 
 
+class SppsConditionLogic(StrEnum):
+    """How multiple :class:`~toop_engine_interfaces.nminus1_definition.Condition` rows in one scheme combine."""
+
+    ALL = "all"
+    """Every condition row for the scheme must pass (logical AND)."""
+
+    ANY = "any"
+    """At least one condition row for the scheme must pass (logical OR)."""
+
+
 # For Pandera ``isin=`` and similar (stable order)
 SPPS_CONDITION_TYPE_VALUES: tuple[str, ...] = _values(SppsConditionType)
 SPPS_CONDITION_CHECK_TYPE_VALUES: tuple[str, ...] = _values(SppsConditionCheckType)
 SPPS_CONDITION_SIDE_VALUES: tuple[str, ...] = _values(SppsConditionSide)
+SPPS_CONDITION_LOGIC_VALUES: tuple[str, ...] = _values(SppsConditionLogic)
 SPPS_MEASURE_TYPE_VALUES: tuple[str, ...] = _values(SppsMeasureType)

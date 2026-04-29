@@ -468,7 +468,7 @@ def reconnect_dangling_as_tie_line(network: Network, new_dangling_df: pat.DataFr
     for pairing_key in new_dangling_df["pairing_key"].unique():
         if len(new_dangling_df[new_dangling_df["pairing_key"] == pairing_key]) != pair:
             raise ValueError(
-                f"Pairing key {pairing_key} has not 2 dangling lines. "
+                f"Pairing key {pairing_key} has != 2 boundary lines. "
                 f"Found lines: {new_dangling_df[new_dangling_df['pairing_key']].index}"
             )
         boundary_line1_id = new_dangling_df[new_dangling_df["pairing_key"] == pairing_key].index[0]

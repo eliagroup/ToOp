@@ -44,7 +44,7 @@ def create_current_limits_df(
     new_limit_series: pd.Series
         The new limits for the elements including the element ids as indices and the new limits as values
     element_type: Literal["LINE", "BOUNDARY_LINE", "TWO_WINDINGS_TRANSFORMER"]
-        The type of the element. For Tielines always use the corresponding Dangling Lines
+        The type of the element. For Tielines always use the corresponding Boundary Lines
     side: Literal["ONE", "TWO", "NONE"]
         The side of the limit on the element
     limit_name: str

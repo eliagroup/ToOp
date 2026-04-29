@@ -177,8 +177,8 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         for idx, row in tie_lines[network_masks.tie_line_for_nminus1].iterrows()
     ]
 
-    dangling_lines = network.get_boundary_lines(attributes=["name", "paired"])
-    outaged_dangling = [
+    boundary_lines = network.get_boundary_lines(attributes=["name", "paired"])
+    outaged_boundary = [
         Contingency(
             id=idx,
             name=row["name"],
@@ -186,7 +186,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
                 GridElement(id=idx, name=row["name"], type="BOUNDARY_LINE", kind="injection"),
             ],
         )
-        for idx, row in dangling_lines[network_masks.dangling_line_for_nminus1 & ~dangling_lines["paired"]].iterrows()
+        for idx, row in boundary_lines[network_masks.boundary_line_for_nminus1 & ~boundary_lines["paired"]].iterrows()
     ]
 
     generators = network.get_generators(attributes=["name"])
@@ -244,7 +244,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
             + outaged_trafos
             + outaged_trafo3w
             + outaged_tie_lines
-            + outaged_dangling
+            + outaged_boundary
             + outaged_generators
             + outaged_loads
             + outaged_switches
@@ -604,8 +604,8 @@ def fill_statistics_for_network_masks(
     statistics.id_lists["tie_line_for_nminus1"] = network.get_tie_lines(attributes=[])[
         network_masks.tie_line_for_nminus1
     ].index.to_list()
-    statistics.id_lists["dangling_line_for_nminus1"] = network.get_boundary_lines(attributes=[])[
-        network_masks.dangling_line_for_nminus1
+    statistics.id_lists["boundary_line_for_nminus1"] = network.get_boundary_lines(attributes=[])[
+        network_masks.boundary_line_for_nminus1
     ].index.to_list()
     statistics.id_lists["generator_for_nminus1"] = network.get_generators(attributes=[])[
         network_masks.generator_for_nminus1
@@ -634,7 +634,7 @@ def fill_statistics_for_network_masks(
     statistics.import_result.n_tie_line_for_nminus1 = int(network_masks.tie_line_for_nminus1.sum())
     statistics.import_result.n_tie_line_for_reward = int(network_masks.tie_line_for_reward.sum())
     statistics.import_result.n_tie_line_disconnectable = int(network_masks.tie_line_disconnectable.sum())
-    statistics.import_result.n_dangling_line_for_nminus1 = int(network_masks.dangling_line_for_nminus1.sum())
+    statistics.import_result.n_boundary_line_for_nminus1 = int(network_masks.boundary_line_for_nminus1.sum())
     statistics.import_result.n_generator_for_nminus1 = int(network_masks.generator_for_nminus1.sum())
     statistics.import_result.n_load_for_nminus1 = int(network_masks.load_for_nminus1.sum())
     statistics.import_result.n_switch_for_nminus1 = int(network_masks.switch_for_nminus1.sum())

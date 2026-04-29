@@ -120,8 +120,8 @@ class NetworkMasks:
     """tie_line_tso_border.npy (a boolean mask of tielines that are leading to TSOs outside the reward area)
     Currently only used during importing and not part of the PowsyblBackend"""
 
-    dangling_line_for_nminus1: np.ndarray
-    """tie_line_disconnectable.npy (a boolean mask of tie lines that are relevant for n-1)."""
+    boundary_line_for_nminus1: np.ndarray
+    """boundary_line_for_nminus1.npy (a boolean mask of boundary lines that are relevant for n-1)."""
 
     generator_for_nminus1: np.ndarray
     """generator_for_nminus1.npy (a boolean mask of generators that are relevant for n-1)."""
@@ -185,7 +185,7 @@ def create_default_network_masks(network: Network) -> NetworkMasks:
         tie_line_overload_weight=np.ones(len(tie_df), dtype=float),
         tie_line_disconnectable=np.zeros(len(tie_df), dtype=bool),
         tie_line_tso_border=np.zeros(len(tie_df), dtype=bool),
-        dangling_line_for_nminus1=np.zeros(len(dangling_df), dtype=bool),
+        boundary_line_for_nminus1=np.zeros(len(dangling_df), dtype=bool),
         generator_for_nminus1=np.zeros(len(generator_df), dtype=bool),
         load_for_nminus1=np.zeros(len(load_df), dtype=bool),
         switch_for_nminus1=np.zeros(len(switches_df), dtype=bool),
@@ -659,10 +659,10 @@ def update_tie_and_dangling_line_masks(
 
     # This includes dangling lines that can be considered branches (part of tielines)
     # and dangling lines that can be considered injections
-    dangling_line_for_nminus1 = hv_dangling_mask & nminus1_area_dangling_mask
+    boundary_line_for_nminus1 = hv_dangling_mask & nminus1_area_dangling_mask
 
     # If a dangling line is part of the selected n-1 area, its correspondet tie line should be part aswell
-    tie_line_for_nminus1 = tie_line_df.index.isin(dangling_lines_df[dangling_line_for_nminus1].tie_line_id.values)
+    tie_line_for_nminus1 = tie_line_df.index.isin(dangling_lines_df[boundary_line_for_nminus1].tie_line_id.values)
     # If dangling lines are part of a tieline, they can be part of the reward
     tie_line_for_reward = tie_line_for_nminus1 & tie_lines_with_limits
 
@@ -680,7 +680,7 @@ def update_tie_and_dangling_line_masks(
         tie_line_for_reward=tie_line_for_reward,
         tie_line_tso_border=tie_line_tso_border,
         tie_line_overload_weight=tie_line_overload_weight,
-        dangling_line_for_nminus1=dangling_line_for_nminus1,
+        boundary_line_for_nminus1=boundary_line_for_nminus1,
     )
 
 
@@ -1038,7 +1038,7 @@ def update_masks_from_power_factory_contingency_list_file(
             generator_for_nminus1=generator_nminus1_mask,
             load_for_nminus1=load_nminus1_mask,
             switch_for_nminus1=network.get_switches().index.isin(grid_model_ids),
-            dangling_line_for_nminus1=network.get_boundary_lines().index.isin(grid_model_ids),
+            boundary_line_for_nminus1=network.get_boundary_lines().index.isin(grid_model_ids),
             busbar_for_nminus1=busbar_for_nminus1,
         )
     else:
@@ -1114,7 +1114,7 @@ def update_masks_from_contingency_list_file(
             line_for_reward=line_for_reward,
             trafo_for_nminus1=trafo_for_nminus1,
             trafo_for_reward=trafo_for_reward,
-            dangling_line_for_nminus1=dangling_for_nminus1,
+            boundary_line_for_nminus1=dangling_for_nminus1,
             tie_line_for_nminus1=tie_lines_for_nminus1,
             tie_line_for_reward=tie_lines_for_reward,
             switch_for_nminus1=np.zeros_like(network_masks.switch_for_nminus1),

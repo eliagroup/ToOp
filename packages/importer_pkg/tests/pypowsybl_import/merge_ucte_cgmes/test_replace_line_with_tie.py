@@ -13,10 +13,10 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLA
 from toop_engine_importer.pypowsybl_import.merge_ucte_cgmes.replace_line_with_tie import (
     DanglingGeneratorSchema,
     DanglingLineCreationSchema,
-    get_boundary_lines_creation_schema,
-    get_boundary_creation_schema,
-    get_boundary_voltage_levels,
     check_dangling_node,
+    get_boundary_creation_schema,
+    get_boundary_lines_creation_schema,
+    get_boundary_voltage_levels,
     get_dangling_generator_creation_schema,
     replace_voltage_level_with_tie_line,
     set_dangling_generator_ids,

@@ -25,8 +25,8 @@ specific configurations based on user-defined rules or constraints.
 from functools import partial
 
 import jax
-import logbook
 import numpy as np
+import structlog
 from beartype.typing import Optional
 from jax import numpy as jnp
 from jaxtyping import Array, ArrayLike, Bool, Float, Int
@@ -43,7 +43,7 @@ from toop_engine_interfaces.asset_topology import Station
 from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @partial(jax.jit, static_argnames=("batch_size",))

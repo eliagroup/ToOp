@@ -108,20 +108,24 @@ class PandapowerContingencyGroup(BaseModel):
     This model aggregates multiple contingencies that map to the same connected
     component signature (i.e., they impact the same parts of the grid). It also
     contains the full set of grid elements belonging to those components.
-
-    Attributes
-    ----------
-        contingencies (list[PandapowerContingency]):
-            List of original contingencies that affect the same connected
-            component(s) and are therefore grouped together.
-
-        elements (list[PandapowerElements]):
-            Union of all grid elements contained in the connected component(s)
-            associated with this group. These represent the full outage scope.
     """
 
     contingencies: list[PandapowerContingency]
+    """A list of original contingencies that affect the same connected
+            component(s) and are therefore grouped together.
+    """
+
     elements: list[PandapowerElements]
+    """A list of all grid elements contained in the connected component(s)
+            associated with this group. These represent the full outage scope."""
+
+    outage_group_id: str
+    """Identifier of the outage group.
+            An outage group represents a set of elements that is separated from
+            the rest of the grid by circuit breakers. In contingency analysis,
+            if one element from such a group is taken out of service, the whole
+            outage group is considered disconnected and all elements in that
+            group become unavailable together."""
 
 
 class PandapowerNMinus1Definition(BaseModel):
@@ -170,13 +174,66 @@ class ParallelConfig(BaseModel):
 
 
 class ContingencyAnalysisConfig(BaseModel):
-    """Configuration for pandapower N-1 contingency analysis."""
+    """Configuration for pandapower N-1 contingency analysis.
+
+    This configuration controls how the base case and contingency load flows are
+    executed, how electrical islands are handled, whether outage grouping is
+    applied, and how switch results are mapped and aggregated.
+    """
 
     method: Literal["ac", "dc"] = "ac"
+    """Load-flow method used for the base case and contingency calculations.
+
+    - ``"ac"`` runs a full AC power flow using :func:`pandapower.runpp`
+    - ``"dc"`` runs a DC approximation using :func:`pandapower.rundcpp`
+    """
+
     min_island_size: int = 11
+    """Minimum number of PPCI nodes required for an island to receive a slack bus.
+
+    In pandapower's internal (PPCI) representation, buses connected via closed
+    bus-bus switches are merged into a single node. Therefore, this value does
+    not count individual buses, but aggregated electrical nodes.
+
+    This parameter is used during slack allocation to decide whether an island
+    is large enough to be solved normally.
+    """
 
     runpp_kwargs: dict[str, Any] | None = None
+    """Additional keyword arguments forwarded to pandapower load-flow execution.
+
+    These arguments are passed to :func:`pandapower.runpp` for AC or
+    :func:`pandapower.rundcpp` for DC calculations.
+    """
+
     polars: bool = False
+    """Whether to convert the final result object from pandas to polars format."""
+
     apply_outage_grouping: bool = False
+    """Whether to group contingencies by electrically connected outage scope.
+
+    If enabled, contingencies that lead to the same isolated outage area are
+    processed as outage groups and a connectivity result table is included in
+    the output.
+    """
+
+    switch_traversal_side: Literal["bus", "element"] = "bus"
+    """Defines which side of a switch is used when computing switch results.
+
+    This setting affects how elements are associated with monitored switches
+    before switch result aggregation.
+
+    A switch connects two bus terminals:
+    - ``"bus"``: start traversal from ``sw.bus``
+    - ``"element"``: start traversal from ``sw.element``
+
+    The selected side determines which electrically connected buses and
+    connected elements contribute to the computed switch results.
+    """
 
     parallel: ParallelConfig = Field(default_factory=ParallelConfig)
+    """Parallel execution settings for contingency processing.
+
+    Controls the number of worker processes and optional batch sizing for
+    distributed execution.
+    """

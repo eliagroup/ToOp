@@ -17,8 +17,8 @@ network_data is not needed for running the solver itself.
 
 from dataclasses import replace
 
-import logbook
 import numpy as np
+import structlog
 from beartype.typing import Callable, Optional
 from jaxtyping import Bool, Int
 from toop_engine_dc_solver.preprocess.action_set import (
@@ -80,7 +80,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     empty_status_update_fn,
 )
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def compute_ptdf_if_not_given(network_data: NetworkData) -> NetworkData:
@@ -173,7 +173,8 @@ def filter_relevant_nodes_branch_count(network_data: NetworkData) -> NetworkData
     if len(removed_relevant_nodes) > 0:
         logger.info(
             f"Removed {len(removed_relevant_nodes)} relevant nodes, "
-            f"since they had less than 4 non-bridge branches connected: {removed_relevant_nodes}"
+            "since they had less than 4 non-bridge branches connected.",
+            removed_relevant_node_ids=np.array2string(removed_relevant_nodes),
         )
 
     return remove_relevant_subs(network_data, keep_mask=keep_condition)
@@ -610,12 +611,14 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
 def filter_disconnectable_branches_nminus2(network_data: NetworkData, n_processes: int = 1) -> NetworkData:
     """Filter the disconnectable branch mask to only include N-2 safe branches"""
     disconnectable_branches = np.flatnonzero(network_data.disconnectable_branch_mask)
+    outage_cases = np.flatnonzero(network_data.outaged_branch_mask)
     n_minus_2_safe = find_n_minus_2_safe_branches(
         from_node=network_data.from_nodes,
         to_node=network_data.to_nodes,
         number_of_branches=len(network_data.branch_ids),
         number_of_nodes=len(network_data.node_ids),
         cases_to_check=disconnectable_branches,
+        outage_cases=outage_cases,
         n_processes=n_processes,
     )
     disconnectable_branches = disconnectable_branches[n_minus_2_safe]
@@ -898,8 +901,10 @@ def remove_relevant_subs(
 
     irrelevant_node_ids = np.array(network_data.node_ids)[original_relevant_nodes[~keep_mask]]
     logger.info(
-        f"Removed {len(irrelevant_node_ids)} from relevant nodes, ",
-        f"since they had no branch_actions: {irrelevant_node_ids}",
+        f"Removed {len(irrelevant_node_ids)} from relevant nodes "
+        "since they had no branch_actions. "
+        "Check irrelevant_node_ids log attribute for details.",
+        irrelevant_node_ids=np.array2string(irrelevant_node_ids),
     )
     relevant_node_mask = np.zeros_like(network_data.relevant_node_mask, dtype=bool)
     relevant_node_mask[relevant_nodes] = True

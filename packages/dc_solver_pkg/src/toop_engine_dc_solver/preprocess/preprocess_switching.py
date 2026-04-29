@@ -14,7 +14,6 @@ import itertools
 from dataclasses import dataclass
 
 import jax.numpy as jnp
-import logbook
 import networkx as nx
 import numpy as np
 from beartype.typing import Literal, Optional, Sequence
@@ -40,8 +39,6 @@ from toop_engine_interfaces.asset_topology_helpers import (
     order_station_assets,
     order_topology,
 )
-
-logger = logbook.Logger(__name__)
 
 
 @dataclass

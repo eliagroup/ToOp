@@ -46,14 +46,14 @@ PS- Power switch / Branch switch
 ```
 """
 
-import logbook
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import structlog
 from beartype.typing import Iterable, Optional, Union
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import move_elements_based_on_labels
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_type_b_nodes(

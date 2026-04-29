@@ -9,10 +9,10 @@
 
 import datetime
 
-import logbook
 import networkx as nx
 import pandas as pd
 import pandera.typing as pat
+import structlog
 from pydantic import ValidationError
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
@@ -55,7 +55,7 @@ from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def node_breaker_topology_to_graph_data(net: Network, substation_info: SubstationInformation) -> NetworkGraphData:

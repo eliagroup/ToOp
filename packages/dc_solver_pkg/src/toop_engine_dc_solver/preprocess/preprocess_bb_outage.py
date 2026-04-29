@@ -9,9 +9,9 @@
 
 from dataclasses import replace
 
-import logbook
 import networkx as nx
 import numpy as np
+import structlog
 from beartype.typing import Optional, Union
 from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.preprocess.network_data import (
@@ -22,7 +22,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
 from toop_engine_interfaces.asset_topology import Station, SwitchableAsset
 from toop_engine_interfaces.asset_topology_helpers import find_station_by_id, get_connected_assets
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_total_injection_along_stub_branch(

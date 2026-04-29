@@ -5,11 +5,11 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import logbook
 import networkx as nx
 import numpy as np
 import pandas as pd
 import pytest
+import structlog.testing
 from toop_engine_importer.network_graph.data_classes import NetworkGraphData, SubstationInformation
 from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
 from toop_engine_importer.network_graph.graph_to_asset_topo import (
@@ -35,7 +35,7 @@ from toop_engine_interfaces.asset_topology import AssetBay
 
 
 def test_remove_double_connections():
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         # Test case 1: No double connections
         switching_table = np.array(
             [
@@ -54,7 +54,7 @@ def test_remove_double_connections():
             [[True, True, False, True, False], [False, False, True, False, False], [False, False, False, False, False]]
         )
         result = remove_double_connections(switching_table)
-        assert "Double connections in the switching table detected and removed" in "".join(caplog.formatted_records)
+        assert any("Double connections in the switching table detected and removed" in e["event"] for e in cap_logs)
         assert np.array_equal(result, expected_result), f"Expected {expected_result}, but got {result}"
 
         # Test case 3: All false
@@ -67,8 +67,8 @@ def test_remove_double_connections():
         switching_table = np.array([[True, False, True], [True, True, False], [False, True, True]])
         expected_result = np.array([[True, False, True], [False, True, False], [False, False, False]])
         result = remove_double_connections(switching_table, substation_id="test")
-        assert "Double connections in the switching table detected and removed. Station: test" in "".join(
-            caplog.formatted_records
+        assert any(
+            "Double connections in the switching table detected and removed. Station: test" in e["event"] for e in cap_logs
         )
         assert np.array_equal(result, expected_result), f"Expected {expected_result}, but got {result}"
 

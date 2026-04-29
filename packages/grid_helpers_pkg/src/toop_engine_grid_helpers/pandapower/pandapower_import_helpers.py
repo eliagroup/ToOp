@@ -12,13 +12,13 @@ Author:
 Created:
 """
 
-import logbook
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import structlog
 from beartype.typing import Optional
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def fuse_closed_switches_fast(

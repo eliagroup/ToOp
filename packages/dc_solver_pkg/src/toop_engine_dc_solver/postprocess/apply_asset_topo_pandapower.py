@@ -13,9 +13,9 @@ export and a bus/branch way which reassigns the elements to their new locations.
 
 from dataclasses import dataclass
 
-import logbook
 import numpy as np
 import pandapower as pp
+import structlog
 from beartype.typing import Iterable
 from pandapower.toolbox import element_bus_tuples, get_connected_elements_dict
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_element_table, get_remotely_connected_buses
@@ -30,7 +30,7 @@ from toop_engine_interfaces.asset_topology import (
 )
 from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs, find_busbars_for_coupler
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def reassign_asset_to_bus(

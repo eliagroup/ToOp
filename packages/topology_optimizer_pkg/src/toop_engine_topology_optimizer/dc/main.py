@@ -31,13 +31,12 @@ The first descriptor metric is the vertical axis, the second the horizontal axis
 import datetime
 import json
 import os
-import sys
 import time
 from functools import partial
 
 import jax
-import logbook
 import numpy as np
+import structlog
 import tyro
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -66,7 +65,7 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
 )
 from tqdm import tqdm
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class CLIArgs(BaseModel):
@@ -350,7 +349,6 @@ def main(
 
 
 if __name__ == "__main__":
-    logbook.StreamHandler(sys.stdout, level=logbook.INFO).push_application()
     args = tyro.cli(CLIArgs)
     file_system = LocalFileSystem()
     main(args, file_system)

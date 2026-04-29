@@ -16,9 +16,9 @@ from dataclasses import asdict, dataclass
 from numbers import Integral
 from pathlib import Path
 
-import logbook
 import numpy as np
 import pandapower as pp
+import structlog
 from beartype.typing import Optional
 from jaxtyping import ArrayLike, Bool, Int
 from pandas import Index
@@ -31,7 +31,7 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

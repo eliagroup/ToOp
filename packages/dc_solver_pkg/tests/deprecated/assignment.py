@@ -12,7 +12,6 @@ This entire document is deprecated and is only used for keeping busbar tests run
 """
 
 import jax.numpy as jnp
-import logbook
 import numpy as np
 from beartype.typing import Literal, Optional
 from jaxtyping import ArrayLike, Bool
@@ -21,8 +20,6 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_separation_set,
 )
 from toop_engine_interfaces.asset_topology import Station
-
-logger = logbook.Logger(__name__)
 
 
 # TODO: A different rule could take precedent here. I would first check for parallel lines/trafos

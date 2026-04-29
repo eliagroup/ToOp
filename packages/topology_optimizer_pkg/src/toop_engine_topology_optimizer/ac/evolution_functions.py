@@ -20,8 +20,8 @@ coupler in all timesteps. The idea is that the DC part might have too many open 
 try to simplify the topology by closing a single coupler.
 """
 
-import logbook
 import pandas as pd
+import structlog
 from beartype.typing import Collection, Optional, Sequence
 from numpy.random import Generator as Rng
 from sqlalchemy import exists
@@ -37,7 +37,7 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import (
     is_unsplit_topologies,
 )
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def select_repertoire(

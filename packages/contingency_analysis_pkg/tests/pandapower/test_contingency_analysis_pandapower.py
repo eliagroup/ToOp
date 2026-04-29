@@ -4,6 +4,7 @@
 # If a copy of the MPL was not distributed with this file,
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
+import uuid
 
 import numpy as np
 import pandapower as pp
@@ -208,6 +209,7 @@ def test_extract_branch_results_pandapower_disconnected():
             for index, row in net.line.iterrows()
         ],
     )
+    net.switch["origin_id"] = [str(uuid.uuid4()) for _ in net.switch.index]
 
     cfg = ContingencyAnalysisConfig(method="dc")
     res = run_contingency_analysis_pandapower(
@@ -321,6 +323,7 @@ def test_outage_grouping_combines_connected_elements_into_single_contingency():
     # Run WITHOUT outage grouping
     # ------------------------------------------------------------------
     cfg = ContingencyAnalysisConfig(method="ac", apply_outage_grouping=False)
+    net.switch["origin_id"] = [str(uuid.uuid4()) for _ in net.switch.index]
 
     res = run_contingency_analysis_pandapower(
         net=net,
@@ -363,6 +366,25 @@ def test_outage_grouping_combines_connected_elements_into_single_contingency():
 
     assert l1_loading.isna().all()
     assert l2_loading.isna().all()
+
+    # ------------------------------------------------------------------
+    # Validate connectivity_result
+    # ------------------------------------------------------------------
+    assert res.connectivity_result is not None
+
+    connectivity_result = res.connectivity_result.reset_index()
+
+    expected_contingency = str(l2)
+    expected_elements = {"4%%bus", "1%%line", "3%%bus", "0%%line", "2%%bus", "1%%bus"}
+
+    # there should be exactly one contingency mapped to both outage-group elements
+    contingency_rows = connectivity_result.loc[connectivity_result["contingency"] == expected_contingency]
+
+    assert not contingency_rows.empty
+    assert set(contingency_rows["element"]) == expected_elements
+
+    # both elements should belong to the same outage group
+    assert contingency_rows["outage_group_id"].nunique() == 1
 
 
 def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase_converges():
@@ -423,7 +445,7 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
 
     monitored_elements += [
         GridElement(
-            id=get_globally_unique_id(int(index), "line"),
+            id=get_globally_unique_id(int(index), "bus"),
             name=str(row.name),
             kind="bus",
             type="bus",
@@ -449,6 +471,7 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
     )
 
     cfg = ContingencyAnalysisConfig(method="ac", apply_outage_grouping=False)
+    net.switch["origin_id"] = [str(uuid.uuid4()) for _ in net.switch.index]
 
     # ------------------------------------------------------------------
     # Case 1: basecase fails -> deviation must be NaN
@@ -485,3 +508,8 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
 
     assert not node_results.empty
     assert node_results["vm_basecase_deviation"].notna().all()
+
+    # ------------------------------------------------------------------
+    # Validate connectivity_result
+    # ------------------------------------------------------------------
+    assert res.connectivity_result is None

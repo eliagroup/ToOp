@@ -12,9 +12,9 @@ from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 
-import logbook
 import numpy as np
 import pypowsybl
+import structlog
 from beartype.typing import Callable, Optional
 from fsspec import AbstractFileSystem
 from numpy.random import Generator as Rng
@@ -58,7 +58,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
 )
 from toop_engine_topology_optimizer.interfaces.models.base_storage import convert_db_topo_to_message_topo, hash_topologies
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AcNotConvergedError(Exception):

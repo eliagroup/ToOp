@@ -8,6 +8,7 @@
 """Compute the N-1 AC/DC power flow for the pandapower network."""
 
 import math
+import uuid
 from copy import deepcopy
 
 import pandapower as pp
@@ -29,11 +30,17 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     get_failed_va_diff_results,
     get_node_result_df,
     get_regulating_element_results,
+    get_switch_results,
     get_va_diff_results,
     translate_nminus1_for_pandapower,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_outage_group import (
     get_outage_group_for_contingency,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.switch_results import (
+    SwitchElementMappingSchema,
+    get_failed_switch_results,
+    get_switch_mapped_elements,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import ContingencyAnalysisConfig
 from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
@@ -46,9 +53,11 @@ from toop_engine_interfaces.loadflow_result_helpers import (
 )
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
+    ConnectivityResultSchema,
     ConvergenceStatus,
     LoadflowResults,
     NodeResultSchema,
+    SwitchResultsSchema,
     VADiffResultSchema,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -92,6 +101,7 @@ def run_single_outage(
     job_id: str,
     basecase_voltage: pat.Series[float],
     method: Literal["ac", "dc"],
+    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
     runpp_kwargs: Optional[dict] = None,
 ) -> LoadflowResults:
     """Compute a single outage for the given network
@@ -108,14 +118,19 @@ def run_single_outage(
         The timestep of the results
     job_id : str
         The job id of the current job
-    method : Literal["ac", "dc"]
-        The method to use for the loadflow. Either "ac" or "dc"
-    runpp_kwargs : Optional[dict], optional
-        Additional keyword arguments to pass to runpp/rundcpp functions, by default None
+
     basecase_voltage: pat.Series[float]
         The voltage results from the basecase run.
         Contains computed voltages if the basecase converged,
         otherwise a series of NaN values.
+    method : Literal["ac", "dc"]
+        The method to use for the loadflow. Either "ac" or "dc"
+    switch_element_mapping : pat.DataFrame[SwitchElementMappingSchema]
+        Mapping between switches and connected elements, used to compute
+        switch-level results during each outage.
+    runpp_kwargs : Optional[dict], optional
+        Additional keyword arguments to pass to runpp/rundcpp functions, by default None
+
 
     Returns
     -------
@@ -125,6 +140,7 @@ def run_single_outage(
     outaged_elements = grouped_contingency.elements
 
     opened_cb_indices = open_outaged_circuit_breakers(net, outaged_elements)
+
     were_in_service = set_outaged_elements_out_of_service(net, outaged_elements)
     if not any(were_in_service):
         # If no elements were outaged, this is the base case and we should not run the loadflow
@@ -152,10 +168,11 @@ def run_single_outage(
     node_dfs = []
     va_diff_dfs = []
     regulating_elements_dfs = []
+    switch_dfs = []
     element_name_map = monitored_elements["name"].to_dict()
     first_contingency = grouped_contingency.contingencies[0]
-    branch_results_df, node_results_df, va_diff_results = get_element_results_df(
-        net, first_contingency, monitored_elements, timestep, status, basecase_voltage
+    branch_results_df, node_results_df, va_diff_results, sw_results_df = get_element_results_df(
+        net, first_contingency, monitored_elements, timestep, status, basecase_voltage, switch_element_mapping
     )
     reg_element_result = get_regulating_element_results(timestep, monitored_elements, first_contingency)
 
@@ -164,16 +181,19 @@ def run_single_outage(
         node_dfs.append(_apply_contingency_to_index(node_results_df, contingency))
         va_diff_dfs.append(_apply_contingency_to_index(va_diff_results, contingency))
         regulating_elements_dfs.append(_apply_contingency_to_index(reg_element_result, contingency))
+        switch_dfs.append(_apply_contingency_to_index(sw_results_df, contingency))
 
     branch_results_df = pd.concat(branch_dfs) if branch_dfs else pd.DataFrame()
     node_results_df = pd.concat(node_dfs) if node_dfs else pd.DataFrame()
     va_diff_results = pd.concat(va_diff_dfs) if va_diff_dfs else pd.DataFrame()
     regulating_elements_df = pd.concat(regulating_elements_dfs) if regulating_elements_dfs else pd.DataFrame()
+    switch_df = pd.concat(switch_dfs) if switch_dfs else pd.DataFrame()
 
     update_results_with_names(branch_results_df, element_name_map)
     update_results_with_names(node_results_df, element_name_map)
     update_results_with_names(va_diff_results, element_name_map)
     update_results_with_names(regulating_elements_df, element_name_map)
+    update_results_with_names(switch_df, element_name_map)
 
     restore_outaged_circuit_breakers(net, opened_cb_indices)
     restore_elements_to_service(net, outaged_elements, were_in_service)
@@ -185,6 +205,7 @@ def run_single_outage(
         converged=convergence_df,
         regulating_element_results=regulating_elements_df,
         va_diff_results=va_diff_results,
+        switch_results=switch_df,
         warnings=[],
     )
     return lf_result
@@ -267,7 +288,13 @@ def get_element_results_df(
     timestep: int,
     status: ConvergenceStatus,
     basecase_voltage: pat.Series[float],
-) -> tuple[pat.DataFrame[BranchResultSchema], pat.DataFrame[NodeResultSchema], pat.DataFrame[VADiffResultSchema]]:
+    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
+) -> tuple[
+    pat.DataFrame[BranchResultSchema],
+    pat.DataFrame[NodeResultSchema],
+    pat.DataFrame[VADiffResultSchema],
+    pat.DataFrame[SwitchResultsSchema],
+]:
     """Get the element results dataframes for the given contingency and monitored elements.
 
     Parameters
@@ -286,6 +313,9 @@ def get_element_results_df(
         The voltage results from the basecase run.
         Contains computed voltages if the basecase converged,
         otherwise a series of NaN values.
+    switch_element_mapping : pat.DataFrame[SwitchElementMappingSchema]
+        Mapping between switches and connected elements, used to compute
+        switch-level results during each outage.
 
     Returns
     -------
@@ -293,9 +323,21 @@ def get_element_results_df(
         The branch results dataframe, node results dataframe and va diff results dataframe
     """
     if status == ConvergenceStatus.CONVERGED:
-        branch_results_df = get_branch_results(net, contingency, monitored_elements, timestep)
-        node_results_df = get_node_result_df(net, contingency, monitored_elements, timestep, basecase_voltage)
+        branch_results_df = get_branch_results(net, contingency, timestep)
+        node_results_df = get_node_result_df(net, contingency, timestep, basecase_voltage)
         va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
+        # IMPORTANT:
+        # Do NOT filter branch/node results before this step.
+        # Switch result calculation depends on connectivity and may require data
+        # from non-monitored branches/nodes (e.g. a monitored switch connected to
+        # an unmonitored line/trafo). Therefore we pass full result sets here.
+        sw_results_df = get_switch_results(
+            net, contingency, timestep, branch_results_df, node_results_df, switch_element_mapping
+        )
+
+        branch_results_df = branch_results_df[branch_results_df.index.isin(monitored_elements.index, level="element")]
+        node_results_df = node_results_df[node_results_df.index.isin(monitored_elements.index, level="element")]
+
     else:
         monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()
         monitored_branches = monitored_elements.query("kind == 'branch' & table != 'trafo3w'").index.to_list()
@@ -305,7 +347,8 @@ def get_element_results_df(
         )
         node_results_df = get_failed_node_results(timestep, [contingency.unique_id], monitored_buses)
         va_diff_results = get_failed_va_diff_results(timestep, monitored_elements, contingency)
-    return branch_results_df, node_results_df, va_diff_results
+        sw_results_df = get_failed_switch_results(timestep, switch_element_mapping, contingency)
+    return branch_results_df, node_results_df, va_diff_results, sw_results_df
 
 
 def set_outaged_elements_out_of_service(net: pp.pandapowerNet, outaged_elements: list[PandapowerElements]) -> list[bool]:
@@ -386,6 +429,7 @@ def run_contingency_analysis_sequential(
     timestep: int,
     basecase_voltage: pat.Series[float],
     slack_allocation_config: SlackAllocationConfig,
+    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
     method: Literal["ac", "dc"] = "dc",
     runpp_kwargs: Optional[dict] = None,
 ) -> list[LoadflowResults]:
@@ -403,6 +447,9 @@ def run_contingency_analysis_sequential(
         The timestep of the results
     slack_allocation_config : SlackAllocationConfig
         Precomputed configuration for slack allocation per island.
+    switch_element_mapping : pat.DataFrame[SwitchElementMappingSchema]
+        Mapping between switches and connected elements, used to compute
+        switch-level results during each outage.
     method : Literal["ac", "dc"], optional
         The method to use for the loadflow, by default "dc"
     runpp_kwargs : Optional[dict], optional
@@ -439,6 +486,7 @@ def run_contingency_analysis_sequential(
             method=method,
             runpp_kwargs=runpp_kwargs,
             basecase_voltage=basecase_voltage,
+            switch_element_mapping=switch_element_mapping,
         )
 
         results.append(single_res)
@@ -454,10 +502,8 @@ def run_contingency_analysis_parallel(
     timestep: int,
     slack_allocation_config: SlackAllocationConfig,
     basecase_voltage: pat.Series[float],
-    method: Literal["ac", "dc"] = "dc",
-    n_processes: int = 1,
-    batch_size: Optional[int] = None,
-    runpp_kwargs: Optional[dict] = None,
+    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
+    cfg: ContingencyAnalysisConfig,
 ) -> list[LoadflowResults]:
     """Compute the N-1 AC/DC power flow for the network.
 
@@ -475,19 +521,13 @@ def run_contingency_analysis_parallel(
         The timestep of the results
     slack_allocation_config : SlackAllocationConfig
         Precomputed configuration for slack allocation per island.
-    method : Literal["ac", "dc"], optional
-        The method to use for the loadflow, by default "dc"
-    n_processes : int, optional
-        The number of processes to use for the contingency analysis. If 1, the analysis is run sequentially.
-        If > 1, the analysis is run in parallel. Paralelization is done by splitting the contingencies into
-        chunks and running each chunk in a separate process
-    batch_size : Optional[int]
-        The size of the batches to use for the parallelization. If None, the batch size is set to the number of
-        contingencies divided by the number of processes, rounded up. This is used to avoid too many handles in
-    runpp_kwargs : Optional[dict], optional
-        Additional keyword arguments to pass to runpp/rundcpp functions, by default None
+    cfg : ContingencyAnalysisConfig
+        Execution configuration (method, islanding/slack settings, parallelization, etc.).
     basecase_voltage: pat.Series[float]
         The basecase voltage results
+    switch_element_mapping : pat.DataFrame[SwitchElementMappingSchema]
+        Mapping between switches and connected elements, used to compute
+        switch-level results during each outage.
 
     Returns
     -------
@@ -495,8 +535,9 @@ def run_contingency_analysis_parallel(
         A list of the results per contingency
     """
     n_outages = len(n_minus_1_definition.grouped_contingencies)
+    batch_size = cfg.parallel.batch_size
     if batch_size is None:
-        batch_size = math.ceil(n_outages / n_processes)
+        batch_size = math.ceil(n_outages / cfg.parallel.n_processes)
     work = []
     for i in range(0, n_outages, batch_size):
         grouped_batch = n_minus_1_definition.grouped_contingencies[i : i + batch_size]
@@ -521,12 +562,13 @@ def run_contingency_analysis_parallel(
                 job_id=job_id,
                 timestep=timestep,
                 slack_allocation_config=slack_allocation_config,
-                method=method,
-                runpp_kwargs=runpp_kwargs,
+                method=cfg.method,
+                runpp_kwargs=cfg.runpp_kwargs,
                 basecase_voltage=basecase_voltage,
+                switch_element_mapping=switch_element_mapping,
             )
         )
-        if len(handles) >= n_processes:
+        if len(handles) >= cfg.parallel.n_processes:
             # Wait for the first result and continue
             finished, handles = ray.wait(handles, num_returns=1)
             result_lists.extend(ray.get(finished))
@@ -596,6 +638,45 @@ def _run_base_case_loadflow(
         pass
 
 
+def build_connectivity_df(groups: list[PandapowerContingencyGroup]) -> pat.DataFrame[ConnectivityResultSchema]:
+    """
+    Build a connectivity result table mapping contingencies to affected elements.
+
+    This function flattens a list of PandapowerContingencyGroup objects into a
+    tabular representation where each row corresponds to a pair
+    (contingency, element) along with the associated outage group identifier.
+
+    For each contingency in a group, all elements of that outage group are
+    considered affected. This reflects the modeling assumption that outage
+    groups represent sets of elements that become unavailable together when
+    separated from the grid by circuit breakers.
+
+    Parameters
+    ----------
+    groups : list[PandapowerContingencyGroup]
+        List of contingency groups. Each group contains:
+        - multiple contingencies affecting the same connected component(s),
+        - a set of elements representing the full outage scope,
+        - a unique outage_group_id.
+
+    Returns
+    -------
+    pat.DataFrame[ConnectivityResultSchema]
+        A Pandas DataFrame with:
+        - MultiIndex:
+            * contingency (str): contingency identifier
+            * element (str): element identifier
+        - Column:
+            * outage_group_id (str): identifier of the outage group
+
+        Each row indicates that a given element is affected by a given
+        contingency through their shared outage group.
+    """
+    records = [(c.unique_id, e.unique_id, g.outage_group_id) for g in groups for c in g.contingencies for e in g.elements]
+
+    return pd.DataFrame(records, columns=["contingency", "element", "outage_group_id"]).set_index(["contingency", "element"])
+
+
 def run_contingency_analysis_pandapower(
     net: pp.pandapowerNet,
     n_minus_1_definition: Nminus1Definition,
@@ -631,7 +712,7 @@ def run_contingency_analysis_pandapower(
         )
     else:
         pp_n1_definition.grouped_contingencies = [
-            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements)
+            PandapowerContingencyGroup(contingencies=[cont], elements=cont.elements, outage_group_id=str(uuid.uuid4()))
             for cont in pp_n1_definition.contingencies
         ]
 
@@ -650,6 +731,12 @@ def run_contingency_analysis_pandapower(
         slack_allocation_config=slack_allocation_config,
     )
 
+    switch_element_mapping = get_switch_mapped_elements(
+        net=net,
+        monitored_elements=pp_n1_definition.monitored_elements,
+        side="bus",
+    )
+
     if cfg.parallel.n_processes == 1 and cfg.parallel.batch_size is None:
         results = run_contingency_analysis_sequential(
             net=net,
@@ -660,6 +747,7 @@ def run_contingency_analysis_pandapower(
             method=cfg.method,
             runpp_kwargs=cfg.runpp_kwargs,
             basecase_voltage=net.res_bus.vm_pu.copy(),
+            switch_element_mapping=switch_element_mapping,
         )
     else:
         results = run_contingency_analysis_parallel(
@@ -668,11 +756,9 @@ def run_contingency_analysis_pandapower(
             job_id=job_id,
             timestep=timestep,
             slack_allocation_config=slack_allocation_config,
-            method=cfg.method,
-            n_processes=cfg.parallel.n_processes,
-            batch_size=cfg.parallel.batch_size,
-            runpp_kwargs=cfg.runpp_kwargs,
+            cfg=cfg,
             basecase_voltage=net.res_bus.vm_pu.copy(),
+            switch_element_mapping=switch_element_mapping,
         )
     lf_result = concatenate_loadflow_results(results)
 
@@ -693,6 +779,10 @@ def run_contingency_analysis_pandapower(
         *missing_contingency_warnings,
         *lf_result.warnings,
     ]
+
+    if cfg.apply_outage_grouping:
+        lf_result.connectivity_result = build_connectivity_df(pp_n1_definition.grouped_contingencies)
+
     if not cfg.polars:
         return lf_result
     return convert_pandas_loadflow_results_to_polars(lf_result)

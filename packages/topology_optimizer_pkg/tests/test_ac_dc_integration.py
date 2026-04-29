@@ -6,15 +6,16 @@
 # Mozilla Public License, version 2.0
 
 import logging
-import sys
 import time
 from pathlib import Path
 from uuid import uuid4
 
-import logbook
 import pytest
 import ray
+import structlog
 from confluent_kafka import Consumer, Producer
+from fsspec import AbstractFileSystem
+from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_dc_solver.example_grids import three_node_pst_example_folder_powsybl
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
@@ -41,11 +42,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
 
 from .fake_kafka import FakeConsumer, FakeConsumerEmptyException, FakeProducer
 
-logger = logbook.Logger(__name__)
-logbook.StreamHandler(sys.stdout, level=logging.INFO).push_application()
-from fsspec import AbstractFileSystem
-from fsspec.implementations.dirfs import DirFileSystem
-
+logger = structlog.get_logger()
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
 

@@ -14,8 +14,8 @@ Created: 2024-Q1
 
 from pathlib import Path
 
-import logbook
 import pandas as pd
+import structlog
 from fsspec import AbstractFileSystem
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import import dacf_whitelists, powsybl_masks
@@ -26,7 +26,7 @@ from toop_engine_importer.pypowsybl_import.data_classes import (
     PreProcessingStatistics,
 )
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def convert_low_impedance_lines(net: Network, voltage_level_prefix: str, x_threshold_line: float = 0.05) -> pd.DataFrame:
@@ -215,6 +215,6 @@ def remove_branches_with_same_bus(network: Network) -> None:
 
     if len(same_bus_branches) > 0:
         logger.warning(
-            f"Removed {len(same_bus_branches)} branches with the same bus id. Please check the network for inconsistencies."
-            f" Removed branches: {same_bus_branches.tolist()}"
+            f"Removed {len(same_bus_branches)} branches with the same bus id. Please check the network for inconsistencies.",
+            removed_branch_ids=same_bus_branches.tolist(),
         )

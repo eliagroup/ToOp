@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import logbook
+
 import pytest
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
     PreprocessHeartbeat,
@@ -41,16 +41,17 @@ def test_preprocess_heartbeat_with_status_info():
     assert heartbeat.status_info == status
 
 
-def test_empty_status_update_fn_logs():
-    with logbook.handlers.TestHandler() as log_handler:
-        stage = "preprocess_started"
-        message = None
-        empty_status_update_fn(stage, message)
-        assert log_handler.has_infos
+def test_empty_status_update_fn_logs(capsys: pytest.CaptureFixture[str]):
 
-        message = "Custom message"
-        empty_status_update_fn(stage, message)
-        assert log_handler.has_infos
+    stage = "preprocess_started"
+    empty_status_update_fn(stage, None)
+    captured = capsys.readouterr()
+    assert f"Preprocessing stage {stage}" in captured.out
+
+    empty_status_update_fn(stage, "Custom message")
+    captured = capsys.readouterr()
+    assert f"Preprocessing stage {stage}" in captured.out
+    assert "Custom message" in captured.out
 
 
 @pytest.mark.parametrize("stage", PreprocessStage.__args__[0:5])

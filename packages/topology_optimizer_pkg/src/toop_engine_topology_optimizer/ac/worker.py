@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from uuid import uuid4
 
-import logbook
+import structlog
 from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
@@ -29,6 +29,7 @@ from toop_engine_topology_optimizer.ac.optimizer import (
     wait_for_first_dc_results,
 )
 from toop_engine_topology_optimizer.ac.storage import create_session, scrub_db
+from toop_engine_topology_optimizer.ac.summary import write_summary
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commands import Command, ShutdownCommand, StartOptimizationCommand
@@ -48,7 +49,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     ResultUnion,
 )
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class Args(DCArgs):
@@ -197,6 +198,18 @@ def optimization_loop(
             logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
             send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
             running = False
+            logger.info(f"Writing summary for optimization {optimization_id}")
+            try:
+                write_summary(
+                    grid_files=grid_files,
+                    db=worker_data.db,
+                    processed_gridfile_fs=processed_gridfile_fs,
+                    optimization_id=optimization_id,
+                    action_sets=optimizer_data.action_sets,
+                )
+            except Exception as e:
+                logger.error(f"Error while writing summary for optimization {optimization_id}: {e}")
+                logger.error(f"Stack trace: {traceback.format_exc()}")
             break
 
 
@@ -279,7 +292,10 @@ def idle_loop(
                 )
                 worker_data.command_consumer.commit()
                 continue
-            return command.command
+            with structlog.contextvars.bound_contextvars(
+                optimization_id=command.command.optimization_id,
+            ):
+                return command.command
 
         # If we are here, we received a command that we do not know
         logger.warning(f"Received unknown command, dropping: {command} / {message.value}")
@@ -378,6 +394,7 @@ def main(
     )
 
     def send_heartbeat(message: HeartbeatUnion, ping_commands: bool) -> None:
+        logger.debug(f"Sending heartbeat: {message}", message_type=type(message).__name__)
         heartbeat = Heartbeat(
             optimizer_type=OptimizerType.AC,
             instance_id=instance_id,
@@ -394,6 +411,11 @@ def main(
             worker_data.command_consumer.heartbeat()
 
     def send_result(message: ResultUnion, optimization_id: str) -> None:
+        logger.info(
+            f"Sending result for optimization {optimization_id}: {message}",
+            optimization_id=optimization_id,
+            result_type=type(message).__name__,
+        )
         result = Result(
             result=message,
             optimization_id=optimization_id,

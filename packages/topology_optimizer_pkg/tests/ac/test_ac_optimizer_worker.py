@@ -4,7 +4,6 @@
 # If a copy of the MPL was not distributed with this file,
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
-
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -42,6 +41,8 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     Topology,
     TopologyPushResult,
 )
+
+from packages.topology_optimizer_pkg.tests.fake_kafka import FakeMessage
 
 # Add parent directory to path to import fake_kafka
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -306,8 +307,9 @@ def test_idle_loop_optimization_started() -> None:
         ),
         timestamp=(datetime.now() - timedelta(hours=1)).isoformat(),
     )
-    start_message = Mock()
-    start_message.value.return_value = serialize_message(start_command.model_dump_json())
+    start_message = FakeMessage(
+        value_bytes=serialize_message(start_command.model_dump_json()),
+    )
     worker_data.command_consumer.poll.return_value = start_message
     worker_data.result_consumer.consume.return_value = []
     heartbeats = []
@@ -344,10 +346,12 @@ def test_idle_loop_optimization_started_command_too_old() -> None:
         ),
         timestamp=(datetime.now() - timedelta(hours=1)).isoformat(),
     )
-    start_message = Mock()
-    start_message.value.return_value = serialize_message(start_command.model_dump_json())
-    shutdown_message = Mock()
-    shutdown_message.value.return_value = serialize_message(shutdown_command.model_dump_json())
+    start_message = FakeMessage(
+        value_bytes=serialize_message(start_command.model_dump_json()),
+    )
+    shutdown_message = FakeMessage(
+        value_bytes=serialize_message(shutdown_command.model_dump_json()),
+    )
 
     worker_data.command_consumer.poll.side_effect = [start_message, shutdown_message]
     results = []

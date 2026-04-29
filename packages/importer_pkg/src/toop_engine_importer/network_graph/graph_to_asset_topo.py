@@ -7,11 +7,11 @@
 
 """Creates a Asset Topology from a Network Graph."""
 
-import logbook
 import networkx as nx
 import numpy as np
 import pandas as pd
 import pandera.typing as pat
+import structlog
 from beartype.typing import Literal, Optional, Union
 from jaxtyping import ArrayLike, Bool
 from toop_engine_importer.network_graph.data_classes import (
@@ -27,7 +27,7 @@ from toop_engine_interfaces.asset_topology import (
     AssetBay,
 )
 
-logger = logbook.Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd.DataFrame:
@@ -103,6 +103,20 @@ def get_coupler_df(
     coupler_df["from_busbar_grid_model_id"] = ""
     coupler_df["to_busbar_grid_model_id"] = ""
     coupler_df["type"] = ""
+
+    # hotfix in case a bay id has not been identified for a switch
+    # a missing bay id indecates there is a data quality issue
+    # e.g. a bay has multiple paths -> e.g. two parallel switches between the busbar and the asset
+    # problems that can occure:
+    # the parallel switches are the only switches between the busbar and the asset
+    # -> both switches get ignored -> asset is not connected to the busbar
+    if coupler_df["bay_id"].isna().any():
+        logger.warning(
+            f"Some couplers/switches have missing bay_id in substation {substation_id}."
+            "This indicates a data quality issue. These couplers will be ignored. Please check Station."
+        )
+        coupler_df = coupler_df[coupler_df["bay_id"].notna()]
+
     if coupler_df.empty:
         logger.warning(f"No couplers found in the substation {substation_id}. Please check Station.")
         return coupler_df

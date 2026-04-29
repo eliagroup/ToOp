@@ -14,7 +14,6 @@ Created: 2024-09-18
 
 import datetime
 
-import logbook
 import numpy as np
 import pandas as pd
 from beartype.typing import Optional, Union
@@ -29,8 +28,6 @@ from toop_engine_interfaces.asset_topology import (
     SwitchableAsset,
     Topology,
 )
-
-logger = logbook.Logger(__name__)
 
 
 def get_all_element_names(network: Network, line_trafo_name_col: str = "elementName") -> pd.Series:

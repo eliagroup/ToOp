@@ -16,7 +16,6 @@ One of the requirements is that the AC listener will only want to listen to a si
 not to messages by itself. Hence a filtering mechanic is added.
 """
 
-import logbook
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, delete
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
@@ -29,8 +28,6 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     Result,
     TopologyPushResult,
 )
-
-logger = logbook.Logger(__name__)
 
 
 def finish_optimization(db: Session, optimization_id: str, optimizer_type: OptimizerType) -> None:

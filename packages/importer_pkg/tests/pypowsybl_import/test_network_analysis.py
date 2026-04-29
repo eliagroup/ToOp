@@ -7,9 +7,9 @@
 
 from pathlib import Path
 
-import logbook
 import pandas as pd
 import pypowsybl
+import structlog.testing
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.network_analysis import (
@@ -211,10 +211,10 @@ def test_remove_branches_with_same_bus(ucte_file):
         x=10,
     )
     branches = network.get_branches()
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         remove_branches_with_same_bus(network=network)
-        assert caplog.has_warnings
-        assert "branches with the same bus id" in "".join(caplog.formatted_records)
+        assert any(e["log_level"] == "warning" for e in cap_logs)
+        assert "branches with the same bus id" in "".join(e["event"] for e in cap_logs)
 
     removed_branches = network.get_branches()
     assert len(removed_branches) == len(branches) - 3

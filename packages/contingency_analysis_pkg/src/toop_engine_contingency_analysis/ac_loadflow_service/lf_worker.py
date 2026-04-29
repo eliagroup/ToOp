@@ -41,10 +41,10 @@ Created: 05/2024
 
 import time
 from dataclasses import dataclass
-from logging import getLogger
 from pathlib import Path
 
 import pandapower
+import structlog
 import tyro
 from beartype.typing import Callable, Literal
 from confluent_kafka import Producer
@@ -76,7 +76,7 @@ from toop_engine_interfaces.messages.lf_service.loadflow_results import (
 )
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 
-logger = getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

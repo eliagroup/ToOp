@@ -64,6 +64,8 @@ METRICS = {
     "split_subs": jnp.maximum,
     "n_2_penalty": jnp.add,
     "pst_switching_distance": jnp.maximum,
+    "pst_switching_distance_squared": jnp.maximum,
+    "pst_activated": jnp.maximum,
 }
 
 

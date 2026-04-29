@@ -13,13 +13,11 @@ https://github.com/e2nIEE/pandapower/blob/develop/tutorials/create_advanced.ipyn
 
 from copy import deepcopy
 
-import logbook
 import pandapower as pp
 import pandas as pd
 import pytest
+import structlog.testing
 from toop_engine_importer.pandapower_import import pandapower_toolset_node_breaker
-
-logger = logbook.Logger(__name__)
 
 
 def test_get_type_b_busbars(pp_network_w_switches):
@@ -637,7 +635,7 @@ def test_get_coupler_types_of_substation_test_two_busbar_coupler(
 
 
 @pytest.mark.skip(reason="Not implemented anymore")
-def test_get_coupler_types_of_substation_test_three_bus_parallel(caplog):
+def test_get_coupler_types_of_substation_test_three_bus_parallel():
     net = pp.networks.example_multivoltage()
     # create a parallel three bus coupler
     pp.create_bus(net, name="test_node", vn_kv=110, type="b")  # id = 57
@@ -657,9 +655,9 @@ def test_get_coupler_types_of_substation_test_three_bus_parallel(caplog):
     net.switch.loc[id_max + 4, "element"] = 60
     net.switch.loc[id_max + 3, "bus"] = 60
     net.switch.loc[id_max + 4, "bus"] = 58
-    with logbook.handlers.TestHandler() as caplog:
+    with structlog.testing.capture_logs() as cap_logs:
         pandapower_toolset_node_breaker.get_coupler_types_of_substation(net, [0, 1])
-    assert "Unknown Switch configuration" in "".join(caplog.formatted_records)
+    assert "Unknown Switch configuration" in "".join(e["event"] for e in cap_logs)
 
 
 def test_get_coupler_types_of_substation_test_cross_coupler(

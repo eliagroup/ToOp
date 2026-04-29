@@ -19,7 +19,6 @@ Hydra config file: toop-engine-benchmark/configs/assess.yaml
 
 import json
 import statistics as stats
-import sys
 from pathlib import Path
 
 from beartype.typing import Any, Iterable, cast
@@ -29,12 +28,12 @@ __beartype__ = False
 
 # Hydra imports
 import hydra
+import structlog
 
 # Logging setup
-import logbook
 from omegaconf import DictConfig, OmegaConf
 
-logger = logbook.Logger("Benchmark Assessment")
+logger = structlog.get_logger(__name__)
 
 # Accept ints and floats (beartype strictness) and None values
 Numeric = float | int
@@ -386,8 +385,6 @@ def main(cfg: DictConfig) -> dict:
     dict
         Assessment report dictionary.
     """
-    logbook.StreamHandler(sys.stdout, level=cfg.get("logging_level", "INFO")).push_application()
-
     root = Path(cfg.root)
     run_records, source_files = _collect_run_entries(root)
     if not run_records:

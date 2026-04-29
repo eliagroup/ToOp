@@ -51,7 +51,6 @@ Solution:
 
 from itertools import pairwise
 
-import logbook
 import networkx as nx
 from beartype.typing import Literal, Union
 from toop_engine_importer.network_graph.data_classes import EDGE_ID, WeightValues
@@ -73,8 +72,6 @@ from toop_engine_importer.network_graph.network_graph_helper_functions import (
     remove_path_multiple_busbars,
     reverse_dict_list,
 )
-
-logger = logbook.Logger(__name__)
 
 
 def set_all_busbar_coupling_switches(

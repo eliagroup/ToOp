@@ -5,15 +5,12 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import logging
-import sys
-from logging import getLogger
 from multiprocessing import Process, set_start_method
 from pathlib import Path
 from uuid import uuid4
 
-import logbook
 import pytest
+import structlog
 from beartype.typing import Literal, Union
 from confluent_kafka import Consumer, Producer
 from fsspec.implementations.dirfs import DirFileSystem
@@ -40,8 +37,7 @@ from toop_engine_interfaces.messages.protobuf_message_factory import deserialize
 pytestmark = pytest.mark.xdist_group("kafka")
 
 
-logger = logbook.Logger(__name__)
-logbook.StreamHandler(sys.stdout, level=logging.INFO).push_application()
+logger = structlog.get_logger()
 
 
 def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> Producer:
@@ -51,7 +47,7 @@ def create_producer(kafka_broker: str, instance_id: str, log_level: int = 2) -> 
             "client.id": instance_id,
             "log_level": log_level,
         },
-        logger=getLogger(f"ac_worker_producer_{instance_id}"),
+        logger=logger.bind(ac_worker_producer=instance_id),
     )
     return producer
 
@@ -321,7 +317,7 @@ def main_wrapper(
             "client.id": instance_id,
             "log_level": 2,
         },
-        logger=getLogger("confluent_kafka.producer"),
+        logger=logger.bind(client_id=instance_id),
     )
 
     main(

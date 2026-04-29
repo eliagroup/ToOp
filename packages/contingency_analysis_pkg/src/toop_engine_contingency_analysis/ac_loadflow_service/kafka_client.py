@@ -21,13 +21,11 @@ listening to the assignment changes and pausing or resuming the new TPs accordin
 the ability to consume multiple topics.
 """
 
-from logging import getLogger
-
+import structlog
 from beartype.typing import Optional
 from confluent_kafka import Consumer, Message, TopicPartition
-from logbook import Logger
 
-logger = Logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LongRunningKafkaConsumer:
@@ -74,7 +72,7 @@ class LongRunningKafkaConsumer:
             consumer_config.update(kafka_auth_config)
         self.consumer = Consumer(
             consumer_config,
-            logger=getLogger(f"consumer_{client_id}"),
+            logger=logger.bind(consumer=client_id),
         )
         self.client_id = client_id
         self.assignment: list[TopicPartition] = []

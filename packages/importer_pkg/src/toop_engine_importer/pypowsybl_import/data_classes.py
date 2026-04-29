@@ -32,6 +32,7 @@ PreProcessingIds: TypeAlias = Literal[
     "load_for_nminus1",
     "switch_for_nminus1",
     "line_disconnectable",
+    "trafo_disconnectable",
     "white_list",
     "black_list",
 ]

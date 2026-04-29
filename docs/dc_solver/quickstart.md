@@ -54,7 +54,7 @@ injection = default_injection(static_information)
 res = run_solver(topology, None, injection, static_information)
 ```
 
-This will give us the [`SparseSolverOutput`][toop_engine_dc_solver.jax.SparseSolverOutput] for all topologies, containing [`SparseNMinus0`][toop_engine_dc_solver.jax.SparseNMinus0] and [`SparseNMinus1`][toop_engine_dc_solver.jax.SparseNMinus1] results in sparse representation, only giving back the worst elements. 
+This will give us the [`SparseSolverOutput`][toop_engine_dc_solver.jax.SparseSolverOutput] for all topologies, containing [`SparseNMinus0`][toop_engine_dc_solver.jax.SparseNMinus0] and [`SparseNMinus1`][toop_engine_dc_solver.jax.SparseNMinus1] results in sparse representation, only giving back the worst elements.
 For controlling the amount of results returned, you can adjust
 [`number_most_affected`][toop_engine_dc_solver.jax.types.SolverConfig], [`number_most_affected_n_0`][toop_engine_dc_solver.jax.types.SolverConfig] and [`number_max_out_in_most_affected`][toop_engine_dc_solver.jax.types.SolverConfig]:
 
@@ -148,10 +148,13 @@ The possible aggregation metrics can be found [`here`][toop_engine_interfaces.ty
 | "exponential_overload_energy_limited_n_1" | The sum of the load above the adjusted load limit [(see double limits)](#double-limits) on all monitored branches in their worst N-1 case multiplied with an exponentially increasing factor |
 | "critical_branch_count_n_1"               | The amount of overloaded monitored branches in their worst N-1-case assuming the physical load limits                                                                      |
 | "critical_branch_count_limited_n_1"       | The amount of overloaded monitored branches in their worst N-1-case assuming the adjusted load limits [(see double limits)](#double-limits)                                |
-| "n0_n1_delta"                             | [See N0/N1 Delta](#n0-n1-maximum-difference-factors)                                                                                                                         |
+| "n0_n1_delta"                             | [See N0/N1 Delta](#n0-n1-maximum-difference-factors)                                                                                                                       |
 | "cross_coupler_flow"                      | The sum of the power flowing across the switched busbarcouplers before opening them                                                                                        |
 | "switching_distance"                      | The amount of switching actions have to take place from the original to the proposed topology                                                                              |
-| "split_subs"                              | The amount of busbar couplers were opened                                                                                                                          |
+| "split_subs"                              | The amount of busbar couplers were opened                                                                                                                                  |
+| "pst_switching_distance_squared"                  | Squared sum of absolute distances from initial PST tap indices to optimized PST tap indices (summed over PSTs and timesteps)                                                                |
+| "pst_switching_distance"           | Linear distance from initial PST tap indices to optimized PST tap indices, computed as the sum of absolute tap changes across PSTs and timesteps                            |
+| "pst_activated"                        | Number of PST tap indices that changed compared to the initial taps (implicit unit cost, weighted through `target_metrics`)                                                |
 
 #### Branch Weights
 

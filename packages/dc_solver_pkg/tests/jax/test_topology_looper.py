@@ -146,7 +146,8 @@ def test_run_solver_random_topo(
         aggregate_output_fn=lambda x: x.n_1_matrix,
     )
     # Some random topologies can be numerically unstable. Compare only successful solver runs.
-    assert jnp.sum(success) > 0
+    topology_success = jnp.all(success, axis=1)
+    assert jnp.sum(topology_success) > 0
 
     outage_branches = np.flatnonzero(nd.outaged_branch_mask)
     for topo_id in range(topologies.topologies.shape[0]):
@@ -156,7 +157,7 @@ def test_run_solver_random_topo(
             branches_per_sub=solver_config.branches_per_sub,
         )
 
-        if not bool(success[topo_id]):
+        if not bool(topology_success[topo_id]):
             ref_deemed_unsuccessful = False
             try:
                 _, success_ref = run_solver_ref(

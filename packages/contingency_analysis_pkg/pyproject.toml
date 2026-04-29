@@ -43,13 +43,13 @@ dependencies = [
     "pandas (>=2.2.3,<3.0.0)",
     "pydantic (>=1.10.3,<3.0.0)",
     "confluent-kafka (>=2.3.0,<3.0.0)",
-    "logbook (>=1.8.1,<1.9.0)",
     "toop_engine_interfaces=={{ version }}",
     "toop_engine_grid_helpers=={{ version }}",
     "tyro (>=0.8.8,<0.9.0)",
     "polars>=1.33.0",
     "orjson>=3.11.3",
     "pyarrow>=21.0.0",
+    "structlog (>=24.4.0,<25.0.0)",
 ]
 
 [build-system]
@@ -60,7 +60,7 @@ build-backend = "hatchling.build"
 source = "uv-dynamic-versioning"
 
 [project.optional-dependencies]
-pypowsybl = ["pypowsybl>=1.13.0"]
+pypowsybl = ["pypowsybl==1.14.0"]
 pandapower = ["pandapower>=3.0.0"]
 
 [dependency-groups]
@@ -81,7 +81,6 @@ dev = [
     "openpyxl>=3.1.2",
     "ruff",
     "types-confluent-kafka>=1.3.3",
-    "pytest-logbook>=1.2.0",
     "pypowsybl-jupyter>=1.0.0",
     "docker>=7.1.0",
     "numba>=0.61.2",

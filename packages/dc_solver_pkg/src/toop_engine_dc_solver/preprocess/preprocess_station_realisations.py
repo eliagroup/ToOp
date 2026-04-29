@@ -9,7 +9,6 @@
 
 from dataclasses import replace
 
-import logbook
 import numpy as np
 from beartype.typing import Literal, Optional
 from jaxtyping import Float
@@ -23,8 +22,6 @@ from toop_engine_dc_solver.preprocess.network_data import (
 from toop_engine_interfaces.asset_topology import Station
 from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
-
-logger = logbook.Logger(__name__)
 
 
 def enumerate_station_realisations(

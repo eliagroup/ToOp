@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from omegaconf import DictConfig
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     PreprocessParameters,
@@ -313,7 +314,7 @@ def test_perform_ac_analysis_sorts_topologies_by_fitness(tmp_path: Path, monkeyp
     topology_paths = perform_ac_analysis(
         data_folder=data_folder,
         optimisation_run_path=optimisation_run_path,
-        ac_validation_cfg={"n_processes": 1, "k_best_topos": 2},
+        ac_validation_cfg=DictConfig({"n_processes": 1, "k_best_topos": 2}),
         pandapower_runner=True,
     )
 

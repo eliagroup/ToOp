@@ -19,6 +19,7 @@ import pypowsybl
 import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
 import pytest
+import toop_engine_dc_solver.postprocess.postprocess_powsybl as postprocess_powsybl_module
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
@@ -59,6 +60,37 @@ from toop_engine_interfaces.nminus1_definition import GridElement, load_nminus1_
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
 
 
+class FakeVariantNetwork:
+    """Minimal variant-aware fake network used to test runner isolation."""
+
+    def __init__(self) -> None:
+        self.current_variant = "InitialState"
+        self.variant_transitions: list[tuple[str, ...]] = []
+        self.variants = {
+            "InitialState": {
+                "actions": [],
+                "disconnections": [],
+                "pst_setpoints": [],
+            }
+        }
+
+    def clone_variant(self, source_variant_id: str, target_variant_id: str, may_overwrite: bool = True) -> None:
+        self.variant_transitions.append(("clone", source_variant_id, target_variant_id, str(may_overwrite)))
+        self.variants[target_variant_id] = deepcopy(self.variants[source_variant_id])
+
+    def set_working_variant(self, variant_id: str) -> None:
+        self.variant_transitions.append(("set", variant_id))
+        self.current_variant = variant_id
+
+    def remove_variant(self, variant_id: str) -> None:
+        self.variant_transitions.append(("remove", variant_id))
+        del self.variants[variant_id]
+
+    @property
+    def state(self) -> dict[str, list[int]]:
+        return self.variants[self.current_variant]
+
+
 def test_apply_topology(preprocessed_powsybl_data_folder: Path) -> None:
     # Load grid, network data and topology
     network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
@@ -85,6 +117,28 @@ def test_apply_topology(preprocessed_powsybl_data_folder: Path) -> None:
         # Check that the loadflow still converges
         dc_res = pypowsybl.loadflow.run_dc(net)
         assert dc_res[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED
+
+
+def test_run_loadflow_single_timestep_cleans_up_variant_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_network = FakeVariantNetwork()
+    runner = PowsyblRunner()
+    runner.net = fake_network
+    runner.store_action_set(ActionSet.model_construct())
+    runner.nminus1_definition = object()
+
+    monkeypatch.setattr(PowsyblRunner, "_apply_requested_changes", lambda *args, **kwargs: None)
+
+    monkeypatch.setattr(
+        postprocess_powsybl_module,
+        "run_contingency_analysis_powsybl",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("loadflow failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="loadflow failed"):
+        PowsyblRunner.run_loadflow_single_timestep.__wrapped__(runner, [], [], method="dc")
+
+    assert fake_network.current_variant == "InitialState"
+    assert list(fake_network.variants) == ["InitialState"]
 
 
 def test_apply_disconnections(preprocessed_powsybl_data_folder: Path) -> None:

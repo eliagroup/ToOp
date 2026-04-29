@@ -8,6 +8,7 @@
 import json
 import multiprocessing as mp
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
@@ -18,6 +19,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     PipelineConfig,
     get_paths,
+    perform_ac_analysis,
     prepare_importer_parameters,
     run_pipeline,
     run_task_process,
@@ -240,6 +242,83 @@ def test_run_pipeline_no_optimization_stage(pipeline_and_configs, preprocessing_
             run_ac_validation_stage=True,
             optimisation_run_dir=None,
         )
+
+
+def test_perform_ac_analysis_sorts_topologies_by_fitness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    data_folder = tmp_path / "processed_grid"
+    data_folder.mkdir()
+    (data_folder / "grid.xiidm").write_text("grid", encoding="utf-8")
+
+    optimisation_run_path = tmp_path / "optimizer_snapshot" / "run_0"
+    optimisation_run_path.mkdir(parents=True)
+    (optimisation_run_path / "res.json").write_text(
+        json.dumps(
+            {
+                "best_topos": [
+                    {"actions": [30], "disconnections": [3], "fitness": 3.0},
+                    {"actions": [10], "disconnections": [1], "fitness": 1.0},
+                    {"actions": [20], "disconnections": [2], "fitness": 2.0},
+                ],
+                "initial_fitness": 4.0,
+                "initial_metrics": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    processed_topologies: list[tuple[list[int], list[int]]] = []
+
+    class FakeRunner:
+        def __init__(self) -> None:
+            self.action_set = object()
+
+        def run_ac_loadflow(self, actions: list[int], disconnections: list[int]) -> object:
+            return object()
+
+        def get_last_action_info(self) -> None:
+            return None
+
+        def load_base_grid(self, _grid_path: Path) -> None:
+            return None
+
+    def fake_apply_topology_and_save(
+        _grid_path: Path,
+        actions: list[int],
+        disconnections: list[int],
+        _action_set: object,
+        _save_path: Path,
+        is_pandapower_grid: bool = False,
+    ) -> object:
+        del is_pandapower_grid
+        processed_topologies.append((actions, disconnections))
+        return object()
+
+    monkeypatch.setattr(
+        "toop_engine_topology_optimizer.benchmark.benchmark_utils.create_loadflow_runner",
+        lambda *_args, **_kwargs: FakeRunner(),
+    )
+    monkeypatch.setattr(
+        "toop_engine_topology_optimizer.benchmark.benchmark_utils.apply_topology_and_save",
+        fake_apply_topology_and_save,
+    )
+    monkeypatch.setattr(
+        "toop_engine_topology_optimizer.benchmark.benchmark_utils.calculate_and_save_loadflow_results",
+        lambda *_args, **_kwargs: (object(), None),
+    )
+    monkeypatch.setattr(
+        "toop_engine_topology_optimizer.benchmark.benchmark_utils.save_ac_metrics_summary",
+        lambda *_args, **_kwargs: SimpleNamespace(fitness=0.0),
+    )
+
+    topology_paths = perform_ac_analysis(
+        data_folder=data_folder,
+        optimisation_run_path=optimisation_run_path,
+        ac_validation_cfg={"n_processes": 1, "k_best_topos": 2},
+        pandapower_runner=True,
+    )
+
+    assert len(topology_paths) == 2
+    assert processed_topologies == [([10], [1]), ([20], [2])]
 
 
 def test_run_task_process_invalid_file_path():

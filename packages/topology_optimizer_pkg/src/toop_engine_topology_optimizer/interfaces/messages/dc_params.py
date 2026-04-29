@@ -89,6 +89,10 @@ class BatchedMEParameters(BaseModel):
     """The sigma to use for the normal distribution that mutates the PST taps. The mutation is applied by adding a random
     value drawn from this distribution to the current tap position. A value of 0.0 means no PST mutation."""
 
+    pst_mutation_probability: NonNegativeFloat = 0.0
+    """The probability for an individual PST to be selected for mutation. A value of 0.0 means no PST mutation. A value
+    of 1.0 means all PSTs will be mutated."""
+
     ### CROSS OVER CONFIGURATION ###
 
     proportion_crossover: confloat(ge=0, le=1) = 0.1

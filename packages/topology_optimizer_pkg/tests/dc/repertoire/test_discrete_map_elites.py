@@ -250,6 +250,7 @@ def test_pst_optimization(
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=3.0,
+            pst_mutation_probability=0.2,
             pst_n_taps=di.nodal_injection_information.pst_n_taps,
         ),
     )

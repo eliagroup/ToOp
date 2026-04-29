@@ -22,6 +22,7 @@ def mutate_psts(
     pst_taps: Int[Array, " num_psts"],
     pst_n_taps: Int[Array, " num_psts"],
     pst_mutation_sigma: float | int,
+    pst_mutation_probability: float = 0.2,
 ) -> Int[Array, " num_psts"]:
     """Mutate the PST taps of a single topology.
 
@@ -34,17 +35,31 @@ def mutate_psts(
     pst_n_taps : Int[Array, " num_psts"]
         The number of taps for each PST. If a PST has N taps in this array, then it is assumed that all taps from
         0 to N-1 are valid tap positions. Output taps will be clipped to this range.
-    pst_mutation_sigma : float
+    pst_mutation_sigma : float | int
         The sigma to use for the normal distribution to sample the mutation from. The mutation will be sampled as an
         integer from a normal distribution with mean 0 and sigma pst_mutation_sigma.
+    pst_mutation_probability: float
+        The probability for an individual PST to be selected for mutation. 1.0 indicates that all PSTs will be mutated,
+        0.0 indicates that no PSTs will be mutated. Default 0.2
 
     Returns
     -------
     Int[Array, " num_psts"]
         The mutated PST tap positions, clipped to the valid range of taps for each PST.
     """
-    mutation = jax.random.normal(random_key, shape=pst_taps.shape) * pst_mutation_sigma
+    # Sample number of PSTs to adjust from a num_psts-dimensional uniform distribution
+    key, split_key = jax.random.split(random_key, 2)
+    # barrier = jax.random.uniform(key, shape=pst_taps.shape)
+    pst_indices_to_mutate = jax.random.bernoulli(key=key, p=pst_mutation_probability, shape=pst_taps.shape)
+    # psts_to_change =  barrier <= pst_mutation_probability
+    num_psts_to_change = jnp.sum(pst_indices_to_mutate)
+
+    mutation = jnp.zeros_like(pst_taps)
+    # Sample mutations for PSTs that were selected to change independently from a normal distribution.
+    mutation_samples = jax.random.normal(split_key, shape=(num_psts_to_change,)) * pst_mutation_sigma
+    mutation = mutation.at[pst_indices_to_mutate].set(mutation_samples)
     mutation = jnp.round(mutation).astype(int)
+
     new_pst_taps = pst_taps + mutation
     new_pst_taps = jnp.clip(new_pst_taps, a_min=0, a_max=pst_n_taps - 1)
     return new_pst_taps
@@ -88,6 +103,7 @@ def mutate_nodal_injections(
                 mutate_psts,
                 pst_n_taps=nodal_mutation_config.pst_n_taps,
                 pst_mutation_sigma=nodal_mutation_config.pst_mutation_sigma,
+                pst_mutation_probability=nodal_mutation_config.pst_mutation_probability,
             )
         )
     )(

@@ -403,6 +403,7 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=0.0,
+            pst_mutation_probability=0.0,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
         ),
     )
@@ -453,6 +454,7 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
         ),
     )
@@ -539,6 +541,7 @@ def test_pst_switching_distance_in_target_metrics(static_information_file_comple
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
         ),
     )
@@ -632,6 +635,7 @@ def test_pst_switching_distance_without_pst_optimization(static_information_file
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=0.0,
+            pst_mutation_probability=0.2,
             pst_n_taps=jnp.array([], dtype=int),
         ),
     )
@@ -711,6 +715,7 @@ def test_pst_activated_metric_integration(static_information_file_complex: str) 
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=0.0,
+            pst_mutation_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
         ),
     )
@@ -743,6 +748,7 @@ def test_pst_activated_metric_integration(static_information_file_complex: str) 
         no_pst_mutation_config,
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
         ),
     )
@@ -814,6 +820,7 @@ def test_pst_activated_in_target_metrics(static_information_file_complex: str) -
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
         ),
     )
@@ -920,6 +927,7 @@ def test_pst_switching_distance_squared_metric_integration(static_information_fi
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=0.0,
+            pst_mutation_probability=0.3,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
         ),
     )
@@ -948,6 +956,7 @@ def test_pst_switching_distance_squared_metric_integration(static_information_fi
         no_pst_mutation_config,
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
         ),
     )
@@ -1024,6 +1033,7 @@ def test_pst_switching_distance_squared_in_target_metrics(static_information_fil
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
         ),
     )

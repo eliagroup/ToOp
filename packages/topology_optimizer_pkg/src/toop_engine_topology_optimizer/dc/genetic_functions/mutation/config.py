@@ -66,6 +66,9 @@ class NodalInjectionMutationConfig(eqx.Module):
     pst_mutation_sigma: float = eqx.field(static=True)
     """The sigma to use for the normal distribution to sample the PST tap mutation from."""
 
+    pst_mutation_probability: float = eqx.field(static=True)
+    """The probability for an individual PST to be selected for mutation."""
+
     pst_n_taps: Int[Array, " num_psts"]
     """The number of taps for each PST, used to determine the valid range of tap positions for mutation."""
 

@@ -662,6 +662,7 @@ def algo_setup(
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=ga_args.pst_mutation_sigma,
+            pst_mutation_probability=ga_args.pst_mutation_probability,
             pst_n_taps=static_informations[0].dynamic_information.nodal_injection_information.pst_n_taps,
         )
         if static_informations[0].dynamic_information.nodal_injection_information is not None

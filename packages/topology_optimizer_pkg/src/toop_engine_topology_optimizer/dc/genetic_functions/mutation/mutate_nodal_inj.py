@@ -19,25 +19,25 @@ from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import 
 
 def mutate_psts(
     random_key: PRNGKeyArray,
-    pst_taps: Int[Array, " num_psts"],
-    pst_n_taps: Int[Array, " num_psts"],
-    pst_starting_taps: Int[Array, " num_psts"],
+    pst_taps: Int[Array, " n_controllable_pst"],
+    pst_n_taps: Int[Array, " n_controllable_pst"],
+    pst_starting_taps: Int[Array, " n_controllable_pst"],
     pst_mutation_sigma: float | int,
     pst_mutation_probability: float = 0.2,
     pst_reset_probability: float = 0.1,
-) -> Int[Array, " num_psts"]:
+) -> Int[Array, " n_controllable_pst"]:
     """Mutate the PST taps of a single topology.
 
     Parameters
     ----------
     random_key : PRNGKeyArray
         The random key to use for the mutation
-    pst_taps : Int[Array, " num_psts"]
+    pst_taps : Int[Array, " n_controllable_pst"]
         The PST tap positions before mutation
-    pst_n_taps : Int[Array, " num_psts"]
+    pst_n_taps : Int[Array, " n_controllable_pst"]
         The number of taps for each PST. If a PST has N taps in this array, then it is assumed that all taps from
         0 to N-1 are valid tap positions. Output taps will be clipped to this range.
-    pst_starting_taps: Int[Array, " num_psts]
+    pst_starting_taps: Int[Array, " n_controllable_pst]
         The initial PST taps of each controllable PST.
     pst_mutation_sigma : float | int
         The sigma to use for the normal distribution to sample the mutation from. The mutation will be sampled as an
@@ -51,10 +51,10 @@ def mutate_psts(
 
     Returns
     -------
-    Int[Array, " num_psts"]
+    Int[Array, " n_controllable_pst"]
         The mutated PST tap positions, clipped to the valid range of taps for each PST.
     """
-    # Sample number of PSTs to adjust from a num_psts-dimensional uniform distribution
+    # Sample number of PSTs to adjust from a n_controllable_pst-dimensional uniform distribution
     key, key_mutate, key_reset = jax.random.split(random_key, 3)
 
     pst_indices_to_mutate = jax.random.bernoulli(key=key, p=pst_mutation_probability, shape=pst_taps.shape)

@@ -93,6 +93,10 @@ class BatchedMEParameters(BaseModel):
     """The probability for an individual PST to be selected for mutation. A value of 0.0 means no PST mutation. A value
     of 1.0 means all PSTs will be mutated."""
 
+    pst_reset_probability: NonNegativeFloat = 0.0
+    """The probability for an individual PST to be reverted to its initial set point. A value of 0.0 means no reset. A
+    value of 1.0 means all PSTs will be resetted."""
+
     ### CROSS OVER CONFIGURATION ###
 
     proportion_crossover: confloat(ge=0, le=1) = 0.1

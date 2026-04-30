@@ -21,8 +21,10 @@ def mutate_psts(
     random_key: PRNGKeyArray,
     pst_taps: Int[Array, " num_psts"],
     pst_n_taps: Int[Array, " num_psts"],
+    pst_starting_taps: Int[Array, " num_psts"],
     pst_mutation_sigma: float | int,
     pst_mutation_probability: float = 0.2,
+    pst_reset_probability: float = 0.1,
 ) -> Int[Array, " num_psts"]:
     """Mutate the PST taps of a single topology.
 
@@ -35,12 +37,17 @@ def mutate_psts(
     pst_n_taps : Int[Array, " num_psts"]
         The number of taps for each PST. If a PST has N taps in this array, then it is assumed that all taps from
         0 to N-1 are valid tap positions. Output taps will be clipped to this range.
+    pst_starting_taps: Int[Array, " num_psts]
+        The initial PST taps of each controllable PST.
     pst_mutation_sigma : float | int
         The sigma to use for the normal distribution to sample the mutation from. The mutation will be sampled as an
         integer from a normal distribution with mean 0 and sigma pst_mutation_sigma.
     pst_mutation_probability: float
         The probability for an individual PST to be selected for mutation. 1.0 indicates that all PSTs will be mutated,
         0.0 indicates that no PSTs will be mutated. Default 0.2
+    pst_reset_probability: float
+        The probability for an individual PST to be reverted to its initial set point. A value of 0.0 means no reset. A
+        value of 1.0 means all PSTs will be resetted. Default 0.1
 
     Returns
     -------
@@ -48,19 +55,20 @@ def mutate_psts(
         The mutated PST tap positions, clipped to the valid range of taps for each PST.
     """
     # Sample number of PSTs to adjust from a num_psts-dimensional uniform distribution
-    key, split_key = jax.random.split(random_key, 2)
-    # barrier = jax.random.uniform(key, shape=pst_taps.shape)
+    key, key_mutate, key_reset = jax.random.split(random_key, 3)
+
     pst_indices_to_mutate = jax.random.bernoulli(key=key, p=pst_mutation_probability, shape=pst_taps.shape)
-    # psts_to_change =  barrier <= pst_mutation_probability
-    num_psts_to_change = jnp.sum(pst_indices_to_mutate)
 
-    mutation = jnp.zeros_like(pst_taps)
-    # Sample mutations for PSTs that were selected to change independently from a normal distribution.
-    mutation_samples = jax.random.normal(split_key, shape=(num_psts_to_change,)) * pst_mutation_sigma
-    mutation = mutation.at[pst_indices_to_mutate].set(mutation_samples)
+    # Keep the sample shape static so this function can run under vmap/jit.
+    mutation_samples = jax.random.normal(key_mutate, shape=pst_taps.shape) * pst_mutation_sigma
+    mutation = jnp.where(pst_indices_to_mutate, mutation_samples, 0.0)
     mutation = jnp.round(mutation).astype(int)
-
     new_pst_taps = pst_taps + mutation
+
+    # Reset random PSTs
+    pst_indices_to_reset = jax.random.bernoulli(key=key_reset, p=pst_reset_probability, shape=pst_taps.shape)
+    new_pst_taps = jnp.where(pst_indices_to_reset, pst_starting_taps, new_pst_taps)
+
     new_pst_taps = jnp.clip(new_pst_taps, a_min=0, a_max=pst_n_taps - 1)
     return new_pst_taps
 
@@ -102,8 +110,10 @@ def mutate_nodal_injections(
             partial(
                 mutate_psts,
                 pst_n_taps=nodal_mutation_config.pst_n_taps,
+                pst_starting_taps=nodal_mutation_config.pst_start_tap_idx,
                 pst_mutation_sigma=nodal_mutation_config.pst_mutation_sigma,
                 pst_mutation_probability=nodal_mutation_config.pst_mutation_probability,
+                pst_reset_probability=nodal_mutation_config.pst_reset_probability,
             )
         )
     )(

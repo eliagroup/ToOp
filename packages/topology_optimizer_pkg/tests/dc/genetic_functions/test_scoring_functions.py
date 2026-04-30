@@ -935,8 +935,8 @@ def test_pst_switching_distance_squared_metric_integration(static_information_fi
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
-            pst_mutation_probability=0.3,
-            pst_reset_probability=0.2,
+            pst_mutation_probability=0.0,
+            pst_reset_probability=0.0,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
             pst_start_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx,
         ),
@@ -960,7 +960,7 @@ def test_pst_switching_distance_squared_metric_integration(static_information_fi
 
     assert "pst_switching_distance_squared" in metrics_zero
     assert metrics_zero["pst_switching_distance_squared"].shape == (batch_size,)
-    assert jnp.all(metrics_zero["pst_switching_distance_squared"] >= 0.0)
+    assert jnp.all(metrics_zero["pst_switching_distance_squared"] == 0.0)
 
     pst_mutation_config = replace(
         no_pst_mutation_config,

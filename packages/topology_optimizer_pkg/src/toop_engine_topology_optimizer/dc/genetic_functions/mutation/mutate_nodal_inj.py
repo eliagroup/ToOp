@@ -37,7 +37,7 @@ def mutate_psts(
     pst_n_taps : Int[Array, " n_controllable_pst"]
         The number of taps for each PST. If a PST has N taps in this array, then it is assumed that all taps from
         0 to N-1 are valid tap positions. Output taps will be clipped to this range.
-    pst_starting_taps: Int[Array, " n_controllable_pst]
+    pst_starting_taps: Int[Array, " n_controllable_pst"]
         The initial PST taps of each controllable PST.
     pst_mutation_sigma : float | int
         The sigma to use for the normal distribution to sample the mutation from. The mutation will be sampled as an
@@ -47,7 +47,7 @@ def mutate_psts(
         0.0 indicates that no PSTs will be mutated. Default 0.2
     pst_reset_probability: float
         The probability for an individual PST to be reverted to its initial set point. A value of 0.0 means no reset. A
-        value of 1.0 means all PSTs will be resetted. Default 0.1
+        value of 1.0 means all PSTs will be reset. Default 0.1
 
     Returns
     -------

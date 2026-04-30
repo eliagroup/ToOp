@@ -46,7 +46,9 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **disconnected_branches**: Number of branches (lines/transformers) that have been intentionally disconnected in the topology.
 
-- **pst_switching_distance**: Squared distance from the initial PST setpoints to the current optimized ones.
+- **pst_switching_distance_squared**: Squared sum of absolute distances from the initial PST setpoints to the current optimized ones.
+
+- **pst_switching_distance**: Linear distance from the initial PST setpoints to the current optimized ones, computed as the sum of absolute tap changes.
 
 - **pst_activated**: Number of PST tap positions that differ from their initial tap position (implicit unit cost). This counts changed PST setpoints and can be weighted in `target_metrics`.
 

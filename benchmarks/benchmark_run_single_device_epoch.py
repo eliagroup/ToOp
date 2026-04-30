@@ -668,6 +668,7 @@ def main() -> None:
             random_key=rk,
             pst_taps=pst_taps,
             pst_n_taps=mutation_config.nodal_injection_mutation_config.pst_n_taps,
+            pst_starting_taps=mutation_config.nodal_injection_mutation_config.pst_start_tap_idx,
             pst_mutation_sigma=mutation_config.nodal_injection_mutation_config.pst_mutation_sigma,
             pst_mutation_probability=mutation_config.nodal_injection_mutation_config.pst_mutation_probability,
             pst_reset_probability=mutation_config.nodal_injection_mutation_config.pst_reset_probability,

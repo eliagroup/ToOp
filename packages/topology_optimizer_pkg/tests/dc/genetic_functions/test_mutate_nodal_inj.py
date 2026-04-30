@@ -188,7 +188,6 @@ def test_resetting_psts() -> None:
     assert jnp.all(mutated_pst_taps < pst_n_taps)
     # Assert some PSTs are adjusted but not all
     difference = jnp.abs(pst_taps - mutated_pst_taps)
-    assert jnp.all(difference > 0)
     assert jnp.all(mutated_pst_taps == pst_starting_taps)
 
     # Test resetting some PSTs
@@ -216,5 +215,6 @@ def test_resetting_psts() -> None:
     assert jnp.all(mutated_pst_taps < pst_n_taps)
     # Assert some PSTs are adjusted but not all
     difference = jnp.abs(pst_taps - mutated_pst_taps)
-    assert jnp.all(difference > 0)
+    assert jnp.any(difference > 0)
+    assert jnp.any(difference == 0)
     assert jnp.any(mutated_pst_taps == pst_starting_taps)

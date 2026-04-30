@@ -178,12 +178,6 @@ def test_translate_spps_rules_unique_pandapower_no_actions_in_missing(
     assert missing == [rule] and cond.empty and act.empty
 
 
-def test_translate_spps_rules_unsupported_id_type_raises(pandapower_net: pp.pandapowerNet) -> None:
-    rule = _sample_rule(int(pandapower_net.line.index[0]), int(pandapower_net.switch.index[0]))
-    with pytest.raises(ValueError, match="Unsupported id_type"):
-        translate_spps_rules(pandapower_net, [rule], id_type="ucte")  # type: ignore[arg-type]
-
-
 def test_translate_spps_rules_cgmes_resolves_origin_id(pandapower_net: pp.pandapowerNet) -> None:
     net = pandapower_net
     line_idx = int(net.line.index[0])

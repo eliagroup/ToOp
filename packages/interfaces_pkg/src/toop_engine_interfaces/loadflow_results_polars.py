@@ -22,6 +22,7 @@ from toop_engine_interfaces.loadflow_results import (
     ConvergedSchema,
     NodeResultSchema,
     RegulatingElementResultSchema,
+    SppsResultsSchema,
     SwitchResultsSchema,
     VADiffResultSchema,
 )
@@ -69,6 +70,12 @@ class ConvergedSchemaPolars(pal.DataFrameModel, ConvergedSchema):
     pass
 
 
+class SppsResultsSchemaPolars(pal.DataFrameModel, SppsResultsSchema):
+    """Polars variant of SppsResultsSchema."""
+
+    pass
+
+
 LoadflowResultTablePolars = Union[
     patpl.LazyFrame[NodeResultSchemaPolars],
     patpl.LazyFrame[BranchResultSchemaPolars],
@@ -77,6 +84,7 @@ LoadflowResultTablePolars = Union[
     patpl.LazyFrame[SwitchResultsSchemaPolars],
     patpl.LazyFrame[RegulatingElementResultSchemaPolars],
     patpl.LazyFrame[ConvergedSchemaPolars],
+    patpl.LazyFrame[SppsResultsSchemaPolars],
 ]
 
 
@@ -136,6 +144,10 @@ class LoadflowResultsPolars(BaseModel):
     """Additional information that the loadflow solver wants to convey to the user. There is no limitation what can
     be put in here except that it needs to be json serializable."""
 
+    spps_results: Union[patpl.LazyFrame[SppsResultsSchemaPolars], pl.LazyFrame] = None
+    """SpPS run summaries, concatenated in single-outage order. Empty when no
+    SpPS was recorded (default)."""
+
     class Config:
         """Pydantic configuration for the LoadflowResultsPolars model."""
 
@@ -187,6 +199,10 @@ class LoadflowResultsPolars(BaseModel):
             assert_frame_equal(self.regulating_element_results, lf_result.regulating_element_results, **kw_args_testing)
             assert_frame_equal(self.va_diff_results, lf_result.va_diff_results, **kw_args_testing)
             assert_frame_equal(self.converged, lf_result.converged, **kw_args_testing)
+            if self.spps_results is not None and lf_result.spps_results is not None:
+                assert_frame_equal(self.spps_results, lf_result.spps_results, **kw_args_testing)
+            elif self.spps_results is not None or lf_result.spps_results is not None:
+                return False
         except AssertionError:
             return False
 

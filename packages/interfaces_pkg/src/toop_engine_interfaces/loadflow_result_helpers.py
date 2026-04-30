@@ -20,6 +20,7 @@ import polars as pl
 from beartype.typing import Optional, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float
+from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
     BranchSide,
@@ -28,6 +29,7 @@ from toop_engine_interfaces.loadflow_results import (
     LoadflowResults,
     NodeResultSchema,
     RegulatingElementResultSchema,
+    SppsResultsSchema,
     VADiffResultSchema,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -179,6 +181,13 @@ def concatenate_loadflow_results(
         for lf_results in loadflow_results_list
         for additional_information in lf_results.additional_information
     ]
+    spps_results = pd.concat(
+        [
+            lf.spps_results if lf.spps_results is not None else get_empty_dataframe_from_model(SppsResultsSchema)
+            for lf in loadflow_results_list
+        ],
+        axis=0,
+    )
     return LoadflowResults(
         job_id=loadflow_results_list[0].job_id,
         branch_results=branch_results,
@@ -189,6 +198,7 @@ def concatenate_loadflow_results(
         switch_results=switch_results,
         warnings=warnings,
         additional_information=additional_information,
+        spps_results=spps_results,
     )
 
 

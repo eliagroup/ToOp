@@ -9,15 +9,26 @@
 
 import dataclasses
 
+import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
 from networkx.classes import MultiGraph
 from pandera.typing import Index, Series
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.loadflow_results import SwitchElementMappingSchema
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
+)
+from toop_engine_interfaces.spps_parameters import (
+    SPPS_CONDITION_CHECK_TYPE_VALUES,
+    SPPS_CONDITION_LOGIC_VALUES,
+    SPPS_CONDITION_SIDE_VALUES,
+    SPPS_CONDITION_TYPE_VALUES,
+    SPPS_MEASURE_TYPE_VALUES,
+    SppsPowerFlowFailurePolicy,
 )
 
 
@@ -128,6 +139,64 @@ class PandapowerContingencyGroup(BaseModel):
             group become unavailable together."""
 
 
+class SppsConditionsPandapowerSchema(pa.DataFrameModel):
+    """Pandera schema for resolved SpPS condition rows (one row per condition)."""
+
+    scheme_name: Series[str]
+    """Name of the rule scheme: conditions with the same name are evaluated as one logical group."""
+
+    condition_logic: Series[str] = pa.Field(isin=SPPS_CONDITION_LOGIC_VALUES)
+    """Per-row copy of the scheme's condition combination mode (``all`` vs ``any``); identical for all rows of a scheme."""
+
+    condition_type: Series[str] = pa.Field(isin=SPPS_CONDITION_TYPE_VALUES)
+    """What is being checked (e.g. current, power, voltage, or element state)."""
+
+    condition_check_type: Series[str] = pa.Field(isin=SPPS_CONDITION_CHECK_TYPE_VALUES)
+    """How the condition is evaluated (comparison or state check)."""
+
+    condition_side: Series[str] = pa.Field(isin=SPPS_CONDITION_SIDE_VALUES)
+    """Which side or value of the element is used for the check."""
+
+    condition_limit_value: Series[float] = pa.Field(
+        nullable=True,
+        coerce=True,
+    )
+    """Threshold value for the condition (empty for state-based checks)."""
+
+    condition_element_table: Series[str]
+    """Pandapower table containing the element to monitor."""
+
+    condition_element_table_id: Series[int] = pa.Field(coerce=True)
+    """Row id of the monitored element in the table."""
+
+
+class SppsActionsPandapowerSchema(pa.DataFrameModel):
+    """Pandera schema for resolved SpPS action rows (one row per action)."""
+
+    scheme_name: Series[str]
+    """Name of the rule scheme: actions apply when that scheme's conditions pass per ``condition_logic``."""
+
+    measure_type: Series[str] = pa.Field(isin=SPPS_MEASURE_TYPE_VALUES)
+    """What is applied when the scheme activates."""
+
+    measure_value: Series[object]
+    """Target value (number or switch state like 'Open'/'Closed')."""
+
+    measure_element_table: Series[str]
+    """Pandapower table containing the element to control."""
+
+    measure_element_table_id: Series[int] = pa.Field(coerce=True)
+    """Row id of the controlled element in the table."""
+
+
+def _default_spps_conditions() -> "pat.DataFrame[SppsConditionsPandapowerSchema]":
+    return get_empty_dataframe_from_model(SppsConditionsPandapowerSchema)
+
+
+def _default_spps_actions() -> "pat.DataFrame[SppsActionsPandapowerSchema]":
+    return get_empty_dataframe_from_model(SppsActionsPandapowerSchema)
+
+
 class PandapowerNMinus1Definition(BaseModel):
     """A Pandapower N-1 definition.
 
@@ -135,7 +204,7 @@ class PandapowerNMinus1Definition(BaseModel):
     It contains only the necessary information to run an N-1 analysis in Pandapower.
     """
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     contingencies: list[PandapowerContingency]
     """The outages to be considered. Maps contingency id to outaged element ids."""
@@ -148,6 +217,34 @@ class PandapowerNMinus1Definition(BaseModel):
 
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema]
     """A dictionary mapping the element kind to a list of element ids that are monitored."""
+
+    spps_conditions: pat.DataFrame[SppsConditionsPandapowerSchema] = Field(default_factory=_default_spps_conditions)
+    """Resolved SpPS condition rows for the entire N-1 job.
+
+    Each row is one check (voltage, current, power, element state, etc.); columns
+    follow the SpPS conditions schema (including ``scheme_name``). All rows with
+    the same ``scheme_name`` belong to one scheme: that scheme is satisfied in an
+    engine iteration according to each row's ``condition_logic`` (``all`` or ``any``).
+    This table is copied
+    into each per-outage execution context and evaluated against the post-outage
+    network. If it is empty, no SpPS is run: each contingency uses a standard
+    pandapower load flow only, and any ``spps_actions`` data are ignored.
+    """
+
+    spps_actions: pat.DataFrame[SppsActionsPandapowerSchema] = Field(default_factory=_default_spps_actions)
+    """Resolved SpPS action rows for the entire N-1 job.
+
+     Each row is one control step (e.g. switch a device, set a tap) tied to
+     ``scheme_name``; column meanings follow the SpPS actions schema. A scheme is
+     linked to the conditions table by the same ``scheme_name``: when that scheme's
+     conditions pass (per ``condition_logic`` on condition rows), the SpPS engine applies the ordered
+     set of actions for that scheme, then re-runs the load flow, and repeats until
+     no scheme triggers or the iteration cap is hit. The table is passed through
+     to each per-outage run. If ``spps_conditions`` is empty, a normal load flow is
+     executed and this table is not applied. If conditions are non-empty, action
+     rows are expected to match the project ruleset (typically one or more
+     actions per defined scheme).
+     """
 
     missing_elements: list[GridElement]
     """A list of monitored elements that were not found in the network."""
@@ -180,6 +277,8 @@ class ContingencyAnalysisConfig(BaseModel):
     executed, how electrical islands are handled, whether outage grouping is
     applied, and how switch results are mapped and aggregated.
     """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     method: Literal["ac", "dc"] = "ac"
     """Load-flow method used for the base case and contingency calculations.
@@ -230,6 +329,307 @@ class ContingencyAnalysisConfig(BaseModel):
     The selected side determines which electrically connected buses and
     connected elements contribute to the computed switch results.
     """
+
+    parallel: ParallelConfig = Field(default_factory=ParallelConfig)
+    """Parallel execution settings for contingency processing.
+
+    Controls the number of worker processes and optional batch sizing for
+    distributed execution.
+    """
+
+    spps_rules_max_iterations: int = Field(default=10, ge=1)
+    """Maximum number of iterations for the SpPS engine.
+
+    Limits how many times rules can be evaluated and applied during
+    a single outage calculation.
+    """
+
+    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE
+    """SpPS in-loop power-flow policy (ignored when there are no SpPS rules).
+
+    Forwarded to ``run_spps``. :attr:`~SppsPowerFlowFailurePolicy.RAISE` re-raises
+    solver failures as ``SppsPowerFlowError``;
+    :attr:`~SppsPowerFlowFailurePolicy.KEEP_PREVIOUS` keeps the last successful
+    ``res_*`` state on failure; see the SpPS engine for details.
+    """
+
+
+class SingleOutageContext(BaseModel):
+    """Shared execution context for a single outage calculation.
+
+    This context bundles all parameters required to compute one contingency
+    (outage) scenario, including load-flow settings, monitored elements,
+    and optional SpPS rule execution.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema]
+    """Elements that should be monitored during the outage computation.
+
+    These elements define which results (branches, buses, switches, etc.)
+    are extracted and returned after the load-flow execution.
+    """
+
+    timestep: int
+    """Timestep associated with the computed results.
+
+    Used to label all output tables consistently across base case and
+    contingency calculations.
+    """
+
+    job_id: str
+    """Identifier of the current computation job.
+
+    This value is propagated into the resulting :class:`LoadflowResults`
+    object for traceability.
+    """
+
+    basecase_voltage: pd.Series
+    """Voltage results from the base-case load-flow.
+
+    Contains valid voltage magnitudes if the base case converged,
+    otherwise a series of NaN values. Used for voltage comparison
+    and delta calculations.
+    """
+
+    method: Literal["ac", "dc"] = "ac"
+    """Load-flow method used for the base case and contingency calculations.
+
+    - ``"ac"`` runs a full AC power flow using :func:`pandapower.runpp`
+    - ``"dc"`` runs a DC approximation using :func:`pandapower.rundcpp`
+    """
+
+    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema]
+    """Mapping between switches and connected elements.
+
+    Used to compute switch-level results based on the electrical
+    connectivity of monitored elements.
+    """
+
+    spps_conditions: pat.DataFrame[SppsConditionsPandapowerSchema]
+    """Resolved SpPS condition rows for the entire N-1 job.
+
+    Each row is one check (voltage, current, power, element state, etc.); columns
+    follow the SpPS conditions schema (including ``scheme_name``). All rows with
+    the same ``scheme_name`` belong to one scheme: that scheme is satisfied in an
+    engine iteration according to each row's ``condition_logic`` (``all`` or ``any``).
+    This table is copied
+    into each per-outage execution context and evaluated against the post-outage
+    network. If it is empty, no SpPS is run: each contingency uses a standard
+    pandapower load flow only, and any ``spps_actions`` data are ignored.
+    """
+
+    spps_actions: pat.DataFrame[SppsActionsPandapowerSchema]
+    """Resolved SpPS action rows for the entire N-1 job.
+
+     Each row is one control step (e.g. switch a device, set a tap) tied to
+     ``scheme_name``; column meanings follow the SpPS actions schema. A scheme is
+     linked to the conditions table by the same ``scheme_name``: when that scheme's
+     conditions pass (per ``condition_logic`` on condition rows), the SpPS engine applies the ordered
+     set of actions for that scheme, then re-runs the load flow, and repeats until
+     no scheme triggers or the iteration cap is hit. The table is passed through
+     to each per-outage run. If ``spps_conditions`` is empty, a normal load flow is
+     executed and this table is not applied. If conditions are non-empty, action
+     rows are expected to match the project ruleset (typically one or more
+     actions per defined scheme).
+     """
+
+    spps_rules_max_iterations: int = Field(default=10, ge=1)
+    """Maximum number of iterations for the SpPS engine.
+
+    Limits how many times rules can be evaluated and applied during
+    a single outage calculation.
+    """
+
+    runpp_kwargs: dict[str, Any] | None = None
+    """Additional keyword arguments for pandapower load-flow execution.
+
+    Passed directly to :func:`pandapower.runpp` or
+    :func:`pandapower.rundcpp` depending on the selected method.
+    """
+
+    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE
+    """SpPS in-loop power-flow policy (ignored when there are no SpPS rules).
+
+        Forwarded to ``run_spps``. :attr:`~SppsPowerFlowFailurePolicy.RAISE` re-raises
+        solver failures as ``SppsPowerFlowError``;
+        :attr:`~SppsPowerFlowFailurePolicy.KEEP_PREVIOUS` keeps the last successful
+        ``res_*`` state on failure; see the SpPS engine for details.
+        """
+
+
+class SequentialContingencyAnalysisContext(BaseModel):
+    """Shared context for sequential N-1 contingency analysis.
+
+    This context contains all parameters required to execute a full
+    contingency analysis sequentially (single process), including
+    load-flow configuration, SpPS settings, and slack allocation data.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    job_id: str
+    """Identifier of the current computation job.
+
+    Used to tag all resulting load-flow outputs.
+    """
+
+    timestep: int
+    """Timestep associated with the computed results."""
+
+    basecase_voltage: pd.Series
+    """Voltage results from the base-case load-flow.
+
+    Used for comparison with contingency results and for computing
+    voltage differences.
+    """
+
+    slack_allocation_config: SlackAllocationConfig
+    """Configuration for assigning slack buses per electrical island.
+
+    Contains the network graph, bus lookup, and minimum island size
+    used to determine slack allocation during outages.
+    """
+
+    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema]
+    """Mapping between switches and connected elements.
+
+    Used for computing switch-level results during each outage.
+    """
+
+    spps_conditions: pat.DataFrame[SppsConditionsPandapowerSchema]
+    """Resolved SpPS condition rows for the entire N-1 job.
+
+    Each row is one check (voltage, current, power, element state, etc.); columns
+    follow the SpPS conditions schema (including ``scheme_name``). All rows with
+    the same ``scheme_name`` belong to one scheme: that scheme is satisfied in an
+    engine iteration according to each row's ``condition_logic`` (``all`` or ``any``).
+    This table is copied
+    into each per-outage execution context and evaluated against the post-outage
+    network. If it is empty, no SpPS is run: each contingency uses a standard
+    pandapower load flow only, and any ``spps_actions`` data are ignored.
+    """
+
+    spps_actions: pat.DataFrame[SppsActionsPandapowerSchema]
+    """Resolved SpPS action rows for the entire N-1 job.
+
+    Each row is one control step (e.g. switch a device, set a tap) tied to
+    ``scheme_name``; column meanings follow the SpPS actions schema. A scheme is
+    linked to the conditions table by the same ``scheme_name``: when that scheme's
+    conditions pass (per ``condition_logic`` on condition rows), the SpPS engine applies the ordered
+    set of actions for that scheme, then re-runs the load flow, and repeats until
+    no scheme triggers or the iteration cap is hit. The table is passed through
+    to each per-outage run. If ``spps_conditions`` is empty, a normal load flow is
+    executed and this table is not applied. If conditions are non-empty, action
+    rows are expected to match the project ruleset (typically one or more
+    actions per defined scheme).
+    """
+
+    spps_rules_max_iterations: int = Field(default=10, ge=1)
+    """Maximum number of iterations for the SpPS engine.
+
+    Limits how many times rules can be evaluated and applied during
+    a single outage calculation.
+    """
+
+    method: Literal["ac", "dc"] = "ac"
+    """Load-flow method used for the base case and contingency calculations.
+
+    - ``"ac"`` runs a full AC power flow using :func:`pandapower.runpp`
+    - ``"dc"`` runs a DC approximation using :func:`pandapower.rundcpp`
+    """
+
+    runpp_kwargs: dict[str, Any] | None = None
+    """Additional keyword arguments forwarded to pandapower load-flow execution."""
+
+    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE
+    """SpPS in-loop power-flow policy (ignored when there are no SpPS rules).
+
+        Forwarded to ``run_spps``. :attr:`~SppsPowerFlowFailurePolicy.RAISE` re-raises
+        solver failures as ``SppsPowerFlowError``;
+        :attr:`~SppsPowerFlowFailurePolicy.KEEP_PREVIOUS` keeps the last successful
+        ``res_*`` state on failure; see the SpPS engine for details.
+        """
+
+
+class ParallelContingencyAnalysisContext(BaseModel):
+    """Shared context for parallel N-1 contingency analysis.
+
+    This context extends the sequential configuration with parameters
+    required for parallel execution, such as worker count and batching.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    job_id: str
+    """Identifier of the current computation job."""
+
+    timestep: int
+    """Timestep associated with the computed results."""
+
+    slack_allocation_config: SlackAllocationConfig
+    """Configuration for slack bus allocation per electrical island."""
+
+    basecase_voltage: pd.Series
+    """Voltage results from the base-case load-flow."""
+
+    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema]
+    """Mapping between switches and connected elements."""
+
+    spps_conditions: pat.DataFrame[SppsConditionsPandapowerSchema]
+    """Resolved SpPS condition rows for the entire N-1 job.
+
+    Each row is one check (voltage, current, power, element state, etc.); columns
+    follow the SpPS conditions schema (including ``scheme_name``). All rows with
+    the same ``scheme_name`` belong to one scheme: that scheme is satisfied in an
+    engine iteration according to each row's ``condition_logic`` (``all`` or ``any``).
+    This table is copied
+    into each parallel worker and into each per-outage execution context, and is
+    evaluated on the post-outage network. If it is empty, no SpPS is run: each
+    contingency uses a standard pandapower load flow only, and any
+    ``spps_actions`` data are ignored.
+    """
+    spps_actions: pat.DataFrame[SppsActionsPandapowerSchema]
+    """Resolved SpPS action rows for the entire N-1 job.
+
+    Each row is one control step (e.g. switch a device, set a tap) tied to
+    ``scheme_name``; column meanings follow the SpPS actions schema. A scheme is
+    linked to the conditions table by the same ``scheme_name``: when that scheme's
+    conditions pass (per ``condition_logic`` on condition rows), the SpPS engine applies the ordered
+    set of actions for that scheme, then re-runs the load flow, and repeats until
+    no scheme triggers or the iteration cap is hit. The same tables are used
+    across all parallel workers and for each outage. If ``spps_conditions`` is
+    empty, a normal load flow is executed and this table is not applied. If
+    conditions are non-empty, action rows are expected to match the project
+    ruleset (typically one or more actions per defined scheme).
+    """
+
+    method: Literal["ac", "dc"] = "ac"
+    """Load-flow method used for the base case and contingency calculations.
+
+    - ``"ac"`` runs a full AC power flow using :func:`pandapower.runpp`
+    - ``"dc"`` runs a DC approximation using :func:`pandapower.rundcpp`
+    """
+
+    runpp_kwargs: dict[str, Any] | None = None
+    """Additional keyword arguments for pandapower load-flow execution."""
+
+    spps_rules_max_iterations: int = Field(default=10, ge=1)
+    """Maximum number of iterations for the SpPS engine.
+
+    Limits how many times rules can be evaluated and applied during
+    a single outage calculation.
+    """
+
+    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE
+    """SpPS in-loop power-flow policy (ignored when there are no SpPS rules).
+
+        Forwarded to ``run_spps``. :attr:`~SppsPowerFlowFailurePolicy.RAISE` re-raises
+        solver failures as ``SppsPowerFlowError``;
+        :attr:`~SppsPowerFlowFailurePolicy.KEEP_PREVIOUS` keeps the last successful
+        ``res_*`` state on failure; see the SpPS engine for details.
+        """
 
     parallel: ParallelConfig = Field(default_factory=ParallelConfig)
     """Parallel execution settings for contingency processing.

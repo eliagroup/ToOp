@@ -559,7 +559,7 @@ def get_bb_outage_grid_splits(bb_outage_grid_splits: Optional[Int[Array, " "]]) 
     return bb_outage_grid_splits.astype(float)
 
 
-def get_pst_switching_distance(
+def get_pst_switching_distance_squared(
     optimized_taps: Optional[NodalInjOptimResults],
     initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
 ) -> Float[Array, " "]:
@@ -592,11 +592,48 @@ def get_pst_switching_distance(
     optimized_tap_idx = optimized_taps.pst_tap_idx
 
     # TODO: Proper multi-timestep support.
-    # Compute squared L2 distance (Euclidean distance squared)
+    # Compute square of sum of absolute differences (L1 distance squared)
     diff = optimized_tap_idx.astype(float) - initial_tap_idx.astype(float)[None, :]
-    switching_distance = jnp.sum(jnp.square(diff))
+    abs_diff = jnp.abs(diff)
+    switching_distance = jnp.square(jnp.sum(abs_diff, axis=1))
+    switching_distance_all_timesteps = jnp.sum(switching_distance)
 
-    return switching_distance
+    return switching_distance_all_timesteps
+
+
+def get_pst_switching_distance(
+    optimized_taps: Optional[NodalInjOptimResults],
+    initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
+) -> Float[Array, " "]:
+    """Compute the linear PST switching distance from initial PST setpoints.
+
+    This metric measures how much the optimized PST tap positions deviate from the initial
+    setpoints using L1 distance (sum of absolute differences). It is useful for penalizing
+    solutions that require large changes to PST settings without the quadratic amplification
+    used by ``pst_switching_distance_squared``.
+
+    Parameters
+    ----------
+    optimized_taps : Optional[NodalInjOptimResults]
+        The optimized PST tap positions from the solver. If None (PST optimization disabled),
+        returns 0.0.
+    initial_tap_idx : Optional[Int[Array, " n_controllable_pst"]]
+        The initial tap positions for each controllable PST as indices. If None (no PST info
+        available), returns 0.0.
+
+    Returns
+    -------
+    Float[Array, " "]
+        The sum of absolute differences between optimized and initial tap positions across all
+        controllable PSTs and timesteps. Returns 0.0 if PST optimization is not enabled or data
+        is unavailable.
+    """
+    if optimized_taps is None or initial_tap_idx is None:
+        return jnp.array(0.0)
+
+    optimized_tap_idx = optimized_taps.pst_tap_idx
+    diff = optimized_tap_idx.astype(float) - initial_tap_idx.astype(float)[None, :]
+    return jnp.sum(jnp.abs(diff))
 
 
 def get_pst_activated(
@@ -712,7 +749,7 @@ def aggregate_to_metric_batched(
         The metric to use for aggregation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
         The initial tap positions for PSTs. Required for computing PST-based metrics.
-        If None, pst_switching_distance and pst_activated will return 0.0
+        If None, pst_switching_distance, pst_switching_distance_squared and pst_activated will return 0.0
 
     Returns
     -------
@@ -816,7 +853,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
         e.g. if you want to ignore busbar outage failures in the overload energy calculation.
     initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
         The initial tap positions for PSTs. Required for computing PST-based metrics.
-        If None, pst_switching_distance and pst_activated will return 0.0
+        If None, pst_switching_distance, pst_switching_distance_squared and pst_activated will return 0.0
 
     Returns
     -------
@@ -837,6 +874,11 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
             )
         case "pst_switching_distance":
             retval = get_pst_switching_distance(
+                optimized_taps=lf_res.nodal_injections_optimized,
+                initial_tap_idx=initial_pst_tap_idx,
+            )
+        case "pst_switching_distance_squared":
+            retval = get_pst_switching_distance_squared(
                 optimized_taps=lf_res.nodal_injections_optimized,
                 initial_tap_idx=initial_pst_tap_idx,
             )

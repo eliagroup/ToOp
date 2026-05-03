@@ -178,7 +178,7 @@ class Nminus1Definition(BaseModel):
     contingencies: list[Contingency]
     """A list of contingencies that should be computed during the N-1 computation."""
 
-    spps_rules: Optional[SppsRule] = None
+    spps_rules: Optional[list[SppsRule]] = None
     """The spps ruleset to use for the N-1 computation. This is optional.
     If not provided, spps ruleset will not be used."""
 

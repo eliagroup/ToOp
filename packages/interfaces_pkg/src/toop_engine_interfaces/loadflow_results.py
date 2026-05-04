@@ -439,6 +439,34 @@ class ConvergedSchema(pa.DataFrameModel):
     """
 
 
+class SppsResultsSchema(pa.DataFrameModel):
+    """SpPS run summaries, one row per (timestep, contingency).
+
+    ``activated_schemes_per_iter`` holds a JSON string encoding of
+    ``list[list[str]]`` (outer list = SpPS outer iterations, inner = scheme
+    names that fired in that iteration), so the table remains parquet-friendly.
+    Use ``json.loads`` to recover the nested structure.
+    """
+
+    timestep: Index[int]
+    """Loadflow timestep index for the outage that produced this row."""
+
+    contingency: Index[str]
+    """Globally unique id of the contingency (same value as in other loadflow result tables)."""
+
+    iterations: Series[int]
+    """Number of SpPS iterations that executed (1-based count)."""
+
+    activated_schemes_per_iter: Series[str] = pa.Field()
+    """JSON string for ``list[list[str]]`` of scheme names that activated per iteration."""
+
+    max_iterations_reached: Series[bool]
+    """Whether the run stopped because the iteration cap was hit while schemes still fired."""
+
+    power_flow_failed: Series[bool]
+    """Whether a post-action power flow failed in keep_previous mode."""
+
+
 LoadflowResultTable = Union[
     pat.DataFrame[NodeResultSchema],
     pat.DataFrame[BranchResultSchema],
@@ -447,6 +475,7 @@ LoadflowResultTable = Union[
     pat.DataFrame[SwitchResultsSchema],
     pat.DataFrame[RegulatingElementResultSchema],
     pat.DataFrame[ConvergedSchema],
+    pat.DataFrame[SppsResultsSchema],
 ]
 
 
@@ -505,6 +534,11 @@ class LoadflowResults(BaseModel):
     additional_information: Optional[list[Any]] = Field(default_factory=list)
     """Additional information that the loadflow solver wants to convey to the user. There is no limitation what can
     be put in here except that it needs to be json serializable."""
+
+    spps_results: DataFrame[SppsResultsSchema] = None
+    """SpPS run summaries, concatenated in single-outage order. When SpPS did not run for a case, that chunk
+    contributes no rows. If no job recorded SpPS, this is the empty DataFrame
+    (default)."""
 
     def __eq__(self, lf_result: object) -> bool:
         """Compare two LoadflowResults objects for equality.

@@ -22,6 +22,13 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pydantic import BaseModel
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
+from toop_engine_interfaces.spps_parameters import (
+    SppsConditionCheckType,
+    SppsConditionLogic,
+    SppsConditionSide,
+    SppsConditionType,
+    SppsMeasureType,
+)
 
 # The type of the ids used in the N-1 definition. This changes how the elements are identified in the grid.
 # - unique_pandapower:
@@ -107,6 +114,57 @@ class Contingency(BaseModel):
         return len(self.elements) == 1
 
 
+class Condition(BaseModel):
+    """Represents a single condition in a rule."""
+
+    condition_type: SppsConditionType
+    """Type of condition to evaluate."""
+
+    condition_check_type: SppsConditionCheckType
+    """Comparison operator or special check."""
+
+    condition_side: SppsConditionSide
+    """Element side or aggregation mode."""
+
+    condition_limit_value: Optional[float] = None
+    """Threshold value for numeric checks."""
+
+    condition_element_unique_id: str
+    """Globally unique identifier of the condition element.
+    """
+
+
+class Action(BaseModel):
+    """Represents a single action in a rule."""
+
+    measure_element_unique_id: str
+    """Globally unique identifier of the element to apply the action to.
+    """
+
+    measure_type: SppsMeasureType
+    """Type of action."""
+
+    measure_value: Union[float, str]
+    """Target value (numeric or 'Open'/'Closed')."""
+
+
+class SppsRule(BaseModel):
+    """Represents a full scheme with multiple conditions and actions."""
+
+    scheme_name: str
+    """Unique scheme identifier."""
+
+    condition_logic: SppsConditionLogic = SppsConditionLogic.ALL
+    """Whether every condition must pass SppsConditionLogic.ALL
+    or at least one SppsConditionLogic.ANY for the scheme to activate."""
+
+    conditions: list[Condition]
+    """Condition rows for this scheme; combined according to `condition_logic`."""
+
+    actions: list[Action]
+    """Actions applied when the rule is activated."""
+
+
 class Nminus1Definition(BaseModel):
     """An N-1 definition holds monitored and outaged elements for a grid.
 
@@ -119,6 +177,10 @@ class Nminus1Definition(BaseModel):
 
     contingencies: list[Contingency]
     """A list of contingencies that should be computed during the N-1 computation."""
+
+    spps_rules: Optional[SppsRule] = None
+    """The spps ruleset to use for the N-1 computation. This is optional.
+    If not provided, spps ruleset will not be used."""
 
     id_type: Optional[ELEMENT_ID_TYPES] = None
     """The type of the ids used in the N-1 definition. This is used to determine how to interpret the ids in the

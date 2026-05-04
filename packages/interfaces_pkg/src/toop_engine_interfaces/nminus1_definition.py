@@ -120,10 +120,10 @@ class Condition(BaseModel):
     condition_type: SppsConditionType
     """Type of condition to evaluate."""
 
-    condition_check_type: SppsConditionCheckType
+    condition_check_type: Optional[SppsConditionCheckType] = None
     """Comparison operator or special check."""
 
-    condition_side: SppsConditionSide
+    condition_side: Optional[SppsConditionSide] = None
     """Element side or aggregation mode."""
 
     condition_limit_value: Optional[float] = None
@@ -178,7 +178,7 @@ class Nminus1Definition(BaseModel):
     contingencies: list[Contingency]
     """A list of contingencies that should be computed during the N-1 computation."""
 
-    spps_rules: Optional[SppsRule] = None
+    spps_rules: Optional[list[SppsRule]] = None
     """The spps ruleset to use for the N-1 computation. This is optional.
     If not provided, spps ruleset will not be used."""
 

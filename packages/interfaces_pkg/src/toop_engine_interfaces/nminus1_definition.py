@@ -120,10 +120,10 @@ class Condition(BaseModel):
     condition_type: SppsConditionType
     """Type of condition to evaluate."""
 
-    condition_check_type: SppsConditionCheckType
+    condition_check_type: Optional[SppsConditionCheckType] = None
     """Comparison operator or special check."""
 
-    condition_side: SppsConditionSide
+    condition_side: Optional[SppsConditionSide] = None
     """Element side or aggregation mode."""
 
     condition_limit_value: Optional[float] = None

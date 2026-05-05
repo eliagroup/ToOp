@@ -12,7 +12,7 @@ from pathlib import Path
 
 import equinox as eqx
 import jax
-import jax.experimental
+import jax.experimental  # TODO: remove
 import jax.numpy as jnp
 import structlog
 from beartype.typing import Iterable, Optional, Sequence

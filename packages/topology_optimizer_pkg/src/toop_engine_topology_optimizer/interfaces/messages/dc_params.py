@@ -11,6 +11,7 @@ This holds the parameters to start the optimization. Some parameters can not be 
 the names of the kafka streams) and are included in the command line start parameters instead.
 """
 
+import structlog
 from beartype.typing import Optional
 from pydantic import (
     BaseModel,
@@ -23,6 +24,8 @@ from pydantic import (
 from pydantic.functional_validators import model_validator
 from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, DoubleLimitsSetpoint
+
+logger = structlog.get_logger(__name__)
 
 
 class BatchedMEParameters(BaseModel):
@@ -149,6 +152,20 @@ class BatchedMEParameters(BaseModel):
             raise ValueError("The random topology probability cannot be larger than 1.")
         return self
 
+    @model_validator(mode="after")
+    def me_descriptors_cannot_be_empty(self) -> "BatchedMEParameters":
+        """Check that the mutation probabilities are not larger than 1."""
+        if not self.me_descriptors:
+            logger.warning(
+                "Map-elites config did not include descriptors. "
+                "Defaults (`split_subs`, 5),(`switching_distance`, 45) applied."
+            )
+            self.me_descriptors = (
+                DescriptorDef(metric="split_subs", num_cells=5),
+                DescriptorDef(metric="switching_distance", num_cells=45),
+            )
+        return self
+
 
 class LoadflowSolverParameters(BaseModel):
     """Parameters for the loadflow solver."""
@@ -188,3 +205,24 @@ class DCOptimizerParameters(BaseModel):
     check_command_frequency: PositiveInt = 10
     """The frequency to check for new commands, based on number of iterations. Should be a multiple
     of summary_frequency"""
+
+    @model_validator(mode="after")
+    def max_num_splits_unequal_zero_if_descriptor_exists(self) -> "DCOptimizerParameters":
+        """Check that the `max_num_splits` of LoadflowSolverParameters is not zero.
+
+        If the map elites descriptor contains `split_subs` or `switching_distance`,
+        `max_num_splits` must be larger than 0. Otherwise, the computation of the
+        BSDF will fail.
+        """
+        values_of_substation_related_descr = [
+            desc.num_cells for desc in self.ga_config.me_descriptors if desc.metric in ("switching_distance", "split_subs")
+        ]
+        # If their max is 0, there is likely no topol. optimization happening (e.g. only node injection optimization)
+        max_value = max(values_of_substation_related_descr) if values_of_substation_related_descr else 0
+
+        if self.loadflow_solver_config.max_num_splits == 0 and max_value != 0:
+            raise ValueError(
+                "LoadflowParameters.max_num_splits cannot be 0 "
+                "if `switching_distance` or `split_subs` is used as an MeDescriptor. "
+            )
+        return self

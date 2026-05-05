@@ -208,7 +208,7 @@ def test_run_pipeline(pipeline_and_configs, preprocessing_parameters):
     unsplit_metrics_path = topo_paths[0].parent / "unsplit_ac_metrics.json"
     assert unsplit_metrics_path.exists(), "Missing unsplit AC metrics export in the optimisation run directory."
     res = json.loads((topo_paths[0].parent / "res.json").read_text(encoding="utf-8"))
-    expected_topologies = sorted(res["best_topos"], key=_get_serialized_topology_fitness)[: len(topo_paths)]
+    expected_topologies = sorted(res["best_topos"], key=_get_serialized_topology_fitness, reverse=True)[: len(topo_paths)]
 
     for topo_path, expected_topology in zip(topo_paths, expected_topologies, strict=True):
         orao_summary_path = topo_path / "orao_summary.json"

@@ -792,7 +792,7 @@ def perform_ac_analysis(
         res = json.load(f)
 
     best_topos = res["best_topos"]
-    best_topos = sorted(best_topos, key=_get_serialized_topology_fitness)  # Sort by fitness, best first
+    best_topos = sorted(best_topos, key=_get_serialized_topology_fitness, reverse=True)  # Sort by fitness, best first
     logger.info("Starting AC validation stage...")
     if len(best_topos) == 0 or best_topos is None:
         logger.warning("No topologies found in DC optimization results. Skipping AC analysis.")

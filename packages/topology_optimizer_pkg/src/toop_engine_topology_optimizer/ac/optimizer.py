@@ -300,7 +300,7 @@ def initialize_optimization(
 
     base_case_ids = [(n1def.base_case.id if n1def.base_case is not None else None) for n1def in nminus1_definitions]
 
-    num_psts = [len(action_set.pst_ranges) for action_set in action_sets]
+    n_controllable_pst = [len(action_set.pst_ranges) for action_set in action_sets]
 
     # Prepare the loadflow runners
     runners = [
@@ -347,7 +347,7 @@ def initialize_optimization(
             optimization_id=optimization_id,
             optimizer_type=OptimizerType.AC,
         )
-        for i, n_pst in enumerate(num_psts)
+        for i, n_pst in enumerate(n_controllable_pst)
     ]
     initial_hash = hash_topologies(initial_strategy)
     for topo in initial_strategy:

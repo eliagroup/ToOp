@@ -404,6 +404,7 @@ def update_basename_polars(
         # projected source columns like `p1` from the pre-conversion branch plan.
         # Adding a temporary row index changes the plan shape without changing the
         # result rows, which keeps the filter stable for disconnected-branch cases.
+        # Issue: https://github.com/pola-rs/polars/issues/27509
         result_df = result_df.with_row_index("_row_idx").filter(pl.col("contingency") != "").drop("_row_idx")
     return result_df
 

@@ -403,7 +403,10 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=0.0,
+            pst_mutation_probability=0.0,
+            pst_reset_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=starting_taps,
         ),
     )
     topologies, key = mutate(
@@ -453,7 +456,10 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
+            pst_reset_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx,
         ),
     )
     topologies_mutated, key = mutate(
@@ -539,7 +545,10 @@ def test_pst_switching_distance_in_target_metrics(static_information_file_comple
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
+            pst_reset_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx,
         ),
     )
     topologies, key = mutate(
@@ -630,10 +639,7 @@ def test_pst_switching_distance_without_pst_optimization(static_information_file
             remove_disconnection_prob=0.0,
             n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
         ),
-        nodal_injection_mutation_config=NodalInjectionMutationConfig(
-            pst_mutation_sigma=0.0,
-            pst_n_taps=jnp.array([], dtype=int),
-        ),
+        nodal_injection_mutation_config=None,
     )
     topologies, key = mutate(
         topologies=topologies,
@@ -710,8 +716,11 @@ def test_pst_activated_metric_integration(static_information_file_complex: str) 
             n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
-            pst_mutation_sigma=0.0,
+            pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.0,
+            pst_reset_probability=0.0,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=starting_taps,
         ),
     )
     topologies_zero, key = mutate(
@@ -743,7 +752,10 @@ def test_pst_activated_metric_integration(static_information_file_complex: str) 
         no_pst_mutation_config,
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
+            pst_reset_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx,
         ),
     )
     topologies_mutated, key = mutate(
@@ -814,7 +826,10 @@ def test_pst_activated_in_target_metrics(static_information_file_complex: str) -
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
+            pst_reset_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx,
         ),
     )
     topologies, key = mutate(
@@ -919,8 +934,11 @@ def test_pst_switching_distance_squared_metric_integration(static_information_fi
             n_disconnectable_branches=static_information.dynamic_information.n_disconnectable_branches,
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
-            pst_mutation_sigma=0.0,
+            pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.0,
+            pst_reset_probability=0.0,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx,
         ),
     )
     topologies_zero, key = mutate(
@@ -948,7 +966,10 @@ def test_pst_switching_distance_squared_metric_integration(static_information_fi
         no_pst_mutation_config,
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
+            pst_reset_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx,
         ),
     )
     topologies_mutated, key = mutate(
@@ -1024,7 +1045,10 @@ def test_pst_switching_distance_squared_in_target_metrics(static_information_fil
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
+            pst_reset_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx,
         ),
     )
     topologies, key = mutate(

@@ -400,7 +400,11 @@ def update_basename_polars(
 
     else:
         # Remove the basecase from the results if it is not included in the run
-        result_df = result_df.filter(pl.col("contingency") != "")
+        # A plain lazy filter can trigger a Polars optimizer bug here and resurrect
+        # projected source columns like `p1` from the pre-conversion branch plan.
+        # Adding a temporary row index changes the plan shape without changing the
+        # result rows, which keeps the filter stable for disconnected-branch cases.
+        result_df = result_df.with_row_index("_row_idx").filter(pl.col("contingency") != "").drop("_row_idx")
     return result_df
 
 

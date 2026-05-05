@@ -182,6 +182,9 @@ def test_run_task_process_invalid_config_with_connection():
 
 
 def test_run_pipeline(pipeline_and_configs, preprocessing_parameters):
+    def _get_serialized_topology_fitness(topology: dict) -> float:
+        return topology["metrics"]["fitness"]
+
     pipeline_cfg, dc_cfg, ac_cfg = pipeline_and_configs
     ac_cfg.k_best_topos = 10  # To cover warning branch
     pipeline_cfg = PipelineConfig(**pipeline_cfg)
@@ -205,9 +208,7 @@ def test_run_pipeline(pipeline_and_configs, preprocessing_parameters):
     unsplit_metrics_path = topo_paths[0].parent / "unsplit_ac_metrics.json"
     assert unsplit_metrics_path.exists(), "Missing unsplit AC metrics export in the optimisation run directory."
     res = json.loads((topo_paths[0].parent / "res.json").read_text(encoding="utf-8"))
-    expected_topologies = sorted(res["best_topos"], key=lambda topology: topology.get("fitness", float("inf")))[
-        : len(topo_paths)
-    ]
+    expected_topologies = sorted(res["best_topos"], key=_get_serialized_topology_fitness)[: len(topo_paths)]
 
     for topo_path, expected_topology in zip(topo_paths, expected_topologies, strict=True):
         orao_summary_path = topo_path / "orao_summary.json"
@@ -219,7 +220,7 @@ def test_run_pipeline(pipeline_and_configs, preprocessing_parameters):
         ac_metrics = json.loads(ac_metrics_path.read_text(encoding="utf-8"))
         assert "forced-actions" in orao_summary
         assert "preventive-actions-list" in orao_summary["forced-actions"]
-        assert ac_metrics["dc_info"]["fitness"] == expected_topology["fitness"]
+        assert _get_serialized_topology_fitness(ac_metrics["dc_info"]) == _get_serialized_topology_fitness(expected_topology)
         assert ac_metrics["dc_info"]["actions"] == (expected_topology.get("actions") or [])
         assert ac_metrics["dc_info"]["disconnections"] == (expected_topology.get("disconnections") or [])
 

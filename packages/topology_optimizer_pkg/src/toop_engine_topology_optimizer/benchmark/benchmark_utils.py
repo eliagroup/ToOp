@@ -744,6 +744,11 @@ def save_slds_of_split_stations(
         logger.info(f"Saved SLD for station {station_name} to {sld_path}")
 
 
+def _get_serialized_topology_fitness(topology: dict) -> float:
+    """Return the DC fitness from a serialized topology."""
+    return float(topology["metrics"]["fitness"])
+
+
 def perform_ac_analysis(
     data_folder: Path, optimisation_run_path: Path, ac_validation_cfg: DictConfig, pandapower_runner: bool = False
 ) -> list[Path]:
@@ -787,7 +792,7 @@ def perform_ac_analysis(
         res = json.load(f)
 
     best_topos = res["best_topos"]
-    best_topos = sorted(best_topos, key=lambda x: x.get("fitness", float("inf")))  # Sort by fitness, best first
+    best_topos = sorted(best_topos, key=_get_serialized_topology_fitness)  # Sort by fitness, best first
     logger.info("Starting AC validation stage...")
     if len(best_topos) == 0 or best_topos is None:
         logger.warning("No topologies found in DC optimization results. Skipping AC analysis.")

@@ -346,9 +346,10 @@ def convert_file(
             fs=unprocessed_gridfile_fs,
         )
     elif importer_parameters.data_type == "cgmes":
+        if importer_parameters.white_list_file is not None or importer_parameters.black_list_file is not None:
+            logger.warning("CGMES of white_list and black_list not yet implemented")
         statistics.id_lists["white_list"] = []
         statistics.id_lists["black_list"] = []
-        logger.warning("CGMES of white_list and black_list not yet implemented")
 
     # Save and reload Network due to powsybl changing order during save
     grid_file_path = importer_parameters.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]

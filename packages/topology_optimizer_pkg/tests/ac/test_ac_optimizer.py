@@ -394,7 +394,7 @@ def test_run_remaining_epoch_returns_strategies_and_scores() -> None:
 
     assert strategies == [topology_a, topology_b]
     assert scoring_results == expected_results
-    optimizer_data.scoring_fn.assert_called_once_with([topology_a, topology_b], early_stage_results)
+    optimizer_data.scoring_fn.assert_called_once_with([topology_a, topology_b], early_stage_results=early_stage_results)
 
 
 def test_run_remaining_epoch_returns_empty_when_no_strategy_available() -> None:

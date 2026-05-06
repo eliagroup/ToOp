@@ -505,7 +505,7 @@ def persist_and_send_topology(
     rejection_reason = scoring_result.rejection_reason
     loadflow_result_reference = None
     local_enable_ac_rejection = enable_ac_rejection or (
-        rejection_reason is not None and (rejection_reason.criterion == "error" or rejection_reason.early_stopping)
+        rejection_reason is not None and (rejection_reason.criterion == "error")
     )
     if scoring_result.loadflow_results is not None:
         try:
@@ -702,7 +702,7 @@ def run_remaining_epoch(
 
     epoch_logger.info("Starting AC remaining epoch")
     epoch_logger.debug("Running remaining contingencies", survivor_count=len(topologies))
-    full_results = optimizer_data.scoring_fn(topologies, early_stage_results)
+    full_results = optimizer_data.scoring_fn(topologies, early_stage_results=early_stage_results)
     return topologies, full_results
 
 

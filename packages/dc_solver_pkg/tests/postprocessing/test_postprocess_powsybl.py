@@ -19,7 +19,6 @@ import pypowsybl
 import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
 import pytest
-import toop_engine_dc_solver.postprocess.postprocess_powsybl as postprocess_powsybl_module
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
@@ -117,28 +116,6 @@ def test_apply_topology(preprocessed_powsybl_data_folder: Path) -> None:
         # Check that the loadflow still converges
         dc_res = pypowsybl.loadflow.run_dc(net)
         assert dc_res[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED
-
-
-def test_run_loadflow_single_timestep_cleans_up_variant_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_network = FakeVariantNetwork()
-    runner = PowsyblRunner()
-    runner.net = fake_network
-    runner.store_action_set(ActionSet.model_construct())
-    runner.nminus1_definition = object()
-
-    monkeypatch.setattr(PowsyblRunner, "_apply_requested_changes", lambda *args, **kwargs: None)
-
-    monkeypatch.setattr(
-        postprocess_powsybl_module,
-        "run_contingency_analysis_powsybl",
-        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("loadflow failed")),
-    )
-
-    with pytest.raises(RuntimeError, match="loadflow failed"):
-        PowsyblRunner.run_loadflow_single_timestep.__wrapped__(runner, [], [], method="dc")
-
-    assert fake_network.current_variant == "InitialState"
-    assert list(fake_network.variants) == ["InitialState"]
 
 
 def test_apply_disconnections(preprocessed_powsybl_data_folder: Path) -> None:

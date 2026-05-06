@@ -148,13 +148,30 @@ def run_optimization_epochs(
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
     optimization_id: str,
     optimization_logger: BindableLogger,
-) -> int:
+) -> None:
     """Run the iterative AC optimization phase.
+
+    Parameters
+    ----------
+    ac_params : ACOptimizerParameters
+        The parameters for the AC optimizer
+    optimizer_data : OptimizerData
+        The initialized optimizer data containing the curried functions and database session
+    worker_data : WorkerData
+        The dataclass with the results consumer and database
+    send_result_fn : Callable[[ResultUnion], None]
+        The function to send results
+    send_heartbeat_fn : Callable[[HeartbeatUnion], None]
+        The function to send heartbeats
+    optimization_id : str
+        The ID of the optimization run
+    optimization_logger : BindableLogger
+        The logger bound to the optimization run
 
     Returns
     -------
-    int
-        The final epoch value reached when the optimization loop stops.
+    None
+
     """
     start_time = time.time()
     last_full_run = start_time
@@ -175,17 +192,22 @@ def run_optimization_epochs(
             optimizer_data=optimizer_data,
             epoch_logger=epoch_logger,
         )
-        success_topologies, success_early_stop_results = process_fast_failing_results(
-            optimizer_data=optimizer_data,
-            topologies=topologies,
-            fast_failing_results=worst_k_results,
-            epoch_logger=epoch_logger,
-            send_result_fn=send_result_fn,
-            epoch=epoch,
-        )
-        evaluated_topologies += len(topologies)
-        survivor_topologies.extend(success_topologies)
-        survivor_early_results.extend(success_early_stop_results)
+        if ac_params.ga_config.enable_ac_rejection:
+            success_topologies, success_early_stop_results = process_fast_failing_results(
+                optimizer_data=optimizer_data,
+                topologies=topologies,
+                fast_failing_results=worst_k_results,
+                epoch_logger=epoch_logger,
+                send_result_fn=send_result_fn,
+                epoch=epoch,
+            )
+            evaluated_topologies += len(topologies)
+            survivor_topologies.extend(success_topologies)
+            survivor_early_results.extend(success_early_stop_results)
+        else:
+            survivor_topologies.extend(topologies)
+            survivor_early_results.extend(worst_k_results)
+            evaluated_topologies += len(topologies)
 
         enough_survivors = len(survivor_topologies) >= survivor_batch_size
         runtime_exceeded_since_last_full_run = (

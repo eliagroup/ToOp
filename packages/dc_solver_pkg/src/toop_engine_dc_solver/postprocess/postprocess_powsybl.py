@@ -154,7 +154,10 @@ def apply_disconnections(net: Network, disconnections: list[int], action_set: Ac
     action_set : ActionSet
         The action set to use for the disconnections
 
-
+    Raises
+    ------
+    RuntimeError
+        If an element could not be disconnected
 
 
     """
@@ -344,8 +347,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The changes will be discarded after use.
         """
         assert self.net is not None, "Base grid must be loaded before using temporary variants"
-        assert self.action_set is not None, "Action set must be set before using temporary variants"
-        if is_node_breaker_grid(self.net, self.action_set.local_actions[0].grid_model_id):
+        if is_node_breaker_grid(self.net):
             temporary_variant_id = self._next_temporary_variant_id()
             self.net.clone_variant(self.variant_id, temporary_variant_id)
             self.net.set_working_variant(temporary_variant_id)

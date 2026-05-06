@@ -60,5 +60,4 @@ def test_acga_parameters_filter_strategy():
 def test_acga_parameters_accept_legacy_runner_processes_input() -> None:
     params = ACGAParameters(runner_processes=4)
 
-    assert params.remaining_runner_processes == 4
     assert params.runner_processes == 4

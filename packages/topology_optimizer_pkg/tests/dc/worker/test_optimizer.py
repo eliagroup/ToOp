@@ -7,11 +7,11 @@
 
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
-from toop_engine_topology_optimizer.ac.optimizer import run_fast_failing_epoch
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
     extract_results,
     initialize_optimization,
+    run_epoch,
 )
 from toop_engine_topology_optimizer.interfaces.messages.commands import StartOptimizationCommand
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
@@ -47,6 +47,6 @@ def test_extract_results(
     assert len(stats) == 1
     assert isinstance(initial_strategy, Strategy)
 
-    optimizer_data = run_fast_failing_epoch(optimizer_data)
+    optimizer_data = run_epoch(optimizer_data)
     res = extract_results(optimizer_data)
     assert isinstance(res, TopologyPushResult)

@@ -495,7 +495,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             file.attrs["limit_n_subs"] = solver_config.limit_n_subs
         file.attrs["aggregation_metric"] = solver_config.aggregation_metric
         file.attrs["distributed"] = solver_config.distributed
-        file.attrs["contingency_ids"] = solver_config.contingency_ids
+        file.create_dataset(
+            "contingency_ids",
+            data=np.asarray(solver_config.contingency_ids, dtype=h5py.string_dtype(encoding="utf-8")),
+        )
 
         file.create_dataset(
             "action_set_branch_actions",
@@ -807,7 +810,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 enable_bb_outages=bool(file.attrs.get("enable_bb_outages", False)),
                 bb_outage_as_nminus1=bool(file.attrs.get("bb_outage_as_nminus1", True)),
                 clip_bb_outage_penalty=bool(file.attrs.get("clip_bb_outage_penalty", False)),
-                contingency_ids=list(file.attrs.get("contingency_ids", [])),
+                contingency_ids=file["contingency_ids"].asstr()[:].tolist(),
             ),
         )
 

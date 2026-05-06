@@ -115,8 +115,6 @@ def compute_loadflow_and_metrics(
         The topology to evaluate.
     base_case_id : Optional[str]
         The base case identifier for the topology. Can be None.
-    n_timestep_processes : int, optional
-        Number of parallel processes to use for timestep simulations (default is 1).
     cases_subset : Optional[Collection[str]]
         Subset of contingency cases to use for loadflow computation. If None, all available contingencies are used.
 

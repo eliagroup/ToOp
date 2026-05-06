@@ -581,8 +581,6 @@ def run_fast_failing_epoch(
     ----------
     optimizer_data : OptimizerData
         The optimizer data containing the evolution and fast-failing scoring functions.
-    epoch : int
-        The current epoch number, used for logging and for first-poll behavior.
     epoch_logger : Optional[BindableLogger]
         The logger to use for logging during the epoch.
 
@@ -687,10 +685,6 @@ def run_remaining_epoch(
         The survivor topologies to evaluate in the remaining stage.
     early_stage_results : list[EarlyStoppingStageResult]
         The corresponding fast-failing stage results for each topology.
-    epoch : int
-        The current epoch number, used for logging.
-    send_result_fn : Callable[[ResultUnion], None]
-        The function to send results to the result topic, used for logging strategy progress in the remaining
     epoch_logger : Optional[BindableLogger]
         The logger to use for logging during the epoch.
 

@@ -157,6 +157,16 @@ class BatchedMEParameters(BaseModel):
             raise ValueError("The random topology probability cannot be larger than 1.")
         return self
 
+    @model_validator(mode="after")
+    def me_descriptors_cannot_be_empty(self) -> "BatchedMEParameters":
+        """Check that MeDescriptors tuple is not empty."""
+        if not self.me_descriptors:
+            raise ValueError(
+                "Map-elites config used an empty tuple for MeDescriptors. "
+                "Set parameter or remove the empty tuple to use the default values."
+            )
+        return self
+
 
 class LoadflowSolverParameters(BaseModel):
     """Parameters for the loadflow solver."""
@@ -196,3 +206,21 @@ class DCOptimizerParameters(BaseModel):
     check_command_frequency: PositiveInt = 10
     """The frequency to check for new commands, based on number of iterations. Should be a multiple
     of summary_frequency"""
+
+    @model_validator(mode="after")
+    def max_num_splits_unequal_zero_if_descriptor_exists(self) -> "DCOptimizerParameters":
+        """Check that `max_num_splits` is larger than the MeDescriptor size-1 of `split_subs`.
+
+        If the map elites descriptor contains `split_subs`, `max_num_splits` must be larger
+        than 0. Otherwise, the computation of the BSDF will fail.
+        """
+        max_split_subs = (desc.num_cells - 1 for desc in self.ga_config.me_descriptors if desc.metric == "split_subs")
+        # If the max is 0, there is likely no topol. optimization happening (e.g. only node injection optimization)
+        max_value = max(max_split_subs, default=0)
+        max_num_splits = self.loadflow_solver_config.max_num_splits
+        if max_num_splits < max_value:
+            raise ValueError(
+                f"LoadflowParameters.max_num_splits ({max_num_splits}) "
+                f"is smaller than the largest cell of MeDescriptor `splits_subs` ({max_value}). "
+            )
+        return self

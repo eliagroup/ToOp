@@ -188,7 +188,9 @@ def run_optimization_epochs(
         survivor_early_results.extend(success_early_stop_results)
 
         enough_survivors = len(survivor_topologies) >= survivor_batch_size
-        runtime_exceeded_since_last_full_run = (time.time() - last_full_run) > ac_params.ga_config.runtime_seconds
+        runtime_exceeded_since_last_full_run = (
+            time.time() - last_full_run
+        ) > ac_params.ga_config.remaining_loadflow_wait_seconds
         if enough_survivors or (runtime_exceeded_since_last_full_run and len(survivor_topologies) > 0):
             epoch_logger.info(
                 f"Collected {len(survivor_topologies)} survivor topologies, running remaining contingencies evaluation"
@@ -235,6 +237,7 @@ def run_optimization_epochs(
                 f"Stopping optimization at epoch {epoch} due to runtime limit with no survivor strategies"
             )
             send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
+            return
 
 
 def summarize_optimization_run(

@@ -154,10 +154,7 @@ def apply_disconnections(net: Network, disconnections: list[int], action_set: Ac
     action_set : ActionSet
         The action set to use for the disconnections
 
-    Raises
-    ------
-    RuntimeError
-        If an element could not be disconnected
+
 
 
     """

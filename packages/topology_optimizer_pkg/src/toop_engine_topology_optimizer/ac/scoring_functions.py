@@ -62,7 +62,7 @@ def get_early_stopping_contingency_ids(
         # TODO Does this make sense?
         # Shouldnt we just continue?
         logger.warning(
-            f"No overload threshold or case ids found in the strategyworst_k_contingency_cases: {worst_k_contingency_cases}"
+            f"No overload threshold or case ids found in the topologies worst contingency_cases: {worst_k_contingency_cases}"
         )
         return None
     if base_case_id is not None:
@@ -920,12 +920,13 @@ def score_remaining_contingency_batch(
             continue
 
         with ThreadPoolExecutor(max_workers=len(topology_chunk)) as executor:
+            runner_group_for_chunk = runner_group[: len(topology_chunk)]
             future_to_index = {
                 executor.submit(
                     score_topology_remaining, topology, runner, metrics_unsplit, scoring_params, early_results
                 ): index
                 for index, (topology, runner, early_results) in enumerate(
-                    zip(topology_chunk, runner_group, early_stage_chunk, strict=True)
+                    zip(topology_chunk, runner_group_for_chunk, early_stage_chunk, strict=True)
                 )
             }
             chunk_results: list[Optional[TopologyScoringResult]] = [

@@ -759,7 +759,7 @@ def process_remaining_results(
 
 
 def evaluate_remaining_contingencies(
-    send_result_fn: Callable[[ResultUnion, str], None],
+    send_result_fn: Callable[[ResultUnion], None],
     optimizer_data: OptimizerData,
     epoch: int,
     survivor_topologies: list[ACOptimTopology],
@@ -775,7 +775,7 @@ def evaluate_remaining_contingencies(
         on the remaining contingencies.
     survivor_early_results : list[EarlyStoppingStageResult]
         The early results from the fast-failing stage for the topologies that passed.
-    send_result_fn : Callable[[ResultUnion, str], None]
+    send_result_fn : Callable[[ResultUnion], None]
         The function to send results to the result topic, used for sending the final results
         after evaluating the remaining contingencies.
     optimizer_data : OptimizerData

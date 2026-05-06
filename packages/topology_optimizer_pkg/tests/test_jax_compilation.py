@@ -94,8 +94,11 @@ def _initialize_small_optimizer(static_information_file: str, batch_size: int) -
             n_disconnectable_branches=5,
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
-            pst_mutation_sigma=0.0,
+            pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.2,
+            pst_reset_probability=0.2,
             pst_n_taps=static_information.dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx,
         )
         if static_information.dynamic_information.nodal_injection_information is not None
         else None,

@@ -8,8 +8,8 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import numpy as np
 import pytest
+import structlog
 from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
@@ -19,20 +19,26 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
-from toop_engine_interfaces.stored_action_set import load_action_set_fs, random_actions
+from toop_engine_interfaces.stored_action_set import load_action_set_fs
 from toop_engine_topology_optimizer.ac.optimizer import (
     AcNotConvergedError,
-    OptimizerData,
     initialize_optimization,
     make_runner,
-    run_epoch,
+    process_remaining_results,
+    run_fast_failing_epoch,
+    run_remaining_epoch,
     wait_for_first_dc_results,
 )
-from toop_engine_topology_optimizer.ac.scoring_functions import compute_loadflow
+from toop_engine_topology_optimizer.ac.scoring_functions import (
+    compute_loadflow,
+)
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
+from toop_engine_topology_optimizer.ac.types import EarlyStoppingStageResult, OptimizerData, TopologyScoringResult
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
-from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_topo_data
+from toop_engine_topology_optimizer.interfaces.messages.results import (
+    Metrics,
+)
 
 
 def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path) -> None:
@@ -46,7 +52,7 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
             seed=42,
         )
     )
-    grid_files = [GridFile(framework=Framework.PANDAPOWER, grid_folder="case14")]
+    grid_file = GridFile(framework=Framework.PANDAPOWER, grid_folder="case14")
 
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
@@ -55,7 +61,7 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
         params=params,
         session=create_session(),
         optimization_id="test",
-        grid_files=grid_files,
+        grid_file=grid_file,
         loadflow_result_fs=loadflow_result_fs,
         processed_gridfile_fs=processed_gridfile_fs,
     )
@@ -70,7 +76,7 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
 
 
 def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> None:
-    grid_files = [GridFile(framework=Framework.PANDAPOWER, grid_folder="case14")]
+    grid_file = GridFile(framework=Framework.PANDAPOWER, grid_folder="case14")
 
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
     # Load the network datas
@@ -80,17 +86,17 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
             json_file_path=grid_file.action_set_file,
             diff_file_path=grid_file.action_set_diff_file,
         )
-        for grid_file in grid_files
+        for grid_file in [grid_file]
     ]
     nminus1_definitions = [
         load_pydantic_model_fs(
             filesystem=processed_gridfile_fs, file_path=grid_file.nminus1_definition_file, model_class=Nminus1Definition
         )
-        for grid_file in grid_files
+        for grid_file in [grid_file]
     ]
     lf_params = [
         load_lf_params_from_fs(filesystem=processed_gridfile_fs, file_path=grid_file.loadflow_parameters_file)
-        for grid_file in grid_files
+        for grid_file in [grid_file]
     ]
 
     # Prepare the loadflow runners
@@ -105,16 +111,15 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
             lf_params=lf_param,
         )
         for action_set, nminus1_definition, grid_file, lf_param in zip(
-            action_sets, nminus1_definitions, grid_files, lf_params, strict=True
+            action_sets, nminus1_definitions, [grid_file], lf_params, strict=True
         )
     ]
 
     lfs, additional_info = compute_loadflow(
-        actions=[[]],
-        disconnections=[[]],
-        pst_setpoints=[None],
-        runners=runners,
-        n_timestep_processes=1,
+        actions=[],
+        disconnections=[],
+        pst_setpoints=[],
+        runner=runners[0],
     )
 
     dirfs = DirFileSystem(str(tmp_path))
@@ -136,7 +141,7 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
             params=params,
             session=create_session(),
             optimization_id="test",
-            grid_files=grid_files,
+            grid_file=grid_file,
             loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
         )
@@ -157,7 +162,7 @@ def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> 
         params=params,
         session=create_session(),
         optimization_id="test",
-        grid_files=grid_files,
+        grid_file=grid_file,
         loadflow_result_fs=loadflow_result_fs,
         processed_gridfile_fs=processed_gridfile_fs,
     )
@@ -182,7 +187,7 @@ def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> 
             seed=42,
         )
     )
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
+    grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")
 
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
@@ -191,7 +196,7 @@ def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> 
         params=params,
         session=create_session(),
         optimization_id="test",
-        grid_files=grid_files,
+        grid_file=grid_file,
         loadflow_result_fs=loadflow_result_fs,
         processed_gridfile_fs=processed_gridfile_fs,
     )
@@ -222,7 +227,7 @@ def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_re
             seed=42,
         )
     )
-    grid_files = [GridFile(framework=Framework.PANDAPOWER, grid_folder=str(case57_non_converging_path.name))]
+    grid_file = GridFile(framework=Framework.PANDAPOWER, grid_folder=str(case57_non_converging_path.name))
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     processed_gridfile_fs = DirFileSystem(str(case57_non_converging_path.parent))
     with pytest.raises(AcNotConvergedError, match="Too many non-converging loadflows in initial loadflow*"):
@@ -230,9 +235,10 @@ def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_re
             params=params,
             session=create_session(),
             optimization_id="test",
-            grid_files=grid_files,
+            grid_file=grid_file,
             loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
+            optimization_logger=structlog.get_logger("test"),
         )
 
 
@@ -279,103 +285,190 @@ def test_wait_for_first_dc_results_success_with_topology_counts() -> None:
         assert heartbeat_counter == 0
 
 
-def test_run_epoch(grid_folder: Path, loadflow_result_folder: Path) -> None:
-    params = ACOptimizerParameters(
+def test_run_fast_failing_epoch_returns_strategies_and_scores() -> None:
+    topology_a = ACOptimTopology(id=1, actions=[1], disconnections=[], timestep=0, metrics={})
+    topology_b = ACOptimTopology(id=2, actions=[2], disconnections=[], timestep=0, metrics={})
+
+    expected_results = [
+        EarlyStoppingStageResult(
+            loadflow_results=Mock(spec=LoadflowResultsPolars),
+            metrics=Metrics(fitness=1.0, extra_scores={}),
+            rejection_reason=None,
+            cases_subset=["c1"],
+        ),
+        EarlyStoppingStageResult(
+            loadflow_results=Mock(spec=LoadflowResultsPolars),
+            metrics=Metrics(fitness=2.0, extra_scores={}),
+            rejection_reason=None,
+            cases_subset=["c2"],
+        ),
+    ]
+
+    optimizer_data = Mock(spec=OptimizerData)
+    optimizer_data.params = ACOptimizerParameters(
         ga_config=ACGAParameters(
-            runtime_seconds=10, pull_prob=1.0, reconnect_prob=0.0, close_coupler_prob=0.0, seed=42, enable_ac_rejection=False
+            runtime_seconds=10,
+            pull_prob=1.0,
+            reconnect_prob=0.0,
+            close_coupler_prob=0.0,
+            seed=42,
+            topology_batch_size=2,
         )
     )
-    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
-    processed_gridfile_fs = DirFileSystem(str(grid_folder))
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
-    optimizer_data, _ = initialize_optimization(
-        params=params,
-        session=create_session(),
-        optimization_id="test",
-        grid_files=grid_files,
-        loadflow_result_fs=loadflow_result_fs,
-        processed_gridfile_fs=processed_gridfile_fs,
+    optimizer_data.session = Mock(spec=Session)
+    optimizer_data.evolution_fn = Mock(return_value=[topology_a, topology_b])
+    optimizer_data.worst_k_scoring_fn = Mock(return_value=expected_results)
+    topologies, scoring_results = run_fast_failing_epoch(
+        optimizer_data=optimizer_data,
+        epoch_logger=Mock(),
+    )
+    assert topologies == [topology_a, topology_b]
+    assert scoring_results == expected_results
+    optimizer_data.worst_k_scoring_fn.assert_called_once_with([topology_a, topology_b])
+
+
+def test_run_fast_failing_epoch_returns_empty_when_no_strategy_available() -> None:
+    optimizer_data = Mock(spec=OptimizerData)
+    optimizer_data.params = ACOptimizerParameters(
+        ga_config=ACGAParameters(
+            runtime_seconds=10,
+            pull_prob=1.0,
+            reconnect_prob=0.0,
+            close_coupler_prob=0.0,
+            seed=42,
+            topology_batch_size=2,
+        )
+    )
+    optimizer_data.session = Mock(spec=Session)
+    optimizer_data.evolution_fn = Mock(return_value=[])
+    optimizer_data.worst_k_scoring_fn = Mock()
+    topologies, scoring_results = run_fast_failing_epoch(
+        optimizer_data=optimizer_data,
+        epoch_logger=Mock(),
+    )
+    assert topologies == []
+    assert scoring_results == []
+    optimizer_data.worst_k_scoring_fn.assert_not_called()
+
+
+def test_run_remaining_epoch_returns_strategies_and_scores() -> None:
+    topology_a = ACOptimTopology(id=1, actions=[1], disconnections=[], timestep=0, metrics={})
+    topology_b = ACOptimTopology(id=2, actions=[2], disconnections=[], timestep=0, metrics={})
+    early_stage_results = [
+        EarlyStoppingStageResult(
+            loadflow_results=Mock(spec=LoadflowResultsPolars),
+            metrics=Metrics(fitness=1.0, extra_scores={}),
+            rejection_reason=None,
+            cases_subset=["c1"],
+        ),
+        EarlyStoppingStageResult(
+            loadflow_results=Mock(spec=LoadflowResultsPolars),
+            metrics=Metrics(fitness=2.0, extra_scores={}),
+            rejection_reason=None,
+            cases_subset=["c2"],
+        ),
+    ]
+    expected_results = [
+        TopologyScoringResult(
+            loadflow_results=Mock(spec=LoadflowResultsPolars),
+            metrics=Metrics(fitness=10.0, extra_scores={}),
+            rejection_reason=None,
+        ),
+        TopologyScoringResult(
+            loadflow_results=Mock(spec=LoadflowResultsPolars),
+            metrics=Metrics(fitness=20.0, extra_scores={}),
+            rejection_reason=None,
+        ),
+    ]
+
+    optimizer_data = Mock(spec=OptimizerData)
+    optimizer_data.params = ACOptimizerParameters(ga_config=ACGAParameters())
+    optimizer_data.session = Mock(spec=Session)
+    optimizer_data.scoring_fn = Mock(return_value=expected_results)
+    strategies, scoring_results = run_remaining_epoch(
+        optimizer_data=optimizer_data,
+        topologies=[topology_a, topology_b],
+        early_stage_results=early_stage_results,
+        epoch_logger=Mock(),
     )
 
-    action_set = optimizer_data.action_sets[0]
-    assert action_set is not None
-    assert len(action_set.local_actions)
-
-    # Generate random DC topologies to pull
-    for _ in range(10):
-        actions = random_actions(action_set, np.random.default_rng(42), 2)
-
-        pst_setpoints = None
-
-        topo_hash = hash_topo_data([(actions, [], pst_setpoints)])
-
-        topo = ACOptimTopology(
-            actions=actions,
-            disconnections=[],
-            pst_setpoints=pst_setpoints,
-            timestep=0,
-            fitness=0,
-            unsplit=False,
-            strategy_hash=topo_hash,
-            optimization_id="test",
-            optimizer_type=OptimizerType.DC,
-        )
-        optimizer_data.session.add(topo)
-        try:
-            optimizer_data.session.commit()
-        except Exception:
-            optimizer_data.session.rollback()
-
-    # Run the epoch
-    # We create an empty consumer, as we have already added the results to the database
-    consumer = Mock(spec=LongRunningKafkaConsumer)
-    consumer.consume = Mock(return_value=[])
-    send_result_fn = Mock()
-    run_epoch(optimizer_data, consumer, send_result_fn, epoch=0)
-
-    assert consumer.consume.called
-    assert send_result_fn.called
-
-    # We expect 2 AC results in the database now
-    ac_topos = optimizer_data.session.exec(
-        select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)
-    ).all()
-    assert len(ac_topos) == 2
-    assert sum(topo.unsplit for topo in ac_topos) == 1
-    assert sum(not topo.unsplit for topo in ac_topos) == 1
-    assert all(topo.get_loadflow_reference() is not None for topo in ac_topos)
+    assert strategies == [topology_a, topology_b]
+    assert scoring_results == expected_results
+    optimizer_data.scoring_fn.assert_called_once_with([topology_a, topology_b], early_stage_results)
 
 
-def test_run_epoch_on_error() -> None:
-
+def test_run_remaining_epoch_returns_empty_when_no_strategy_available() -> None:
+    optimizer_data = Mock(spec=OptimizerData)
+    optimizer_data.scoring_fn = Mock()
     results = []
 
     def mocked_send_result_fn(result):
         results.append(result)
 
-    def mocked_scoring_function(*args, **kwargs):
-        raise Exception("Simulated scoring error")
+    strategies, scoring_results = run_remaining_epoch(
+        optimizer_data=optimizer_data,
+        topologies=[],
+        early_stage_results=[],
+        epoch_logger=Mock(),
+    )
+
+    assert strategies == []
+    assert scoring_results == []
+    optimizer_data.scoring_fn.assert_not_called()
+
+
+def test_process_remaining_results_sends_each_topology() -> None:
+    results = []
+
+    def mocked_send_result_fn(result):
+        results.append(result)
+
+    topology_a = ACOptimTopology(id=1, actions=[1], disconnections=[], timestep=0, metrics={})
+    topology_b = ACOptimTopology(id=2, actions=[2], disconnections=[], timestep=0, metrics={})
+    topology_c = ACOptimTopology(id=3, actions=[3], disconnections=[], timestep=0, metrics={})
 
     optimizer_data = Mock(spec=OptimizerData)
     optimizer_data.params = ACOptimizerParameters(
         ga_config=ACGAParameters(
-            runtime_seconds=10, pull_prob=1.0, reconnect_prob=0.0, close_coupler_prob=0.0, seed=42, enable_ac_rejection=False
+            runtime_seconds=10,
+            pull_prob=1.0,
+            reconnect_prob=0.0,
+            close_coupler_prob=0.0,
+            seed=42,
+            enable_ac_rejection=False,
+            topology_batch_size=3,
+            full_analysis_batchsize=2,
+            remaining_loadflow_wait_seconds=60.0,
         )
     )
-    optimizer_data.scoring_fn = mocked_scoring_function
     optimizer_data.session = Mock(spec=Session)
+    optimizer_data.store_loadflow_fn = Mock(return_value=StoredLoadflowReference(relative_path="test"))
+    returned_topologies, returned_results = process_remaining_results(
+        optimizer_data=optimizer_data,
+        topologies=[topology_a, topology_b, topology_c],
+        full_results=[
+            TopologyScoringResult(
+                loadflow_results=Mock(spec=LoadflowResultsPolars),
+                metrics=Metrics(fitness=1.0, extra_scores={}),
+                rejection_reason=None,
+            ),
+            TopologyScoringResult(
+                loadflow_results=Mock(spec=LoadflowResultsPolars),
+                metrics=Metrics(fitness=2.0, extra_scores={}),
+                rejection_reason=None,
+            ),
+            TopologyScoringResult(
+                loadflow_results=Mock(spec=LoadflowResultsPolars),
+                metrics=Metrics(fitness=3.0, extra_scores={}),
+                rejection_reason=None,
+            ),
+        ],
+        send_result_fn=mocked_send_result_fn,
+        epoch=0,
+        epoch_logger=Mock(),
+    )
 
-    def mocked_evolution_fn(*args, **kwargs):
-        return [ACOptimTopology(id=1, actions=[1, 2], disconnections=[], timestep=0)]
-
-    optimizer_data.evolution_fn = mocked_evolution_fn
-    with patch("toop_engine_topology_optimizer.ac.optimizer.poll_results_topic") as poll_mock:
-        poll_mock.return_value = ({}, [])
-        run_epoch(
-            optimizer_data=optimizer_data,
-            results_consumer=Mock(spec=LongRunningKafkaConsumer),
-            send_result_fn=mocked_send_result_fn,
-            epoch=0,
-        )
-    assert len(results) == 1
-    assert results[0].reason.criterion == "error"
+    assert returned_topologies == [topology_a, topology_b, topology_c]
+    assert len(returned_results) == 3
+    assert optimizer_data.store_loadflow_fn.call_count == 3
+    assert len(results) == 3

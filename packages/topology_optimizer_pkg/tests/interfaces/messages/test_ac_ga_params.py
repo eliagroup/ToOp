@@ -18,8 +18,9 @@ def test_acga_parameters_default():
     assert params.n_worst_contingencies == 20
     assert params.seed == 42
     assert params.timestep_processes == 1
+    assert params.remaining_runner_processes == 1
     assert params.runner_processes == 1
-    assert params.runner_batchsize is None
+    assert params.full_analysis_batchsize == 1
     assert params.filter_strategy is None
     assert params.enable_ac_rejection is True
     assert params.reject_convergence_threshold == 1.0
@@ -46,8 +47,8 @@ def test_acga_parameters_filter_strategy():
         n_worst_contingencies=5,
         seed=123,
         timestep_processes=2,
-        runner_processes=3,
-        runner_batchsize=10,
+        remaining_runner_processes=3,
+        full_analysis_batchsize=10,
         enable_ac_rejection=False,
         reject_convergence_threshold=0.6,
         reject_overload_threshold=0.9,
@@ -66,3 +67,10 @@ def test_acga_parameters_filter_strategy():
 
     model_loaded = ACGAParameters.model_validate_json(model_dump)
     assert model_loaded == params
+
+
+def test_acga_parameters_accept_legacy_runner_processes_input() -> None:
+    params = ACGAParameters(runner_processes=4)
+
+    assert params.remaining_runner_processes == 4
+    assert params.runner_processes == 4

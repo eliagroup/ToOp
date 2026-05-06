@@ -31,16 +31,19 @@ def test_select_strategy(dc_repertoire: list[BaseDBTopology]) -> None:
     assert isinstance(strategy, list)
     assert len(strategy)
     assert isinstance(strategy[0], ACOptimTopology)
-
-    # Exactly one strategy should be selected
-    assert len(set(t.strategy_hash for t in strategy)) == 1
-
-    # All topologies in the repertoire belonging to this strategy should be included
-    for topo in dc_repertoire:
-        if topo.strategy_hash == strategy[0].strategy_hash:
-            assert topo in strategy
+    assert len(strategy) == 1
+    assert strategy[0] in dc_repertoire
 
     assert select_strategy(np.random.default_rng(0), [], [], default_scorer) == []
+
+
+def test_default_scorer_prefers_lower_fitness() -> None:
+    metrics = pd.DataFrame({"fitness": [-20.0, -5.0, -1.0]})
+
+    scores = default_scorer(metrics)
+
+    assert list(scores) == [19.0, 4.0, 0.0]
+    assert scores.iloc[0] > scores.iloc[1] > scores.iloc[2]
 
 
 def test_select_stategy_ac_dc_mix(dc_repertoire: list[BaseDBTopology], session: Session) -> None:
@@ -648,7 +651,7 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
     # Strategy 1 scores: 24.0 * 5 = 120 (positive sum)
     # Strategy 2 scores: -66.0 * 5 = -330 (negative sum)
 
-    # Run select_strategy multiple times to check both strategies can be selected
+    # Run select_strategy multiple times to check positive scores are preferred over negative scores.
     rng = np.random.default_rng(42)
     selected_strategies = []
 
@@ -668,11 +671,101 @@ def test_select_strategy_positive_negative_metrics(session: Session) -> None:
     strategy2_count = selected_strategies.count(strategy2_hash)
 
     assert strategy1_count > 0, "Strategy 1 (positive metrics) should be selected at least once"
-    assert strategy2_count > 0, "Strategy 2 (negative metrics) should be selected at least once"
-
-    # Strategy 2 should be selected more often (roughly 73% of the time)
-    # Allow some variance due to randomness
     assert strategy1_count > strategy2_count, (
-        f"Strategy 1 (negative metrics) should be selected less often. "
+        f"Strategy 1 (positive metrics) should be selected more often. "
         f"Got strategy1={strategy1_count}, strategy2={strategy2_count}"
     )
+
+
+def test_select_strategy_returns_candidate_batch_only(session: Session) -> None:
+    candidates: list[ACOptimTopology] = []
+    for index, fitness in enumerate([-1.0, -2.0, -3.0]):
+        topology = ACOptimTopology(
+            actions=[index + 1],
+            disconnections=[],
+            pst_setpoints=None,
+            unsplit=False,
+            timestep=0,
+            strategy_hash=hash_topo_data([([index + 1], [], None)]),
+            optimization_id="candidate-batch",
+            optimizer_type=OptimizerType.DC,
+            fitness=fitness,
+            metrics={"overload_energy_n_1": abs(fitness)},
+        )
+        session.add(topology)
+        candidates.append(topology)
+
+    ac_topology = ACOptimTopology(
+        actions=[99],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=hash_topo_data([([99], [], None)]),
+        optimization_id="candidate-batch",
+        optimizer_type=OptimizerType.AC,
+        fitness=999.0,
+        metrics={"fitness_dc": -1.0, "switching_distance": 1, "split_subs": 1},
+    )
+    session.add(ac_topology)
+    session.commit()
+    for topology in candidates:
+        session.refresh(topology)
+    session.refresh(ac_topology)
+
+    selected = select_strategy(
+        rng=np.random.default_rng(0),
+        repertoire=[*candidates, ac_topology],
+        candidates=candidates,
+        interest_scorer=default_scorer,
+        batch_size=2,
+    )
+
+    assert len(selected) == 2
+    assert len({topology.id for topology in selected}) == 2
+    assert all(topology.id in {candidate.id for candidate in candidates} for topology in selected)
+
+
+def test_select_strategy_prefers_lower_fitness(session: Session) -> None:
+    better_topology = ACOptimTopology(
+        actions=[1],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=hash_topo_data([([1], [], None)]),
+        optimization_id="score-bias",
+        optimizer_type=OptimizerType.DC,
+        fitness=1.0,
+        metrics={"overload_energy_n_1": 1.0},
+    )
+    worse_topology = ACOptimTopology(
+        actions=[2],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=hash_topo_data([([2], [], None)]),
+        optimization_id="score-bias",
+        optimizer_type=OptimizerType.DC,
+        fitness=10.0,
+        metrics={"overload_energy_n_1": 10.0},
+    )
+    session.add(better_topology)
+    session.add(worse_topology)
+    session.commit()
+    session.refresh(better_topology)
+    session.refresh(worse_topology)
+
+    rng = np.random.default_rng(42)
+    selected_ids = [
+        select_strategy(
+            rng=rng,
+            repertoire=[better_topology, worse_topology],
+            candidates=[better_topology, worse_topology],
+            interest_scorer=default_scorer,
+        )[0].id
+        for _ in range(100)
+    ]
+
+    assert selected_ids.count(better_topology.id) > selected_ids.count(worse_topology.id)

@@ -19,17 +19,21 @@ from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from sqlmodel import Session
+from structlog.typing import BindableLogger
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.optimizer import (
     AcNotConvergedError,
+    evaluate_remaining_contingencies,
     initialize_optimization,
-    run_epoch,
+    process_fast_failing_results,
+    run_fast_failing_epoch,
     wait_for_first_dc_results,
 )
 from toop_engine_topology_optimizer.ac.storage import create_session, scrub_db
 from toop_engine_topology_optimizer.ac.summary import write_summary
+from toop_engine_topology_optimizer.ac.types import OptimizerData
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commands import Command, ShutdownCommand, StartOptimizationCommand
@@ -47,6 +51,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     OptimizationStoppedResult,
     Result,
     ResultUnion,
+    Strategy,
 )
 
 logger = structlog.get_logger(__name__)
@@ -77,9 +82,184 @@ class WorkerData:
     """An initialized database session to an in-memory sqlite database."""
 
 
+def initialize_optimization_run(
+    ac_params: ACOptimizerParameters,
+    grid_file: GridFile,
+    worker_data: WorkerData,
+    send_result_fn: Callable[[ResultUnion], None],
+    send_heartbeat_fn: Callable[[HeartbeatUnion], None],
+    optimization_id: str,
+    loadflow_result_fs: AbstractFileSystem,
+    processed_gridfile_fs: AbstractFileSystem,
+    optimization_logger: BindableLogger,
+) -> tuple[OptimizerData, Strategy]:
+    """Initialize the AC optimization and wait for the first DC results.
+
+    Parameters are identical to `optimization_loop` plus the bound logger.
+
+    Returns
+    -------
+    tuple[OptimizerData, Strategy]
+        The initialized optimizer data and the initial topology message.
+    """
+    send_heartbeat_fn(
+        OptimizationStartedHeartbeat(
+            optimization_id=optimization_id,
+        )
+    )
+    optimizer_data, initial_topology = initialize_optimization(
+        session=worker_data.db,
+        params=ac_params,
+        optimization_id=optimization_id,
+        grid_file=grid_file,
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
+        optimization_logger=optimization_logger,
+    )
+    wait_for_first_dc_results(
+        results_consumer=worker_data.result_consumer,
+        session=worker_data.db,
+        max_wait_time=ac_params.ga_config.max_initial_wait_seconds,
+        optimization_id=optimization_id,
+        heartbeat_fn=partial(
+            send_heartbeat_fn,
+            OptimizationStatsHeartbeat(
+                optimization_id=optimization_id,
+                wall_time=0,
+                iteration=0,
+                num_branch_topologies_tried=0,
+                num_injection_topologies_tried=0,
+            ),
+        ),
+    )
+    send_result_fn(
+        OptimizationStartedResult(
+            initial_topology=initial_topology,
+        )
+    )
+    return optimizer_data, initial_topology
+
+
+def run_optimization_epochs(
+    ac_params: ACOptimizerParameters,
+    optimizer_data: OptimizerData,
+    worker_data: WorkerData,
+    send_result_fn: Callable[[ResultUnion], None],
+    send_heartbeat_fn: Callable[[HeartbeatUnion], None],
+    optimization_id: str,
+    optimization_logger: BindableLogger,
+) -> int:
+    """Run the iterative AC optimization phase.
+
+    Returns
+    -------
+    int
+        The final epoch value reached when the optimization loop stops.
+    """
+    start_time = time.time()
+    last_full_run = start_time
+    survivor_batch_size = ac_params.ga_config.runner_processes
+    epoch = 1
+    evaluated_topologies = 0
+    survivor_topologies = []
+    survivor_early_results = []
+
+    while True:
+        epoch_logger = optimization_logger.bind(epoch=epoch)
+        added_topos, _ = poll_results_topic(
+            db=optimizer_data.session, consumer=worker_data.result_consumer, first_poll=epoch == 1
+        )
+        epoch_logger.debug("Imported topologies from result stream", imported_topology_count=len(added_topos))
+
+        topologies, worst_k_results = run_fast_failing_epoch(
+            optimizer_data=optimizer_data,
+            epoch_logger=epoch_logger,
+        )
+        success_topologies, success_early_stop_results = process_fast_failing_results(
+            optimizer_data=optimizer_data,
+            topologies=topologies,
+            fast_failing_results=worst_k_results,
+            epoch_logger=epoch_logger,
+            send_result_fn=send_result_fn,
+            epoch=epoch,
+        )
+        evaluated_topologies += len(topologies)
+        survivor_topologies.extend(success_topologies)
+        survivor_early_results.extend(success_early_stop_results)
+
+        enough_survivors = len(survivor_topologies) >= survivor_batch_size
+        runtime_exceeded_since_last_full_run = (time.time() - last_full_run) > ac_params.ga_config.runtime_seconds
+        if enough_survivors or (runtime_exceeded_since_last_full_run and len(survivor_topologies) > 0):
+            epoch_logger.info(
+                f"Collected {len(survivor_topologies)} survivor topologies, running remaining contingencies evaluation"
+            )
+            evaluate_remaining_contingencies(
+                send_result_fn,
+                optimizer_data,
+                epoch,
+                survivor_topologies[:survivor_batch_size],
+                survivor_early_results[:survivor_batch_size],
+                epoch_logger,
+            )
+            survivor_topologies = survivor_topologies[survivor_batch_size:]
+            survivor_early_results = survivor_early_results[survivor_batch_size:]
+            epoch += 1
+            last_full_run = time.time()
+
+        send_heartbeat_fn(
+            OptimizationStatsHeartbeat(
+                optimization_id=optimization_id,
+                wall_time=time.time() - start_time,
+                iteration=epoch,
+                num_branch_topologies_tried=evaluated_topologies - len(survivor_topologies),
+                num_injection_topologies_tried=0,
+            )
+        )
+
+        if time.time() - start_time > ac_params.ga_config.runtime_seconds:
+            if len(survivor_topologies) > 0:
+                epoch_logger.info(
+                    f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit"
+                    f" with survivor strategies still present"
+                    f" Running remaining contingencies evaluation before stopping"
+                )
+                evaluate_remaining_contingencies(
+                    send_result_fn,
+                    optimizer_data,
+                    epoch,
+                    survivor_topologies,
+                    survivor_early_results,
+                    epoch_logger,
+                )
+            optimization_logger.info(
+                f"Stopping optimization at epoch {epoch} due to runtime limit with no survivor strategies"
+            )
+            send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
+
+
+def summarize_optimization_run(
+    optimization_id: str,
+    grid_file: GridFile,
+    worker_data: WorkerData,
+    optimizer_data: OptimizerData,
+    processed_gridfile_fs: AbstractFileSystem,
+    optimization_logger: BindableLogger,
+) -> None:
+    """Write the optimization summary artifacts."""
+    optimization_logger.info(f"Writing summary for optimization {optimization_id}")
+    write_summary(
+        grid_file=grid_file,
+        db=worker_data.db,
+        processed_gridfile_fs=processed_gridfile_fs,
+        optimization_id=optimization_id,
+        action_set=optimizer_data.action_set,
+        optimization_logger=optimization_logger,
+    )
+
+
 def optimization_loop(
     ac_params: ACOptimizerParameters,
-    grid_files: list[GridFile],
+    grid_file: GridFile,
     worker_data: WorkerData,
     send_result_fn: Callable[[ResultUnion], None],
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
@@ -95,8 +275,8 @@ def optimization_loop(
     ----------
     ac_params : ACOptimizerParameters
         The parameters for the AC optimizer
-    grid_files : list[GridFile]
-        The grid files to optimize on
+    grid_file : GridFile
+        The grid file to optimize on
     worker_data : WorkerData
         The dataclass with the results consumer and database
     send_result_fn : Callable[[ResultUnion], None]
@@ -116,101 +296,69 @@ def optimization_loop(
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
     """
-    logger.info(f"Initializing optimization {optimization_id}")
+    optimization_logger = logger.bind(optimization_id=optimization_id)
+    optimization_logger.info("Initializing optimization")
+
     try:
-        send_heartbeat_fn(
-            OptimizationStartedHeartbeat(
-                optimization_id=optimization_id,
-            )
-        )
-        optimizer_data, initial_topology = initialize_optimization(
-            session=worker_data.db,
-            params=ac_params,
+        optimizer_data, _ = initialize_optimization_run(
+            ac_params=ac_params,
+            grid_file=grid_file,
+            worker_data=worker_data,
+            send_result_fn=send_result_fn,
+            send_heartbeat_fn=send_heartbeat_fn,
             optimization_id=optimization_id,
-            grid_files=grid_files,
             loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
-        )
-        wait_for_first_dc_results(
-            results_consumer=worker_data.result_consumer,
-            session=worker_data.db,
-            max_wait_time=ac_params.ga_config.max_initial_wait_seconds,
-            optimization_id=optimization_id,
-            heartbeat_fn=partial(
-                send_heartbeat_fn,
-                OptimizationStatsHeartbeat(
-                    optimization_id=optimization_id,
-                    wall_time=0,
-                    iteration=0,
-                    num_branch_topologies_tried=0,
-                    num_injection_topologies_tried=0,
-                ),
-            ),
-        )
-        send_result_fn(
-            OptimizationStartedResult(
-                initial_topology=initial_topology,
-            )
+            optimization_logger=optimization_logger,
         )
     except AcNotConvergedError as e:
         # If the AC optimization did not converge in the base grid, we send a special message
         # to indicate that the optimization cannot be run.
         send_result_fn(OptimizationStoppedResult(reason="ac-not-converged", message=str(e)))
-        logger.error(f"AC optimization {optimization_id} did not converge in the base grid: {e}")
+        optimization_logger.error(f"AC optimization {optimization_id} did not converge in the base grid: {e}")
         return
     except TimeoutError as e:
         # If the DC results did not arrive in time, we assume a failure on DC side and abandon the optimization
         send_result_fn(OptimizationStoppedResult(reason="dc-not-started", message=str(e)))
-        logger.error(f"DC results for optimization {optimization_id} did not arrive in time: {e}")
+        optimization_logger.error(f"DC results for optimization {optimization_id} did not arrive in time: {e}")
         return
     except Exception as e:
         send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
-        logger.error(f"Error during initialization of optimization {optimization_id}: {e}")
+        optimization_logger.error(f"Error during initialization of optimization {optimization_id}: {e}")
         return
 
-    logger.info(f"Starting optimization {optimization_id}")
-    epoch = 1  # Start at epoch 1 so the initial topology will be epoch 0
-    running = True
-    start_time = time.time()
-    while running:
-        try:
-            epoch_with_work = run_epoch(optimizer_data, worker_data.result_consumer, send_result_fn, epoch=epoch)
-            # Only increase the epoch if there was actually work done, i.e. a new strategy was polled and evaluated
-            epoch += bool(epoch_with_work)
-        except Exception as e:
-            # Send a stop message to the results
-            send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
-            logger.error(f"Error during optimization {optimization_id}, epoch {epoch}: {e}")
-            logger.error(f"Stack trace: {traceback.format_exc()}")
-            return
+    optimization_logger.info(f"Starting optimization {optimization_id}")
 
-        send_heartbeat_fn(
-            OptimizationStatsHeartbeat(
-                optimization_id=optimization_id,
-                wall_time=time.time() - start_time,
-                iteration=epoch,
-                num_branch_topologies_tried=epoch - 1,  # Exactly one branch topology per epoch but we increment before
-                num_injection_topologies_tried=0,
-            )
+    try:
+        run_optimization_epochs(
+            ac_params=ac_params,
+            optimizer_data=optimizer_data,
+            worker_data=worker_data,
+            send_result_fn=send_result_fn,
+            send_heartbeat_fn=send_heartbeat_fn,
+            optimization_id=optimization_id,
+            optimization_logger=optimization_logger,
         )
+    except Exception as e:
+        # Send a stop message to the results
+        send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
+        optimization_logger.error(f"Error during optimization {optimization_id}: {e}")
+        optimization_logger.error(f"Stack trace: {traceback.format_exc()}")
+        return
 
-        if time.time() - start_time > ac_params.ga_config.runtime_seconds:
-            logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
-            send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
-            running = False
-            logger.info(f"Writing summary for optimization {optimization_id}")
-            try:
-                write_summary(
-                    grid_files=grid_files,
-                    db=worker_data.db,
-                    processed_gridfile_fs=processed_gridfile_fs,
-                    optimization_id=optimization_id,
-                    action_sets=optimizer_data.action_sets,
-                )
-            except Exception as e:
-                logger.error(f"Error while writing summary for optimization {optimization_id}: {e}")
-                logger.error(f"Stack trace: {traceback.format_exc()}")
-            break
+    try:
+        summarize_optimization_run(
+            optimization_id=optimization_id,
+            grid_file=grid_file,
+            worker_data=worker_data,
+            optimizer_data=optimizer_data,
+            processed_gridfile_fs=processed_gridfile_fs,
+            optimization_logger=optimization_logger,
+        )
+    except Exception as e:
+        optimization_logger.error(f"Error while writing summary for optimization {optimization_id}: {e}")
+        optimization_logger.error(f"Stack trace: {traceback.format_exc()}")
+        return
 
 
 def idle_loop(
@@ -453,9 +601,10 @@ def main(
 
         # During the optimization loop, the command consumer is paused and the result consumer is active
         worker_data.command_consumer.start_processing()
+        assert len(command.grid_files) == 1, "Exactly one grid file should be provided for the AC optimizer"
         optimization_loop(
             ac_params=command.ac_params,
-            grid_files=command.grid_files,
+            grid_file=command.grid_files[0],
             worker_data=worker_data,
             send_result_fn=partial(send_result, optimization_id=command.optimization_id),
             send_heartbeat_fn=partial(send_heartbeat, ping_commands=True),

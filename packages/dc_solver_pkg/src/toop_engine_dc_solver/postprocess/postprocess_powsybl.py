@@ -356,6 +356,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
                 yield self.net
             finally:
                 self.net.remove_variant(temporary_variant_id)
+                self.net.set_working_variant(self.variant_id)
         else:
             # For bus-branch grids, we can just deepcopy the network, as the topology application is not in-place
             net_copy = deepcopy(self.net)

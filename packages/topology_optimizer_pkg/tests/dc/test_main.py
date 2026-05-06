@@ -315,6 +315,8 @@ def test_main_mapelites_2D_pst_opt(tmp_path: str, static_information_file_comple
             plot=False,
             cell_depth=4,
             pst_mutation_sigma=3.0,
+            pst_mutation_probability=0.2,
+            pst_reset_probability=0.1,
             enable_nodal_inj_optim=True,
         ),
         lf_config=LoadflowSolverParameters(batch_size=batch_size),

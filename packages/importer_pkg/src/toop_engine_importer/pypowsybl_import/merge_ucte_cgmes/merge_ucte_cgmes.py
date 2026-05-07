@@ -13,8 +13,8 @@ Steps to merge the UCTE and CGMES network models:
 3. Remove the CGMES area from the UCTE network model.
 4. Merge the UCTE and CGMES network model.
 
-The merge only works if the border lines are represented as dangling lines in both network models.
-E.g. inner German will not merge with this function. Convert the inner German lines to dangling lines first.
+The merge only works if the border lines are represented as boundary lines in both network models.
+E.g. inner German will not merge with this function. Convert the inner German lines to boundary lines first.
 
 """
 
@@ -33,15 +33,15 @@ class TieLineSchema(pa.DataFrameModel):
     pairing_key: pat.Index[str]
     """The pairing key of the tie lines."""
 
-    dangling_line1_id: pat.Series[str]
-    """The first dangling line id of the tie lines."""
+    boundary_line1_id: pat.Series[str]
+    """The first boundary line id of the tie lines."""
 
-    dangling_line2_id: pat.Series[str]
-    """The second dangling line id of the tie lines."""
+    boundary_line2_id: pat.Series[str]
+    """The second boundary line id of the tie lines."""
 
 
-class DanglingLineSchema(pa.DataFrameModel):
-    """A Schema for net.get_dangling_lines."""
+class BoundaryLineSchema(pa.DataFrameModel):
+    """A Schema for net.get_boundary_lines."""
 
     pairing_key: pat.Index[str]
     """The pairing key of the tie lines."""
@@ -75,9 +75,9 @@ class UcteCgmesMerge(BaseModel):
     Note: contains the filtered DataFrame from net_ucte.get_tie_lines()
     """
 
-    cgmes_dangling_lines: pat.DataFrame[DanglingLineSchema]
-    """ All dangling lines from the CGMES grid model
-    net_cgmes.get_dangling_lines()
+    cgmes_boundary_lines: pat.DataFrame[BoundaryLineSchema]
+    """ All boundary lines from the CGMES grid model
+    net_cgmes.get_boundary_lines()
     """
 
     removed_tie_lines: Optional[list[str]] = Field(default_factory=list)
@@ -102,7 +102,7 @@ class UcteCgmesMerge(BaseModel):
     def validate_dataframes(self) -> Self:
         """Validate the Dataframes model."""
         # validate the input data
-        self.cgmes_dangling_lines = DanglingLineSchema.validate(self.cgmes_dangling_lines)
+        self.cgmes_boundary_lines = BoundaryLineSchema.validate(self.cgmes_boundary_lines)
         self.ucte_border_lines = TieLineSchema.validate(self.ucte_border_lines)
         return self
 
@@ -143,7 +143,7 @@ def run_merge_ucte_cgmes(
         ucte_area_name=ucte_area_name,
         country_name=country_name,
         ucte_border_lines=get_ucte_border_tie_lines(net_ucte=net_ucte, net_cgmes=net_cgmes),
-        cgmes_dangling_lines=net_cgmes.get_dangling_lines(),
+        cgmes_boundary_lines=net_cgmes.get_boundary_lines(),
         removed_tie_lines=[],
         removed_dangling_lines=[],
     )
@@ -179,13 +179,13 @@ def remove_station(net: Network, station_name: str, ucte_cgmes_merge_info: Optio
         element_ids += list(elements.index)
         element_ids += list(bus_breaker_topology.switches.index)
         # handle existing tie lines
-        if any(elements["type"].isin(["DANGLING_LINE"])):
-            dangling_id = elements[elements["type"] == "DANGLING_LINE"].index
+        if any(elements["type"].isin(["BOUNDARY_LINE"])):
+            dangling_id = elements[elements["type"] == "BOUNDARY_LINE"].index
             if ucte_cgmes_merge_info is not None:
                 ucte_cgmes_merge_info.removed_dangling_lines += list(dangling_id)
-            dangling_lines = net.get_dangling_lines().loc[dangling_id]
-            dangling_lines = dangling_lines[dangling_lines["tie_line_id"] != ""]
-            tie_line_ids += list(dangling_lines["tie_line_id"])
+            boundary_lines = net.get_boundary_lines().loc[dangling_id]
+            boundary_lines = boundary_lines[boundary_lines["tie_line_id"] != ""]
+            tie_line_ids += list(boundary_lines["tie_line_id"])
 
     # remove duplicates, as the remove_elements raises an error if the element is already removed
     # Note: tie lines must be removed first, otherwise there is and parent/child error
@@ -199,7 +199,7 @@ def remove_station(net: Network, station_name: str, ucte_cgmes_merge_info: Optio
 def get_ucte_border_tie_lines(net_ucte: Network, net_cgmes: Network) -> pd.DataFrame:
     """Get border lines between UCTE and CGMES network.
 
-    The border lines are identified by the pairing key of the dangling lines in the CGMES network.
+    The border lines are identified by the pairing key of the boundary lines in the CGMES network.
 
     Parameters
     ----------
@@ -214,8 +214,8 @@ def get_ucte_border_tie_lines(net_ucte: Network, net_cgmes: Network) -> pd.DataF
         The border lines between the UCTE and CGMES network.
         Note: contains the filtered DataFrame from net_ucte.get_tie_lines()
     """
-    dangling_replace_grid = net_cgmes.get_dangling_lines()
-    pairing_key_replace_grid = dangling_replace_grid["pairing_key"].values
+    boundary_replace_grid = net_cgmes.get_boundary_lines()
+    pairing_key_replace_grid = boundary_replace_grid["pairing_key"].values
 
     tie_outer_grid = net_ucte.get_tie_lines()
     border_lines = tie_outer_grid[tie_outer_grid["pairing_key"].isin(pairing_key_replace_grid)]
@@ -248,8 +248,8 @@ def merge_ucte_and_cgmes(net_ucte: Network, net_cgmes: Network) -> Network:
     """Merge the UCTE and CGMES network model.
 
     Expects the tie lines and cgmes are removed.
-    Note: this merge only works if the border lines are represented as dangling lines in both network models.
-    E.g. inner German will not merge with this function. Convert the inner German lines to dangling lines first.
+    Note: this merge only works if the border lines are represented as boundary lines in both network models.
+    E.g. inner German will not merge with this function. Convert the inner German lines to boundary lines first.
     Note: the input networks are modified in place and will not be useable after the merge.
 
     Parameters
@@ -285,8 +285,8 @@ def validate_merge_quality(net_merged: Network, ucte_cgmes_merge_info: UcteCgmes
         The merge information to store the removed tie lines and dangling lines.
         Note: gets modified in place.
     """
-    paring_key_cgmes = ucte_cgmes_merge_info.cgmes_dangling_lines["pairing_key"].values
-    merged_dangling_lines = net_merged.get_dangling_lines()
+    paring_key_cgmes = ucte_cgmes_merge_info.cgmes_boundary_lines["pairing_key"].values
+    merged_dangling_lines = net_merged.get_boundary_lines()
     merged_dangling_lines = merged_dangling_lines[merged_dangling_lines["pairing_key"].isin(paring_key_cgmes)]
     merged_tie_line = merged_dangling_lines[merged_dangling_lines["tie_line_id"] != ""]
 

@@ -20,7 +20,7 @@
         ],
         "trafo_for_nminus1": [],
         "tie_line_for_nminus1": [],
-        "dangling_line_for_nminus1": [],
+        "boundary_line_for_nminus1": [],
         "generator_for_nminus1": [
             "generator1",
             "generator2",
@@ -217,7 +217,7 @@
         "n_tie_line_for_reward": 0,
         "n_tie_line_for_nminus1": 0,
         "n_tie_line_disconnectable": 0,
-        "n_dangling_line_for_nminus1": 0,
+        "n_boundary_line_for_nminus1": 0,
         "n_generator_for_nminus1": 3,
         "n_load_for_nminus1": 3,
         "n_switch_for_nminus1": 157,

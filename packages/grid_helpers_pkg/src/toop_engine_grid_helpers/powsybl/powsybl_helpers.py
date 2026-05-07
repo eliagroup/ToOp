@@ -262,7 +262,7 @@ def change_dangling_to_tie(dangling_lines: pd.DataFrame, station_elements: pd.Da
         A copy of the station_elements dataframe with all dangling lines that are actually part of a tie line set to
         TIE_LINE.
     """
-    dangling = station_elements[station_elements["type"] == "DANGLING_LINE"].copy()
+    dangling = station_elements[station_elements["type"] == "BOUNDARY_LINE"].copy()
     dangling_index = dangling.index
     # if dangling lines are present -> check for tie lines
     if not dangling.empty:

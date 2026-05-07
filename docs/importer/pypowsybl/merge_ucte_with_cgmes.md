@@ -2,8 +2,8 @@
 
 This document demonstrates how to use the `pypowsybl` module to merge UCTE and CGMES networks. The process involves:
 - Identifying border lines inside and outside a specified area.
-- Determining dangling voltage levels.
-- Replacing dangling voltage levels with tie lines.
+- Determining boundary-line voltage levels.
+- Replacing boundary-line voltage levels with tie lines.
 - Merging the networks.
 - Performing an AC load flow on the merged network.
 
@@ -11,7 +11,7 @@ This document demonstrates how to use the `pypowsybl` module to merge UCTE and C
 
 ```python
 from importer.pypowsybl_import.merge_ucte_cgmes import replace_line_with_tie
-from importer.pypowsybl_import.merge_ucte_cgmes.replace_line_with_tie import get_dangling_voltage_levels
+from importer.pypowsybl_import.merge_ucte_cgmes.replace_line_with_tie import get_boundary_voltage_levels
 from importer.pypowsybl_import.merge_ucte_cgmes.merge_ucte_cgmes import run_merge_ucte_cgmes
 from importer.pypowsybl_import import powsybl_masks
 import pypowsybl
@@ -46,19 +46,19 @@ external_border_mask, _ = powsybl_masks.get_border_line_mask(
     area_codes=area_codes,
 )
 
-# Get the voltage levels of the dangling lines and reduce them to unique values
-dangling_voltage_levels = get_dangling_voltage_levels(
+# Get the voltage levels of the boundary lines and reduce them to unique values
+boundary_voltage_levels = get_boundary_voltage_levels(
     network=net_ucte,
     external_border_mask=external_border_mask,
     area_codes=area_codes
 )
-dangling_voltage_levels = list(set(dangling_voltage_levels))
+boundary_voltage_levels = list(set(boundary_voltage_levels))
 
-# Replace the dangling voltage levels with tie lines
-for dangling_voltage_level in dangling_voltage_levels:
+# Replace the boundary-line voltage levels with tie lines
+for boundary_voltage_level in boundary_voltage_levels:
     replace_line_with_tie.replace_voltage_level_with_tie_line(
         network=net_ucte,
-        voltage_level_id=dangling_voltage_level
+        voltage_level_id=boundary_voltage_level
     )
 
 # Merge the networks and run AC load flow analysis

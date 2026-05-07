@@ -77,7 +77,7 @@ NETWORK_MASK_NAMES: Final[dict[str, str]] = {
     "tie_line_overload_weight": "tie_line_overload_weight.npy",
     "tie_line_disconnectable": "tie_line_disconnectable.npy",
     "tie_line_tso_border": "tie_line_tso_border.npy",
-    "dangling_line_for_nminus1": "dangling_line_for_nminus1.npy",
+    "boundary_line_for_nminus1": "boundary_line_for_nminus1.npy",
     "generator_for_nminus1": "generator_for_nminus1.npy",
     "load_for_nminus1": "load_for_nminus1.npy",
     "switch_for_nminus1": "switch_for_nminus1.npy",

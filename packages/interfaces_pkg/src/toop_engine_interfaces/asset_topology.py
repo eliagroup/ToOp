@@ -59,7 +59,7 @@ AssetInjectionTypePandapower: TypeAlias = Literal[
 AssetInjectionTypePowsybl: TypeAlias = Literal[
     "LOAD",
     "GENERATOR",
-    "DANGLING_LINE",
+    "BOUNDARY_LINE",
     "HVDC_CONVERTER_STATION",
     "STATIC_VAR_COMPENSATOR",
     "SHUNT_COMPENSATOR",

@@ -143,8 +143,8 @@ def test_get_switchable_asset(network_graph_for_asset_topoV2_S1: tuple[nx.Graph,
     assert res.to_dict(orient="records") == expected
 
 
-def test_switching_tables_V2(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_switching_tables_V2(basic_node_breaker_network_powsybl_grid_v2):
+    net = basic_node_breaker_network_powsybl_grid_v2
     station_info = {"name": "Station5", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL5"}
     station_info = SubstationInformation(**station_info)
     station = get_station(net, "VL5_0", station_info)
@@ -173,8 +173,8 @@ def test_switching_tables_V2(basic_node_breaker_network_powsyblV2):
     assert np.array_equal(station.asset_switching_table, asset_switching_table)
 
 
-def test_station_coupler(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
+    net = basic_node_breaker_network_powsybl_grid_v2
 
     station_info = {"name": "Station2", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL2"}
     station_info = SubstationInformation(**station_info)
@@ -261,8 +261,8 @@ def test_station_coupler(basic_node_breaker_network_powsyblV2):
 
 
 @pytest.mark.xfail(reason="Failing edge case, there are no lines connected to the busbars in the middle")
-def test_switching_tables_failing_edgecase(basic_node_breaker_network_powsyblV2):
-    net = basic_node_breaker_network_powsyblV2
+def test_switching_tables_failing_edgecase(basic_node_breaker_network_powsybl_grid_v2):
+    net = basic_node_breaker_network_powsybl_grid_v2
     # net.get_single_line_diagram('VL5')
 
     station = get_station(net, "VL6_0", {"voltage_level_id": "VL6", "region": "BE", "nominal_v": 380, "name": "Station6"})

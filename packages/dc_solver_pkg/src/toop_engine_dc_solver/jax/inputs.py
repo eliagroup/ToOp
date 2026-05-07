@@ -985,38 +985,3 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bo
         bb_outage_baseline_analysis_present,
         nodal_injection_optimization_present,
     )
-
-
-def serialize_static_information(static_information: StaticInformation) -> bytes:
-    """Serialize the static information to a bytestring.
-
-    Parameters
-    ----------
-    static_information : StaticInformation
-        The static information to serialize
-
-    Returns
-    -------
-    bytes
-        The serialized static information
-    """
-    bytes_io = io.BytesIO()
-    _save_static_information(bytes_io, static_information)
-    return bytes_io.getvalue()
-
-
-def deserialize_static_information(serialized: bytes) -> StaticInformation:
-    """Deserialize the static information from a bytestring.
-
-    Parameters
-    ----------
-    serialized : bytes
-        The serialized static information
-
-    Returns
-    -------
-    StaticInformation
-        The deserialized static information
-    """
-    bytes_io = io.BytesIO(serialized)
-    return _load_static_information(bytes_io)

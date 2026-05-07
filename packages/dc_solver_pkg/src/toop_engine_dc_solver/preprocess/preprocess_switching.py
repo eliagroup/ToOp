@@ -16,7 +16,8 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 import networkx as nx
 import numpy as np
-from beartype.typing import Literal, Optional, Sequence
+import structlog
+from beartype.typing import Optional, Sequence
 from jaxtyping import Array, Bool, Int
 from networkx.algorithms.components import (
     connected_components,
@@ -37,8 +38,9 @@ from toop_engine_interfaces.asset_topology_helpers import (
     fix_multi_connected_without_coupler,
     fuse_all_couplers_with_type,
     order_station_assets,
-    order_topology,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -229,67 +231,6 @@ def identify_unnecessary_configurations(
     return mask
 
 
-def match_topology_to_network_data(
-    topology: Topology,
-    branches_at_nodes: list[Int[np.ndarray, " n_branches_at_node"]],
-    injections_at_nodes: list[Int[np.ndarray, " n_injections_at_node"]],
-    branch_ids: list[str],
-    injection_ids: list[str],
-    relevant_node_ids: list[str],
-    filter_assets: Literal["branch", "injection", "both"] = "both",
-) -> Topology:
-    """Match a topology to the grid in the network data
-
-    This function will order the station in the topology according to the relevant_node_ids and
-    order the assets in the stations according to the branch_ids and injection_ids.
-
-    If stations or assets are missing, it will raise an error.
-
-    Parameters
-    ----------
-    topology : Topology
-        The topology to match, coming from the import process
-    branches_at_nodes : list[Int[np.ndarray, " n_branches_at_node"]]
-        The branch indices at each node in the network data, indexing into branch_ids
-    injections_at_nodes : list[Int[np.ndarray, " n_injections_at_node"]]
-        The injection indices at each node in the network data, indexing into injection_ids
-    branch_ids : list[str]
-        The branch ids in the network data, matching the grid_model_id of the assets in the station
-    injection_ids : list[str]
-        The injection ids in the network data, matching the grid_model_id of the assets in the station
-    relevant_node_ids : list[str]
-        The node ids in the network data, matching the grid_model_id of the stations in the topology
-    filter_assets : Literal["branch", "injection", "both"], optional
-        Whether to return all assets, only branches, or only injections. By default "both"
-
-    Returns
-    -------
-    Topology
-        The topology with the stations and assets ordered according to the network data
-    """
-    # Order the stations according to the relevant nodes
-    topology, not_found = order_topology(topology, relevant_node_ids)
-    if not_found:
-        raise ValueError(f"The following nodes were not found in the topology: {not_found}")
-
-    keep_branches = filter_assets in ["branch", "both"]
-    keep_injections = filter_assets in ["injection", "both"]
-
-    # Order the assets in the stations according to the branch and injection ids
-    new_stations = []
-    for station, branches_at_node, injections_at_node in zip(
-        topology.stations, branches_at_nodes, injections_at_nodes, strict=True
-    ):
-        branch_ids_local = [branch_ids[i] for i in branches_at_node] if keep_branches else []
-        injection_ids_local = [injection_ids[i] for i in injections_at_node] if keep_injections else []
-        new_station, not_found, _ignored = order_station_assets(station, branch_ids_local + injection_ids_local)
-        if not_found:
-            raise ValueError(f"The following assets were not found in the station {station.grid_model_id}: {not_found}")
-        new_stations.append(new_station)
-
-    return topology.model_copy(update={"stations": new_stations})
-
-
 @dataclass
 class StationProblems:
     """Holds the potential non-fatal problems of preprocessing a station in preprocess_station."""
@@ -422,6 +363,9 @@ def make_optimal_separation_set(
         The separation_set itself, the coupler states, the coupler distances and the busbar A matchings.
     """
     configuration_table, coupler_states, busbar_matchings = make_separation_set(station)
+    logger.info(
+        f"Station {station.grid_model_id}/{station.name} - Initial separation set size: {configuration_table.shape[0]}"
+    )
     clip_hamming_distance = 0 if configuration_table.shape[0] < clip_at_size else clip_hamming_distance
     config_mask = identify_unnecessary_configurations(configuration_table[:, 0, :], clip_hamming_distance)
     configuration_table = configuration_table[config_mask]
@@ -437,83 +381,6 @@ def make_optimal_separation_set(
         coupler_states=coupler_states,
         coupler_distance=coupler_distances,
         busbar_a=busbar_matchings,
-    )
-
-
-def pad_configurations_table(
-    configuration_table: Bool[Array, " n_configurations n_separation_assets"],
-    coupler_distances: Int[Array, " n_configurations"],
-    ignore_assets: Bool[Array, " n_separation_assets"],
-    max_n_assets: int,
-    max_n_configurations: int,
-) -> tuple[
-    Bool[Array, " max_n_configurations max_n_assets"],
-    Int[Array, " max_n_configurations"],
-    Bool[Array, " max_n_assets"],
-]:
-    """Pad a configuration table to a fixed size.
-
-    The values are padded with zeros along the asset dimension, but are repeated along the
-    configuration dimension.
-
-    Parameters
-    ----------
-    configuration_table : Bool[Array, " n_configurations n_separation_assets"]
-        The configuration table to pad.
-    coupler_distances : Int[Array, " n_configurations"]
-        The coupler distances to pad.
-    ignore_assets : Bool[Array, " n_separation_assets"]
-        Which assets shall not be counted in the hamming distance. True to ignore.
-    max_n_assets : int
-        The maximum number of assets in the table.
-    max_n_configurations : int
-        The maximum number of configurations in the table.
-
-    Returns
-    -------
-    Bool[Array, " max_n_configurations max_n_assets"]
-        The padded configuration table, padded with False along the asset dimension and repeated
-        along the configuration dimension.
-    Int[Array, " max_n_configurations"]
-        The padded coupler distances, repeated the same way as the configuration table.
-    Bool[Array, " max_n_assets"]
-        The padded ignore assets, padded with True
-    """
-    configuration_table = jnp.pad(
-        configuration_table,
-        (
-            (0, 0),
-            (0, max_n_assets - configuration_table.shape[1]),
-        ),
-        mode="constant",
-        constant_values=False,
-    )
-    configuration_table = jnp.pad(
-        configuration_table,
-        (
-            (0, max_n_configurations - configuration_table.shape[0]),
-            (0, 0),
-        ),
-        mode="edge",
-    )
-
-    coupler_distances = jnp.pad(
-        coupler_distances,
-        (0, max_n_configurations - coupler_distances.shape[0]),
-        mode="edge",
-    )
-
-    ignore_assets = jnp.pad(
-        ignore_assets,
-        (0, max_n_assets - ignore_assets.shape[0]),
-        mode="constant",
-        constant_values=True,
-    )
-
-    return (
-        configuration_table,
-        coupler_distances,
-        ignore_assets,
     )
 
 

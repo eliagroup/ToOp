@@ -14,8 +14,6 @@ from toop_engine_dc_solver.jax.utils import (
     HashableArrayWrapper,
     action_index_to_binary_form,
     argmax_top_k,
-    masked_vector_matrix_dot_product,
-    masked_vector_vector_dot_product,
 )
 
 
@@ -79,36 +77,3 @@ def test_argmax_top_k() -> None:
 
     assert jnp.array_equal(jnp.sort(ref_val), jnp.sort(val))
     assert jnp.array_equal(jnp.sort(ref_idx), jnp.sort(idx))
-
-
-def test_masked_vector_vector_dot_product() -> None:
-    vec_a = jnp.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    vec_b = jnp.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
-    mask_a = jnp.array([1, 0, 1, 0, 1], dtype=bool)
-    mask_b = jnp.array([1, 0, 0, 1, 0, 0, 1], dtype=bool)
-    ref = vec_a[mask_a] @ vec_b[mask_b]
-
-    masked_vector_vector_dot_product_jit = jax.jit(masked_vector_vector_dot_product)
-    assert jnp.isclose(masked_vector_vector_dot_product(vec_a, mask_a, vec_b, mask_b), ref)
-    assert jnp.isclose(masked_vector_vector_dot_product_jit(vec_a, mask_a, vec_b, mask_b), ref)
-    assert jnp.isclose(
-        masked_vector_vector_dot_product(vec_a, mask_a, vec_b, mask_b, upper_bound_nonzero_count=4),
-        ref,
-    )
-
-
-def test_masked_vector_matrix_dot_product() -> None:
-    vec = jax.random.normal(jax.random.PRNGKey(0), (7,))
-    mat = jax.random.normal(jax.random.PRNGKey(0), (5, 7))
-
-    mask_vec = jnp.array([True, False, True, False, True, False, False])
-    mask_mat = jnp.array([True, False, False, True, True])
-
-    ref = vec[mask_vec] @ mat[mask_mat, :]
-
-    assert jnp.allclose(masked_vector_matrix_dot_product(vec, mask_vec, mat, mask_mat), ref)
-    assert jnp.allclose(jax.jit(masked_vector_matrix_dot_product)(vec, mask_vec, mat, mask_mat), ref)
-    assert jnp.allclose(
-        masked_vector_matrix_dot_product(vec, mask_vec, mat, mask_mat, upper_bound_nonzero_count=4),
-        ref,
-    )

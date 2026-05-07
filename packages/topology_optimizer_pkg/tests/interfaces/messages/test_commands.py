@@ -15,7 +15,9 @@ from toop_engine_topology_optimizer.interfaces.messages.commands import (
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     BatchedMEParameters,
+    DCOptimizerParameters,
     DescriptorDef,
+    LoadflowSolverParameters,
 )
 from toop_engine_topology_optimizer.interfaces.messages.heartbeats import Heartbeat, IdleHeartbeat
 from toop_engine_topology_optimizer.interfaces.messages.results import OptimizationStoppedResult, Result
@@ -100,3 +102,29 @@ def test_deserialization():
     serialized = heartbeat.model_dump_json()
     parsed = Heartbeat.model_validate_json(serialized)
     assert isinstance(parsed.message, IdleHeartbeat)
+
+
+def test_max_num_splits_versus_split_subs_descriptor() -> None:
+    # Test validator catches mismatch in max_num_splits versus num_cell-1
+    # in MeDescriptor `split_subs`
+    params = BatchedMEParameters(
+        me_descriptors=(DescriptorDef(metric="split_subs", num_cells=5),),
+    )
+    lf_params = LoadflowSolverParameters(max_num_splits=3)
+    with pytest.raises(ValueError):
+        _ = DCOptimizerParameters(ga_config=params, loadflow_solver_config=lf_params)
+
+    # Edge case
+    params = BatchedMEParameters(
+        me_descriptors=(DescriptorDef(metric="split_subs", num_cells=10),),
+    )
+    lf_params = LoadflowSolverParameters(max_num_splits=9)
+    _ = DCOptimizerParameters(ga_config=params, loadflow_solver_config=lf_params)
+
+
+def test_me_descriptors_not_empty() -> None:
+    # MeDescriptors should not be set to empty set
+    with pytest.raises(ValueError):
+        _ = BatchedMEParameters(
+            me_descriptors=(),
+        )

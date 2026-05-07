@@ -12,7 +12,7 @@ from pathlib import Path
 
 import equinox as eqx
 import jax
-import jax.experimental
+import jax.experimental  # TODO: remove
 import jax.numpy as jnp
 import structlog
 from beartype.typing import Iterable, Optional, Sequence
@@ -630,7 +630,9 @@ def algo_setup(
         )
 
     pst_metrics_without_optimization = {
-        metric for metric, _ in ga_args.target_metrics if metric in {"pst_switching_distance", "pst_activated"}
+        metric
+        for metric, _ in ga_args.target_metrics
+        if metric in {"pst_switching_distance", "pst_switching_distance_squared", "pst_activated"}
     }
     if not ga_args.enable_nodal_inj_optim and pst_metrics_without_optimization:
         logger.warning(
@@ -660,7 +662,10 @@ def algo_setup(
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=ga_args.pst_mutation_sigma,
+            pst_mutation_probability=ga_args.pst_mutation_probability,
+            pst_reset_probability=ga_args.pst_reset_probability,
             pst_n_taps=static_informations[0].dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=static_informations[0].dynamic_information.nodal_injection_information.starting_tap_idx,
         )
         if static_informations[0].dynamic_information.nodal_injection_information is not None
         else None,

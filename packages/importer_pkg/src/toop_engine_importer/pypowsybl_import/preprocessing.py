@@ -346,9 +346,10 @@ def convert_file(
             fs=unprocessed_gridfile_fs,
         )
     elif importer_parameters.data_type == "cgmes":
+        if importer_parameters.white_list_file is not None or importer_parameters.black_list_file is not None:
+            logger.warning("CGMES of white_list and black_list not yet implemented")
         statistics.id_lists["white_list"] = []
         statistics.id_lists["black_list"] = []
-        logger.warning("CGMES of white_list and black_list not yet implemented")
 
     # Save and reload Network due to powsybl changing order during save
     grid_file_path = importer_parameters.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
@@ -618,6 +619,9 @@ def fill_statistics_for_network_masks(
     statistics.id_lists["line_disconnectable"] = network.get_lines(attributes=[])[
         network_masks.line_disconnectable
     ].index.to_list()
+    statistics.id_lists["trafo_disconnectable"] = network.get_2_windings_transformers(attributes=[])[
+        network_masks.trafo_disconnectable
+    ].index.to_list()
 
     statistics.import_result.n_relevant_subs = int(network_masks.relevant_subs.sum())
     statistics.import_result.n_line_for_nminus1 = int(network_masks.line_for_nminus1.sum())
@@ -626,7 +630,7 @@ def fill_statistics_for_network_masks(
 
     statistics.import_result.n_trafo_for_nminus1 = int(network_masks.trafo_for_nminus1.sum())
     statistics.import_result.n_trafo_for_reward = int(network_masks.trafo_for_reward.sum())
-    statistics.import_result.n_tie_line_disconnectable = int(network_masks.tie_line_disconnectable.sum())
+    statistics.import_result.n_trafo_disconnectable = int(network_masks.trafo_disconnectable.sum())
     statistics.import_result.n_tie_line_for_nminus1 = int(network_masks.tie_line_for_nminus1.sum())
     statistics.import_result.n_tie_line_for_reward = int(network_masks.tie_line_for_reward.sum())
     statistics.import_result.n_tie_line_disconnectable = int(network_masks.tie_line_disconnectable.sum())

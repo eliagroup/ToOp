@@ -249,8 +249,11 @@ def test_pst_optimization(
             n_disconnectable_branches=di.n_disconnectable_branches,
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
-            pst_mutation_sigma=3.0,
+            pst_mutation_sigma=2.0,
+            pst_mutation_probability=0.7,  # needs to be high for this test case to pass
+            pst_reset_probability=0.1,  # needs to be low for this test case to pass
             pst_n_taps=di.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=di.nodal_injection_information.starting_tap_idx,
         ),
     )
     me = DiscreteMapElites(

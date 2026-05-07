@@ -634,8 +634,15 @@ def test_mutate_nodal_injections() -> None:
     current_tap = jax.random.uniform(
         jax.random.PRNGKey(0), shape=(batch_size, n_timesteps, 5), minval=0, maxval=n_taps
     ).astype(int)
+    start_tap = jax.random.uniform(jax.random.PRNGKey(245234), shape=(5,), minval=0, maxval=n_taps).astype(int)
     nodal_inj_info = NodalInjOptimResults(pst_tap_idx=current_tap)
-    nodal_mutation_config = NodalInjectionMutationConfig(pst_mutation_sigma=5.0, pst_n_taps=n_taps)
+    nodal_mutation_config = NodalInjectionMutationConfig(
+        pst_mutation_sigma=5.0,
+        pst_mutation_probability=0.2,
+        pst_reset_probability=0.2,
+        pst_n_taps=n_taps,
+        pst_start_tap_idx=start_tap,
+    )
     res = mutate_nodal_injections(
         random_key=jax.random.PRNGKey(0), nodal_inj_info=nodal_inj_info, nodal_mutation_config=nodal_mutation_config
     )

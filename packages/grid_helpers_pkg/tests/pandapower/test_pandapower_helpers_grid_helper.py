@@ -18,6 +18,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_bus_key_injection,
     get_dc_bus_voltage,
     get_element_table,
+    get_number_of_islands,
     get_pandapower_branch_loadflow_results_sequence,
     get_pandapower_bus_loadflow_results_sequence,
     get_pandapower_loadflow_results_in_ppc,
@@ -693,6 +694,91 @@ def test_check_for_splits_trafo_no_nan():
     pp.create_ext_grid(net, bus=b1)
     pp.runpp(net)
     assert check_for_splits(net, ["trafo"], [t1]) is False
+
+
+def test_get_number_of_islands_returns_one_for_connected_net() -> None:
+    net = pp.create_empty_network()
+    b1 = pp.create_bus(net, vn_kv=110)
+    b2 = pp.create_bus(net, vn_kv=110)
+    pp.create_line_from_parameters(
+        net, from_bus=b1, to_bus=b2, length_km=1, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=0, max_i_ka=1
+    )
+
+    assert get_number_of_islands(net) == 1
+
+
+def test_get_number_of_islands_returns_two_for_disconnected_island() -> None:
+    net = pp.create_empty_network()
+    b1 = pp.create_bus(net, vn_kv=110)
+    b2 = pp.create_bus(net, vn_kv=110)
+    b3 = pp.create_bus(net, vn_kv=110)
+    b4 = pp.create_bus(net, vn_kv=110)
+    pp.create_line_from_parameters(
+        net, from_bus=b1, to_bus=b2, length_km=1, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=0, max_i_ka=1
+    )
+    pp.create_line_from_parameters(
+        net, from_bus=b3, to_bus=b4, length_km=1, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=0, max_i_ka=1
+    )
+
+    assert get_number_of_islands(net) == 2
+
+
+def test_get_number_of_islands_handles_open_bus_bus_switch() -> None:
+    net = pp.create_empty_network()
+    b1 = pp.create_bus(net, vn_kv=110)
+    b2 = pp.create_bus(net, vn_kv=110)
+    pp.create_switch(net, bus=b1, element=b2, et="b", closed=False)
+
+    assert get_number_of_islands(net) == 2
+    assert get_number_of_islands(net, respect_switches=False) == 1
+
+
+def test_get_number_of_islands_ignores_out_of_service_buses_by_default() -> None:
+    net = pp.create_empty_network()
+    b1 = pp.create_bus(net, vn_kv=110)
+    b2 = pp.create_bus(net, vn_kv=110, in_service=False)
+    pp.create_line_from_parameters(
+        net, from_bus=b1, to_bus=b2, length_km=1, r_ohm_per_km=0.1, x_ohm_per_km=0.1, c_nf_per_km=0, max_i_ka=1
+    )
+
+    assert get_number_of_islands(net) == 1
+    assert get_number_of_islands(net, respect_in_service=False) == 1
+
+
+def test_get_number_of_islands_detects_disconnected_trafo_island() -> None:
+    net = pp.create_empty_network()
+    b1 = pp.create_bus(net, vn_kv=110)
+    b2 = pp.create_bus(net, vn_kv=110)
+    b3 = pp.create_bus(net, vn_kv=110)
+    b4 = pp.create_bus(net, vn_kv=110)
+    pp.create_transformer_from_parameters(
+        net,
+        hv_bus=b1,
+        lv_bus=b2,
+        sn_mva=10,
+        vn_hv_kv=110,
+        vn_lv_kv=110,
+        vkr_percent=0.1,
+        vk_percent=10,
+        pfe_kw=0,
+        i0_percent=0,
+        shift_degree=0,
+    )
+    pp.create_transformer_from_parameters(
+        net,
+        hv_bus=b3,
+        lv_bus=b4,
+        sn_mva=10,
+        vn_hv_kv=110,
+        vn_lv_kv=110,
+        vkr_percent=0.1,
+        vk_percent=10,
+        pfe_kw=0,
+        i0_percent=0,
+        shift_degree=0,
+    )
+
+    assert get_number_of_islands(net) == 2
 
 
 def test_get_shunt_real_power_basic():

@@ -103,8 +103,6 @@ __all__ = [
     "default_topology",
     "default_topology",
     "get_unsplit_flows",
-    "greedy_buffer_size_selection",
-    "greedy_n_subs_selection",
     "inspect_topology",
     "is_valid_batch",
     "load_static_information",

@@ -101,7 +101,6 @@ __all__ = [
     "default_injection",
     "default_metric",
     "default_topology",
-    "default_topology",
     "get_unsplit_flows",
     "inspect_topology",
     "is_valid_batch",

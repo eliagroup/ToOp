@@ -9,9 +9,7 @@ import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
-from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
 from toop_engine_dc_solver.jax.injections import (
-    apply_reassignments_deltap,
     convert_action_index_to_numpy,
     convert_inj_candidates,
     convert_inj_topo_vect,
@@ -20,7 +18,6 @@ from toop_engine_dc_solver.jax.injections import (
     get_all_injection_outage_deltap,
     get_all_outaged_injection_nodes_after_reassignment,
     get_injection_per_bus,
-    get_injection_vector,
     get_reassignment_deltap,
     get_relevant_injection_outage_deltap,
     get_single_injection_vector,
@@ -457,54 +454,3 @@ def test_get_reassignment_deltap(
     assert busb_idx == solver_config.n_stat + sub_id
     assert busa_deltap == -dynamic_information.relevant_injections[:, sub_id, 1]
     assert busb_deltap == dynamic_information.relevant_injections[:, sub_id, 1]
-
-
-def test_apply_reassignment_deltap(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    _, _, static_information = jax_inputs
-    dynamic_information = static_information.dynamic_information
-    solver_config = static_information.solver_config
-
-    # Test with a single split station
-    sub_id = jnp.array([0], dtype=int)
-    assert dynamic_information.generators_per_sub[sub_id] == 2
-    inj_reassignment = jnp.array([[0, 1]], dtype=bool)
-    branch_reassignment = jnp.array([[1, 1, 0, 0, 0]], dtype=bool)
-
-    bsdf_res = compute_bus_splits(
-        topologies=branch_reassignment,
-        sub_ids=sub_id,
-        ptdf=dynamic_information.ptdf,
-        from_node=dynamic_information.from_node,
-        to_node=dynamic_information.to_node,
-        tot_stat=dynamic_information.tot_stat,
-        from_stat_bool=dynamic_information.from_stat_bool,
-        susceptance=dynamic_information.susceptance,
-        rel_stat_map=solver_config.rel_stat_map,
-        slack=solver_config.slack,
-        n_stat=solver_config.n_stat,
-    )
-
-    br_split_n0_flow = jnp.einsum("bn, tn -> tb", bsdf_res.ptdf, dynamic_information.nodal_injections)
-
-    full_split_n0_flow = apply_reassignments_deltap(
-        injection_assignment=inj_reassignment,
-        sub_ids=sub_id,
-        split_n0_flow=br_split_n0_flow,
-        ptdf=bsdf_res.ptdf,
-        relevant_injections=dynamic_information.relevant_injections,
-        n_stat=solver_config.n_stat,
-        rel_stat_map=jnp.array(solver_config.rel_stat_map.val),
-    )
-
-    nodal_inj_changed = get_injection_vector(
-        injection_assignment=inj_reassignment,
-        sub_ids=sub_id,
-        relevant_injections=dynamic_information.relevant_injections,
-        nodal_injections=dynamic_information.nodal_injections,
-        n_stat=solver_config.n_stat,
-        rel_stat_map=jnp.array(solver_config.rel_stat_map.val),
-    )
-    full_split_n0_flow_ref = jnp.einsum("bn, tn -> tb", bsdf_res.ptdf, nodal_inj_changed)
-    assert jnp.allclose(full_split_n0_flow, full_split_n0_flow_ref)

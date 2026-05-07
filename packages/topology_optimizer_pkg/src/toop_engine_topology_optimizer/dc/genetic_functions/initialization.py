@@ -18,7 +18,7 @@ import structlog
 from beartype.typing import Iterable, Optional, Sequence
 from fsspec import AbstractFileSystem
 from jax_dataclasses import replace
-from jaxtyping import Array, ArrayLike, Float, Int, PRNGKeyArray, Shaped
+from jaxtyping import ArrayLike, Int, PRNGKeyArray, Shaped
 from qdax.core.emitters.standard_emitters import EmitterState
 from qdax.utils.metrics import default_ga_metrics
 from toop_engine_dc_solver.jax.aggregate_results import compute_double_limits
@@ -481,33 +481,6 @@ def initialize_genetic_algorithm(
         latest_iteration=latest_iteration,
     )
     return algo, jax_data
-
-
-def flatten_fitnesses_if_distributed(
-    fitnesses: Float[Array, " ... individuals metrics"],
-) -> Float[Array, " individuals metrics"]:
-    """Flatten the fitnesses if distributed.
-
-    Parameters
-    ----------
-    fitnesses : Float[Array, " ... individuals metrics"]
-        The fitnesses to flatten
-
-    Returns
-    -------
-    Float[Array, " individuals metrics"]
-        The flattened fitnesses
-    """
-    if len(fitnesses.shape) == 3:
-        fitnesses = jnp.reshape(
-            fitnesses,
-            (
-                fitnesses.shape[0] * fitnesses.shape[1],
-                fitnesses.shape[2],
-            ),
-        )
-    assert len(fitnesses.shape) == 2
-    return fitnesses
 
 
 def get_repertoire_metrics(

@@ -457,7 +457,6 @@ def realise_ba_to_physical_topo_per_station_jax(
             batch_size=batch_size,
             choice_heuristic=choice_heuristic,
         )
-
     # Remove failed assignments from the local branch action set
     success = ~failed_assignments
     switching_table = np.array(switching_table[success])
@@ -499,7 +498,6 @@ def realise_ba_to_physical_topo_per_station_jax(
 
     # Convert the busbar mapping to a list of busbar A mappings
     busbar_mappings_converted = [np.flatnonzero(~mapping).tolist() for mapping in chosen_busbar_mapping]
-
     # Add the unsplit action for every returned element
     return (
         [station, *realised_stations],

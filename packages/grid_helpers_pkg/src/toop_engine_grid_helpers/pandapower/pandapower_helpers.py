@@ -26,28 +26,6 @@ from pandapower.toolbox import get_connected_buses
 from pandapower.topology import connected_components, create_nxgraph
 
 
-def get_phaseshift_key(trafo_type: str) -> str:
-    """Get the key of the shift_degree in the trafo
-
-    Parameters
-    ----------
-    trafo_type : str
-        The type of trafo
-
-    Returns
-    -------
-    str
-        The key of the phaseshift attribute in the trafo(3w)dataframe
-    """
-    lookup_table = {
-        "trafo": "shift_degree",
-        "trafo3w_lv": "shift_lv_degree",
-        "trafo3w_mv": "shift_mv_degree",
-    }
-    assert trafo_type in lookup_table
-    return lookup_table[trafo_type]
-
-
 def get_phaseshift_mask(
     net: pandapower.pandapowerNet,
 ) -> tuple[Bool[np.ndarray, " n_branches"], Bool[np.ndarray, " n_branches"], list[Float[np.ndarray, " n_tap_positions"]]]:
@@ -105,65 +83,6 @@ def get_phaseshift_mask(
     has_shift_angle[pst_indices] = True
 
     return has_shift_angle, controllable_global, shift_taps
-
-
-def get_bus_key(branch_name: str, branch_from_end: bool) -> str:
-    """Get the key of the bus in the branch name
-
-    Parameters
-    ----------
-    branch_name : str
-        The name of the branch
-    branch_from_end : bool
-        Whether to get the from or to bus, True for from, False for to
-
-    Returns
-    -------
-    str
-        The key of the bus in the branch name
-    """
-    lookup_table = {
-        "line": {True: "from_bus", False: "to_bus"},
-        "trafo": {True: "hv_bus", False: "lv_bus"},
-        "trafo3w_lv": {True: "lv_bus", False: "lv_bus"},
-        "trafo3w_mv": {True: "mv_bus", False: "mv_bus"},
-        "trafo3w_hv": {True: "hv_bus", False: "hv_bus"},
-    }
-
-    assert branch_name in lookup_table
-    assert branch_from_end in lookup_table[branch_name]
-
-    return lookup_table[branch_name][branch_from_end]
-
-
-def get_bus_key_injection(injection_type: str) -> str:
-    """Get the key of the bus in the injection type
-
-    Parameters
-    ----------
-    injection_type : str
-        The type of the injection
-
-    Returns
-    -------
-    str
-        The key of the bus in the injection type
-    """
-    lookup_table = {
-        "gen": "bus",
-        "sgen": "bus",
-        "load": "bus",
-        "shunt": "bus",
-        "dcline_from": "from_bus",
-        "dcline_to": "to_bus",
-        # "ward_load": "bus",
-        # "ward_shunt": "bus",
-        # "xward_load": "bus",
-        # "xward_gen": "bus",
-        # "xward_shunt": "bus",
-    }
-    assert injection_type in lookup_table
-    return lookup_table[injection_type]
 
 
 def get_element_table(element_type: str, res_table: bool = False) -> str:

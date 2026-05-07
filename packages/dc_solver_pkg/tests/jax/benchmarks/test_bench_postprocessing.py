@@ -8,9 +8,9 @@
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import cast
 
 import pytest
+from beartype.typing import cast
 from toop_engine_dc_solver.jax.benchmarks.bench_postprocessing import (
     Args,
     LoadflowType,

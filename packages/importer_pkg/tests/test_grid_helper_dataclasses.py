@@ -17,7 +17,6 @@ from beartype.typing import Iterable
 MODULES: list[str] = [
     "toop_engine_importer.pypowsybl_import.powsybl_masks",
     "toop_engine_importer.ucte_toolset.ucte_io",
-    "toop_engine_importer.pandapower_import.pp_masks",
 ]
 
 

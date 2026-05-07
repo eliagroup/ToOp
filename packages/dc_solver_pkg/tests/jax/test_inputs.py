@@ -13,10 +13,8 @@ import jax
 import jax.numpy as jnp
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.inputs import (
-    deserialize_static_information,
     load_static_information,
     save_static_information,
-    serialize_static_information,
     validate_static_information,
 )
 from toop_engine_dc_solver.jax.types import (
@@ -127,18 +125,6 @@ def test_pickle_static_information(
 
     pickled = pickle.dumps(static_information)
     loaded = pickle.loads(pickled)
-    validate_static_information(loaded)
-
-    assert_static_information(static_information, loaded)
-
-
-def test_serialize_static_information(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    _, _, static_information = jax_inputs
-
-    serialized = serialize_static_information(static_information)
-    loaded = deserialize_static_information(serialized)
     validate_static_information(loaded)
 
     assert_static_information(static_information, loaded)

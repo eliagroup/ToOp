@@ -15,7 +15,6 @@ from tests.network_data_pickle import load_network_data, save_network_data
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     extract_network_data_from_interface,
-    get_monitored_node_ids,
     get_relevant_stations,
     map_branch_injection_ids,
 )
@@ -96,41 +95,6 @@ def test_load_save(network_data: NetworkData, tmp_path: str) -> None:
                 assert np.array_equal(getattr(network_data, key)[i], getattr(network_data_loaded, key)[i])
         else:
             assert getattr(network_data, key) == getattr(network_data_loaded, key)
-
-
-def test_get_monitored_node_ids(network_data: NetworkData) -> None:
-    relevant_node_ids = list(set(np.array(network_data.node_ids)[network_data.relevant_node_mask].tolist()))
-    relevant_node_ids.sort()
-    monitored_branch_end_ids = set(
-        np.array(network_data.node_ids)[network_data.from_nodes[network_data.monitored_branch_mask]].tolist()
-    )
-    monitored_branch_end_ids.update(
-        np.array(network_data.node_ids)[network_data.to_nodes[network_data.monitored_branch_mask]].tolist()
-    )
-    monitored_branch_end_ids = list(monitored_branch_end_ids)
-    monitored_branch_end_ids.sort()
-    union = list(set(relevant_node_ids).union(set(monitored_branch_end_ids)))
-    union.sort()
-
-    # Test with both include_relevant_nodes and include_monitored_branch_end set to True
-    monitored_node_ids = get_monitored_node_ids(network_data, True, True)
-    assert isinstance(monitored_node_ids, list)
-    assert all(isinstance(node_id, str) for node_id in monitored_node_ids)
-    assert monitored_node_ids == union
-
-    # Test with include_relevant_nodes set to True and include_monitored_branch_end set to False
-    monitored_node_ids = get_monitored_node_ids(network_data, True, False)
-    assert isinstance(monitored_node_ids, list)
-    assert monitored_node_ids == relevant_node_ids
-
-    # Test with include_relevant_nodes set to False and include_monitored_branch_end set to True
-    monitored_node_ids = get_monitored_node_ids(network_data, False, True)
-    assert isinstance(monitored_node_ids, list)
-    assert monitored_node_ids == monitored_branch_end_ids
-
-    # Test with both include_relevant_nodes and include_monitored_branch_end set to False
-    monitored_node_ids = get_monitored_node_ids(network_data, False, False)
-    assert monitored_node_ids == []
 
 
 def test_get_relevant_stations(network_data_preprocessed: NetworkData) -> None:

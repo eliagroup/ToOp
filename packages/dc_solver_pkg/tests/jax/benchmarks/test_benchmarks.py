@@ -9,7 +9,6 @@ import jax
 import jax.numpy as jnp
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.benchmarks.benchmarks import (
-    bench_inj_ratio,
     bench_symmetric,
     load_static_information_from_dict,
     run_benchmark,
@@ -53,46 +52,6 @@ def test_bench_symmetric(
         n_topologies_per_run,
         n_disconnections_per_topology,
         n_runs,
-    )
-    assert "times" in res
-    assert len(res["times"]) == n_runs
-
-
-def test_bench_inj_ratio(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    _, _, static_information = jax_inputs
-
-    batch_size = 16
-    n_topologies_per_run = 64
-    n_disconnections_per_topology = 2
-    n_injections_per_topology = 100
-    n_runs = 3
-    limit_n_subs = 3
-
-    static_information = replace(
-        static_information,
-        solver_config=replace(
-            static_information.solver_config,
-            batch_size_bsdf=batch_size,
-            batch_size_injection=batch_size,
-            buffer_size_injection=None,  # Upper bound
-            limit_n_subs=limit_n_subs,
-        ),
-        dynamic_information=replace(
-            static_information.dynamic_information,
-            disconnectable_branches=jnp.array([1, 4, 8, 12]),
-        ),
-    )
-
-    rng_key = jax.random.PRNGKey(0)
-    res = bench_inj_ratio(
-        rng_key,
-        static_information,
-        n_topologies_per_run,
-        n_disconnections_per_topology,
-        n_runs,
-        n_injections_per_topology,
     )
     assert "times" in res
     assert len(res["times"]) == n_runs

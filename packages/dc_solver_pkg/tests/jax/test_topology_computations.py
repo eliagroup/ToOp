@@ -5,33 +5,24 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from functools import partial
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.topology_computations import (
-    concatenate_topology_batches,
     convert_action_set_index_to_topo,
     convert_branch_topo_vect,
     convert_topo_sel_sorted,
     convert_topo_to_action_set_index,
     convert_topo_to_action_set_index_jittable,
-    deduplicate_topologies,
     default_topology,
     extract_sub_ids,
-    find_splits,
     is_in_action_set,
-    is_valid,
-    limit_n_nonzeros,
-    num_splits,
     pad_action_with_unsplit_action_indices,
     product_action_set,
     random_topology,
     sample_from_branch_actions,
-    sort_by_sub_ids,
-    split_topology_computations,
 )
 from toop_engine_dc_solver.jax.types import (
     ActionSet,
@@ -128,29 +119,6 @@ def test_convert_topo_sel_sorted() -> None:
     assert jnp.array_equal(topo_sel_reconstructed, topo_sel_sorted)
 
 
-def test_split_topology_computations(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    topologies, _, _ = jax_inputs
-
-    splits = split_topology_computations(topologies, 4)
-
-    assert len(splits) == 4
-    assert jnp.array_equal(topologies.topologies, jnp.concatenate([s.topologies for s in splits]))
-    assert jnp.array_equal(topologies.sub_ids, jnp.concatenate([s.sub_ids for s in splits]))
-    assert jnp.array_equal(topologies.pad_mask, jnp.concatenate([s.pad_mask for s in splits]))
-
-    splits_random = split_topology_computations(topologies, 4, key=jax.random.PRNGKey(0))
-
-    assert not jnp.array_equal(topologies.topologies, jnp.concatenate([s.topologies for s in splits_random]))
-
-    assert len(splits_random) == 4
-    for i in range(4):
-        assert splits_random[i].topologies.shape[0] == splits[i].topologies.shape[0]
-        assert splits_random[i].sub_ids.shape[0] == splits[i].sub_ids.shape[0]
-        assert splits_random[i].pad_mask.shape[0] == splits[i].pad_mask.shape[0]
-
-
 def test_default_topology(
     jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
 ) -> None:
@@ -168,20 +136,6 @@ def test_default_topology(
     topo = default_topology(static_information.solver_config, topo_vect_format=False)
     assert jnp.array_equal(topo.action, jnp.full((16, 1), int_max(), dtype=int))
     assert jnp.array_equal(topo.pad_mask, jnp.ones(16, dtype=bool))
-
-
-def test_limit_n_nonzeros() -> None:
-    keys = jax.random.split(jax.random.PRNGKey(0), 20)
-
-    for key in keys:
-        vector = jax.random.randint(key, (10,), 0, 5)
-        vector = jnp.array([4, 4, 0, 0, 4, 0, 2, 1, 0, 4], dtype=int)
-
-        n_nonzero_before = jnp.sum(vector != 0).item()
-        vector_limited = limit_n_nonzeros(key, vector, 3)
-        assert vector_limited.shape == vector.shape
-        assert jnp.sum(vector_limited != 0) == min(3, n_nonzero_before)
-        assert jnp.array_equal(vector_limited[vector_limited != 0], vector[vector_limited != 0])
 
 
 def test_random_topology(
@@ -274,151 +228,6 @@ def test_sample_from_branch_actions(
     assert not jnp.any(topo)
 
 
-def test_find_splits(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    _, _, static_information = jax_inputs
-    topologies = random_topology(
-        rng_key=jax.random.PRNGKey(0),
-        branch_action_set=static_information.dynamic_information.action_set,
-        limit_n_subs=3,
-        batch_size=16,
-        topo_vect_format=True,
-    )
-
-    has_splits = find_splits(
-        topologies.topologies,
-        topologies.sub_ids,
-        n_subs=static_information.n_sub_relevant,
-    )
-
-    has_splits_limit = find_splits(topologies=topologies.topologies, sub_ids=None, n_subs=None)
-    assert jnp.sum(has_splits) == jnp.sum(has_splits_limit)
-
-    for topo_id in range(topologies.topologies.shape[0]):
-        for sub_id in range(static_information.n_sub_relevant):
-            if sub_id not in topologies.sub_ids[topo_id]:
-                assert not jnp.any(has_splits[topo_id, sub_id])
-            else:
-                idx = jnp.where(topologies.sub_ids[topo_id] == sub_id)[0][0]
-                has_splits_ref = jnp.any(topologies.topologies[topo_id, idx])
-                assert has_splits[topo_id, sub_id] == has_splits_ref
-
-
-def test_sort_by_subid() -> None:
-    n_branches = 20
-    n_rel_subs = 5
-    n_subs_limited = 3
-    n_topologies = 50
-
-    sub_ids = jax.vmap(partial(jax.random.choice, a=n_rel_subs, shape=(n_subs_limited,), replace=False))(
-        jax.random.split(jax.random.PRNGKey(0), n_topologies)
-    )
-    topologies = jnp.array(np.random.randn(n_topologies, n_subs_limited, n_branches) > 0)
-    pad_mask = jnp.ones(n_topologies, dtype=bool)
-
-    sorted = sort_by_sub_ids(TopoVectBranchComputations(topologies=topologies, sub_ids=sub_ids, pad_mask=pad_mask))
-
-    assert sorted.topologies.shape == topologies.shape
-    assert sorted.topologies.sum() == topologies.sum()
-    assert sorted.sub_ids.shape == sub_ids.shape
-    assert sorted.sub_ids.sum() == sub_ids.sum()
-    assert not jnp.array_equal(sorted.sub_ids, sub_ids)
-    assert jnp.array_equal(sorted.pad_mask, pad_mask)
-    assert not jnp.array_equal(sorted.topologies, topologies)
-
-    for i in range(n_topologies):
-        for j in range(n_rel_subs):
-            assert jnp.array_equal(
-                sorted.topologies[i, sorted.sub_ids[i] == j],
-                topologies[i, sub_ids[i] == j],
-            )
-        assert jnp.array_equal(sorted.sub_ids[i], jnp.sort(sub_ids[i]))
-
-
-def test_deduplicate_topologies() -> None:
-    n_branches = 20
-    n_rel_subs = 5
-    n_subs_limited = 3
-    n_topologies = 50
-
-    sub_ids = jax.vmap(partial(jax.random.choice, a=n_rel_subs, shape=(n_subs_limited,), replace=False))(
-        jax.random.split(jax.random.PRNGKey(0), n_topologies)
-    )
-    topologies = jnp.array(np.random.randn(n_topologies, n_subs_limited, n_branches) > 0)
-    pad_mask = jnp.ones(n_topologies, dtype=bool)
-
-    deduplicated = deduplicate_topologies(
-        TopoVectBranchComputations(topologies=topologies, sub_ids=sub_ids, pad_mask=pad_mask)
-    )
-
-    n_dedup = deduplicated.topologies.shape[0]
-    assert n_dedup <= n_topologies
-    assert deduplicated.topologies.shape[1] == n_subs_limited
-    assert deduplicated.topologies.shape[2] == n_branches
-    assert deduplicated.sub_ids.shape[0] == n_dedup
-    assert deduplicated.sub_ids.shape[1] == n_subs_limited
-    assert deduplicated.pad_mask.shape[0] == n_dedup
-
-    for i in range(n_topologies):
-        assert not jnp.any(
-            jnp.array_equal(
-                jnp.delete(deduplicated.topologies, i, axis=0),
-                deduplicated.topologies[i],
-            )
-        )
-
-
-def test_concatenate_topology_batches(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    _, _, static_information = jax_inputs
-    n_branches = max(static_information.solver_config.branches_per_sub.val)
-    n_rel_subs = static_information.n_sub_relevant
-    n_subs_limited = n_rel_subs
-    n_topologies = 50
-
-    sub_ids = jax.vmap(partial(jax.random.choice, a=n_rel_subs, shape=(n_subs_limited,), replace=False))(
-        jax.random.split(jax.random.PRNGKey(0), n_topologies)
-    )
-    topologies = jnp.array(np.random.randn(n_topologies, n_subs_limited, n_branches) > 0)
-    pad_mask = jnp.ones(n_topologies, dtype=bool)
-
-    a = TopoVectBranchComputations(topologies=topologies, sub_ids=sub_ids, pad_mask=pad_mask)
-
-    sub_ids = jax.vmap(partial(jax.random.choice, a=n_rel_subs, shape=(n_subs_limited,), replace=False))(
-        jax.random.split(jax.random.PRNGKey(0), n_topologies)
-    )
-    topologies = jnp.array(np.random.randn(n_topologies, n_subs_limited, n_branches) > 0)
-    pad_mask = jnp.ones(n_topologies, dtype=bool)
-
-    b = TopoVectBranchComputations(topologies=topologies, sub_ids=sub_ids, pad_mask=pad_mask)
-
-    c = concatenate_topology_batches(a, b)
-
-    assert c.topologies.shape[0] == a.topologies.shape[0] + b.topologies.shape[0]
-    assert c.topologies.shape[1] == a.topologies.shape[1]
-    assert c.topologies.shape[2] == a.topologies.shape[2]
-    assert c.sub_ids.shape[0] == a.sub_ids.shape[0] + b.sub_ids.shape[0]
-    assert c.sub_ids.shape[1] == a.sub_ids.shape[1]
-    assert c.pad_mask.shape[0] == a.pad_mask.shape[0] + b.pad_mask.shape[0]
-    assert jnp.array_equal(c.topologies[: a.topologies.shape[0]], a.topologies)
-    assert jnp.array_equal(c.topologies[a.topologies.shape[0] :], b.topologies)
-    assert jnp.array_equal(c.sub_ids[: a.sub_ids.shape[0]], a.sub_ids)
-    assert jnp.array_equal(c.sub_ids[a.sub_ids.shape[0] :], b.sub_ids)
-    assert jnp.array_equal(c.pad_mask[: a.pad_mask.shape[0]], a.pad_mask)
-    assert jnp.array_equal(c.pad_mask[a.pad_mask.shape[0] :], b.pad_mask)
-
-    # Works with the empty topology
-    c = concatenate_topology_batches(
-        a, default_topology(static_information.solver_config, batch_size=0, topo_vect_format=True)
-    )
-
-    assert jnp.array_equal(c.topologies, a.topologies)
-    assert jnp.array_equal(c.sub_ids, a.sub_ids)
-    assert jnp.array_equal(c.pad_mask, a.pad_mask)
-
-
 def test_product_action_set() -> None:
     action_set = ActionSet(
         branch_actions=jnp.array(
@@ -456,39 +265,6 @@ def test_product_action_set() -> None:
     for topo in combinations_limited.topologies:
         assert np.sum(np.any(topo, axis=-1)) <= 2
     assert is_in_action_set(combinations_limited, action_set).all()
-
-
-def test_is_valid() -> None:
-    branch_actions = ActionSet(
-        branch_actions=jnp.array([[1, 0, 0], [0, 1, 1], [0, 0, 0], [1, 1, 0]], dtype=bool),
-        substation_correspondence=jnp.array([0, 0, 1, 1]),
-        n_actions_per_sub=jnp.array([2, 2]),
-        action_start_indices=jnp.array([0, 2]),
-        unsplit_action_mask=jnp.array([False, False, True, False]),
-        reassignment_distance=jnp.array([0, 1, 2, 3]),
-        inj_actions=jnp.zeros((4, 5), dtype=bool),
-    )
-
-    actions_valid = jnp.array([[0, 2], [1, 3]], dtype=int)
-    actions_invalid = jnp.array([[0, 1], [1, 1]], dtype=int)
-
-    assert jnp.array_equal(is_valid(actions_valid, branch_actions), jnp.array([True, True]))
-    assert jnp.array_equal(is_valid(actions_invalid, branch_actions), jnp.array([False, False]))
-
-
-def test_num_splits() -> None:
-    branch_actions = ActionSet(
-        branch_actions=jnp.array([[1, 0, 0], [0, 1, 1], [0, 0, 0], [1, 1, 0]], dtype=bool),
-        substation_correspondence=jnp.array([0, 0, 1, 1]),
-        n_actions_per_sub=jnp.array([2, 2]),
-        unsplit_action_mask=jnp.array([False, False, True, False]),
-        action_start_indices=jnp.array([0, 2]),
-        reassignment_distance=jnp.array([0, 1, 2, 3]),
-        inj_actions=jnp.zeros((4, 5), dtype=bool),
-    )
-
-    actions = jnp.array([[0, 2], [1, 3], [12345, 3], [12345, 2], [123456, -1]], dtype=int)
-    assert jnp.array_equal(num_splits(actions, branch_actions), jnp.array([1, 2, 1, 0, 0]))
 
 
 def test_is_in_action_set() -> None:

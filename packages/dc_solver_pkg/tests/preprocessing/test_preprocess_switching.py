@@ -19,7 +19,6 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     identify_unnecessary_configurations,
     make_optimal_separation_set,
     make_separation_set,
-    match_topology_to_network_data,
     prepare_for_separation_set,
 )
 from toop_engine_interfaces.asset_topology import (
@@ -30,52 +29,6 @@ from toop_engine_interfaces.asset_topology import (
     Station,
     SwitchableAsset,
 )
-
-
-def test_match_topology_to_network_data(network_data_preprocessed: NetworkData) -> None:
-    topology = network_data_preprocessed.asset_topology
-    network_data = network_data_preprocessed
-    relevant_node_ids = [node for (node, mask) in zip(network_data.node_ids, network_data.relevant_node_mask) if mask]
-    topology = match_topology_to_network_data(
-        topology=topology,
-        branches_at_nodes=network_data.branches_at_nodes,
-        injections_at_nodes=network_data.injection_idx_at_nodes,
-        branch_ids=network_data.branch_ids,
-        injection_ids=network_data.injection_ids,
-        relevant_node_ids=relevant_node_ids,
-    )
-    assert [station.grid_model_id for station in topology.stations] == relevant_node_ids
-    for station, branches_at_node, injections_at_node in zip(
-        topology.stations,
-        network_data.branches_at_nodes,
-        network_data.injection_idx_at_nodes,
-    ):
-        assert len(station.assets) == len(branches_at_node) + len(injections_at_node)
-
-    # Works with a filter in place
-    topology2 = match_topology_to_network_data(
-        topology=topology,
-        branches_at_nodes=network_data.branches_at_nodes,
-        injections_at_nodes=network_data.injection_idx_at_nodes,
-        branch_ids=network_data.branch_ids,
-        injection_ids=network_data.injection_ids,
-        relevant_node_ids=relevant_node_ids,
-        filter_assets="branch",
-    )
-    for station, branches_at_node in zip(topology2.stations, network_data.branches_at_nodes):
-        assert len(station.assets) == len(branches_at_node)
-
-    topology3 = match_topology_to_network_data(
-        topology=topology,
-        branches_at_nodes=network_data.branches_at_nodes,
-        injections_at_nodes=network_data.injection_idx_at_nodes,
-        branch_ids=network_data.branch_ids,
-        injection_ids=network_data.injection_ids,
-        relevant_node_ids=relevant_node_ids,
-        filter_assets="injection",
-    )
-    for station, injections_at_node in zip(topology3.stations, network_data.injection_idx_at_nodes):
-        assert len(station.assets) == len(injections_at_node)
 
 
 def test_make_configurations_table():

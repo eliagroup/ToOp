@@ -18,9 +18,9 @@ to avoid recompilation on unchanging data.
 
 import chex
 import jax
-from beartype.typing import Any, Generic, Optional, TypeVar
+from beartype.typing import Any, Generic, TypeVar
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
-from jaxtyping import Array, Bool, Float, Int, Shaped
+from jaxtyping import Array, Bool, Float, Int
 
 
 def action_index_to_binary_form(
@@ -161,96 +161,3 @@ def _argmax_top_k(data: Float[Array, " batch acc"], k: int) -> tuple[Float[Array
     data, (values, indices) = jax.lax.scan(scannable_top_1, data, (), k)
 
     return values.T, indices.T
-
-
-def masked_vector_vector_dot_product(
-    vector_a: Shaped[Array, " dim1"],
-    mask_a: Bool[Array, " dim1"],
-    vector_b: Shaped[Array, " dim2"],
-    mask_b: Shaped[Array, " dim2"],
-    upper_bound_nonzero_count: Optional[int] = None,
-) -> Shaped[Array, " "]:
-    """Get equivalent of vector_a[mask_a] @ vector_b[mask_b], but jit compatible.
-
-    Assumes the same number of non-zero elements in mask_a and mask_b - if this is not the case,
-    the result is undefined.
-
-    Parameters
-    ----------
-    vector_a : Shaped[Array, " dim1"]
-        The first vector
-    mask_a : Bool[Array, " dim1"]
-        The mask for the first vector
-    vector_b : Shaped[Array, " dim2"]
-        The second vector
-    mask_b : Shaped[Array, " dim2"]
-        The mask for the second vector
-    upper_bound_nonzero_count : Optional[int], optional
-        If you know the upper bound of non-zero elements in the masks, you can pass it here to
-        speed up the computation, by default it assumes the length of the shortest vector to be
-        the upper bound
-
-    Returns
-    -------
-    Shaped[Array, " "]
-        The dot product result
-    """
-    if upper_bound_nonzero_count is not None:
-        max_size = upper_bound_nonzero_count
-    else:
-        max_size = min(len(vector_a), len(vector_b))
-    assert max_size < jnp.iinfo(jnp.int32).max
-
-    # We rely on out-of-bound indexing to fill the vector with zeros
-    nonzero_mask_a = jnp.nonzero(mask_a, size=max_size, fill_value=jnp.iinfo(jnp.int32).max)[0]
-    nonzero_mask_b = jnp.nonzero(mask_b, size=max_size, fill_value=jnp.iinfo(jnp.int32).max)[0]
-    return jnp.dot(
-        vector_a.at[nonzero_mask_a].get(mode="fill", fill_value=0),
-        vector_b.at[nonzero_mask_b].get(mode="fill", fill_value=0),
-    )
-
-
-def masked_vector_matrix_dot_product(
-    vector: Shaped[Array, " dim1"],
-    mask_vec: Bool[Array, " dim1"],
-    matrix: Shaped[Array, " dim2 dim1"],
-    mask_mat: Bool[Array, " dim2"],
-    upper_bound_nonzero_count: Optional[int] = None,
-) -> Shaped[Array, " dim1"]:
-    """Get equivalent of vec[mask_vec] @ mat[mask_mat, :], but jit compatible
-
-    Assumes the same number of non-zero elements in mask_a and mask_b - if this is not the case,
-    the result is undefined.
-
-    Parameters
-    ----------
-    vector : Shaped[Array, " dim1"]
-        The vector
-    mask_vec : Bool[Array, " dim1"]
-        The mask for the vector
-    matrix : Shaped[Array, " dim2 dim1"]
-        The matrix
-    mask_mat : Shaped[Array, " dim2"]
-        The mask for the matrix
-    upper_bound_nonzero_count : Optional[int], optional
-        If you know the upper bound of non-zero elements in the masks, you can pass it here to
-        speed up the computation, by default it assumes min(dim1, dim2) to be the upper bound
-
-    Returns
-    -------
-    Shaped[Array, " dim1"]
-        The dot product result
-    """
-    if upper_bound_nonzero_count is not None:
-        max_size = upper_bound_nonzero_count
-    else:
-        max_size = min(len(vector), matrix.shape[0])
-    assert max_size < jnp.iinfo(jnp.int32).max
-
-    # We rely on out-of-bound indexing to fill the vector with zeros
-    nonzero_mask_vec = jnp.nonzero(mask_vec, size=max_size, fill_value=jnp.iinfo(jnp.int32).max)[0]
-    nonzero_mask_mat = jnp.nonzero(mask_mat, size=max_size, fill_value=jnp.iinfo(jnp.int32).max)[0]
-    return jnp.dot(
-        vector.at[nonzero_mask_vec].get(mode="fill", fill_value=0),
-        matrix.at[nonzero_mask_mat, :].get(mode="fill", fill_value=0),
-    )

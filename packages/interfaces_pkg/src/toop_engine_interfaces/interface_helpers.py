@@ -9,10 +9,10 @@
 
 from copy import deepcopy
 from functools import lru_cache
-from typing import Type
 
 import pandas as pd
 import pandera as pa
+from beartype.typing import Type
 from pandera import DataFrameModel, Index
 from pandera import typing as pat
 

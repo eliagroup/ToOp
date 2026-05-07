@@ -15,11 +15,10 @@ import datetime
 import json
 import time
 from pathlib import Path
-from typing import cast
 
 import jax
 import tyro
-from beartype.typing import Literal, Optional, TypeAlias
+from beartype.typing import Literal, Optional, TypeAlias, cast
 from pydantic import BaseModel, PositiveInt
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.topology_computations import random_topology

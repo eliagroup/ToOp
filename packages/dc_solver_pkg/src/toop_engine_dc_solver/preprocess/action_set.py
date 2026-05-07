@@ -453,7 +453,6 @@ def enumerate_branch_actions_for_sub(
         )
         randomly_select = clip_to_n_actions
     separation_set = network_data.separation_sets_info[sub_id].separation_set
-
     repo = make_action_repo(
         sub_degree,
         separation_set,
@@ -463,9 +462,9 @@ def enumerate_branch_actions_for_sub(
     )
     if exclude_bridge_lookup_splits:
         repo = filter_splits_by_bridge_lookup(sub_id, repo, network_data)
+
     if exclude_bsdf_lodf_splits:
         repo = filter_splits_by_bsdf(sub_id, repo, network_data, batch_size=bsdf_lodf_batch_size)
-
     return repo
 
 

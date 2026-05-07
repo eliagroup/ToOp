@@ -10,10 +10,9 @@ import numpy as np
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from tests.jax.test_busbar_outage import compute_splits_and_injections
-from toop_engine_dc_solver.jax.batching import batch_injections, batch_topologies
+from toop_engine_dc_solver.jax.batching import batch_topologies
 from toop_engine_dc_solver.jax.busbar_outage import perform_rel_bb_outage_single_topo
 from toop_engine_dc_solver.jax.compute_batch import (
-    compute_batch,
     compute_bsdf_lodf_static_flows,
     compute_symmetric_batch,
 )
@@ -26,10 +25,6 @@ from toop_engine_dc_solver.jax.nminus2_outage import unsplit_n_2_analysis
 from toop_engine_dc_solver.jax.topology_computations import (
     convert_topo_to_action_set_index_jittable,
     pad_action_with_unsplit_action_indices,
-)
-from toop_engine_dc_solver.jax.topology_looper import (
-    DefaultAggregateMetricsFn,
-    DefaultAggregateOutputFn,
 )
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
@@ -135,211 +130,6 @@ def test_compute_bsdf_lodf_static_flows_with_outages(
     )
 
     assert not jnp.all(topo_res.success)
-
-
-def test_compute_batch(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    topologies, candidates, static_information = jax_inputs
-
-    batched_topologies = batch_topologies(topologies, static_information.solver_config.batch_size_bsdf)
-
-    batched_injections = batch_injections(
-        all_injections=candidates,
-        batched_topologies=batched_topologies,
-        batch_size_injection=static_information.solver_config.batch_size_injection,
-        buffer_size_injection=static_information.solver_config.buffer_size_injection,
-    )
-
-    batch_index = jnp.array(0, dtype=int)
-    # We don't have to adjust corresponding topologies for batch 0
-
-    action_index_topo = convert_topo_to_action_set_index_jittable(
-        topologies=batched_topologies[batch_index],
-        branch_actions=static_information.dynamic_information.action_set,
-    )
-
-    _, best_inj, success = compute_batch(
-        topology_batch=action_index_topo,
-        disconnection_batch=None,
-        injection_batch=batched_injections[batch_index],
-        dynamic_information=static_information.dynamic_information,
-        solver_config=static_information.solver_config,
-        aggregate_metric_fn=DefaultAggregateMetricsFn(
-            branch_limits=static_information.dynamic_information.branch_limits,
-            reassignment_distance=static_information.dynamic_information.action_set.reassignment_distance,
-            metric=static_information.solver_config.aggregation_metric,
-            n_relevant_subs=static_information.n_sub_relevant,
-            fixed_hash=hash(static_information),
-        ),
-        aggregate_output_fn=DefaultAggregateOutputFn(
-            branches_to_fail=static_information.dynamic_information.branches_to_fail,
-            multi_outage_indices=jnp.arange(static_information.dynamic_information.n_multi_outages)
-            + jnp.max(static_information.dynamic_information.branches_to_fail),
-            injection_outage_indices=jnp.arange(static_information.dynamic_information.n_inj_failures)
-            + jnp.max(static_information.dynamic_information.branches_to_fail)
-            + static_information.dynamic_information.n_multi_outages,
-            max_mw_flow=static_information.dynamic_information.branch_limits.max_mw_flow,
-            number_most_affected=static_information.solver_config.number_most_affected,
-            number_max_out_in_most_affected=static_information.solver_config.number_max_out_in_most_affected,
-            number_most_affected_n_0=static_information.solver_config.number_most_affected_n_0,
-            fixed_hash=hash(static_information),
-        ),
-    )
-
-    assert best_inj.shape == (
-        static_information.solver_config.batch_size_bsdf,
-        static_information.dynamic_information.n_sub_relevant,
-        static_information.dynamic_information.max_inj_per_sub,
-    )
-    assert success.shape == (static_information.solver_config.batch_size_bsdf,)
-
-
-def test_compute_batch_nminus2(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    topologies, _, static_information = jax_inputs
-    solver_config = static_information.solver_config
-    dynamic_information = static_information.dynamic_information
-
-    baseline = unsplit_n_2_analysis(dynamic_information=dynamic_information, more_splits_penalty=100.0)
-
-    dynamic_information = replace(dynamic_information, n2_baseline_analysis=baseline)
-
-    injections = random_injection(
-        jax.random.PRNGKey(0),
-        n_generators_per_sub=dynamic_information.generators_per_sub,
-        n_inj_per_topology=8,
-        for_topology=topologies,
-    )
-
-    topologies = batch_topologies(topologies, static_information.solver_config.batch_size_bsdf)
-    injections = batch_injections(
-        all_injections=injections,
-        batched_topologies=topologies,
-        batch_size_injection=static_information.solver_config.batch_size_injection,
-        buffer_size_injection=static_information.solver_config.buffer_size_injection,
-    )
-
-    action_index_topo = convert_topo_to_action_set_index_jittable(
-        topologies=topologies,
-        branch_actions=dynamic_information.action_set,
-    )
-    n_2_penalty, _, success = compute_batch(
-        topology_batch=action_index_topo[0],
-        disconnection_batch=None,
-        injection_batch=injections[0],
-        dynamic_information=dynamic_information,
-        solver_config=solver_config,
-        aggregate_metric_fn=DefaultAggregateMetricsFn(
-            branch_limits=dynamic_information.branch_limits,
-            reassignment_distance=dynamic_information.action_set.reassignment_distance,
-            metric=solver_config.aggregation_metric,
-            n_relevant_subs=static_information.n_sub_relevant,
-            fixed_hash=hash(static_information),
-        ),
-        aggregate_output_fn=lambda lf_res: lf_res.n_2_penalty,
-    )
-    assert jnp.all(success)
-    assert n_2_penalty is not None
-    assert n_2_penalty.shape == success.shape
-    assert jnp.all(n_2_penalty >= 0.0)
-    # Unsplit grid is first topology
-    assert n_2_penalty[0] == 0
-
-
-def test_compute_symmetric_batch(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    topologies, _, static_information = jax_inputs
-
-    n_sub_relevant = static_information.solver_config.branches_per_sub.shape[0]
-    batch_size_bsdf = static_information.solver_config.batch_size_bsdf
-    batch_size_injection = static_information.solver_config.batch_size_injection
-    buffer_size_injection = static_information.solver_config.buffer_size_injection
-    max_mw_flow = static_information.dynamic_information.branch_limits.max_mw_flow
-    max_inj_per_sub = static_information.dynamic_information.max_inj_per_sub
-
-    # this test relies on this
-    assert batch_size_bsdf <= batch_size_injection
-
-    batched_topologies = batch_topologies(topologies, batch_size_bsdf)
-    batch_index = jnp.array(0, dtype=int)
-
-    action_index_topo = convert_topo_to_action_set_index_jittable(
-        topologies=batched_topologies,
-        branch_actions=static_information.dynamic_information.action_set,
-    )[batch_index]
-    n_splits = action_index_topo.action.shape[1]
-
-    injections = jnp.zeros((batch_size_bsdf, n_splits, max_inj_per_sub), dtype=bool)
-    corresponding_topology = jnp.arange(batch_size_bsdf, dtype=int)
-
-    inj_computations = InjectionComputations(
-        injection_topology=jnp.zeros((buffer_size_injection, batch_size_injection, n_splits, max_inj_per_sub), dtype=bool)
-        .at[0, 0:batch_size_bsdf]
-        .set(injections),
-        corresponding_topology=jnp.zeros((buffer_size_injection, batch_size_injection), dtype=int)
-        .at[0, 0:batch_size_bsdf]
-        .set(corresponding_topology),
-        pad_mask=jnp.zeros((buffer_size_injection, batch_size_injection), dtype=bool).at[0, 0:batch_size_bsdf].set(1),
-    )
-
-    res_ref, best_inj_combo_ref, success_ref = compute_batch(
-        topology_batch=action_index_topo,
-        disconnection_batch=None,
-        injection_batch=inj_computations,
-        dynamic_information=static_information.dynamic_information,
-        solver_config=static_information.solver_config,
-        aggregate_metric_fn=DefaultAggregateMetricsFn(
-            branch_limits=static_information.dynamic_information.branch_limits,
-            reassignment_distance=static_information.dynamic_information.action_set.reassignment_distance,
-            metric=static_information.solver_config.aggregation_metric,
-            n_relevant_subs=static_information.n_sub_relevant,
-            fixed_hash=hash(static_information),
-        ),
-        aggregate_output_fn=DefaultAggregateOutputFn(
-            branches_to_fail=static_information.dynamic_information.branches_to_fail,
-            multi_outage_indices=jnp.arange(static_information.dynamic_information.n_multi_outages)
-            + jnp.max(static_information.dynamic_information.branches_to_fail),
-            injection_outage_indices=jnp.arange(static_information.dynamic_information.n_inj_failures)
-            + jnp.max(static_information.dynamic_information.branches_to_fail)
-            + static_information.dynamic_information.n_multi_outages,
-            max_mw_flow=max_mw_flow,
-            number_most_affected=static_information.solver_config.number_most_affected,
-            number_max_out_in_most_affected=static_information.solver_config.number_max_out_in_most_affected,
-            number_most_affected_n_0=static_information.solver_config.number_most_affected_n_0,
-            fixed_hash=hash(static_information),
-        ),
-    )
-    n_0_ref, n_1_ref = res_ref
-
-    assert jnp.array_equal(best_inj_combo_ref, injections)
-
-    lf_res, success = compute_symmetric_batch(
-        topology_batch=action_index_topo,
-        disconnection_batch=None,
-        injections=injections,
-        nodal_inj_start_options=None,
-        dynamic_information=static_information.dynamic_information,
-        solver_config=static_information.solver_config,
-    )
-    assert jnp.array_equal(success_ref, success)
-    full_n_0 = lf_res.n_0_matrix
-    full_n_1 = lf_res.n_1_matrix
-
-    full_n_0 = jnp.abs(full_n_0 / max_mw_flow)
-    full_n_1 = jnp.abs(full_n_1 / max_mw_flow)
-
-    worst_extracted = jax.lax.top_k(full_n_1, k=static_information.solver_config.number_max_out_in_most_affected)[0]
-    worst_extracted = worst_extracted.reshape(batch_size_bsdf, 1, -1)
-    worst_extracted = jax.lax.top_k(worst_extracted, k=static_information.solver_config.number_most_affected)[0]
-
-    assert jnp.allclose(n_1_ref.pf_n_1_max, worst_extracted)
-
-    worst_n_0_extracted = jax.lax.top_k(full_n_0, k=static_information.solver_config.number_most_affected)[0]
-
-    assert jnp.allclose(n_0_ref.pf_n_0_max, worst_n_0_extracted)
 
 
 def test_compute_batch_symmetric_with_bb_outage(

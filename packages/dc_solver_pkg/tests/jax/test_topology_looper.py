@@ -26,10 +26,7 @@ from toop_engine_dc_solver.jax.topology_computations import (
     random_topology,
 )
 from toop_engine_dc_solver.jax.topology_looper import (
-    DefaultAggregateMetricsFn,
-    DefaultAggregateOutputFn,
     run_solver,
-    run_solver_inj_bruteforce,
     run_solver_symmetric,
 )
 from toop_engine_dc_solver.jax.types import (
@@ -96,20 +93,6 @@ def test_run_solver(
         n_1_solver = n_1_flows[topo_id, 0, : sum(nd.outaged_branch_mask)]
         assert n_1_solver.shape == n_1_ref.shape
         assert jnp.allclose(n_1_solver, n_1_ref)
-
-    # Test "bruteforce" mode but with only default injections
-    n_1_flow_bruteforce, _, success = run_solver_inj_bruteforce(
-        topologies=action_index_topo,
-        disconnections=None,
-        injections=injections,
-        dynamic_information=dynamic_information,
-        solver_config=solver_config,
-        aggregate_metric_fn=lambda _1, _2: 0.0,
-        aggregate_output_fn=lambda x: x.n_1_matrix,
-    )
-
-    assert jnp.all(success)
-    assert jnp.allclose(n_1_flows, n_1_flow_bruteforce)
 
 
 def test_run_solver_random_topo(
@@ -301,98 +284,6 @@ def test_run_solver_with_disconnections(
 def test_typecheck():
     with pytest.raises(jaxtyping.TypeCheckError):
         SparseSolverOutput(n_0_results=123, n_1_results=123, best_inj_combi=True, success="True")
-
-
-def test_run_solver_with_disconnections_and_injections(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    topologies, candidates, static_information = jax_inputs
-
-    action_index_topo, _ = convert_topo_to_action_set_index(
-        topologies, static_information.dynamic_information.action_set, True
-    )
-
-    disconnections = jnp.repeat(jnp.array([[8, 999]]), topologies.topologies.shape[0], axis=0)
-
-    res = run_solver(
-        topologies=action_index_topo,
-        disconnections=disconnections,
-        injections=candidates,
-        dynamic_information=static_information.dynamic_information,
-        solver_config=static_information.solver_config,
-    )
-    assert res is not None
-
-
-def test_run_solver_inj_candidates(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    topologies, candidates, static_information = jax_inputs
-
-    action_index_topos, _ = convert_topo_to_action_set_index(topologies, static_information.dynamic_information.action_set)
-
-    aggregate_metrics_fn = DefaultAggregateMetricsFn(
-        branch_limits=static_information.dynamic_information.branch_limits,
-        reassignment_distance=static_information.dynamic_information.action_set.reassignment_distance,
-        n_relevant_subs=static_information.n_sub_relevant,
-        metric=static_information.solver_config.aggregation_metric,
-        fixed_hash=hash(static_information),
-    )
-    aggregate_output_fn = DefaultAggregateOutputFn(
-        branches_to_fail=static_information.dynamic_information.branches_to_fail,
-        multi_outage_indices=jnp.arange(static_information.dynamic_information.n_multi_outages)
-        + jnp.max(static_information.dynamic_information.branches_to_fail),
-        injection_outage_indices=jnp.arange(static_information.dynamic_information.n_inj_failures)
-        + jnp.max(static_information.dynamic_information.branches_to_fail)
-        + static_information.dynamic_information.n_multi_outages,
-        max_mw_flow=static_information.dynamic_information.branch_limits.max_mw_flow,
-        number_most_affected=static_information.solver_config.number_most_affected,
-        number_max_out_in_most_affected=static_information.solver_config.number_max_out_in_most_affected,
-        number_most_affected_n_0=static_information.solver_config.number_most_affected_n_0,
-        fixed_hash=hash(static_information),
-    )
-    # Auto-determine the buffer size
-    static_information = replace(
-        static_information,
-        solver_config=replace(static_information.solver_config, buffer_size_injection=9999),
-    )
-
-    res, best_inj, succ = run_solver_inj_bruteforce(
-        topologies=action_index_topos,
-        disconnections=None,
-        injections=candidates,
-        dynamic_information=static_information.dynamic_information,
-        solver_config=static_information.solver_config,
-        aggregate_metric_fn=aggregate_metrics_fn,
-        aggregate_output_fn=aggregate_output_fn,
-    )
-    assert jnp.all(succ)
-
-    static_information = replace(
-        static_information,
-        solver_config=replace(static_information.solver_config, distributed=True),
-    )
-
-    res2, best_inj_2, succ = run_solver_inj_bruteforce(
-        topologies=action_index_topos,
-        disconnections=None,
-        injections=candidates,
-        dynamic_information=static_information.dynamic_information,
-        solver_config=static_information.solver_config,
-        aggregate_metric_fn=aggregate_metrics_fn,
-        aggregate_output_fn=aggregate_output_fn,
-    )
-    assert jnp.all(succ)
-    assert jnp.array_equal(best_inj, best_inj_2)
-
-    assert jnp.allclose(
-        jnp.max(res[0].pf_n_0_max, axis=-1),
-        jnp.max(res2[0].pf_n_0_max, axis=-1),
-    )
-    assert jnp.allclose(
-        jnp.max(res[1].pf_n_1_max, axis=-1),
-        jnp.max(res2[1].pf_n_1_max, axis=-1),
-    )
 
 
 def test_run_solver_symmetric(

@@ -25,37 +25,6 @@ from toop_engine_dc_solver.jax.multi_outages import apply_modf_matrix, build_mod
 from toop_engine_dc_solver.jax.types import DisconnectionResults, MODFMatrix, int_max
 
 
-def update_from_to_nodes_after_disconnections(
-    from_nodes: Int[Array, " n_branches"],
-    to_nodes: Int[Array, " n_branches"],
-    disconnections: Int[Array, " n_disconnections"],
-) -> tuple[Int[Array, " n_branches"], Int[Array, " n_branches"]]:
-    """Update the from_nodes and to_nodes after disconnections
-
-    Parameters
-    ----------
-    from_nodes : Int[Array, " n_branches"]
-        The from_nodes for each branch
-    to_nodes : Int[Array, " n_branches"]
-        The to_nodes for each branch
-    disconnections : Int[Array, " n_disconnections"]
-        The disconnections to perform, can be a single value or an array of values
-
-    Returns
-    -------
-    tuple[Int[Array, " n_branches"], Int[Array, " n_branches"]]
-        The updated from_nodes and to_nodes
-    """
-    if isinstance(disconnections, int):
-        disconnections = jnp.array([disconnections])
-    if disconnections.size == 0:
-        return from_nodes, to_nodes
-    from_nodes = from_nodes.at[disconnections].set(jnp.iinfo(jnp.int32).max)
-    to_nodes = to_nodes.at[disconnections].set(jnp.iinfo(jnp.int32).max)
-
-    return from_nodes, to_nodes
-
-
 def apply_single_disconnection_lodf(
     disconnection: Int[Array, " "],
     ptdf: Float[Array, " n_branches n_bus"],

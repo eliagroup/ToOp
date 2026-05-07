@@ -596,6 +596,20 @@ def powsybl_case9241() -> pypowsybl.network.Network:
     return net
 
 
+def powsybl_case1354() -> pypowsybl.network.Network:
+    """Load the Powsybl case1354 grid.
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The loaded Powsybl pegase case1354 network.
+    """
+    pandapower_net = pandapower.networks.case1354pegase()
+    net = load_pandapower_net_for_powsybl(pandapower_net, check_trafo_resistance=False)
+
+    return net
+
+
 def create_busbar_b_in_ieee(net: pypowsybl.network.Network) -> None:
     """Create busbar B in the IEEE grid
 

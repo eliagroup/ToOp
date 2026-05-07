@@ -17,6 +17,7 @@ import structlog
 from beartype.typing import Optional
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
+from pypowsybl.network import Network
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
@@ -189,7 +190,7 @@ def test_convert_file(ucte_file):
         assert isinstance(import_result, ImportResult)
 
 
-def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_network_graph: pypowsybl.network.Network):
+def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_grid: Network):
     with TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
 
@@ -212,8 +213,8 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_n
             ]
         ).set_index("id")
 
-        pypowsybl.network.create_static_var_compensator_bay(basic_node_breaker_network_powsybl_network_graph, df=svc)
-        basic_node_breaker_network_powsybl_network_graph.save(temp_grid_file)
+        pypowsybl.network.create_static_var_compensator_bay(basic_node_breaker_network_powsybl_grid, df=svc)
+        basic_node_breaker_network_powsybl_grid.save(temp_grid_file)
         # def parameters for function
 
         def heartbeat_working(

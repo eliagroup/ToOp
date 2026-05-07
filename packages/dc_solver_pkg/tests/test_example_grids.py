@@ -25,6 +25,7 @@ from toop_engine_dc_solver.example_grids import (
     case57_non_converging,
     case300_pandapower,
     case300_powsybl,
+    case1354_powsybl,
     case9241_pandapower,
     case9241_powsybl,
     node_breaker_folder_powsybl,
@@ -522,3 +523,15 @@ def test_create_ucte_data_folder(create_ucte_data_path) -> None:
         network_data = preprocess(backend)
         assert sum(network_data.relevant_node_mask) > 0
         assert len(network_data.branch_action_set)
+
+
+def test_case1354_powsybl() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir)
+        case1354_powsybl(tmp_dir, n_stations=20)
+
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        powsybl_backend = PowsyblBackend(filesystem_dir)
+        assert len(powsybl_backend.net.get_buses()) == 1354
+
+        preprocess(powsybl_backend, parameters=PreprocessParameters(action_set_clip=8))

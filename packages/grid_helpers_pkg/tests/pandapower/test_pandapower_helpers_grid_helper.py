@@ -14,8 +14,6 @@ from jaxtyping import Bool
 from toop_engine_grid_helpers.pandapower.example_grids import pandapower_case30_with_psts
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     check_for_splits,
-    get_bus_key,
-    get_bus_key_injection,
     get_dc_bus_voltage,
     get_element_table,
     get_number_of_islands,
@@ -23,7 +21,6 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_pandapower_bus_loadflow_results_sequence,
     get_pandapower_loadflow_results_in_ppc,
     get_pandapower_loadflow_results_injection,
-    get_phaseshift_key,
     get_phaseshift_mask,
     get_power_key,
     get_remotely_connected_buses,
@@ -32,15 +29,6 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     save_pandapower_to_fs,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import parse_globally_unique_id_series
-
-
-def test_get_phaseshift_key() -> None:
-    assert get_phaseshift_key("trafo") == "shift_degree", "Wrong shift column returned"
-    assert get_phaseshift_key("trafo3w_lv") == "shift_lv_degree", "Wrong shift column returned"
-    assert get_phaseshift_key("trafo3w_mv") == "shift_mv_degree", "Wrong shift column returned"
-
-    with pytest.raises(AssertionError):
-        get_phaseshift_key("trafo3w_hv")
 
 
 def test_get_phaseshift_mask() -> None:
@@ -86,38 +74,6 @@ def test_parse_globally_unique_id_series():
     assert results.shape == (4, 2)
     assert results["id"].tolist() == [1, 2, 3, 4]
     assert results["type"].tolist() == ["bus", "line", "trafo", "ext_grid"]
-
-
-def test_get_bus_key():
-    assert get_bus_key("line", True) == "from_bus"
-    assert get_bus_key("line", False) == "to_bus"
-
-    assert get_bus_key("trafo", True) == "hv_bus"
-    assert get_bus_key("trafo", False) == "lv_bus"
-
-    assert get_bus_key("trafo3w_lv", True) == "lv_bus"
-    assert get_bus_key("trafo3w_lv", False) == "lv_bus"
-
-    assert get_bus_key("trafo3w_mv", True) == "mv_bus"
-    assert get_bus_key("trafo3w_mv", False) == "mv_bus"
-
-    assert get_bus_key("trafo3w_hv", True) == "hv_bus"
-    assert get_bus_key("trafo3w_hv", False) == "hv_bus"
-
-    with pytest.raises(AssertionError):
-        get_bus_key("non_existing_branch", False)
-
-
-def test_get_bus_key_injection():
-    assert get_bus_key_injection("gen") == "bus"
-    assert get_bus_key_injection("load") == "bus"
-    assert get_bus_key_injection("sgen") == "bus"
-    assert get_bus_key_injection("shunt") == "bus"
-    assert get_bus_key_injection("dcline_from") == "from_bus"
-    assert get_bus_key_injection("dcline_to") == "to_bus"
-
-    with pytest.raises(AssertionError):
-        get_bus_key_injection("non_existing_injection")
 
 
 def test_get_element_table():

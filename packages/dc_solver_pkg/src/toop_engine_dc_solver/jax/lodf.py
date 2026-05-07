@@ -19,7 +19,7 @@ from functools import partial
 import jax
 from beartype.typing import Optional
 from jax import numpy as jnp  # pylint: disable=no-name-in-module
-from jaxtyping import Array, ArrayLike, Bool, Float, Int
+from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.jax.types import int_max
 
 
@@ -143,40 +143,3 @@ def get_failure_cases_to_zero(
 
     comparison_matrix = branches_to_outage[:, None] == branches_to_zero[None, :]
     return jnp.any(comparison_matrix, axis=1)
-
-
-def zero_lodf_matrix(
-    lodf_matrix: Float[Array, " n_failures n_branches_monitored"],
-    success: Bool[Array, " n_failures"],
-    branches_to_zero: Int[ArrayLike, " n_branches_to_zero"],
-    branches_to_outage: Int[Array, " n_failures"],
-) -> tuple[Float[Array, " n_failures n_branches_monitored"], Bool[Array, " n_failures"]]:
-    """Zeroes the LODF matrix for specific branches
-
-    This is useful if these branches have been outaged due to a solver input and should not be
-    considered in the analysis
-
-    Parameters
-    ----------
-    lodf_matrix : Float[Array, "n_failures n_branches_monitored"]
-        The LODF matrix
-    success : Bool[Array, "n_failures"]
-        Whether the LODF was defined. False if the network split
-    branches_to_zero : Int[Array, "n_branches_to_zero"]
-        The branches to zero out, indexing into all branches
-    branches_to_outage : Int[Array, "n_failures"]
-        The list of N-1 failure cases. Only branches in this list are zeroed
-
-    Returns
-    -------
-    Float[Array, "n_failures n_branches_monitored"]
-        The zeroed LODF matrix where the rows that correspond to branches_to_zero are zeroed
-    Bool[Array, "n_failures"]
-        The success vector where the rows that correspond to branches_to_zero are set to True
-    """
-    comparison_matrix = branches_to_outage[:, None] == branches_to_zero[None, :]
-    failure_cases_to_zero: Bool[Array, " n_failures"] = jnp.any(comparison_matrix, axis=1)
-
-    lodf_matrix = jnp.where(failure_cases_to_zero[:, None], 0, lodf_matrix)
-    success = jnp.where(failure_cases_to_zero, True, success)
-    return lodf_matrix, success

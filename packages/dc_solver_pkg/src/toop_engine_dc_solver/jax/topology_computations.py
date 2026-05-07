@@ -218,72 +218,6 @@ def convert_topo_to_action_set_index_jittable(
     )
 
 
-def is_valid_single_action(
-    action: Int[Array, " n_splits"],
-    branch_actions: ActionSet,
-) -> Bool[Array, ""]:
-    """Check whether an action is valid
-
-    Valid means that no two action indices resolve to the same substation id
-
-    Parameters
-    ----------
-    action : Int[Array, " n_splits"]
-        The action indices to check
-    branch_actions : ActionSet
-        The branch action set to use for the check
-
-    Returns
-    -------
-    Bool[Array, ""]
-        Whether the action is valid
-    """
-    _, sub_ids = jax.vmap(jax.tree_util.Partial(get_bitvec_from_action_set, branch_actions))(action)
-    # Make a n_splits x n_splits matrix to check for duplicates
-    sub_match = sub_ids[None, :] == sub_ids[:, None]
-    # We want to exclude the diagonal, as that is the same action and always true
-    return ~jnp.any(jnp.triu(sub_match, k=1))
-
-
-def is_valid(
-    actions: Int[Array, " n_topologies n_splits"],
-    branch_actions: ActionSet,
-) -> Bool[Array, " n_topologies"]:
-    """Check whether no two action indices resolve to the same substation id
-
-    Parameters
-    ----------
-    actions : Int[Array, " n_topologies n_splits"]
-        The action indices to check
-    branch_actions : ActionSet
-        The branch action set to use for the check
-    """
-    return jax.vmap(is_valid_single_action, in_axes=(0, None))(actions, branch_actions)
-
-
-def num_splits(
-    actions: Int[Array, " n_topologies n_splits"],
-    branch_actions: ActionSet,
-) -> Int[Array, " n_topologies"]:
-    """Compute how many substations are split in each topology
-
-    Parameters
-    ----------
-    actions : Int[Array, " n_topologies n_splits"]
-        The action indices to check
-    branch_actions : ActionSet
-        The branch action set to use for the check
-
-    Returns
-    -------
-    Int[Array, " n_topologies"]
-        The number of substations that are split in each topology
-    """
-    actions = jnp.where(actions < 0, int_max(), actions)
-    unsplit_mask = branch_actions.unsplit_action_mask.at[actions].get(mode="fill", fill_value=True)
-    return jnp.sum(~unsplit_mask, axis=1)
-
-
 def get_bitvec_from_action_set(
     branch_actions: ActionSet, action: Int[Array, " "]
 ) -> tuple[Bool[Array, " max_branch_per_sub"], Int[Array, ""]]:
@@ -441,44 +375,6 @@ def convert_topo_sel_sorted(
     )
 
 
-def apply_limit_n_subs(topo_computations: TopoVectBranchComputations, limit_n_subs: int) -> TopoVectBranchComputations:
-    """Limit the number of substations in a TopoVectBranchComputations.
-
-    Take a TopoVectBranchComputations with all substations and limit it to only have a certain number
-    of substations.
-
-    Parameters
-    ----------
-    topo_computations : TopoVectBranchComputations
-        The topology computations to limit
-    limit_n_subs : int
-        The number of substations to limit to
-
-    Returns
-    -------
-    TopoVectBranchComputations
-        The limited topology computations
-    """
-    has_splits = jnp.any(topo_computations.topologies, axis=2)
-    nonzero_along_axis: Int[Array, " n_topologies limit_n_subs"] = jax.vmap(
-        partial(jnp.nonzero, size=limit_n_subs, fill_value=int_max())
-    )(has_splits)[0]
-
-    topologies = jnp.take_along_axis(topo_computations.topologies, nonzero_along_axis[:, :, None], axis=1)
-    sub_ids = jnp.take_along_axis(topo_computations.sub_ids, nonzero_along_axis, axis=1)
-
-    # Take along axis clamps out-of-bounds indices, so we have to correct for that to make sure
-    # that padded substations don't have a split and hence won't induce any BSDF computations
-    topologies = jnp.where(nonzero_along_axis[:, :, None] == int_max(), False, topologies)
-    sub_ids = jnp.where(nonzero_along_axis == int_max(), int_max(), sub_ids)
-
-    return TopoVectBranchComputations(
-        topologies=topologies,
-        sub_ids=sub_ids,
-        pad_mask=topo_computations.pad_mask,
-    )
-
-
 def convert_single_branch_topo_vect(
     topology: Bool[Array, " n_sub_limited max_branch_per_sub"],
     sub_ids: Int[Array, " n_sub_limited"],
@@ -555,38 +451,6 @@ def convert_branch_topo_vect(
     )(topologies, sub_ids)
 
 
-def split_topology_computations(
-    computations: TopoVectBranchComputations,
-    n_splits: int,
-    key: Optional[PRNGKeyArray] = None,
-) -> list[TopoVectBranchComputations]:
-    """Split a set of topology computations into n_splits equal sized parts
-
-    If computations is not equally divisible by n_splits, the last split will be smaller
-
-    Parameters
-    ----------
-    computations : TopoVectBranchComputations
-        The topology computations to split up
-    n_splits : int
-        The number of splits to produce
-    key : Optional[jax.random.PRNGKey]
-        A PRNG key, if passed uses a random split instead of sequentially splitting
-
-    Returns
-    -------
-        A list of length n_splits, each containing a subset of the original computations
-    """
-    total_length = computations.topologies.shape[0]
-    all_indices = jnp.arange(total_length)
-    if key is not None:
-        all_indices = jax.random.permutation(key, all_indices)
-
-    split_indices = jnp.array_split(all_indices, n_splits)
-
-    return [computations[split_indices[i]] for i in range(n_splits)]
-
-
 def default_topology(
     solver_config: SolverConfig, batch_size: Optional[int] = None, topo_vect_format: bool = False
 ) -> Union[ActionIndexComputations, TopoVectBranchComputations]:
@@ -640,35 +504,6 @@ def default_topology(
         ),
         pad_mask=jnp.ones(batch_size, dtype=bool),
     )
-
-
-def limit_n_nonzeros(rng_key: PRNGKeyArray, vector: Int[Array, " n_rel_subs"], limit: int) -> Int[Array, " n_rel_subs"]:
-    """Limit the number of nonzero elements in a vector.
-
-    Sets some of them randomly to zero.
-
-    Parameters
-    ----------
-    rng_key : PRNGKeyArray
-        The random key to use for sampling
-    vector : Int[Array, " n_rel_subs"]
-        The vector to limit
-    limit : int
-        The number of non-zero elements to limit the vector to
-
-    Returns
-    -------
-    Int[Array, " n_rel_subs"]
-        A copy of the input vector, where at most limit elements are nonzero. If there were already
-        less than limit nonzero elements, the vector is unchanged
-    """
-    has_nonzero = vector != 0
-    n_elements_to_zero = jnp.clip(jnp.sum(has_nonzero) - limit, 0, None)
-    nonzero_indices = jnp.flatnonzero(has_nonzero, size=has_nonzero.size, fill_value=int_max())
-    nonzero_indices = jax.random.permutation(rng_key, nonzero_indices)
-    index_mask = jnp.cumsum(nonzero_indices != int_max()) <= n_elements_to_zero
-    nonzero_indices = jnp.where(index_mask, nonzero_indices, int_max())
-    return vector.at[nonzero_indices].set(0, mode="drop")
 
 
 def sample_action_index_from_branch_actions(
@@ -818,180 +653,6 @@ def random_topology(
     )
 
 
-def find_splits(
-    topologies: Bool[Array, " n_topologies n_subs_limited max_branches_per_sub"],
-    sub_ids: Optional[Int[Array, " n_topologies n_subs_limited"]] = None,
-    n_subs: Optional[int] = None,
-) -> Bool[Array, " n_topologies n_subs"]:
-    """Check if a batch of topologies has any splits
-
-    Will return a result padded to n_subs if n_subs is passed, otherwise it will assume that
-    all substations are represented in the topologies and ignore sub_ids
-
-    Parameters
-    ----------
-    topologies : Bool[Array, " n_topologies n_subs_limited max_branches_per_sub"]
-        The branch assignments to check
-    sub_ids : Int[Array, " n_topologies n_subs_limited"], optional
-        The corresponding substation ids of the topologies. Must be passed if n_subs is passed
-    n_subs : Optional[int]
-        The number of substations in the grid. If not passed, will assume that no limit_n_subs is
-        active, i.e. sub_ids == arange(n_subs)
-
-    Returns
-    -------
-    Bool[Array, " n_topologies n_subs"]
-        A boolean array indicating if the topology has any splits at this substation
-    """
-    has_splits = jnp.any(topologies, axis=2)
-
-    if n_subs is None:
-        return has_splits
-
-    n_topologies = topologies.shape[0]
-    assert topologies.shape[0:2] == sub_ids.shape
-
-    has_splits_filled = jnp.zeros((n_topologies, n_subs), dtype=bool)
-    has_splits_filled = jax.vmap(lambda a, b, idx: a.at[idx].set(b))(has_splits_filled, has_splits, sub_ids)
-
-    return has_splits_filled
-
-
-def sort_by_sub_ids(topologies: TopoVectBranchComputations) -> TopoVectBranchComputations:
-    """Sort a batch of topologies by their sub_ids
-
-    Parameters
-    ----------
-    topologies : TopoVectBranchComputations
-        The topologies to sort
-
-    Returns
-    -------
-    TopoVectBranchComputations
-        The same topologies, but every topology is sorted by its sub_ids. The topologies are still
-        at their original indices
-    """
-
-    def sort_single(
-        sub_ids: Int[Array, " n_subs_limited"],
-        topology: Bool[Array, " n_subs_limited max_branches_per_sub"],
-    ) -> tuple[
-        Int[Array, " n_subs_limited"],
-        Bool[Array, " n_subs_limited max_branches_per_sub"],
-    ]:
-        sort_indices = jnp.argsort(sub_ids)
-        return sub_ids[sort_indices], topology[sort_indices]
-
-    sub_ids, topo_vects = jax.vmap(sort_single)(topologies.sub_ids, topologies.topologies)
-
-    return TopoVectBranchComputations(
-        topologies=topo_vects,
-        sub_ids=sub_ids,
-        pad_mask=topologies.pad_mask,
-    )
-
-
-def deduplicate_topologies(topologies: TopoVectBranchComputations) -> TopoVectBranchComputations:
-    """Deduplicate a batch of topologies
-
-    The returned topologies will have a different shape, i.e. this function can not be jitted
-
-    Parameters
-    ----------
-    topologies : TopoVectBranchComputations
-        The topologies to deduplicate
-
-    Returns
-    -------
-    TopoVectBranchComputations
-        The deduplicated topologies
-    """
-    # Only regard non-padded topologies
-    topologies = topologies[topologies.pad_mask]
-
-    # Sort by sub_ids to make sure that the same topologies are next to each other
-    topologies = sort_by_sub_ids(topologies)
-
-    # Find the unique topologies
-    _, unique_topo_indices = jnp.unique(topologies.topologies, axis=0, return_index=True)
-
-    return topologies[unique_topo_indices]
-
-
-def concatenate_topology_batches(a: TopoVectBranchComputations, b: TopoVectBranchComputations) -> TopoVectBranchComputations:
-    """Concatenates two topology batches along the batch dimension
-
-    Parameters
-    ----------
-    a : TopoVectBranchComputations
-        The first topology batch
-    b : TopoVectBranchComputations
-        The second topology batch
-
-    Returns
-    -------
-    TopoVectBranchComputations
-        The concatenated topology batch
-    """
-    return TopoVectBranchComputations(
-        topologies=jnp.concatenate([a.topologies, b.topologies], axis=0),
-        sub_ids=jnp.concatenate([a.sub_ids, b.sub_ids], axis=0),
-        pad_mask=jnp.concatenate([a.pad_mask, b.pad_mask], axis=0),
-    )
-
-
-def product_action_set(
-    substations: list[int],
-    branch_set: ActionSet,
-    limit_n_subs: Optional[int] = None,
-) -> TopoVectBranchComputations:
-    """Create the product set of all actions for each of the substations
-
-    This will explode pretty quickly, so don't use it for more than 3 substations
-
-    Parameters
-    ----------
-    substations : list[int]
-        The substations to create the product set for. This indexes into relevant substations only, not into all nodes.
-    branch_set : ActionSet
-        The branch action set to use
-    limit_n_subs : Optional[int]
-        The number of split substations to limit the topologies to. If None, no limit is applied
-
-    Returns
-    -------
-    TopoVectBranchComputations
-        The product set of all actions for the substations
-    """
-    n_actions_per_chosen_sub = [branch_set.n_actions_per_sub[i] for i in substations]
-    actions_per_chosen_sub = [range(n) for n in n_actions_per_chosen_sub]
-
-    # The local action and substation can be translated into an index into the action set like this:
-    def action_index(local_action: int, substation: int) -> int:
-        if substation == 0:
-            return local_action
-        return sum(branch_set.n_actions_per_sub[:substation].tolist()) + local_action
-
-    def is_split(local_action: int, substation: int) -> bool:
-        global_action = action_index(local_action, substation)
-        return bool(~branch_set.unsplit_action_mask[global_action])
-
-    topologies = []
-    for combination in product(*actions_per_chosen_sub):
-        if limit_n_subs is not None and sum(map(is_split, combination, substations)) > limit_n_subs:
-            continue
-        topology = np.zeros((len(substations), branch_set.branch_actions.shape[1]), dtype=bool)
-        for sub_idx, action in enumerate(combination):
-            topology[substations[sub_idx]] = branch_set.branch_actions[action_index(action, substations[sub_idx])]
-        topologies.append(topology)
-
-    return TopoVectBranchComputations(
-        topologies=jnp.array(topologies),
-        sub_ids=jnp.array([substations] * len(topologies)),
-        pad_mask=jnp.ones(len(topologies), dtype=bool),
-    )
-
-
 def pad_action_with_unsplit_action_indices(
     action_set: ActionSet, action_indices: Int[Array, " n_allowed_splits"]
 ) -> Int[Array, " n_rel_subs"]:
@@ -1116,3 +777,55 @@ def get_random_topology_results(static_information: StaticInformation, random_se
     ]
 
     return best
+
+
+def product_action_set(
+    substations: list[int],
+    branch_set: ActionSet,
+    limit_n_subs: Optional[int] = None,
+) -> TopoVectBranchComputations:
+    """Create the product set of all actions for each of the substations
+
+    This will explode pretty quickly, so don't use it for more than 3 substations
+
+    Parameters
+    ----------
+    substations : list[int]
+        The substations to create the product set for. This indexes into relevant substations only, not into all nodes.
+    branch_set : ActionSet
+        The branch action set to use
+    limit_n_subs : Optional[int]
+        The number of split substations to limit the topologies to. If None, no limit is applied
+
+    Returns
+    -------
+    TopoVectBranchComputations
+        The product set of all actions for the substations
+    """
+    n_actions_per_chosen_sub = [branch_set.n_actions_per_sub[i] for i in substations]
+    actions_per_chosen_sub = [range(n) for n in n_actions_per_chosen_sub]
+
+    # The local action and substation can be translated into an index into the action set like this:
+    def action_index(local_action: int, substation: int) -> int:
+        if substation == 0:
+            return local_action
+        return sum(branch_set.n_actions_per_sub[:substation].tolist()) + local_action
+
+    def is_split(local_action: int, substation: int) -> bool:
+        global_action = action_index(local_action, substation)
+        return bool(~branch_set.unsplit_action_mask[global_action])
+
+    topologies = []
+    for combination in product(*actions_per_chosen_sub):
+        if limit_n_subs is not None and sum(map(is_split, combination, substations)) > limit_n_subs:
+            continue
+        topology = np.zeros((len(substations), branch_set.branch_actions.shape[1]), dtype=bool)
+        for sub_idx, action in enumerate(combination):
+            topology[substations[sub_idx]] = branch_set.branch_actions[action_index(action, substations[sub_idx])]
+        topologies.append(topology)
+
+    return TopoVectBranchComputations(
+        topologies=jnp.array(topologies),
+        sub_ids=jnp.array([substations] * len(topologies)),
+        pad_mask=jnp.ones(len(topologies), dtype=bool),
+    )

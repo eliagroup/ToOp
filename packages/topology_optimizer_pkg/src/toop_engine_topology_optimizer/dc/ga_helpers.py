@@ -170,29 +170,3 @@ def update_running_means(running_means: RunningMeans, emitter_state: EmitterStat
     running_means.last_emitter_state = emitter_state
 
     return running_means
-
-
-def make_description_string(running_means: RunningMeans, runtime_seconds: float) -> str:
-    """Create a string representation of the running means for the command line tqdm output.
-
-    Parameters
-    ----------
-    running_means : RunningMeans
-        The running means to be displayed
-    runtime_seconds : float
-        The total runtime of the optimization in seconds
-
-    Returns
-    -------
-    str
-        The string representation of the running means
-    """
-    now = time.time()
-
-    loadflows = running_means.total_inj_combis * running_means.n_outages
-    return (
-        f"br/s: {running_means.br_per_sec.get():.2f}, "
-        + f"inj/s: {running_means.inj_per_sec.get():.2f}, "
-        + f"lfs: {loadflows:.2e}, "
-        + f"time: {(now - running_means.start_time):.0f}/{runtime_seconds:.0f}s"
-    )

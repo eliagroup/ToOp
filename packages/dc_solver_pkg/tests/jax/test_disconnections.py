@@ -12,7 +12,6 @@ from toop_engine_dc_solver.jax.disconnections import (
     apply_single_disconnection_lodf,
     enumerate_disconnectable_branches,
     random_disconnections,
-    update_from_to_nodes_after_disconnections,
 )
 from toop_engine_dc_solver.jax.lodf import calc_lodf, calc_lodf_matrix
 from toop_engine_dc_solver.jax.types import (
@@ -266,36 +265,3 @@ def test_enumerate_disconnectable_branches(
     assert len(disconnectable_branches)
     assert jnp.all(disconnectable_branches >= 0)
     assert jnp.all(disconnectable_branches < static_information.dynamic_information.ptdf.shape[0])
-
-
-def test_update_from_to_nodes_after_disconnections() -> None:
-    from_nodes = jnp.array([0, 1, 2, 3, 4, 5], dtype=int)
-    to_nodes = jnp.array([5, 4, 3, 2, 1, 0], dtype=int)
-    disconnections = jnp.array([1, 3], dtype=int)
-
-    updated_from_nodes, updated_to_nodes = update_from_to_nodes_after_disconnections(from_nodes, to_nodes, disconnections)
-
-    expected_from_nodes = jnp.array([0, jnp.iinfo(jnp.int32).max, 2, jnp.iinfo(jnp.int32).max, 4, 5], dtype=int)
-    expected_to_nodes = jnp.array([5, jnp.iinfo(jnp.int32).max, 3, jnp.iinfo(jnp.int32).max, 1, 0], dtype=int)
-
-    assert jnp.array_equal(updated_from_nodes, expected_from_nodes)
-    assert jnp.array_equal(updated_to_nodes, expected_to_nodes)
-
-    # Test with no disconnections
-    disconnections = jnp.array([], dtype=int)
-
-    updated_from_nodes, updated_to_nodes = update_from_to_nodes_after_disconnections(from_nodes, to_nodes, disconnections)
-
-    assert jnp.array_equal(updated_from_nodes, from_nodes)
-    assert jnp.array_equal(updated_to_nodes, to_nodes)
-
-    # Test with all nodes disconnected
-    disconnections = jnp.array([0, 1, 2, 3, 4, 5], dtype=int)
-
-    updated_from_nodes, updated_to_nodes = update_from_to_nodes_after_disconnections(from_nodes, to_nodes, disconnections)
-
-    expected_from_nodes = jnp.full_like(from_nodes, jnp.iinfo(jnp.int32).max)
-    expected_to_nodes = jnp.full_like(to_nodes, jnp.iinfo(jnp.int32).max)
-
-    assert jnp.array_equal(updated_from_nodes, expected_from_nodes)
-    assert jnp.array_equal(updated_to_nodes, expected_to_nodes)

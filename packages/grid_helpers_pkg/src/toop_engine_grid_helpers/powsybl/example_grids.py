@@ -231,20 +231,31 @@ def powsybl_extended_case57() -> pypowsybl.network.Network:
     return net
 
 
-def basic_node_breaker_network_powsybl() -> Network:
-    """Create a basic node breaker network with 5 substations, 5 voltage levels, and 10 buses.
+def _prepare_basic_node_breaker_network_powsybl(
+    n_subs: int,
+    n_vls: int,
+    n_buses: dict[int, int],
+    busbar_section_position_updates: dict[str, dict[str, int]] | None = None,
+) -> Network:
+    """Create the shared node-breaker base topology used by the example grids.
+
+    Parameters
+    ----------
+    n_subs : int
+        Number of substations to create.
+    n_vls : int
+        Number of voltage levels to create.
+    n_buses : dict[int, int]
+        Mapping from substation index to number of busbar sections.
+    busbar_section_position_updates : dict[str, dict[str, int]] | None, optional
+        Optional per-busbar overrides for the busbar section position extension.
 
     Returns
     -------
-    pypowsybl.network.Network
-        The created Powsybl network.
+    Network
+        The prepared Powsybl network.
     """
     net = pypowsybl.network.create_empty()
-
-    n_subs = 5
-    n_vls = 5
-    # substation_id : number of buses
-    n_buses = {1: 3, 2: 3, 3: 2, 4: 2, 5: 1}
 
     stations = pd.DataFrame.from_records(
         index="id", data=[{"id": f"S{i + 1}", "country": "BE", "name": f"Station{i + 1}"} for i in range(n_subs)]
@@ -279,10 +290,29 @@ def basic_node_breaker_network_powsybl() -> Network:
         ],
     )
 
+    if busbar_section_position_updates is not None:
+        for busbar_id, updated_fields in busbar_section_position_updates.items():
+            for field, value in updated_fields.items():
+                busbar_section_position.loc[busbar_id, field] = value
+
     net.create_substations(stations)
     net.create_voltage_levels(voltage_levels)
     net.create_busbar_sections(busbars)
     net.create_extensions("busbarSectionPosition", busbar_section_position)
+    return net
+
+
+def basic_node_breaker_network_powsybl() -> Network:
+    """Create a basic node breaker network with 5 substations and a basic n-1 robust loadflow.
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The created Powsybl network.
+    """
+    # substation_id : number of buses
+    n_buses = {1: 3, 2: 3, 3: 2, 4: 2, 5: 1}
+    net = _prepare_basic_node_breaker_network_powsybl(n_subs=5, n_vls=5, n_buses=n_buses)
 
     lines = pd.DataFrame.from_records(
         data=[
@@ -309,6 +339,7 @@ def basic_node_breaker_network_powsybl() -> Network:
         lines.loc[i, "id"] = f"L{i + 1}"
     lines = lines.set_index("id")
     pypowsybl.network.create_line_bays(net, lines)
+
     pypowsybl.network.create_coupling_device(
         net, bus_or_busbar_section_id_1=["BBS1_1", "BBS1_2"], bus_or_busbar_section_id_2=["BBS1_2", "BBS1_3"]
     )
@@ -395,6 +426,162 @@ def basic_node_breaker_network_powsybl() -> Network:
     return net
 
 
+def basic_node_breaker_network_powsybl_v2() -> Network:
+    """Create an extended node breaker network with a sixth voltage level and richer coupling layout.
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The created Powsybl network.
+    """
+    # substation_id : number of buses
+    n_buses = {1: 2, 2: 3, 3: 4, 4: 4, 5: 3}
+    net = _prepare_basic_node_breaker_network_powsybl(
+        n_subs=6,
+        n_vls=6,
+        n_buses=n_buses,
+        busbar_section_position_updates={
+            "BBS3_3": {"section_index": 2, "busbar_index": 1},
+            "BBS3_4": {"section_index": 2, "busbar_index": 2},
+        },
+    )
+
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["BBS5_1", "BBS5_1"], bus_or_busbar_section_id_2=["BBS5_2", "BBS5_3"]
+    )
+
+    lines = pd.DataFrame.from_records(
+        data=[
+            {"bus_or_busbar_section_id_1": "BBS1_1", "bus_or_busbar_section_id_2": "BBS2_1"},
+            {"bus_or_busbar_section_id_1": "BBS1_2", "bus_or_busbar_section_id_2": "BBS2_2"},
+            {"bus_or_busbar_section_id_1": "BBS1_2", "bus_or_busbar_section_id_2": "BBS3_1"},
+            {"bus_or_busbar_section_id_1": "BBS1_2", "bus_or_busbar_section_id_2": "BBS4_1"},
+            {"bus_or_busbar_section_id_1": "BBS1_2", "bus_or_busbar_section_id_2": "BBS4_2"},
+            {"bus_or_busbar_section_id_1": "BBS2_1", "bus_or_busbar_section_id_2": "BBS3_1"},
+            {"bus_or_busbar_section_id_1": "BBS2_2", "bus_or_busbar_section_id_2": "BBS3_2"},
+            {"bus_or_busbar_section_id_1": "BBS2_1", "bus_or_busbar_section_id_2": "BBS4_1"},
+            {"bus_or_busbar_section_id_1": "BBS3_1", "bus_or_busbar_section_id_2": "BBS5_1"},
+            {"bus_or_busbar_section_id_1": "BBS5_1", "bus_or_busbar_section_id_2": "VL6_1_1"},
+        ]
+    )
+    lines["r"] = 0.2
+    lines["x"] = 10
+    lines["g1"] = 0
+    lines["b1"] = 0
+    lines["g2"] = 0
+    lines["b2"] = 0
+    lines["position_order_1"] = 1
+    lines["position_order_2"] = 1
+    for i, _ in lines.iterrows():
+        lines.loc[i, "id"] = f"L{i + 1}"
+    lines = lines.set_index("id")
+
+    # display(lines)
+    lines.loc["L3", "r"] = 1
+    lines.loc["L3", "x"] = 20
+
+    pypowsybl.network.create_voltage_level_topology(
+        net, id="VL6", aligned_buses_or_busbar_count=2, switch_kinds="BREAKER, DISCONNECTOR"
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL6_1_2"], bus_or_busbar_section_id_2=["VL6_2_2"]
+    )
+    pypowsybl.network.create_load_bay(net, id="load6", bus_or_busbar_section_id="VL6_1_1", p0=100, q0=10, position_order=2)
+
+    pypowsybl.network.create_line_bays(net, lines)
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["BBS1_1"], bus_or_busbar_section_id_2=["BBS1_2"]
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["BBS2_1"], bus_or_busbar_section_id_2=["BBS2_2"]
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["BBS2_2"], bus_or_busbar_section_id_2=["BBS2_3"]
+    )
+    pypowsybl.network.create_coupling_device(
+        net,
+        bus_or_busbar_section_id_1=["BBS3_1", "BBS3_1", "BBS3_2"],
+        bus_or_busbar_section_id_2=["BBS3_2", "BBS3_3", "BBS3_4"],
+    )
+    pypowsybl.network.create_coupling_device(
+        net,
+        bus_or_busbar_section_id_1=["BBS4_1", "BBS4_1", "BBS4_1"],
+        bus_or_busbar_section_id_2=["BBS4_2", "BBS4_3", "BBS4_4"],
+    )
+
+    pypowsybl.network.create_load_bay(net, id="load1", bus_or_busbar_section_id="BBS2_1", p0=100, q0=10, position_order=1)
+    pypowsybl.network.create_load_bay(net, id="load2", bus_or_busbar_section_id="BBS3_2", p0=100, q0=10, position_order=2)
+    pypowsybl.network.create_generator_bay(
+        net,
+        id="generator1",
+        max_p=1000,
+        min_p=0,
+        voltage_regulator_on=True,
+        target_p=50,
+        target_q=10,
+        target_v=225,
+        bus_or_busbar_section_id="BBS1_1",
+        position_order=1,
+    )
+    pypowsybl.network.create_generator_bay(
+        net,
+        id="generator2",
+        max_p=1000,
+        min_p=0,
+        voltage_regulator_on=True,
+        target_p=50,
+        target_q=10,
+        target_v=225,
+        bus_or_busbar_section_id="BBS1_2",
+        position_order=1,
+    )
+    pypowsybl.network.create_generator_bay(
+        net,
+        id="generator3",
+        max_p=1000,
+        min_p=0,
+        voltage_regulator_on=True,
+        target_p=100,
+        target_q=10,
+        target_v=225,
+        bus_or_busbar_section_id="BBS5_3",
+        position_order=2,
+    )
+    limits = pd.DataFrame.from_records(
+        data=[
+            {
+                "element_id": "L1",
+                "value": 90,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "L2",
+                "value": 90,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "L3",
+                "value": 90,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+        ],
+        index="element_id",
+    )
+    net.create_operational_limits(limits)
+    net.update_switches(id="VL5_BREAKER", open=True)
+
+    return net
+
+
 def powsybl_case9241() -> pypowsybl.network.Network:
     """Load the Powsybl case9241 grid.
 
@@ -404,6 +591,20 @@ def powsybl_case9241() -> pypowsybl.network.Network:
         The loaded Powsybl pegase case9241 network.
     """
     pandapower_net = pandapower.networks.case9241pegase()
+    net = load_pandapower_net_for_powsybl(pandapower_net, check_trafo_resistance=False)
+
+    return net
+
+
+def powsybl_case1354() -> pypowsybl.network.Network:
+    """Load the Powsybl case1354 grid.
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The loaded Powsybl pegase case1354 network.
+    """
+    pandapower_net = pandapower.networks.case1354pegase()
     net = load_pandapower_net_for_powsybl(pandapower_net, check_trafo_resistance=False)
 
     return net

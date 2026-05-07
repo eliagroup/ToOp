@@ -361,7 +361,7 @@ def build_dc_config(base_path: str, static_info_file: Path) -> DictConfig:
             "lf_config": {"distributed": False},
             "ga_config": {
                 "runtime_seconds": 30,
-                "me_descriptors": [{"metric": "split_subs", "num_cells": 10}],
+                "me_descriptors": [{"metric": "split_subs", "num_cells": 5}],
                 "observed_metrics": ["overload_energy_n_1", "split_subs"],
             },
         }

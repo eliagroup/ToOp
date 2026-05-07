@@ -467,17 +467,21 @@ def compute_remaining_loadflows(
 
     # Update the N-1 definitions in the runners to now include only the non-critical contingencies.
     logger.info(f"Running N-1 analysis with {len(remaining_cases[0])} non-critical contingencies per timestep.")
-    update_runner_nminus1(runners, original_n_minus1_defs, remaining_cases)
+    if all(len(cases) == 0 for cases in remaining_cases):
+        lfs = loadflows_subset
+        additional_info_remaining = [runner.get_last_action_info() for runner in runners]
+    else:
+        update_runner_nminus1(runners, original_n_minus1_defs, remaining_cases)
 
-    lfs_remaining, additional_info_remaining = compute_loadflow(
-        actions=[topo.actions for topo in strategy],
-        disconnections=[topo.disconnections for topo in strategy],
-        pst_setpoints=[topo.pst_setpoints for topo in strategy],
-        runners=runners,
-        n_timestep_processes=n_timestep_processes,
-    )
+        lfs_remaining, additional_info_remaining = compute_loadflow(
+            actions=[topo.actions for topo in strategy],
+            disconnections=[topo.disconnections for topo in strategy],
+            pst_setpoints=[topo.pst_setpoints for topo in strategy],
+            runners=runners,
+            n_timestep_processes=n_timestep_processes,
+        )
 
-    lfs = concatenate_loadflow_results_polars([loadflows_subset, lfs_remaining])
+        lfs = concatenate_loadflow_results_polars([loadflows_subset, lfs_remaining])
 
     # We can pass the additional info from either critical or non critical contingencies as they are the same
     metrics = compute_metrics(

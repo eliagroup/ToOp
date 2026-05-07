@@ -61,8 +61,8 @@ class ImportResult(BaseModel):
     n_tie_line_disconnectable: NonNegativeInt = 0
     """The number of tie lines that are disconnectable"""
 
-    n_dangling_line_for_nminus1: NonNegativeInt = 0
-    """The number of dangling lines in the N-1 definition"""
+    n_boundary_line_for_nminus1: NonNegativeInt = 0
+    """The number of boundary lines in the N-1 definition"""
 
     n_generator_for_nminus1: NonNegativeInt = 0
     """The number of generators in the N-1 definition"""

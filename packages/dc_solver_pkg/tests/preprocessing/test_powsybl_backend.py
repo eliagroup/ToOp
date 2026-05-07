@@ -133,7 +133,7 @@ def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
 
     busses = backend.net.get_buses()
     injections = backend.net.get_injections()
-    injections["tie_line_id"] = backend.net.get_dangling_lines()["tie_line_id"]
+    injections["tie_line_id"] = backend.net.get_boundary_lines()["tie_line_id"]
     injections = injections[(injections.tie_line_id == "") | (injections.tie_line_id.isna())]
     busses["p"] = injections.groupby("bus_id")["p"].sum()
     busses["p"] = busses["p"].fillna(0)

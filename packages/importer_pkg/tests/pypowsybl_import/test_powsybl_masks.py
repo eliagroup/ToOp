@@ -15,6 +15,7 @@ import pandas as pd
 import pypowsybl
 import pytest
 from fsspec.implementations.local import LocalFileSystem
+from pypowsybl.network import Network
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
 from toop_engine_interfaces.folder_structure import (
@@ -258,8 +259,8 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
     assert np.array_equal(updated_masks.relevant_subs, network_masks.relevant_subs)
 
 
-def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network_powsybl_network_graph):
-    network = basic_node_breaker_network_powsybl_network_graph
+def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network_powsybl_grid: Network):
+    network = basic_node_breaker_network_powsybl_grid
     importer_parameters = CgmesImporterParameters(
         grid_model_file=Path("cgmes_file.zip"),
         data_folder="data_folder",

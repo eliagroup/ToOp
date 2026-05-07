@@ -10,12 +10,14 @@ import pytest
 from pypowsybl.loadflow import run_ac, run_dc
 from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
+    basic_node_breaker_network_powsybl_v2,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     create_complex_substation_layout_grid,
     powsybl_case30_with_psts,
     powsybl_case1354,
     powsybl_case9241,
     powsybl_extended_case57,
+    three_node_pst_example,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_pandapower_net_for_powsybl
 
@@ -58,6 +60,14 @@ def test_basic_node_breaker_network_powsybl_converges():
     assert result_ac[0].status_text == "Converged"
 
 
+def test_basic_node_breaker_network_powsybl_v2_converges():
+    net = basic_node_breaker_network_powsybl_v2()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
+
+
 def test_create_complex_grid_battery_hvdc_svc_3w_trafo_converges():
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
     result_dc = run_dc(net)
@@ -76,6 +86,10 @@ def test_create_complex_substation_layout_grid_converges():
 
 def test_powsybl_case1354_converges():
     net = powsybl_case1354()
+
+
+def test_three_node_pst_example_converges():
+    net = three_node_pst_example()
     result_dc = run_dc(net)
     assert result_dc[0].status_text == "Converged"
     result_ac = run_ac(net)

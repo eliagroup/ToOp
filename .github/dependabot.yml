@@ -22,14 +22,8 @@ updates:
     schedule:
       interval: "weekly"
     groups:
-      production:
-        dependency-type: "production"
-        patterns:
-          - "*"
-      development:
-        dependency-type: "development"
-        patterns:
-          - "*"
+      monorepo-dependencies:
+        group-by: dependency-name
     cooldown:
       default-days: 10
   - package-ecosystem: "docker"

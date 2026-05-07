@@ -12,8 +12,8 @@ Note that these methods are simply wrappers to use existing functionality in a s
 """
 
 import json
+import logging
 import os
-import shutil
 
 # Keep warnings under control
 import warnings
@@ -31,8 +31,10 @@ from beartype.typing import Literal, Optional, Tuple
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from omegaconf import DictConfig
+from structlog import DropEvent
+from toop_engine_dc_solver.export.export import get_changing_switches_from_action_set
 from toop_engine_dc_solver.jax.types import StaticInformation
-from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
+from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
     PandapowerRunner,
 )
@@ -60,6 +62,7 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
@@ -73,22 +76,55 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import Static
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.stored_action_set import load_action_set as load_stored_action_set
+from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep
+from toop_engine_topology_optimizer.ac.summary import changing_switches_to_orao_dict
 from toop_engine_topology_optimizer.dc.main import CLIArgs
 from toop_engine_topology_optimizer.dc.main import main as opt_main
-
-# Local project imports
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
     BatchedMEParameters,
     LoadflowSolverParameters,
 )
-from tqdm import tqdm
 
-logger = structlog.get_logger(__name__)
+# Local project imports
+from toop_engine_topology_optimizer.interfaces.messages.results import Metrics
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 # JAX configuration
 jax.config.update("jax_enable_x64", True)
+
+
+def suppress_jax_logs() -> None:
+    """Disables jax debug logs spamming the console"""
+
+    def _drop_jax_logs(_logger, _method_name, event_dict: dict[str, str]) -> dict[str, str]:  # noqa: ANN001
+        logger_name = event_dict.get("logger", "")
+        if logger_name.startswith(("jax", "jaxlib", "xla", "absl")):
+            raise DropEvent
+        return event_dict
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    logging.getLogger("jax").setLevel(logging.WARNING)
+    logging.getLogger("jaxlib").setLevel(logging.WARNING)
+    logging.getLogger("xla").setLevel(logging.WARNING)
+    logging.getLogger("absl").setLevel(logging.WARNING)
+
+    structlog.configure(
+        processors=[
+            _drop_jax_logs,
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer(),
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+    )
+
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -344,25 +380,10 @@ def run_preprocessing(
         The extracted static information from the grid.
     """
     logger.info("Starting file conversion via preprocessing.convert_file")
-    import_result = preprocessing.convert_file(
+    _import_result = preprocessing.convert_file(
         importer_parameters=importer_parameters, status_update_fn=empty_status_update_fn
     )
 
-    tqdm.write(
-        (
-            f"Converted {importer_parameters.grid_model_file.stem} - "
-            f"subs: {import_result.n_relevant_subs}, "
-            f"lines n-1: {import_result.n_line_for_nminus1}, "
-            f"trafos n-1: {import_result.n_trafo_for_nminus1}, "
-            f"lines reward: {import_result.n_line_for_reward}, "
-            f"trafos reward: {import_result.n_trafo_for_reward}, "
-            f"lines disconnectable: {import_result.n_line_disconnectable}, "
-            f"trafos disconnectable: {import_result.n_trafo_disconnectable}, "
-            f"tie lines disconnectable: {import_result.n_tie_line_disconnectable}, "
-            f"low impedance lines: {import_result.n_low_impedance_lines}, "
-            f"branches across switch: {import_result.n_branch_across_switch}"
-        )
-    )
     lf_params = load_lf_params_from_fs(
         DirFileSystem(data_folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -376,11 +397,6 @@ def run_preprocessing(
     )
 
     logger.info(", ".join([f"{k}: {v}" for k, v in dict(info).items()]))
-
-    # Create zip archives for convenience (keeps original behaviour)
-    file_to_zip = data_folder / PREPROCESSING_PATHS["static_information_file_path"]
-    zip_path = data_folder / "static_information.zip"
-    shutil.make_archive(str(zip_path).replace(".zip", ""), "zip", root_dir=file_to_zip.parent, base_dir=file_to_zip.name)
 
     logger.info("Preprocessing completed.")
     return info, static_information
@@ -496,7 +512,7 @@ def calculate_and_save_loadflow_results(
     topology_path: Path,
     actions: Optional[list[int]] = None,
     disconnections: Optional[list[int]] = None,
-) -> None:
+) -> tuple[LoadflowResultsPolars, Optional[AdditionalActionInfo]]:
     """
     Calculate AC and DC loadflow results using the provided runner and saves the results as CSV files.
 
@@ -513,8 +529,9 @@ def calculate_and_save_loadflow_results(
 
     Returns
     -------
-    None
-        This function does not return anything. It saves the results to CSV files:
+    tuple[LoadflowResultsPolars, Optional[AdditionalActionInfo]]
+        The computed AC loadflow results and the action metadata captured for the AC run.
+        This function also saves the results to CSV files:
         - "ac_loadflow_results.csv"
         - "dc_loadflow_results.csv"
         in the specified `topology_path` directory.
@@ -524,9 +541,66 @@ def calculate_and_save_loadflow_results(
     if disconnections is None:
         disconnections = []
     ac_loadflow_results = runner.run_ac_loadflow(actions, disconnections)
+    ac_action_info = runner.get_last_action_info()
     ac_loadflow_results.branch_results.collect().write_csv(topology_path / "ac_loadflow_results.csv")
     dc_loadflow_results = runner.run_dc_loadflow(actions, disconnections)
     dc_loadflow_results.branch_results.collect().write_csv(topology_path / "dc_loadflow_results.csv")
+    return ac_loadflow_results, ac_action_info
+
+
+def save_ac_metrics_summary(
+    runner: AbstractLoadflowRunner,
+    topology_path: Path,
+    loadflow_results: LoadflowResultsPolars,
+    actions: list[int],
+    disconnections: list[int],
+    additional_info: Optional[AdditionalActionInfo],
+    dc_info: dict,
+    output_file_name: str = "ac_metrics.json",
+) -> Metrics:
+    """Save the AC metrics for a topology as JSON.
+
+    Parameters
+    ----------
+    runner : AbstractLoadflowRunner
+        The loadflow runner used to compute the loadflow results.
+    topology_path : Path
+        The output directory for the topology artifacts.
+    loadflow_results : LoadflowResultsPolars
+        The AC loadflow results for the topology.
+    actions : list[int]
+        The topology actions applied to the grid.
+    disconnections : list[int]
+        The branch disconnections applied to the grid.
+    additional_info : Optional[AdditionalActionInfo]
+        Additional action metadata captured during the AC loadflow.
+    dc_info: dict
+        Any additional data from the DC run that is added for awareness
+    output_file_name : str, optional
+        The name of the JSON file to write, by default "ac_metrics.json".
+
+    Returns
+    -------
+    Metrics
+        The computed AC metrics for the topology.
+    """
+    nminus1_definition = runner.get_nminus1_definition()
+    base_case_id = nminus1_definition.base_case.id if nminus1_definition.base_case is not None else None
+    metrics = compute_metrics_single_timestep(
+        actions=actions,
+        disconnections=disconnections,
+        loadflow=loadflow_results,
+        additional_info=additional_info,
+        base_case_id=base_case_id,
+    )
+
+    res_dict = metrics.model_dump()
+    res_dict["dc_info"] = dc_info
+
+    with (topology_path / output_file_name).open("w", encoding="utf-8") as file_handle:
+        json.dump(res_dict, file_handle, indent=2)
+
+    return metrics
 
 
 def create_loadflow_runner(
@@ -585,6 +659,41 @@ def create_loadflow_runner(
     return runner
 
 
+def save_orao_summary(
+    action_set: ActionSet,
+    output_dir: Path,
+    actions: Optional[list[int]] = None,
+    disconnections: Optional[list[int]] = None,
+) -> None:
+    """Save the switching actions for a topology in ORAO-compatible JSON format.
+
+    Parameters
+    ----------
+    action_set : ActionSet
+        The action set that contains the switch update definitions.
+    output_dir : Path
+        The directory where the ORAO summary JSON file should be written.
+    actions : Optional[list[int]], optional
+        The topology actions applied to the grid. Defaults to an empty list.
+    disconnections : Optional[list[int]], optional
+        The branch disconnections applied to the grid. Defaults to an empty list.
+    """
+    if actions is None:
+        actions = []
+    if disconnections is None:
+        disconnections = []
+
+    switch_updates = get_changing_switches_from_action_set(
+        action_set=action_set,
+        actions=actions,
+        disconnections=disconnections,
+    )
+    orao_summary = changing_switches_to_orao_dict(switch_updates)
+
+    with (output_dir / "orao_summary.json").open("w", encoding="utf-8") as file_handle:
+        json.dump(orao_summary, file_handle)
+
+
 def save_slds_of_split_stations(
     action_set: ActionSet, actions: list[int], output_dir: Path, network: pypowsybl.network.Network
 ) -> None:
@@ -635,6 +744,11 @@ def save_slds_of_split_stations(
         logger.info(f"Saved SLD for station {station_name} to {sld_path}")
 
 
+def _get_serialized_topology_fitness(topology: dict) -> float:
+    """Return the DC fitness from a serialized topology."""
+    return float(topology["metrics"]["fitness"])
+
+
 def perform_ac_analysis(
     data_folder: Path, optimisation_run_path: Path, ac_validation_cfg: DictConfig, pandapower_runner: bool = False
 ) -> list[Path]:
@@ -678,6 +792,7 @@ def perform_ac_analysis(
         res = json.load(f)
 
     best_topos = res["best_topos"]
+    best_topos = sorted(best_topos, key=_get_serialized_topology_fitness, reverse=True)  # Sort by fitness, best first
     logger.info("Starting AC validation stage...")
     if len(best_topos) == 0 or best_topos is None:
         logger.warning("No topologies found in DC optimization results. Skipping AC analysis.")
@@ -691,14 +806,37 @@ def perform_ac_analysis(
     n_assessed_topos = min(ac_validation_cfg.get("k_best_topos", 1), len(best_topos))
     logger.info(f"Performing AC analysis on the top {n_assessed_topos} topologies...")
 
+    unsplit_runner = create_loadflow_runner(
+        data_folder, grid_path, n_processes=ac_validation_cfg.get("n_processes", 1), pandaflow_runner=pandapower_runner
+    )
+    unsplit_loadflow_results = unsplit_runner.run_ac_loadflow([], [])
+    unsplit_action_info = unsplit_runner.get_last_action_info()
+    save_ac_metrics_summary(
+        runner=unsplit_runner,
+        topology_path=optimisation_run_path,
+        loadflow_results=unsplit_loadflow_results,
+        actions=[],
+        disconnections=[],
+        additional_info=unsplit_action_info,
+        dc_info={
+            "actions": [],
+            "disconnections": [],
+            "fitness": res.get("initial_fitness"),
+            "metrics": res.get("initial_metrics", {}),
+        },
+        output_file_name="unsplit_ac_metrics.json",
+    )
+
     topology_paths = []
+    best_ac_fitness: float | None = None
+    best_ac_topology_path: Path | None = None
     for topology_index in range(n_assessed_topos):
         topology_path = optimisation_run_path / f"topology_{topology_index}"
         topology_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Topology stored in: {topology_path}")
 
-        actions = best_topos[topology_index].get("actions")
-        disconnections = best_topos[topology_index].get("disconnections")
+        actions = best_topos[topology_index].get("actions") or []
+        disconnections = best_topos[topology_index].get("disconnections") or []
 
         out_modified = topology_path / "modified_network.xiidm"
 
@@ -712,7 +850,30 @@ def perform_ac_analysis(
         loadflow_runner.load_base_grid(out_modified)
 
         logger.info("Running AC loadflow...")
-        calculate_and_save_loadflow_results(loadflow_runner, topology_path, actions, disconnections)
+        ac_loadflow_results, ac_action_info = calculate_and_save_loadflow_results(
+            loadflow_runner, topology_path, actions, disconnections
+        )
+        ac_metrics = save_ac_metrics_summary(
+            runner=loadflow_runner,
+            topology_path=topology_path,
+            loadflow_results=ac_loadflow_results,
+            actions=actions,
+            disconnections=disconnections,
+            additional_info=ac_action_info,
+            dc_info=best_topos[topology_index],
+        )
+        if best_ac_fitness is None or ac_metrics.fitness < best_ac_fitness:
+            best_ac_fitness = ac_metrics.fitness
+            best_ac_topology_path = topology_path
+
+        if not pandapower_runner:
+            logger.info("Saving ORAO summary...")
+            save_orao_summary(
+                action_set=action_set,
+                output_dir=topology_path,
+                actions=actions,
+                disconnections=disconnections,
+            )
 
         logger.info("Saving SLDs of split stations...")
 
@@ -720,13 +881,43 @@ def perform_ac_analysis(
             # Only for powsybl networks, we get the SLDs for the split stations
             save_slds_of_split_stations(action_set, actions, topology_path, modified_net)
         topology_paths.append(topology_path)
+    if best_ac_fitness is not None and best_ac_topology_path is not None:
+        logger.info(f"Best AC fitness {best_ac_fitness} found in folder: {best_ac_topology_path}")
     logger.info("AC validation completed.")
     return topology_paths
 
 
+def get_run_dir(optimizer_snapshot_dir: Path) -> Path:
+    """Get the next available run directory inside the optimizer snapshot directory.
+
+    This function checks for existing run directories (named 'run_0', 'run_1', etc.) inside the specified
+    optimizer snapshot directory and creates a new directory with the next available index.
+
+    Parameters
+    ----------
+    optimizer_snapshot_dir : Path
+        The path to the optimizer snapshot directory where run directories are stored.
+
+    Returns
+    -------
+    Path
+        The path to the newly created run directory (e.g., 'run_0', 'run_1', etc.).
+    """
+    # Find next available run directory inside optimizer_snapshot_dir
+
+    run_idx = 0
+    while True:
+        run_dir = optimizer_snapshot_dir / f"run_{run_idx}"
+        if not run_dir.exists():
+            run_dir.mkdir(parents=True)
+            break
+        run_idx += 1
+    return run_dir
+
+
 def run_dc_optimization_stage(
     dc_optim_config: dict | DictConfig,
-    optimizer_snapshot_dir: Path,
+    run_dir: Path,
 ) -> Path:
     """
     Run the DC optimization stage and save the results.
@@ -735,8 +926,9 @@ def run_dc_optimization_stage(
     ----------
     dc_optim_config : dict
         Configuration dictionary for the DC optimization stage.
-    optimizer_snapshot_dir : Path
-        Directory where the optimizer snapshot results will be saved.
+    run_dir: Path
+        The directory where the results of this optimization run will be saved. This should be an
+        empty folder, otherwise data will be overwritten.
 
     Returns
     -------
@@ -746,17 +938,7 @@ def run_dc_optimization_stage(
     logger.info("Running DC optimization...")
     optimisation_result = run_dc_optimization(dc_optim_config=dc_optim_config)
     logger.info("DC optimization completed.")
-
-    # Save optimizer results as res.json in optimizer_snapshot folder inside grid_path
-    # Find next available run directory inside optimizer_snapshot_dir
-    run_idx = 0
-    while True:
-        run_dir = optimizer_snapshot_dir / f"run_{run_idx}"
-        if not run_dir.exists():
-            run_dir.mkdir(parents=True)
-            break
-        run_idx += 1
-
+    # Save optimizer results as res.json in run_dir folder inside grid_path
     res_json_path = run_dir / "res.json"
     with open(res_json_path, "w") as f:
         json.dump(optimisation_result, f, indent=2, default=str)
@@ -831,9 +1013,10 @@ def run_pipeline(
         # DC Optimization stage. Can be skipped if results already exist. But if this is set to False, a valid
         # optimisation_run_dir must be provided for the AC validation stage. The run_dir should contain a res.json file.
         # which will be used by the AC validation stage.
-        run_dir = run_dc_optimization_stage(
+        run_dir = get_run_dir(optimizer_snapshot_dir)
+        run_dc_optimization_stage(
             dc_optim_config,
-            optimizer_snapshot_dir,
+            run_dir,
         )
     else:
         logger.info("Skipping DC optimization stage as per configuration.")

@@ -189,6 +189,8 @@ def _get_supported_observed_metrics(dynamic_information, solver_config):
 
     if dynamic_information.nodal_injection_information is not None:
         metrics.append("pst_switching_distance")
+        metrics.append("pst_switching_distance_squared")
+        metrics.append("pst_activated")
 
     if dynamic_information.n2_baseline_analysis is not None:
         metrics.append("n_2_penalty")
@@ -225,7 +227,10 @@ def _initialize_small_optimizer(static_information_file: Path, batch_size: int):
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=0.0,
+            pst_mutation_probability=0.0,
+            pst_reset_probability=0.0,
             pst_n_taps=dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=dynamic_information.nodal_injection_information.starting_tap_idx,
         )
         if dynamic_information.nodal_injection_information is not None
         else None,
@@ -309,7 +314,10 @@ def main() -> None:
         ),
         nodal_injection_mutation_config=NodalInjectionMutationConfig(
             pst_mutation_sigma=0.0,
+            pst_mutation_probability=0.0,
+            pst_reset_probability=0.0,
             pst_n_taps=dynamic_information.nodal_injection_information.pst_n_taps,
+            pst_start_tap_idx=dynamic_information.nodal_injection_information.starting_tap_idx,
         )
         if dynamic_information.nodal_injection_information is not None
         else None,
@@ -660,7 +668,10 @@ def main() -> None:
             random_key=rk,
             pst_taps=pst_taps,
             pst_n_taps=mutation_config.nodal_injection_mutation_config.pst_n_taps,
+            pst_starting_taps=mutation_config.nodal_injection_mutation_config.pst_start_tap_idx,
             pst_mutation_sigma=mutation_config.nodal_injection_mutation_config.pst_mutation_sigma,
+            pst_mutation_probability=mutation_config.nodal_injection_mutation_config.pst_mutation_probability,
+            pst_reset_probability=mutation_config.nodal_injection_mutation_config.pst_reset_probability,
         )
     )
     mutate_nodal_injections_jit = jax.jit(

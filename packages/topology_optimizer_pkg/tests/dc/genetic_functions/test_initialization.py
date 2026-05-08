@@ -108,6 +108,25 @@ def test_update_static_information_overrides_busbar_penalty(static_information_f
     assert updated.dynamic_information.bb_outage_baseline_analysis.more_splits_penalty == 125.0
 
 
+def test_update_static_information_removes_busbar_data_when_disabled(static_information_file: str) -> None:
+    static_information = load_static_information(static_information_file)
+
+    updated = update_static_information(
+        (static_information,),
+        batch_size=3,
+        enable_nodal_inj_optim=False,
+        enable_bb_outage=False,
+        bb_outage_as_nminus1=False,
+        clip_bb_outage_penalty=False,
+        bb_outage_more_islands_penalty=125.0,
+    )[0]
+
+    assert updated.solver_config.enable_bb_outages is False
+    assert updated.dynamic_information.bb_outage_baseline_analysis is None
+    assert updated.dynamic_information.non_rel_bb_outage_data is None
+    assert updated.dynamic_information.action_set.rel_bb_outage_data is None
+
+
 def test_initialize_genetic_algorithm(
     static_information_file: str,
 ) -> None:

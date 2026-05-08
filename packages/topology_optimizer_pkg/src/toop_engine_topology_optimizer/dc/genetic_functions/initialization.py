@@ -263,7 +263,7 @@ def update_static_information(
 ) -> tuple[StaticInformation, ...]:
     """Perform any necessary preprocessing on the static information.
 
-    This harmonizes the static informations and makes sure some information that is optional in the solver is always there.
+    This mainly applies updated optimization parameters such as batch size, busbar settings, etc.
 
     Parameters
     ----------
@@ -292,60 +292,23 @@ def update_static_information(
     list[StaticInformation]
         The updated static informations
     """
-    dynamic_informations = [static_information.dynamic_information for static_information in static_informations]
-    # Furthermore, we want to make sure that we always have limited max mw flows to be able to
-    # compute those metrics
-    dynamic_informations = [
-        replace(
-            dynamic_information,
-            branch_limits=replace(
-                dynamic_information.branch_limits,
-                max_mw_flow_limited=dynamic_information.branch_limits.max_mw_flow
-                if dynamic_information.branch_limits.max_mw_flow_limited is None
-                else dynamic_information.branch_limits.max_mw_flow_limited,
-                n0_n1_max_diff=jnp.zeros_like(dynamic_information.branch_limits.max_mw_flow)
-                if dynamic_information.branch_limits.n0_n1_max_diff is None
-                else dynamic_information.branch_limits.n0_n1_max_diff,
-            ),
-            nodal_injection_information=dynamic_information.nodal_injection_information if enable_nodal_inj_optim else None,
-            bb_outage_baseline_analysis=(
-                replace(
-                    dynamic_information.bb_outage_baseline_analysis
-                    if dynamic_information.bb_outage_baseline_analysis is not None
-                    else get_bb_outage_baseline_analysis(dynamic_information, bb_outage_more_islands_penalty),
-                    more_splits_penalty=jnp.array(bb_outage_more_islands_penalty),
-                )
-                if dynamic_information.bb_outage_baseline_analysis is not None
-                or (
-                    not bb_outage_as_nminus1
-                    and dynamic_information.action_set.rel_bb_outage_data is not None
-                    and dynamic_information.branches_monitored.size > 0
-                )
-                else dynamic_information.bb_outage_baseline_analysis
-            ),
+    updated_pairs = []
+    for static_information in static_informations:
+        solver_config, dynamic_information = update_single_pair_branch_limit_information(
+            solver_config=static_information.solver_config,
+            dynamic_information=static_information.dynamic_information,
+            batch_size=batch_size,
+            enable_nodal_inj_optim=enable_nodal_inj_optim,
         )
-        for dynamic_information in dynamic_informations
-    ]
-
-    # Make sure all the solver configs have the correct batch size
-    solver_configs = []
-    for static_information, dynamic_information in zip(static_informations, dynamic_informations, strict=True):
-        solver_config = static_information.solver_config
-        has_bb_outage_data = (
-            dynamic_information.bb_outage_baseline_analysis is not None
-            or dynamic_information.non_rel_bb_outage_data is not None
-            or dynamic_information.action_set.rel_bb_outage_data is not None
+        solver_config, dynamic_information = update_single_pair_bb_outage_information(
+            solver_config=solver_config,
+            dynamic_information=dynamic_information,
+            enable_bb_outage=enable_bb_outage,
+            bb_outage_as_nminus1=bb_outage_as_nminus1,
+            clip_bb_outage_penalty=clip_bb_outage_penalty,
+            bb_outage_more_islands_penalty=bb_outage_more_islands_penalty,
         )
-        solver_configs.append(
-            replace(
-                solver_config,
-                batch_size_bsdf=batch_size,
-                batch_size_injection=batch_size,
-                enable_bb_outages=enable_bb_outage and has_bb_outage_data,
-                bb_outage_as_nminus1=bb_outage_as_nminus1,
-                clip_bb_outage_penalty=clip_bb_outage_penalty,
-            )
-        )
+        updated_pairs.append((solver_config, dynamic_information))
 
     static_informations = [
         replace(
@@ -353,12 +316,141 @@ def update_static_information(
             solver_config=solver_config,
             dynamic_information=dynamic_information,
         )
-        for static_information, solver_config, dynamic_information in zip(
-            static_informations, solver_configs, dynamic_informations, strict=True
-        )
+        for static_information, (solver_config, dynamic_information) in zip(static_informations, updated_pairs, strict=True)
     ]
 
     return tuple(static_informations)
+
+
+def update_single_pair_branch_limit_information(
+    solver_config: SolverConfig,
+    dynamic_information: DynamicInformation,
+    batch_size: int,
+    enable_nodal_inj_optim: bool,
+) -> tuple[SolverConfig, DynamicInformation]:
+    """Normalize branch-limit and nodal-injection data for one timestep.
+
+    This helper applies the optimizer batch size to the solver config and fills branch-limit fields
+    that the optimizer assumes are always present at runtime. It also drops nodal injection payloads
+    when nodal injection optimization is disabled to avoid carrying unused GPU data.
+
+    Parameters
+    ----------
+    solver_config : SolverConfig
+        The solver configuration for one static information object.
+    dynamic_information : DynamicInformation
+        The runtime data paired with ``solver_config``.
+    batch_size : int
+        The batch size to write into both batch dimensions of the solver config.
+    enable_nodal_inj_optim : bool
+        Whether nodal injection optimization is enabled.
+
+    Returns
+    -------
+    tuple[SolverConfig, DynamicInformation]
+        The updated solver config and dynamic information pair.
+    """
+    updated_solver_config = replace(
+        solver_config,
+        batch_size_bsdf=batch_size,
+        batch_size_injection=batch_size,
+    )
+    updated_dynamic_information = replace(
+        dynamic_information,
+        branch_limits=replace(
+            dynamic_information.branch_limits,
+            max_mw_flow_limited=(
+                dynamic_information.branch_limits.max_mw_flow
+                if dynamic_information.branch_limits.max_mw_flow_limited is None
+                else dynamic_information.branch_limits.max_mw_flow_limited
+            ),
+            n0_n1_max_diff=(
+                jnp.zeros_like(dynamic_information.branch_limits.max_mw_flow)
+                if dynamic_information.branch_limits.n0_n1_max_diff is None
+                else dynamic_information.branch_limits.n0_n1_max_diff
+            ),
+        ),
+        nodal_injection_information=(dynamic_information.nodal_injection_information if enable_nodal_inj_optim else None),
+    )
+    return updated_solver_config, updated_dynamic_information
+
+
+def update_single_pair_bb_outage_information(
+    solver_config: SolverConfig,
+    dynamic_information: DynamicInformation,
+    enable_bb_outage: bool,
+    bb_outage_as_nminus1: bool,
+    clip_bb_outage_penalty: bool,
+    bb_outage_more_islands_penalty: float,
+) -> tuple[SolverConfig, DynamicInformation]:
+    """Apply runtime busbar-outage configuration for one timestep.
+
+    Busbar outage data is persisted during preprocessing so it can be reused at optimization time.
+    This helper decides whether that payload is actually needed for the current run. When busbar
+    outages are disabled, the associated runtime data is stripped from the dynamic information to
+    reduce memory use. When enabled, the solver config is updated and the baseline penalty analysis
+    is refreshed to match the requested islanding penalty.
+
+    Parameters
+    ----------
+    solver_config : SolverConfig
+        The solver configuration for one static information object.
+    dynamic_information : DynamicInformation
+        The runtime data paired with ``solver_config``.
+    enable_bb_outage : bool
+        Whether the optimizer should use busbar outage data when available.
+    bb_outage_as_nminus1 : bool
+        Whether busbar outages should be treated as additional N-1 contingencies.
+    clip_bb_outage_penalty : bool
+        Whether the busbar outage penalty should be clipped at zero.
+    bb_outage_more_islands_penalty : float
+        Penalty applied when a busbar outage creates more islands than the unsplit baseline.
+
+    Returns
+    -------
+    tuple[SolverConfig, DynamicInformation]
+        The updated solver config and dynamic information pair.
+    """
+    has_bb_outage_data = (
+        dynamic_information.bb_outage_baseline_analysis is not None
+        or dynamic_information.non_rel_bb_outage_data is not None
+        or dynamic_information.action_set.rel_bb_outage_data is not None
+    )
+    should_enable_bb_outage = enable_bb_outage and has_bb_outage_data
+
+    updated_solver_config = replace(
+        solver_config,
+        enable_bb_outages=should_enable_bb_outage,
+        bb_outage_as_nminus1=bb_outage_as_nminus1,
+        clip_bb_outage_penalty=clip_bb_outage_penalty,
+    )
+    updated_action_set = (
+        dynamic_information.action_set
+        if should_enable_bb_outage
+        else replace(dynamic_information.action_set, rel_bb_outage_data=None)
+    )
+    updated_dynamic_information = replace(
+        dynamic_information,
+        action_set=updated_action_set,
+        bb_outage_baseline_analysis=(
+            replace(
+                dynamic_information.bb_outage_baseline_analysis
+                if dynamic_information.bb_outage_baseline_analysis is not None
+                else get_bb_outage_baseline_analysis(dynamic_information, bb_outage_more_islands_penalty),
+                more_splits_penalty=jnp.array(bb_outage_more_islands_penalty),
+            )
+            if dynamic_information.bb_outage_baseline_analysis is not None
+            or (
+                should_enable_bb_outage
+                and not bb_outage_as_nminus1
+                and dynamic_information.action_set.rel_bb_outage_data is not None
+                and dynamic_information.branches_monitored.size > 0
+            )
+            else None
+        ),
+        non_rel_bb_outage_data=(dynamic_information.non_rel_bb_outage_data if should_enable_bb_outage else None),
+    )
+    return updated_solver_config, updated_dynamic_information
 
 
 # ruff: noqa: PLR0913

@@ -110,6 +110,19 @@ def test_update_static_information_overrides_busbar_penalty(static_information_f
 
 def test_update_static_information_removes_busbar_data_when_disabled(static_information_file: str) -> None:
     static_information = load_static_information(static_information_file)
+    static_information = replace(
+        static_information,
+        dynamic_information=replace(
+            static_information.dynamic_information,
+            bb_outage_baseline_analysis=BBOutageBaselineAnalysis(
+                overload=jnp.array(1.0),
+                success_count=jnp.array(2),
+                more_splits_penalty=jnp.array(50.0),
+                overload_weight=static_information.dynamic_information.branch_limits.overload_weight,
+                max_mw_flow=static_information.dynamic_information.branch_limits.max_mw_flow,
+            ),
+        ),
+    )
 
     updated = update_static_information(
         (static_information,),

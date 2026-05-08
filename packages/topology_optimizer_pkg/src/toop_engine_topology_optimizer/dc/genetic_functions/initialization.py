@@ -289,7 +289,7 @@ def update_static_information(
 
     Returns
     -------
-    list[StaticInformation]
+    tuple[StaticInformation, ...]
         The updated static informations
     """
     updated_pairs = []
@@ -423,8 +423,8 @@ def update_single_pair_bb_outage_information(
     needs_penalty_baseline = (
         should_enable_bb_outage and not bb_outage_as_nminus1 and has_rel_bb_outage_data and has_monitored_branches
     )
-    # Keep an existing baseline whenever one was loaded, otherwise only build one for penalty mode.
-    should_keep_or_create_baseline = has_stored_bb_outage_baseline or needs_penalty_baseline
+    # Keep or create a baseline only when busbar outages stay enabled for this run.
+    should_keep_or_create_baseline = should_enable_bb_outage and (has_stored_bb_outage_baseline or needs_penalty_baseline)
 
     updated_solver_config = replace(
         solver_config,

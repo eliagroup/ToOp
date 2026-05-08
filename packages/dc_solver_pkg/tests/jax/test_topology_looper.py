@@ -368,6 +368,18 @@ def test_run_solver_symmetric_with_bb_outage(
     network_data_preprocessed: NetworkData,
 ) -> None:
     static_information = convert_to_jax(network_data_preprocessed, preprocess_bb_outages=True)
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            enable_bb_outages=True,
+            bb_outage_as_nminus1=True,
+        ),
+        dynamic_information=replace(
+            static_information.dynamic_information,
+            bb_outage_baseline_analysis=None,
+        ),
+    )
     action_index_topo: ActionIndexComputations = random_topology(
         jax.random.PRNGKey(41),
         branch_action_set=static_information.dynamic_information.action_set,
@@ -384,22 +396,20 @@ def test_run_solver_symmetric_with_bb_outage(
     )
     solver_config = static_information.solver_config
 
-    def aggregate_output_fn(lf_res: SolverLoadflowResults):
-        return aggregate_n_1_matrix(
-            lf_res.n_1_matrix,
-            max_mw_flow=static_information.dynamic_information.branch_limits.max_mw_flow,
-            metric="overload_energy",
-        )
-
-    res, success = run_solver_symmetric(
+    n_1_matrix, success = run_solver_symmetric(
         topologies=action_index_topo,
         disconnections=None,
         injections=None,
         dynamic_information=static_information.dynamic_information,
         solver_config=solver_config,
-        aggregate_output_fn=aggregate_output_fn,
+        aggregate_output_fn=lambda lf_res: lf_res.n_1_matrix,
     )
 
-    assert len(res) == action_index_topo.action.shape[0]
+    assert n_1_matrix.shape == (
+        action_index_topo.action.shape[0],
+        static_information.dynamic_information.n_timesteps,
+        static_information.dynamic_information.n_nminus1_cases,
+        static_information.dynamic_information.n_branches_monitored,
+    )
     assert len(success) == action_index_topo.action.shape[0]
     assert jnp.all(success)

@@ -894,7 +894,7 @@ def test_busbar_outage_penalty_is_clipped_to_zero_for_improved_topology() -> Non
         baseline,
         lfs,
         success,
-        lower_bound=0.0,
+        lower_bound=jnp.array(0.0),
     )
 
     assert unclipped_penalty < 0.0

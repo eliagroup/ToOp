@@ -335,7 +335,7 @@ def convert_to_jax(  # noqa: PLR0913
             ),
         )
     if preprocess_bb_outages:
-        # A comparision of the overload energy of the unsplit grid with the overload energy of the split grid
+        # A comparison of the overload energy of the unsplit grid with the overload energy of the split grid
         # after busbar outages is required. Therefore, we need to store the baseline loadflows after busbar outages
         # of unsplit grid so the optimizer can choose the runtime mode later.
         logging_fn("bb_outage_baseline_analysis", None)

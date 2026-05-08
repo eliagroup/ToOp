@@ -367,7 +367,7 @@ def test_run_solver_symmetric(
 def test_run_solver_symmetric_with_bb_outage(
     network_data_preprocessed: NetworkData,
 ) -> None:
-    static_information = convert_to_jax(network_data_preprocessed, enable_bb_outage=True, bb_outage_as_nminus1=False)
+    static_information = convert_to_jax(network_data_preprocessed, preprocess_bb_outages=True)
     action_index_topo: ActionIndexComputations = random_topology(
         jax.random.PRNGKey(41),
         branch_action_set=static_information.dynamic_information.action_set,

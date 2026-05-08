@@ -483,7 +483,7 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
     network_data = preprocess_bb_outages(network_data)
     static_information = convert_to_jax(
         network_data,
-        enable_bb_outage=True,
+        preprocess_bb_outages=True,
     )
 
     asset_topology = network_data.simplified_asset_topology

@@ -10,11 +10,13 @@ import jax.numpy as jnp
 import pytest
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     get_repertoire_metrics,
     initialize_genetic_algorithm,
     update_max_mw_flows_according_to_double_limits,
+    update_static_information,
     verify_static_information,
 )
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import (
@@ -65,6 +67,45 @@ def test_update_max_mw_flows_according_to_double_limits(
     assert new_limits.max_mw_flow_limited.shape == old_limits.max_mw_flow.shape
     assert new_limits.max_mw_flow_n_1_limited.shape == old_limits.max_mw_flow_n_1.shape
     assert old_limits.max_mw_flow_n_1.sum() >= new_limits.max_mw_flow_n_1_limited.sum()
+
+
+def test_update_static_information_overrides_busbar_penalty(static_information_file: str) -> None:
+    static_information = load_static_information(static_information_file)
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            clip_bb_outage_penalty=True,
+        ),
+        dynamic_information=replace(
+            static_information.dynamic_information,
+            bb_outage_baseline_analysis=BBOutageBaselineAnalysis(
+                overload=jnp.array(1.0),
+                success_count=jnp.array(2),
+                more_splits_penalty=jnp.array(50.0),
+                overload_weight=static_information.dynamic_information.branch_limits.overload_weight,
+                max_mw_flow=static_information.dynamic_information.branch_limits.max_mw_flow,
+            ),
+        ),
+    )
+
+    updated = update_static_information(
+        (static_information,),
+        batch_size=3,
+        enable_nodal_inj_optim=False,
+        enable_bb_outage=True,
+        bb_outage_as_nminus1=False,
+        clip_bb_outage_penalty=False,
+        bb_outage_more_islands_penalty=125.0,
+    )[0]
+
+    assert updated.solver_config.batch_size_bsdf == 3
+    assert updated.solver_config.batch_size_injection == 3
+    assert updated.solver_config.enable_bb_outages
+    assert updated.solver_config.bb_outage_as_nminus1 is False
+    assert updated.solver_config.clip_bb_outage_penalty is False
+    assert updated.dynamic_information.bb_outage_baseline_analysis is not None
+    assert updated.dynamic_information.bb_outage_baseline_analysis.more_splits_penalty == 125.0
 
 
 def test_initialize_genetic_algorithm(

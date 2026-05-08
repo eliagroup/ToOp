@@ -32,7 +32,11 @@ from toop_engine_dc_solver.jax.types import (
     SolverConfig,
     StaticInformation,
 )
-from toop_engine_dc_solver.preprocess.convert_to_jax import StaticInformationStats, extract_static_information_stats
+from toop_engine_dc_solver.preprocess.convert_to_jax import (
+    StaticInformationStats,
+    extract_static_information_stats,
+    get_bb_outage_baseline_analysis,
+)
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.crossover import (
     crossover,
@@ -252,6 +256,10 @@ def update_static_information(
     static_informations: tuple[StaticInformation, ...],
     batch_size: int,
     enable_nodal_inj_optim: bool,
+    enable_bb_outage: bool,
+    bb_outage_as_nminus1: bool,
+    clip_bb_outage_penalty: bool,
+    bb_outage_more_islands_penalty: float,
 ) -> tuple[StaticInformation, ...]:
     """Perform any necessary preprocessing on the static information.
 
@@ -266,6 +274,18 @@ def update_static_information(
     enable_nodal_inj_optim: bool
         Whether to enable the nodal injection optimization, if False, nodal_inj_optim related information will be removed
         from the dynamic information to save GPU memory.
+    enable_bb_outage : bool
+        Whether the optimizer should include busbar outage effects. This is only enabled when
+        the loaded static information contains busbar outage data.
+    bb_outage_as_nminus1 : bool
+        Whether busbar outages are handled as additional N-1 cases. This value is always written into
+        the solver config.
+    clip_bb_outage_penalty : bool
+        Whether busbar outage penalties are clipped at 0. This value is always written into the
+        solver config.
+    bb_outage_more_islands_penalty : float
+        The islanding penalty stored in the busbar outage baseline. This value is always written into
+        the loaded baseline analysis when present.
 
     Returns
     -------
@@ -288,16 +308,44 @@ def update_static_information(
                 else dynamic_information.branch_limits.n0_n1_max_diff,
             ),
             nodal_injection_information=dynamic_information.nodal_injection_information if enable_nodal_inj_optim else None,
+            bb_outage_baseline_analysis=(
+                replace(
+                    dynamic_information.bb_outage_baseline_analysis
+                    if dynamic_information.bb_outage_baseline_analysis is not None
+                    else get_bb_outage_baseline_analysis(dynamic_information, bb_outage_more_islands_penalty),
+                    more_splits_penalty=jnp.array(bb_outage_more_islands_penalty),
+                )
+                if dynamic_information.bb_outage_baseline_analysis is not None
+                or (
+                    not bb_outage_as_nminus1
+                    and dynamic_information.action_set.rel_bb_outage_data is not None
+                    and dynamic_information.branches_monitored.size > 0
+                )
+                else dynamic_information.bb_outage_baseline_analysis
+            ),
         )
         for dynamic_information in dynamic_informations
     ]
 
     # Make sure all the solver configs have the correct batch size
-    solver_configs = [static_information.solver_config for static_information in static_informations]
-    solver_configs = [
-        replace(solver_config, batch_size_bsdf=batch_size, batch_size_injection=batch_size)
-        for solver_config in solver_configs
-    ]
+    solver_configs = []
+    for static_information, dynamic_information in zip(static_informations, dynamic_informations, strict=True):
+        solver_config = static_information.solver_config
+        has_bb_outage_data = (
+            dynamic_information.bb_outage_baseline_analysis is not None
+            or dynamic_information.non_rel_bb_outage_data is not None
+            or dynamic_information.action_set.rel_bb_outage_data is not None
+        )
+        solver_configs.append(
+            replace(
+                solver_config,
+                batch_size_bsdf=batch_size,
+                batch_size_injection=batch_size,
+                enable_bb_outages=enable_bb_outage and has_bb_outage_data,
+                bb_outage_as_nminus1=bb_outage_as_nminus1,
+                clip_bb_outage_penalty=clip_bb_outage_penalty,
+            )
+        )
 
     static_informations = [
         replace(
@@ -584,7 +632,13 @@ def algo_setup(
     )
 
     static_informations = update_static_information(
-        static_informations, lf_args.batch_size, enable_nodal_inj_optim=ga_args.enable_nodal_inj_optim
+        static_informations,
+        lf_args.batch_size,
+        enable_nodal_inj_optim=ga_args.enable_nodal_inj_optim,
+        enable_bb_outage=ga_args.enable_bb_outage,
+        bb_outage_as_nminus1=ga_args.bb_outage_as_nminus1,
+        clip_bb_outage_penalty=ga_args.clip_bb_outage_penalty,
+        bb_outage_more_islands_penalty=ga_args.bb_outage_more_islands_penalty,
     )
 
     if double_limits is not None:

@@ -411,12 +411,20 @@ def update_single_pair_bb_outage_information(
     tuple[SolverConfig, DynamicInformation]
         The updated solver config and dynamic information pair.
     """
-    has_bb_outage_data = (
-        dynamic_information.bb_outage_baseline_analysis is not None
-        or dynamic_information.non_rel_bb_outage_data is not None
-        or dynamic_information.action_set.rel_bb_outage_data is not None
-    )
+    has_rel_bb_outage_data = dynamic_information.action_set.rel_bb_outage_data is not None
+    has_monitored_branches = dynamic_information.branches_monitored.size > 0
+    has_stored_bb_outage_baseline = dynamic_information.bb_outage_baseline_analysis is not None
+    has_non_rel_bb_outage_data = dynamic_information.non_rel_bb_outage_data is not None
+
+    # Busbar outages can only be enabled when some preprocessed outage payload exists.
+    has_bb_outage_data = has_stored_bb_outage_baseline or has_non_rel_bb_outage_data or has_rel_bb_outage_data
     should_enable_bb_outage = enable_bb_outage and has_bb_outage_data
+    # A fresh baseline is only needed when busbar outages are scored as a separate penalty.
+    needs_penalty_baseline = (
+        should_enable_bb_outage and not bb_outage_as_nminus1 and has_rel_bb_outage_data and has_monitored_branches
+    )
+    # Keep an existing baseline whenever one was loaded, otherwise only build one for penalty mode.
+    should_keep_or_create_baseline = has_stored_bb_outage_baseline or needs_penalty_baseline
 
     updated_solver_config = replace(
         solver_config,
@@ -439,13 +447,7 @@ def update_single_pair_bb_outage_information(
                 else get_bb_outage_baseline_analysis(dynamic_information, bb_outage_more_islands_penalty),
                 more_splits_penalty=jnp.array(bb_outage_more_islands_penalty),
             )
-            if dynamic_information.bb_outage_baseline_analysis is not None
-            or (
-                should_enable_bb_outage
-                and not bb_outage_as_nminus1
-                and dynamic_information.action_set.rel_bb_outage_data is not None
-                and dynamic_information.branches_monitored.size > 0
-            )
+            if should_keep_or_create_baseline
             else None
         ),
         non_rel_bb_outage_data=(dynamic_information.non_rel_bb_outage_data if should_enable_bb_outage else None),

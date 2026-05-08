@@ -66,13 +66,16 @@ class BatchedMEParameters(BaseModel):
     be clipped at 0, meaning that topologies that improve the busbar outage penalty will not be rewarded for it.
     If this is False, topologies that improve the busbar outage penalty will receive a negative penalty, which can lead to
     higher scores and thus be rewarded by the optimizer.
-    If no busbar outage data is provided in the grid model, this parameter will be ignored."""
+    If no busbar outage data is provided in the grid model or if bb_outage_as_nminus1 is True, this parameter will be
+    ignored."""
 
     bb_outage_more_islands_penalty: NonNegativeFloat = 0.0
     """Islanding penalty used for busbar outage baseline comparisons.
     This is only relevant in case of bb_outage_as_nminus1=False, where busbar outage penalties are added to the scores as a
     separate term. If a busbar outage computation fails due to grid splits/islanding, this penalty will be applied to the
-    score proportional to the number of islands."""
+    score proportional to the number of islands.
+    If no busbar outage data is provided in the grid model or if bb_outage_as_nminus1 is True, this parameter will be
+    ignored."""
 
     ### MUTATION CONFIGURATION ###
 

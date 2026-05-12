@@ -92,7 +92,7 @@ jobs:
           path: .
 
       - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@55e44800a8f495208cce6e4e82f5dedb45fcf0ef
+        uses: sonarsource/sonarqube-scan-action@59db25f34e16620e48ab4bb9e4a5dce155cb5432
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -141,7 +141,7 @@ jobs:
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - name: License Header Check
-        uses: B1NARY-GR0UP/nwa@924fd990a1769a8198a3cc5d2a83f72a41a51951
+        uses: B1NARY-GR0UP/nwa@de997f652a66feac9b4dc819bdf80671985b50d0
         with:
           version: latest # (optional) version of nwa to use; default: latest
           cmd: check # (optional) command to execute; options: `check`, `add`, `update`, `remove`; default: check

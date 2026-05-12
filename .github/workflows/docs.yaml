@@ -49,10 +49,6 @@ jobs:
       - name: "Set up Python"
         uses: ./.github/actions/setup-python
 
-      - name: Remember initial checkout
-        run: |
-          echo "INITIAL_GIT_REF=$GITHUB_SHA" >> "$GITHUB_ENV"
-
       - name: Build documentation
         env:
           GH_TOKEN: ${{ github.token }}
@@ -118,4 +114,4 @@ jobs:
       - name: Restore initial checkout for post-job cleanup
         if: always()
         run: |
-          git checkout --force "$INITIAL_GIT_REF"
+          git checkout --force "$GITHUB_SHA"

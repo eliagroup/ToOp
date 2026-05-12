@@ -13,11 +13,11 @@
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
 <!-- markdown-link-check-enable -->
 
-## Hello you 👋
+## Hello there 👋
 
 Welcome to our ToOp (engine) repository at Elia Group.
 
-<img src="./docs/illustrations/ToOp_LQ.png" alt="ToOp Features and Roadmap" width="80%">
+<img src="./docs/illustrations/ToOp_RGB.png" alt="ToOp Features and Roadmap" width="80%">
 
 
 
@@ -68,16 +68,16 @@ uv run mkdocs serve
 ---
 
 
-### Useful resources 
+### Useful resources
 The following resources may be helpful to grasp the key concepts:
 
 - [Quickstart](./docs/quickstart.md): Grasp the basics and follow along examples. The first one take you through a DC loadflow computation using the [DC Solver package](./docs/dc_solver/intro.md).
 - [Usage](./docs/usage.md): Learn about the two different ways to use this software, either via python or kafka.
-- [Topology Optimizer](./docs/topology_optimizer/intro.md): Understand the key concepts behind the topology optimizer.  
+- [Topology Optimizer](./docs/topology_optimizer/intro.md): Understand the key concepts behind the topology optimizer.
 - [Presentation ToOp](https://www.youtube.com/watch?v=XteDpNsX75A)  @ LF Energy 2025
 - [Presentation ToOp](https://lfenergy.org/lf-energy-summit-recap-and-video-a-gpu-native-approach-on-tackling-grid-topology-optimization/) @ LF Energy 2024
 
-**Note**: This project does not provide a GUI or system integration code. 
+**Note**: This project does not provide a GUI or system integration code.
 You are expected to interact with the module through either python or kafka commands. This might come in the future if there is an interest from the community.
 
 ## High-level architecture
@@ -107,7 +107,6 @@ Next to some smaller improvements, we currently plan to integrate PST into the o
 We strongly believe that through joint development,  collaboration and integration into other tools, we can jointly build an open-source topology optimizer that is fast, provides accurate recommendations and can be used by different TSOs to reduce grid congestion. Topology optimization works best when holistically applied to the grid and the different operational constraints from different TSOs are considered. This is why we invite you to share your feedback, constraints and your approaches so that we can jointly improve ToOp.
 
 In addition, we also see the opportunity that ToOp can be combined with other open-source tools. If you have ideas, reach out to us.
-In addition, we also see the opportunity that ToOp can be combined with other open-source tools. If you have ideas, reach out to us.
 We invite you to test it, ask questions and provide feedback to us. And if you like it, we invite you to contribute to the development. We are looking forward to hearing from you.
 
 ## Finding help
@@ -127,7 +126,7 @@ Distributed under MPL 2.0. See [LICENSE](./LICENSE).
 
 ## Citation
 
-If you use our work in scientific research, please cite [our paper on load flow solving](https://arxiv.org/abs/2501.17529) and soon also the work on the optimizer architecture, which is to be released soon.
+If you use our work in scientific research, please cite [our paper on load flow solving](https://doi.org/10.1109/PowerTech59965.2025.11180422) or [our paper on the optimizer architecture](https://arxiv.org/abs/2605.10128), depending what parts of the repository you use.
 
 ---
 

@@ -13,11 +13,11 @@
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
 <!-- markdown-link-check-enable -->
 
-## Hello you 👋
+## Hello there 👋
 
 Welcome to our ToOp (engine) repository at Elia Group.
 
-<img src="./docs/illustrations/ToOp_LQ.png" alt="ToOp Features and Roadmap" width="80%">
+<img src="./docs/illustrations/ToOp_RGB.png" alt="ToOp Features and Roadmap" width="80%">
 
 
 
@@ -68,16 +68,16 @@ uv run mkdocs serve
 ---
 
 
-### Useful resources 
+### Useful resources
 The following resources may be helpful to grasp the key concepts:
 
 - [Quickstart](./docs/quickstart.md): Grasp the basics and follow along examples. The first one take you through a DC loadflow computation using the [DC Solver package](./docs/dc_solver/intro.md).
 - [Usage](./docs/usage.md): Learn about the two different ways to use this software, either via python or kafka.
-- [Topology Optimizer](./docs/topology_optimizer/intro.md): Understand the key concepts behind the topology optimizer.  
+- [Topology Optimizer](./docs/topology_optimizer/intro.md): Understand the key concepts behind the topology optimizer.
 - [Presentation ToOp](https://www.youtube.com/watch?v=XteDpNsX75A)  @ LF Energy 2025
 - [Presentation ToOp](https://lfenergy.org/lf-energy-summit-recap-and-video-a-gpu-native-approach-on-tackling-grid-topology-optimization/) @ LF Energy 2024
 
-**Note**: This project does not provide a GUI or system integration code. 
+**Note**: This project does not provide a GUI or system integration code.
 You are expected to interact with the module through either python or kafka commands. This might come in the future if there is an interest from the community.
 
 ## High-level architecture

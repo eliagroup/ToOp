@@ -107,7 +107,6 @@ Next to some smaller improvements, we currently plan to integrate PST into the o
 We strongly believe that through joint development,  collaboration and integration into other tools, we can jointly build an open-source topology optimizer that is fast, provides accurate recommendations and can be used by different TSOs to reduce grid congestion. Topology optimization works best when holistically applied to the grid and the different operational constraints from different TSOs are considered. This is why we invite you to share your feedback, constraints and your approaches so that we can jointly improve ToOp.
 
 In addition, we also see the opportunity that ToOp can be combined with other open-source tools. If you have ideas, reach out to us.
-In addition, we also see the opportunity that ToOp can be combined with other open-source tools. If you have ideas, reach out to us.
 We invite you to test it, ask questions and provide feedback to us. And if you like it, we invite you to contribute to the development. We are looking forward to hearing from you.
 
 ## Finding help
@@ -127,7 +126,7 @@ Distributed under MPL 2.0. See [LICENSE](./LICENSE).
 
 ## Citation
 
-If you use our work in scientific research, please cite [our paper on load flow solving](https://arxiv.org/abs/2501.17529) and soon also the work on the optimizer architecture, which is to be released soon.
+If you use our work in scientific research, please cite [our paper on load flow solving](https://doi.org/10.1109/PowerTech59965.2025.11180422) or [our paper on the optimizer architecture](https://arxiv.org/abs/2605.10128), depending what parts of the repository you use.
 
 ---
 

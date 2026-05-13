@@ -6,10 +6,14 @@
 # Mozilla Public License, version 2.0
 
 from pathlib import Path
+from unittest.mock import Mock
 
 import numpy as np
+import pytest
+from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import load_action_set, random_actions
 from toop_engine_topology_optimizer.ac.scoring_functions import (
@@ -20,11 +24,231 @@ from toop_engine_topology_optimizer.ac.scoring_functions import (
     compute_remaining_loadflows,
     evaluate_acceptance,
     extract_switching_distance,
-    scoring_and_acceptance,
+    score_remaining_contingency_batch,
+    score_strategy_worst_k_batch,
+    score_topology_batch,
 )
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
+from toop_engine_topology_optimizer.ac.types import EarlyStoppingStageResult, TopologyScoringResult
 from toop_engine_topology_optimizer.interfaces.messages.commons import OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import Metrics
+
+
+def test_score_strategy_worst_k_batch_parallelizes(monkeypatch: pytest.MonkeyPatch) -> None:
+    topology_a = ACOptimTopology(
+        actions=[1],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"a",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=["c1"],
+    )
+    topology_b = ACOptimTopology(
+        actions=[2],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"b",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=["c1"],
+    )
+
+    runner_ids = []
+
+    def fake_worst_k(topology, runner, loadflow_results_unsplit, metrics_unsplit, scoring_params):
+        del topology, loadflow_results_unsplit, metrics_unsplit, scoring_params
+        runner_ids.append(id(runner))
+        return EarlyStoppingStageResult(
+            loadflow_results=Mock(spec=LoadflowResultsPolars),
+            metrics=Metrics(fitness=0.0, extra_scores={}),
+            rejection_reason=None,
+            cases_subset=["c1"],
+        )
+
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.score_strategy_worst_k", fake_worst_k)
+
+    scoring_params = ACScoringParameters(
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=0.95,
+        reject_critical_branch_threshold=1.1,
+        base_case_id=None,
+        early_stop_validation=True,
+    )
+    worst_k_runner_groups = [Mock(spec=AbstractLoadflowRunner), Mock(spec=AbstractLoadflowRunner)]
+
+    results = score_strategy_worst_k_batch(
+        topologies=[topology_a, topology_b],
+        worst_k_runner_groups=worst_k_runner_groups,
+        loadflow_results_unsplit=Mock(spec=LoadflowResultsPolars),
+        metrics_unsplit=Metrics(fitness=0.0, extra_scores={}),
+        scoring_params=scoring_params,
+    )
+
+    assert len(results) == 2
+    assert len(set(runner_ids)) == 2
+
+
+def test_score_strategy_remaining_batch_chunks_survivors(monkeypatch: pytest.MonkeyPatch) -> None:
+    topology_a = ACOptimTopology(
+        actions=[1],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"a",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=["c1"],
+    )
+    topology_b = ACOptimTopology(
+        actions=[2],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"b",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=["c1"],
+    )
+    topology_c = ACOptimTopology(
+        actions=[3],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"c",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=["c1"],
+    )
+
+    call_sequence = []
+
+    def fake_remaining(topology, runner, metrics_unsplit, scoring_params, early_stage_result):
+        del metrics_unsplit, scoring_params, early_stage_result
+        call_sequence.append(id(runner))
+        return TopologyScoringResult(
+            loadflow_results=Mock(spec=LoadflowResultsPolars),
+            metrics=Metrics(fitness=float(topology.actions[0]), extra_scores={}),
+            rejection_reason=None,
+        )
+
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.score_topology_remaining", fake_remaining)
+
+    early_stage_results = [
+        EarlyStoppingStageResult(
+            loadflow_results=Mock(spec=LoadflowResultsPolars),
+            metrics=Metrics(fitness=0.0, extra_scores={}),
+            rejection_reason=None,
+            cases_subset=["c1"],
+        )
+        for _ in range(3)
+    ]
+    shared_runner = Mock(spec=AbstractLoadflowRunner)
+    scoring_params = ACScoringParameters(
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=0.95,
+        reject_critical_branch_threshold=1.1,
+        base_case_id=None,
+        early_stop_validation=True,
+    )
+    remaining_runner_groups = [shared_runner, Mock(spec=AbstractLoadflowRunner)]
+
+    results = score_remaining_contingency_batch(
+        topologies=[topology_a, topology_b, topology_c],
+        early_stage_results=early_stage_results,
+        runner_group=remaining_runner_groups,
+        metrics_unsplit=Metrics(fitness=0.0, extra_scores={}),
+        scoring_params=scoring_params,
+    )
+
+    assert len(results) == 3
+    assert call_sequence == [id(shared_runner), id(remaining_runner_groups[1]), id(shared_runner)]
+
+
+def test_score_strategy_batch_without_early_results_uses_full_evaluation(monkeypatch: pytest.MonkeyPatch) -> None:
+    topology_a = ACOptimTopology(
+        actions=[1],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"a",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=["c1"],
+    )
+    topology_b = ACOptimTopology(
+        actions=[2],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"b",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=["c1"],
+    )
+
+    full_eval_calls = []
+
+    def fake_full_batch(topologies, runner_groups, metrics_unsplit, scoring_params):
+        del runner_groups, metrics_unsplit, scoring_params
+        full_eval_calls.append(len(topologies))
+        return [
+            TopologyScoringResult(
+                loadflow_results=Mock(spec=LoadflowResultsPolars),
+                metrics=Metrics(fitness=float(topology.actions[0]), extra_scores={}),
+                rejection_reason=None,
+            )
+            for topology in topologies
+        ]
+
+    def fail_worst_k_batch(*args, **kwargs):
+        raise AssertionError("worst-k batch should not be used when early-stage results are omitted")
+
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.score_strategy_full_batch", fake_full_batch)
+    monkeypatch.setattr(
+        "toop_engine_topology_optimizer.ac.scoring_functions.score_strategy_worst_k_batch", fail_worst_k_batch
+    )
+
+    scoring_params = ACScoringParameters(
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=0.95,
+        reject_critical_branch_threshold=1.1,
+        base_case_id=None,
+        early_stop_validation=True,
+    )
+
+    results = score_topology_batch(
+        topologies=[topology_a, topology_b],
+        runner_group=[Mock(spec=AbstractLoadflowRunner), Mock(spec=AbstractLoadflowRunner)],
+        metrics_unsplit=Metrics(fitness=0.0, extra_scores={}),
+        scoring_params=scoring_params,
+    )
+
+    assert full_eval_calls == [2]
+    assert [result.metrics.fitness for result in results] == [1.0, 2.0]
 
 
 def test_compute_loadflow(grid_folder: Path) -> None:
@@ -44,10 +268,10 @@ def test_compute_loadflow(grid_folder: Path) -> None:
     ref_loadflow = runner.run_ac_loadflow([], [])
 
     res, info = compute_loadflow(
-        actions=[[]],
-        disconnections=[[]],
-        pst_setpoints=[None],
-        runners=[runner],
+        actions=[],
+        disconnections=[],
+        pst_setpoints=None,
+        runner=runner,
     )
 
     assert res == ref_loadflow
@@ -57,7 +281,7 @@ def test_compute_loadflow(grid_folder: Path) -> None:
         actions=[],
         disconnections=[],
         loadflow=res,
-        additional_info=info[0],
+        additional_info=info,
     )
 
     assert metrics is not None
@@ -103,27 +327,23 @@ def test_scoring_functions_split(grid_folder: Path) -> None:
 
 
 def test_evaluate_acceptance_identical_metrics():
-    metrics_unsplit = [
-        Metrics(
-            fitness=-1.0,
-            extra_scores={
-                "non_converging_loadflows": 5,
-                "overload_energy_n_1": 50.0,
-                "critical_branch_count_n_1": 10,
-            },
-        )
-    ]
+    metrics_unsplit = Metrics(
+        fitness=-1.0,
+        extra_scores={
+            "non_converging_loadflows": 5,
+            "overload_energy_n_1": 50.0,
+            "critical_branch_count_n_1": 10,
+        },
+    )
     # Check identical values
-    metrics_split = [
-        Metrics(
-            fitness=-1.0,
-            extra_scores={
-                "non_converging_loadflows": 5,
-                "overload_energy_n_1": 50.0,
-                "critical_branch_count_n_1": 10,
-            },
-        )
-    ]
+    metrics_split = Metrics(
+        fitness=-1.0,
+        extra_scores={
+            "non_converging_loadflows": 5,
+            "overload_energy_n_1": 50.0,
+            "critical_branch_count_n_1": 10,
+        },
+    )
     # Accepted if thresholds == 1.
     reason = evaluate_acceptance(
         metrics_split=metrics_split,
@@ -185,27 +405,23 @@ def test_evaluate_acceptance_identical_metrics():
 
 
 def test_evaluate_acceptance_improved_metrics():
-    metrics_unsplit = [
-        Metrics(
-            fitness=-1.0,
-            extra_scores={
-                "non_converging_loadflows": 10,
-                "overload_energy_n_1": 100.0,
-                "critical_branch_count_n_1": 10,
-            },
-        )
-    ]
+    metrics_unsplit = Metrics(
+        fitness=-1.0,
+        extra_scores={
+            "non_converging_loadflows": 10,
+            "overload_energy_n_1": 100.0,
+            "critical_branch_count_n_1": 10,
+        },
+    )
     # Check identical values
-    metrics_split = [
-        Metrics(
-            fitness=-1.0,
-            extra_scores={
-                "non_converging_loadflows": 9,
-                "overload_energy_n_1": 90,
-                "critical_branch_count_n_1": 9,
-            },
-        )
-    ]
+    metrics_split = Metrics(
+        fitness=-1.0,
+        extra_scores={
+            "non_converging_loadflows": 9,
+            "overload_energy_n_1": 90,
+            "critical_branch_count_n_1": 9,
+        },
+    )
     # Accepted if thresholds == 1.
     reason = evaluate_acceptance(
         metrics_split=metrics_split,
@@ -257,27 +473,23 @@ def test_evaluate_acceptance_improved_metrics():
 
 
 def test_evaluate_acceptance_worse_metrics():
-    metrics_unsplit = [
-        Metrics(
-            fitness=-1.0,
-            extra_scores={
-                "non_converging_loadflows": 10,
-                "overload_energy_n_1": 100.0,
-                "critical_branch_count_n_1": 10,
-            },
-        )
-    ]
+    metrics_unsplit = Metrics(
+        fitness=-1.0,
+        extra_scores={
+            "non_converging_loadflows": 10,
+            "overload_energy_n_1": 100.0,
+            "critical_branch_count_n_1": 10,
+        },
+    )
     # Check identical values
-    metrics_split = [
-        Metrics(
-            fitness=-1.0,
-            extra_scores={
-                "non_converging_loadflows": 11,
-                "overload_energy_n_1": 110,
-                "critical_branch_count_n_1": 11,
-            },
-        )
-    ]
+    metrics_split = Metrics(
+        fitness=-1.0,
+        extra_scores={
+            "non_converging_loadflows": 11,
+            "overload_energy_n_1": 110,
+            "critical_branch_count_n_1": 11,
+        },
+    )
     # Dont Accept if thresholds == 1.
     reason = evaluate_acceptance(
         metrics_split=metrics_split,
@@ -308,236 +520,6 @@ def test_evaluate_acceptance_worse_metrics():
         reject_critical_branch_threshold=1.1,
     )
     assert reason is None, "Results not accepted although they only got worse by exactly 10 percent and thresholds is 1.1."
-
-
-def test_scoring_and_acceptance_early_stopping(grid_folder: Path) -> None:
-    """Test the scoring_and_acceptance function with early stopping enabled.
-
-    This test verifies:
-    1. Early stopping rejection when the strategy performs worse on critical contingencies
-    2. Early stopping acceptance and continuation to full N-1 when strategy performs well on critical contingencies
-    3. Correct handling of the early_stopping flag in rejection reasons
-    """
-    action_set = load_action_set(
-        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"],
-        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_diff_path"],
-    )
-    nminus1_definition = load_nminus1_definition(
-        grid_folder / "case14" / PREPROCESSING_PATHS["nminus1_definition_file_path"]
-    )
-
-    runner = PandapowerRunner()
-    runner.load_base_grid(grid_folder / "case14" / PREPROCESSING_PATHS["grid_file_path_pandapower"])
-    runner.store_action_set(action_set)
-    runner.store_nminus1_definition(nminus1_definition)
-
-    # Get all contingency IDs
-    n_1_def = runner.get_nminus1_definition()
-    all_case_ids = [cont.id for cont in n_1_def.contingencies]
-
-    # Select 5 random contingencies for early stopping
-    rng = np.random.default_rng(42)
-    early_stop_case_ids = rng.choice(all_case_ids, size=min(5, len(all_case_ids)), replace=False).tolist()
-
-    # Run unsplit baseline
-    loadflow_results_unsplit = runner.run_ac_loadflow([], [])
-    metrics_unsplit_temp = compute_metrics_single_timestep(
-        actions=[],
-        disconnections=[],
-        loadflow=loadflow_results_unsplit,
-        additional_info=None,
-    )
-    metrics_unsplit = [metrics_unsplit_temp]
-
-    # Create a strategy that has some splits and will be rejected during early stopping
-    # We'll create a strategy with high overload to ensure it gets rejected
-    actions_bad = random_actions(
-        action_set=action_set,
-        rng=rng,
-        n_split_subs=3,  # Split multiple substations
-    )
-
-    strategy_bad = [
-        ACOptimTopology(
-            actions=actions_bad,
-            disconnections=[],
-            pst_setpoints=None,
-            unsplit=False,
-            timestep=0,
-            strategy_hash=bytes.fromhex("deadbeef"),
-            optimization_id="test",
-            optimizer_type=OptimizerType.AC,
-            fitness=0.0,
-            metrics={"overload_energy_n_1": 1000.0},  # High overload
-            worst_k_contingency_cases=early_stop_case_ids,  # Critical cases for early stopping
-        )
-    ]
-
-    scoring_params = ACScoringParameters(
-        reject_convergence_threshold=1.0,
-        reject_overload_threshold=0.95,
-        reject_critical_branch_threshold=1.1,
-        base_case_ids=[None],
-        n_timestep_processes=1,
-        early_stop_validation=True,
-        early_stop_non_converging_threshold=0.1,
-    )
-
-    # Test 1: Early stopping with rejection
-    lfs_bad, _, rejection_reason = scoring_and_acceptance(
-        strategy=strategy_bad,
-        runners=[runner],
-        loadflow_results_unsplit=loadflow_results_unsplit,
-        metrics_unsplit=metrics_unsplit,
-        scoring_params=scoring_params,
-    )
-
-    # Should be rejected (either during early stopping or after full N-1)
-    assert rejection_reason is not None, "Strategy with 3 splits should be rejected"
-
-    # Verify early stopping behavior: if rejected during early stopping, only subset was computed
-    all_case_ids_in_result = lfs_bad.branch_results.select("contingency").unique().collect()["contingency"].to_list()
-    if rejection_reason.early_stopping:
-        # If rejected during early stopping, only subset should be computed
-        assert len(all_case_ids_in_result) <= len(early_stop_case_ids) + 1, (
-            "Early stopping rejection should only compute subset of cases"
-        )
-    # If early stopping passed but final acceptance failed, all cases should be computed
-    # This is also valid behavior - early stopping is just an optimization
-
-    # Test 2: Early stopping with acceptance and continuation
-    # Create a strategy that performs slightly better to pass early stopping
-    actions_good = random_actions(
-        action_set=action_set,
-        rng=np.random.default_rng(123),  # Different seed for different actions
-        n_split_subs=1,  # Fewer splits
-    )
-
-    strategy_good = [
-        ACOptimTopology(
-            actions=actions_good,
-            disconnections=[],
-            pst_setpoints=None,
-            unsplit=False,
-            timestep=0,
-            strategy_hash=bytes.fromhex("cafebabe"),
-            optimization_id="test",
-            optimizer_type=OptimizerType.AC,
-            fitness=0.0,
-            metrics={"overload_energy_n_1": 10.0},  # Lower overload
-            worst_k_contingency_cases=early_stop_case_ids,
-        )
-    ]
-
-    lfs_good, _, rejection_reason_good = scoring_and_acceptance(
-        strategy=strategy_good,
-        runners=[runner],
-        loadflow_results_unsplit=loadflow_results_unsplit,
-        metrics_unsplit=metrics_unsplit,
-        scoring_params=scoring_params,
-    )
-
-    # Should pass early stopping and compute all cases
-    # (might still be rejected in final acceptance, but should compute all cases)
-    all_case_ids_in_result_good = lfs_good.branch_results.select("contingency").unique().collect()["contingency"].to_list()
-
-    # Should have computed all cases if it passed early stopping
-    # (rejection_reason_good might not be None if final acceptance failed, but we should have all cases)
-    if rejection_reason_good is None or not rejection_reason_good.early_stopping:
-        # If it passed early stopping, should have all contingency cases
-        assert len(all_case_ids_in_result_good) >= len(early_stop_case_ids), (
-            "Should compute full set of cases after passing early stopping"
-        )
-
-
-def test_scoring_and_acceptance_no_early_stopping(grid_folder: Path) -> None:
-    """Test the scoring_and_acceptance function with early stopping disabled.
-
-    This test verifies that when early_stop_validation is False, all contingencies are computed
-    regardless of worst_k_contingency_cases.
-    """
-    action_set = load_action_set(
-        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"],
-        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_diff_path"],
-    )
-    nminus1_definition = load_nminus1_definition(
-        grid_folder / "case14" / PREPROCESSING_PATHS["nminus1_definition_file_path"]
-    )
-
-    runner = PandapowerRunner()
-    runner.load_base_grid(grid_folder / "case14" / PREPROCESSING_PATHS["grid_file_path_pandapower"])
-    runner.store_action_set(action_set)
-    runner.store_nminus1_definition(nminus1_definition)
-
-    # Get all contingency IDs
-    n_1_def = runner.get_nminus1_definition()
-    all_case_ids = [cont.id for cont in n_1_def.contingencies]
-
-    # Run unsplit baseline
-    loadflow_results_unsplit = runner.run_ac_loadflow([], [])
-    metrics_unsplit_temp = compute_metrics_single_timestep(
-        actions=[],
-        disconnections=[],
-        loadflow=loadflow_results_unsplit,
-        additional_info=None,
-    )
-    metrics_unsplit = [metrics_unsplit_temp]
-
-    # Create a strategy with splits
-    rng = np.random.default_rng(42)
-    actions = random_actions(
-        action_set=action_set,
-        rng=rng,
-        n_split_subs=1,
-    )
-
-    strategy = [
-        ACOptimTopology(
-            actions=actions,
-            disconnections=[],
-            pst_setpoints=None,
-            unsplit=False,
-            timestep=0,
-            strategy_hash=bytes.fromhex("12345678"),
-            optimization_id="test",
-            optimizer_type=OptimizerType.AC,
-            fitness=0.0,
-            metrics={"overload_energy_n_1": 50.0},
-            worst_k_contingency_cases=[],  # Empty, but shouldn't matter with early stopping disabled
-        )
-    ]
-
-    scoring_params = ACScoringParameters(
-        reject_convergence_threshold=1.0,
-        reject_overload_threshold=0.95,
-        reject_critical_branch_threshold=1.1,
-        base_case_ids=[None],
-        n_timestep_processes=1,
-        early_stop_validation=False,  # Early stopping disabled
-        early_stop_non_converging_threshold=0.1,
-    )
-
-    lfs, _, rejection_reason = scoring_and_acceptance(
-        strategy=strategy,
-        runners=[runner],
-        loadflow_results_unsplit=loadflow_results_unsplit,
-        metrics_unsplit=metrics_unsplit,
-        scoring_params=scoring_params,
-    )
-
-    # Should compute all cases
-    all_case_ids_in_result = lfs.branch_results.select("contingency").unique().collect()["contingency"].to_list()
-
-    # Should have all or most contingency cases (basecase might be separate)
-    assert len(all_case_ids_in_result) >= len(all_case_ids) - 1, (
-        "Should compute all contingency cases when early stopping is disabled"
-    )
-
-    # If rejected, should not be marked as early stopping
-    if rejection_reason is not None:
-        assert rejection_reason.early_stopping is False, (
-            "Rejection should not be marked as early stopping when feature is disabled"
-        )
 
 
 def test_compute_remaining_loadflows(grid_folder: Path) -> None:
@@ -578,29 +560,26 @@ def test_compute_remaining_loadflows(grid_folder: Path) -> None:
         n_split_subs=2,
     )
 
-    strategy = [
-        ACOptimTopology(
-            actions=actions,
-            disconnections=[],
-            pst_setpoints=None,
-            unsplit=False,
-            timestep=0,
-            strategy_hash=bytes.fromhex("abcd1234"),
-            optimization_id="test",
-            optimizer_type=OptimizerType.AC,
-            fitness=0.0,
-            metrics={"overload_energy_n_1": 50.0},
-            worst_k_contingency_cases=subset_case_ids,
-        )
-    ]
+    topology = ACOptimTopology(
+        actions=actions,
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=bytes.fromhex("abcd1234"),
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={"overload_energy_n_1": 50.0},
+        worst_k_contingency_cases=subset_case_ids,
+    )
 
     # First compute the subset (simulating early stopping phase)
     lfs_subset, _, _ = compute_loadflow_and_metrics(
-        runners=[runner],
-        strategy=strategy,
-        base_case_ids=[None],
-        n_timestep_processes=1,
-        cases_subset=[subset_case_ids],
+        runner=runner,
+        topology=topology,
+        base_case_id=None,
+        cases_subset=subset_case_ids,
     )
 
     # Verify that subset only contains the specified contingencies
@@ -616,12 +595,11 @@ def test_compute_remaining_loadflows(grid_folder: Path) -> None:
 
     # Now compute the remaining loadflows
     lfs_complete, metrics_complete = compute_remaining_loadflows(
-        runners=[runner],
-        strategy=strategy,
-        base_case_ids=[None],
+        runner=runner,
+        topology=topology,
+        base_case_id=None,
         loadflows_subset=lfs_subset,
-        cases_subset=[subset_case_ids],
-        n_timestep_processes=1,
+        cases_subset=subset_case_ids,
     )
 
     # Verify that the complete result contains all contingencies
@@ -639,11 +617,10 @@ def test_compute_remaining_loadflows(grid_folder: Path) -> None:
         assert case_id in complete_contingencies, f"Complete result should contain case {case_id}"
 
     # Verify metrics were computed
-    assert len(metrics_complete) == 1, "Should have metrics for 1 timestep"
-    assert metrics_complete[0].fitness is not None, "Metrics should have fitness"
-    assert "overload_energy_n_1" in metrics_complete[0].extra_scores, "Metrics should contain overload_energy_n_1"
+    assert metrics_complete.fitness is not None, "Metrics should have fitness"
+    assert "overload_energy_n_1" in metrics_complete.extra_scores, "Metrics should contain overload_energy_n_1"
 
     # Verify that the metrics reflect the full set of contingencies, not just the subset
     # The complete metrics should account for all contingencies
-    assert "critical_branch_count_n_1" in metrics_complete[0].extra_scores
-    assert "non_converging_loadflows" in metrics_complete[0].extra_scores
+    assert "critical_branch_count_n_1" in metrics_complete.extra_scores
+    assert "non_converging_loadflows" in metrics_complete.extra_scores

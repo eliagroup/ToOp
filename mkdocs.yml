@@ -141,6 +141,7 @@ nav:
     - topology_optimizer/metrics.md
     - AC Validation:
       - topology_optimizer/ac/select_strategy.md
+      - topology_optimizer/ac/ac_loop.md
       - topology_optimizer/ac/early_stopping.md
     - Code Reference:
       - Importer: references/reference_importer.md

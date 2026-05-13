@@ -59,6 +59,37 @@ from toop_engine_interfaces.nminus1_definition import GridElement, load_nminus1_
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
 
 
+class FakeVariantNetwork:
+    """Minimal variant-aware fake network used to test runner isolation."""
+
+    def __init__(self) -> None:
+        self.current_variant = "InitialState"
+        self.variant_transitions: list[tuple[str, ...]] = []
+        self.variants = {
+            "InitialState": {
+                "actions": [],
+                "disconnections": [],
+                "pst_setpoints": [],
+            }
+        }
+
+    def clone_variant(self, source_variant_id: str, target_variant_id: str, may_overwrite: bool = True) -> None:
+        self.variant_transitions.append(("clone", source_variant_id, target_variant_id, str(may_overwrite)))
+        self.variants[target_variant_id] = deepcopy(self.variants[source_variant_id])
+
+    def set_working_variant(self, variant_id: str) -> None:
+        self.variant_transitions.append(("set", variant_id))
+        self.current_variant = variant_id
+
+    def remove_variant(self, variant_id: str) -> None:
+        self.variant_transitions.append(("remove", variant_id))
+        del self.variants[variant_id]
+
+    @property
+    def state(self) -> dict[str, list[int]]:
+        return self.variants[self.current_variant]
+
+
 def test_apply_topology(preprocessed_powsybl_data_folder: Path) -> None:
     # Load grid, network data and topology
     network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")

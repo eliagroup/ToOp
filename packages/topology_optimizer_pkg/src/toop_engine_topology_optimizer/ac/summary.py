@@ -139,18 +139,18 @@ def export_topology(
 
 
 def write_summary(
-    grid_files: list[GridFile],
+    grid_file: GridFile,
     db: Session,
     optimization_id: str,
     processed_gridfile_fs: AbstractFileSystem,
-    action_sets: list[ActionSet],
+    action_set: ActionSet,
 ) -> None:
     """Write a summary of the optimization run to the file system.
 
     Parameters
     ----------
-    grid_files : list[GridFile]
-        The grid files that were optimized during the optimization run.
+    grid_file : GridFile
+        The grid file that was optimized during the optimization run.
     db : Session
         The in-memory database that holds topologies including the ones from the current optimization. It will be queried
         to perform a topology summary
@@ -160,29 +160,27 @@ def write_summary(
     processed_gridfile_fs : AbstractFileSystem
         The file system where the summary should be written to. This is typically the same file system where the processed
         gridfiles are stored.
-    action_sets : list[ActionSet]
-        The action sets that were applied during the optimization run, to be included in the summary. One for each grid file.
+    action_set : ActionSet
+        The action set that was applied during the optimization run, to be included in the summary.
     """
-    for timestep, (grid_file, action_set) in enumerate(zip(grid_files, action_sets, strict=True)):
-        topologies = db.exec(
-            select(ACOptimTopology).where(
-                ACOptimTopology.optimization_id == optimization_id,
-                ACOptimTopology.optimizer_type == OptimizerType.AC,
-                ACOptimTopology.acceptance == True,  # noqa: E712
-                ACOptimTopology.timestep == timestep,
-            )
-        ).all()
+    topologies = db.exec(
+        select(ACOptimTopology).where(
+            ACOptimTopology.optimization_id == optimization_id,
+            ACOptimTopology.optimizer_type == OptimizerType.AC,
+            ACOptimTopology.acceptance == True,  # noqa: E712
+        )
+    ).all()
 
-        if grid_file.framework == Framework.PYPOWSYBL:
-            for topology in topologies:
-                export_topology(
-                    db_topology=topology,
-                    action_set=action_set,
-                    processed_gridfile_fs=processed_gridfile_fs,
-                    root_folder=grid_file.grid_folder,
-                )
-        else:
-            logger.warning(
-                f"Framework {grid_file.framework} is currently not supported for summary export, "
-                f"skipping summary export for grid file {grid_file.grid_file}"
+    if grid_file.framework == Framework.PYPOWSYBL:
+        for topology in topologies:
+            export_topology(
+                db_topology=topology,
+                action_set=action_set,
+                processed_gridfile_fs=processed_gridfile_fs,
+                root_folder=grid_file.grid_folder,
             )
+    else:
+        logger.warning(
+            f"Framework {grid_file.framework} is currently not supported for summary export, "
+            f"skipping summary export for grid file {grid_file.grid_file}"
+        )

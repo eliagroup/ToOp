@@ -7,17 +7,17 @@
 
 """Implements initialize and run_epoch functions for the AC optimizer"""
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
+from typing import cast
 
 import numpy as np
+import pandera.typing.polars as patpl
 import pypowsybl
 import structlog
 from beartype.typing import Callable, Optional
 from fsspec import AbstractFileSystem
-from numpy.random import Generator as Rng
 from pydantic import PositiveInt
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
@@ -31,7 +31,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
-from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars, LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
@@ -40,10 +40,17 @@ from toop_engine_topology_optimizer.ac.listener import poll_results_topic
 from toop_engine_topology_optimizer.ac.scoring_functions import (
     ACScoringParameters,
     compute_loadflow_and_metrics,
-    compute_metrics,
-    scoring_and_acceptance,
+    compute_metrics_single_timestep,
+    score_strategy_worst_k_batch,
+    score_topology_batch,
 )
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
+from toop_engine_topology_optimizer.ac.types import (
+    EarlyStoppingStageResult,
+    OptimizerData,
+    RunnerGroup,
+    TopologyScoringResult,
+)
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import (
@@ -54,7 +61,6 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     TopologyPushResult,
     TopologyRejectionReason,
     TopologyRejectionResult,
-    get_topology_rejection_message,
 )
 from toop_engine_topology_optimizer.interfaces.models.base_storage import convert_db_topo_to_message_topo, hash_topologies
 
@@ -67,54 +73,9 @@ class AcNotConvergedError(Exception):
     pass
 
 
-@dataclass
-class OptimizerData:
-    """The epoch-to-epoch storage for the AC optimizer"""
-
-    params: ACOptimizerParameters
-    """The parameters this optimizer was initialized with"""
-
-    session: Session
-    """A in-memory sqlite session for storing the repertoire"""
-
-    evolution_fn: Callable[[], list[ACOptimTopology]]
-    """The curried evolution function"""
-
-    scoring_fn: Callable[
-        [list[ACOptimTopology]], tuple[LoadflowResultsPolars, list[Metrics], Optional[TopologyRejectionReason]]
-    ]
-    """The curried scoring function. Given a strategy, this does three things:
-    1. It computes the loadflow results for the given strategy.
-    2. It computes the metrics for the given strategy.
-    3. It determines if there is a rejection reason for the strategy.
-
-    This will also include an early stopping mechanism where potentially after a small number of computed loadflows a
-    rejection is computed. In this case, the returned loadflow results and metrics will be based only on the subset of
-    N-1 cases that were presented by the dc optimizer as the most relevant ones.
-    """
-
-    store_loadflow_fn: Callable[[LoadflowResultsPolars], StoredLoadflowReference]
-    """The function to store loadflow results"""
-
-    load_loadflow_fn: Callable[[StoredLoadflowReference], LoadflowResultsPolars]
-    """The function to load loadflow results"""
-
-    rng: Rng
-    """The random number generator for the optimizer"""
-
-    action_sets: list[ActionSet]
-    """The action sets for the grid files (one for each timestep)"""
-
-    framework: Framework
-    """The framework of the grid files"""
-
-    runners: list[AbstractLoadflowRunner]
-    """The initialized loadflow runners, one for each grid file"""
-
-
 def update_initial_metrics_with_worst_k_contingencies(
     initial_loadflow: LoadflowResultsPolars,
-    initial_metrics: list[Metrics],
+    initial_metrics: Metrics,
     worst_k: int,
 ) -> None:
     """Update the initial metrics with the worst k contingencies.
@@ -128,30 +89,28 @@ def update_initial_metrics_with_worst_k_contingencies(
     ----------
     initial_loadflow : LoadflowResultsPolars
         The initial loadflow results containing the branch results.
-    initial_metrics : list[Metrics]
+    initial_metrics : Metrics
         The initial metrics for each timestep.
     worst_k : int
         The number of worst contingencies to consider for the initial metrics.
     """
     case_ids, top_k_overloads_n_1 = get_worst_k_contingencies_ac(
-        initial_loadflow.branch_results,
+        cast("patpl.LazyFrame[BranchResultSchemaPolars]", initial_loadflow.branch_results),
         k=worst_k,
     )
 
     # case_ids is an empty list if the loadflow didn't converge -> the initial_loadflow.branch_results is full of NaNs
     if len(case_ids) == 0:
         logger.warning("No worst case ids found as the loadflow didn't converge")
-        top_k_overloads_n_1 = [0] * len(initial_metrics)
-        case_ids = [[]] * len(initial_metrics)
+        top_k_overloads_n_1 = [0.0]
+        case_ids = [[]]
 
-    # Update extra_scores of initial_metrics with case_ids and top_k_overloads_n_1
-    for timestep, metric in enumerate(initial_metrics):
-        metric.extra_scores.update(
-            {
-                "top_k_overloads_n_1": top_k_overloads_n_1[timestep],
-            }
-        )
-        metric.worst_k_contingency_cases = case_ids[timestep]
+    initial_metrics.extra_scores.update(
+        {
+            "top_k_overloads_n_1": top_k_overloads_n_1[0],
+        }
+    )
+    initial_metrics.worst_k_contingency_cases = case_ids[0]
 
 
 def make_runner(
@@ -229,7 +188,7 @@ def initialize_optimization(
     params: ACOptimizerParameters,
     session: Session,
     optimization_id: str,
-    grid_files: list[GridFile],
+    grid_file: GridFile,
     loadflow_result_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
 ) -> tuple[OptimizerData, Strategy]:
@@ -243,8 +202,8 @@ def initialize_optimization(
         The database session to use for storing topologies
     optimization_id : str
         The ID of the optimization run
-    grid_files : list[GridFile]
-        The grid files to optimize on, must contain at least one file
+    grid_file : GridFile
+        The grid file to optimize on
     loadflow_result_fs: AbstractFileSystem
         A filesystem where the loadflow results are stored. Loadflows will be stored here using the uuid generation process
         and passed as a StoredLoadflowReference which contains the subfolder in this filesystem.
@@ -256,7 +215,6 @@ def initialize_optimization(
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
 
-
     Returns
     -------
     OptimizerData
@@ -264,60 +222,44 @@ def initialize_optimization(
     Strategy
         The initial strategy
     """
-    if not len(grid_files):
-        raise ValueError("At least one grid file must be provided")
-
     ga_config = params.ga_config
-    logger.info(
-        f"Initializing AC optimization_id={optimization_id}, n_grid_files={len(grid_files)}, "
-        f"framework={grid_files[0].framework}, seed={ga_config.seed}"
-    )
-
+    logger.info("Initializing AC optimization", framework={grid_file.framework}, seed={ga_config.seed})
     # Load the network datas
-    action_sets = [
-        load_action_set_fs(
-            filesystem=processed_gridfile_fs,
-            json_file_path=grid_file.action_set_file,
-            diff_file_path=grid_file.action_set_diff_file,
-        )
-        for grid_file in grid_files
-    ]
-    nminus1_definitions = [
-        load_pydantic_model_fs(
-            filesystem=processed_gridfile_fs, file_path=grid_file.nminus1_definition_file, model_class=Nminus1Definition
-        )
-        for grid_file in grid_files
-    ]
-
-    lf_params = [
-        load_lf_params_from_fs(filesystem=processed_gridfile_fs, file_path=grid_file.loadflow_parameters_file)
-        for grid_file in grid_files
-    ]
-    logger.debug(
-        f"Loaded preprocessing inputs: n_action_sets={len(action_sets)}, "
-        f"n_nminus1_definitions={len(nminus1_definitions)}, n_lf_params={len(lf_params)}"
+    action_set = load_action_set_fs(
+        filesystem=processed_gridfile_fs,
+        json_file_path=grid_file.action_set_file,
+        diff_file_path=grid_file.action_set_diff_file,
+    )
+    nminus1_definition = load_pydantic_model_fs(
+        filesystem=processed_gridfile_fs, file_path=grid_file.nminus1_definition_file, model_class=Nminus1Definition
     )
 
-    base_case_ids = [(n1def.base_case.id if n1def.base_case is not None else None) for n1def in nminus1_definitions]
+    lf_params = load_lf_params_from_fs(filesystem=processed_gridfile_fs, file_path=grid_file.loadflow_parameters_file)
 
-    n_controllable_pst = [len(action_set.pst_ranges) for action_set in action_sets]
+    logger.debug("Loaded preprocessing inputs")
+
+    base_case_id = getattr(nminus1_definition.base_case, "id", None)
 
     # Prepare the loadflow runners
-    runners = [
-        make_runner(
-            action_set,
-            nminus1_definition,
-            grid_file,
-            n_processes=ga_config.runner_processes,
-            batch_size=ga_config.runner_batchsize,
-            processed_gridfile_fs=processed_gridfile_fs,
-            lf_params=lf_param,
-        )
-        for action_set, nminus1_definition, grid_file, lf_param in zip(
-            action_sets, nminus1_definitions, grid_files, lf_params, strict=True
-        )
-    ]
-    logger.debug(f"Prepared {len(runners)} runner(s) for AC optimization")
+    def build_runner_group(n_topo_processes: int, n_contingency_processes: int) -> RunnerGroup:
+        return [
+            make_runner(
+                action_set,
+                nminus1_definition,
+                grid_file,
+                n_processes=n_contingency_processes,
+                batch_size=None,
+                processed_gridfile_fs=processed_gridfile_fs,
+                lf_params=lf_params,
+            )
+            for _ in range(n_topo_processes)
+        ]
+
+    worst_k_runner_group = build_runner_group(ga_config.worst_k_runner_processes, ga_config.worst_k_contingency_processes)
+    logger.debug(f"Prepared {len(worst_k_runner_group)} runner(s) for Early Stopping AC optimization")
+
+    runner_group = build_runner_group(ga_config.runner_processes, ga_config.contingency_processes)
+    logger.debug(f"Prepared {len(runner_group)} runner(s) for AC optimization")
 
     # Prepare the evolution function
     rng = np.random.default_rng(ga_config.seed)
@@ -326,32 +268,25 @@ def initialize_optimization(
         rng=rng,
         session=session,
         optimization_id=optimization_id,
-        close_coupler_prob=ga_config.close_coupler_prob,
-        reconnect_prob=ga_config.reconnect_prob,
-        pull_prob=ga_config.pull_prob,
         max_retries=10,
-        n_minus1_definitions=nminus1_definitions,
+        batch_size=ga_config.worst_k_runner_processes,
         filter_strategy=ga_config.filter_strategy,
     )
 
     # Prepare the initial strategy
-    initial_strategy = [
-        ACOptimTopology(
-            actions=[],
-            disconnections=[],
-            pst_setpoints=None,
-            timestep=i,
-            fitness=0,
-            unsplit=True,
-            strategy_hash=b"willbeupdated",
-            optimization_id=optimization_id,
-            optimizer_type=OptimizerType.AC,
-        )
-        for i, n_pst in enumerate(n_controllable_pst)
-    ]
-    initial_hash = hash_topologies(initial_strategy)
-    for topo in initial_strategy:
-        topo.strategy_hash = initial_hash
+    unsplit_topology = ACOptimTopology(
+        actions=[],
+        disconnections=[],
+        pst_setpoints=None,
+        timestep=0,
+        fitness=0,
+        unsplit=True,
+        strategy_hash=b"willbeupdated",
+        optimization_id=optimization_id,
+        optimizer_type=OptimizerType.AC,
+    )
+    initial_hash = hash_topologies([unsplit_topology])
+    unsplit_topology.strategy_hash = initial_hash
 
     def store_loadflow(loadflow: LoadflowResultsPolars) -> StoredLoadflowReference:
         return save_loadflow_results_polars(
@@ -366,10 +301,9 @@ def initialize_optimization(
     if initial_loadflow_reference is None:
         logger.info("No initial loadflow provided, computing initial AC loadflow")
         initial_loadflow, _, initial_metrics = compute_loadflow_and_metrics(
-            strategy=initial_strategy,
-            runners=runners,
-            base_case_ids=base_case_ids,
-            n_timestep_processes=ga_config.timestep_processes,
+            topology=unsplit_topology,
+            runner=runner_group[0],
+            base_case_id=base_case_id,
         )
         initial_loadflow_reference = store_loadflow(initial_loadflow)
         logger.debug(f"Initial AC loadflow computed and stored under reference={initial_loadflow_reference}")
@@ -378,65 +312,75 @@ def initialize_optimization(
         # If the initial loadflow is passed in, we load it from the database
         initial_loadflow = loadflow_ref(initial_loadflow_reference)
         # Compute the metrics for the initial loadflow
-        initial_metrics = compute_metrics(
-            strategy=initial_strategy,
-            lfs=initial_loadflow,
-            base_case_ids=base_case_ids,
-            additional_info=[None] * len(initial_strategy),
+        initial_metrics = compute_metrics_single_timestep(
+            actions=unsplit_topology.actions,
+            disconnections=unsplit_topology.disconnections,
+            loadflow=initial_loadflow,
+            additional_info=None,
+            base_case_id=base_case_id,
         )
-        logger.debug(f"Computed initial metrics from provided loadflow for {len(initial_metrics)} timestep(s)")
+        logger.debug("Computed initial metrics from provided loadflow")
 
     # Update the initial metrics with the worst k contingencies
     update_initial_metrics_with_worst_k_contingencies(
         initial_loadflow, initial_metrics, params.ga_config.n_worst_contingencies
     )
 
-    for timestep_metrics, n1_def in zip(initial_metrics, nminus1_definitions, strict=True):
-        logger.debug(
-            "Initial convergence summary: "
-            f"non_converging={timestep_metrics.extra_scores['non_converging_loadflows']}, "
-            f"allowed={len(n1_def.contingencies) / 2}"
+    logger.debug(
+        "Initial convergence summary: "
+        f"non_converging={initial_metrics.extra_scores.get('non_converging_loadflows', 0)}, "
+        f"allowed={len(nminus1_definition.contingencies) / 2}"
+    )
+    if initial_metrics.extra_scores.get("non_converging_loadflows", 0) > len(nminus1_definition.contingencies) / 2:
+        raise AcNotConvergedError(
+            "Too many non-converging loadflows in initial loadflow: "
+            f"{initial_metrics.extra_scores.get('non_converging_loadflows', 0)} > "
+            f"{len(nminus1_definition.contingencies) / 2}"
         )
-        if timestep_metrics.extra_scores["non_converging_loadflows"] > len(n1_def.contingencies) / 2:
-            raise AcNotConvergedError(
-                "Too many non-converging loadflows in initial loadflow: "
-                f"{timestep_metrics.extra_scores['non_converging_loadflows']} > {len(n1_def.contingencies) / 2}"
-            )
 
-    # Store the initial strategy in the database
-    for topo, metric in zip(initial_strategy, initial_metrics, strict=True):
-        topo.fitness = metric.fitness
-        topo.metrics = metric.extra_scores
-        topo.worst_k_contingency_cases = metric.worst_k_contingency_cases
-        topo.set_loadflow_reference(initial_loadflow_reference)
-        session.add(topo)
+    unsplit_topology.fitness = initial_metrics.fitness
+    unsplit_topology.metrics = initial_metrics.extra_scores
+    unsplit_topology.worst_k_contingency_cases = initial_metrics.worst_k_contingency_cases
+    unsplit_topology.set_loadflow_reference(initial_loadflow_reference)
+    session.add(unsplit_topology)
     session.commit()
-    logger.debug(f"Stored initial AC strategy in DB for {len(initial_strategy)} timestep(s)")
+    logger.debug("Stored initial AC strategy in DB")
 
     # As we have the initial loadflows, we can now define a scoring+acceptance function
-    scoring_fn = partial(
-        scoring_and_acceptance,
-        runners=runners,
-        metrics_unsplit=initial_metrics,
-        loadflow_results_unsplit=initial_loadflow,
-        scoring_params=ACScoringParameters(
-            base_case_ids=base_case_ids,
-            n_timestep_processes=ga_config.timestep_processes,
-            early_stop_validation=ga_config.early_stop_validation,
-            early_stop_non_converging_threshold=ga_config.early_stopping_non_convergence_percentage_threshold,
-            reject_convergence_threshold=ga_config.reject_convergence_threshold,
-            reject_overload_threshold=ga_config.reject_overload_threshold,
-            reject_critical_branch_threshold=ga_config.reject_critical_branch_threshold,
-        ),
+    scoring_params = ACScoringParameters(
+        base_case_id=base_case_id,
+        early_stop_validation=ga_config.early_stop_validation,
+        reject_convergence_threshold=ga_config.reject_convergence_threshold,
+        reject_overload_threshold=ga_config.reject_overload_threshold,
+        reject_critical_branch_threshold=ga_config.reject_critical_branch_threshold,
     )
 
+    def scoring_fn(
+        topologies: list[ACOptimTopology],
+        early_stage_results: Optional[list[EarlyStoppingStageResult]] = None,
+    ) -> list[TopologyScoringResult]:
+        return score_topology_batch(
+            topologies,
+            runner_group=runner_group,
+            metrics_unsplit=initial_metrics,
+            scoring_params=scoring_params,
+            early_stage_results=early_stage_results,
+        )
+
+    worst_k_scoring_fn = partial(
+        score_strategy_worst_k_batch,
+        worst_k_runner_groups=worst_k_runner_group,
+        metrics_unsplit=initial_metrics,
+        loadflow_results_unsplit=initial_loadflow,
+        scoring_params=scoring_params,
+    )
     # Convert the initial strategy to a message strategy
-    initial_strategy_message = convert_db_topo_to_message_topo(initial_strategy)
+    initial_strategy_message = convert_db_topo_to_message_topo([unsplit_topology])
     assert len(initial_strategy_message) == 1
 
     logger.info(
-        f"Initialization completed, metrics: {initial_metrics[0].extra_scores}, fitness: {initial_metrics[0].fitness}, "
-        f"worst_k_contingency_cases: {initial_metrics[0].worst_k_contingency_cases}. Waiting for DC results..."
+        f"Initialization completed, metrics: {initial_metrics.extra_scores}, fitness: {initial_metrics.fitness}, "
+        f"worst_k_contingency_cases: {initial_metrics.worst_k_contingency_cases}. Waiting for DC results..."
     )
 
     return (
@@ -445,12 +389,14 @@ def initialize_optimization(
             session=session,
             evolution_fn=evolution_fn,
             scoring_fn=scoring_fn,
+            worst_k_scoring_fn=worst_k_scoring_fn,
             store_loadflow_fn=store_loadflow,
             load_loadflow_fn=loadflow_ref,
             rng=rng,
-            framework=grid_files[0].framework,
-            runners=runners,
-            action_sets=action_sets,
+            framework=grid_file.framework,
+            runners=runner_group,
+            worst_k_runner_groups=worst_k_runner_group,
+            action_set=action_set,
         ),
         initial_strategy_message[0],
     )
@@ -498,7 +444,6 @@ def wait_for_first_dc_results(
 
     start_wait = datetime.now()
     poll_iteration = 0
-    logger.info("Waiting for DC results to arrive...")
     while datetime.now() - start_wait < timedelta(seconds=max_wait_time):
         poll_iteration += 1
         elapsed_seconds = (datetime.now() - start_wait).total_seconds()
@@ -518,102 +463,330 @@ def wait_for_first_dc_results(
     raise TimeoutError(f"Did not receive DC results within {max_wait_time} seconds, cannot proceed with optimization")
 
 
-def run_epoch(
+def persist_topology(
+    topology: ACOptimTopology,
+    scoring_result: TopologyScoringResult,
     optimizer_data: OptimizerData,
-    results_consumer: LongRunningKafkaConsumer,
-    send_result_fn: Callable[[ResultUnion], None],
-    epoch: int,
-) -> bool:
-    """Run a single epoch of the AC optimizer
+) -> tuple[Topology, TopologyScoringResult]:
+    """Persist a topology and return the payload needed for later emission.
 
-    This shall send the investigated topology to the result topic upon completion.
+    This function stores the topology in the database, including the loadflow results if available,
+    and returns the final message payload and scoring result. Emission is handled separately so callers
+    can persist without necessarily sending a result immediately.
 
     Parameters
     ----------
+    topology : ACOptimTopology
+        The topology to persist and send
+    scoring_result : TopologyScoringResult
+        The scoring result for the topology, containing the metrics, loadflow results and rejection reason if any
     optimizer_data : OptimizerData
-        The optimizer data, will be updated in-place
-    results_consumer : LongRunningKafkaConsumer
-        The consumer where to listen for DC results
-    send_result_fn : Callable[[ResultUnion], None]
-        The function to send results
-    epoch : int
-        The current epoch number, used for logging and heartbeat purposes. Also, on epoch 1 the wait time for
-        the consumer is longer to allow for dc optim startup.
+        The optimizer data containing the session and the loadflow storage function
 
     Returns
     -------
-    bool
-        Whether a new strategy was polled, i.e. an AC validation actually happened. The epoch counter will only be increased
-        if this happened.
+    tuple[Topology, TopologyScoringResult]
+        The message payload to emit and the final scoring result after persistence handling.
     """
-    enable_ac_rejection = optimizer_data.params.ga_config.enable_ac_rejection
-    logger.info(f"Starting AC epoch={epoch}")
-    added_topos, _stopped_opimization_ids = poll_results_topic(
-        db=optimizer_data.session, consumer=results_consumer, first_poll=epoch == 1
-    )
-    logger.debug(f"Epoch {epoch}: imported {len(added_topos)} topology/ies from result stream")
-    new_strategy = optimizer_data.evolution_fn()
-
-    # It is possible that no new strategy was generated
-    if not new_strategy:
-        logger.debug(f"Epoch {epoch}: evolution returned no new strategy")
-        return False
-
-    logger.debug(f"Epoch {epoch}: evaluating strategy with {len(new_strategy)} timestep topology/ies")
-    try:
-        loadflow_results, metrics, rejection_reason = optimizer_data.scoring_fn(new_strategy)
-        logger.debug(f"Epoch {epoch}: scoring finished, rejection_reason={rejection_reason}, n_metrics={len(metrics)}")
-        loadflow_result_reference = optimizer_data.store_loadflow_fn(loadflow_results)
-        logger.debug(f"Epoch {epoch}: stored loadflow reference={loadflow_result_reference}")
-    except Exception as e:
-        loadflow_result_reference = None
-        metrics = [Metrics(fitness=INF_FITNESS, extra_scores={}) for _ in new_strategy]
-        rejection_reason = TopologyRejectionReason(
-            criterion="error", description=str(e), value_after=1.0, value_before=0.0, early_stopping=False
-        )
-        logger.error(f"Epoch {epoch}: error during scoring: {e}")
-        enable_ac_rejection = True  # Ensure that the topology is rejected in case of errors during scoring
-
-    # Update the strategy with the new loadflow results
-    message_topos = []
-    for topology, metric in zip(new_strategy, metrics, strict=True):
-        # TODO: FIXME: remove fitness_dc when "Topology" is refactored and accepts different stages like "dc", "dc+" and "ac"
-        # topology should store a dict of metrics instead of a single fitness value
-        if "fitness_dc" in topology.metrics:
-            metric.extra_scores["fitness_dc"] = topology.metrics["fitness_dc"]
-        topology.metrics = metric.extra_scores
-        topology.fitness = metric.fitness
-        topology.acceptance = rejection_reason is None
-        topology.set_loadflow_reference(loadflow_result_reference)
-
-        optimizer_data.session.add(topology)
-
-        message_topos.append(
-            Topology(
-                actions=topology.actions,
-                pst_setpoints=topology.pst_setpoints,
-                disconnections=topology.disconnections,
-                loadflow_results=loadflow_result_reference,
-                metrics=metric,
+    rejection_reason = scoring_result.rejection_reason
+    loadflow_result_reference = None
+    if scoring_result.loadflow_results is not None:
+        try:
+            loadflow_result_reference = optimizer_data.store_loadflow_fn(scoring_result.loadflow_results)
+        except Exception as exc:
+            logger.error("Error while storing loadflow results", error=str(exc))
+            rejection_reason = TopologyRejectionReason(
+                criterion="error", description=str(exc), value_after=1.0, value_before=0.0, early_stopping=False
             )
-        )
+            scoring_result = TopologyScoringResult(
+                loadflow_results=None,
+                metrics=Metrics(fitness=INF_FITNESS, extra_scores={}),
+                rejection_reason=rejection_reason,
+            )
+
+    if "fitness_dc" in topology.metrics:
+        scoring_result.metrics.extra_scores["fitness_dc"] = topology.metrics["fitness_dc"]
+    topology.metrics = scoring_result.metrics.extra_scores
+    topology.fitness = scoring_result.metrics.fitness
+    topology.acceptance = rejection_reason is None
+    topology.set_loadflow_reference(loadflow_result_reference)
+
+    optimizer_data.session.add(topology)
+
+    message_topology = Topology(
+        actions=topology.actions,
+        pst_setpoints=topology.pst_setpoints,
+        disconnections=topology.disconnections,
+        loadflow_results=loadflow_result_reference,
+        metrics=scoring_result.metrics,
+    )
 
     optimizer_data.session.commit()
-    logger.debug(f"Epoch {epoch}: committed {len(new_strategy)} topology/ies to AC DB")
 
-    # Send the new strategy to the result topic
-    if not enable_ac_rejection or rejection_reason is None:
-        send_result_fn(TopologyPushResult(strategies=[Strategy(timesteps=message_topos)], epoch=epoch))
-        logger.info(
-            f"Epoch {epoch} completed, accept: True, metrics: {metrics[0].extra_scores}, fitness: {metrics[0].fitness}"
-        )
+    return message_topology, scoring_result
+
+
+def send_topology_result(
+    topology_message: Topology,
+    scoring_result: TopologyScoringResult,
+    epoch: int,
+    enable_ac_rejection: bool,
+    send_result_fn: Callable[[ResultUnion], None],
+) -> None:
+    """Send the persisted topology result to the result topic.
+
+    This function sends either a TopologyPushResult or a TopologyRejectionResult depending on the scoring result and the AC
+    rejection settings.
+
+    Parameters
+    ----------
+    topology_message : Topology
+        The topology message to send, containing the actions, metrics and loadflow result reference
+    scoring_result : TopologyScoringResult
+        The scoring result for the topology, containing the metrics, loadflow results and rejection reason if any. The
+        rejection reason will be used to determine whether to send a push result or a rejection result
+    epoch : int
+        The current epoch number.
+    enable_ac_rejection : bool
+        Whether to enable AC rejection. If True, topologies with a rejection reason in the scoring result will be sent as
+        rejections.
+        If False, all topologies will be sent as push results regardless of the scoring result.
+    send_result_fn : Callable[[ResultUnion], None]
+        The function to send results to the result topic, used for sending either the push result or the rejection result
+        depending on the scoring result and AC rejection settings.
+    """
+    rejection_reason = scoring_result.rejection_reason
+    local_enable_ac_rejection = enable_ac_rejection or (
+        rejection_reason is not None and rejection_reason.criterion == "error"
+    )
+
+    if not local_enable_ac_rejection or rejection_reason is None:
+        send_result_fn(TopologyPushResult(strategies=[Strategy(timesteps=[topology_message])], epoch=epoch))
     else:
         send_result_fn(
             TopologyRejectionResult(
                 reason=rejection_reason,
-                strategy=Strategy(timesteps=message_topos),
+                strategy=Strategy(timesteps=[topology_message]),
                 epoch=epoch,
             )
         )
-        logger.info(f"Epoch {epoch} completed, accept: False, reason: {get_topology_rejection_message(rejection_reason)}")
-    return True
+
+
+def run_fast_failing_epoch(
+    optimizer_data: OptimizerData,
+) -> tuple[list[ACOptimTopology], list[EarlyStoppingStageResult]]:
+    """Run one epoch of fast-failing AC evaluation only.
+
+    This imports new DC topologies, pulls up to ``topology_batch_size`` strategies from the
+    evolution function, evaluates them with the worst-k fast-failing scorer, and returns the
+    evaluated strategies together with their early-stage scoring results.
+
+    Parameters
+    ----------
+    optimizer_data : OptimizerData
+        The optimizer data containing the evolution and fast-failing scoring functions.
+
+    Returns
+    -------
+    list[ACOptimTopology]
+        The strategies that were pulled and evaluated in the fast-failing stage.
+    list[EarlyStoppingStageResult]
+        The corresponding fast-failing scoring results.
+    """
+    topologies = optimizer_data.evolution_fn()
+    n_topologies = len(topologies)
+    if n_topologies == 0:
+        logger.debug("Evolution returned no new strategy")
+        return [], []
+    logger.debug("Running early-stopping batch", n_topologies=n_topologies)
+    fast_failing_results = optimizer_data.worst_k_scoring_fn(topologies)
+
+    return topologies, fast_failing_results
+
+
+def process_fast_failing_results(
+    optimizer_data: OptimizerData,
+    topologies: list[ACOptimTopology],
+    fast_failing_results: list[EarlyStoppingStageResult],
+    epoch: int,
+    send_result_fn: Callable[[ResultUnion], None],
+) -> tuple[list[ACOptimTopology], list[EarlyStoppingStageResult]]:
+    """Process the fast-failing stage, emitting only rejected strategies.
+
+    Rejected strategies are persisted immediately and emitted as rejections. Surviving strategies are
+    returned so they can be fully evaluated on the remaining contingencies before any accepted push
+    result is sent.
+
+    Parameters
+    ----------
+    optimizer_data : OptimizerData
+        The optimizer data containing the session and the loadflow storage function.
+    topologies : list[ACOptimTopology]
+        The topologies that were evaluated in the fast-failing stage.
+    fast_failing_results : list[EarlyStoppingStageResult]
+        The corresponding fast-failing scoring results, containing the rejection reason if any.
+    epoch : int
+        The current epoch number, used for logging and for sending in the result messages.
+    send_result_fn : Callable[[ResultUnion], None]
+        The function to send results to the result topic.
+
+    Returns
+    -------
+    list[ACOptimTopology]
+        The topologies that passed the fast-failing stage and can proceed to the remaining-contingency evaluation.
+    list[EarlyStoppingStageResult]
+        The corresponding fast-failing scoring results for the surviving topologies.
+    """
+    logger.debug("Validating early-stopping batch", n_topologies=len(topologies))
+
+    survivor_topologies: list[ACOptimTopology] = []
+    survivor_early_results: list[EarlyStoppingStageResult] = []
+    for topology, early_stop_result in zip(topologies, fast_failing_results, strict=True):
+        if early_stop_result.rejection_reason is None:
+            # If the topology is not rejected we want to fully evaluate it later
+            survivor_topologies.append(topology)
+            survivor_early_results.append(early_stop_result)
+            continue
+
+        topology_message, persisted_result = persist_topology(
+            topology=topology,
+            scoring_result=early_stop_result,
+            optimizer_data=optimizer_data,
+        )
+        send_topology_result(
+            topology_message=topology_message,
+            scoring_result=persisted_result,
+            epoch=epoch,
+            enable_ac_rejection=True,
+            send_result_fn=send_result_fn,
+        )
+    return survivor_topologies, survivor_early_results
+
+
+def run_remaining_epoch(
+    optimizer_data: OptimizerData,
+    topologies: list[ACOptimTopology],
+    early_stage_results: list[EarlyStoppingStageResult],
+) -> tuple[list[ACOptimTopology], list[TopologyScoringResult]]:
+    """Run one epoch of remaining-contingency AC evaluation only.
+
+    This evaluates the full remaining-loadflow stage for strategies that already passed the
+    fast-failing worst-k evaluation and returns the same strategies together with their final
+    scoring results.
+
+    Parameters
+    ----------
+    optimizer_data : OptimizerData
+        The optimizer data containing the remaining-stage scoring function.
+    topologies : list[ACOptimTopology]
+        The survivor topologies to evaluate in the remaining stage.
+    early_stage_results : list[EarlyStoppingStageResult]
+        The corresponding fast-failing stage results for each topology.
+
+    Returns
+    -------
+    list[ACOptimTopology]
+        The topologies that were evaluated in the remaining stage.
+    list[TopologyScoringResult]
+        The corresponding final scoring results.
+    """
+    if not topologies:
+        logger.debug("No topologies provided for remaining contingencies")
+        return [], []
+
+    logger.debug("Running remaining contingencies", survivor_count=len(topologies))
+    full_results = optimizer_data.scoring_fn(topologies, early_stage_results)
+    return topologies, full_results
+
+
+def process_remaining_results(
+    optimizer_data: OptimizerData,
+    topologies: list[ACOptimTopology],
+    full_results: list[TopologyScoringResult],
+    epoch: int,
+    send_result_fn: Callable[[ResultUnion], None],
+) -> tuple[list[ACOptimTopology], list[TopologyScoringResult]]:
+    """Process the results of the remaining-contingency stage and send the strategies to the result topic.
+
+    Parameters
+    ----------
+    optimizer_data : OptimizerData
+        The optimizer data containing the session and the loadflow storage function.
+    topologies : list[ACOptimTopology]
+        The topologies that were evaluated in the remaining stage.
+    full_results : list[TopologyScoringResult]
+        The corresponding full scoring results, containing the final metrics,
+        loadflow results and rejection reason if any.
+    epoch : int
+        The current epoch number, used for logging and for sending in the result messages.
+    send_result_fn : Callable[[ResultUnion], None]
+        The function to send results to the result topic.
+
+    Returns
+    -------
+    list[ACOptimTopology]
+        The topologies that were evaluated in the remaining stage,
+        with their metrics and fitness updated based
+        on the full scoring results.
+    list[TopologyScoringResult]
+        The corresponding full scoring results for each topology,
+        which can be used for further processing in the next epoch, e.g. for the evolution function.
+    """
+    for topology, full_result in zip(topologies, full_results, strict=True):
+        topology_message, persisted_result = persist_topology(
+            topology=topology,
+            scoring_result=full_result,
+            optimizer_data=optimizer_data,
+        )
+        send_topology_result(
+            topology_message=topology_message,
+            scoring_result=persisted_result,
+            epoch=epoch,
+            enable_ac_rejection=optimizer_data.params.ga_config.enable_ac_rejection,
+            send_result_fn=send_result_fn,
+        )
+    return topologies, full_results
+
+
+def evaluate_remaining_contingencies(
+    send_result_fn: Callable[[ResultUnion], None],
+    optimizer_data: OptimizerData,
+    epoch: int,
+    survivor_topologies: list[ACOptimTopology],
+    survivor_early_results: list[EarlyStoppingStageResult],
+) -> None:
+    """Evaluate the remaining contingencies for the strategies that passed the fast-failing stage.
+
+    Parameters
+    ----------
+    survivor_topologies : list[ACOptimTopology]
+        The topologies that passed the fast-failing stage and need to be evaluated
+        on the remaining contingencies.
+    survivor_early_results : list[EarlyStoppingStageResult]
+        The early results from the fast-failing stage for the topologies that passed.
+    send_result_fn : Callable[[ResultUnion], None]
+        The function to send results to the result topic, used for sending the final results
+        after evaluating the remaining contingencies.
+    optimizer_data : OptimizerData
+        The optimizer data containing the scoring function for the remaining contingencies and other necessary data for the
+        evaluation.
+    epoch : int
+        The current epoch number, used for logging and for sending in the result messages.
+    """
+    topologies, full_results = run_remaining_epoch(
+        topologies=survivor_topologies,
+        early_stage_results=survivor_early_results,
+        optimizer_data=optimizer_data,
+    )
+    process_remaining_results(
+        optimizer_data=optimizer_data,
+        topologies=topologies,
+        full_results=full_results,
+        send_result_fn=send_result_fn,
+        epoch=epoch,
+    )
+    logger.info(
+        "Completed AC evaluation",
+        accepted={sum(1 for result in full_results if result.rejection_reason is None)},
+        rejected=[result.rejection_reason.criterion for result in full_results if result.rejection_reason is not None],
+    )

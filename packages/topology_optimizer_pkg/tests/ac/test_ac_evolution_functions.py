@@ -8,18 +8,13 @@
 import copy
 
 import numpy as np
-import pytest
 from jaxtyping import Int
-from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.evolution_functions import (
-    close_coupler,
     default_scorer,
-    evolution,
     evolution_try,
     pull,
-    reconnect,
     select_repertoire,
 )
 from toop_engine_topology_optimizer.ac.select_strategy import select_strategy
@@ -29,7 +24,9 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDB
 
 
 def test_pull(dc_repertoire: list[BaseDBTopology]) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
+    strategy = select_strategy(
+        np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer, lower_scores_are_better=True
+    )
     pulled = pull(strategy)
     for new, old in zip(pulled, strategy):
         assert isinstance(new, ACOptimTopology)
@@ -49,12 +46,12 @@ def test_pull_with_worst_k_contingencies(
 ):
     repo, session = unsplit_ac_dc_repertoire
 
-    strategy = select_strategy(np.random.default_rng(0), repo, repo, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), repo, repo, default_scorer, lower_scores_are_better=True)
     # Create a copy of the strategy to avoid mutating the original during pull
     strategy_copy = [copy.deepcopy(t) for t in strategy]
 
-    # Copy the same n-1 definition for all the topos of the strategy
-    pulled = pull(strategy_copy, session=session, n_minus1_definitions=n_minus1_definitions_case_57 * len(strategy))
+    del n_minus1_definitions_case_57
+    pulled = pull(strategy_copy, session=session)
 
     # Find the unsplit AC topology in the pulled repertoire
     unsplit_topos = [t for t in repo if getattr(t, "unsplit", False)]
@@ -84,32 +81,6 @@ def test_pull_with_worst_k_contingencies(
         assert sorted(new_case_ids) == sorted(unsplit_case_ids.union(old_case_ids))
 
 
-def test_reconnect(dc_repertoire: list[BaseDBTopology]) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
-    reconnected = reconnect(np.random.default_rng(0), strategy)
-
-    assert len(reconnected) == len(strategy)
-    has_reconnected = False
-    for new, old in zip(reconnected, strategy):
-        assert isinstance(new, ACOptimTopology)
-        assert new.actions == old.actions
-        assert new.pst_setpoints == old.pst_setpoints
-        assert new.strategy_hash == reconnected[0].strategy_hash
-        assert new.strategy_hash != old.strategy_hash
-        assert new.optimizer_type == OptimizerType.AC
-        assert new.unsplit is False
-
-        len_before = len(old.disconnections)
-        len_after = len(new.disconnections)
-
-        assert len_after == len_before or len_after == len_before - 1
-        if len_after == len_before - 1:
-            has_reconnected = True
-    assert has_reconnected
-
-    assert reconnect(np.random.default_rng(0), []) == []
-
-
 def test_select_repertoire(dc_repertoire: list[ACOptimTopology], session: Session) -> None:
     # Copy the first strategy to the AC database
     strategy = dc_repertoire[0].strategy_hash
@@ -129,323 +100,171 @@ def test_select_repertoire(dc_repertoire: list[ACOptimTopology], session: Sessio
     assert len(pulled) == 0
 
 
-def test_select_repertoire_without_parent_on(session: Session) -> None:
-    # Create a repertoire with one topology that has a parent on DC and one that doesn't have a parent
-    repertoire = [
+def test_select_repertoire_without_children_on(session: Session) -> None:
+    evaluated_dc_topology = ACOptimTopology(
+        actions=[1],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=hash_topo_data([([1], [], None)]),
+        optimization_id="test",
+        optimizer_type=OptimizerType.DC,
+        fitness=0.5,
+    )
+    unevaluated_dc_topology = ACOptimTopology(
+        actions=[2],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=hash_topo_data([([2], [], None)]),
+        optimization_id="test",
+        optimizer_type=OptimizerType.DC,
+        fitness=0.5,
+    )
+    other_run_dc_topology = ACOptimTopology(
+        actions=[3],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=hash_topo_data([([3], [], None)]),
+        optimization_id="nottest",
+        optimizer_type=OptimizerType.DC,
+        fitness=0.5,
+    )
+    session.add_all([evaluated_dc_topology, unevaluated_dc_topology, other_run_dc_topology])
+    session.commit()
+    session.refresh(evaluated_dc_topology)
+
+    session.add(
         ACOptimTopology(
-            actions=[1],
-            disconnections=[],
-            pst_setpoints=None,
+            actions=evaluated_dc_topology.actions,
+            disconnections=evaluated_dc_topology.disconnections,
+            pst_setpoints=evaluated_dc_topology.pst_setpoints,
             unsplit=False,
             timestep=0,
-            strategy_hash=hash_topo_data([([1], [], None)]),
+            strategy_hash=evaluated_dc_topology.strategy_hash,
             optimization_id="test",
             optimizer_type=OptimizerType.AC,
             fitness=0.5,
-            parent=ACOptimTopology(
-                actions=[1],
-                disconnections=[],
-                pst_setpoints=None,
-                unsplit=False,
-                timestep=0,
-                strategy_hash=hash_topo_data([([1], [], None)]),
-                optimization_id="test",
-                optimizer_type=OptimizerType.DC,
-                fitness=0.5,
-            ),
-        ),
-        ACOptimTopology(
-            actions=[2],
-            disconnections=[],
-            pst_setpoints=None,
-            unsplit=False,
-            timestep=0,
-            strategy_hash=hash_topo_data([([2], [], None)]),
-            optimization_id="test",
-            optimizer_type=OptimizerType.DC,
-            fitness=0.5,
-            parent=None,
-        ),
-        ACOptimTopology(
-            actions=[2],
-            disconnections=[],
-            pst_setpoints=None,
-            unsplit=False,
-            timestep=0,
-            strategy_hash=hash_topo_data([([2], [], None)]),
-            optimization_id="nottest",
-            optimizer_type=OptimizerType.DC,
-            fitness=0.5,
-            parent=None,
-        ),
-    ]
-    session.add_all(repertoire)
+            parent_id=evaluated_dc_topology.id,
+        )
+    )
     session.commit()
     assert len(session.exec(select(ACOptimTopology)).all()) == 4
 
     filtered = select_repertoire(
         optimization_id="test",
         optimizer_type=[OptimizerType.DC],
-        without_parent_on=[OptimizerType.AC],
+        without_children_on=[OptimizerType.AC],
         session=session,
     )
     assert len(filtered) == 1
-    assert filtered[0].strategy_hash == hash_topo_data([([2], [], None)])
-    assert filtered[0].parent is None
+    assert filtered[0].strategy_hash == unevaluated_dc_topology.strategy_hash
+    assert filtered[0].parent_id is None
 
     unfiltered = select_repertoire(
         optimization_id="test",
         optimizer_type=[OptimizerType.DC],
-        without_parent_on=[],
+        without_children_on=[],
         session=session,
     )
     assert len(unfiltered) == 2
 
 
-def test_close_coupler(
-    dc_repertoire: list[ACOptimTopology],
-) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
-
-    closed = close_coupler(
-        rng=np.random.default_rng(0),
-        selected_strategy=strategy,
-    )
-
-    assert len(closed) == len(strategy)
-
-    has_closed = False
-    for new, old in zip(closed, strategy):
-        assert isinstance(new, ACOptimTopology)
-        assert new.disconnections == old.disconnections
-        assert new.pst_setpoints == old.pst_setpoints
-        assert new.strategy_hash == closed[0].strategy_hash
-        assert new.strategy_hash != old.strategy_hash
-        assert new.optimizer_type == OptimizerType.AC
-        assert new.unsplit is False
-
-        assert len(old.actions) >= len(new.actions)
-
-        # At least one coupler anywhere must have been closed
-        if len(old.actions) > len(new.actions):
-            has_closed = True
-    assert has_closed
-
-    assert close_coupler(np.random.default_rng(0), []) == []
-
-
-def test_close_coupler_no_coupler(
-    dc_repertoire: list[ACOptimTopology],
-) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
-    # If a strategy completely without splits is fed in, no coupler can be closed
-    no_coupler_open = [
-        ACOptimTopology(
-            **topo.model_dump(exclude=["actions"]),
-            actions=[],
-        )
-        for topo in strategy
-    ]
-
-    assert (
-        close_coupler(
-            rng=np.random.default_rng(0),
-            selected_strategy=no_coupler_open,
-        )
-        == []
-    )
-
-
-def test_evolution_try_close_coupler(
+def test_evolution_try_returns_pulled_topology_batch(
     session: Session,
     dc_repertoire: list[ACOptimTopology],
     dc_repertoire_elements_per_sub: tuple[Int[np.ndarray, " n_relevant_subs"], Int[np.ndarray, " n_relevant_subs"]],
 ) -> None:
-    branches_per_sub, injections_per_sub = dc_repertoire_elements_per_sub
-
-    rng = np.random.default_rng(0)
-
-    # For mocking deterministic random, we do a rng.choice to obtain the same random state
-    # for select_strategy and close coupler
-    # Thus, the results should match exactly
-    rng.choice(["pull", "reconnect", "close_coupler"], p=[0, 0, 1])
-    strategy = select_strategy(rng, dc_repertoire, dc_repertoire, default_scorer)
-    # Repeat elements per sub to match strategy timestep dimension
-    branches_per_sub = np.repeat(branches_per_sub[None], len(strategy), axis=0)
-    injections_per_sub = np.repeat(injections_per_sub[None], len(strategy), axis=0)
-
-    reference = close_coupler(
-        rng,
-        selected_strategy=strategy,
-    )
-
-    rng = np.random.default_rng(0)
+    del dc_repertoire_elements_per_sub
     res = evolution_try(
-        rng=rng,
+        rng=np.random.default_rng(0),
         session=session,
         optimization_id="test",
-        close_coupler_prob=1.0,
-        pull_prob=0.0,
-        reconnect_prob=0.0,
+        batch_size=1,
     )
 
-    assert len(res) == len(reference)
-    for r, ref in zip(res, reference):
-        assert r.actions == ref.actions
-        assert r.disconnections == ref.disconnections
-        assert r.pst_setpoints == ref.pst_setpoints
-        assert r.strategy_hash == ref.strategy_hash
-        assert r.optimizer_type == ref.optimizer_type
-        assert r.optimization_id == ref.optimization_id
-        assert r.timestep == ref.timestep
-        assert r.unsplit == ref.unsplit
-        assert r.fitness == ref.fitness
-        assert r.metrics == ref.metrics
-
-
-def test_evolution_try_reconnect(session: Session, dc_repertoire: list[ACOptimTopology]) -> None:
-    rng = np.random.default_rng(0)
-
-    # For mocking deterministic random, we do a rng.choice to obtain the same random state
-    # for select_strategy and close coupler
-    # Thus, the results should match exactly
-    rng.choice(["pull", "reconnect", "close_coupler"], p=[0, 1, 0])
-    strategy = select_strategy(rng, dc_repertoire, dc_repertoire, default_scorer)
-    reference = reconnect(
-        rng,
-        selected_strategy=strategy,
-    )
-
-    rng = np.random.default_rng(0)
-    res = evolution_try(
-        rng=rng,
-        session=session,
-        optimization_id="test",
-        close_coupler_prob=0.0,
-        pull_prob=0.0,
-        reconnect_prob=1.0,
-    )
-
-    assert len(res) == len(reference)
-    for r, ref in zip(res, reference):
-        assert r.actions == ref.actions
-        assert r.disconnections == ref.disconnections
-        assert r.pst_setpoints == ref.pst_setpoints
-        assert r.strategy_hash == ref.strategy_hash
-        assert r.optimizer_type == ref.optimizer_type
-        assert r.optimization_id == ref.optimization_id
-        assert r.timestep == ref.timestep
-        assert r.unsplit == ref.unsplit
-        assert r.fitness == ref.fitness
-        assert r.metrics == ref.metrics
+    assert len(res) == 1
+    assert res[0].optimizer_type == OptimizerType.AC
+    assert res[0].parent_id is not None
+    parent = session.get(ACOptimTopology, res[0].parent_id)
+    assert parent is not None
+    assert res[0].actions == parent.actions
+    assert res[0].disconnections == parent.disconnections
+    assert res[0].pst_setpoints == parent.pst_setpoints
+    assert res[0].strategy_hash == parent.strategy_hash
+    assert res[0].optimization_id == parent.optimization_id
+    assert res[0].timestep == parent.timestep
 
 
 def test_evolution_try_pull(session: Session, dc_repertoire: list[ACOptimTopology]) -> None:
-    rng = np.random.default_rng(0)
-
-    # For mocking deterministic random, we do a rng.choice to obtain the same random state
-    # for select_strategy and close coupler
-    # Thus, the results should match exactly
-    rng.choice(["pull", "reconnect", "close_coupler"], p=[1, 0, 0])
-    strategy = select_strategy(rng, dc_repertoire, dc_repertoire, default_scorer)
-    reference = pull(
-        selected_strategy=strategy,
-    )
-
-    rng = np.random.default_rng(0)
     res = evolution_try(
-        rng=rng,
+        rng=np.random.default_rng(0),
         session=session,
         optimization_id="test",
-        close_coupler_prob=0.0,
-        pull_prob=1.0,
-        reconnect_prob=0.0,
+        batch_size=1,
     )
 
-    assert len(res) == len(reference)
-    for r, ref in zip(res, reference):
-        assert r.actions == ref.actions
-        assert r.disconnections == ref.disconnections
-        assert r.pst_setpoints == ref.pst_setpoints
-        assert r.strategy_hash == ref.strategy_hash
-        assert r.optimizer_type == ref.optimizer_type
-        assert r.optimization_id == ref.optimization_id
-        assert r.timestep == ref.timestep
-        assert r.unsplit == ref.unsplit
-        assert r.fitness == ref.fitness
-        assert r.metrics == ref.metrics
+    assert len(res) == 1
+    assert res[0].optimizer_type == OptimizerType.AC
+    assert res[0].parent_id is not None
+    parent = session.get(ACOptimTopology, res[0].parent_id)
+    assert parent is not None
+    assert res[0].actions == parent.actions
+    assert res[0].disconnections == parent.disconnections
+    assert res[0].pst_setpoints == parent.pst_setpoints
+    assert res[0].strategy_hash == parent.strategy_hash
 
 
-def test_evolution_try_accidental_duplicate(session: Session) -> None:
-    # There is an edge case in which a mutate function could yield a duplicate that is already
-    # in the database. This should be handled gracefully.
-    # We can fake this edge case by inserting two strategies, one with exactly one coupler open
-    # and the unsplit strategy. When close_coupler is called, the unsplit strategy will be returned
-    # and the duplicate should be handled gracefully.
-
-    repo = [
-        ACOptimTopology(
-            actions=[2],
+def test_evolution_try_returns_worst_k_sized_batch_of_unevaluated_topologies(session: Session) -> None:
+    source_topologies: list[ACOptimTopology] = []
+    for index, fitness in enumerate([-1.0, -2.0, -3.0]):
+        topology = ACOptimTopology(
+            actions=[index + 1],
             disconnections=[],
             pst_setpoints=None,
             unsplit=False,
             timestep=0,
-            strategy_hash=hash_topo_data([([2], [], None)]),
-            optimization_id="test",
-            optimizer_type=OptimizerType.AC,
-            fitness=0.5,
-            metrics={"overload_energy_n_1": 123.4},
-        ),
-        ACOptimTopology(
-            actions=[],
-            disconnections=[],
-            pst_setpoints=None,
-            unsplit=True,
-            timestep=0,
-            strategy_hash=hash_topo_data([([], [], None)]),
-            optimization_id="test",
-            optimizer_type=OptimizerType.AC,
-            fitness=0.5,
-            metrics={"overload_energy_n_1": 123.4},
-        ),
-    ]
-    for topo in repo:
-        session.add(topo)
-        session.commit()
-        session.refresh(topo)
+            strategy_hash=hash_topo_data([([index + 1], [], None)]),
+            optimization_id="evolution-batch",
+            optimizer_type=OptimizerType.DC,
+            fitness=fitness,
+            metrics={"overload_energy_n_1": abs(fitness)},
+            worst_k_contingency_cases=[f"c{index}"],
+        )
+        session.add(topology)
+        source_topologies.append(topology)
+    session.commit()
+    for topology in source_topologies:
+        session.refresh(topology)
 
-    closed = close_coupler(np.random.default_rng(42), repo[0:1])
+    already_evaluated = ACOptimTopology(
+        actions=source_topologies[0].actions,
+        disconnections=source_topologies[0].disconnections,
+        pst_setpoints=source_topologies[0].pst_setpoints,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=source_topologies[0].strategy_hash,
+        optimization_id="evolution-batch",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        parent_id=source_topologies[0].id,
+        metrics={"fitness_dc": source_topologies[0].fitness},
+        worst_k_contingency_cases=source_topologies[0].worst_k_contingency_cases,
+    )
+    session.add(already_evaluated)
+    session.commit()
 
-    assert len(closed) == 1
-    closed = closed[0]
-    assert not len(closed.actions)
-    assert closed.strategy_hash == repo[1].strategy_hash
-    assert closed.unsplit is True
-
-    with pytest.raises(IntegrityError):
-        session.add(closed)
-        session.commit()
-    session.rollback()
-
-    res = evolution_try(
+    result = evolution_try(
         rng=np.random.default_rng(0),
         session=session,
-        optimization_id="test",
-        close_coupler_prob=1.0,
-        pull_prob=0.0,
-        reconnect_prob=0.0,
+        optimization_id="evolution-batch",
+        batch_size=2,
     )
 
-    assert res == []
-
-    res = evolution(
-        rng=np.random.default_rng(0),
-        session=session,
-        optimization_id="test",
-        close_coupler_prob=1.0,
-        pull_prob=0.0,
-        reconnect_prob=0.0,
-        max_retries=10,
-    )
-
-    assert res == []
+    assert len(result) == 2
+    assert all(topology.optimizer_type == OptimizerType.AC for topology in result)
+    assert {topology.parent_id for topology in result} == {source_topologies[1].id, source_topologies[2].id}

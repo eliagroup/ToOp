@@ -11,35 +11,17 @@ On AC, some subtelties are different to the DC optimization such as that the opt
 batched, and the parameters are slightly different.
 """
 
-import math
-
 from beartype.typing import Optional
-from pydantic import BaseModel, PositiveInt, confloat, model_validator
+from pydantic import BaseModel, PositiveInt, confloat
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
-from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef, FilterStrategy
+from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy
 
 
 class ACGAParameters(BaseModel):
     """Parameters for the AC genetic algorithm"""
 
-    runtime_seconds: PositiveInt = 30
+    runtime_seconds: PositiveInt = 180
     """The maximum runtime of the AC optimization in seconds"""
-
-    pull_prob: confloat(ge=0.0, le=1.0) = 0.9
-    """The probability of pulling a strategy from the DC repertoire"""
-
-    me_descriptors: tuple[DescriptorDef, ...] = (
-        DescriptorDef(metric="split_subs", num_cells=2, range=(0, 5)),
-        DescriptorDef(metric="switching_distance", num_cells=5, range=(0, 50)),
-        DescriptorDef(metric="disconnected_branches", num_cells=2),
-    )
-    """The descriptors for the aggregated map elites repertoire."""
-
-    reconnect_prob: confloat(ge=0.0, le=1.0) = 0.05
-    """The probability of reconnecting a disconnected branch in a strategy"""
-
-    close_coupler_prob: confloat(ge=0.0, le=1.0) = 0.05
-    """The probability of closing an opened coupler in a strategy"""
 
     n_worst_contingencies: PositiveInt = 20
     """How many worst contingencies to consider for the initial metrics, i.e. the top k contingencies
@@ -48,16 +30,24 @@ class ACGAParameters(BaseModel):
     seed: int = 42
     """The seed for the random number generator"""
 
-    timestep_processes: PositiveInt = 1
-    """How many processes to spawn for computing the timesteps in parallel"""
-
     runner_processes: PositiveInt = 1
     """How many processes to spawn for computing the N-1 cases in each timestep in parallel. Note
-    that this multiplies with timestep_processes and you might run out of memory if you set both
+    that this multiplies with contingency_processes and you might run out of memory if you set both
     too high"""
 
-    runner_batchsize: Optional[PositiveInt] = None
-    """Whether to batch the N-1 definition into smaller chunks, might conserve memory"""
+    contingency_processes: PositiveInt = 1
+    """How many processes to spawn for computing the contingencies of each strategy in parallel. Note
+    that this multiplies with runner_processes and you might run out of memory if you set both too high"""
+
+    worst_k_runner_processes: PositiveInt = 1
+    """How many processes to spawn per topology during the worst-k stage."""
+
+    worst_k_contingency_processes: PositiveInt = 1
+    """How many processes to spawn for computing the contingencies of each strategy in parallel during the worst-k stage."""
+
+    remaining_loadflow_wait_seconds: confloat(ge=0.0) = 30.0
+    """Maximum time to keep collecting non-rejected strategies before starting the remaining
+    contingency evaluation, even if the survivor threshold has not been reached."""
 
     filter_strategy: Optional[FilterStrategy] = None
     """The filter strategy to use for the optimization, used to filter out strategies
@@ -88,14 +78,6 @@ class ACGAParameters(BaseModel):
     max_initial_wait_seconds: PositiveInt = 60
     """The maximum amount of seconds to wait for the initial DC results. If no results have arrived within this time, we
     assume the DC optimizer had some problem and abort the optimization run."""
-
-    @model_validator(mode="after")
-    def probabilities_sum_to_one(self) -> "ACGAParameters":
-        """Ensure that the probabilities sum to one"""
-        total_probability = self.pull_prob + self.reconnect_prob + self.close_coupler_prob
-        if not math.isclose(total_probability, 1.0):
-            raise ValueError("The probabilities must sum to one")
-        return self
 
 
 class ACOptimizerParameters(BaseModel):

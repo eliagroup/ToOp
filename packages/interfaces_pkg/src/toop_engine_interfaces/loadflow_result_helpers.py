@@ -24,6 +24,7 @@ from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_mo
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
     BranchSide,
+    CascadeResultSchema,
     ConvergedSchema,
     ConvergenceStatus,
     LoadflowResults,
@@ -67,7 +68,6 @@ def save_loadflow_results(
     metadata = {
         "job_id": loadflows.job_id,
         "warnings": loadflows.warnings,
-        "additional_information": loadflows.additional_information,
     }
     with fs.open(file_path + "/metadata.json", "w") as f:
         json.dump(metadata, f)
@@ -82,6 +82,9 @@ def save_loadflow_results(
         loadflows.converged.to_parquet(f)
     with fs.open(file_path + "/va_diff_results.parquet", "wb") as f:
         loadflows.va_diff_results.to_parquet(f)
+    if loadflows.cascade_results is not None:
+        with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
+            loadflows.cascade_results.to_parquet(f)
 
     return StoredLoadflowReference(
         relative_path=str(file_path),
@@ -114,7 +117,6 @@ def load_loadflow_results(
         metadata = json.load(f)
     job_id = metadata["job_id"]
     warnings = metadata["warnings"]
-    additional_information = metadata["additional_information"]
 
     with fs.open(file_path + "/branch_results.parquet", "rb") as f:
         branch_results = pd.read_parquet(f)
@@ -126,6 +128,11 @@ def load_loadflow_results(
         converged = pd.read_parquet(f)
     with fs.open(file_path + "/va_diff_results.parquet", "rb") as f:
         va_diff_results = pd.read_parquet(f)
+    if fs.exists(file_path + "/cascade_results.parquet"):
+        with fs.open(file_path + "/cascade_results.parquet", "rb") as f:
+            cascade_results = pd.read_parquet(f)
+    else:
+        cascade_results = get_empty_dataframe_from_model(CascadeResultSchema)
 
     if validate:
         return LoadflowResults(
@@ -135,8 +142,8 @@ def load_loadflow_results(
             regulating_element_results=RegulatingElementResultSchema.validate(regulating_element_results),
             converged=ConvergedSchema.validate(converged),
             va_diff_results=VADiffResultSchema.validate(va_diff_results),
+            cascade_results=CascadeResultSchema.validate(cascade_results),
             warnings=warnings,
-            additional_information=additional_information,
         )
     return LoadflowResults.model_construct(
         job_id=job_id,
@@ -145,8 +152,8 @@ def load_loadflow_results(
         regulating_element_results=regulating_element_results,
         converged=converged,
         va_diff_results=va_diff_results,
+        cascade_results=cascade_results,
         warnings=warnings,
-        additional_information=additional_information,
     )
 
 
@@ -175,12 +182,14 @@ def concatenate_loadflow_results(
     converged = pd.concat([res.converged for res in loadflow_results_list], axis=0)
     va_diff_results = pd.concat([res.va_diff_results for res in loadflow_results_list], axis=0)
     switch_results = pd.concat([res.switch_results for res in loadflow_results_list], axis=0)
+    cascade_results = pd.concat(
+        [
+            lf.cascade_results if lf.cascade_results is not None else get_empty_dataframe_from_model(CascadeResultSchema)
+            for lf in loadflow_results_list
+        ],
+        axis=0,
+    )
     warnings = [warning for lf_results in loadflow_results_list for warning in lf_results.warnings]
-    additional_information = [
-        additional_information
-        for lf_results in loadflow_results_list
-        for additional_information in lf_results.additional_information
-    ]
     spps_results = pd.concat(
         [
             lf.spps_results if lf.spps_results is not None else get_empty_dataframe_from_model(SppsResultsSchema)
@@ -197,8 +206,8 @@ def concatenate_loadflow_results(
         va_diff_results=va_diff_results,
         switch_results=switch_results,
         warnings=warnings,
-        additional_information=additional_information,
         spps_results=spps_results,
+        cascade_results=cascade_results,
     )
 
 
@@ -508,6 +517,8 @@ def select_timestep(loadflow_results: LoadflowResults, timestep: Integral) -> Lo
 
     def safe_xs(df: pd.DataFrame) -> pd.DataFrame:
         """Safely select a timestep from a DataFrame."""
+        if df is None:
+            return None
         try:
             return df.xs(timestep, level="timestep", drop_level=False)
         except KeyError:
@@ -516,12 +527,12 @@ def select_timestep(loadflow_results: LoadflowResults, timestep: Integral) -> Lo
     return LoadflowResults(
         job_id=loadflow_results.job_id,
         warnings=loadflow_results.warnings,
-        additional_information=loadflow_results.additional_information,
         branch_results=safe_xs(loadflow_results.branch_results),
         node_results=safe_xs(loadflow_results.node_results),
         regulating_element_results=safe_xs(loadflow_results.regulating_element_results),
         converged=safe_xs(loadflow_results.converged),
         va_diff_results=safe_xs(loadflow_results.va_diff_results),
+        cascade_results=safe_xs(loadflow_results.cascade_results),
     )
 
 
@@ -561,7 +572,7 @@ def convert_polars_loadflow_results_to_pandas(
         pdf = df.to_pandas()
         # Set multi-index if possible
         index_cols = []
-        for col in ["timestep", "contingency", "element", "side"]:
+        for col in ["timestep", "contingency", "element", "side", "cascade_number", "element_mrid"]:
             if col in pdf.columns:
                 index_cols.append(col)
         if index_cols:
@@ -575,8 +586,8 @@ def convert_polars_loadflow_results_to_pandas(
         regulating_element_results=polars_to_pandas(loadflow_results_polars.regulating_element_results),
         converged=polars_to_pandas(loadflow_results_polars.converged),
         va_diff_results=polars_to_pandas(loadflow_results_polars.va_diff_results),
+        cascade_results=polars_to_pandas(loadflow_results_polars.cascade_results),
         warnings=loadflow_results_polars.warnings,
-        additional_information=loadflow_results_polars.additional_information,
     )
 
 
@@ -594,7 +605,12 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         The loadflow results in polars format.
     """
 
-    def pandas_to_polars(df: Optional[pd.DataFrame], lazy: bool) -> Optional[pl.DataFrame | pl.LazyFrame]:
+    def pandas_to_polars(
+        df: Optional[pd.DataFrame],
+        lazy: bool,
+        *,
+        nan_to_null: bool = False,
+    ) -> Optional[pl.DataFrame | pl.LazyFrame]:
         """Convert a pandas DataFrame to a polars DataFrame.
 
         Parameters
@@ -603,6 +619,8 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
             The pandas DataFrame to convert.
         lazy : bool
             Whether to return a LazyFrame or a DataFrame.
+        nan_to_null : bool
+            Whether NaN values should be converted to polars null values.
 
         Returns
         -------
@@ -612,10 +630,32 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         if df is None:
             return None
         if isinstance(df, pd.DataFrame):
-            df = pl.from_pandas(df, include_index=True, nan_to_null=False)
+            df = pl.from_pandas(df, include_index=True, nan_to_null=nan_to_null)
         if lazy:
             df = df.lazy()  # Assume it's a pandas DataFrame
         return df  # Assume it's already a polars DataFrame
+
+    def cascade_pandas_to_polars(df: Optional[pd.DataFrame], lazy: bool) -> Optional[pl.DataFrame | pl.LazyFrame]:
+        """Convert cascade results to polars with stable nullable dtypes.
+
+        Parameters
+        ----------
+        df : Optional[pd.DataFrame]
+            Cascade results in pandas format.
+        lazy : bool
+            Whether to return a LazyFrame or a DataFrame.
+
+        Returns
+        -------
+        Optional[pl.DataFrame | pl.LazyFrame]
+            Cascade results converted to polars, or None if the input was None.
+        """
+        if df is None:
+            return None
+        if isinstance(df, pd.DataFrame) and "loading" in df.columns:
+            df = df.copy()
+            df["loading"] = pd.to_numeric(df["loading"], errors="coerce")
+        return pandas_to_polars(df, lazy=lazy, nan_to_null=True)
 
     return LoadflowResultsPolars(
         job_id=loadflow_results.job_id,
@@ -626,7 +666,7 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         va_diff_results=pandas_to_polars(loadflow_results.va_diff_results, lazy=True),
         switch_results=pandas_to_polars(loadflow_results.switch_results, lazy=True),
         connectivity_result=pandas_to_polars(loadflow_results.connectivity_result, lazy=True),
+        cascade_results=cascade_pandas_to_polars(loadflow_results.cascade_results, lazy=True),
         warnings=loadflow_results.warnings,
-        additional_information=loadflow_results.additional_information,
         lazy=True,
     )

@@ -80,7 +80,6 @@ def test_concatenate_loadflow_results_polars():
 
     res = concatenate_loadflow_results_polars([res_1, res_2])
 
-    assert len(res.additional_information) == len(res_1.additional_information) + len(res_2.additional_information)
     assert len(res.warnings) == len(res_1.warnings) + len(res_2.warnings)
 
     res_branch_results = res.branch_results.collect()
@@ -171,7 +170,6 @@ def sample_loadflow_results_polars():
         converged=converged,
         va_diff_results=va_diff_results,
         warnings=["warn1"],
-        additional_information=["info1"],
     )
 
 
@@ -191,7 +189,6 @@ def test_subset_contingencies_polars_basic(sample_loadflow_results_polars):
 
     assert result.job_id == "job-123"
     assert result.warnings == ["warn1"]
-    assert result.additional_information == ["info1"]
 
 
 def test_subset_contingencies_polars_empty_contingencies(sample_loadflow_results_polars):

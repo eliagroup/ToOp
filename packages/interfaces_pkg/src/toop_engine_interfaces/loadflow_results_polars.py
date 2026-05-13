@@ -13,11 +13,12 @@ The loadflow results here mirror what is defined in loadflow_results.py, but use
 import pandera.polars as pal
 import pandera.typing.polars as patpl
 import polars as pl
-from beartype.typing import Any, Self, Union
+from beartype.typing import Self, Union
 from polars.testing import assert_frame_equal
 from pydantic import BaseModel, Field
 from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
+    CascadeResultSchema,
     ConnectivityResultSchema,
     ConvergedSchema,
     NodeResultSchema,
@@ -76,6 +77,12 @@ class SppsResultsSchemaPolars(pal.DataFrameModel, SppsResultsSchema):
     pass
 
 
+class CascadeResultSchemaPolars(pal.DataFrameModel, CascadeResultSchema):
+    """Polars variant of CascadeResultSchema."""
+
+    pass
+
+
 LoadflowResultTablePolars = Union[
     patpl.LazyFrame[NodeResultSchemaPolars],
     patpl.LazyFrame[BranchResultSchemaPolars],
@@ -85,6 +92,7 @@ LoadflowResultTablePolars = Union[
     patpl.LazyFrame[RegulatingElementResultSchemaPolars],
     patpl.LazyFrame[ConvergedSchemaPolars],
     patpl.LazyFrame[SppsResultsSchemaPolars],
+    patpl.LazyFrame[CascadeResultSchemaPolars],
 ]
 
 
@@ -140,13 +148,12 @@ class LoadflowResultsPolars(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     """Global warnings that occured during the computation (e.g. monitored elements/contingencies that were not found)"""
 
-    additional_information: list[Any] = Field(default_factory=list)
-    """Additional information that the loadflow solver wants to convey to the user. There is no limitation what can
-    be put in here except that it needs to be json serializable."""
-
     spps_results: Union[patpl.LazyFrame[SppsResultsSchemaPolars], pl.LazyFrame] = None
     """SpPS run summaries, concatenated in single-outage order. Empty when no
     SpPS was recorded (default)."""
+
+    cascade_results: Union[patpl.LazyFrame[CascadeResultSchemaPolars], pl.LazyFrame] = None
+    """Cascade simulation events. Empty when cascade simulation is disabled or has no events."""
 
     class Config:
         """Pydantic configuration for the LoadflowResultsPolars model."""
@@ -181,8 +188,7 @@ class LoadflowResultsPolars(BaseModel):
 
         job_match = self.job_id == lf_result.job_id
         warnings_match = self.warnings == lf_result.warnings
-        additional_info_match = self.additional_information == lf_result.additional_information
-        simple_checks = job_match and warnings_match and additional_info_match
+        simple_checks = job_match and warnings_match
         if not simple_checks:
             return False
 
@@ -193,16 +199,36 @@ class LoadflowResultsPolars(BaseModel):
             "check_exact": False,
             "abs_tol": rounding_accuracy,
         }
+
+        def assert_optional_frame_equal(left: pl.LazyFrame | None, right: pl.LazyFrame | None) -> None:
+            """Assert that optional polars frames are equal.
+
+            Parameters
+            ----------
+            left : pl.LazyFrame | None
+                First optional frame.
+            right : pl.LazyFrame | None
+                Second optional frame.
+
+            Raises
+            ------
+            AssertionError
+                If one frame is None and the other is not, or if frame contents differ.
+            """
+            if left is None or right is None:
+                if left is not right:
+                    raise AssertionError("One frame is None and the other is not.")
+                return
+            assert_frame_equal(left, right, **kw_args_testing)
+
         try:
-            assert_frame_equal(self.branch_results, lf_result.branch_results, **kw_args_testing)
-            assert_frame_equal(self.node_results, lf_result.node_results, **kw_args_testing)
-            assert_frame_equal(self.regulating_element_results, lf_result.regulating_element_results, **kw_args_testing)
-            assert_frame_equal(self.va_diff_results, lf_result.va_diff_results, **kw_args_testing)
-            assert_frame_equal(self.converged, lf_result.converged, **kw_args_testing)
-            if self.spps_results is not None and lf_result.spps_results is not None:
-                assert_frame_equal(self.spps_results, lf_result.spps_results, **kw_args_testing)
-            elif self.spps_results is not None or lf_result.spps_results is not None:
-                return False
+            assert_optional_frame_equal(self.branch_results, lf_result.branch_results)
+            assert_optional_frame_equal(self.node_results, lf_result.node_results)
+            assert_optional_frame_equal(self.regulating_element_results, lf_result.regulating_element_results)
+            assert_optional_frame_equal(self.va_diff_results, lf_result.va_diff_results)
+            assert_optional_frame_equal(self.converged, lf_result.converged)
+            assert_optional_frame_equal(self.spps_results, lf_result.spps_results)
+            assert_optional_frame_equal(self.cascade_results, lf_result.cascade_results)
         except AssertionError:
             return False
 

@@ -9,6 +9,7 @@ from toop_engine_contingency_analysis.pandapower.contingency_analysis_pandapower
     run_contingency_analysis_pandapower,
     run_single_outage,
 )
+from toop_engine_contingency_analysis.pandapower.outage_power_flow import run_outage_power_flow
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
     PandapowerElements,
@@ -47,6 +48,7 @@ __all__ = [
     "get_regulating_element_results",
     "get_va_diff_results",
     "run_contingency_analysis_pandapower",
+    "run_outage_power_flow",
     "run_single_outage",
     "translate_contingencies",
     "translate_monitored_elements",

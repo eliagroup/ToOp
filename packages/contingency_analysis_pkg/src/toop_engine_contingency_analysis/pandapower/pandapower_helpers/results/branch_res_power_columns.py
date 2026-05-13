@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Names of pandapower ``res_*`` active/reactive power columns per branch side.
+"""Names of pandapower ``res_*`` result columns per branch side.
 
 This replaces ``pandapower.toolbox.res_power_columns`` for branch extraction only:
 explicit tables aligned with pandapower result tables (see ``results_branch.py``).
@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from typing import Final
 
-# (active_power_column, reactive_power_column) per side, in side order.
-_BRANCH_RES_POWER_COLUMNS: Final[dict[str, tuple[tuple[str, str], ...]]] = {
+# Result columns per side, in side order.
+_BRANCH_RES_POWER_COLUMNS: Final[dict[str, tuple[tuple[str, ...], ...]]] = {
     "line": (
         ("p_from_mw", "q_from_mvar", "i_from_ka", "loading_percent_from"),
         ("p_to_mw", "q_to_mvar", "i_to_ka", "loading_percent_to"),
@@ -40,8 +40,8 @@ _BRANCH_RES_POWER_COLUMNS: Final[dict[str, tuple[tuple[str, str], ...]]] = {
 }
 
 
-def branch_res_power_columns(branch_type: str, *, side: int) -> list[str]:
-    """Return ``res_<branch_type>`` column names for P and Q at the given branch side.
+def branch_res_power_columns(branch_type: str, *, side: int) -> tuple[str, ...]:
+    """Return ``res_<branch_type>`` column names for the given branch side.
 
     Parameters
     ----------
@@ -52,8 +52,9 @@ def branch_res_power_columns(branch_type: str, *, side: int) -> list[str]:
 
     Returns
     -------
-    list[str]
-        Two entries: active power column, then reactive power column.
+    tuple[str, ...]
+        Result columns for this branch side, usually active power, reactive
+        power, current, and loading where available.
 
     Raises
     ------

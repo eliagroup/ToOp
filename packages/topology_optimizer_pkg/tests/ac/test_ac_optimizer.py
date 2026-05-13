@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-import structlog
 from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
@@ -238,7 +237,6 @@ def test_initialize_non_converging(case57_non_converging_path: Path, loadflow_re
             grid_file=grid_file,
             loadflow_result_fs=loadflow_result_fs,
             processed_gridfile_fs=processed_gridfile_fs,
-            optimization_logger=structlog.get_logger("test"),
         )
 
 
@@ -318,10 +316,7 @@ def test_run_fast_failing_epoch_returns_strategies_and_scores() -> None:
     optimizer_data.session = Mock(spec=Session)
     optimizer_data.evolution_fn = Mock(return_value=[topology_a, topology_b])
     optimizer_data.worst_k_scoring_fn = Mock(return_value=expected_results)
-    topologies, scoring_results = run_fast_failing_epoch(
-        optimizer_data=optimizer_data,
-        epoch_logger=Mock(),
-    )
+    topologies, scoring_results = run_fast_failing_epoch(optimizer_data=optimizer_data)
     assert topologies == [topology_a, topology_b]
     assert scoring_results == expected_results
     optimizer_data.worst_k_scoring_fn.assert_called_once_with([topology_a, topology_b])
@@ -342,10 +337,7 @@ def test_run_fast_failing_epoch_returns_empty_when_no_strategy_available() -> No
     optimizer_data.session = Mock(spec=Session)
     optimizer_data.evolution_fn = Mock(return_value=[])
     optimizer_data.worst_k_scoring_fn = Mock()
-    topologies, scoring_results = run_fast_failing_epoch(
-        optimizer_data=optimizer_data,
-        epoch_logger=Mock(),
-    )
+    topologies, scoring_results = run_fast_failing_epoch(optimizer_data=optimizer_data)
     assert topologies == []
     assert scoring_results == []
     optimizer_data.worst_k_scoring_fn.assert_not_called()
@@ -389,12 +381,11 @@ def test_run_remaining_epoch_returns_strategies_and_scores() -> None:
         optimizer_data=optimizer_data,
         topologies=[topology_a, topology_b],
         early_stage_results=early_stage_results,
-        epoch_logger=Mock(),
     )
 
     assert strategies == [topology_a, topology_b]
     assert scoring_results == expected_results
-    optimizer_data.scoring_fn.assert_called_once_with([topology_a, topology_b], early_stage_results=early_stage_results)
+    optimizer_data.scoring_fn.assert_called_once_with([topology_a, topology_b], early_stage_results)
 
 
 def test_run_remaining_epoch_returns_empty_when_no_strategy_available() -> None:
@@ -409,7 +400,6 @@ def test_run_remaining_epoch_returns_empty_when_no_strategy_available() -> None:
         optimizer_data=optimizer_data,
         topologies=[],
         early_stage_results=[],
-        epoch_logger=Mock(),
     )
 
     assert strategies == []
@@ -465,7 +455,6 @@ def test_process_remaining_results_sends_each_topology() -> None:
         ],
         send_result_fn=mocked_send_result_fn,
         epoch=0,
-        epoch_logger=Mock(),
     )
 
     assert returned_topologies == [topology_a, topology_b, topology_c]

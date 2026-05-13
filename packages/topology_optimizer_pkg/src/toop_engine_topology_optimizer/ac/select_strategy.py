@@ -25,6 +25,7 @@ def select_strategy(
     candidates: list[BaseDBTopology],
     interest_scorer: Callable[[pd.DataFrame], pd.Series],
     batch_size: int = 1,
+    lower_scores_are_better: bool = False,
     filter_strategy: Optional[FilterStrategy] = None,
 ) -> list[BaseDBTopology]:
     """Select promising unevaluated topologies from the candidate pool.
@@ -48,6 +49,9 @@ def select_strategy(
     batch_size : int, optional
         Number of topologies to sample without replacement. If more topologies are requested than available
         candidates, all available candidates are returned.
+    lower_scores_are_better : bool, optional
+        Whether lower values returned by ``interest_scorer`` should be preferred when converting
+        scores into sampling weights.
     filter_strategy : Optional[FilterStrategy], optional
         Whether to filter the candidates based on discriminator, median or dominator filter.
 
@@ -83,9 +87,12 @@ def select_strategy(
         return []
 
     scores = interest_scorer(metrics).astype(float).fillna(0.0).to_numpy(copy=True)
-    min_score = scores.min(initial=0.0)
-    if min_score < 0.0:
-        scores -= min_score
+    if lower_scores_are_better and len(scores):
+        scores = scores.max() - scores
+    else:
+        min_score = scores.min(initial=0.0)
+        if min_score < 0.0:
+            scores -= min_score
     if len(scores):
         scores += np.finfo(float).eps
     score_sum = scores.sum()

@@ -19,7 +19,6 @@ from beartype.typing import Callable
 from confluent_kafka import Producer
 from fsspec import AbstractFileSystem
 from sqlmodel import Session
-from structlog.typing import BindableLogger
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.listener import poll_results_topic
@@ -91,7 +90,6 @@ def initialize_optimization_run(
     optimization_id: str,
     loadflow_result_fs: AbstractFileSystem,
     processed_gridfile_fs: AbstractFileSystem,
-    optimization_logger: BindableLogger,
 ) -> tuple[OptimizerData, Strategy]:
     """Initialize the AC optimization and wait for the first DC results.
 
@@ -114,7 +112,6 @@ def initialize_optimization_run(
         grid_file=grid_file,
         loadflow_result_fs=loadflow_result_fs,
         processed_gridfile_fs=processed_gridfile_fs,
-        optimization_logger=optimization_logger,
     )
     wait_for_first_dc_results(
         results_consumer=worker_data.result_consumer,
@@ -147,7 +144,6 @@ def run_optimization_epochs(
     send_result_fn: Callable[[ResultUnion], None],
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
     optimization_id: str,
-    optimization_logger: BindableLogger,
 ) -> None:
     """Run the iterative AC optimization phase.
 
@@ -165,8 +161,6 @@ def run_optimization_epochs(
         The function to send heartbeats
     optimization_id : str
         The ID of the optimization run
-    optimization_logger : BindableLogger
-        The logger bound to the optimization run
 
     Returns
     -------
@@ -182,84 +176,78 @@ def run_optimization_epochs(
     survivor_early_results = []
 
     while True:
-        epoch_logger = optimization_logger.bind(epoch=epoch)
-        added_topos, _ = poll_results_topic(
-            db=optimizer_data.session, consumer=worker_data.result_consumer, first_poll=epoch == 1
-        )
-        epoch_logger.debug("Imported topologies from result stream", imported_topology_count=len(added_topos))
+        with structlog.contextvars.bound_contextvars(epoch=epoch):
+            added_topos, _ = poll_results_topic(
+                db=optimizer_data.session, consumer=worker_data.result_consumer, first_poll=epoch == 1
+            )
+            logger.debug("Imported topologies from result stream", imported_topology_count=len(added_topos))
 
-        topologies, worst_k_results = run_fast_failing_epoch(
-            optimizer_data=optimizer_data,
-            epoch_logger=epoch_logger,
-        )
-        if ac_params.ga_config.enable_ac_rejection:
-            success_topologies, success_early_stop_results = process_fast_failing_results(
+            topologies, worst_k_results = run_fast_failing_epoch(
                 optimizer_data=optimizer_data,
-                topologies=topologies,
-                fast_failing_results=worst_k_results,
-                epoch_logger=epoch_logger,
-                send_result_fn=send_result_fn,
-                epoch=epoch,
             )
-            evaluated_topologies += len(topologies)
-            survivor_topologies.extend(success_topologies)
-            survivor_early_results.extend(success_early_stop_results)
-        else:
-            survivor_topologies.extend(topologies)
-            survivor_early_results.extend(worst_k_results)
-            evaluated_topologies += len(topologies)
+            if ac_params.ga_config.enable_ac_rejection:
+                success_topologies, success_early_stop_results = process_fast_failing_results(
+                    optimizer_data=optimizer_data,
+                    topologies=topologies,
+                    fast_failing_results=worst_k_results,
+                    send_result_fn=send_result_fn,
+                    epoch=epoch,
+                )
+                evaluated_topologies += len(topologies)
+                survivor_topologies.extend(success_topologies)
+                survivor_early_results.extend(success_early_stop_results)
+            else:
+                survivor_topologies.extend(topologies)
+                survivor_early_results.extend(worst_k_results)
+                evaluated_topologies += len(topologies)
 
-        enough_survivors = len(survivor_topologies) >= survivor_batch_size
-        runtime_exceeded_since_last_full_run = (
-            time.time() - last_full_run
-        ) > ac_params.ga_config.remaining_loadflow_wait_seconds
-        if enough_survivors or (runtime_exceeded_since_last_full_run and len(survivor_topologies) > 0):
-            epoch_logger.info(
-                f"Collected {len(survivor_topologies)} survivor topologies, running remaining contingencies evaluation"
-            )
-            evaluate_remaining_contingencies(
-                send_result_fn,
-                optimizer_data,
-                epoch,
-                survivor_topologies[:survivor_batch_size],
-                survivor_early_results[:survivor_batch_size],
-                epoch_logger,
-            )
-            survivor_topologies = survivor_topologies[survivor_batch_size:]
-            survivor_early_results = survivor_early_results[survivor_batch_size:]
-            epoch += 1
-            last_full_run = time.time()
-
-        send_heartbeat_fn(
-            OptimizationStatsHeartbeat(
-                optimization_id=optimization_id,
-                wall_time=time.time() - start_time,
-                iteration=epoch,
-                num_branch_topologies_tried=evaluated_topologies - len(survivor_topologies),
-                num_injection_topologies_tried=0,
-            )
-        )
-
-        if time.time() - start_time > ac_params.ga_config.runtime_seconds:
-            if len(survivor_topologies) > 0:
-                epoch_logger.info(
-                    f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit"
-                    f" with survivor strategies still present"
-                    f" Running remaining contingencies evaluation before stopping"
+            enough_survivors = len(survivor_topologies) >= survivor_batch_size
+            runtime_exceeded_since_last_full_run = (
+                time.time() - last_full_run
+            ) > ac_params.ga_config.remaining_loadflow_wait_seconds
+            if enough_survivors or (runtime_exceeded_since_last_full_run and len(survivor_topologies) > 0):
+                logger.info(
+                    f"Collected {len(survivor_topologies)} survivor topologies, running remaining contingencies evaluation"
                 )
                 evaluate_remaining_contingencies(
                     send_result_fn,
                     optimizer_data,
                     epoch,
-                    survivor_topologies,
-                    survivor_early_results,
-                    epoch_logger,
+                    survivor_topologies[:survivor_batch_size],
+                    survivor_early_results[:survivor_batch_size],
                 )
-            optimization_logger.info(
-                f"Stopping optimization at epoch {epoch} due to runtime limit with no survivor strategies"
+                survivor_topologies = survivor_topologies[survivor_batch_size:]
+                survivor_early_results = survivor_early_results[survivor_batch_size:]
+                epoch += 1
+                last_full_run = time.time()
+
+            send_heartbeat_fn(
+                OptimizationStatsHeartbeat(
+                    optimization_id=optimization_id,
+                    wall_time=time.time() - start_time,
+                    iteration=epoch,
+                    num_branch_topologies_tried=evaluated_topologies - len(survivor_topologies),
+                    num_injection_topologies_tried=0,
+                )
             )
-            send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
-            return
+
+            if time.time() - start_time > ac_params.ga_config.runtime_seconds:
+                if len(survivor_topologies) > 0:
+                    logger.info(
+                        f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit"
+                        f" with survivor strategies still present"
+                        f" Running remaining contingencies evaluation before stopping"
+                    )
+                    evaluate_remaining_contingencies(
+                        send_result_fn,
+                        optimizer_data,
+                        epoch,
+                        survivor_topologies,
+                        survivor_early_results,
+                    )
+                logger.info(f"Stopping optimization at epoch {epoch} due to runtime limit with no survivor strategies")
+                send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
+                return
 
 
 def summarize_optimization_run(
@@ -268,17 +256,15 @@ def summarize_optimization_run(
     worker_data: WorkerData,
     optimizer_data: OptimizerData,
     processed_gridfile_fs: AbstractFileSystem,
-    optimization_logger: BindableLogger,
 ) -> None:
     """Write the optimization summary artifacts."""
-    optimization_logger.info(f"Writing summary for optimization {optimization_id}")
+    logger.info(f"Writing summary for optimization {optimization_id}")
     write_summary(
         grid_file=grid_file,
         db=worker_data.db,
         processed_gridfile_fs=processed_gridfile_fs,
         optimization_id=optimization_id,
         action_set=optimizer_data.action_set,
-        optimization_logger=optimization_logger,
     )
 
 
@@ -321,69 +307,66 @@ def optimization_loop(
         Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
         unprocessed gridfiles were already done.
     """
-    optimization_logger = logger.bind(optimization_id=optimization_id)
-    optimization_logger.info("Initializing optimization")
+    with structlog.contextvars.bound_contextvars(optimization_id=optimization_id):
+        logger.info("Initializing optimization")
 
-    try:
-        optimizer_data, _ = initialize_optimization_run(
-            ac_params=ac_params,
-            grid_file=grid_file,
-            worker_data=worker_data,
-            send_result_fn=send_result_fn,
-            send_heartbeat_fn=send_heartbeat_fn,
-            optimization_id=optimization_id,
-            loadflow_result_fs=loadflow_result_fs,
-            processed_gridfile_fs=processed_gridfile_fs,
-            optimization_logger=optimization_logger,
-        )
-    except AcNotConvergedError as e:
-        # If the AC optimization did not converge in the base grid, we send a special message
-        # to indicate that the optimization cannot be run.
-        send_result_fn(OptimizationStoppedResult(reason="ac-not-converged", message=str(e)))
-        optimization_logger.error(f"AC optimization {optimization_id} did not converge in the base grid: {e}")
-        return
-    except TimeoutError as e:
-        # If the DC results did not arrive in time, we assume a failure on DC side and abandon the optimization
-        send_result_fn(OptimizationStoppedResult(reason="dc-not-started", message=str(e)))
-        optimization_logger.error(f"DC results for optimization {optimization_id} did not arrive in time: {e}")
-        return
-    except Exception as e:
-        send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
-        optimization_logger.error(f"Error during initialization of optimization {optimization_id}: {e}")
-        return
+        try:
+            optimizer_data, _ = initialize_optimization_run(
+                ac_params=ac_params,
+                grid_file=grid_file,
+                worker_data=worker_data,
+                send_result_fn=send_result_fn,
+                send_heartbeat_fn=send_heartbeat_fn,
+                optimization_id=optimization_id,
+                loadflow_result_fs=loadflow_result_fs,
+                processed_gridfile_fs=processed_gridfile_fs,
+            )
+        except AcNotConvergedError as e:
+            # If the AC optimization did not converge in the base grid, we send a special message
+            # to indicate that the optimization cannot be run.
+            send_result_fn(OptimizationStoppedResult(reason="ac-not-converged", message=str(e)))
+            logger.error(f"AC optimization {optimization_id} did not converge in the base grid: {e}")
+            return
+        except TimeoutError as e:
+            # If the DC results did not arrive in time, we assume a failure on DC side and abandon the optimization
+            send_result_fn(OptimizationStoppedResult(reason="dc-not-started", message=str(e)))
+            logger.error(f"DC results for optimization {optimization_id} did not arrive in time: {e}")
+            return
+        except Exception as e:
+            send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
+            logger.error(f"Error during initialization of optimization {optimization_id}: {e}")
+            return
 
-    optimization_logger.info(f"Starting optimization {optimization_id}")
+        logger.info(f"Starting optimization {optimization_id}")
 
-    try:
-        run_optimization_epochs(
-            ac_params=ac_params,
-            optimizer_data=optimizer_data,
-            worker_data=worker_data,
-            send_result_fn=send_result_fn,
-            send_heartbeat_fn=send_heartbeat_fn,
-            optimization_id=optimization_id,
-            optimization_logger=optimization_logger,
-        )
-    except Exception as e:
-        # Send a stop message to the results
-        send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
-        optimization_logger.error(f"Error during optimization {optimization_id}: {e}")
-        optimization_logger.error(f"Stack trace: {traceback.format_exc()}")
-        return
+        try:
+            run_optimization_epochs(
+                ac_params=ac_params,
+                optimizer_data=optimizer_data,
+                worker_data=worker_data,
+                send_result_fn=send_result_fn,
+                send_heartbeat_fn=send_heartbeat_fn,
+                optimization_id=optimization_id,
+            )
+        except Exception as e:
+            # Send a stop message to the results
+            send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
+            logger.error(f"Error during optimization {optimization_id}: {e}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            return
 
-    try:
-        summarize_optimization_run(
-            optimization_id=optimization_id,
-            grid_file=grid_file,
-            worker_data=worker_data,
-            optimizer_data=optimizer_data,
-            processed_gridfile_fs=processed_gridfile_fs,
-            optimization_logger=optimization_logger,
-        )
-    except Exception as e:
-        optimization_logger.error(f"Error while writing summary for optimization {optimization_id}: {e}")
-        optimization_logger.error(f"Stack trace: {traceback.format_exc()}")
-        return
+        try:
+            summarize_optimization_run(
+                optimization_id=optimization_id,
+                grid_file=grid_file,
+                worker_data=worker_data,
+                optimizer_data=optimizer_data,
+                processed_gridfile_fs=processed_gridfile_fs,
+            )
+        except Exception as e:
+            logger.error(f"Error while writing summary for optimization {optimization_id}: {e}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            return
 
 
 def idle_loop(
@@ -442,7 +425,13 @@ def idle_loop(
             )
             continue
 
-        command = Command.model_validate_json(deserialize_message(message.value()))
+        message_value = message.value()
+        if message_value is None:
+            logger.warning("Received command without payload, dropping message")
+            worker_data.command_consumer.commit()
+            continue
+
+        command = Command.model_validate_json(deserialize_message(message_value))
 
         if isinstance(command.command, ShutdownCommand):
             logger.info("Shutting down due to ShutdownCommand")

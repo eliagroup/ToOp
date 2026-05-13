@@ -32,7 +32,10 @@ logger = structlog.get_logger(__name__)
 
 
 def select_repertoire(
-    optimization_id: str, optimizer_type: list[OptimizerType], without_parent_on: list[OptimizerType], session: Session
+    optimization_id: str,
+    optimizer_type: list[OptimizerType],
+    without_children_on: list[OptimizerType],
+    session: Session,
 ) -> list[ACOptimTopology]:
     """Select the topologies that are suitable for mutation and crossover
 
@@ -47,9 +50,8 @@ def select_repertoire(
         The optimization ID to filter for
     optimizer_type : list[OptimizerType]
         The optimizer types to filter for (whitelist)
-    without_parent_on : list[OptimizerType]
-        If the topology has a parent on any of these types, the topology will be filtered out (blacklist). A parent means the
-        topology has already been evaluated on that optimizer type.
+    without_children_on : list[OptimizerType]
+        If the topology already spawned a child on any of these optimizer types, it will be filtered out.
 
     session : Session
         The database session to use
@@ -68,7 +70,7 @@ def select_repertoire(
 
     # Filter out topologies whose parent has the specified optimizer types
     # (i.e., topologies that already spawned children on those optimizer types)
-    if without_parent_on:
+    if without_children_on:
         child = aliased(ACOptimTopology)
         mutate_query = mutate_query.where(
             ~exists(
@@ -76,7 +78,7 @@ def select_repertoire(
                 .select_from(child)
                 .where(
                     child.parent_id == ACOptimTopology.id,
-                    child.optimizer_type.in_(without_parent_on),
+                    child.optimizer_type.in_(without_children_on),
                     child.optimization_id == optimization_id,
                 )
             )
@@ -115,7 +117,7 @@ def get_unsplit_ac_topology(
 
 
 def default_scorer(metrics: pd.DataFrame) -> pd.Series:
-    """Score topologies so that lower-fitness candidates receive higher sampling weight.
+    """Return raw fitness values for the default lower-is-better AC selection.
 
     Parameters
     ----------
@@ -125,9 +127,9 @@ def default_scorer(metrics: pd.DataFrame) -> pd.Series:
     Returns
     -------
     pd.Series
-        The fitness scores
+        The topology fitness values.
     """
-    return metrics["fitness"].max() - metrics["fitness"]
+    return metrics["fitness"]
 
 
 def get_contingency_indices_from_ids(case_ids: Collection[str], n_minus1_definition: Nminus1Definition) -> list[int]:
@@ -305,17 +307,18 @@ def evolution_try(
         repertoire=select_repertoire(
             optimization_id=optimization_id,
             optimizer_type=[OptimizerType.DC, OptimizerType.AC],
-            without_parent_on=[],
+            without_children_on=[],
             session=session,
         ),
         candidates=select_repertoire(
             optimization_id=optimization_id,
             optimizer_type=[OptimizerType.DC],
-            without_parent_on=[OptimizerType.AC],
+            without_children_on=[OptimizerType.AC],
             session=session,
         ),
         interest_scorer=default_scorer,
         batch_size=batch_size,
+        lower_scores_are_better=True,
         filter_strategy=filter_strategy,
     )
     new_strategy = pull(selected_strategy=selected_topologies, session=session)

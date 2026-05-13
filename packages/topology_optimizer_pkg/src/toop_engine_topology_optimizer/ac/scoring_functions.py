@@ -137,9 +137,10 @@ def compute_loadflow_and_metrics(
         pst_setpoints=topology.pst_setpoints,
         runner=runner,
     )
-    metrics = compute_metrics(
-        topology=topology,
-        lfs=lfs,
+    metrics = compute_metrics_single_timestep(
+        actions=topology.actions,
+        disconnections=topology.disconnections,
+        loadflow=lfs,
         additional_info=additional_info,
         base_case_id=base_case_id,
     )
@@ -149,39 +150,6 @@ def compute_loadflow_and_metrics(
         runner.store_nminus1_definition(original_n_minus1_def)
 
     return lfs, additional_info, metrics
-
-
-def compute_metrics(
-    topology: ACOptimTopology,
-    lfs: LoadflowResultsPolars,
-    additional_info: Optional[AdditionalActionInfo],
-    base_case_id: Optional[str],
-) -> Metrics:
-    """Compute the metrics for a given strategy. Just calls compute_metrics_single_timestep for each timestep
-
-    Parameters
-    ----------
-    topology : ACOptimTopology
-        The topology to score, length n_timesteps
-    lfs : LoadflowResults
-        The loadflow results for the topology, length n_timesteps
-    additional_info : Optional[AdditionalActionInfo]
-        Additional information about the actions taken, such as switching distance or other metrics.
-    base_case_id : Optional[str]
-        The base case id for the loadflow runner (used to separately compute the N-0 flows)
-
-    Returns
-    -------
-    Metrics
-        The metrics for the strategy
-    """
-    return compute_metrics_single_timestep(
-        actions=topology.actions,
-        disconnections=topology.disconnections,
-        loadflow=lfs,
-        additional_info=additional_info,
-        base_case_id=base_case_id,
-    )
 
 
 def extract_switching_distance(additional_info: AdditionalActionInfo) -> int:
@@ -444,9 +412,10 @@ def compute_remaining_loadflows(
     lfs = concatenate_loadflow_results_polars([loadflows_subset, lfs_remaining])
 
     # We can pass the additional info from either critical or non critical contingencies as they are the same
-    metrics = compute_metrics(
-        topology=topology,
-        lfs=lfs,
+    metrics = compute_metrics_single_timestep(
+        actions=topology.actions,
+        disconnections=topology.disconnections,
+        loadflow=lfs,
         additional_info=additional_info_remaining,
         base_case_id=base_case_id,
     )
@@ -571,9 +540,10 @@ def score_strategy_worst_k(
             cases_subset=cases_subset,
         )
         lfs_early_stop_unsplit = subset_contingencies_polars(loadflow_results_unsplit, cases_subset)
-        metrics_early_stop_unsplit = compute_metrics(
-            topology=topology,
-            lfs=lfs_early_stop_unsplit,
+        metrics_early_stop_unsplit = compute_metrics_single_timestep(
+            actions=topology.actions,
+            disconnections=topology.disconnections,
+            loadflow=lfs_early_stop_unsplit,
             additional_info=additional_info,
             base_case_id=scoring_params.base_case_id,
         )
@@ -808,51 +778,44 @@ def score_strategy_full_batch(
     if len(runner_groups) == 0:
         raise ValueError("At least one runner group is required for full-contingency evaluation")
 
-    results: list[TopologyScoringResult] = []
-    max_parallel = len(runner_groups)
-    for start_index in range(0, len(topologies), max_parallel):
-        topology_chunk = topologies[start_index : start_index + max_parallel]
-        topology_chunk_for_scoring = [ACOptimTopology(**topology.model_dump()) for topology in topology_chunk]
-        if len(topology_chunk_for_scoring) == 1:
-            topology = topology_chunk_for_scoring[0]
+    results: list[Optional[TopologyScoringResult]] = [
+        _error_result_for_topology("Initial error", early_stopping=False)
+    ] * len(topologies)
+    max_parallel = min(len(topologies), len(runner_groups))
+
+    with ThreadPoolExecutor(max_workers=max_parallel) as executor:
+        future_to_assignment: dict = {}
+        next_topology_index = 0
+
+        def submit(index: int, runner_index: int) -> None:
+            topology_for_scoring = ACOptimTopology(**topologies[index].model_dump())
+            future = executor.submit(
+                score_strategy_full,
+                topology_for_scoring,
+                runner_groups[runner_index],
+                metrics_unsplit,
+                scoring_params,
+            )
+            future_to_assignment[future] = (index, runner_index)
+
+        for runner_index in range(max_parallel):
+            submit(next_topology_index, runner_index)
+            next_topology_index += 1
+
+        while future_to_assignment:
+            future = next(as_completed(tuple(future_to_assignment)))
+            index, runner_index = future_to_assignment.pop(future)
             try:
-                results.append(
-                    score_strategy_full(
-                        topology=topology,
-                        runner=runner_groups[0],
-                        metrics_unsplit=metrics_unsplit,
-                        scoring_params=scoring_params,
-                    )
-                )
+                results[index] = future.result()
             except Exception as exc:  # pragma: no cover - defensive guard
                 logger.exception("Full-contingency stage failed")
-                results.append(_error_result_for_topology(str(exc), early_stopping=False))
-            continue
+                results[index] = _error_result_for_topology(str(exc), early_stopping=False)
 
-        with ThreadPoolExecutor(max_workers=len(topology_chunk_for_scoring)) as executor:
-            future_to_index = {
-                executor.submit(
-                    score_strategy_full,
-                    topology,
-                    runner_groups[index],
-                    metrics_unsplit,
-                    scoring_params,
-                ): index
-                for index, topology in enumerate(topology_chunk_for_scoring)
-            }
-            chunk_results: list[Optional[TopologyScoringResult]] = [
-                _error_result_for_topology("Initial error", early_stopping=False)
-            ] * len(topology_chunk_for_scoring)
-            for future in as_completed(future_to_index):
-                index = future_to_index[future]
-                try:
-                    chunk_results[index] = future.result()
-                except Exception as exc:  # pragma: no cover - defensive guard
-                    logger.exception("Full-contingency stage failed")
-                    chunk_results[index] = _error_result_for_topology(str(exc), early_stopping=False)
-            results.extend(chunk_results)
+            if next_topology_index < len(topologies):
+                submit(next_topology_index, runner_index)
+                next_topology_index += 1
 
-    return results
+    return [result for result in results if result is not None]
 
 
 def score_remaining_contingency_batch(
@@ -897,51 +860,44 @@ def score_remaining_contingency_batch(
     if len(topologies) != len(early_stage_results):
         raise ValueError("Topologies and early-stage results must have the same length")
 
-    results: list[TopologyScoringResult] = []
-    max_parallel = len(runner_group)
-    for start_index in range(0, len(topologies), max_parallel):
-        topology_chunk = topologies[start_index : start_index + max_parallel]
-        early_stage_chunk = early_stage_results[start_index : start_index + max_parallel]
-        if len(topology_chunk) == 1:
-            topology = topology_chunk[0]
+    results: list[Optional[TopologyScoringResult]] = [
+        _error_result_for_topology("Initial error", early_stopping=False)
+    ] * len(topologies)
+    max_parallel = min(len(topologies), len(runner_group))
+
+    with ThreadPoolExecutor(max_workers=max_parallel) as executor:
+        future_to_assignment: dict = {}
+        next_topology_index = 0
+
+        def submit(index: int, runner_index: int) -> None:
+            future = executor.submit(
+                score_topology_remaining,
+                topologies[index],
+                runner_group[runner_index],
+                metrics_unsplit,
+                scoring_params,
+                early_stage_results[index],
+            )
+            future_to_assignment[future] = (index, runner_index)
+
+        for runner_index in range(max_parallel):
+            submit(next_topology_index, runner_index)
+            next_topology_index += 1
+
+        while future_to_assignment:
+            future = next(as_completed(tuple(future_to_assignment)))
+            index, runner_index = future_to_assignment.pop(future)
             try:
-                results.append(
-                    score_topology_remaining(
-                        topology=topology,
-                        runner=runner_group[0],
-                        metrics_unsplit=metrics_unsplit,
-                        scoring_params=scoring_params,
-                        early_stage_result=early_stage_chunk[0],
-                    )
-                )
+                results[index] = future.result()
             except Exception as exc:  # pragma: no cover - defensive guard
-                logger.exception("Full-contingency stage failed")
-                results.append(_error_result_for_topology(str(exc), early_stopping=False))
-            continue
+                logger.exception("Remaining-contingency stage failed")
+                results[index] = _error_result_for_topology(str(exc), early_stopping=False)
 
-        with ThreadPoolExecutor(max_workers=len(topology_chunk)) as executor:
-            runner_group_for_chunk = runner_group[: len(topology_chunk)]
-            future_to_index = {
-                executor.submit(
-                    score_topology_remaining, topology, runner, metrics_unsplit, scoring_params, early_results
-                ): index
-                for index, (topology, runner, early_results) in enumerate(
-                    zip(topology_chunk, runner_group_for_chunk, early_stage_chunk, strict=True)
-                )
-            }
-            chunk_results: list[Optional[TopologyScoringResult]] = [
-                _error_result_for_topology("Initial error", early_stopping=False)
-            ] * len(topology_chunk)
-            for future in as_completed(future_to_index):
-                index = future_to_index[future]
-                try:
-                    chunk_results[index] = future.result()
-                except Exception as exc:  # pragma: no cover - defensive guard
-                    logger.exception("Full-contingency stage failed")
-                    chunk_results[index] = _error_result_for_topology(str(exc), early_stopping=False)
-            results.extend(chunk_results)
+            if next_topology_index < len(topologies):
+                submit(next_topology_index, runner_index)
+                next_topology_index += 1
 
-    return results
+    return [result for result in results if result is not None]
 
 
 def score_topology_batch(

@@ -24,7 +24,9 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDB
 
 
 def test_pull(dc_repertoire: list[BaseDBTopology]) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
+    strategy = select_strategy(
+        np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer, lower_scores_are_better=True
+    )
     pulled = pull(strategy)
     for new, old in zip(pulled, strategy):
         assert isinstance(new, ACOptimTopology)
@@ -44,7 +46,7 @@ def test_pull_with_worst_k_contingencies(
 ):
     repo, session = unsplit_ac_dc_repertoire
 
-    strategy = select_strategy(np.random.default_rng(0), repo, repo, default_scorer)
+    strategy = select_strategy(np.random.default_rng(0), repo, repo, default_scorer, lower_scores_are_better=True)
     # Create a copy of the strategy to avoid mutating the original during pull
     strategy_copy = [copy.deepcopy(t) for t in strategy]
 
@@ -98,7 +100,7 @@ def test_select_repertoire(dc_repertoire: list[ACOptimTopology], session: Sessio
     assert len(pulled) == 0
 
 
-def test_select_repertoire_without_parent_on(session: Session) -> None:
+def test_select_repertoire_without_children_on(session: Session) -> None:
     evaluated_dc_topology = ACOptimTopology(
         actions=[1],
         disconnections=[],
@@ -156,7 +158,7 @@ def test_select_repertoire_without_parent_on(session: Session) -> None:
     filtered = select_repertoire(
         optimization_id="test",
         optimizer_type=[OptimizerType.DC],
-        without_parent_on=[OptimizerType.AC],
+        without_children_on=[OptimizerType.AC],
         session=session,
     )
     assert len(filtered) == 1
@@ -166,7 +168,7 @@ def test_select_repertoire_without_parent_on(session: Session) -> None:
     unfiltered = select_repertoire(
         optimization_id="test",
         optimizer_type=[OptimizerType.DC],
-        without_parent_on=[],
+        without_children_on=[],
         session=session,
     )
     assert len(unfiltered) == 2

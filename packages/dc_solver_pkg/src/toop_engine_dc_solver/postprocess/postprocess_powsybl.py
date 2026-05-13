@@ -330,6 +330,16 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self._variant_counter += 1
         return f"{self.variant_id}_runner_tmp_{self._variant_counter}"
 
+    def _get_relevant_station_id(self) -> Optional[str]:
+        """Return a representative relevant station id for topology-kind detection."""
+        if self.action_set is None:
+            return None
+
+        for topology in (self.action_set.starting_topology, self.action_set.simplified_starting_topology):
+            if topology is not None and len(topology.stations):
+                return topology.stations[0].grid_model_id
+        return None
+
     @contextmanager
     def temp_grid(self) -> Iterator[Network]:
         """Yield the base grid with a temporary working variant selected.
@@ -347,7 +357,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The changes will be discarded after use.
         """
         assert self.net is not None, "Base grid must be loaded before using temporary variants"
-        if is_node_breaker_grid(self.net):
+        if is_node_breaker_grid(self.net, relevant_station=self._get_relevant_station_id()):
             temporary_variant_id = self._next_temporary_variant_id()
             self.net.clone_variant(self.variant_id, temporary_variant_id)
             self.net.set_working_variant(temporary_variant_id)

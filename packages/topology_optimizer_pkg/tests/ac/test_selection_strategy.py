@@ -27,7 +27,9 @@ from toop_engine_topology_optimizer.interfaces.models.base_storage import BaseDB
 
 
 def test_select_strategy(dc_repertoire: list[BaseDBTopology]) -> None:
-    strategy = select_strategy(np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer)
+    strategy = select_strategy(
+        np.random.default_rng(0), dc_repertoire, dc_repertoire, default_scorer, lower_scores_are_better=True
+    )
     assert isinstance(strategy, list)
     assert len(strategy)
     assert isinstance(strategy[0], ACOptimTopology)
@@ -37,13 +39,12 @@ def test_select_strategy(dc_repertoire: list[BaseDBTopology]) -> None:
     assert select_strategy(np.random.default_rng(0), [], [], default_scorer) == []
 
 
-def test_default_scorer_prefers_lower_fitness() -> None:
+def test_default_scorer_returns_raw_fitness() -> None:
     metrics = pd.DataFrame({"fitness": [-20.0, -5.0, -1.0]})
 
     scores = default_scorer(metrics)
 
-    assert list(scores) == [19.0, 4.0, 0.0]
-    assert scores.iloc[0] > scores.iloc[1] > scores.iloc[2]
+    assert list(scores) == [-20.0, -5.0, -1.0]
 
 
 def test_select_stategy_ac_dc_mix(dc_repertoire: list[BaseDBTopology], session: Session) -> None:
@@ -71,7 +72,9 @@ def test_select_stategy_ac_dc_mix(dc_repertoire: list[BaseDBTopology], session: 
         mixed_topologies.append(topology)
 
     # Select a strategy
-    strategy = select_strategy(np.random.default_rng(0), mixed_topologies, mixed_topologies, default_scorer)
+    strategy = select_strategy(
+        np.random.default_rng(0), mixed_topologies, mixed_topologies, default_scorer, lower_scores_are_better=True
+    )
     assert isinstance(strategy, list)
     assert len(strategy)
     assert isinstance(strategy[0], ACOptimTopology)
@@ -719,6 +722,7 @@ def test_select_strategy_returns_candidate_batch_only(session: Session) -> None:
         candidates=candidates,
         interest_scorer=default_scorer,
         batch_size=2,
+        lower_scores_are_better=True,
     )
 
     assert len(selected) == 2
@@ -764,6 +768,7 @@ def test_select_strategy_prefers_lower_fitness(session: Session) -> None:
             repertoire=[better_topology, worse_topology],
             candidates=[better_topology, worse_topology],
             interest_scorer=default_scorer,
+            lower_scores_are_better=True,
         )[0].id
         for _ in range(100)
     ]

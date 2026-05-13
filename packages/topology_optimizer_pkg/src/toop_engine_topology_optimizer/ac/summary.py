@@ -13,10 +13,8 @@ from pathlib import Path
 
 import pandera.typing as pat
 import structlog
-from beartype.typing import Optional
 from fsspec import AbstractFileSystem
 from sqlmodel import Session, select
-from structlog.typing import BindableLogger
 from toop_engine_dc_solver.export.export import get_changing_switches_from_action_set
 from toop_engine_interfaces.folder_structure import POSTPROCESSING_PATHS
 from toop_engine_interfaces.stored_action_set import ActionSet
@@ -146,7 +144,6 @@ def write_summary(
     optimization_id: str,
     processed_gridfile_fs: AbstractFileSystem,
     action_set: ActionSet,
-    optimization_logger: Optional[BindableLogger] = None,
 ) -> None:
     """Write a summary of the optimization run to the file system.
 
@@ -165,10 +162,7 @@ def write_summary(
         gridfiles are stored.
     action_set : ActionSet
         The action set that was applied during the optimization run, to be included in the summary.
-    optimization_logger : Optional[BindableLogger]
-        The logger to use for logging during the summary writing. If None, the default logger from this module will be used.
     """
-    optimization_logger = optimization_logger or logger
     topologies = db.exec(
         select(ACOptimTopology).where(
             ACOptimTopology.optimization_id == optimization_id,
@@ -186,7 +180,7 @@ def write_summary(
                 root_folder=grid_file.grid_folder,
             )
     else:
-        optimization_logger.warning(
+        logger.warning(
             f"Framework {grid_file.framework} is currently not supported for summary export, "
             f"skipping summary export for grid file {grid_file.grid_file}"
         )

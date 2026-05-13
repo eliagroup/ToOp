@@ -9,6 +9,7 @@ import gc
 import json
 from copy import deepcopy
 from pathlib import Path
+from unittest.mock import Mock
 
 import jax
 import jax.numpy as jnp
@@ -134,6 +135,32 @@ def test_apply_disconnections(preprocessed_powsybl_data_folder: Path) -> None:
 
     assert not net.get_branches().connected1.iloc[0]
     assert not net.get_branches().connected2.iloc[0]
+
+
+def test_temp_grid_uses_relevant_station_for_node_breaker_detection(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = PowsyblRunner()
+    runner.replace_grid(FakeVariantNetwork())
+    runner.action_set = Mock(
+        starting_topology=Mock(stations=[Mock(grid_model_id="relevant-station")]),
+        simplified_starting_topology=Mock(stations=[]),
+    )
+
+    called_with: list[str | None] = []
+
+    def fake_is_node_breaker_grid(net, relevant_station=None):
+        del net
+        called_with.append(relevant_station)
+        return False
+
+    monkeypatch.setattr(
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.is_node_breaker_grid",
+        fake_is_node_breaker_grid,
+    )
+
+    with runner.temp_grid() as net:
+        assert isinstance(net, FakeVariantNetwork)
+
+    assert called_with == ["relevant-station"]
 
 
 @pytest.mark.parametrize("fixture_name", ["preprocessed_powsybl_data_folder", "node_breaker_grid_preprocessed_data_folder"])

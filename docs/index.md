@@ -1,21 +1,21 @@
-## Hello you 👋
+## Hello there 👋
 
 Welcome to our ToOp (engine) repository at Elia Group.
 
-<img src="./illustrations/ToOp_LQ.png" alt="ToOp Features and Roadmap" width="70%">
+<img src="./illustrations/ToOp_RGB.png" alt="ToOp Features and Roadmap" width="70%">
 
 
 
 ## A short intro - what is ToOp about?
 
-ToOp is short for Topology Optimization and describes the approach to reduce grid congestion by topological actions. Topological actions are non-costly actions that can be applied to the grid to "steer" the electrcitiy flow.   
- Our goal is to propose (potentially) new topology strategies to the operators with the goal to lower redispatch costs and carbon emissions.  
+ToOp is short for Topology Optimization and describes the approach to reduce grid congestion by topological actions. Topological actions are non-costly actions that can be applied to the grid to "steer" the electrcitiy flow.
+ Our goal is to propose (potentially) new topology strategies to the operators with the goal to lower redispatch costs and carbon emissions.
 
 This repository builds the engine behind the topology optimization product ToOp at Elia Group. ToOp provides tools to perform topology optimization on a grid file including import, DC optimization and AC validation. It also includes the gpu-based DC load flow solver.  At the current stage it considers transmission line switching, busbar splitting and busbar reassignments.
 
 
 
-<img src="./illustrations/TopoActions.jpg" alt="ToOp Features and Roadmap" width="70%"> 
+<img src="./illustrations/TopoActions.jpg" alt="ToOp Features and Roadmap" width="70%">
 
 ## About this repository
 This repo builds the engine behind the topology optimization project ToOp at Elia Group. This provides a tool to perform topology optimization on a grid file including import, DC optimization and AC validation. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2501.17529) for a high level academic introduction.
@@ -30,10 +30,10 @@ If you want to get started with the engine, we highly recommend checking out our
 
 If you want to contribute to this repository, we recommend using VS Code's Devcontainer Environment. This allows the developers to use the same environment to develop in.
 
-For this setup, you need to install:  
-1. `uv`  
-2. `Microsoft VS Code`  
-3. `Docker`  
+For this setup, you need to install:
+1. `uv`
+2. `Microsoft VS Code`
+3. `Docker`
 
 ### Installation
 
@@ -55,33 +55,33 @@ uv run mkdocs serve
 ---
 
 
-### Useful resources 
+### Useful resources
 The following resources may be helpful to grasp the key concepts:
 
 - [Quickstart](./quickstart.md): Grasp the basics and follow along examples. The first one take you through a DC loadflow computation using the [DC Solver package](./dc_solver/intro.md).
 - [Usage](./usage.md): Learn about the two different ways to use this software, either via python or kafka.
-- [Topology Optimizer](./topology_optimizer/intro.md): Understand the key concepts behind the topology optimizer.  
+- [Topology Optimizer](./topology_optimizer/intro.md): Understand the key concepts behind the topology optimizer.
 - [Presentation ToOp](https://www.youtube.com/watch?v=XteDpNsX75A)  @ LF Energy 2025
 - [Presentation ToOp](https://lfenergy.org/lf-energy-summit-recap-and-video-a-gpu-native-approach-on-tackling-grid-topology-optimization/) @ LF Energy 2024
 
-**Note**: This project does not provide a GUI or system integration code. 
+**Note**: This project does not provide a GUI or system integration code.
 You are expected to interact with the module through either python or kafka commands. This might come in the future if there is an interest from the community.
 
 ## High-level architecture
-![ToOp Features and Roadmap](./illustrations/ToOp_HL_Architecture.svg) 
+![ToOp Features and Roadmap](./illustrations/ToOp_HL_Architecture.svg)
 
-The topology optimizer takes as an input operational grid files (e.g. UCT, CGMES) which are imported by open-source libraries (PowSyBl, pandapower) and pre-processed. The pre-processed files are then optimized in a gpu-native set-up (optimizer + gpu-based load flow solver). The optimal results are stored as a pareto-front, so a set of all solutions that are "Pareto optimal". This means that no other solution exists that improves at least one objective without worsening another one. These results are then validated and filtered using an AC power flow. In the end the results are displayed in a frontend where an end user can review and evaluate the proposed actions. The proposed topological actions can then be exported to other systems.  
+The topology optimizer takes as an input operational grid files (e.g. UCT, CGMES) which are imported by open-source libraries (PowSyBl, pandapower) and pre-processed. The pre-processed files are then optimized in a gpu-native set-up (optimizer + gpu-based load flow solver). The optimal results are stored as a pareto-front, so a set of all solutions that are "Pareto optimal". This means that no other solution exists that improves at least one objective without worsening another one. These results are then validated and filtered using an AC power flow. In the end the results are displayed in a frontend where an end user can review and evaluate the proposed actions. The proposed topological actions can then be exported to other systems.
 
 
-#### Description the GPU-based DC load Flow solver  
-The GPU-based DC Load Flow solver serves the purpose of computing a large number of similar DC load flows in an 
-accelerated fashion. Currently the solver supports the following batch dimensions, i.e. the workload must not change 
-in anything other than these dimensions:  
-• Branch topology (assignment of branches to busbar A or B)  
-• Injection topology (assignment of injections to busbar A or B)  
-• Branch outages  
+#### Description the GPU-based DC load Flow solver
+The GPU-based DC Load Flow solver serves the purpose of computing a large number of similar DC load flows in an
+accelerated fashion. Currently the solver supports the following batch dimensions, i.e. the workload must not change
+in anything other than these dimensions:
+• Branch topology (assignment of branches to busbar A or B)
+• Injection topology (assignment of injections to busbar A or B)
+• Branch outages
 
-Under the hood, it is using PTDF/(G)LODF/BSDF approaches to achieve this.  
+Under the hood, it is using PTDF/(G)LODF/BSDF approaches to achieve this.
 If your workflow suits these requirements like it is the case for topology optimization, this solver can help you out.
 
 

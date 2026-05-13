@@ -27,7 +27,7 @@ PreProcessingIds: TypeAlias = Literal[
     "line_for_nminus1",
     "trafo_for_nminus1",
     "tie_line_for_nminus1",
-    "dangling_line_for_nminus1",
+    "boundary_line_for_nminus1",
     "generator_for_nminus1",
     "load_for_nminus1",
     "switch_for_nminus1",
@@ -44,7 +44,7 @@ class PreProcessingStatistics(BaseModel):
     id_lists: dict[PreProcessingIds, Any] = Field(default_factory=dict)
     """ Contains the ids of the N-1 analysis, border line currents and CB lists.
     keys: relevant_subs, line_for_nminus1, trafo_for_nminus1,
-          tie_line_for_nminus1, dangling_line_for_nminus1, generator_for_nminus1,
+            tie_line_for_nminus1, boundary_line_for_nminus1, generator_for_nminus1,
           load_for_nminus1, switches_for_nminus1
     white_list, black_list"""
 

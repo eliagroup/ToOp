@@ -93,7 +93,7 @@ def compute_overload_energy(
     branch_results_with_overload = compute_overload_column(branch_results, field=field)
     overload = (
         branch_results_with_overload.select("timestep", "element", "overload")
-        .drop_nulls()
+        .drop_nans("overload")
         .filter(pl.col("overload") > 0)
         .group_by(["timestep", "element"])
         .agg(pl.max("overload").alias("overload"))

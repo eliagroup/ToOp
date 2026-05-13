@@ -125,10 +125,7 @@ def convert_to_jax(  # noqa: PLR0913
     distributed: bool = False,
     enable_n_2: bool = False,
     n_2_more_splits_penalty: float = 1000.0,
-    enable_bb_outage: bool = False,
-    bb_outage_as_nminus1: bool = True,
-    bb_outage_more_splits_penalty: float = 2000.0,
-    clip_bb_outage_penalty: bool = False,
+    preprocess_bb_outages: bool = False,
     ac_dc_interpolation: float = 0.0,
     logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
 ) -> StaticInformation:
@@ -170,16 +167,8 @@ def convert_to_jax(  # noqa: PLR0913
     n_2_more_splits_penalty: float, optional
         How to penalize additional splits in N-2 that were not there in the unsplit grid. Will be
         added to the overload energy penalty.
-    enable_bb_outage: bool, optional
-        Whether to enable the busbar outage feature
-    bb_outage_as_nminus1: bool, optional
-        Whether to compute the busbar outage as N-1 or not. If False, the busbar outage
-        compared of split grid is compared with the unsplit grid
-    bb_outage_more_splits_penalty: float, optional
-        How to penalize additional splits in busbar outage that were not there in the unsplit grid. Will be
-        added to the overload energy penalty.
-    clip_bb_outage_penalty: bool, optional
-        Whether to clip the lower bound of busbar outage penalty to 0.
+    preprocess_bb_outages: bool, optional
+        Whether busbar outage data should be converted and stored in the static information.
     ac_dc_interpolation: float, optional
         The interpolation factor for AC/DC mismatch, by default 0.0 (full DC).
     logging_fn: Callable, optional
@@ -250,7 +239,7 @@ def convert_to_jax(  # noqa: PLR0913
         reassignment_distance=network_data.branch_action_set_switching_distance,
     )
 
-    if enable_bb_outage:
+    if preprocess_bb_outages:
         logging_fn("convert_rel_bb_outage_data", None)
         action_set = replace(action_set, rel_bb_outage_data=convert_rel_bb_outage_data(network_data))
 
@@ -296,7 +285,7 @@ def convert_to_jax(  # noqa: PLR0913
             ),
             branches_monitored=branches_monitored,
             n2_baseline_analysis=None,
-            non_rel_bb_outage_data=convert_non_rel_bb_outage(network_data) if enable_bb_outage else None,
+            non_rel_bb_outage_data=convert_non_rel_bb_outage(network_data) if preprocess_bb_outages else None,
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
                 controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
@@ -324,9 +313,10 @@ def convert_to_jax(  # noqa: PLR0913
             limit_n_subs=limit_n_subs,
             aggregation_metric=aggregation_metric,
             distributed=distributed,
-            enable_bb_outages=enable_bb_outage,
-            bb_outage_as_nminus1=bb_outage_as_nminus1,
-            clip_bb_outage_penalty=clip_bb_outage_penalty,
+            # We set an arbitrary value for bb outage parameters as they will be overwritten by optimizer configs.
+            enable_bb_outages=False,
+            bb_outage_as_nminus1=True,
+            clip_bb_outage_penalty=False,
             contingency_ids=network_data.contingency_ids,
         ),
     )
@@ -344,10 +334,10 @@ def convert_to_jax(  # noqa: PLR0913
                 n2_baseline_analysis=n_2_baseline,
             ),
         )
-    if enable_bb_outage and not bb_outage_as_nminus1:
-        # A comparision of the overload energy of the unsplit grid with the overload energy of the split grid
+    if preprocess_bb_outages:
+        # A comparison of the overload energy of the unsplit grid with the overload energy of the split grid
         # after busbar outages is required. Therefore, we need to store the baseline loadflows after busbar outages
-        # of unsplit grid.
+        # of unsplit grid so the optimizer can choose the runtime mode later.
         logging_fn("bb_outage_baseline_analysis", None)
         static_information = replace(
             static_information,
@@ -355,7 +345,7 @@ def convert_to_jax(  # noqa: PLR0913
                 static_information.dynamic_information,
                 bb_outage_baseline_analysis=get_bb_outage_baseline_analysis(
                     di=static_information.dynamic_information,
-                    more_splits_penalty=bb_outage_more_splits_penalty,
+                    more_splits_penalty=0.0,
                 ),
             ),
         )
@@ -705,9 +695,7 @@ def load_grid(
         logging_fn=status_update_fn,
         enable_n_2=parameters.enable_n_2,
         n_2_more_splits_penalty=parameters.n_2_more_splits_penalty,
-        enable_bb_outage=parameters.enable_bb_outage,
-        bb_outage_as_nminus1=parameters.bb_outage_as_nminus1,
-        bb_outage_more_splits_penalty=parameters.bb_outage_more_splits_penalty,
+        preprocess_bb_outages=parameters.preprocess_bb_outages,
         ac_dc_interpolation=parameters.ac_dc_interpolation,
     )
 

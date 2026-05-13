@@ -350,24 +350,9 @@ class PreprocessParameters(BaseModel):
     """How to penalize additional splits in N-2 that were not there in the unsplit grid. Will be
     added to the overload energy penalty."""
 
-    enable_bb_outage: bool = False
-    """Whether to enable busbar outage analysis"""
-
-    bb_outage_as_nminus1: bool = True
-    """Whether to treat busbar outages as N-1 outages. If set to False, the busbar outage will be treated similar to
-    N-2 outages. This will be used to compute the busbar outage penalty."""
-
-    bb_outage_more_splits_penalty: float = 50.0
-    """How to penalize additional splits in busbar outages that were not there in the unsplit grid. Will be
-    added to the overload energy penalty."""
-
-    # TODO: MOve this parameter to optimiser configs
-    clip_bb_outage_penalty: bool = False
-    """
-    Whether to clip the lower bound of the busbar outage penalty to 0.
-    We set this parameter to False, if we want the optimiser to solve busbar outage problems in the grid. However,
-    when we just want to ensure that the busbar outage problems are not exacerbated due to the optimiser, we set
-    this to True."""
+    preprocess_bb_outages: bool = False
+    """Whether to preprocess and persist busbar outage data into the grid file.
+    This does not decide whether the optimizer will eventually include busbar outage effects."""
 
     # ---- Parameters for the initial loadflow -----
     double_limit_n0: Optional[PositiveFloat] = 0.9

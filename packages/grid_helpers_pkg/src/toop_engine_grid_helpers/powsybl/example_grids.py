@@ -1517,7 +1517,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         ]
     ).set_index("id")
 
-    pypowsybl.network.create_dangling_line_bay(network=n, df=dangling_df)
+    pypowsybl.network.create_boundary_line_bay(network=n, df=dangling_df)
 
     # line limits
     limits = pd.DataFrame.from_records(

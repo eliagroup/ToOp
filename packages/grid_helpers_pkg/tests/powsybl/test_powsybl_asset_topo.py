@@ -209,7 +209,7 @@ def test_get_asset_info_from_topology():
         data={
             "bus_id": ["busbar1", "busbar3", "busbar1"],
             "in_service": [True, True, True],
-            "type": ["LINE", "TWO_WINDINGS_TRANSFORMER", "DANGLING_LINE"],
+            "type": ["LINE", "TWO_WINDINGS_TRANSFORMER", "BOUNDARY_LINE"],
         },
     )
     busses_df.index.name = "id"

@@ -48,7 +48,7 @@ def test_create_default_network_masks():
     assert isinstance(masks.tie_line_for_nminus1, np.ndarray)
     assert isinstance(masks.tie_line_overload_weight, np.ndarray)
     assert isinstance(masks.tie_line_disconnectable, np.ndarray)
-    assert isinstance(masks.dangling_line_for_nminus1, np.ndarray)
+    assert isinstance(masks.boundary_line_for_nminus1, np.ndarray)
     assert isinstance(masks.generator_for_nminus1, np.ndarray)
     assert isinstance(masks.load_for_nminus1, np.ndarray)
     assert isinstance(masks.switch_for_nminus1, np.ndarray)
@@ -165,7 +165,7 @@ def test_update_tie_and_dangling_lines(ucte_file_with_border, ucte_importer_para
     assert np.array_equal(network_masks.tie_line_disconnectable, np.array([False, False]))
     assert np.array_equal(network_masks.tie_line_tso_border, np.array([True, True]))
     assert np.array_equal(
-        network_masks.dangling_line_for_nminus1,
+        network_masks.boundary_line_for_nminus1,
         np.array([False, True, False, True, True]),
     )
     ucte_importer_parameters.area_settings.border_line_weight = 10.0
@@ -455,7 +455,7 @@ def test_update_masks_from_contingency_list_file(
     assert np.array_equal(network_masks.generator_for_nminus1, np.array([False, False, False, False, True, False]))
     assert np.array_equal(network_masks.load_for_nminus1, np.array([False, False, False, False, True]))
     assert np.array_equal(network_masks.switch_for_nminus1, np.array([True]))
-    assert np.array_equal(network_masks.dangling_line_for_nminus1, np.array([False, False, True, False, False]))
+    assert np.array_equal(network_masks.boundary_line_for_nminus1, np.array([False, False, True, False, False]))
 
 
 def test_make_masks_with_contingency_file(
@@ -669,7 +669,7 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
     network = pypowsybl.network.load(ucte_file_with_border)
     lines = network.get_lines()
     trafos = network.get_2_windings_transformers()
-    dangling_lines = network.get_dangling_lines()
+    dangling_lines = network.get_boundary_lines()
     tie_lines = network.get_tie_lines()
     # create a random boolean array of length lines
 
@@ -716,8 +716,8 @@ def test_update_masks_contingency_list_file(tmp_path, ucte_file_with_border, uct
     assert np.array_equal(updated_masks.line_for_reward, monitored_lines), "Line for reward mask not updated correctly"
     assert np.array_equal(updated_masks.trafo_for_nminus1, contingency_trafos), "Trafo for n-1 mask not updated correctly"
     assert np.array_equal(updated_masks.trafo_for_reward, monitored_trafos), "Trafo for reward mask not updated correctly"
-    assert np.array_equal(updated_masks.dangling_line_for_nminus1, contingency_dangling), (
-        "Dangling line for n-1 mask not updated correctly"
+    assert np.array_equal(updated_masks.boundary_line_for_nminus1, contingency_dangling), (
+        "Boundary line for n-1 mask not updated correctly"
     )
     assert np.array_equal(updated_masks.tie_line_for_nminus1, contingency_tie_lines), (
         "Tie line for n-1 mask not updated correctly"

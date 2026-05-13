@@ -398,7 +398,6 @@ def compute_remaining_loadflows(
     # Remove the already computed contingencies so we do not re-compute them
     remaining_cases = set(all_cases) - set(cases_subset)
 
-    # Update the N-1 definitions in the runners to now include only the non-critical contingencies.
     logger.info(f"Running N-1 analysis with {len(remaining_cases)} non-critical contingencies per timestep.")
     update_runner_nminus1(runner, original_n_minus1_def, remaining_cases)
 

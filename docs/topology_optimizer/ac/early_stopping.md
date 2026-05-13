@@ -19,7 +19,7 @@ The current implementation uses three sources of information:
 
 The resulting subset is evaluated first. Only topologies that pass that stage continue to the remaining contingencies. The reason for this split is that full AC validation is the expensive part of the pipeline, so the optimizer benefits from spending a small amount of work on many candidates in order to reserve the large amount of work for the few candidates that still look promising.
 
-## 1. Build the AC Baseline
+## Build the AC Baseline
 
 During AC initialization, `initialize_optimization` constructs the optimizer state and evaluates the unsplit topology once on AC before any candidate screening begins. Inside that initialization path, `update_initial_metrics_with_worst_k_contingencies` extracts the critical baseline contingencies and stores them as part of the unsplit reference topology. The reason for starting from the unsplit AC case is that early stopping needs a physically meaningful AC reference point: the optimizer is not asking whether a candidate is good in isolation, but whether it is already clearly worse than the trusted baseline from which the search began. The API surface for both functions is documented in the [Topology Optimizer Code Reference](../../references/reference_topology_optimizer.md).
 
@@ -38,7 +38,7 @@ Conceptually, this gives the AC worker a baseline such as:
 }
 ```
 
-## 2. Merge DC and AC Critical Cases When Pulling
+## Merge DC and AC Critical Cases When Pulling
 
 When a DC topology is pulled into the AC repertoire, `pull` turns a DC candidate into an AC candidate and merges its `worst_k_contingency_cases` with the critical cases of the unsplit AC baseline. Conceptually, this is the point where the optimizer stops treating DC and AC evidence as separate hints and builds a single critical contingency set for the first AC screening pass. The reason for merging both sources is that neither one is sufficient alone: the unsplit AC baseline captures contingencies known to be critical in the high-fidelity model, while the selected DC topology can expose new critical cases introduced by the structural changes of that candidate. The implementation details of `pull` are also available through the [Topology Optimizer Code Reference](../../references/reference_topology_optimizer.md).
 
@@ -52,7 +52,7 @@ If the unsplit AC topology contains `[a, b, c]` and the pulled DC topology conta
 
 This is the set used for the first AC validation stage.
 
-## 3. Fast-Failing Stage
+## Fast-Failing Stage
 
 The fast-failing stage is executed by the worker loop before any remaining contingencies are considered. At the orchestration level, `run_optimization_epochs` decides when this stage is entered for a newly pulled batch. The actual batch execution is delegated to `run_fast_failing_epoch`, which in turn calls `score_strategy_worst_k_batch`. Inside that batched scorer, `score_strategy_worst_k` evaluates one topology at a time, and `get_early_stopping_contingency_ids` extracts the reduced subset of contingencies that should be solved for that topology. Together these functions define the first-stage rejection mechanism described on this page and in [AC Validation Loop](ac_loop.md); their signatures and surrounding abstractions are documented in the [Topology Optimizer Code Reference](../../references/reference_topology_optimizer.md). The key design idea is to make rejection decisions on the smallest subset that is still informative enough to rule out clearly inferior candidates.
 
@@ -71,7 +71,7 @@ The comparison is done by `evaluate_acceptance` using:
 
 If one of these checks fails, the topology is rejected immediately with `early_stopping=True` in the rejection reason. This is intentionally conservative in one direction only: the stage is designed to reject candidates that already look bad, not to certify that surviving candidates are globally good.
 
-## 4. What Happens to Survivors
+## What Happens to Survivors
 
 Passing the early-stopping stage does not mean the topology is accepted. It only means the topology is not obviously worse on the critical subset.
 
@@ -85,7 +85,7 @@ These are then forwarded to the remaining-contingency stage so the worker does n
 
 In implementation terms, `process_fast_failing_results` separates survivors from immediate rejections, while `evaluate_remaining_contingencies` is the worker-side handoff into the full validation path. From there, `score_topology_remaining` reconstructs the full AC judgment for one survivor by reusing the already computed early-stage results, and `compute_remaining_loadflows` computes only the contingencies that were deliberately deferred. This separation is important conceptually: the worker manages pacing and batching, while the scoring layer manages reuse and metric consistency. The reason to preserve the early-stage results is straightforward: once the optimizer has already paid to solve the critical subset, recomputing it during the full stage would destroy much of the computational benefit that early stopping is meant to create. The interfaces of these functions are described in the [Topology Optimizer Code Reference](../../references/reference_topology_optimizer.md).
 
-## 5. Remaining-Contingency Stage
+## Remaining-Contingency Stage
 
 For surviving topologies, the AC optimizer evaluates all contingencies that were not part of the early-stopping subset.
 
@@ -97,19 +97,6 @@ The implementation:
 4. applies the same acceptance logic again with `early_stopping=False`.
 
 This is the stage that produces the final AC result persisted and emitted by the worker. The reason this second stage still recomputes the final metrics from the full result set is that acceptance must ultimately be based on the complete AC picture, not on the reduced subset that was only meant for screening.
-
-## 6. Interaction with `enable_ac_rejection`
-
-The worker still uses the same two-stage evaluation structure when `enable_ac_rejection=False`.
-
-The difference is behavioral, not structural:
-
-- the early-stage subset is still evaluated,
-- the early-stage results are still reused later,
-- but early-stage rejections are not emitted immediately from the worker path,
-- and final non-error rejections are converted into push results instead of rejection results.
-
-This keeps the computation pipeline uniform while avoiding duplicated control flow. The rationale is the same as in the worker loop: it is cheaper, clearer, and less error-prone to keep one staged evaluation pipeline and vary only how the intermediate and final decisions are exposed to the outside world.
 
 ## Example
 

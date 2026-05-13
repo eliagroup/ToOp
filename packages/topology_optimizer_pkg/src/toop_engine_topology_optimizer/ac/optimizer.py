@@ -61,7 +61,6 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     TopologyPushResult,
     TopologyRejectionReason,
     TopologyRejectionResult,
-    get_topology_rejection_message,
 )
 from toop_engine_topology_optimizer.interfaces.models.base_storage import convert_db_topo_to_message_topo, hash_topologies
 
@@ -563,12 +562,6 @@ def send_topology_result(
 
     if not local_enable_ac_rejection or rejection_reason is None:
         send_result_fn(TopologyPushResult(strategies=[Strategy(timesteps=[topology_message])], epoch=epoch))
-        logger.info(
-            "Strategy completed",
-            accept=True,
-            metrics=scoring_result.metrics.extra_scores,
-            fitness=scoring_result.metrics.fitness,
-        )
     else:
         send_result_fn(
             TopologyRejectionResult(
@@ -576,11 +569,6 @@ def send_topology_result(
                 strategy=Strategy(timesteps=[topology_message]),
                 epoch=epoch,
             )
-        )
-        logger.info(
-            "Strategy completed",
-            accept=False,
-            reason=get_topology_rejection_message(rejection_reason),
         )
 
 
@@ -605,8 +593,6 @@ def run_fast_failing_epoch(
     list[EarlyStoppingStageResult]
         The corresponding fast-failing scoring results.
     """
-    logger.info("Starting AC fast-failing epoch")
-
     topologies = optimizer_data.evolution_fn()
     n_topologies = len(topologies)
     if n_topologies == 0:
@@ -708,7 +694,6 @@ def run_remaining_epoch(
         logger.debug("No topologies provided for remaining contingencies")
         return [], []
 
-    logger.info("Starting AC remaining epoch")
     logger.debug("Running remaining contingencies", survivor_count=len(topologies))
     full_results = optimizer_data.scoring_fn(topologies, early_stage_results)
     return topologies, full_results
@@ -747,7 +732,6 @@ def process_remaining_results(
         The corresponding full scoring results for each topology,
         which can be used for further processing in the next epoch, e.g. for the evolution function.
     """
-    logger.info("Storing remaining-contingency batch", n_topologies=len(topologies))
     for topology, full_result in zip(topologies, full_results, strict=True):
         topology_message, persisted_result = persist_topology(
             topology=topology,
@@ -800,4 +784,9 @@ def evaluate_remaining_contingencies(
         full_results=full_results,
         send_result_fn=send_result_fn,
         epoch=epoch,
+    )
+    logger.info(
+        "Completed AC evaluation",
+        accepted={sum(1 for result in full_results if result.rejection_reason is None)},
+        rejected=[result.rejection_reason.criterion for result in full_results if result.rejection_reason is not None],
     )

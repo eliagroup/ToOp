@@ -182,6 +182,9 @@ def run_optimization_epochs(
             )
             logger.debug("Imported topologies from result stream", imported_topology_count=len(added_topos))
 
+            # Even though the separation into fast-failing and remaining contingencies is not strictly necessary when
+            # enable_ac_rejection is False, we still run the N-1 analysis in two steps to keep the logic similar to the
+            # default enable_ac_rejection=True case and avoid having too many if statements in the code.
             topologies, worst_k_results = run_fast_failing_epoch(
                 optimizer_data=optimizer_data,
             )
@@ -206,7 +209,7 @@ def run_optimization_epochs(
                 time.time() - last_full_run
             ) > ac_params.ga_config.remaining_loadflow_wait_seconds
             if enough_survivors or (runtime_exceeded_since_last_full_run and len(survivor_topologies) > 0):
-                logger.info(
+                logger.debug(
                     f"Collected {len(survivor_topologies)} survivor topologies, running remaining contingencies evaluation"
                 )
                 evaluate_remaining_contingencies(
@@ -245,7 +248,8 @@ def run_optimization_epochs(
                         survivor_topologies,
                         survivor_early_results,
                     )
-                logger.info(f"Stopping optimization at epoch {epoch} due to runtime limit with no survivor strategies")
+                else:
+                    logger.info(f"Stopping optimization at epoch {epoch} due to runtime limit with no survivor strategies")
                 send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
                 return
 

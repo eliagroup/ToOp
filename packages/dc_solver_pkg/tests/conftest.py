@@ -186,7 +186,7 @@ def _jax_inputs(
         batch_size_bsdf=4,
         batch_size_injection=16,
         buffer_size_injection=128,
-        enable_bb_outage=False,
+        preprocess_bb_outages=False,
     )
     action_set = static_information.dynamic_information.action_set
 
@@ -358,7 +358,7 @@ def network_data_preprocessed(_data_folder: Path, oberrhein_outage_station_busba
 
     fs_dir = DirFileSystem(str(_data_folder))
     backend = TestBackend(fs_dir)
-    network_data = preprocess(backend, parameters=PreprocessParameters(enable_bb_outage=True))
+    network_data = preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=True))
     return network_data
 
 
@@ -381,7 +381,7 @@ def _preprocessed_data_folder(_data_folder: Path, tmp_path_factory: pytest.TempP
     backend = PandaPowerBackend(fs_dir)
     network_data = preprocess(backend)
     save_network_data(tmp_path / "network_data.pkl", network_data)
-    static_information = convert_to_jax(network_data, enable_bb_outage=False)
+    static_information = convert_to_jax(network_data, preprocess_bb_outages=False)
     save_static_information(temp_static_information_file_path, static_information)
     write_aux_data(data_folder=tmp_path, network_data=network_data)
 
@@ -595,7 +595,7 @@ def _preprocessed_powsybl_data_folder(_powsybl_data_folder: Path, tmp_path_facto
     backend = PowsyblBackend(fs_dir, DISTRIBUTED_SLACK)
     network_data = preprocess(backend)
     save_network_data(temp_network_data_file_path, network_data)
-    static_information = convert_to_jax(network_data, enable_bb_outage=False)
+    static_information = convert_to_jax(network_data, preprocess_bb_outages=False)
     save_static_information(temp_static_information_file_path, static_information)
     write_aux_data(data_folder=tmp_path, network_data=network_data)
 
@@ -731,7 +731,7 @@ def network_data_test_grid(_test_grid_folder_path: Path, outage_map_test_grid: d
 
     fs_dir = DirFileSystem(str(_test_grid_folder_path))
     backend = TestBackend(fs_dir, lf_params=SINGLE_SLACK)
-    network_data = preprocess(backend, parameters=PreprocessParameters(enable_bb_outage=True))
+    network_data = preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=True))
     return network_data
 
 
@@ -747,7 +747,7 @@ def outage_map_test_grid():
 def jax_inputs_test_grid(
     network_data_test_grid: NetworkData,
 ) -> tuple[ActionIndexComputations, StaticInformation]:
-    static_information = convert_to_jax(network_data_test_grid, enable_bb_outage=True)
+    static_information = convert_to_jax(network_data_test_grid, preprocess_bb_outages=True)
 
     topo_indices: ActionIndexComputations = random_topology(
         jax.random.PRNGKey(42),
@@ -763,7 +763,7 @@ def jax_inputs_test_grid(
 def jax_inputs_oberrhein(network_data_preprocessed: NetworkData) -> tuple[ActionIndexComputations, StaticInformation]:
     static_information = convert_to_jax(
         network_data_preprocessed,
-        enable_bb_outage=True,
+        preprocess_bb_outages=True,
     )
     topo_indices: ActionIndexComputations = random_topology(
         jax.random.PRNGKey(42),
@@ -1101,7 +1101,7 @@ def overlapping_branch_data(
         outaged_branch_mask=updated_outage_mask,
         monitored_branch_mask=updated_monitored_branch_mask,
     )
-    static_information = convert_to_jax(network_data, enable_bb_outage=False, batch_size_bsdf=10, limit_n_subs=2)
+    static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"
     best_actions = get_random_topology_results(static_information)
     check_branches_match_between_network_data_and_static_info(network_data, static_information)
@@ -1161,7 +1161,7 @@ def non_overlapping_branch_data(
         outaged_branch_mask=updated_outage_mask,
         monitored_branch_mask=updated_monitored_branch_mask,
     )
-    static_information = convert_to_jax(network_data, enable_bb_outage=False, batch_size_bsdf=10, limit_n_subs=2)
+    static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"
     best_actions = get_random_topology_results(static_information)
     check_branches_match_between_network_data_and_static_info(network_data, static_information)
@@ -1205,7 +1205,7 @@ def overlapping_monitored_and_disconnected_branch_data(
         outaged_branch_mask=updated_outage_mask,
         monitored_branch_mask=updated_monitored_branch_mask,
     )
-    static_information = convert_to_jax(network_data, enable_bb_outage=False, batch_size_bsdf=10, limit_n_subs=2)
+    static_information = convert_to_jax(network_data, preprocess_bb_outages=False, batch_size_bsdf=10, limit_n_subs=2)
     # Generate random "optimization results"
     best_actions = get_random_topology_results(static_information)
     check_branches_match_between_network_data_and_static_info(network_data, static_information)
@@ -1310,7 +1310,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> N
             cross_border_limits_n1=None,
         ),
     )
-    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, enable_bb_outage=False, bb_outage_as_nminus1=False)
+    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
 
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
     filesystem_dir = DirFileSystem(str(folder))
@@ -1360,7 +1360,7 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
             cross_border_limits_n1=None,
         ),
     )
-    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, enable_bb_outage=False, bb_outage_as_nminus1=False)
+    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
 
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
 

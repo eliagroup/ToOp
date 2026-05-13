@@ -72,24 +72,30 @@ Here, the busbar outages need to be treated like other N-1 cases as the objectiv
 
 ```python
 # Enable busbar outage and treat bb_outages as N-1
-solver_config.enable_bb_outage = True
+solver_config.enable_bb_outages = True
 solver_config.bb_outage_as_nminus1 = True
 ```
 
 We calculate the loadflows due to different busbar outages, and concatenate it to the N-1 matrix.
+In this mode there is no separate `bb_outage_penalty` term, so `clip_bb_outage_penalty` has no effect.
 
 ### Case 2: Treat busbar outage similar to N-2 case
 
 ```python
 # Enable busbar outage and don't treat bb_outage as N-1
-solver_config.enable_bb_outage = True
+solver_config.enable_bb_outages = True
 solver_config.bb_outage_as_nminus1 = False
+solver_config.clip_bb_outage_penalty = True
 ```
 
 In this case, we need to penalise the optimiser if the split leads to worsening of
 busbar_outage case. This is done by comparing the worst case overload energy due to busbar outages before the split and after the split.
 
 Note that in this case, we consider busbar outages of only relevant busbars.
+If `clip_bb_outage_penalty` is set to `True`, improvements relative to the unsplit baseline are clipped at 0 instead of becoming negative penalties.
+
+For the public optimizer message schema, the exact field names are `enable_bb_outage`, `bb_outage_as_nminus1`, and `clip_bb_outage_penalty`.
+After initialization these values are copied into the solver configuration, where the corresponding field is named `enable_bb_outages`.
 
 ## Future Work:
 1. Implement test to compare busbar outage of rel_subs with powsybl

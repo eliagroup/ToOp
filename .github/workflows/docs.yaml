@@ -110,3 +110,8 @@ jobs:
         run: |
           git checkout gh-pages --force || git checkout -b gh-pages origin/gh-pages
           git push origin gh-pages
+
+      - name: Restore initial checkout for post-job cleanup
+        if: always()
+        run: |
+          git checkout --force "$GITHUB_SHA"

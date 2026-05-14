@@ -122,7 +122,7 @@ def run_spps_with_branch_switch_results(
         Object with convergence status and result tables, or empty result fields
         when the step failed.
     """
-    slack_net_graph = top.create_nxgraph(net)
+    slack_net_graph = top.create_nxgraph(net)  # TODO: consider caching or create once and then reuse
     bus_lookup = create_bus_lookup_simple(net)[0]
     failed_element_uids = {get_globally_unique_id(el.table_id, el.table) for el in contingency.elements}
     assign_slack_per_island(
@@ -150,25 +150,16 @@ def run_spps_with_branch_switch_results(
             switch_results=None,
         )
 
-    try:
-        branch_results = get_branch_results(net, contingency, timestep)
-        node_results = get_node_result_df(net, contingency, timestep, basecase_voltage)
-        switch_results: pat.DataFrame[SwitchResultsSchema] = get_switch_results(
-            net,
-            contingency,
-            timestep,
-            branch_results,
-            node_results,
-            switch_element_mapping,
-        )
-    except Exception:
-        return CascadeSppsBranchSwitchResults(
-            convergence_status=ConvergenceStatus.FAILED,
-            spps_result=spps_result,
-            branch_results=None,
-            node_results=None,
-            switch_results=None,
-        )
+    branch_results = get_branch_results(net, contingency, timestep)
+    node_results = get_node_result_df(net, contingency, timestep, basecase_voltage)
+    switch_results: pat.DataFrame[SwitchResultsSchema] = get_switch_results(
+        net,
+        contingency,
+        timestep,
+        branch_results,
+        node_results,
+        switch_element_mapping,
+    )
 
     return CascadeSppsBranchSwitchResults(
         convergence_status=convergence_status,

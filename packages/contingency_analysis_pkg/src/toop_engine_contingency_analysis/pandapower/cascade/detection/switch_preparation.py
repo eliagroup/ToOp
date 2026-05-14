@@ -14,29 +14,6 @@ from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeCo
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 
 
-def normalize_relay_orientation(df: pd.DataFrame) -> pd.DataFrame:
-    """Make switch power values use the relay point of view.
-
-    Some relays measure from the bus side and some from the element side. For
-    element-side relays, this flips active and reactive power signs so all rows
-    can be compared in the same direction.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Switch result table with relay_side and power columns.
-
-    Returns
-    -------
-    pd.DataFrame
-        The same table with adjusted power signs where needed.
-    """
-    mask = df["relay_side"].eq("element")
-    cols = [c for c in ("p", "q") if c in df.columns]
-    df.loc[mask, cols] *= -1
-    return df
-
-
 def prepare_switch_results_for_protection(
     net: pp.pandapowerNet,
     switch_results: pd.DataFrame,
@@ -60,7 +37,7 @@ def prepare_switch_results_for_protection(
     """
     switch_results = switch_results.reset_index(drop=False)
     switch_results["switch_id"] = switch_results["element"].str.split(SEPARATOR).str[0].astype(int)
-    switch_results = switch_results[switch_results.p != 0]
+    switch_results = switch_results[switch_results.i != 0]
     switch_results["origin_id"] = switch_results["switch_id"].map(net.switch.origin_id)
     switch_results["switch_name"] = switch_results["switch_id"].map(net.switch.name)
     return switch_results.merge(cascade_context.switch_characteristics, on="origin_id")
@@ -80,6 +57,6 @@ def get_complex_impedance(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
         Pair of series-like values: resistance and reactance.
     """
     v_phase_kv = df["vm"] / np.sqrt(3)
-    z_abs_ohm = v_phase_kv / df["i"]
+    z_ohm = v_phase_kv / df["i"]
     phi_rad = np.arctan2(df["q"], df["p"])
-    return z_abs_ohm * np.cos(phi_rad), z_abs_ohm * np.sin(phi_rad)
+    return z_ohm * np.cos(phi_rad), z_ohm * np.sin(phi_rad)

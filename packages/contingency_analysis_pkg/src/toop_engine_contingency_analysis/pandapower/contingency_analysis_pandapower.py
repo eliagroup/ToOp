@@ -136,6 +136,7 @@ class OutageElementResults:
     """Result tables collected for one outage calculation."""
 
     branch_results: pd.DataFrame
+    full_branch_results: pd.DataFrame
     node_results: pd.DataFrame
     va_diff_results: pd.DataFrame
     regulating_element_results: pd.DataFrame
@@ -187,7 +188,7 @@ def run_single_outage(
         ctx=ctx,
         grouped_contingency=grouped_contingency,
         status=status,
-        branch_results_df=element_results.branch_results,
+        branch_results_df=element_results.full_branch_results,
         switch_results_df=element_results.switch_results,
     )
 
@@ -257,6 +258,7 @@ def _collect_element_results(
 
     (
         branch_results_df,
+        full_branch_results_df,
         node_results_df,
         va_diff_results_df,
         switch_results_df,
@@ -281,6 +283,7 @@ def _collect_element_results(
             branch_results_df,
             grouped_contingency,
         ),
+        full_branch_results=full_branch_results_df,
         node_results=_copy_results_for_all_contingencies(
             node_results_df,
             grouped_contingency,
@@ -362,6 +365,7 @@ def _collect_cascade_results(
         deepcopy(net),
         branch_results_df,
         switch_results_df,
+        initial_contingency=grouped_contingency.contingencies[0],
     )
 
     return _build_cascade_results_df(
@@ -398,12 +402,17 @@ def _build_cascade_results_df(
                     "element_name": event_dict.get("element_name"),
                     "cascade_reason": event_dict["cascade_reason"],
                     "loading": event_dict.get("loading"),
+                    "r_ohm": event_dict.get("r_ohm"),
+                    "x_ohm": event_dict.get("x_ohm"),
                     "distance_protection_severity": event_dict.get("distance_protection_severity"),
+                    "activated_schemes_per_iter": event_dict.get("activated_schemes_per_iter"),
                 }
             )
 
     cascade_results = pd.DataFrame(rows)
     cascade_results["loading"] = pd.to_numeric(cascade_results["loading"], errors="coerce")
+    cascade_results["r_ohm"] = pd.to_numeric(cascade_results["r_ohm"], errors="coerce")
+    cascade_results["x_ohm"] = pd.to_numeric(cascade_results["x_ohm"], errors="coerce")
     return cascade_results.set_index(["timestep", "contingency", "cascade_number", "element_mrid"])
 
 
@@ -455,6 +464,7 @@ def get_element_results_df(
     switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
 ) -> tuple[
     pat.DataFrame[BranchResultSchema],
+    pat.DataFrame[BranchResultSchema],
     pat.DataFrame[NodeResultSchema],
     pat.DataFrame[VADiffResultSchema],
     pat.DataFrame[SwitchResultsSchema],
@@ -483,11 +493,12 @@ def get_element_results_df(
 
     Returns
     -------
-    tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
-        The branch results dataframe, node results dataframe and va diff results dataframe
+    tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]
+        Filtered branch results, full branch results, node results, voltage-angle
+        difference results, and switch results.
     """
     if status == ConvergenceStatus.CONVERGED:
-        branch_results_df = get_branch_results(net, contingency, timestep)
+        full_branch_results_df = get_branch_results(net, contingency, timestep)
         node_results_df = get_node_result_df(net, contingency, timestep, basecase_voltage)
         va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
         # IMPORTANT:
@@ -496,10 +507,12 @@ def get_element_results_df(
         # from non-monitored branches/nodes (e.g. a monitored switch connected to
         # an unmonitored line/trafo). Therefore we pass full result sets here.
         sw_results_df = get_switch_results(
-            net, contingency, timestep, branch_results_df, node_results_df, switch_element_mapping
+            net, contingency, timestep, full_branch_results_df, node_results_df, switch_element_mapping
         )
 
-        branch_results_df = branch_results_df[branch_results_df.index.isin(monitored_elements.index, level="element")]
+        branch_results_df = full_branch_results_df[
+            full_branch_results_df.index.isin(monitored_elements.index, level="element")
+        ]
         node_results_df = node_results_df[node_results_df.index.isin(monitored_elements.index, level="element")]
 
     else:
@@ -509,10 +522,11 @@ def get_element_results_df(
         branch_results_df = get_failed_branch_results(
             timestep, [contingency.unique_id], monitored_branches, monitored_trafo3w
         )
+        full_branch_results_df = branch_results_df
         node_results_df = get_failed_node_results(timestep, [contingency.unique_id], monitored_buses)
         va_diff_results = get_failed_va_diff_results(timestep, monitored_elements, contingency)
         sw_results_df = get_failed_switch_results(timestep, switch_element_mapping, contingency)
-    return branch_results_df, node_results_df, va_diff_results, sw_results_df
+    return branch_results_df, full_branch_results_df, node_results_df, va_diff_results, sw_results_df
 
 
 def run_contingency_analysis_sequential(

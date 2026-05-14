@@ -7,6 +7,8 @@
 
 """Coordinate iterative cascade simulation after an initial outage."""
 
+import json
+from dataclasses import replace
 from itertools import chain
 from typing import Any
 
@@ -112,6 +114,7 @@ class CascadeSimulator:
         net: pp.pandapowerNet,
         branch_results_df: pd.DataFrame,
         switch_results_df: pd.DataFrame,
+        initial_contingency: PandapowerContingency,
     ) -> list[CascadeEvent]:
         """Run the cascade loop starting from initial load-flow results.
 
@@ -123,6 +126,8 @@ class CascadeSimulator:
             Branch result table from the initial load flow.
         switch_results_df : pd.DataFrame
             Switch result table from the initial load flow.
+        initial_contingency : PandapowerContingency
+            Contingency that started this cascade.
 
         Returns
         -------
@@ -157,13 +162,11 @@ class CascadeSimulator:
                 triggers=triggers,
                 step_no=step_no,
             )
-            events.extend(step_events)
-
             accumulative_outages_pp.extend(self._to_pandapower_outage_elements(net, outages))
 
             contingency = PandapowerContingency(
-                unique_id="BASECASE",
-                name="BASECASE",
+                unique_id=initial_contingency.unique_id,
+                name=initial_contingency.name,
                 elements=list(accumulative_outages_pp),
             )
             bundle = self._run_cascade_loadflow_step(
@@ -171,9 +174,19 @@ class CascadeSimulator:
                 contingency=contingency,
                 monitored_breakers=monitored_breakers,
             )
+            step_events = self._add_spps_activation_info(
+                events=step_events,
+                bundle=bundle,
+            )
+            events.extend(step_events)
 
             if bundle is None or bundle.convergence_status != ConvergenceStatus.CONVERGED:
-                events.append(self._failed_loadflow_event(step_no + 1))
+                events.append(
+                    self._failed_loadflow_event(
+                        cascade_number=step_no + 1,
+                        bundle=bundle,
+                    )
+                )
                 return events
 
             triggers = self._detect_triggers_from_results(
@@ -181,7 +194,6 @@ class CascadeSimulator:
                 branch_results=bundle.branch_results,
                 switch_results=bundle.switch_results,
             )
-
         return self._append_depth_limit_events(
             events=events,
             net=net,
@@ -395,7 +407,7 @@ class CascadeSimulator:
             net=net,
             monitored_elements=monitored_breakers,
             side="bus",
-        )
+        )  # TODO: think about move out of this function and create only once
         open_outaged_circuit_breakers(net, contingency.elements)
         try:
             return run_spps_with_branch_switch_results(
@@ -413,25 +425,61 @@ class CascadeSimulator:
             return None
 
     @staticmethod
-    def _failed_loadflow_event(cascade_number: int) -> CascadeEvent:
+    def _add_spps_activation_info(
+        events: list[CascadeEvent],
+        bundle: CascadeSppsBranchSwitchResults | None,
+    ) -> list[CascadeEvent]:
+        """Attach SpPS activation information from one inner load-flow step.
+
+        Parameters
+        ----------
+        events : list[CascadeEvent]
+            Cascade events created for the step.
+        bundle : CascadeSppsBranchSwitchResults | None
+            Inner load-flow result bundle for the same step.
+
+        Returns
+        -------
+        list[CascadeEvent]
+            Events with ``activated_schemes_per_iter`` populated when SpPS ran.
+        """
+        if bundle is None or bundle.spps_result is None:
+            return events
+
+        activated_schemes = json.dumps(bundle.spps_result.activated_schemes_per_iter)
+        return [replace(event, activated_schemes_per_iter=activated_schemes) for event in events]
+
+    @staticmethod
+    def _failed_loadflow_event(
+        cascade_number: int,
+        bundle: CascadeSppsBranchSwitchResults | None = None,
+    ) -> CascadeEvent:
         """Create the event used when an inner load flow fails.
 
         Parameters
         ----------
         cascade_number : int
             Cascade step number to record.
+        bundle : CascadeSppsBranchSwitchResults | None
+            Inner load-flow result bundle, if one was returned.
 
         Returns
         -------
         CascadeEvent
             CascadeEvent describing the failed load-flow stop condition.
         """
+        activated_schemes = (
+            json.dumps(bundle.spps_result.activated_schemes_per_iter)
+            if bundle is not None and bundle.spps_result is not None
+            else None
+        )
         return CascadeEvent(
             element_mrid=None,
             element_id=None,
             element_name=None,
             cascade_number=cascade_number,
             cascade_reason=CascadeReasonType.FAILED_LF,
+            activated_schemes_per_iter=activated_schemes,
         )
 
     def _append_depth_limit_events(

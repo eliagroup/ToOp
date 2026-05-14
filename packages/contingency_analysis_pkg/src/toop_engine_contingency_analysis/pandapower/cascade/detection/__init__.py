@@ -18,7 +18,6 @@ from .overload import (
 )
 from .switch_preparation import (
     get_complex_impedance,
-    normalize_relay_orientation,
     prepare_switch_results_for_protection,
 )
 
@@ -30,7 +29,6 @@ __all__ = [
     "get_danger_area",
     "get_switch_characteristics",
     "get_warning_area",
-    "normalize_relay_orientation",
     "pick_highest_loading_row",
     "prepare_branch_results_for_overload",
     "prepare_switch_results_for_protection",

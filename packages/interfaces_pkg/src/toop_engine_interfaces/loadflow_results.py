@@ -509,8 +509,17 @@ class CascadeResultSchema(pa.DataFrameModel):
     loading: Series[float] = pa.Field(nullable=True)
     """Branch loading value that triggered the cascade event, if available."""
 
+    r_ohm: Series[float] = pa.Field(nullable=True)
+    """Relay resistance value for distance-protection events, if available."""
+
+    x_ohm: Series[float] = pa.Field(nullable=True)
+    """Relay reactance value for distance-protection events, if available."""
+
     distance_protection_severity: Series[str] = pa.Field(nullable=True)
     """Distance-protection severity for relay events. Empty for other event types."""
+
+    activated_schemes_per_iter: Series[str] = pa.Field(nullable=True)
+    """JSON string of SpPS scheme names that activated per inner cascade load-flow iteration."""
 
 
 LoadflowResultTable = Union[

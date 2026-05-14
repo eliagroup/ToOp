@@ -81,6 +81,8 @@ def get_outage_group_distance_protection_log_info(
                         element_name=name,
                         cascade_number=step_no,
                         cascade_reason=CascadeReasonType.CASCADE_REASON_DISTANCE,
+                        r_ohm=float(element.r_ohm),
+                        x_ohm=float(element.x_ohm),
                         outage_group_id=outage_group_id,
                         distance_protection_severity=severity,
                     )

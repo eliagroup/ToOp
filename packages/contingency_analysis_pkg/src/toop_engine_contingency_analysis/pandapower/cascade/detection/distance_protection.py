@@ -16,7 +16,6 @@ from shapely.geometry import Polygon
 from toop_engine_contingency_analysis.pandapower.cascade.configuration import CascadeConfig
 from toop_engine_contingency_analysis.pandapower.cascade.detection.switch_preparation import (
     get_complex_impedance,
-    normalize_relay_orientation,
 )
 
 
@@ -124,7 +123,6 @@ def evaluate_distance_protection_triggers(
     pd.DataFrame
         Subset of switch_results that is inside the warning or danger area.
     """
-    switch_results = normalize_relay_orientation(switch_results)
     switch_results["r_ohm"], switch_results["x_ohm"] = get_complex_impedance(switch_results)
     switch_results["danger_inside"] = get_danger_area(switch_results)
     switch_results["warning_inside"] = get_warning_area(

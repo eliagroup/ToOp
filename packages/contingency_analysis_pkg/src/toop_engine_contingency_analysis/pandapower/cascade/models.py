@@ -52,11 +52,20 @@ class CascadeEvent:
     loading: float | None = None
     """Branch loading value that triggered the event, if available."""
 
+    r_ohm: float | None = None
+    """Relay resistance value for distance-protection events, if available."""
+
+    x_ohm: float | None = None
+    """Relay reactance value for distance-protection events, if available."""
+
     outage_group_id: str | None = None
     """Identifier of the outage group that produced this event, if available."""
 
     distance_protection_severity: Optional[str] = None
     """Optional severity label for distance protection events."""
+
+    activated_schemes_per_iter: str | None = None
+    """JSON string of SpPS scheme names that activated per inner load-flow iteration."""
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the event into plain values that can be serialized as JSON.
@@ -73,8 +82,11 @@ class CascadeEvent:
             "cascade_number": self.cascade_number,
             "cascade_reason": self.cascade_reason,
             "loading": self.loading,
+            "r_ohm": self.r_ohm,
+            "x_ohm": self.x_ohm,
             "outage_group_id": self.outage_group_id,
             "distance_protection_severity": self.distance_protection_severity,
+            "activated_schemes_per_iter": self.activated_schemes_per_iter,
         }
 
 

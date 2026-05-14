@@ -652,9 +652,11 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
         """
         if df is None:
             return None
-        if isinstance(df, pd.DataFrame) and "loading" in df.columns:
+        if isinstance(df, pd.DataFrame):
             df = df.copy()
-            df["loading"] = pd.to_numeric(df["loading"], errors="coerce")
+            for column in ["loading", "r_ohm", "x_ohm"]:
+                if column in df.columns:
+                    df[column] = pd.to_numeric(df[column], errors="coerce")
         return pandas_to_polars(df, lazy=lazy, nan_to_null=True)
 
     return LoadflowResultsPolars(

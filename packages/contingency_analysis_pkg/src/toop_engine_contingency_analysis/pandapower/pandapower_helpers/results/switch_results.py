@@ -472,6 +472,44 @@ def _compute_switch_flow_and_injection_results(
     return switch_results
 
 
+def _orient_switch_results_to_relay_side(net: pp.pandapowerNet, switch_results: pd.DataFrame) -> pd.DataFrame:
+    """Make switch power values use the relay point of view.
+
+    Some relays measure from the bus side and some from the element side. For
+    element-side relays, this flips active and reactive power signs so all rows
+    can be compared in the same direction.
+
+    Parameters
+    ----------
+    net : pp.pandapowerNet
+        Pandapower network containing switch metadata and relay characteristics.
+    switch_results : pd.DataFrame
+        Switch result table with ``switch_id``, ``p`` and ``q`` columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        Switch results with active and reactive power flipped for relays that
+        measure from the element side.
+    """
+    if "sw_characteristics" not in net or net.sw_characteristics.empty or "origin_id" not in net.switch.columns:
+        return switch_results
+
+    required_columns = {"breaker_uuid", "relay_side"}
+    if not required_columns.issubset(net.sw_characteristics.columns):
+        return switch_results
+
+    origin_ids = switch_results["switch_id"].map(net.switch["origin_id"])
+    relay_side_by_origin = net.sw_characteristics.drop_duplicates(subset="breaker_uuid").set_index("breaker_uuid")[
+        "relay_side"
+    ]
+    relay_sides = origin_ids.map(relay_side_by_origin)
+
+    mask = relay_sides.eq("element")
+    switch_results.loc[mask, ["p", "q"]] *= -1
+    return switch_results
+
+
 def get_switch_mapped_elements(
     net: pp.pandapowerNet,
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
@@ -602,6 +640,7 @@ def get_switch_results(
         node_results=node_results,
         switch_element_mapping=switch_element_mapping,
     )
+    switch_results = _orient_switch_results_to_relay_side(net, switch_results)
     switch_results["element"] = get_globally_unique_id_from_index(switch_results["switch_id"], element_type="switch")
     switch_results["element_name"] = switch_results["switch_id"].map(net.switch["name"])
     switch_results["contingency"] = contingency.unique_id

@@ -515,7 +515,7 @@ def select_timestep(loadflow_results: LoadflowResults, timestep: Integral) -> Lo
         The loadflow results for the selected timestep.
     """
 
-    def safe_xs(df: pd.DataFrame) -> pd.DataFrame:
+    def safe_xs(df: pd.DataFrame | None) -> pd.DataFrame | None:
         """Safely select a timestep from a DataFrame."""
         if df is None:
             return None

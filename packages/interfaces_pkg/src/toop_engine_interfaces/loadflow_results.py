@@ -631,9 +631,10 @@ class LoadflowResults(BaseModel):
             return ordered_left.equals(right.round(rounding_accuracy))
 
         def optional_frame_matches(left: pd.DataFrame | None, right: pd.DataFrame | None) -> bool:
-            """Compare optional result frames while treating two None values as equal."""
+            """Compare optional result frames while treating None and empty frames as equal."""
             if left is None or right is None:
-                return left is None and right is None
+                other = right if left is None else left
+                return other is None or other.empty
             return required_frame_matches(left, right)
 
         return (

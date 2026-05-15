@@ -120,6 +120,7 @@ def get_outage_group_current_violation_log_info(
     """
     events = []
     loading_by_element = current_overloaded_df.set_index("element")["loading"].to_dict()
+    visited_elements = set()
     for element_mrid, out_gr in outage_groups.items():
         outage_group_id = _hash_outage_group_element_names(net, out_gr)
         loading = loading_by_element.get(element_mrid)
@@ -127,16 +128,18 @@ def get_outage_group_current_violation_log_info(
             if el_type in cascade_log_elements and net[el_type].loc[idx]["in_service"]:
                 mrid = net[el_type].loc[idx]["origin_id"]
                 name = net[el_type].loc[idx]["name"]
-                events.append(
-                    CascadeEvent(
-                        element_mrid=mrid,
-                        element_id=get_globally_unique_id(idx, el_type),
-                        element_name=name,
-                        cascade_number=step_no,
-                        cascade_reason=CascadeReasonType.CASCADE_REASON_CURRENT,
-                        loading=loading,
-                        outage_group_id=outage_group_id,
+                if mrid not in visited_elements:
+                    events.append(
+                        CascadeEvent(
+                            element_mrid=mrid,
+                            element_id=get_globally_unique_id(idx, el_type),
+                            element_name=name,
+                            cascade_number=step_no,
+                            cascade_reason=CascadeReasonType.CASCADE_REASON_CURRENT,
+                            loading=loading,
+                            outage_group_id=outage_group_id,
+                        )
                     )
-                )
+                    visited_elements.add(mrid)
 
     return events

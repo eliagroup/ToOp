@@ -403,7 +403,6 @@ def test_convert_polars_loadflow_results_to_pandas():
     )
     assert_frame_equal(loadflow_data_polars.va_diff_results, loadflow_data_polars_2.va_diff_results, **kw_args_testing)
     assert_frame_equal(loadflow_data_polars.converged, loadflow_data_polars_2.converged, **kw_args_testing)
-    assert loadflow_data_polars.additional_information == loadflow_data_polars_2.additional_information
     assert loadflow_data_polars.warnings == loadflow_data_polars_2.warnings
 
     # this is the actual test

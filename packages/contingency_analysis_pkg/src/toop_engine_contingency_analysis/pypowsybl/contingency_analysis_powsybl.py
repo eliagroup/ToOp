@@ -229,7 +229,6 @@ def run_contingency_analysis_polars(
         va_diff_results=va_diff_results_df,
         converged=convergence_df,
         warnings=[],
-        additional_information=[],
         lazy=True,
     )
     return lf_results

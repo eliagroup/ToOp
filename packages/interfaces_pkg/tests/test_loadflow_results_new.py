@@ -111,7 +111,6 @@ def get_loadflow_results_example(
         converged=converged,
         switch_results=switch_results,
         spps_results=spps_results,
-        additional_information=["This is generated test data"],
         warnings=["warning1"],
     )
 

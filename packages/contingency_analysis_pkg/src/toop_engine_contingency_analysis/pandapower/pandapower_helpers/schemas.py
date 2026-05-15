@@ -32,6 +32,19 @@ from toop_engine_interfaces.spps_parameters import (
 )
 
 
+class CascadeConfig(BaseModel):
+    """Configuration for cascading protection screening after contingency load flow."""
+
+    model_config = ConfigDict(frozen=True)
+
+    depth_limit: int
+    current_loading_threshold: float
+    min_island_size: int
+    basecase_distance_protection_factor: float
+    contingency_distance_protection_factor: float
+    cascade_log_elements: list[str]
+
+
 @dataclasses.dataclass
 class SlackAllocationConfig:
     """Carry configuration required for slack allocation per island."""
@@ -353,6 +366,49 @@ class ContingencyAnalysisConfig(BaseModel):
     ``res_*`` state on failure; see the SpPS engine for details.
     """
 
+    cascade: Optional[CascadeConfig] = Field(default=None)
+    """Optional cascading protection screening after each converged outage PF.
+
+    When ``None``, :data:`DEFAULT_CONTINGENCY_ANALYSIS_CASCADE` is used.
+    Forwarded to sequential and parallel worker contexts as :attr:`SequentialContingencyAnalysisContext.cascade`.
+    """
+
+
+class SingleOutageSppsContext(BaseModel):
+    """SpPS rule tables and engine options for one outage run (paired with :class:`SingleOutageContext`)."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    conditions: pat.DataFrame[SppsConditionsPandapowerSchema]
+    """Resolved SpPS condition rows for the entire N-1 job.
+
+    Each row is one check (voltage, current, power, element state, etc.); columns
+    follow the SpPS conditions schema (including ``scheme_name``). All rows with
+    the same ``scheme_name`` belong to one scheme: that scheme is satisfied in an
+    engine iteration according to each row's ``condition_logic`` (``all`` or ``any``).
+    This table is evaluated against the post-outage network. If it is empty, no SpPS
+    is run: a standard pandapower load flow only, and any ``actions`` data are ignored.
+    """
+
+    actions: pat.DataFrame[SppsActionsPandapowerSchema]
+    """Resolved SpPS action rows for the entire N-1 job.
+
+    Each row is one control step (e.g. switch a device, set a tap) tied to
+    ``scheme_name``. When a scheme's conditions pass, the SpPS engine applies the
+    ordered actions for that scheme, re-runs the load flow, and repeats until no
+    scheme triggers or the iteration cap is hit. If ``conditions`` is empty, this
+    table is not applied.
+    """
+
+    rules_max_iterations: int = Field(default=10, ge=1)
+    """Maximum SpPS engine iterations for this outage."""
+
+    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE
+    """In-loop power-flow policy when SpPS runs (ignored if ``conditions`` is empty).
+
+    Forwarded to ``run_spps``. See :class:`~toop_engine_interfaces.spps_parameters.SppsPowerFlowFailurePolicy`.
+    """
+
 
 class SingleOutageContext(BaseModel):
     """Shared execution context for a single outage calculation.
@@ -407,40 +463,8 @@ class SingleOutageContext(BaseModel):
     connectivity of monitored elements.
     """
 
-    spps_conditions: pat.DataFrame[SppsConditionsPandapowerSchema]
-    """Resolved SpPS condition rows for the entire N-1 job.
-
-    Each row is one check (voltage, current, power, element state, etc.); columns
-    follow the SpPS conditions schema (including ``scheme_name``). All rows with
-    the same ``scheme_name`` belong to one scheme: that scheme is satisfied in an
-    engine iteration according to each row's ``condition_logic`` (``all`` or ``any``).
-    This table is copied
-    into each per-outage execution context and evaluated against the post-outage
-    network. If it is empty, no SpPS is run: each contingency uses a standard
-    pandapower load flow only, and any ``spps_actions`` data are ignored.
-    """
-
-    spps_actions: pat.DataFrame[SppsActionsPandapowerSchema]
-    """Resolved SpPS action rows for the entire N-1 job.
-
-     Each row is one control step (e.g. switch a device, set a tap) tied to
-     ``scheme_name``; column meanings follow the SpPS actions schema. A scheme is
-     linked to the conditions table by the same ``scheme_name``: when that scheme's
-     conditions pass (per ``condition_logic`` on condition rows), the SpPS engine applies the ordered
-     set of actions for that scheme, then re-runs the load flow, and repeats until
-     no scheme triggers or the iteration cap is hit. The table is passed through
-     to each per-outage run. If ``spps_conditions`` is empty, a normal load flow is
-     executed and this table is not applied. If conditions are non-empty, action
-     rows are expected to match the project ruleset (typically one or more
-     actions per defined scheme).
-     """
-
-    spps_rules_max_iterations: int = Field(default=10, ge=1)
-    """Maximum number of iterations for the SpPS engine.
-
-    Limits how many times rules can be evaluated and applied during
-    a single outage calculation.
-    """
+    spps: SingleOutageSppsContext
+    """SpPS conditions, actions, and engine settings for this outage."""
 
     runpp_kwargs: dict[str, Any] | None = None
     """Additional keyword arguments for pandapower load-flow execution.
@@ -449,14 +473,8 @@ class SingleOutageContext(BaseModel):
     :func:`pandapower.rundcpp` depending on the selected method.
     """
 
-    on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE
-    """SpPS in-loop power-flow policy (ignored when there are no SpPS rules).
-
-        Forwarded to ``run_spps``. :attr:`~SppsPowerFlowFailurePolicy.RAISE` re-raises
-        solver failures as ``SppsPowerFlowError``;
-        :attr:`~SppsPowerFlowFailurePolicy.KEEP_PREVIOUS` keeps the last successful
-        ``res_*`` state on failure; see the SpPS engine for details.
-        """
+    cascade: Optional[CascadeConfig] = Field(default=None)
+    """Optional cascading protection screening (:class:`CascadeSimulator`) after a converged outage PF."""
 
 
 class SequentialContingencyAnalysisContext(BaseModel):
@@ -552,6 +570,12 @@ class SequentialContingencyAnalysisContext(BaseModel):
         ``res_*`` state on failure; see the SpPS engine for details.
         """
 
+    cascade: Optional[CascadeConfig] = Field(default=None)
+    """Forwarded into :class:`SingleOutageContext` (optional cascade).
+
+    SpPS tables are copied into :attr:`~SingleOutageContext.spps`.
+    """
+
 
 class ParallelContingencyAnalysisContext(BaseModel):
     """Shared context for parallel N-1 contingency analysis.
@@ -637,3 +661,6 @@ class ParallelContingencyAnalysisContext(BaseModel):
     Controls the number of worker processes and optional batch sizing for
     distributed execution.
     """
+
+    cascade: Optional[CascadeConfig] = Field(default=None)
+    """Forwarded into :class:`SequentialContingencyAnalysisContext` when building parallel worker jobs."""

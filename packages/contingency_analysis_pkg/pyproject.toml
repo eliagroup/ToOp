@@ -49,6 +49,7 @@ dependencies = [
     "polars>=1.33.0",
     "orjson>=3.11.3",
     "pyarrow>=21.0.0",
+    "shapely>=2.0.0,<3.0.0",
     "structlog (>=24.4.0,<25.0.0)",
 ]
 

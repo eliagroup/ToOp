@@ -24,6 +24,7 @@ from toop_engine_interfaces.loadflow_results import (
 )
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchResultSchemaPolars,
+    CascadeResultSchemaPolars,
     ConvergedSchemaPolars,
     LoadflowResultsPolars,
     NodeResultSchemaPolars,
@@ -64,7 +65,6 @@ def save_loadflow_results_polars(
     metadata = {
         "job_id": loadflows.job_id,
         "warnings": loadflows.warnings,
-        "additional_information": loadflows.additional_information,
     }
     with fs.open(file_path + "/metadata.json", "w") as f:
         json.dump(metadata, f)
@@ -79,6 +79,9 @@ def save_loadflow_results_polars(
         loadflows.converged.sink_parquet(f)
     with fs.open(file_path + "/va_diff_results.parquet", "wb") as f:
         loadflows.va_diff_results.sink_parquet(f)
+    if loadflows.cascade_results is not None:
+        with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
+            loadflows.cascade_results.sink_parquet(f)
 
     return StoredLoadflowReference(
         relative_path=str(file_path),
@@ -111,7 +114,6 @@ def load_loadflow_results_polars(
         metadata = json.load(f)
     job_id = metadata["job_id"]
     warnings = metadata["warnings"]
-    additional_information = metadata["additional_information"]
 
     with fs.open(file_path + "/branch_results.parquet", "rb") as f:
         branch_results = pl.scan_parquet(f)
@@ -123,6 +125,11 @@ def load_loadflow_results_polars(
         converged = pl.scan_parquet(f)
     with fs.open(file_path + "/va_diff_results.parquet", "rb") as f:
         va_diff_results = pl.scan_parquet(f)
+    if fs.exists(file_path + "/cascade_results.parquet"):
+        with fs.open(file_path + "/cascade_results.parquet", "rb") as f:
+            cascade_results = pl.scan_parquet(f)
+    else:
+        cascade_results = None
 
     if validate:
         return LoadflowResultsPolars(
@@ -132,8 +139,8 @@ def load_loadflow_results_polars(
             regulating_element_results=RegulatingElementResultSchemaPolars.validate(regulating_element_results),
             converged=ConvergedSchemaPolars.validate(converged),
             va_diff_results=VADiffResultSchemaPolars.validate(va_diff_results),
+            cascade_results=(CascadeResultSchemaPolars.validate(cascade_results) if cascade_results is not None else None),
             warnings=warnings,
-            additional_information=additional_information,
         )
 
     return LoadflowResultsPolars.model_construct(
@@ -143,8 +150,8 @@ def load_loadflow_results_polars(
         regulating_element_results=regulating_element_results,
         converged=converged,
         va_diff_results=va_diff_results,
+        cascade_results=cascade_results,
         warnings=warnings,
-        additional_information=additional_information,
     )
 
 
@@ -175,18 +182,15 @@ def concatenate_loadflow_results_polars(
     ]
     converged_list = [res.converged for res in loadflow_results_list if res.converged is not None]
     va_diff_results_list = [res.va_diff_results for res in loadflow_results_list if res.va_diff_results is not None]
+    cascade_results_list = [res.cascade_results for res in loadflow_results_list if res.cascade_results is not None]
 
     branch_results = pl.concat(branch_results_list, how="vertical")
     node_results = pl.concat(node_results_list, how="vertical")
     regulating_element_results = pl.concat(regulating_element_results_list, how="vertical")
     converged = pl.concat(converged_list, how="vertical")
     va_diff_results = pl.concat(va_diff_results_list, how="vertical")
+    cascade_results = pl.concat(cascade_results_list, how="vertical") if cascade_results_list else None
     warnings = [warning for lf_results in loadflow_results_list for warning in lf_results.warnings]
-    additional_information = [
-        additional_information
-        for lf_results in loadflow_results_list
-        for additional_information in lf_results.additional_information
-    ]
     return LoadflowResultsPolars(
         job_id=loadflow_results_list[0].job_id,
         branch_results=branch_results,
@@ -194,8 +198,8 @@ def concatenate_loadflow_results_polars(
         regulating_element_results=regulating_element_results,
         converged=converged,
         va_diff_results=va_diff_results,
+        cascade_results=cascade_results,
         warnings=warnings,
-        additional_information=additional_information,
     )
 
 
@@ -221,8 +225,12 @@ def select_timestep_polars(loadflow_results: LoadflowResultsPolars, timestep: in
         regulating_element_results=loadflow_results.regulating_element_results.filter(pl.col("timestep") == timestep),
         converged=loadflow_results.converged.filter(pl.col("timestep") == timestep),
         va_diff_results=loadflow_results.va_diff_results.filter(pl.col("timestep") == timestep),
+        cascade_results=(
+            loadflow_results.cascade_results.filter(pl.col("timestep") == timestep)
+            if loadflow_results.cascade_results is not None
+            else None
+        ),
         warnings=loadflow_results.warnings,
-        additional_information=loadflow_results.additional_information,
     )
 
 
@@ -250,8 +258,12 @@ def subset_contingencies_polars(loadflow_results: LoadflowResultsPolars, conting
         ),
         converged=loadflow_results.converged.filter(pl.col("contingency").is_in(contingencies)),
         va_diff_results=loadflow_results.va_diff_results.filter(pl.col("contingency").is_in(contingencies)),
+        cascade_results=(
+            loadflow_results.cascade_results.filter(pl.col("contingency").is_in(contingencies))
+            if loadflow_results.cascade_results is not None
+            else None
+        ),
         warnings=loadflow_results.warnings,
-        additional_information=loadflow_results.additional_information,
     )
 
 

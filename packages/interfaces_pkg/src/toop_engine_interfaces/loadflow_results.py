@@ -592,7 +592,7 @@ class LoadflowResults(BaseModel):
     contributes no rows. If no job recorded SpPS, this is the empty DataFrame
     (default)."""
 
-    cascade_results: DataFrame[CascadeResultSchema] = None
+    cascade_results: Optional[DataFrame[CascadeResultSchema]] = None
     """Cascade simulation events, one row per event. Empty when cascade simulation is disabled or has no events."""
 
     def __eq__(self, lf_result: object) -> bool:

@@ -152,7 +152,7 @@ class LoadflowResultsPolars(BaseModel):
     """SpPS run summaries, concatenated in single-outage order. Empty when no
     SpPS was recorded (default)."""
 
-    cascade_results: Union[patpl.LazyFrame[CascadeResultSchemaPolars], pl.LazyFrame] = None
+    cascade_results: Union[patpl.LazyFrame[CascadeResultSchemaPolars], pl.LazyFrame, None] = None
     """Cascade simulation events. Empty when cascade simulation is disabled or has no events."""
 
     class Config:

@@ -105,7 +105,7 @@ def compute_affected_nodes(
         if graph.has_edge(sw.bus, sw.element):
             graph.remove_edge(sw.bus, sw.element)
         try:
-            nodes = list(nx.node_connected_component(graph, from_node))
+            nodes = [int(n) for n in nx.node_connected_component(graph, from_node)]
         except nx.NetworkXError as e:
             _logger.error("compute_affected_nodes: %s, %s. Message: %s", sw.bus, sw.element, e)
 

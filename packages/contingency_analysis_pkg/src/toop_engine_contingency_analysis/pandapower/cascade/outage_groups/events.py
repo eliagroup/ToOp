@@ -93,7 +93,7 @@ def get_outage_group_distance_protection_log_info(
 
 def get_outage_group_current_violation_log_info(
     net: pp.pandapowerNet,
-    outage_groups: dict[int, list[tuple[int, str]]],
+    outage_groups: dict[str, list[tuple[int, str]]],
     cascade_log_elements: list[str],
     step_no: int,
     current_overloaded_df: pd.DataFrame,
@@ -104,7 +104,7 @@ def get_outage_group_current_violation_log_info(
     ----------
     net : pp.pandapowerNet
         Pandapower network containing element names and external ids.
-    outage_groups : dict[int, list[tuple[int, str]]]
+    outage_groups : dict[str, list[tuple[int, str]]]
         Elements affected by each overloaded branch.
     cascade_log_elements : list[str]
         Element types that should appear in the event log.

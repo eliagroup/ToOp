@@ -11,6 +11,7 @@ This includes translating contingencies, monitored elements and collecting
 the necessary data from the network, so this only has to happen once.
 """
 
+import hashlib
 from copy import deepcopy
 
 import numpy as np
@@ -18,7 +19,7 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import pypowsybl
-from beartype.typing import Literal, Optional, get_args
+from beartype.typing import Literal, Optional, Protocol, Sequence, get_args, runtime_checkable
 from pydantic import BaseModel
 from pypowsybl._pypowsybl import PostContingencyResult, PreContingencyResult
 from pypowsybl.network import Network
@@ -43,12 +44,32 @@ from toop_engine_interfaces.nminus1_definition import (
 )
 from typing_extensions import TypedDict
 
+
+@runtime_checkable
+class PowsyblBranchLimitCacheProtocol(Protocol):
+    """Protocol for cache objects that provide prepared branch limits and reuse validation."""
+
+    branch_limits: pd.DataFrame
+
+    def matches(self, monitored_branches: Sequence[str], chosen_limit: str, current_limit_fingerprint: str) -> bool:
+        """Return whether the cache entry can be reused for the current request."""
+
+
 POWSYBL_CONVERGENCE_MAP = {
     pypowsybl.loadflow.ComponentStatus.CONVERGED.value: ConvergenceStatus.CONVERGED.value,
     pypowsybl.loadflow.ComponentStatus.FAILED.value: ConvergenceStatus.FAILED.value,
     pypowsybl.loadflow.ComponentStatus.NO_CALCULATION.value: ConvergenceStatus.NO_CALCULATION.value,
     pypowsybl.loadflow.ComponentStatus.MAX_ITERATION_REACHED.value: ConvergenceStatus.MAX_ITERATION_REACHED.value,
 }
+
+
+def _validate_powsybl_id_type(n_minus_1_definition: Nminus1Definition) -> None:
+    """Validate that the N-1 definition uses a supported Powsybl id type."""
+    id_type = n_minus_1_definition.id_type or "powsybl"
+    if id_type not in (supported_ids := get_args(POWSYBL_SUPPORTED_ID_TYPES)):
+        raise ValueError(
+            f"Unsupported id_type {n_minus_1_definition.id_type}. Only {supported_ids} are supported for Powsybl."
+        )
 
 
 class PowsyblContingency(BaseModel):
@@ -515,8 +536,124 @@ def get_busbar_mapping(net: Network) -> pd.DataFrame:
     return bus_map
 
 
-def translate_nminus1_for_powsybl(n_minus_1_definition: Nminus1Definition, net: Network) -> PowsyblNMinus1Definition:
-    """Translate the N-1 definition to a format that can be used in Powsybl.
+def translate_branch_limits_for_powsybl(
+    branch_limits: pd.DataFrame, monitored_branches: list[str], chosen_limit: str = "permanent_limit"
+) -> pd.DataFrame:
+    """Translate current operational limits into prepared monitored branch limits for Powsybl.
+
+    Parameters
+    ----------
+    branch_limits : pd.DataFrame
+        The raw operational limits dataframe, already filtered to the relevant limit type.
+    monitored_branches : list[str]
+        The monitored branch ids whose limits are needed for the analysis.
+    chosen_limit : str, optional
+        The limit name to select, by default "permanent_limit".
+
+    Returns
+    -------
+    pd.DataFrame
+        The prepared branch limit dataframe indexed by element id and side.
+    """
+    return prepare_branch_limits(branch_limits, chosen_limit=chosen_limit, monitored_branches=monitored_branches)
+
+
+def normalize_monitored_branches_for_powsybl(monitored_branches: Sequence[str]) -> tuple[str, ...]:
+    """Normalize monitored branch ids for cache-key comparisons.
+
+    Parameters
+    ----------
+    monitored_branches : Sequence[str]
+        The monitored branch ids to normalize.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The monitored branch ids sorted into a stable tuple.
+    """
+    return tuple(sorted(monitored_branches))
+
+
+def fingerprint_current_limits_for_powsybl(current_limits: pd.DataFrame) -> str:
+    """Create a stable fingerprint for a current-limit snapshot.
+
+    Parameters
+    ----------
+    current_limits : pd.DataFrame
+        The raw current-limit dataframe from the active network.
+
+    Returns
+    -------
+    str
+        A stable hash representing the current-limit contents.
+    """
+    normalized_limits = current_limits.reset_index()
+    if len(normalized_limits.columns) > 0:
+        normalized_limits = normalized_limits.sort_values(by=sorted(normalized_limits.columns), kind="mergesort")
+    normalized_limits = normalized_limits.reset_index(drop=True)
+    limit_hash = pd.util.hash_pandas_object(normalized_limits, index=False)
+    return hashlib.sha256(limit_hash.to_numpy().tobytes()).hexdigest()
+
+
+def get_current_branch_limits_for_powsybl(net: Network) -> pd.DataFrame:
+    """Load the raw current operational limits from the active network.
+
+    Parameters
+    ----------
+    net : Network
+        The active Powsybl network.
+
+    Returns
+    -------
+    pd.DataFrame
+        The current operational limits filtered to current-type limits.
+    """
+    return net.get_operational_limits().query("type=='CURRENT'")
+
+
+def resolve_branch_limits_for_powsybl(
+    net: Network,
+    monitored_branches: list[str],
+    branch_limit_cache: Optional[PowsyblBranchLimitCacheProtocol] = None,
+    chosen_limit: str = "permanent_limit",
+) -> pd.DataFrame:
+    """Resolve prepared branch limits, reusing a cache entry when it is still valid.
+
+    Parameters
+    ----------
+    net : Network
+        The active Powsybl network whose current limits are used for resolution.
+    monitored_branches : list[str]
+        The monitored branch ids whose prepared limits are needed.
+    branch_limit_cache : Optional[PowsyblBranchLimitCacheProtocol], optional
+        Optional cache for the prepared branch limits. If stale, it is ignored.
+    chosen_limit : str, optional
+        The limit name to select, by default "permanent_limit".
+
+    Returns
+    -------
+    pd.DataFrame
+        The prepared branch-limit dataframe to use for the analysis.
+    """
+    current_limits = get_current_branch_limits_for_powsybl(net)
+    current_limit_fingerprint = fingerprint_current_limits_for_powsybl(current_limits)
+    if branch_limit_cache is not None and branch_limit_cache.matches(
+        monitored_branches=monitored_branches,
+        chosen_limit=chosen_limit,
+        current_limit_fingerprint=current_limit_fingerprint,
+    ):
+        return branch_limit_cache.branch_limits
+    return translate_branch_limits_for_powsybl(
+        branch_limits=current_limits,
+        monitored_branches=monitored_branches,
+        chosen_limit=chosen_limit,
+    )
+
+
+def translate_nminus1_components_for_powsybl(
+    n_minus_1_definition: Nminus1Definition, net: Network
+) -> PowsyblNMinus1Definition:
+    """Translate contingencies, monitored elements, and network-derived metadata for Powsybl.
 
     Parameters
     ----------
@@ -528,22 +665,15 @@ def translate_nminus1_for_powsybl(n_minus_1_definition: Nminus1Definition, net: 
     Returns
     -------
     PowsyblNMinus1Definition
-        The translated N-1 definition that can be used in Powsybl.
+        The translated N-1 definition with all non-limit components prepared.
     """
-    id_type = n_minus_1_definition.id_type or "powsybl"
-    # By default we assume the id_type is powsybl. This works for all powsybl identifiables
-    if id_type not in (supported_ids := get_args(POWSYBL_SUPPORTED_ID_TYPES)):
-        raise ValueError(
-            f"Unsupported id_type {n_minus_1_definition.id_type}. Only {supported_ids} are supported for Powsybl."
-        )
+    _validate_powsybl_id_type(n_minus_1_definition)
 
-    # Load data once from the network
     busmap = get_busbar_mapping(net)
     voltage_levels = net.get_voltage_levels(attributes=["nominal_v", "high_voltage_limit", "low_voltage_limit"])
     voltage_levels["high_voltage_limit"] = voltage_levels["high_voltage_limit"].fillna(voltage_levels["nominal_v"] * 1.2)
     voltage_levels["low_voltage_limit"] = voltage_levels["low_voltage_limit"].fillna(voltage_levels["nominal_v"] * 0.8)
 
-    branch_limits = net.get_operational_limits().query("type=='CURRENT'")
     branches = net.get_branches(
         attributes=["type", "voltage_level1_id", "voltage_level2_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
     )
@@ -561,16 +691,6 @@ def translate_nminus1_for_powsybl(n_minus_1_definition: Nminus1Definition, net: 
     switches = net.get_switches(
         attributes=["open", "retained", "voltage_level_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
     )
-    trafo3ws = net.get_3_windings_transformers(
-        attributes=[
-            "voltage_level1_id",
-            "voltage_level2_id",
-            "voltage_level3_id",
-            "bus_breaker_bus1_id",
-            "bus_breaker_bus2_id",
-            "bus_breaker_bus3_id",
-        ]
-    )
     identifiables = net.get_identifiables(attributes=[]).index
     pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
         n_minus_1_definition.contingencies, identifiables
@@ -580,20 +700,50 @@ def translate_nminus1_for_powsybl(n_minus_1_definition: Nminus1Definition, net: 
         n_minus_1_definition, all_branches, busmap, switches
     )
 
-    # create an empty dataframe with the correct index
     va_diff_with_buses = get_blank_va_diff_with_buses(branches, switches, pow_contingencies, monitored_elements["switches"])
-    branch_limits = prepare_branch_limits(branch_limits, "permanent_limit", monitored_elements["branches"])
     return PowsyblNMinus1Definition(
         contingencies=pow_contingencies,
         blank_va_diff=va_diff_with_buses,
         monitored_elements=monitored_elements,
-        branch_limits=branch_limits,
+        branch_limits=pd.DataFrame(),
         bus_map=busmap,
         element_name_mapping=element_name_map,
         contingency_name_mapping=contingency_name_map,
         voltage_levels=voltage_levels,
         missing_elements=missing_elements,
         missing_contingencies=missing_contingencies,
+    )
+
+
+def translate_nminus1_for_powsybl(
+    n_minus_1_definition: Nminus1Definition,
+    net: Network,
+    branch_limit_cache: Optional[PowsyblBranchLimitCacheProtocol] = None,
+) -> PowsyblNMinus1Definition:
+    """Translate the N-1 definition to a format that can be used in Powsybl.
+
+    Parameters
+    ----------
+    n_minus_1_definition : Nminus1Definition
+        The generic N-1 definition to translate.
+    net : Network
+        The active Powsybl network whose state is used to resolve monitored elements and limits.
+    branch_limit_cache : Optional[PowsyblBranchLimitCacheProtocol], optional
+        Optional cache for the prepared branch limits. If stale, it is ignored.
+
+    Returns
+    -------
+    PowsyblNMinus1Definition
+        The translated N-1 definition including prepared branch limits.
+    """
+    translated_nminus1 = translate_nminus1_components_for_powsybl(n_minus_1_definition, net)
+    translated_branch_limits = resolve_branch_limits_for_powsybl(
+        net=net,
+        monitored_branches=translated_nminus1.monitored_elements["branches"],
+        branch_limit_cache=branch_limit_cache,
+    )
+    return PowsyblNMinus1Definition.model_validate(
+        translated_nminus1.model_copy(update={"branch_limits": translated_branch_limits})
     )
 
 

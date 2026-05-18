@@ -1,7 +1,7 @@
 # Cascade Simulation
 
 After each converged contingency load flow, an optional cascade simulation can be
-enabled via [`CascadeConfig`][toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas.CascadeConfig].
+enabled via `CascadeConfig`.
 It models how a single outage can trigger a chain of further trips through distance
 protection or current overload.
 

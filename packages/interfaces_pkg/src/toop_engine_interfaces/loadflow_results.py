@@ -20,9 +20,10 @@ The grid holds some information that is referenced in the results:
 
 from enum import Enum
 
+import pandas as pd
 import pandera as pa
 import pandera.typing as pat
-from beartype.typing import Any, Optional, Union
+from beartype.typing import Optional, Union
 from pandera.typing import DataFrame, Index, Series
 from pydantic import BaseModel, Field
 
@@ -467,6 +468,60 @@ class SppsResultsSchema(pa.DataFrameModel):
     """Whether a post-action power flow failed in keep_previous mode."""
 
 
+class CascadeResultSchema(pa.DataFrameModel):
+    """A schema for cascade simulation event results.
+
+    This table contains one row per cascade event created after a converged
+    contingency load flow. It records why the cascade advanced and which
+    element/outage group was affected.
+    """
+
+    timestep: Index[int]
+    """The timestep of this cascade event."""
+
+    contingency: Index[str]
+    """Globally unique id of the contingency that started the cascade."""
+
+    cascade_number: Index[int]
+    """Cascade step number where the event happened."""
+
+    element_mrid: Index[str] = pa.Field(nullable=True)
+    """External identifier of the affected element, if known."""
+
+    element_id: Series[str] = pa.Field(nullable=True)
+    """Globally unique id of the affected element, if known."""
+
+    contingency_outage_id: Series[str] = pa.Field(nullable=True)
+    """Identifier of the outage group for the contingency that started the cascade."""
+
+    contingency_name: Series[str] = pa.Field(nullable=True)
+    """Human-readable name of the contingency that started the cascade, if known."""
+
+    element_outage_group_id: Series[str] = pa.Field(nullable=True)
+    """Stable identifier of the affected element's outage group."""
+
+    element_name: Series[str] = pa.Field(nullable=True)
+    """Human-readable name of the affected element, if known."""
+
+    cascade_reason: Series[str]
+    """Reason for the cascade event, such as current overload or distance protection."""
+
+    loading: Series[float] = pa.Field(nullable=True)
+    """Branch loading value that triggered the cascade event, if available."""
+
+    r_ohm: Series[float] = pa.Field(nullable=True)
+    """Relay resistance value for distance-protection events, if available."""
+
+    x_ohm: Series[float] = pa.Field(nullable=True)
+    """Relay reactance value for distance-protection events, if available."""
+
+    distance_protection_severity: Series[str] = pa.Field(nullable=True)
+    """Distance-protection severity for relay events. Empty for other event types."""
+
+    activated_schemes_per_iter: Series[str] = pa.Field(nullable=True)
+    """JSON string of SpPS scheme names that activated per inner cascade load-flow iteration."""
+
+
 LoadflowResultTable = Union[
     pat.DataFrame[NodeResultSchema],
     pat.DataFrame[BranchResultSchema],
@@ -476,6 +531,7 @@ LoadflowResultTable = Union[
     pat.DataFrame[RegulatingElementResultSchema],
     pat.DataFrame[ConvergedSchema],
     pat.DataFrame[SppsResultsSchema],
+    pat.DataFrame[CascadeResultSchema],
 ]
 
 
@@ -531,14 +587,13 @@ class LoadflowResults(BaseModel):
     warnings: Optional[list[str]] = Field(default_factory=list)
     """Global warnings that occured during the computation (e.g. monitored elements/contingencies that were not found)"""
 
-    additional_information: Optional[list[Any]] = Field(default_factory=list)
-    """Additional information that the loadflow solver wants to convey to the user. There is no limitation what can
-    be put in here except that it needs to be json serializable."""
-
     spps_results: DataFrame[SppsResultsSchema] = None
     """SpPS run summaries, concatenated in single-outage order. When SpPS did not run for a case, that chunk
     contributes no rows. If no job recorded SpPS, this is the empty DataFrame
     (default)."""
+
+    cascade_results: Optional[DataFrame[CascadeResultSchema]] = None
+    """Cascade simulation events, one row per event. Empty when cascade simulation is disabled or has no events."""
 
     def __eq__(self, lf_result: object) -> bool:
         """Compare two LoadflowResults objects for equality.
@@ -563,95 +618,33 @@ class LoadflowResults(BaseModel):
         if not isinstance(lf_result, LoadflowResults):
             return False
 
-        job_match = self.job_id == lf_result.job_id
-        warnings_match = self.warnings == lf_result.warnings
-        additional_info_match = self.additional_information == lf_result.additional_information
-        simple_checks = job_match and warnings_match and additional_info_match
+        def required_frame_matches(left: pd.DataFrame, right: pd.DataFrame) -> bool:
+            """Compare required result frames while ignoring row and column order."""
+            if left.shape != right.shape:
+                return False
+            if not all(left.index.isin(right.index)):
+                return False
+            if not all(left.columns.isin(right.columns)):
+                return False
 
-        # Check shape
-        branch_shape_match = self.branch_results.shape == lf_result.branch_results.shape
-        node_shape_match = self.node_results.shape == lf_result.node_results.shape
-        regulating_element_shape_match = self.regulating_element_results.shape == lf_result.regulating_element_results.shape
-        va_diff_shape_match = self.va_diff_results.shape == lf_result.va_diff_results.shape
-        converged_shape_match = self.converged.shape == lf_result.converged.shape
-        shape_matches = (
-            branch_shape_match
-            and node_shape_match
-            and regulating_element_shape_match
-            and va_diff_shape_match
-            and converged_shape_match
-        )
-        if not (shape_matches and simple_checks):
-            return False
+            ordered_left = left.loc[right.index.drop_duplicates(), right.columns].round(rounding_accuracy)
+            return ordered_left.equals(right.round(rounding_accuracy))
 
-        # Check indices. One way is enough since the lengths are equal
-        node_indizes_match = all(self.node_results.index.isin(lf_result.node_results.index))
-        branch_indizes_match = all(self.branch_results.index.isin(lf_result.branch_results.index))
-        regulating_element_indizes_match = all(
-            self.regulating_element_results.index.isin(lf_result.regulating_element_results.index)
-        )
-        va_diff_indizes_match = all(self.va_diff_results.index.isin(lf_result.va_diff_results.index))
-        converged_indizes_match = all(self.converged.index.isin(lf_result.converged.index))
-        indices_match = (
-            node_indizes_match
-            and branch_indizes_match
-            and regulating_element_indizes_match
-            and va_diff_indizes_match
-            and converged_indizes_match
-        )
-        if not indices_match:
-            return False
+        def optional_frame_matches(left: pd.DataFrame | None, right: pd.DataFrame | None) -> bool:
+            """Compare optional result frames while treating None and empty frames as equal."""
+            if left is None or right is None:
+                other = right if left is None else left
+                return other is None or other.empty
+            return required_frame_matches(left, right)
 
-        node_columns_match = all(self.node_results.columns.isin(lf_result.node_results.columns))
-        branch_columns_match = all(self.branch_results.columns.isin(lf_result.branch_results.columns))
-        regulating_element_columns_match = all(
-            self.regulating_element_results.columns.isin(lf_result.regulating_element_results.columns)
+        return (
+            self.job_id == lf_result.job_id
+            and self.warnings == lf_result.warnings
+            and required_frame_matches(self.branch_results, lf_result.branch_results)
+            and required_frame_matches(self.node_results, lf_result.node_results)
+            and required_frame_matches(self.regulating_element_results, lf_result.regulating_element_results)
+            and required_frame_matches(self.va_diff_results, lf_result.va_diff_results)
+            and required_frame_matches(self.converged, lf_result.converged)
+            and optional_frame_matches(self.spps_results, lf_result.spps_results)
+            and optional_frame_matches(self.cascade_results, lf_result.cascade_results)
         )
-        va_diff_columns_match = all(self.va_diff_results.columns.isin(lf_result.va_diff_results.columns))
-        converged_columns_match = all(self.converged.columns.isin(lf_result.converged.columns))
-        columns_match = (
-            node_columns_match
-            and branch_columns_match
-            and regulating_element_columns_match
-            and va_diff_columns_match
-            and converged_columns_match
-        )
-        if not columns_match:
-            return False
-
-        # Check values
-        own_node_results = self.node_results.loc[
-            lf_result.node_results.index.drop_duplicates(), lf_result.node_results.columns
-        ].round(rounding_accuracy)
-        node_values_match = own_node_results.equals(lf_result.node_results.round(rounding_accuracy))
-        own_branch_results = self.branch_results.loc[
-            lf_result.branch_results.index.drop_duplicates(), lf_result.branch_results.columns
-        ].round(rounding_accuracy)
-        branch_values_match = own_branch_results.equals(lf_result.branch_results.round(rounding_accuracy))
-
-        own_regulating_element_results = self.regulating_element_results.loc[
-            lf_result.regulating_element_results.index.drop_duplicates(), lf_result.regulating_element_results.columns
-        ].round(rounding_accuracy)
-        regulating_element_values_match = own_regulating_element_results.equals(
-            lf_result.regulating_element_results.round(rounding_accuracy)
-        )
-
-        own_va_diff_results = self.va_diff_results.loc[
-            lf_result.va_diff_results.index.drop_duplicates(), lf_result.va_diff_results.columns
-        ].round(rounding_accuracy)
-        va_diff_values_match = own_va_diff_results.equals(lf_result.va_diff_results.round(rounding_accuracy))
-
-        own_converged = self.converged.loc[lf_result.converged.index.drop_duplicates(), lf_result.converged.columns].round(
-            rounding_accuracy
-        )
-        converged_values_match = own_converged.equals(lf_result.converged.round(rounding_accuracy))
-        values_match = (
-            node_values_match
-            and branch_values_match
-            and regulating_element_values_match
-            and va_diff_values_match
-            and converged_values_match
-        )
-        if not values_match:
-            return False
-        return True

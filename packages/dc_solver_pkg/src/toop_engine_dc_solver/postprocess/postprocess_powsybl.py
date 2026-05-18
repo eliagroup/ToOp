@@ -26,6 +26,8 @@ from jaxtyping import Bool, Float
 from overrides import overrides
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.pypowsybl import (
+    PowsyblBranchLimitCache,
+    build_branch_limit_cache,
     run_contingency_analysis_powsybl,
 )
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
@@ -311,12 +313,32 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self.net = None
         self.action_set: Optional[ActionSet] = None
         self.nminus1_definition: Optional[Nminus1Definition] = None
+        self.branch_limit_cache: Optional[PowsyblBranchLimitCache] = None
         self.last_action_info: Optional[AdditionalActionInfo] = None
         self.variant_id = "InitialState"
         self._variant_counter = 0
         if lf_params is None:
             lf_params = DISTRIBUTED_SLACK
         self.lf_params = deepcopy(lf_params)
+
+    def _refresh_branch_limit_cache(self) -> Optional[PowsyblBranchLimitCache]:
+        """Build or clear the cached branch-limit translation for the runner's current state.
+
+        Returns
+        -------
+        Optional[PowsyblBranchLimitCache]
+            The cached branch-limit preparation for the current base grid and N-1 definition,
+            or None if the runner does not have enough state yet.
+        """
+        if self.net is None or self.nminus1_definition is None:
+            self.branch_limit_cache = None
+            return None
+
+        monitored_branches = [
+            element.id for element in self.nminus1_definition.monitored_elements if element.kind == "branch"
+        ]
+        self.branch_limit_cache = build_branch_limit_cache(self.net, monitored_branches=monitored_branches)
+        return self.branch_limit_cache
 
     def _next_temporary_variant_id(self) -> str:
         """Return a unique temporary variant id for an isolated runner invocation.
@@ -460,11 +482,13 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The powsybl network to use as the base grid
         """
         self.net = net
+        _ = self._refresh_branch_limit_cache()
 
     @overrides
     def store_nminus1_definition(self, nminus1_definition: Nminus1Definition) -> None:
         """Store the N-1 definition in the runner."""
         self.nminus1_definition = nminus1_definition
+        _ = self._refresh_branch_limit_cache()
 
     @overrides
     def get_nminus1_definition(self) -> Nminus1Definition:
@@ -523,6 +547,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
                 method="dc",
                 polars=True,
                 lf_params=self.lf_params,
+                branch_limit_cache=self.branch_limit_cache,
             )
 
     @overrides
@@ -622,6 +647,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
                 polars=True,
                 lf_params=self.lf_params,
                 n_processes=self.n_processes,
+                branch_limit_cache=self.branch_limit_cache,
             )
 
     @overrides

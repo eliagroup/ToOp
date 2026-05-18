@@ -30,6 +30,10 @@ from toop_engine_contingency_analysis.pypowsybl import (
     build_branch_limit_cache,
     run_contingency_analysis_powsybl,
 )
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
+    fingerprint_current_limits_for_powsybl,
+    get_current_branch_limits_for_powsybl,
+)
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     apply_node_breaker_topology,
@@ -337,6 +341,18 @@ class PowsyblRunner(AbstractLoadflowRunner):
         monitored_branches = [
             element.id for element in self.nminus1_definition.monitored_elements if element.kind == "branch"
         ]
+
+        if self.branch_limit_cache is not None:
+            current_limit_fingerprint = fingerprint_current_limits_for_powsybl(
+                get_current_branch_limits_for_powsybl(self.net)
+            )
+            if self.branch_limit_cache.matches(
+                monitored_branches=monitored_branches,
+                chosen_limit="permanent_limit",
+                current_limit_fingerprint=current_limit_fingerprint,
+            ):
+                return self.branch_limit_cache
+
         self.branch_limit_cache = build_branch_limit_cache(self.net, monitored_branches=monitored_branches)
         return self.branch_limit_cache
 
@@ -482,6 +498,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The powsybl network to use as the base grid
         """
         self.net = net
+        self.branch_limit_cache = None
         _ = self._refresh_branch_limit_cache()
 
     @overrides

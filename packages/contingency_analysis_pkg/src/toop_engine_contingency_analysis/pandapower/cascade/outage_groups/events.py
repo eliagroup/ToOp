@@ -10,9 +10,10 @@
 import hashlib
 
 import pandapower as pp
-import pandas as pd
+import pandera.typing as pat
 from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeEvent, CascadeReasonType
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
+from toop_engine_interfaces.loadflow_results import BranchResultSchema, SwitchResultsSchema
 
 
 def _hash_outage_group_element_names(
@@ -42,7 +43,7 @@ def get_outage_group_distance_protection_log_info(
     outage_groups: dict[int, list[tuple[int, str]]],
     cascade_log_elements: list[str],
     step_no: int,
-    tripped_switches_df: pd.DataFrame,
+    tripped_switches_df: pat.DataFrame[SwitchResultsSchema],
 ) -> list[CascadeEvent]:
     """Create event log entries for distance-protection outages.
 
@@ -56,7 +57,7 @@ def get_outage_group_distance_protection_log_info(
         Element types that should appear in the event log.
     step_no : int
         Cascade step number.
-    tripped_switches_df : pd.DataFrame
+    tripped_switches_df : pat.DataFrame[SwitchResultsSchema]
         Switch rows that caused the outage groups.
 
     Returns
@@ -96,7 +97,7 @@ def get_outage_group_current_violation_log_info(
     outage_groups: dict[str, list[tuple[int, str]]],
     cascade_log_elements: list[str],
     step_no: int,
-    current_overloaded_df: pd.DataFrame,
+    current_overloaded_df: pat.DataFrame[BranchResultSchema],
 ) -> list[CascadeEvent]:
     """Create event log entries for current-overload outages.
 
@@ -110,7 +111,7 @@ def get_outage_group_current_violation_log_info(
         Element types that should appear in the event log.
     step_no : int
         Cascade step number.
-    current_overloaded_df : pd.DataFrame
+    current_overloaded_df : pat.DataFrame[BranchResultSchema]
         Current-overload trigger rows with element ids and loading values.
 
     Returns

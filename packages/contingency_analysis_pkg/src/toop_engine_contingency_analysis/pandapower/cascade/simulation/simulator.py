@@ -13,7 +13,6 @@ from itertools import chain
 from typing import Any
 
 import pandapower as pp
-import pandas as pd
 import pandera.typing as pat
 from beartype.typing import Literal
 from toop_engine_contingency_analysis.pandapower.cascade.configuration import CascadeConfig
@@ -52,7 +51,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     PandapowerMonitoredElementSchema,
     SingleOutageSppsContext,
 )
-from toop_engine_interfaces.loadflow_results import ConvergenceStatus
+from toop_engine_interfaces.loadflow_results import BranchResultSchema, ConvergenceStatus, SwitchResultsSchema
 
 
 class CascadeSimulator:
@@ -112,8 +111,8 @@ class CascadeSimulator:
     def simulate(
         self,
         net: pp.pandapowerNet,
-        branch_results_df: pd.DataFrame,
-        switch_results_df: pd.DataFrame,
+        branch_results_df: pat.DataFrame[BranchResultSchema],
+        switch_results_df: pat.DataFrame[SwitchResultsSchema],
         initial_contingency: PandapowerContingency,
     ) -> list[CascadeEvent]:
         """Run the cascade loop starting from initial load-flow results.
@@ -122,9 +121,9 @@ class CascadeSimulator:
         ----------
         net : pp.pandapowerNet
             Pandapower network after the initial contingency load flow.
-        branch_results_df : pd.DataFrame
+        branch_results_df : pat.DataFrame[BranchResultSchema]
             Branch result table from the initial load flow.
-        switch_results_df : pd.DataFrame
+        switch_results_df : pat.DataFrame[SwitchResultsSchema]
             Switch result table from the initial load flow.
         initial_contingency : PandapowerContingency
             Contingency that started this cascade.
@@ -203,8 +202,8 @@ class CascadeSimulator:
     def _detect_triggers_from_results(
         self,
         net: pp.pandapowerNet,
-        branch_results: pd.DataFrame,
-        switch_results: pd.DataFrame,
+        branch_results: pat.DataFrame[BranchResultSchema],
+        switch_results: pat.DataFrame[SwitchResultsSchema],
     ) -> CascadeTriggers:
         """Find distance-protection and current-overload triggers in result tables.
 
@@ -212,9 +211,9 @@ class CascadeSimulator:
         ----------
         net : pp.pandapowerNet
             Pandapower network for the current cascade state.
-        branch_results : pd.DataFrame
+        branch_results : pat.DataFrame[BranchResultSchema]
             Branch result table to check for current overloads.
-        switch_results : pd.DataFrame
+        switch_results : pat.DataFrame[SwitchResultsSchema]
             Switch result table to check for relay trips.
 
         Returns
@@ -283,7 +282,7 @@ class CascadeSimulator:
     def _collect_distance_protection_events(
         self,
         net: pp.pandapowerNet,
-        tripped_switches: pd.DataFrame,
+        tripped_switches: pat.DataFrame[SwitchResultsSchema],
         step_no: int,
     ) -> tuple[list[CascadeEvent], dict[int, list[tuple[int, str]]]]:
         """Handle switch trips caused by distance protection.
@@ -292,7 +291,7 @@ class CascadeSimulator:
         ----------
         net : pp.pandapowerNet
             Pandapower network to update.
-        tripped_switches : pd.DataFrame
+        tripped_switches : pat.DataFrame[SwitchResultsSchema]
             Switch rows selected by distance protection.
         step_no : int
             Cascade step number.
@@ -323,7 +322,7 @@ class CascadeSimulator:
     def _collect_current_overload_events(
         self,
         net: pp.pandapowerNet,
-        current_overloaded: pd.DataFrame,
+        current_overloaded: pat.DataFrame[BranchResultSchema],
         step_no: int,
     ) -> tuple[list[CascadeEvent], dict[Any, list[tuple[int, str]]]]:
         """Handle branch outages caused by current overload.
@@ -332,7 +331,7 @@ class CascadeSimulator:
         ----------
         net : pp.pandapowerNet
             Pandapower network to inspect.
-        current_overloaded : pd.DataFrame
+        current_overloaded : pat.DataFrame[BranchResultSchema]
             Branch rows above the current loading threshold.
         step_no : int
             Cascade step number.

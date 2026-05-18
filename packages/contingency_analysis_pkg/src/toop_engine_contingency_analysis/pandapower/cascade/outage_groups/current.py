@@ -8,16 +8,17 @@
 """Build cascade outage groups caused by current overloads."""
 
 import pandapower as pp
-import pandas as pd
+import pandera.typing as pat
 from toop_engine_contingency_analysis.pandapower.cascade.outage_groups.topology import (
     get_outage_group_for_elements,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
+from toop_engine_interfaces.loadflow_results import BranchResultSchema
 
 
 def compute_current_overload_outage_group(
     net: pp.pandapowerNet,
-    current_overloaded_element_df: pd.DataFrame,
+    current_overloaded_element_df: pat.DataFrame[BranchResultSchema],
 ) -> dict:
     """Build outage groups caused by current-overloaded branches.
 
@@ -25,7 +26,7 @@ def compute_current_overload_outage_group(
     ----------
     net : pp.pandapowerNet
         Pandapower network to inspect.
-    current_overloaded_element_df : pd.DataFrame
+    current_overloaded_element_df : pat.DataFrame[BranchResultSchema]
         Branch rows above the loading threshold.
 
     Returns

@@ -5,6 +5,6 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from .cascade_configuration import CascadeConfig
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import CascadeConfig
 
 __all__ = ["CascadeConfig"]

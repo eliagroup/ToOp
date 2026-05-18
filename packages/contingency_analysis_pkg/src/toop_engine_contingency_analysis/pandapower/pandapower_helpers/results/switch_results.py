@@ -472,7 +472,9 @@ def _compute_switch_flow_and_injection_results(
     return switch_results
 
 
-def _orient_switch_results_to_relay_side(net: pp.pandapowerNet, switch_results: pd.DataFrame) -> pd.DataFrame:
+def _orient_switch_results_to_relay_side(
+    net: pp.pandapowerNet, switch_results: pat.DataFrame[SwitchResultsSchema]
+) -> pat.DataFrame[SwitchResultsSchema]:
     """Make switch power values use the relay point of view.
 
     Some relays measure from the bus side and some from the element side. For
@@ -483,12 +485,12 @@ def _orient_switch_results_to_relay_side(net: pp.pandapowerNet, switch_results: 
     ----------
     net : pp.pandapowerNet
         Pandapower network containing switch metadata and relay characteristics.
-    switch_results : pd.DataFrame
+    switch_results : pat.DataFrame[SwitchResultsSchema]
         Switch result table with ``switch_id``, ``p`` and ``q`` columns.
 
     Returns
     -------
-    pd.DataFrame
+    pat.DataFrame[SwitchResultsSchema]
         Switch results with active and reactive power flipped for relays that
         measure from the element side.
     """

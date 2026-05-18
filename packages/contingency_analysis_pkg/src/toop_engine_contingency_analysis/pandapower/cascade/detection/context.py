@@ -25,7 +25,7 @@ def get_switch_characteristics(net: pp.pandapowerNet, closed_status: bool | None
     ----------
     net : pp.pandapowerNet
         Pandapower network that contains switches and switch characteristics.
-    closed_status : bool
+    closed_status : bool or None
         Optional switch state filter. Use True for closed switches, False for
         open switches, or None for all switches.
 

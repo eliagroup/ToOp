@@ -38,11 +38,24 @@ class CascadeConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     depth_limit: int
+    """Maximum number of cascade iterations to run before stopping."""
+
     current_loading_threshold: float
+    """Loading factor above which a branch is considered overloaded and triggers a cascade."""
+
     min_island_size: int
+    """Minimum number of buses in an island for it to be kept; smaller islands are dropped."""
+
     basecase_distance_protection_factor: float
-    contingency_distance_protection_factor: float
+    """Scaling factor applied to relay impedance measurements in the base-case network."""
+
+    contingency_distance_protection_factor: Optional[float] = None
+    """Scaling factor applied to relay impedance measurements after a contingency.
+    If not set, basecase_distance_protection_factor is used.
+    """
+
     cascade_log_elements: list[str]
+    """MRIDs of elements whose cascade events should be written to the log (e.g. line, trafo, trafo3w)."""
 
 
 @dataclasses.dataclass
@@ -50,8 +63,13 @@ class SlackAllocationConfig:
     """Carry configuration required for slack allocation per island."""
 
     net_graph: MultiGraph
+    """NetworkX graph of the pandapower network used for island detection."""
+
     bus_lookup: list[int]
+    """Mapping from PPCI bus indices to pandapower bus indices."""
+
     min_island_size: int = 11
+    """Minimum PPCI node count for an island to receive a slack bus."""
 
 
 class VADiffInfo(BaseModel):

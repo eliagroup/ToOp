@@ -8,17 +8,18 @@
 """Build cascade outage groups caused by distance-protection trips."""
 
 import pandapower as pp
-import pandas as pd
+import pandera.typing as pat
 from toop_engine_contingency_analysis.pandapower.cascade.outage_groups.topology import (
     compute_affected_nodes,
     get_elements,
     get_outage_group_for_elements,
 )
+from toop_engine_interfaces.loadflow_results import SwitchResultsSchema
 
 
 def compute_switches_outage_group(
     net: pp.pandapowerNet,
-    overloaded_switches_df: pd.DataFrame,
+    overloaded_switches_df: pat.DataFrame[SwitchResultsSchema],
     *,
     bus_couplers_mrids: set[str],
 ) -> dict[int, list[tuple[int, str]]]:
@@ -28,7 +29,7 @@ def compute_switches_outage_group(
     ----------
     net : pp.pandapowerNet
         Pandapower network to inspect.
-    overloaded_switches_df : pd.DataFrame
+    overloaded_switches_df : pat.DataFrame[SwitchResultsSchema]
         Switches selected by the distance protection check.
     bus_couplers_mrids : set[str]
         External ids of busbar coupler switches.

@@ -125,10 +125,10 @@ class CascadeSppsBranchSwitchResults:
 class CascadeTriggers:
     """Initial or next-step conditions that can continue a cascade."""
 
-    tripped_switches: pd.DataFrame
+    tripped_switches: pat.DataFrame[SwitchResultsSchema]
     """Switches whose relay protection should trip."""
 
-    current_overloaded_elements: pd.DataFrame
+    current_overloaded_elements: pat.DataFrame[BranchResultSchema]
     """Branches above the current loading threshold."""
 
     @property

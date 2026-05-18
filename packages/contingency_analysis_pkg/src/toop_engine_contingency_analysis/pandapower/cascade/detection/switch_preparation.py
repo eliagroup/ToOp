@@ -10,13 +10,15 @@
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import pandera.typing as pat
 from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeContext
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
+from toop_engine_interfaces.loadflow_results import SwitchResultsSchema
 
 
 def prepare_switch_results_for_protection(
     net: pp.pandapowerNet,
-    switch_results: pd.DataFrame,
+    switch_results: pat.DataFrame[SwitchResultsSchema],
     cascade_context: CascadeContext,
 ) -> pd.DataFrame:
     """Prepare switch results for distance protection checks.
@@ -25,7 +27,7 @@ def prepare_switch_results_for_protection(
     ----------
     net : pp.pandapowerNet
         Pandapower network that contains switch metadata.
-    switch_results : pd.DataFrame
+    switch_results : pat.DataFrame[SwitchResultsSchema]
         Switch load-flow result table.
     cascade_context : CascadeContext
         Precomputed cascade data with relay characteristics.

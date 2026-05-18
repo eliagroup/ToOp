@@ -11,16 +11,18 @@ import logging
 from typing import Optional
 
 import pandas as pd
+import pandera.typing as pat
+from toop_engine_interfaces.loadflow_results import BranchResultSchema
 
 _logger = logging.getLogger(__name__)
 
 
-def prepare_branch_results_for_overload(current_res: Optional[pd.DataFrame]) -> pd.DataFrame:
+def prepare_branch_results_for_overload(current_res: Optional[pat.DataFrame[BranchResultSchema]]) -> pd.DataFrame:
     """Prepare branch results for current-overload checks.
 
     Parameters
     ----------
-    current_res : Optional[pd.DataFrame]
+    current_res : pat.DataFrame[BranchResultSchema] or None
         Branch result table, or None when no results are available.
 
     Returns
@@ -30,21 +32,18 @@ def prepare_branch_results_for_overload(current_res: Optional[pd.DataFrame]) -> 
     """
     if current_res is None:
         return pd.DataFrame()
-    current_res = current_res.reset_index()
-    if current_res.empty:
-        return current_res
-    return current_res
+    return current_res.reset_index()
 
 
 def evaluate_overload_triggers(
-    current_res: Optional[pd.DataFrame],
+    current_res: Optional[pat.DataFrame[BranchResultSchema]],
     threshold: float,
 ) -> pd.DataFrame:
     """Find branches whose loading is above the configured threshold.
 
     Parameters
     ----------
-    current_res : Optional[pd.DataFrame]
+    current_res : pat.DataFrame[BranchResultSchema] or None
         Branch result table with a loading column.
     threshold : float
         Loading value above which a branch is treated as overloaded.

@@ -72,6 +72,7 @@ from toop_engine_interfaces.loadflow_results import (
     ConvergenceStatus,
     LoadflowResults,
     NodeResultSchema,
+    RegulatingElementResultSchema,
     SppsResultsSchema,
     SwitchResultsSchema,
     VADiffResultSchema,
@@ -135,12 +136,12 @@ def _apply_contingency_to_index(df: pd.DataFrame, contingency: PandapowerConting
 class OutageElementResults:
     """Result tables collected for one outage calculation."""
 
-    branch_results: pd.DataFrame
-    full_branch_results: pd.DataFrame
-    node_results: pd.DataFrame
-    va_diff_results: pd.DataFrame
-    regulating_element_results: pd.DataFrame
-    switch_results: pd.DataFrame
+    branch_results: pat.DataFrame[BranchResultSchema]
+    full_branch_results: pat.DataFrame[BranchResultSchema]
+    node_results: pat.DataFrame[NodeResultSchema]
+    va_diff_results: pat.DataFrame[VADiffResultSchema]
+    regulating_element_results: pat.DataFrame[RegulatingElementResultSchema]
+    switch_results: pat.DataFrame[SwitchResultsSchema]
 
 
 @pa.check_types
@@ -210,7 +211,7 @@ def _build_spps_results(
     spps_result: SppsResult,
     contingencies: list[PandapowerContingency],
     timestep: int,
-) -> pd.DataFrame:
+) -> pat.DataFrame[SppsResultsSchema]:
     if not contingencies:
         return get_empty_dataframe_from_model(SppsResultsSchema)
 
@@ -324,7 +325,7 @@ def _copy_results_for_all_contingencies(
 
 def _update_result_names(
     results: OutageElementResults,
-    monitored_elements: pd.DataFrame,
+    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
 ) -> None:
     element_name_map = monitored_elements["name"].to_dict()
 
@@ -340,8 +341,8 @@ def _collect_cascade_results(
     ctx: SingleOutageContext,
     grouped_contingency: PandapowerContingencyGroup,
     status: ConvergenceStatus,
-    branch_results_df: pd.DataFrame,
-    switch_results_df: pd.DataFrame,
+    branch_results_df: pat.DataFrame[BranchResultSchema],
+    switch_results_df: pat.DataFrame[SwitchResultsSchema],
 ) -> pat.DataFrame[CascadeResultSchema]:
     """Build cascade result rows for :attr:`LoadflowResults.cascade_results`.
 

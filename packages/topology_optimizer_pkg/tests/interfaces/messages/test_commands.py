@@ -128,3 +128,19 @@ def test_me_descriptors_not_empty() -> None:
         _ = BatchedMEParameters(
             me_descriptors=(),
         )
+
+
+def test_busbar_penalty_overrides_are_serialized() -> None:
+    params = BatchedMEParameters(
+        enable_bb_outage=True,
+        bb_outage_as_nminus1=False,
+        clip_bb_outage_penalty=True,
+        bb_outage_more_islands_penalty=75.0,
+    )
+
+    payload = params.model_dump()
+
+    assert payload["enable_bb_outage"] is True
+    assert payload["bb_outage_as_nminus1"] is False
+    assert payload["clip_bb_outage_penalty"] is True
+    assert payload["bb_outage_more_islands_penalty"] == 75.0

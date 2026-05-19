@@ -50,6 +50,33 @@ class BatchedMEParameters(BaseModel):
     """The number of worst contingencies to consider in the scoring function.
     This is used to determine the worst cases for overloads."""
 
+    enable_bb_outage: bool = False
+    """Whether the optimizer should include busbar outage effects in scoring.
+    If the preprocessed grid file does not contain busbar outage data, this flag is ignored."""
+
+    bb_outage_as_nminus1: bool = True
+    """Whether busbar outages are handled as additional N-1 cases. If this is True, they are just part of the N-1 matrix
+    and will contribute to normal overload energy, max load, etc. If this is False, a separate busbar outage penalty is
+    computed and added to the scores.
+    If no busbar outage data is provided in the grid model, this parameter will be ignored."""
+
+    clip_bb_outage_penalty: bool = False
+    """Whether busbar outage penalties are clipped at 0. This is only relevant in case of bb_outage_as_nminus1=False,
+    where busbar outage penalties are added to the scores as a separate term. If this is True, the busbar outage penalty will
+    be clipped at 0, meaning that topologies that improve the busbar outage penalty will not be rewarded for it.
+    If this is False, topologies that improve the busbar outage penalty will receive a negative penalty, which can lead to
+    higher scores and thus be rewarded by the optimizer.
+    If no busbar outage data is provided in the grid model or if bb_outage_as_nminus1 is True, this parameter will be
+    ignored."""
+
+    bb_outage_more_islands_penalty: NonNegativeFloat = 0.0
+    """Islanding penalty used for busbar outage baseline comparisons.
+    This is only relevant in case of bb_outage_as_nminus1=False, where busbar outage penalties are added to the scores as a
+    separate term. If a busbar outage computation fails due to grid splits/islanding, this penalty will be applied to the
+    score proportional to the number of islands.
+    If no busbar outage data is provided in the grid model or if bb_outage_as_nminus1 is True, this parameter will be
+    ignored."""
+
     ### MUTATION CONFIGURATION ###
 
     mutation_repetition: PositiveInt = 1

@@ -39,6 +39,7 @@ from toop_engine_dc_solver.jax.topology_computations import (
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     ActionSet,
+    BBOutageBaselineAnalysis,
     RelBBOutageData,
     StaticInformation,
     int_max,
@@ -483,7 +484,7 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
     network_data = preprocess_bb_outages(network_data)
     static_information = convert_to_jax(
         network_data,
-        enable_bb_outage=True,
+        preprocess_bb_outages=True,
     )
 
     asset_topology = network_data.simplified_asset_topology
@@ -870,6 +871,34 @@ def test_busbar_outage_penalty(jax_inputs_oberrhein: tuple[ActionIndexComputatio
     )
 
     assert penalty == 0.0, "Penalty should be 0.0 when the grid is unsplit"
+
+
+def test_busbar_outage_penalty_is_clipped_to_zero_for_improved_topology() -> None:
+    baseline = BBOutageBaselineAnalysis(
+        overload=jnp.array(10.0),
+        success_count=jnp.array(3),
+        more_splits_penalty=jnp.array(50.0),
+        overload_weight=jnp.array([1.0, 1.0]),
+        max_mw_flow=jnp.array([100.0, 100.0]),
+    )
+    lfs = jnp.zeros((3, 2, 2))
+    success = jnp.array([True, True, True])
+
+    unclipped_penalty, _, _ = get_busbar_outage_penalty(
+        baseline,
+        lfs,
+        success,
+        lower_bound=None,
+    )
+    clipped_penalty, _, _ = get_busbar_outage_penalty(
+        baseline,
+        lfs,
+        success,
+        lower_bound=jnp.array(0.0),
+    )
+
+    assert unclipped_penalty < 0.0
+    assert clipped_penalty == 0.0
 
 
 def test_filter_already_outaged_branches_single_outage():

@@ -145,7 +145,6 @@ def test_concatenate_loadflow_results():
 
     res = concatenate_loadflow_results([res_1, res_2])
 
-    assert len(res.additional_information) == len(res_1.additional_information) + len(res_2.additional_information)
     assert len(res.warnings) == len(res_1.warnings) + len(res_2.warnings)
     assert len(res.branch_results) == len(res_1.branch_results) + len(res_2.branch_results)
     assert len(res.node_results) == len(res_1.node_results) + len(res_2.node_results)

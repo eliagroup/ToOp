@@ -116,7 +116,7 @@ def test_convert_to_jax_n_2(network_data_preprocessed: NetworkData) -> None:
 
 def test_convert_to_jax_bb_outage(network_data_preprocessed: NetworkData) -> None:
     # 71%%bus is a relevant node while 67%%bus is non-relevant node
-    static_information = convert_to_jax(network_data_preprocessed, enable_bb_outage=True)
+    static_information = convert_to_jax(network_data_preprocessed, preprocess_bb_outages=True)
     validate_static_information(static_information)
 
     with TemporaryDirectory() as temp_dir:
@@ -250,3 +250,16 @@ def test_get_bb_outage_baseline_analysis(jax_inputs_oberrhein):
         1000.0,
     )
     assert isinstance(result, BBOutageBaselineAnalysis)
+
+
+def test_convert_to_jax_uses_neutral_busbar_penalty_defaults(network_data_preprocessed: NetworkData) -> None:
+    static_information = convert_to_jax(
+        network_data_preprocessed,
+        preprocess_bb_outages=True,
+    )
+
+    assert static_information.solver_config.enable_bb_outages is False
+    assert static_information.solver_config.bb_outage_as_nminus1 is True
+    assert static_information.solver_config.clip_bb_outage_penalty is False
+    assert static_information.dynamic_information.bb_outage_baseline_analysis is not None
+    assert static_information.dynamic_information.bb_outage_baseline_analysis.more_splits_penalty == 0.0

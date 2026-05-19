@@ -417,7 +417,7 @@ def pipeline_and_configs(
 @pytest.fixture(scope="session")
 def preprocessing_parameters() -> DictConfig:
     """Preprocessing parameters for the end-to-end pipeline tests"""
-    return DictConfig({"action_set_clip": 2**10, "enable_bb_outage": True, "bb_outage_as_nminus1": False})
+    return DictConfig({"action_set_clip": 2**10, "preprocess_bb_outages": True})
 
 
 @pytest.fixture
@@ -656,7 +656,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> N
             cross_border_limits_n1=None,
         ),
     )
-    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, enable_bb_outage=False, bb_outage_as_nminus1=False)
+    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
 
     _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
     filesystem_dir = DirFileSystem(str(folder))

@@ -136,6 +136,18 @@ def test_compute_batch_symmetric_with_bb_outage(
     jax_inputs_oberrhein: tuple[ActionIndexComputations, StaticInformation],
 ) -> None:
     topo_indices, static_information = jax_inputs_oberrhein
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            enable_bb_outages=True,
+            bb_outage_as_nminus1=True,
+        ),
+        dynamic_information=replace(
+            static_information.dynamic_information,
+            bb_outage_baseline_analysis=None,
+        ),
+    )
     di = static_information.dynamic_information
 
     assert static_information.solver_config.enable_bb_outages, "This test is only for the case with busbar outages"

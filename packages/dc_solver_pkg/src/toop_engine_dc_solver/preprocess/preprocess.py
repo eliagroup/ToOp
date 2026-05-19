@@ -1381,7 +1381,7 @@ def preprocess(  # noqa: PLR0915
 
     logging_fn("add_bus_b_columns_to_ptdf", None)
     network_data = add_bus_b_columns_to_ptdf(network_data)
-    if parameters.enable_bb_outage:
+    if parameters.preprocess_bb_outages:
         logging_fn("preprocess_bb_outage", None)
         network_data = preprocess_bb_outages(network_data)
     else:

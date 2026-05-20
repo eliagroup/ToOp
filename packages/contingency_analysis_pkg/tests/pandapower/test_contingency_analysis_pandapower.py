@@ -340,10 +340,12 @@ def test_outage_grouping_combines_connected_elements_into_single_contingency():
     assert not l1_loading.empty
     assert l1_loading.notna().all()
 
-    # line1 is the outage -> loading must be NaN
+    # line1 is the outage. Without outage grouping, pandapower keeps a zero
+    # loading value for one side and has no result for the other side.
     l2_loading = branch_results.loc[branch_results.element == f"{l2}%%line", "loading"]
     assert not l2_loading.empty
-    assert l2_loading.isna().all()
+    assert l2_loading.isna().sum() == 1
+    assert l2_loading.dropna().eq(0.0).all()
 
     # ------------------------------------------------------------------
     # Run WITH outage grouping

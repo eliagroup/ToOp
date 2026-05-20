@@ -277,12 +277,16 @@ def test_get_branch_results(pandapower_net: pp.pandapowerNet, n_1_definition_uni
     assert all(branch_results.loc[:, :, :, BranchSide.TWO.value].i.values == outage_net.res_line.i_to_ka.values * 1000), (
         "Current to side should match the outage net"
     )
-    assert all(
-        branch_results.loc[:, :, :, BranchSide.ONE.value].loading.values == outage_net.res_line.loading_percent.values / 100
-    ), "Loading from side should match the outage net"
-    assert all(
-        branch_results.loc[:, :, :, BranchSide.TWO.value].loading.values == outage_net.res_line.loading_percent.values / 100
-    ), "Loading to side should match the outage net"
+    np.testing.assert_allclose(
+        branch_results.loc[:, :, :, BranchSide.ONE.value].loading.values,
+        outage_net.res_line.i_from_ka.values / outage_net.line.max_i_ka.values,
+        err_msg="Loading from side should match the side-specific current ratio",
+    )
+    np.testing.assert_allclose(
+        branch_results.loc[:, :, :, BranchSide.TWO.value].loading.values,
+        outage_net.res_line.i_to_ka.values / outage_net.line.max_i_ka.values,
+        err_msg="Loading to side should match the side-specific current ratio",
+    )
 
 
 def test_get_branch_results_basecase(pandapower_net: pp.pandapowerNet, n_1_definition_unique_pp_id: Nminus1Definition):
@@ -328,12 +332,16 @@ def test_get_branch_results_basecase(pandapower_net: pp.pandapowerNet, n_1_defin
     assert all(branch_results.loc[:, :, :, BranchSide.TWO.value].i.values == outage_net.res_line.i_to_ka.values * 1000), (
         "Current to side should match the outage net"
     )
-    assert all(
-        branch_results.loc[:, :, :, BranchSide.ONE.value].loading.values == outage_net.res_line.loading_percent.values / 100
-    ), "Loading from side should match the outage net"
-    assert all(
-        branch_results.loc[:, :, :, BranchSide.TWO.value].loading.values == outage_net.res_line.loading_percent.values / 100
-    ), "Loading to side should match the outage net"
+    np.testing.assert_allclose(
+        branch_results.loc[:, :, :, BranchSide.ONE.value].loading.values,
+        outage_net.res_line.i_from_ka.values / outage_net.line.max_i_ka.values,
+        err_msg="Loading from side should match the side-specific current ratio",
+    )
+    np.testing.assert_allclose(
+        branch_results.loc[:, :, :, BranchSide.TWO.value].loading.values,
+        outage_net.res_line.i_to_ka.values / outage_net.line.max_i_ka.values,
+        err_msg="Loading to side should match the side-specific current ratio",
+    )
 
 
 def test_get_branch_results_multi_outage(pandapower_net: pp.pandapowerNet, n_1_definition_unique_pp_id: Nminus1Definition):
@@ -391,12 +399,16 @@ def test_get_branch_results_multi_outage(pandapower_net: pp.pandapowerNet, n_1_d
     assert all(branch_results.loc[:, :, :, BranchSide.TWO.value].i.values == outage_net.res_line.i_to_ka.values * 1000), (
         "Current to side should match the outage net"
     )
-    assert all(
-        branch_results.loc[:, :, :, BranchSide.ONE.value].loading.values == outage_net.res_line.loading_percent.values / 100
-    ), "Loading from side should match the outage net"
-    assert all(
-        branch_results.loc[:, :, :, BranchSide.TWO.value].loading.values == outage_net.res_line.loading_percent.values / 100
-    ), "Loading to side should match the outage net"
+    np.testing.assert_allclose(
+        branch_results.loc[:, :, :, BranchSide.ONE.value].loading.values,
+        outage_net.res_line.i_from_ka.values / outage_net.line.max_i_ka.values,
+        err_msg="Loading from side should match the side-specific current ratio",
+    )
+    np.testing.assert_allclose(
+        branch_results.loc[:, :, :, BranchSide.TWO.value].loading.values,
+        outage_net.res_line.i_to_ka.values / outage_net.line.max_i_ka.values,
+        err_msg="Loading to side should match the side-specific current ratio",
+    )
 
 
 def test_get_branch_results_no_monitored(pandapower_net: pp.pandapowerNet):

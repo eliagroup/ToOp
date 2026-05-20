@@ -247,6 +247,10 @@ def test_change_pst_matches_loadflows(
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
 
+    pypowsybl.loadflow.run_dc(net)
+    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", DISTRIBUTED_SLACK)
+    n_0_no_pst_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
+
     runner.store_nminus1_definition(nminus1_definition)
     static_information = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
@@ -267,6 +271,32 @@ def test_change_pst_matches_loadflows(
         maxval=di.nodal_injection_information.pst_n_taps,
     )
     abs_taps = rel_taps + di.nodal_injection_information.grid_model_low_tap
+
+    solver_res_no_pst, success_dc_no_pst = compute_symmetric_batch(
+        topology_batch=default_topology(solver_config),
+        disconnection_batch=None,
+        injections=None,
+        nodal_inj_start_options=None,
+        dynamic_information=di,
+        solver_config=solver_config,
+    )
+    assert np.all(success_dc_no_pst), "DC solver without PST changes should succeed"
+
+    n_0_no_pst = -solver_res_no_pst.n_0_matrix[0, 0]
+    n_1_no_pst = -solver_res_no_pst.n_1_matrix[0, 0]
+
+    runner_res_no_pst = runner.run_dc_loadflow([], [], [])
+    n_0_runner_no_pst, n_1_runner_no_pst, success_ref = extract_solver_matrices_polars(
+        runner_res_no_pst, nminus1_definition, 0
+    )
+
+    assert np.all(success_ref), "Pypowsybl runner without PST changes should succeed"
+    n_0_no_pst = -solver_res_no_pst.n_0_matrix[0, 0]
+    n_1_no_pst = -solver_res_no_pst.n_1_matrix[0, 0]
+
+    assert np.allclose(n_0_no_pst_direct, n_0_runner_no_pst), "Runner should match direct pypowsybl computation"
+    assert np.allclose(n_0_runner_no_pst, n_0_no_pst), "Runner should match direct pypowsybl computation"
+    assert np.allclose(n_1_runner_no_pst, n_1_no_pst), "Runner should match direct pypowsybl computation"
 
     solver_res, success_dc = compute_symmetric_batch(
         topology_batch=default_topology(solver_config),
@@ -290,6 +320,8 @@ def test_change_pst_matches_loadflows(
     net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", DISTRIBUTED_SLACK)
     pypowsybl.loadflow.run_dc(net)
     n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
+
+    assert not np.allclose(n_0_no_pst, n_0_direct), "PST must change the loadflow results"
 
     runner_res = runner.run_dc_loadflow([], [], np.array(abs_taps).tolist())
     n_0_runner_pst, n_1_runner_pst, success_ref = extract_solver_matrices_polars(runner_res, nminus1_definition, 0)

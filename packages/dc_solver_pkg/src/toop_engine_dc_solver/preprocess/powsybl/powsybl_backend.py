@@ -451,9 +451,11 @@ class PowsyblBackend(BackendInterface):
         """Get a list of taps for each pst"""
         shift_taps = []
         steps = self.net.get_phase_tap_changer_steps(attributes=["alpha"])
+
         for pst_id in self._get_branches()[self._get_branches()["pst_controllable_linear"]].index:
-            taps = np.squeeze(steps.loc[pst_id].values)
-            shift_taps.append(np.sort(taps))
+            taps_df = steps.loc[pst_id].sort_index()
+            taps = np.squeeze(taps_df.values)
+            shift_taps.append(taps)
         return shift_taps
 
     def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_linear_psts"]:

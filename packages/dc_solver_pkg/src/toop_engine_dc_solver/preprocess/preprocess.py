@@ -552,6 +552,7 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         outaged_branch_mask=network_data.outaged_branch_mask,
         multi_outage_mask=network_data.multi_outage_branch_mask,
         busbar_outage_branch_mask=get_busbar_map_adjacent_branches(network_data),
+        controllable_phase_shift_mask=network_data.controllable_phase_shift_mask,
     )
 
     pst_branches = np.flatnonzero(network_data.controllable_phase_shift_mask)
@@ -1116,6 +1117,7 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
         outaged_branch_mask=network_data.outaged_branch_mask,
         multi_outage_mask=network_data.multi_outage_branch_mask,
         busbar_outage_branch_mask=get_busbar_map_adjacent_branches(network_data),
+        controllable_phase_shift_mask=network_data.controllable_phase_shift_mask,
     )
     significant_nodes = get_significant_nodes(
         network_data.relevant_node_mask,

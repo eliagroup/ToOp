@@ -363,14 +363,14 @@ def get_linear_pst(net: Network, mode: Literal["ac", "dc"], tol: float = 1e-9) -
     else:
         raise ValueError(f"Invalid mode {mode}. Must be 'ac' or 'dc'.")
 
-    pst_ids = tap_steps.index.get_level_values("id")
+    pst_ids = tap_steps.index.get_level_values("id").unique()
     trafo_linear_pst = pd.Series(True, index=pst_ids)
 
     for pst_id in pst_ids:
         pst_info = tap_steps.loc[pst_id]
         for col in lineal_col:
             pst_info_col = pst_info[col]
-            if np.all(np.abs(pst_info_col) - tol > 0):
+            if np.any(np.abs(pst_info_col) - tol > 0):
                 trafo_linear_pst[pst_id] = False
                 break
 

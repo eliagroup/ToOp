@@ -503,9 +503,9 @@ def test_node_breaker_folder_powsybl() -> None:
 
 
 def test_create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
-    create_complex_grid_battery_hvdc_svc_3w_trafo_data_path,
+    complex_grid_battery_hvdc_svc_3w_trafo_fixture,
 ) -> None:
-    tmp_dir = create_complex_grid_battery_hvdc_svc_3w_trafo_data_path
+    tmp_dir = complex_grid_battery_hvdc_svc_3w_trafo_fixture
     filesystem_dir = DirFileSystem(str(tmp_dir))
     backend = PowsyblBackend(filesystem_dir)
     assert sum(backend.get_relevant_node_mask())

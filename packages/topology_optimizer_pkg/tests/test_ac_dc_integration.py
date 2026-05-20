@@ -10,15 +10,20 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+import pypowsybl
 import pytest
 import ray
 import structlog
 from confluent_kafka import Consumer, Producer
 from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
+from tests.conftest import complex_grid_battery_hvdc_svc_3w_trafo_preprocess
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
-from toop_engine_dc_solver.example_grids import three_node_pst_example_folder_powsybl
+from toop_engine_dc_solver.example_grids import (
+    three_node_pst_example_folder_powsybl,
+)
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
@@ -512,3 +517,83 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
     assert isinstance(last_msg, Result)
     assert isinstance(last_msg.result, OptimizationStoppedResult)
     assert last_msg.result.reason == "converged"
+
+
+@pytest.mark.parametrize(
+    "fixture_name", ["three_node_pst_example_data_folder", "complex_grid_battery_hvdc_svc_3w_trafo_data_folder"]
+)
+def test_dc_optimizer_fitness_ac_validation_fitness(fixture_name: str, tmp_path_factory: pytest.TempPathFactory) -> None:
+
+    grid_folder = tmp_path_factory.mktemp("grid_folder")
+    if fixture_name == "three_node_pst_example_data_folder":
+        (grid_folder / fixture_name).mkdir()
+        three_node_pst_example_folder_powsybl(grid_folder / fixture_name)
+        stats, static_information, network_data = load_grid(
+            data_folder_dirfs=DirFileSystem(str(grid_folder / fixture_name)),
+            parameters=PreprocessParameters(),
+        )
+
+        grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder=grid_folder / fixture_name)]
+    elif fixture_name == "complex_grid_battery_hvdc_svc_3w_trafo_data_folder":
+        (grid_folder / fixture_name).mkdir()
+        complex_grid_battery_hvdc_svc_3w_trafo_preprocess(grid_folder / fixture_name)
+        stats, static_information, network_data = load_grid(
+            data_folder_dirfs=DirFileSystem(str(grid_folder / fixture_name)),
+            parameters=PreprocessParameters(),
+        )
+
+        grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder=grid_folder / fixture_name)]
+    else:
+        assert False
+
+    net = pypowsybl.network.load(grid_folder / fixture_name / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    ac_parameters = ACOptimizerParameters(
+        ga_config=ACGAParameters(
+            runtime_seconds=20,
+            pull_prob=1.0,
+            reconnect_prob=0.0,
+            close_coupler_prob=0.0,
+            seed=456345,
+            enable_ac_rejection=False,
+        )
+    )
+
+    # Computing topology's fitness via topology optimizer
+    # Fitness should include the N-1 overload energy
+    # Use `scoring_function` or internals of that
+    # (
+    #     fitness,
+    #     descriptors,
+    #     metrics,
+    #     emitter_info,
+    #     random_key,
+    #     topologies,
+    # ) = scoring_function(
+    #     topologies: Genotype,
+    #     random_key: PRNGKeyArray,
+    #     dynamic_informations: tuple[DynamicInformation, ...],
+    #     solver_configs: tuple[SolverConfig, ...],
+    #     target_metrics: tuple[tuple[MetricType, float], ...],
+    #     observed_metrics: tuple[MetricType, ...],
+    #     descriptor_metrics: tuple[MetricType, ...],
+    #     n_worst_contingencies: int = 10,
+    # )
+    # TODO: Computing topology's fitness via AC validation
+    # Use dc mode for validation
+    # Use empty actions and disconnections but use PST set points
+    dc_loadflow_validation = runner.run_loadflow_single_timestep(
+        actions=actions,
+        disconnections=disconnections,
+        pst_setpoints=list(scenario.pst_setpoints),
+        method="dc",
+    )
+    dc_metrics_validation = compute_metrics_single_timestep(
+        actions=actions,
+        disconnections=disconnections,
+        loadflow=dc_loadflow,
+        additional_info=None,
+        base_case_id=base_case_id,
+    )
+    # Assert equal fitness during DC optimization and validation using DC mode
+    # TODO: Assertion with 1e-7
+    assert False

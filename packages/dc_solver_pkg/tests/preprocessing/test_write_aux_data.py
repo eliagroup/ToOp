@@ -31,7 +31,7 @@ def test_extract_data_compare_to_jax(network_data_preprocessed: NetworkData) -> 
     assert nminus1_definition.contingencies[0].id == "BASECASE"
     assert len(nminus1_definition.contingencies[0].elements) == 0
     assert len(action_set.disconnectable_branches) == static_information.dynamic_information.disconnectable_branches.shape[0]
-    assert len(action_set.pst_ranges) == static_information.dynamic_information.n_controllable_pst
+    assert len(action_set.pst_ranges) == static_information.dynamic_information.n_controllable_linear_pst
 
 
 def test_extract_data_compare_to_network_data(network_data_preprocessed: NetworkData) -> None:

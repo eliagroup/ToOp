@@ -323,7 +323,7 @@ def filter_repo(
 def convert_to_topologies(
     repertoire: DiscreteMapElitesRepertoire,
     contingency_ids: list[str],
-    grid_model_low_tap: Int[Array, " n_controllable_psts"] | None = None,
+    grid_model_low_tap: Int[Array, " n_controllable_linear_psts"] | None = None,
 ) -> list[Topology]:
     """Take a repertoire and convert it to a list of kafka-sendable topologies.
 
@@ -333,7 +333,7 @@ def convert_to_topologies(
         The repertoire to convert. You might want to filter it using filter_repo first.
     contingency_ids : list[str]
         The contingency IDs for each topology
-    grid_model_low_tap : Int[Array, " n_controllable_psts"] | None
+    grid_model_low_tap : Int[Array, " n_controllable_linear_psts"] | None
         The lowest tap value in the grid model, used to convert the relative tap values in the genotype to absolute tap
         values that can be sent to the kafka topics. This will only be read if nodal_injection results are present
         in the genotype.
@@ -388,7 +388,7 @@ def summarize_repo(
     repertoire: DiscreteMapElitesRepertoire,
     initial_fitness: float,
     contingency_ids: list[str],
-    grid_model_low_tap: Int[Array, " n_controllable_psts"] | None = None,
+    grid_model_low_tap: Int[Array, " n_controllable_linear_psts"] | None = None,
 ) -> list[Topology]:
     """Summarize the repertoire into a list of topologies.
 
@@ -402,7 +402,7 @@ def summarize_repo(
         The contingency IDs for each topology. Here we assume that this list is common for all the topologies
         in the repertoire.
         TODO: Fix me to have per topology contingency ids if needed
-    grid_model_low_tap : Int[Array, " n_controllable_psts"] | None
+    grid_model_low_tap : Int[Array, " n_controllable_linear_psts"] | None
         The lowest tap value in the grid model, from nodal_injection_information.grid_model_low_tap.
 
     Returns
@@ -427,7 +427,7 @@ def summarize(
     initial_fitness: float,
     initial_metrics: dict,
     contingency_ids: list[str],
-    grid_model_low_tap: Int[Array, " n_controllable_psts"] | None = None,
+    grid_model_low_tap: Int[Array, " n_controllable_linear_psts"] | None = None,
 ) -> dict:
     """Summarize the repertoire and emitter state into a serializable dictionary.
 
@@ -443,7 +443,7 @@ def summarize(
         The initial metrics of the grid
     contingency_ids : list[str]
         A list of contingency ids. Here we assume that the list of contingency ids is common for all the topologies
-    grid_model_low_tap : Int[Array, " n_controllable_psts"] | None
+    grid_model_low_tap : Int[Array, " n_controllable_linear_psts"] | None
         The lowest tap value in the grid model, from nodal_injection_information.grid_model_low_tap.
 
     Returns

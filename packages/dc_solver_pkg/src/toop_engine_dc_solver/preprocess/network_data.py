@@ -95,15 +95,17 @@ class NetworkData:
     """Which branch is a phase shifter that is controllable. This must be a subset of phase_shift_mask"""
 
     phase_shift_taps: list[Float[np.ndarray, " n_tap_positions"]]
-    """The shift angles of the controllable PSTs. The outer list has as many entries as there are controllable PSTs (see
-    controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
-    value representing the angle shift for the given tap position. The taps are ordered smallest to largest angle shift."""
+    """The shift angles of the controllable linear PSTs.
+    The outer list has as many entries as there are controllable linear PSTs (see controllable_phase_shift_mask).
+    The inner np array has as many entries as there are taps for the given PST with each
+    value representing the angle shift for the given tap position.
+    The taps are ordered smallest to largest angle shift."""
 
-    phase_shift_starting_tap_idx: Int[np.ndarray, " n_controllable_pst"]
-    """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
+    phase_shift_starting_tap_idx: Int[np.ndarray, " n_controllable_linear_pst"]
+    """The starting tap position for each controllable linear PST, given as an integer index into pst_tap_values."""
 
-    phase_shift_low_tap: Int[np.ndarray, " n_controllable_pst"]
-    """The lowest tap position for each controllable PST but in the original grid model."""
+    phase_shift_low_tap: Int[np.ndarray, " n_controllable_linear_pst"]
+    """The lowest tap position for each controllable linear PST but in the original grid model."""
 
     monitored_branch_mask: Bool[np.ndarray, " n_branch"]
     """Which branch is monitored"""
@@ -301,9 +303,9 @@ class NetworkData:
     nodal index of the busbar.
     """
 
-    controllable_pst_node_mask: Optional[Bool[np.ndarray, " n_node"]] = None
+    controllable_linear_pst_node_mask: Optional[Bool[np.ndarray, " n_node"]] = None
     """The mask over nodes that are a controllable phase shifter. When adding the PSDF matrix, bogus
-    nodes will be included. The ones that refer to a controllable PST will be mentioned in this mask."""
+    nodes will be included. The ones that refer to a controllable linear PST will be mentioned in this mask."""
 
     realised_stations: Optional[list[list[Station]]] = None
     """The realised stations for each relevant node depending on the branch_actions. The outer list
@@ -516,8 +518,8 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert network_data.phase_shift_mask.shape == (n_branch,)
     assert network_data.controllable_phase_shift_mask.shape == (n_branch,)
     assert not np.any(network_data.controllable_phase_shift_mask & ~network_data.phase_shift_mask)
-    assert network_data.controllable_pst_node_mask.shape == (n_nodes,)
-    assert np.sum(network_data.controllable_phase_shift_mask) == np.sum(network_data.controllable_pst_node_mask)
+    assert network_data.controllable_linear_pst_node_mask.shape == (n_nodes,)
+    assert np.sum(network_data.controllable_phase_shift_mask) == np.sum(network_data.controllable_linear_pst_node_mask)
     assert len(network_data.phase_shift_taps) == network_data.controllable_phase_shift_mask.sum()
     assert all(len(tap) > 0 for tap in network_data.phase_shift_taps)
     assert network_data.monitored_branch_mask.shape == (n_branch,)
@@ -667,7 +669,7 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
         if disconnectable
     ]
 
-    controllable_pst_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
+    controllable_linear_pst_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
     pst_ranges = [
         PSTRange(
             id=network_data.branch_ids[index],
@@ -679,7 +681,7 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             high_tap=low + len(taps),
         )
         for (index, start, low, taps) in zip(
-            controllable_pst_indices,
+            controllable_linear_pst_indices,
             network_data.phase_shift_starting_tap_idx,
             network_data.phase_shift_low_tap,
             network_data.phase_shift_taps,

@@ -319,7 +319,7 @@ def test_pst_optimization(
     )
     assert len(conv_topos)
     assert conv_topos[0].pst_setpoints is not None
-    assert len(conv_topos[0].pst_setpoints) == di.n_controllable_pst
+    assert len(conv_topos[0].pst_setpoints) == di.n_controllable_linear_pst
     assert conv_topos[0].pst_setpoints == list(
         repertoire.genotypes.nodal_injections_optimized[0].pst_tap_idx[0] + di.nodal_injection_information.grid_model_low_tap
     )

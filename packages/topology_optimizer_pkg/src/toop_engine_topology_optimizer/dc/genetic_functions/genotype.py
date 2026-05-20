@@ -59,7 +59,8 @@ def deduplicate_genotypes(
     # Include nodal_injections_optimized (PST taps) in deduplication when present
     if genotypes.nodal_injections_optimized is not None:
         # Flatten the nodal injection optimization results into the comparison
-        # Shape: (batch_size, n_timesteps, n_controllable_pst) -> (batch_size, n_timesteps * n_controllable_pst)
+        # Shape: (batch_size, n_timesteps, n_controllable_linear_pst)
+        # -> (batch_size, n_timesteps * n_controllable_linear_pst)
         pst_taps_flat = genotypes.nodal_injections_optimized.pst_tap_idx.reshape(
             genotypes.nodal_injections_optimized.pst_tap_idx.shape[0], -1
         )
@@ -106,7 +107,7 @@ def empty_repertoire(
     max_num_splits: int,
     max_num_disconnections: int,
     n_timesteps: int,
-    starting_taps: Optional[Int[Array, " n_controllable_pst"]] = None,
+    starting_taps: Optional[Int[Array, " n_controllable_linear_pst"]] = None,
 ) -> Genotype:
     """Create an initial genotype repertoire with all zeros for all entries and int_max for all subs.
 
@@ -120,7 +121,7 @@ def empty_repertoire(
         The maximum number of disconnections as topological measures per topology
     n_timesteps : int
         The number of timesteps in the optimization horizon, used for the nodal injection optimization results
-    starting_taps : Optional[Int[Array, " n_controllable_pst"]]
+    starting_taps : Optional[Int[Array, " n_controllable_linear_pst"]]
         The starting taps for the psts. If None, no nodal inj optimization will be enabled and nodal_injections_optimized
         will be set to None. If provided, nodal_injections_optimized will be initialized with these starting taps.
 

@@ -1268,7 +1268,7 @@ def default_nodal_inj_start_options(static_information: StaticInformation):
     """
     from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions
 
-    n_pst = static_information.dynamic_information.n_controllable_pst
+    n_pst = static_information.dynamic_information.n_controllable_linear_pst
     n_timesteps = static_information.dynamic_information.nodal_injections.shape[0]
     batch_size = 1
 

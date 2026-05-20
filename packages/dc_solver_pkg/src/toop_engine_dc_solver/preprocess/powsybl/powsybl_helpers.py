@@ -19,7 +19,7 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import structlog
-from beartype.typing import Optional
+from beartype.typing import Literal, Optional
 from pandera import DataFrameModel, Field
 from pandera.typing import Index, Series
 from pypowsybl.network import Network
@@ -37,7 +37,7 @@ class BranchModel(DataFrameModel):
     name: Series[str]
     rho: Series[float] = Field(nullable=True, description="Ratio of the rated voltages of the transformer")
     alpha: Series[float] = Field(nullable=True, description="Phase shift angle in degrees")
-    has_pst_tap: Series[bool] = Field(
+    has_pst_linear_tap: Series[bool] = Field(
         nullable=True, default=False, description="Whether the transformer has a phase tap changer"
     )
     for_reward: Series[bool] = Field(
@@ -52,7 +52,7 @@ class BranchModel(DataFrameModel):
         nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'N-1')"
     )
     disconnectable: Series[bool] = Field(nullable=True, default=False, description="Whether the branch can be disconnected")
-    pst_controllable: Series[bool] = Field(
+    pst_controllable_linear: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch can be controlled by a phase tap changer"
     )
     n0_n1_max_diff_factor: Series[float] = Field(
@@ -192,28 +192,12 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
         net_pu = get_network_as_pu(net)
     trafos_pu = net_pu.get_2_windings_transformers(all_attributes=True)
 
-    phase_tap_changers = pd.merge(
-        left=net.get_phase_tap_changers(),
-        right=net.get_phase_tap_changer_steps(),
-        left_on=["id", "tap"],
-        right_on=["id", "position"],
-        how="left",
-    )
-    phase_tap_changers.columns = [f"{col}_ptap" for col in phase_tap_changers.columns]
-
     trafos = net.get_2_windings_transformers(all_attributes=True)
     trafos_pu = net_pu.get_2_windings_transformers(all_attributes=True)
     trafos["x"] = trafos_pu["x_at_current_tap"]
     trafos["r"] = trafos_pu["r_at_current_tap"]
     trafos["rho"] = trafos_pu["rho"]
     trafos["x"] = trafos["x"] / trafos["rho"]
-    trafos = pd.merge(
-        left=trafos,
-        right=phase_tap_changers,
-        left_index=True,
-        right_index=True,
-        how="left",
-    )
 
     if net._source_format == "UCTE":
         trafos["name"] = trafos.index + ": " + trafos.elementName
@@ -234,10 +218,11 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
             + " ## "
             + (trafos["elementName"] if "elementName" in trafos.keys() else trafos["name"])
         )
+    linear_psts = get_linear_pst(net, mode="dc")
+    trafos["has_pst_linear_tap"] = False
+    trafos.loc[linear_psts.index, "has_pst_linear_tap"] = linear_psts.values
 
-    trafos["has_pst_tap"] = ~trafos["low_tap_ptap"].isna() & (trafos["low_tap_ptap"] != trafos["high_tap_ptap"])
-
-    return trafos[["x", "r", "rho", "alpha", "name", "has_pst_tap"]]
+    return trafos[["x", "r", "rho", "alpha", "name", "has_pst_linear_tap"]]
 
 
 @pa.check_types
@@ -366,3 +351,27 @@ def get_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[B
             + (lines["elementName_nopu"] if "elementName_nopu" in lines.keys() else lines["name"])
         )
     return lines[["x", "r", "name"]]
+
+
+def get_linear_pst(net: Network, mode: Literal["ac", "dc"], tol: float = 1e-9) -> pd.Series:
+    """Check if a given branch has a linear phase shift transformer (PST) tap changer."""
+    tap_steps = net.get_phase_tap_changer_steps()
+    if mode == "dc":
+        lineal_col = ["x"]
+    elif mode == "ac":
+        lineal_col = ["r", "x", "g", "b"]
+    else:
+        raise ValueError(f"Invalid mode {mode}. Must be 'ac' or 'dc'.")
+
+    pst_ids = tap_steps.index.get_level_values("id")
+    trafo_linear_pst = pd.Series(True, index=pst_ids)
+
+    for pst_id in pst_ids:
+        pst_info = tap_steps.loc[pst_id]
+        for col in lineal_col:
+            pst_info_col = pst_info[col]
+            if np.all(np.abs(pst_info_col) - tol > 0):
+                trafo_linear_pst[pst_id] = False
+                break
+
+    return trafo_linear_pst

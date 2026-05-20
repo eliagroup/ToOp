@@ -59,11 +59,11 @@ class Topology(BaseModel):
     can take all these values. Note that inside the dc optimizer, taps are always starting with 0 and have to be converted
     by adding grid_model_low_tap.
 
-    The list has the length of the number of controllable PSTs in the grid model and the nth entry corresponds to the nth
-    controllable PST in the network data.
+    The list has the length of the number of controllable linear PSTs in the grid model and the nth entry
+    corresponds to the nth controllable linear PST in the network data.
 
-    If the PST taps were not optimized, then this is None. Empty list is only allowed if there are no controllable PSTs in
-    the grid model.
+    If the PST taps were not optimized, then this is None.
+    Empty list is only allowed if there are no controllable linear PSTs in the grid model.
     """
 
     metrics: Metrics

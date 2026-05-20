@@ -59,28 +59,28 @@ class MODFMatrix(eqx.Module):
 class NodalInjectionInformation(eqx.Module):
     """Holds the nodal injection optimization data required by the DC solver."""
 
-    controllable_pst_indices: Int[Array, " n_controllable_pst"]
-    """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
+    controllable_linear_pst_indices: Int[Array, " n_controllable_linear_pst"]
+    """An index over controllable linear PSTs indexing into all nodes. The injections of these nodes are
     actually shift angles and can be varied between shift_min and shift_max."""
 
-    shift_degree_min: Float[Array, " n_controllable_pst"]
-    """The minimum shift angle for each controllable PST. Cached here to avoid repeated access."""
+    shift_degree_min: Float[Array, " n_controllable_linear_pst"]
+    """The minimum shift angle for each controllable linear PST. Cached here to avoid repeated access."""
 
-    shift_degree_max: Float[Array, " n_controllable_pst"]
-    """The maximum shift angle for each controllable PST. Cached here to avoid repeated access."""
+    shift_degree_max: Float[Array, " n_controllable_linear_pst"]
+    """The maximum shift angle for each controllable linear PST. Cached here to avoid repeated access."""
 
-    pst_n_taps: Int[Array, " n_controllable_pst"]
-    """The number of discrete taps for each controllable PST"""
+    pst_n_taps: Int[Array, " n_controllable_linear_pst"]
+    """The number of discrete taps for each controllable linear PST"""
 
-    pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
-    """Discrete individual taps (in degrees) of controllable PSTs. The array is zero-padded to the maximum number of
+    pst_tap_values: Float[Array, " n_controllable_linear_pst max_n_tap_positions"]
+    """Discrete individual taps (in degrees) of controllable linear PSTs. The array is zero-padded to the maximum number of
     pst_n_taps."""
 
-    starting_tap_idx: Int[Array, " n_controllable_pst"]
-    """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
+    starting_tap_idx: Int[Array, " n_controllable_linear_pst"]
+    """The starting tap position for each controllable linear PST, given as an integer index into pst_tap_values."""
 
-    grid_model_low_tap: Int[Array, " n_controllable_pst"]
-    """The lowest tap position for each controllable PST but in the original grid model. If original
+    grid_model_low_tap: Int[Array, " n_controllable_linear_pst"]
+    """The lowest tap position for each controllable linear PST but in the original grid model. If original
     taps are to be reconstructed from indices into pst_tap_values then tap + grid_model_low_tap gives the actual tap position
     in the original grid model."""
 
@@ -719,10 +719,10 @@ class DynamicInformation(eqx.Module):
         return len(self.branches_monitored)
 
     @property
-    def n_controllable_pst(self) -> int:
-        """The number of controllable PSTs"""
+    def n_controllable_linear_pst(self) -> int:
+        """The number of controllable linear PSTs"""
         return (
-            len(self.nodal_injection_information.controllable_pst_indices)
+            len(self.nodal_injection_information.controllable_linear_pst_indices)
             if self.nodal_injection_information is not None
             else 0
         )
@@ -744,7 +744,7 @@ class DynamicInformation(eqx.Module):
 
     @property
     def max_n_tap_positions(self) -> int:
-        """Maximum number of discrete tap positions of any controllable PST"""
+        """Maximum number of discrete tap positions of any controllable linear PST"""
         return (
             self.nodal_injection_information.pst_tap_values.shape[1] if self.nodal_injection_information is not None else 0
         )
@@ -1106,7 +1106,7 @@ class NodalInjOptimResults(eqx.Module):
     Currently this includes only the PST taps, but later this might be extended to HVDCs or even redispatch clusters.
     """
 
-    pst_tap_idx: Int[ArrayLike, " *batch_size n_timesteps n_controllable_pst"]
+    pst_tap_idx: Int[ArrayLike, " *batch_size n_timesteps n_controllable_linear_pst"]
     """The PST taps as indices into the tap values table after optimization (i.e. not shift degrees).
 
     Though this might be discrete if PST optimization should happen discrete, we store it as a float in case continuous

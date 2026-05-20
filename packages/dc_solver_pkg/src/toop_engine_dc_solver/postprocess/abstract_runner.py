@@ -105,7 +105,8 @@ class AbstractLoadflowRunner(ABC):
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
-            The list of phase shift tap setpoints to be applied. This is an array setting a tap for each controllable PST
+            The list of phase shift tap setpoints to be applied.
+            This is an array setting a tap for each controllable linear PST
             in the action set. If None, taps will be unchanged.
 
         Returns
@@ -129,8 +130,10 @@ class AbstractLoadflowRunner(ABC):
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
-            The list of phase shift tap setpoints to be applied. This is a list setting a tap for each controllable PST
-            in the action set. If None, taps will be unchanged. Empty list only applies if there are no controllable PSTs in
+            The list of phase shift tap setpoints to be applied.
+            This is a list setting a tap for each controllable linear PST in the action set.
+            If None, taps will be unchanged.
+            Empty list only applies if there are no controllable linear PSTs in
             the grid model.
 
         Returns
@@ -154,8 +157,9 @@ class AbstractLoadflowRunner(ABC):
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
-            The list of phase shift tap setpoints to be applied. This is an array setting a tap for each controllable PST
-            in the action set. If None, taps will be unchanged.
+            The list of phase shift tap setpoints to be applied.
+            This is an array setting a tap for each controllable linear PST in the action set.
+            If None, taps will be unchanged.
 
         Returns
         -------

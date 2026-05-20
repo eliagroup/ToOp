@@ -280,10 +280,10 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
     phase_shift_indices = np.flatnonzero(phase_shift_mask)
     number_of_phase_shifters = phase_shift_indices.shape[0]
 
-    # We want to find out for each controllable PST which injection it is connected to
-    controllable_psts = np.flatnonzero(network_data.controllable_phase_shift_mask[phase_shift_mask])
-    controllable_pst_node_mask = np.zeros((number_of_phase_shifters + len(network_data.node_ids),), dtype=bool)
-    controllable_pst_node_mask[controllable_psts] = True
+    # We want to find out for each controllable linear PST which injection it is connected to
+    controllable_linear_psts = np.flatnonzero(network_data.controllable_phase_shift_mask[phase_shift_mask])
+    controllable_linear_pst_node_mask = np.zeros((number_of_phase_shifters + len(network_data.node_ids),), dtype=bool)
+    controllable_linear_pst_node_mask[controllable_linear_psts] = True
 
     # Add nodal injections to the phase shifters
     phase_shift_names = [network_data.branch_names[i] for i in phase_shift_indices]
@@ -360,7 +360,7 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
         outaged_injection_mask=injection_outages,
         mw_injections=mw_injections,
         multi_outage_node_mask=multi_outage_node_mask,
-        controllable_pst_node_mask=controllable_pst_node_mask,
+        controllable_linear_pst_node_mask=controllable_linear_pst_node_mask,
     )
 
 
@@ -414,13 +414,13 @@ def add_bus_b_columns_to_ptdf(network_data: NetworkData) -> NetworkData:
             ],
             axis=1,
         ),
-        controllable_pst_node_mask=np.concatenate(
+        controllable_linear_pst_node_mask=np.concatenate(
             [
-                network_data.controllable_pst_node_mask,
+                network_data.controllable_linear_pst_node_mask,
                 np.zeros(n_rel_nodes, dtype=bool),
             ]
         )
-        if network_data.controllable_pst_node_mask is not None
+        if network_data.controllable_linear_pst_node_mask is not None
         else None,
         node_ids=network_data.node_ids + [network_data.node_ids[i] for i in rel_node_indices],
         node_names=network_data.node_names + [f"{network_data.node_names[i]}_bus_b" for i in rel_node_indices],
@@ -562,19 +562,19 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
     relevant_phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[kept_pst_branches]
     relevant_phase_shift_low_tap = network_data.phase_shift_low_tap[kept_pst_branches]
     # PST branches carry a node injection as well, so we need to adjust the injection indices
-    pst_node_indices = np.flatnonzero(network_data.controllable_pst_node_mask)
+    pst_node_indices = np.flatnonzero(network_data.controllable_linear_pst_node_mask)
     # Assert that the number of PST branches and nodes is the same
     assert len(pst_branches) == len(pst_node_indices), (
-        "Number of PST branches and PST nodes do not match. Please check the controllable PST masks."
+        "Number of PST branches and PST nodes do not match. Please check the controllable linear PST masks."
     )
     if np.any(kept_pst_branches):
         # WARNING: This assumes that PSTs are ordered the same way in both masks
         kept_pst_nodes_indices = pst_node_indices[kept_pst_branches]
-        # Adapt the controllable PST node mask
-        kept_controllable_pst_node_mask = np.zeros(network_data.controllable_pst_node_mask.shape, dtype=bool)
-        kept_controllable_pst_node_mask[kept_pst_nodes_indices] = True
+        # Adapt the controllable linear PST node mask
+        kept_controllable_linear_pst_node_mask = np.zeros(network_data.controllable_linear_pst_node_mask.shape, dtype=bool)
+        kept_controllable_linear_pst_node_mask[kept_pst_nodes_indices] = True
     else:
-        kept_controllable_pst_node_mask = np.zeros(network_data.controllable_pst_node_mask.shape, dtype=bool)
+        kept_controllable_linear_pst_node_mask = np.zeros(network_data.controllable_linear_pst_node_mask.shape, dtype=bool)
 
     return replace(
         network_data,
@@ -594,7 +594,7 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         phase_shift_taps=relevant_phase_shift_taps,
         phase_shift_starting_tap_idx=relevant_phase_shift_starting_tap_idx,
         phase_shift_low_tap=relevant_phase_shift_low_tap,
-        controllable_pst_node_mask=kept_controllable_pst_node_mask,
+        controllable_linear_pst_node_mask=kept_controllable_linear_pst_node_mask,
         monitored_branch_mask=network_data.monitored_branch_mask[relevant_branches],
         disconnectable_branch_mask=network_data.disconnectable_branch_mask[relevant_branches],
         outaged_branch_mask=network_data.outaged_branch_mask[relevant_branches],

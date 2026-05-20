@@ -195,7 +195,7 @@ class BackendInterface(ABC):
             The to nodes of the branches
         """
 
-    def get_controllable_pst_node_mask(self) -> Bool[np.ndarray, " n_node"]:
+    def get_controllable_linear_pst_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get the mask of controllable phase shifters over nodes
 
         True means a node is (bogus node and) a controllable phase shifter, i.e. is connected to a branch
@@ -250,39 +250,39 @@ class BackendInterface(ABC):
         return np.zeros_like(self.get_phase_shift_mask())
 
     def get_phase_shift_taps(self) -> list[Float[np.ndarray, " n_tap_positions"]]:
-        """Return the possible tap positions of each controllable PST.
+        """Return the possible tap positions of each controllable linear PST.
 
-        The outer list has as many entries as there are controllable PSTs (see
+        The outer list has as many entries as there are controllable linear PSTs (see
         controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
         value representing the angle shift for the given tap position. The taps are ordered smallest to largest angle shift.
-        Each controllable PST must have at least one tap position.
+        Each controllable linear PST must have at least one tap position.
         """
         # Get the viable shift from the zeroth timestep as a viable default value if the user hasn't overloaded the function
         viable_shifts = self.get_shift_angles()[0, self.get_controllable_phase_shift_mask()]
         return [np.array([shift]) for shift in viable_shifts]
 
-    def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_pst"]:
-        """Get the starting tap position for each controllable PST, given as an integer index into pst_tap_values.
+    def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_linear_pst"]:
+        """Get the starting tap position for each controllable linear PST, given as an integer index into pst_tap_values.
 
         Note that taps in the original grid model might not start at zero, while in our optimization we assume taps to always
         be zero terminated. To translate back into original grid model, add get_phase_shift_low_taps.
 
-        The outer list has as many entries as there are controllable PSTs (see
+        The outer list has as many entries as there are controllable linear PSTs (see
         controllable_phase_shift_mask). The inner np array has as many entries as there are taps for the given PST with each
         value representing the angle shift for the given tap position. The taps are ordered smallest to largest angle shift.
 
-        If this function is not overloaded, it is assumed that all controllable PSTs start at their lowest tap position
-        (i.e. index 0).
+        If this function is not overloaded, it is assumed that all controllable linear PSTs
+        start at their lowest tap position (i.e. index 0).
         """
         return np.zeros(sum(self.get_controllable_phase_shift_mask()), dtype=int)
 
-    def get_phase_shift_low_taps(self) -> Int[np.ndarray, " n_controllable_psts"]:
+    def get_phase_shift_low_taps(self) -> Int[np.ndarray, " n_controllable_linear_psts"]:
         """Get the lowest tap position in the original grid model
 
         Original taps are needed so taps as integer indices into tap values
         can be converted back to the original tap positions by tap + low_tap
 
-        If this function is not overloaded, it is assumed that all controllable PSTs have a low tap of 0.
+        If this function is not overloaded, it is assumed that all controllable linear PSTs have a low tap of 0.
         """
         return np.zeros(sum(self.get_controllable_phase_shift_mask()), dtype=int)
 

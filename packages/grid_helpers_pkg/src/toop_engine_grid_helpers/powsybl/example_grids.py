@@ -27,6 +27,8 @@ def add_phaseshift_transformer_to_line_powsybl(
     tap_min: int = -30,
     tap_max: int = 30,
     tap_step_degree: float = 2.0,
+    x_min: float = 5,
+    x_max: float = 6,
 ) -> None:
     """Add a phaseshift transformer to the from side of a line
 
@@ -45,6 +47,8 @@ def add_phaseshift_transformer_to_line_powsybl(
     tap_step_degree : float, optional
         The step size in degrees for each tap position, by default 2.0
     """
+    assert x_min >= 0, "x_min should be non-negative"
+    assert x_max >= 0, "x_max should be non-negative"
     line = net.get_lines(all_attributes=True).loc[line_idx]
     vl = line["voltage_level1_id"]
     nominal_v = net.get_voltage_levels().loc[vl, "nominal_v"]
@@ -87,10 +91,13 @@ def add_phaseshift_transformer_to_line_powsybl(
         ],
         data=[(pst, 2, "CURRENT_LIMITER", False, -30, 0)],
     )
+
+    taps = range(tap_min, tap_max + 1)
+    x_sets = abs(np.linspace(-x_min, x_max, len(taps)))
     steps_df = pd.DataFrame.from_records(
         index="id",
         columns=["id", "b", "g", "r", "x", "rho", "alpha"],
-        data=[(pst, 0, 0, 0.1, 1, 1, tap_step_degree * tap) for tap in range(tap_min, tap_max + 1)],
+        data=[(pst, 0, 0, 0, x, 1, tap_step_degree * tap) for x, tap in zip(x_sets, taps, strict=True)],
     )
     net.create_phase_tap_changers(ptc_df, steps_df)
 
@@ -105,7 +112,9 @@ def powsybl_case30_with_psts() -> pypowsybl.network.Network:
     """
     net = pypowsybl.network.create_ieee30()
     add_phaseshift_transformer_to_line_powsybl(net, "L8-28-1", tap_min=-20, tap_max=10, tap_step_degree=3.0)
-    add_phaseshift_transformer_to_line_powsybl(net, "L6-28-1", tap_min=-30, tap_max=35, tap_step_degree=4.0)
+    add_phaseshift_transformer_to_line_powsybl(
+        net, "L6-28-1", tap_min=-30, tap_max=35, tap_step_degree=4.0, x_min=0.0, x_max=0.0
+    )
     return net
 
 
@@ -1140,13 +1149,13 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
 
     # base/min/max values (keep b,g,r,x constant as before, interpolate rho and alpha)
     b_val, g_val, rho_val = 0, 0, 1
-    alpha_min, alpha_max = -21.0, 21.0
-    x_min, x_max = -30.0, 30.0
-    r_min, r_max = -120.0, 120.0
+    alpha_min, alpha_max = -21.0, 28.0
+    x_min, x_max = -20.0, 30.0
+    r_min, r_max = -15.0, 25.0
 
     alphas = np.linspace(alpha_min, alpha_max, len(taps))
-    x_vals = np.linspace(x_min, x_max, len(taps))
-    r_vals = np.linspace(r_min, r_max, len(taps))
+    x_vals = abs(np.linspace(x_min, x_max, len(taps)))
+    r_vals = abs(np.linspace(r_min, r_max, len(taps)))
 
     rows = [
         ("2W_MV_HV_PST", b_val, g_val, r_val, x_val, rho_val, alpha)
@@ -1180,14 +1189,15 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     taps = np.arange(-30, 31)  # -30 .. 30 inclusive
 
     # base/min/max values (keep b,g,r,x constant as before, interpolate rho and alpha)
+    # create one linear pst
     b_val, g_val, rho_val = 0, 0, 1
-    alpha_min, alpha_max = -21.0, 21.0
-    x_min, x_max = -30.0, 30.0
-    r_min, r_max = -120.0, 120.0
+    alpha_min, alpha_max = -21.0, 28.0
+    x_min, x_max = -0.0, 0.0
+    r_min, r_max = 0.0, 0.0
 
     alphas = np.linspace(alpha_min, alpha_max, len(taps))
-    x_vals = np.linspace(x_min, x_max, len(taps))
-    r_vals = np.linspace(r_min, r_max, len(taps))
+    x_vals = abs(np.linspace(x_min, x_max, len(taps)))
+    r_vals = abs(np.linspace(r_min, r_max, len(taps)))
 
     rows = [
         ("MV_load_PST_no_limit", b_val, g_val, r_val, x_val, rho_val, alpha)
@@ -1855,7 +1865,9 @@ def three_node_pst_example() -> Network:
         acceptable_duration=[-1, -1, -1, -1, -1, -1],
     )
 
-    add_phaseshift_transformer_to_line_powsybl(net, line_idx="LINE_BC_1", tap_min=-30, tap_max=30, tap_step_degree=0.01)
+    add_phaseshift_transformer_to_line_powsybl(
+        net, line_idx="LINE_BC_1", tap_min=-30, tap_max=30, tap_step_degree=0.01, x_min=0.0, x_max=0.0
+    )
 
     add_phaseshift_transformer_to_line_powsybl(net, line_idx="LINE_BC_2", tap_min=-30, tap_max=30, tap_step_degree=0.01)
 

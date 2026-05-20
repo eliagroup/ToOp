@@ -288,7 +288,7 @@ def convert_to_jax(  # noqa: PLR0913
             non_rel_bb_outage_data=convert_non_rel_bb_outage(network_data) if preprocess_bb_outages else None,
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
-                controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
+                controllable_linear_pst_indices=jnp.flatnonzero(network_data.controllable_linear_pst_node_mask),
                 shift_degree_min=shift_degree_min,
                 shift_degree_max=shift_degree_max,
                 pst_n_taps=pst_n_taps,
@@ -296,7 +296,7 @@ def convert_to_jax(  # noqa: PLR0913
                 starting_tap_idx=jnp.array(network_data.phase_shift_starting_tap_idx, dtype=int),
                 grid_model_low_tap=jnp.array(network_data.phase_shift_low_tap, dtype=int),
             )
-            if network_data.controllable_pst_node_mask.any()
+            if network_data.controllable_linear_pst_node_mask.any()
             else None,
         ),
         solver_config=SolverConfig(
@@ -768,7 +768,7 @@ def extract_static_information_stats(
         n_multi_outages=static_information.n_multi_outages,
         n_injection_outages=static_information.n_inj_failures,
         n_busbar_outages=di.n_bb_outages,
-        n_controllable_psts=di.n_controllable_pst,
+        n_controllable_linear_psts=di.n_controllable_linear_pst,
         n_nminus1_cases=di.n_nminus1_cases,
         n_monitored_branches=static_information.n_branches_monitored,
         n_timesteps=static_information.n_timesteps,

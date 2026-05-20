@@ -238,8 +238,6 @@ def test_change_pst_matches_loadflows(
     request,
     fixture_name: str,
 ) -> None:
-    if fixture_name == "complex_grid_battery_hvdc_svc_3w_trafo_data_folder":
-        pytest.xfail("PSDF implementation has a bug on complex grids")
 
     preprocessed_powsybl_data_folder = request.getfixturevalue(fixture_name)
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
@@ -283,7 +281,7 @@ def test_change_pst_matches_loadflows(
     )
     assert np.all(success_dc), "DC solver with PST changes should succeed"
 
-    # Get PST branch IDs from the action set (which knows about controllable PSTs)
+    # Get PST branch IDs from the action set (which knows about controllable linear PSTs)
     action_set = extract_action_set(network_data)
     pst_indices = [pst.id for pst in action_set.pst_ranges]
 
@@ -301,13 +299,13 @@ def test_change_pst_matches_loadflows(
     n_1_with_pst = -solver_res.n_1_matrix[0, 0]
 
     # First verify the two powsybl native computations
-    assert np.allclose(n_0_direct, n_0_runner_pst, atol=1e-2)
+    assert np.allclose(n_0_direct, n_0_runner_pst)
 
     # Then verify runner also matches direct computation
-    assert np.allclose(n_0_runner_pst, n_0_with_pst, atol=1e-2), "Runner should match direct pypowsybl computation"
+    assert np.allclose(n_0_runner_pst, n_0_with_pst), "Runner should match direct pypowsybl computation"
 
     # Finally verify runner matches DC solver
-    assert np.allclose(np.abs(n_1_runner_pst), np.abs(n_1_with_pst), atol=1e-2), "N-1 with PST changes should match"
+    assert np.allclose(np.abs(n_1_runner_pst), np.abs(n_1_with_pst)), "N-1 with PST changes should match"
 
 
 def test_runner_load_from_fs(preprocessed_powsybl_data_folder: Path) -> None:

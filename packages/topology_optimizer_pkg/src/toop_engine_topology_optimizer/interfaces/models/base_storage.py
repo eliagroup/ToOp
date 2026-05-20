@@ -46,8 +46,8 @@ class BaseDBTopology(SQLModel):
     pst_setpoints: list[int] | None = Field(sa_type=JSON, default=None)
     """The setpoints for the PSTs if they have been computed. This is an index into the range of pst taps, i.e. the
     smallest tap is 0 and the neutral tap somewhere in the middle of the range. The tap range is defined in the action set.
-    The list always has the same length, i.e. the number of controllable PSTs in the system, and each entry corresponds to
-    the PST at the same position in the action set."""
+    The list always has the same length, i.e. the number of controllable linear PSTs in the system,
+    and each entry corresponds to the PST at the same position in the action set."""
 
     unsplit: bool
     """Whether all topologies in the strategy including this one have no branch assignments,

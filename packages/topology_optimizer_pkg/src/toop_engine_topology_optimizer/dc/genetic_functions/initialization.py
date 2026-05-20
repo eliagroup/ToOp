@@ -180,7 +180,7 @@ def verify_static_information(
         The maximum number of disconnections that can be made
     enable_nodal_inj_optim: bool
         Whether to enable the nodal injection optimization. If so, all static informations are verified to contain
-        nodal injection information with at least one controllable PST.
+        nodal injection information with at least one controllable linear PST.
 
     Raises
     ------
@@ -237,17 +237,20 @@ def verify_static_information(
     if enable_nodal_inj_optim:
         assert first_static_information.dynamic_information.nodal_injection_information is not None, (
             "Nodal injection opt. is enabled, but the first static information does not contain nodal injection info. "
-            "For nodal injection optimization, we require at least one controllable PST in the nodal injection info. "
+            "For nodal injection optimization, we require at least one controllable linear PST in the nodal injection info. "
         )
         assert all(
             [
                 static_information.dynamic_information.nodal_injection_information is not None
-                and static_information.dynamic_information.nodal_injection_information.controllable_pst_indices.shape[0] > 0
+                and static_information.dynamic_information.nodal_injection_information.controllable_linear_pst_indices.shape[
+                    0
+                ]
+                > 0
                 for static_information in static_informations
             ]
         ), (
             "Nodal injection optimization is enabled, but some static/nodal injection info does not contain controll. PSTs. "
-            "This requires at least one controllable PST in the nodal injection information. "
+            "This requires at least one controllable linear PST in the nodal injection information. "
             "Disable nodal injection optimization or provide correct static information. "
         )
 

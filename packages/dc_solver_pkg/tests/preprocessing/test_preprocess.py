@@ -240,7 +240,7 @@ def test_combine_phaseshift_and_injection_shapes(
     assert network_data.susceptances.shape == (branch_length,)
     assert network_data.bridging_branch_mask.shape == (branch_length,)
     assert network_data.controllable_phase_shift_mask.shape == (branch_length,)
-    assert network_data.controllable_pst_node_mask.shape == (new_node_length,)
+    assert network_data.controllable_linear_pst_node_mask.shape == (new_node_length,)
 
 
 def test_combine_phaseshift_and_injection_logic(
@@ -333,16 +333,16 @@ def test_combine_phaseshift_and_injection_logic(
         * -1
     )
 
-    assert network_data.controllable_pst_node_mask is not None
-    assert network_data.controllable_pst_node_mask.sum() == network_data_filled.controllable_phase_shift_mask.sum()
-    assert not np.any(network_data.controllable_pst_node_mask[number_of_phase_shifters:])
-    controllable_pst_idx = np.flatnonzero(network_data.controllable_pst_node_mask)
-    controllable_pst_idx_2 = np.flatnonzero(
+    assert network_data.controllable_linear_pst_node_mask is not None
+    assert network_data.controllable_linear_pst_node_mask.sum() == network_data_filled.controllable_phase_shift_mask.sum()
+    assert not np.any(network_data.controllable_linear_pst_node_mask[number_of_phase_shifters:])
+    controllable_linear_pst_idx = np.flatnonzero(network_data.controllable_linear_pst_node_mask)
+    controllable_linear_pst_idx_2 = np.flatnonzero(
         network_data_filled.controllable_phase_shift_mask[network_data_filled.phase_shift_mask]
     )
-    assert np.array_equal(controllable_pst_idx, controllable_pst_idx_2)
+    assert np.array_equal(controllable_linear_pst_idx, controllable_linear_pst_idx_2)
 
-    assert all(network_data.node_types[i] == "PSTNode" for i in controllable_pst_idx)
+    assert all(network_data.node_types[i] == "PSTNode" for i in controllable_linear_pst_idx)
 
 
 def test_add_bus_b_columns_to_ptdf_adds_correct_columns(
@@ -918,8 +918,8 @@ def test_preprocess_case30(case30_data_folder: str) -> None:
 
     assert network_data.controllable_phase_shift_mask.shape == (n_branch,)
     assert not np.any(network_data.controllable_phase_shift_mask & ~network_data.phase_shift_mask)
-    assert network_data.controllable_pst_node_mask.shape == (n_nodes,)
-    assert np.sum(network_data.controllable_phase_shift_mask) == np.sum(network_data.controllable_pst_node_mask)
+    assert network_data.controllable_linear_pst_node_mask.shape == (n_nodes,)
+    assert np.sum(network_data.controllable_phase_shift_mask) == np.sum(network_data.controllable_linear_pst_node_mask)
     assert len(network_data.phase_shift_taps) == network_data.controllable_phase_shift_mask.sum()
 
     assert network_data.controllable_phase_shift_mask.sum() == 3

@@ -157,7 +157,7 @@ def get_exponential_overload_energy_n_1_matrix(
     return jnp.sum(max_fn(overload_matrix, axis=1))
 
 
-def get_critical_branch_count_n_1_matrix(
+def get_critical_branch_count_n_1_matrix_renamed(
     n_1_matrix: Float[ArrayLike, " n_timesteps n_failures n_branches"],
     max_mw_flow: Float[Array, " n_branches"],
     aggregate_strategy: Optional[AggregateStrategy] = "max",
@@ -970,7 +970,7 @@ def aggregate_n_1_matrix(
                 n_1_matrix, max_mw_flow, overload_weight, aggregate_strategy=aggregate_strategy
             )
         case "critical_branch_count":
-            aggregated = get_critical_branch_count_n_1_matrix(n_1_matrix, max_mw_flow, aggregate_strategy=aggregate_strategy)
+            aggregated = get_critical_branch_count_n_1_matrix_renamed(n_1_matrix, max_mw_flow, aggregate_strategy=aggregate_strategy)
         case "cumulative_overload":
             aggregated = get_cumulative_overload_n_1_matrix(n_1_matrix, max_mw_flow)
         case _:

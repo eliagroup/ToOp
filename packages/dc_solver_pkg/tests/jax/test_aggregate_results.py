@@ -25,7 +25,7 @@ from toop_engine_dc_solver.jax.aggregate_results import (
     choose_max_mw_flow,
     compute_double_limits,
     compute_n0_n1_max_diff,
-    get_critical_branch_count_n_1_matrix,
+    get_critical_branch_count_n_1_matrix_renamed,
     get_cross_coupler_flow_penalty,
     get_cumulative_overload_n_1_matrix,
     get_exponential_overload_energy_n_1_matrix,
@@ -87,7 +87,7 @@ def test_get_critical_branch_count_n_1_matrix() -> None:
     num_violations = jnp.sum(flow_max > max_mw_flow, axis=1)
     max_violations = jnp.max(num_violations)
 
-    critical_branch_count = get_critical_branch_count_n_1_matrix(flow, max_mw_flow)
+    critical_branch_count = get_critical_branch_count_n_1_matrix_renamed(flow, max_mw_flow)
     assert jnp.allclose(critical_branch_count, max_violations)
 
 
@@ -356,7 +356,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         n_subs_rel,
         metric="critical_branch_count_n_1",
     )
-    critical_branch_count_ref = get_critical_branch_count_n_1_matrix(flow[0], max_mw_flow)
+    critical_branch_count_ref = get_critical_branch_count_n_1_matrix_renamed(flow[0], max_mw_flow)
 
     assert critical_branch_count.shape == (n_batch,)
     assert jnp.allclose(critical_branch_count[0], critical_branch_count_ref)
@@ -368,7 +368,7 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         n_subs_rel,
         metric="critical_branch_count_limited_n_1",
     )
-    critical_branch_count_ref = get_critical_branch_count_n_1_matrix(flow[0], branch_limits.max_mw_flow_limited)
+    critical_branch_count_ref = get_critical_branch_count_n_1_matrix_renamed(flow[0], branch_limits.max_mw_flow_limited)
 
     assert critical_branch_count.shape == (n_batch,)
     assert jnp.allclose(critical_branch_count[0], critical_branch_count_ref)
@@ -917,7 +917,7 @@ def test_compute_metric_matches_jax(
     )
     assert np.isclose(solver_overload_n_0, metrics["overload_energy_n_0"])
 
-    solver_critical_branches = get_critical_branch_count_n_1_matrix(
+    solver_critical_branches = get_critical_branch_count_n_1_matrix_renamed(
         n_1[None], static_information.dynamic_information.branch_limits.max_mw_flow
     )
     assert solver_critical_branches == metrics["critical_branch_count_n_1"]

@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import numpy as np
+import pandas as pd
 import pandera as pa
 import pypowsybl
 import pytest
@@ -16,7 +17,11 @@ from toop_engine_contingency_analysis.pypowsybl import (
     run_powsybl_analysis,
     translate_nminus1_for_powsybl,
 )
-from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import run_contingency_analysis_powsybl
+from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import (
+    PowsyblBranchLimitCache,
+    build_branch_limit_cache,
+    run_contingency_analysis_powsybl,
+)
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.loadflow_result_helpers import (
     convert_pandas_loadflow_results_to_polars,
@@ -42,6 +47,72 @@ def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network
     assert not all(result.bus_results["v_mag"].isna())
     assert result is not None
     assert basecase_name == "BASECASE"
+
+
+def test_run_contingency_analysis_powsybl_with_branch_limit_cache(
+    powsybl_bus_breaker_net: pypowsybl.network.Network,
+) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
+    translated_nminus1 = translate_nminus1_for_powsybl(nminus1_definition, powsybl_bus_breaker_net)
+    branch_limit_cache = build_branch_limit_cache(
+        powsybl_bus_breaker_net,
+        monitored_branches=translated_nminus1.monitored_elements["branches"],
+    )
+
+    uncached_result = run_contingency_analysis_powsybl(
+        net=powsybl_bus_breaker_net,
+        n_minus_1_definition=nminus1_definition,
+        job_id="test_job",
+        timestep=0,
+        method="dc",
+        polars=True,
+    )
+    cached_result = run_contingency_analysis_powsybl(
+        net=powsybl_bus_breaker_net,
+        n_minus_1_definition=nminus1_definition,
+        job_id="test_job",
+        timestep=0,
+        method="dc",
+        polars=True,
+        branch_limit_cache=branch_limit_cache,
+    )
+
+    assert uncached_result == cached_result
+
+
+def test_run_contingency_analysis_powsybl_ignores_stale_branch_limit_cache(
+    powsybl_bus_breaker_net: pypowsybl.network.Network,
+) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_bus_breaker_net)
+    stale_cache = PowsyblBranchLimitCache(
+        chosen_limit="permanent_limit",
+        monitored_branches=("definitely-stale",),
+        current_limit_fingerprint="stale-fingerprint",
+        branch_limits=pd.DataFrame(
+            {"value": [999.0]},
+            index=pd.MultiIndex.from_tuples([("stale", 1)], names=["element_id", "side"]),
+        ),
+    )
+
+    uncached_result = run_contingency_analysis_powsybl(
+        net=powsybl_bus_breaker_net,
+        n_minus_1_definition=nminus1_definition,
+        job_id="test_job",
+        timestep=0,
+        method="dc",
+        polars=True,
+    )
+    cached_result = run_contingency_analysis_powsybl(
+        net=powsybl_bus_breaker_net,
+        n_minus_1_definition=nminus1_definition,
+        job_id="test_job",
+        timestep=0,
+        method="dc",
+        polars=True,
+        branch_limit_cache=stale_cache,
+    )
+
+    assert uncached_result == cached_result
 
 
 @pytest.mark.parametrize("powsybl_net", ["powsybl_bus_breaker_net", "powsybl_node_breaker_net"])

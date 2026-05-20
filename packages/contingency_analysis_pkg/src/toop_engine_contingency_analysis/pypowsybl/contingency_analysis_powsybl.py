@@ -8,18 +8,24 @@
 """Compute the N-1 AC/DC power flow for the network."""
 
 from copy import deepcopy
+from dataclasses import dataclass
 
+import pandas as pd
 import polars as pl
 import pypowsybl
-from beartype.typing import Literal, Optional, Union
+from beartype.typing import Literal, Optional, Sequence, Union
 from pypowsybl.network import Network
 from pypowsybl.security import SecurityAnalysisResult
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     PowsyblNMinus1Definition,
     add_name_column,
+    fingerprint_current_limits_for_powsybl,
     get_convergence_result_df,
+    get_current_branch_limits_for_powsybl,
     get_regulating_element_results,
+    normalize_monitored_branches_for_powsybl,
     set_target_values_to_lf_values_incl_distributed_slack,
+    translate_branch_limits_for_powsybl,
     translate_nminus1_for_powsybl,
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
@@ -44,6 +50,82 @@ from toop_engine_interfaces.loadflow_results import (
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+
+
+@dataclass
+class PowsyblBranchLimitCache:
+    """Cached prepared branch limits for a specific monitored branch set and network limit snapshot.
+
+    It contains the branch_limits dataframe as the core cached item, along with metadata needed to validate whether the
+    cache can be reused safely.
+    """
+
+    chosen_limit: str
+    """The limit name used when preparing the cached branch limits."""
+
+    monitored_branches: tuple[str, ...]
+    """The normalized monitored branch ids for which the cached limits were prepared."""
+
+    current_limit_fingerprint: str
+    """A fingerprint of the raw current-limit table used to detect stale cache entries."""
+
+    branch_limits: pd.DataFrame
+    """The prepared branch-limit dataframe ready for contingency-analysis postprocessing."""
+
+    def matches(self, monitored_branches: Sequence[str], chosen_limit: str, current_limit_fingerprint: str) -> bool:
+        """Check whether this cache can be reused for the current request.
+
+        Parameters
+        ----------
+        monitored_branches : Sequence[str]
+            The monitored branch ids needed for the current analysis.
+        chosen_limit : str
+            The selected operational limit name for the current analysis.
+        current_limit_fingerprint : str
+            The fingerprint of the current network's raw limit table.
+
+        Returns
+        -------
+        bool
+            True if the cache can be reused safely, otherwise False.
+        """
+        return (
+            self.chosen_limit == chosen_limit
+            and self.monitored_branches == normalize_monitored_branches_for_powsybl(monitored_branches)
+            and self.current_limit_fingerprint == current_limit_fingerprint
+        )
+
+
+def build_branch_limit_cache(
+    net: Network, monitored_branches: Sequence[str], chosen_limit: str = "permanent_limit"
+) -> PowsyblBranchLimitCache:
+    """Build a reusable cache for the expensive branch-limit preparation stage.
+
+    Parameters
+    ----------
+    net : Network
+        The active Powsybl network whose current limits are used for cache construction.
+    monitored_branches : Sequence[str]
+        The monitored branch ids for which limits should be prepared.
+    chosen_limit : str, optional
+        The limit name to select, by default "permanent_limit".
+
+    Returns
+    -------
+    PowsyblBranchLimitCache
+        A cache entry containing prepared limits and the metadata needed to validate reuse.
+    """
+    current_limits = get_current_branch_limits_for_powsybl(net)
+    return PowsyblBranchLimitCache(
+        chosen_limit=chosen_limit,
+        monitored_branches=normalize_monitored_branches_for_powsybl(monitored_branches),
+        current_limit_fingerprint=fingerprint_current_limits_for_powsybl(current_limits),
+        branch_limits=translate_branch_limits_for_powsybl(
+            branch_limits=current_limits,
+            monitored_branches=list(monitored_branches),
+            chosen_limit=chosen_limit,
+        ),
+    )
 
 
 def run_powsybl_analysis(
@@ -243,6 +325,7 @@ def run_contingency_analysis_powsybl(
     n_processes: int = 1,
     polars: bool = False,
     lf_params: Optional[pypowsybl.loadflow.Parameters] = None,
+    branch_limit_cache: Optional[PowsyblBranchLimitCache] = None,
 ) -> Union[LoadflowResults, LoadflowResultsPolars]:
     """Compute the Contingency Analysis for the network.
 
@@ -267,6 +350,10 @@ def run_contingency_analysis_powsybl(
     lf_params: Optional[pypowsybl.loadflow.Parameters]
         Loadflow parameters to use for the computation.
         If None, a standard set will be used
+    branch_limit_cache : Optional[PowsyblBranchLimitCache]
+        Optional cache for the expensive prepared branch limits. If stale or None, it will be ignored and recomputed.
+        If you want to run many contingency analyses with the same network, use this and precompute the cache with
+        build_branch_limit_cache() to save time.
 
     Returns
     -------
@@ -282,7 +369,11 @@ def run_contingency_analysis_powsybl(
     if lf_params.distributed_slack:
         # We only do this once, before the first batch. So we dont have to redo it every iteration
         net = set_target_values_to_lf_values_incl_distributed_slack(net, method, lf_params=lf_params)
-    pow_n1_definition = translate_nminus1_for_powsybl(n_minus_1_definition, net)
+    pow_n1_definition = translate_nminus1_for_powsybl(
+        n_minus_1_definition,
+        net,
+        branch_limit_cache=branch_limit_cache,
+    )
 
     lf_result = run_contingency_analysis_polars(
         net=net,

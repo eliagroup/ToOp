@@ -281,9 +281,7 @@ def test_ac_dc_integration_sequential(grid_folder: Path, tmp_path_factory: pytes
     ac_parameters = ACOptimizerParameters(
         ga_config=ACGAParameters(
             runtime_seconds=20,
-            pull_prob=1.0,
-            reconnect_prob=0.0,
-            close_coupler_prob=0.0,
+            remaining_loadflow_wait_seconds=5,
             seed=42,
             enable_ac_rejection=False,
         )

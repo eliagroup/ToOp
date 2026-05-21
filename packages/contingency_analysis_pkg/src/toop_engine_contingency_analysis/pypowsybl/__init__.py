@@ -6,6 +6,8 @@
 # Mozilla Public License, version 2.0
 
 from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import (
+    PowsyblBranchLimitCache,
+    build_branch_limit_cache,
     run_contingency_analysis_powsybl,
     run_powsybl_analysis,
 )
@@ -26,8 +28,10 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
     get_va_diff_results,
     prepare_branch_limits,
     set_target_values_to_lf_values_incl_distributed_slack,
+    translate_branch_limits_for_powsybl,
     translate_contingency_to_powsybl,
     translate_monitored_elements_to_powsybl,
+    translate_nminus1_components_for_powsybl,
     translate_nminus1_for_powsybl,
     update_basename,
 )
@@ -41,11 +45,13 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
 
 __all__ = [
     "POWSYBL_CONVERGENCE_MAP",
+    "PowsyblBranchLimitCache",
     "PowsyblContingency",
     "PowsyblMonitoredElements",
     "PowsyblNMinus1Definition",
     "add_name_column",
     "add_name_column_polars",
+    "build_branch_limit_cache",
     "get_blank_va_diff",
     "get_blank_va_diff_with_buses",
     "get_branch_results",
@@ -62,8 +68,10 @@ __all__ = [
     "run_contingency_analysis_powsybl",
     "run_powsybl_analysis",
     "set_target_values_to_lf_values_incl_distributed_slack",
+    "translate_branch_limits_for_powsybl",
     "translate_contingency_to_powsybl",
     "translate_monitored_elements_to_powsybl",
+    "translate_nminus1_components_for_powsybl",
     "translate_nminus1_for_powsybl",
     "update_basename",
     "update_basename_polars",

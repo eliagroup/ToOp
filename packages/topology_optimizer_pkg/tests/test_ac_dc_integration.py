@@ -626,12 +626,6 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
         f"DC solver versus DC validation failed. Taps: {absolute_taps_list}"
     )
-    for sample_index, (solver_metric, runner_metric, taps) in enumerate(
-        zip(solver_metrics, runner_metrics, absolute_taps_list, strict=True)
-    ):
-        assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
-            f"Mismatch for sample {sample_index} with relative taps {taps} solver={solver_metric}, runner={runner_metric}"
-        )
 
 
 def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factory: pytest.TempPathFactory) -> None:
@@ -733,12 +727,6 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
         f"DC solver versus DC validation failed. Taps: {absolute_taps_list}"
     )
-    for sample_index, (solver_metric, runner_metric, taps) in enumerate(
-        zip(solver_metrics, runner_metrics, absolute_taps_list, strict=True)
-    ):
-        assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
-            f"Mismatch for sample {sample_index} with relative taps {taps} solver={solver_metric}, runner={runner_metric}"
-        )
 
 
 def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: pytest.TempPathFactory) -> None:
@@ -840,9 +828,3 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
         f"DC solver versus DC validation failed. Taps: {absolute_taps_list}"
     )
-    for sample_index, (solver_metric, runner_metric, taps) in enumerate(
-        zip(solver_metrics, runner_metrics, absolute_taps_list, strict=True)
-    ):
-        assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
-            f"Mismatch for sample {sample_index} with relative taps {taps} solver={solver_metric}, runner={runner_metric}"
-        )

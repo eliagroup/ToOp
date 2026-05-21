@@ -72,7 +72,7 @@ InitialLoadflowStage: TypeAlias = Literal["prepare_contingency_analysis", "run_c
 
 ImporterStage: TypeAlias = Literal[
     "start",
-    "load_ucte",
+    "load_from_fs",
     "get_topology_model",
     "modify_low_impedance_lines",
     "modify_branches_over_switches",

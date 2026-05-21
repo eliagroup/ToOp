@@ -24,12 +24,14 @@ def select_strategy(
     repertoire: list[BaseDBTopology],
     candidates: list[BaseDBTopology],
     interest_scorer: Callable[[pd.DataFrame], pd.Series],
+    batch_size: int = 1,
+    lower_scores_are_better: bool = False,
     filter_strategy: Optional[FilterStrategy] = None,
 ) -> list[BaseDBTopology]:
-    """Select a promising strategy from the repertoire
+    """Select promising unevaluated topologies from the candidate pool.
 
     Make sure the repertoire only contains topologies with the right optimizer type and optimization id
-    as select_topology will not filter for this.
+    as select_strategy will not filter for this.
 
     Parameters
     ----------
@@ -41,24 +43,32 @@ def select_strategy(
         Candidates which have not yet been evaluated. For a pull operation this will only include DC candidates without an
         AC parent.
     interest_scorer : Callable[[pd.DataFrame], pd.Series]
-        The function to score the topologies in the repertoire. The higher the score, the more
+        The function to score the topologies in the candidate pool. The higher the score, the more
         interesting the topology is. Eventually, the topology will be selected with a probability
         proportional to its score.
+    batch_size : int, optional
+        Number of topologies to sample without replacement. If more topologies are requested than available
+        candidates, all available candidates are returned.
+    lower_scores_are_better : bool, optional
+        Whether lower values returned by ``interest_scorer`` should be preferred when converting
+        scores into sampling weights.
     filter_strategy : Optional[FilterStrategy], optional
-        Whether to filter the repertoire based on discriminator, median or dominator filter.
+        Whether to filter the candidates based on discriminator, median or dominator filter.
 
     Returns
     -------
     list[BaseDBTopology]
-        The selected strategy which is represented as a list of topologies with similar strategy_hash and
-        optimizer type.
-        If no strategy could be selected because the repertoire wasn't containing enough strategies,
+        The selected topologies sampled from the candidate pool.
+        If no topology could be selected because the candidate pool is empty,
         return an empty list
     """
-    if len(repertoire) == 0:
+    if len(candidates) == 0 or batch_size <= 0:
         return []
 
     metrics = metrics_dataframe(candidates)
+    if metrics.empty:
+        return []
+
     if filter_strategy is not None:
         if filter_strategy.filter_dominator_metrics_target is not None:
             repo_metrics = metrics_dataframe(repertoire)
@@ -73,29 +83,28 @@ def select_strategy(
             discriminator_df=discriminator_df,
             filter_strategy=filter_strategy,
         )
-
-    # Score them according to some function
-    metrics["score"] = interest_scorer(metrics)
-    group = metrics.groupby(["strategy_hash", "optimizer_type"])
-    if len(group.size()) == 0:
+    if metrics.empty:
         return []
 
-    strategies = group.sum("score")
-    min_score = strategies.score.min()
-    max_score = strategies.score.max()
-    # Make sure all scores are positive and add a small value to give residual probability to strategies with a score of 0
-    strategies.score += -min_score + np.abs(max_score - min_score) * 0.1
-
-    sum_scores = strategies.score.sum()
-    if not np.isclose(sum_scores, 0):
-        strategies.score /= sum_scores
+    scores = interest_scorer(metrics).astype(float).fillna(0.0).to_numpy(copy=True)
+    if lower_scores_are_better and len(scores):
+        scores = scores.max() - scores
     else:
-        strategies.score = 1 / len(strategies)
+        min_score = scores.min(initial=0.0)
+        if min_score < 0.0:
+            scores -= min_score
+    if len(scores):
+        scores += np.finfo(float).eps
+    score_sum = scores.sum()
+    if np.isclose(score_sum, 0.0):
+        probabilities = np.full(len(metrics), 1.0 / len(metrics))
+    else:
+        probabilities = scores / score_sum
 
-    # Select a strategy with probability proportional to its score
-    idx = rng.choice(len(strategies), p=strategies.score)
-    hash_, optim_type_ = strategies.index[idx]
-    return [t for t in repertoire if t.strategy_hash == hash_ and t.optimizer_type.value == optim_type_]
+    sample_size = min(batch_size, len(metrics))
+    selected_ids = rng.choice(metrics.index.to_numpy(), size=sample_size, replace=False, p=probabilities)
+    selected_topologies_by_id = {topology.id: topology for topology in candidates}
+    return [selected_topologies_by_id[int(topology_id)] for topology_id in np.atleast_1d(selected_ids).tolist()]
 
 
 def filter_metrics_df(

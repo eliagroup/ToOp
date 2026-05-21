@@ -53,8 +53,8 @@ The AC stage provides high-fidelity validation:
 
 - **Strategy pulling**: Intelligent selection from DC repertoire using [filtering strategies](ac/select_strategy.md)
 - **AC validation**: Full power flow with reactive power and voltage constraints
-- **[Early stopping](ac/early_stopping.md)**: Efficient rejection based on worst-case N-1 comparison
-- **Local search**: Fine-tuning through reconnection and coupler closing operations
+- **[Early stopping](ac/early_stopping.md)**: Efficient rejection on a merged critical-contingency subset
+- **[AC loop](ac/ac_loop.md)**: Worker-side batching, survivor buffering, and remaining-contingency flushing
 
 ## 4. Communication Architecture
 

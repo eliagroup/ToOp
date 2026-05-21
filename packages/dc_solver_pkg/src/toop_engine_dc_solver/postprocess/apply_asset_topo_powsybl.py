@@ -574,14 +574,14 @@ def apply_node_breaker_topology(net: Network, target_topology: Topology) -> pa.t
     return switch_update_df
 
 
-def is_node_breaker_grid(net: Network, relevant_station: str) -> bool:
+def is_node_breaker_grid(net: Network, relevant_station: Optional[str] = None) -> bool:
     """Check if the network is in node-breaker format
 
     Parameters
     ----------
     net : Network
         The powsybl network to check
-    relevant_station : str
+    relevant_station : Optional[str]
         The name of any relevant station to check. It is possible that a grid has a mix of node-breaker and bus/branch but
         the relevant stations should be all uniform, in one of the two formats.
 
@@ -590,7 +590,11 @@ def is_node_breaker_grid(net: Network, relevant_station: str) -> bool:
     bool
         True if the network is in node-breaker format, False otherwise.
     """
-    bus = net.get_buses(attributes=["voltage_level_id"]).loc[relevant_station]
+    bus = net.get_buses(attributes=["voltage_level_id"])
+    if relevant_station is not None:
+        bus = bus.loc[relevant_station]
+    else:
+        bus = bus.iloc[0]
     return (
         net.get_voltage_levels(attributes=["topology_kind"]).loc[bus["voltage_level_id"]]["topology_kind"] == "NODE_BREAKER"
     )

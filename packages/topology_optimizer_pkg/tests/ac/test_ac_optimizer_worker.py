@@ -40,6 +40,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     Strategy,
     Topology,
     TopologyPushResult,
+    TopologyRejectionResult,
 )
 
 from packages.topology_optimizer_pkg.tests.fake_kafka import FakeMessage
@@ -379,7 +380,7 @@ def test_optimization_loop(
     topopushresult: Result,
     loadflow_result_folder: Path,
 ) -> None:
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
+    grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")
     parameters = ACOptimizerParameters(
         ga_config=ACGAParameters(
             runtime_seconds=1,
@@ -415,7 +416,7 @@ def test_optimization_loop(
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
     optimization_loop(
         ac_params=parameters,
-        grid_files=grid_files,
+        grid_file=grid_file,
         worker_data=worker_data,
         send_result_fn=send_result_fn,
         send_heartbeat_fn=send_heartbeat_fn,
@@ -426,7 +427,7 @@ def test_optimization_loop(
 
     assert len(results) >= 3
     assert isinstance(results[0], OptimizationStartedResult)
-    assert isinstance(results[1], TopologyPushResult)
+    assert isinstance(results[1], TopologyPushResult | TopologyRejectionResult)
     assert isinstance(results[-1], OptimizationStoppedResult)
     assert heartbeats
     assert isinstance(heartbeats[0], OptimizationStartedHeartbeat)
@@ -439,7 +440,7 @@ def test_optimization_loop_error_during_initialization(
     loadflow_result_folder: Path,
 ) -> None:
     """Test error handling when initialization fails."""
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
+    grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")
     parameters = ACOptimizerParameters()
 
     worker_data = WorkerData(
@@ -466,7 +467,7 @@ def test_optimization_loop_error_during_initialization(
         init_mock.side_effect = Exception("Test error")
         optimization_loop(
             ac_params=parameters,
-            grid_files=grid_files,
+            grid_file=grid_file,
             worker_data=worker_data,
             send_result_fn=send_result_fn,
             send_heartbeat_fn=send_heartbeat_fn,
@@ -485,7 +486,7 @@ def test_optimization_loop_error_dc_timeout(
     loadflow_result_folder: Path,
 ) -> None:
     """Test error handling when waiting for DC results times out."""
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
+    grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")
     parameters = ACOptimizerParameters()
 
     worker_data = WorkerData(
@@ -512,7 +513,7 @@ def test_optimization_loop_error_dc_timeout(
         wait_mock.side_effect = TimeoutError("Test error")
         optimization_loop(
             ac_params=parameters,
-            grid_files=grid_files,
+            grid_file=grid_file,
             worker_data=worker_data,
             send_result_fn=send_result_fn,
             send_heartbeat_fn=send_heartbeat_fn,
@@ -532,12 +533,12 @@ def test_optimization_loop_error_during_epoch(
 ) -> None:
     """Test error handling when run_epoch fails.
 
-    This test verifies that errors during epoch execution are properly caught
+    This test verifies that errors during fast-failing epoch execution are properly caught
     and result in an OptimizationStoppedResult. The wait_for_first_dc_results
     function must be patched to avoid the actual timeout behavior since no
     DC results are being sent through the mocked consumer.
     """
-    grid_files = [GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")]
+    grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")
     parameters = ACOptimizerParameters()
 
     worker_data = WorkerData(
@@ -562,11 +563,11 @@ def test_optimization_loop_error_during_epoch(
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
     # Patch wait_for_first_dc_results to avoid timeout since no real DC results are sent
     with patch("toop_engine_topology_optimizer.ac.worker.wait_for_first_dc_results"):
-        with patch("toop_engine_topology_optimizer.ac.worker.run_epoch") as run_mock:
+        with patch("toop_engine_topology_optimizer.ac.worker.run_fast_failing_epoch") as run_mock:
             run_mock.side_effect = Exception("Test error")
             optimization_loop(
                 ac_params=parameters,
-                grid_files=grid_files,
+                grid_file=grid_file,
                 worker_data=worker_data,
                 send_result_fn=send_result_fn,
                 send_heartbeat_fn=send_heartbeat_fn,
@@ -665,17 +666,17 @@ def test_main(
     # Check for expected result types
     started_found = False
     stopped_found = False
-    topo_push_found = False
+    topology_result_found = False
 
     for result in results:
         if isinstance(result.result, OptimizationStartedResult):
             started_found = True
-        elif isinstance(result.result, TopologyPushResult):
-            topo_push_found = True
+        elif isinstance(result.result, TopologyPushResult | TopologyRejectionResult):
+            topology_result_found = True
         elif isinstance(result.result, OptimizationStoppedResult):
             stopped_found = True
             assert result.result.reason == "converged"
 
     assert started_found, "OptimizationStartedResult not found in results"
     assert stopped_found, "OptimizationStoppedResult not found in results"
-    assert topo_push_found, "TopologyPushResult not found in results"
+    assert topology_result_found, "No topology result found in results"

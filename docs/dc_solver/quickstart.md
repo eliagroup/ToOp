@@ -215,4 +215,11 @@ runner.apply_topology(parsed_topology)
 runner.run_dc_loadflow()
 ```
 
+For the [`PowsyblRunner`][toop_engine_dc_solver.postprocess.PowsyblRunner], the expensive part of N-1 preparation is translating the monitored branch limits into the powsybl contingency-analysis input format. The runner therefore keeps a branch-limit cache and refreshes it only when the underlying inputs change.
+
+- The cache is built once both the base grid and the N-1 definition are loaded into the runner.
+- The cache is reused across repeated N-1 runs, including the worst-k early-stopping stage followed by the full N-1 stage, as long as the monitored branch set stays the same.
+- The contingency list itself is not part of the cache key, so swapping between a reduced worst-k subset and the full contingency list does not force a rebuild on its own.
+- The cache is invalidated when the base grid is replaced, when the monitored branches change, or when the current branch limits in the base grid no longer match the cached fingerprint.
+
 The two topo-vects `branch_topo_vect` and `inj_topo_vect` are expected to be in numpy format.

@@ -109,8 +109,6 @@ from toop_engine_interfaces.folder_structure import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
-    CgmesImporterParameters,
-    LimitAdjustmentParameters,
     PreprocessParameters,
     UcteImporterParameters,
 )
@@ -1232,25 +1230,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(
 @pytest.fixture(scope="function")
 def complex_grid_battery_hvdc_svc_3w_trafo_fixture(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid", numbered=True)
-    complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path)
-
-    importer_parameters = CgmesImporterParameters(
-        grid_model_file=tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"],
-        data_folder=tmp_path,
-        area_settings=AreaSettings(
-            cutoff_voltage=1,
-            control_area=[""],
-            view_area=[""],
-            nminus1_area=[""],
-            dso_trafo_factors=LimitAdjustmentParameters(),
-            dso_trafo_weight=1.0,
-            border_line_factors=LimitAdjustmentParameters(),
-            border_line_weight=1.0,
-        ),
-    )
-    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
-
-    _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
+    preprocessing_parameters = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path)
 
     filesystem_dir = DirFileSystem(str(tmp_path))
     _info, _static_information, network_data = load_grid(

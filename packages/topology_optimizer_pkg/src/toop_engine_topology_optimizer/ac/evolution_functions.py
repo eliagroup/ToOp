@@ -12,17 +12,11 @@ following operations:
 -  The pull operator will take a promising topology from the DC repertoire and re-evaluate
 it on AC. The notion of promising is defined through a interest-scoring function which tries to
 balance the explore/exploit trade-off.
-- The reconnect operator will take a promising topology from the DC repertoire and reconnect a
-single branch in all timesteps. The idea is that the DC part might have disconnected too many
-branches, so we try to simplify the topology by reconnecting a single branch.
-- The close_coupler operator will take a promising topology from the DC repertoire and close a
-coupler in all timesteps. The idea is that the DC part might have too many open couplers, so we
-try to simplify the topology by closing a single coupler.
 """
 
 import pandas as pd
 import structlog
-from beartype.typing import Collection, Optional, Sequence
+from beartype.typing import Collection, Optional
 from numpy.random import Generator as Rng
 from sqlalchemy import exists
 from sqlalchemy.exc import IntegrityError
@@ -31,17 +25,17 @@ from sqlmodel import Session, select
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_topology_optimizer.ac.select_strategy import select_strategy
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
+from toop_engine_topology_optimizer.ac.types import ACStrategy
 from toop_engine_topology_optimizer.interfaces.messages.commons import FilterStrategy, OptimizerType
-from toop_engine_topology_optimizer.interfaces.models.base_storage import (
-    hash_topologies,
-    is_unsplit_topologies,
-)
 
 logger = structlog.get_logger(__name__)
 
 
 def select_repertoire(
-    optimization_id: str, optimizer_type: list[OptimizerType], without_parent_on: list[OptimizerType], session: Session
+    optimization_id: str,
+    optimizer_type: list[OptimizerType],
+    without_children_on: list[OptimizerType],
+    session: Session,
 ) -> list[ACOptimTopology]:
     """Select the topologies that are suitable for mutation and crossover
 
@@ -56,9 +50,8 @@ def select_repertoire(
         The optimization ID to filter for
     optimizer_type : list[OptimizerType]
         The optimizer types to filter for (whitelist)
-    without_parent_on : list[OptimizerType]
-        If the topology has a parent on any of these types, the topology will be filtered out (blacklist). A parent means the
-        topology has already been evaluated on that optimizer type.
+    without_children_on : list[OptimizerType]
+        If the topology already spawned a child on any of these optimizer types, it will be filtered out.
 
     session : Session
         The database session to use
@@ -76,17 +69,17 @@ def select_repertoire(
     )
 
     # Filter out topologies whose parent has the specified optimizer types
-    # (i.e., topologies that were created from parents of those types)
-    if without_parent_on:
-        parent = aliased(ACOptimTopology)
+    # (i.e., topologies that already spawned children on those optimizer types)
+    if without_children_on:
+        child = aliased(ACOptimTopology)
         mutate_query = mutate_query.where(
             ~exists(
                 select(1)
-                .select_from(parent)
+                .select_from(child)
                 .where(
-                    ACOptimTopology.parent_id == parent.id,
-                    parent.optimizer_type.in_(without_parent_on),
-                    parent.optimization_id == optimization_id,
+                    child.parent_id == ACOptimTopology.id,
+                    child.optimizer_type.in_(without_children_on),
+                    child.optimization_id == optimization_id,
                 )
             )
         )
@@ -124,7 +117,7 @@ def get_unsplit_ac_topology(
 
 
 def default_scorer(metrics: pd.DataFrame) -> pd.Series:
-    """Score the topologies based on their fitness only (greedy selection)
+    """Return raw fitness values for the default lower-is-better AC selection.
 
     Parameters
     ----------
@@ -134,49 +127,42 @@ def default_scorer(metrics: pd.DataFrame) -> pd.Series:
     Returns
     -------
     pd.Series
-        The fitness scores
+        The topology fitness values.
     """
-    return metrics["fitness"] + metrics["fitness"].min()
+    return metrics["fitness"]
 
 
-def get_contingency_indices_from_ids(
-    case_ids_all_t: Sequence[Collection[str]], n_minus1_definitions: list[Nminus1Definition]
-) -> list[list[int]]:
-    """Map contingency ids to their indices in the N-1 definition for each timestep.
+def get_contingency_indices_from_ids(case_ids: Collection[str], n_minus1_definition: Nminus1Definition) -> list[int]:
+    """Map contingency ids to their indices in the N-1 definition.
 
     This is a helper method used in update_initial_metrics_with_worst_k_contingencies
     method.
 
     Parameters
     ----------
-    case_ids_all_t : Sequence[Collection[str]]
-        A list of lists, where each inner list contains the contingency ids for a specific timestep.
-    n_minus1_definitions : list[Nminus1Definition]
-        A list of N-1 definitions, one for each timestep, containing the contingencies.
+    case_ids : Sequence[str]
+        A list of contingency ids for a specific topology.
+    n_minus1_definition : Nminus1Definition
+        The N-1 definition containing the contingencies.
 
     Returns
     -------
-    list[list[int]]
-        A list of lists, where each inner list contains the indices of the contingencies in the
-        N-1 definition for the corresponding timestep. If a contingency id is not found, it
+    list[int]
+        A list of indices of the contingencies in the N-1 definition. If a contingency id is not found, it
         will be skipped.
     """
-    case_indices_all_t = []
-    for case_ids, n_minus1_def in zip(case_ids_all_t, n_minus1_definitions, strict=True):
-        id_to_index = {cont.id: idx for idx, cont in enumerate(n_minus1_def.contingencies)}
-        case_indices = [id_to_index[case_id] for case_id in case_ids if case_id in id_to_index]
-        case_indices_all_t.append(case_indices)
-    return case_indices_all_t
+    id_to_index = {cont.id: idx for idx, cont in enumerate(n_minus1_definition.contingencies)}
+    case_indices = [id_to_index[case_id] for case_id in case_ids if case_id in id_to_index]
+    return case_indices
 
 
 INF_FITNESS = 9999999.0
 
 
 def pull(
-    selected_strategy: list[ACOptimTopology],
+    selected_strategy: ACStrategy,
     session: Session = None,
-    n_minus1_definitions: Optional[list[Nminus1Definition]] = None,
-) -> list[ACOptimTopology]:
+) -> ACStrategy:
     """Pull a promising topology from the DC repertoire to AC
 
     This only copies the topology without any changes other than setting the optimizer type to AC.
@@ -186,19 +172,16 @@ def pull(
 
     Parameters
     ----------
-    selected_strategy : list[ACOptimTopology]
+    selected_strategy : ACStrategy
         The selected strategy to pull
     session : Session, optional
         The database session to use, by default None. The session object is used to fetch the unsplit AC topology
         which is then used to add the critical contingency cases to the pulled strategy. These critical cases
         can then be used for early stopping of AC N-1 contingency analysis.
-    n_minus1_definitions : Optional[list[Nminus1Definition]]
-        The N-1 definitions to use for the pulled strategy. If not provided, the pulled strategy will not
-        include any N-1 contingency cases while calculating the top critical contingencies for early stopping.
 
     Returns
     -------
-    list[ACOptimTopology]
+    ACStrategy
         The a copy of the input topologies with the optimizer type set to AC
     """
     if not selected_strategy:
@@ -210,11 +193,6 @@ def pull(
     # in the initialization phase of the AC optimizer.
     unsplit_ac_topo = get_unsplit_ac_topology(optimization_id=optimization_id, session=session) if session else None
     worst_k_cont_ids_unsplit = set(unsplit_ac_topo.worst_k_contingency_cases) if unsplit_ac_topo else set()
-    if n_minus1_definitions is None:
-        logger.warning(
-            "N-1 definition is not provided to pull method."
-            " Early stopping in AC validation will not consider worst_k DC indices"
-        )
     pulled_strategy = []
     for topo in selected_strategy:
         # Merge case_ids from DC and unsplit AC
@@ -250,141 +228,12 @@ def pull(
     return pulled_strategy
 
 
-def reconnect(rng: Rng, selected_strategy: list[ACOptimTopology]) -> list[ACOptimTopology]:
-    """Reconnect a disconnected branch
-
-    The idea behind this mutation operation is that the DC part might have disconnected too many
-    branches, so we try to simplify the topology by reconnecting a single branch in all timesteps
-
-    This might accidentally create the unsplit topology and does not check for that case. A check
-    for this happens upon insertion into the database where the unique constraint will prevent
-    duplicates.
-
-    Parameters
-    ----------
-    rng : Rng
-        The random number generator to use
-    selected_strategy : list[ACOptimTopology]
-        The selected DC or AC strategy to reconnect
-
-    Returns
-    -------
-    list[ACOptimTopology]
-        The a copy of the input topologies with the optimizer type set to AC and a branch reconnected
-        or the empty list if no disconnections were present in the input topologies
-    """
-    branch_set = set([disc for topo in selected_strategy for disc in topo.disconnections])
-    if len(branch_set) == 0:
-        return []
-
-    chosen = rng.choice(list(branch_set))
-    topos = [
-        ACOptimTopology(
-            **topo.model_dump(
-                include=[
-                    "actions",
-                    "pst_setpoints",
-                    "timestep",
-                    "optimization_id",
-                    "strategy_hash",
-                ]
-            ),
-            optimizer_type=OptimizerType.AC,
-            fitness=-INF_FITNESS,
-            disconnections=[disc for disc in topo.disconnections if disc != chosen],
-            unsplit=False,
-            parent_id=topo.id,
-        )
-        for topo in selected_strategy
-    ]
-
-    updated_hash = hash_topologies(topos)
-    unsplit = is_unsplit_topologies(topos)
-    for topo in topos:
-        topo.strategy_hash = updated_hash
-        topo.unsplit = unsplit
-
-    return topos
-
-
-def close_coupler(
-    rng: Rng,
-    selected_strategy: list[ACOptimTopology],
-) -> list[ACOptimTopology]:
-    """Close a coupler in the selected strategy.
-
-    A station that has an open coupler in any of the timesteps is selected and the coupler is closed
-    for all timesteps in the topology.
-
-    This might accidentally create the unsplit topology and does not prohibit that case. A check
-    for this happens upon insertion into the database where the unique constraint will prevent
-    duplicates. The unsplit flag will be set correctly though, so in case the unsplit topology was
-    not yet in the database for some reason, this will add it.
-
-    Parameters
-    ----------
-    rng : Rng
-        The random number generator to use
-    selected_strategy : list[ACOptimTopology]
-        The selected DC or AC strategy to close a coupler. The number of timesteps must be equal to
-        the number of timesteps in the branches_per_sub and injections_per_sub arrays. If the empty
-        list is passed, the function will return an empty list.
-
-    Returns
-    -------
-    list[ACOptimTopology]
-        The a copy of the input topologies with the optimizer type set to AC and a coupler closed
-        or the empty list if no open couplers were present in the input topologies
-    """
-    if selected_strategy == []:
-        return []
-
-    if not any(len(topo.actions) for topo in selected_strategy):
-        return []
-
-    # Select an action to delete (will close the coupler) and delete it in all timesteps
-    selected_action = rng.choice(([action for topo in selected_strategy for action in topo.actions]))
-
-    new_actions = [[action for action in topo.actions if action != selected_action] for topo in selected_strategy]
-
-    # Copy the input strategy and replace the action in all timesteps
-    topos = [
-        ACOptimTopology(
-            **topo.model_dump(
-                include=[
-                    "disconnections",
-                    "pst_setpoints",
-                    "timestep",
-                    "optimization_id",
-                    "strategy_hash",  # Will be updated below
-                ]
-            ),
-            optimizer_type=OptimizerType.AC,
-            fitness=-INF_FITNESS,
-            actions=new_actions_timestep,
-            unsplit=False,  # Will be updated below
-            parent_id=topo.id,
-        )
-        for topo, new_actions_timestep in zip(selected_strategy, new_actions, strict=True)
-    ]
-
-    updated_hash = hash_topologies(topos)
-    unsplit = is_unsplit_topologies(topos)
-    for topo in topos:
-        topo.strategy_hash = updated_hash
-        topo.unsplit = unsplit
-    return topos
-
-
 def evolution(
     rng: Rng,
     session: Session,
     optimization_id: str,
-    close_coupler_prob: float,
-    reconnect_prob: float,
-    pull_prob: float,
     max_retries: int,
-    n_minus1_definitions: Optional[list[Nminus1Definition]] = None,
+    batch_size: int,
     filter_strategy: Optional[FilterStrategy] = None,
 ) -> list[ACOptimTopology]:
     """Perform the AC evolution.
@@ -397,39 +246,30 @@ def evolution(
         The database session to use, will write the new topologies to the database
     optimization_id : str
         The optimization ID to filter for
-    close_coupler_prob : float
-        The probability of closing a coupler
-    reconnect_prob : float
-        The probability of reconnecting a branch
-    pull_prob : float
-        The probability of pulling a strategy
     max_retries : int
         The maximum number of retries to perform if a strategy is already in the database
-    n_minus1_definitions : Optional[list[Nminus1Definition]]
-        A list of N-1 definitions, one for each timestep, containing the contingencies.
+    batch_size : int
+        Number of unevaluated topologies to sample and convert to AC in one try.
     filter_strategy : Optional[FilterStrategy]
         The filter strategy to use for the optimization,
         used to filter out strategies that are too far away from the original topology.
 
     Returns
     -------
-    list[ACOptimTopology]
+    ACStrategy
         The strategy that was created during the evolution or an empty list if something went
         wrong at all retries
     """
     for _try in range(max_retries):
-        new_strategy = evolution_try(
+        new_topo_batch = evolution_try(
             rng=rng,
             session=session,
             optimization_id=optimization_id,
-            close_coupler_prob=close_coupler_prob,
-            reconnect_prob=reconnect_prob,
-            pull_prob=pull_prob,
-            n_minus1_definition=n_minus1_definitions,
+            batch_size=batch_size,
             filter_strategy=filter_strategy,
         )
-        if len(new_strategy):
-            return new_strategy
+        if len(new_topo_batch):
+            return new_topo_batch
     return []
 
 
@@ -437,10 +277,7 @@ def evolution_try(
     rng: Rng,
     session: Session,
     optimization_id: str,
-    close_coupler_prob: float,
-    reconnect_prob: float,
-    pull_prob: float,
-    n_minus1_definition: Optional[list[Nminus1Definition]] = None,
+    batch_size: int,
     filter_strategy: Optional[FilterStrategy] = None,
 ) -> list[ACOptimTopology]:
     """Perform a single try of the AC evolution.
@@ -453,14 +290,8 @@ def evolution_try(
         The database session to use, will write the new topologies to the database
     optimization_id : str
         The optimization ID to filter for
-    close_coupler_prob : float
-        The probability of closing a coupler
-    reconnect_prob : float
-        The probability of reconnecting a branch
-    pull_prob : float
-        The probability of pulling a strategy
-    n_minus1_definition : Optional[list[Nminus1Definition]]
-        A list of N-1 definitions, one for each timestep, containing the contingencies.
+    batch_size : int
+        Number of unevaluated topologies to sample and convert to AC.
     filter_strategy : Optional[FilterStrategy]
         The filter strategy to use for the optimization,
         used to filter out strategies that are too far away from the original topology.
@@ -468,77 +299,29 @@ def evolution_try(
     Returns
     -------
     list[ACOptimTopology]
-        The strategy that was created during the evolution or an empty list if something went
-        wrong.
+        The list of topologies that were created during the evolution or an empty list if something went
+        wrong during the try
     """
-    action_choice = rng.choice(["pull", "reconnect", "close_coupler"], p=[pull_prob, reconnect_prob, close_coupler_prob])
-    if action_choice == "pull":
-        old_strategy = select_strategy(
-            rng=rng,
-            repertoire=select_repertoire(
-                optimization_id=optimization_id,
-                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
-                without_parent_on=[],
-                session=session,
-            ),
-            candidates=select_repertoire(
-                optimization_id=optimization_id,
-                optimizer_type=[OptimizerType.DC],
-                without_parent_on=[OptimizerType.AC],
-                session=session,
-            ),
-            interest_scorer=default_scorer,
-            filter_strategy=filter_strategy,
-        )
-        new_strategy = pull(selected_strategy=old_strategy, session=session, n_minus1_definitions=n_minus1_definition)
-    elif action_choice == "reconnect":
-        old_strategy = select_strategy(
-            rng=rng,
-            repertoire=select_repertoire(
-                optimization_id=optimization_id,
-                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
-                without_parent_on=[],
-                session=session,
-            ),
-            candidates=select_repertoire(
-                optimization_id=optimization_id,
-                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
-                without_parent_on=[OptimizerType.AC],
-                session=session,
-            ),
-            interest_scorer=default_scorer,
-            filter_strategy=None,
-        )
-
-        new_strategy = reconnect(
-            rng=rng,
-            selected_strategy=old_strategy,
-        )
-    elif action_choice == "close_coupler":
-        old_strategy = select_strategy(
-            rng=rng,
-            repertoire=select_repertoire(
-                optimization_id=optimization_id,
-                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
-                without_parent_on=[],
-                session=session,
-            ),
-            candidates=select_repertoire(
-                optimization_id=optimization_id,
-                optimizer_type=[OptimizerType.DC, OptimizerType.AC],
-                without_parent_on=[OptimizerType.AC],
-                session=session,
-            ),
-            interest_scorer=default_scorer,
-            filter_strategy=None,
-        )
-        new_strategy = close_coupler(
-            rng=rng,
-            selected_strategy=old_strategy,
-        )
-    else:
-        raise RuntimeError("np.random.choice returned an unexpected value")
-
+    selected_topologies = select_strategy(
+        rng=rng,
+        repertoire=select_repertoire(
+            optimization_id=optimization_id,
+            optimizer_type=[OptimizerType.DC, OptimizerType.AC],
+            without_children_on=[],
+            session=session,
+        ),
+        candidates=select_repertoire(
+            optimization_id=optimization_id,
+            optimizer_type=[OptimizerType.DC],
+            without_children_on=[OptimizerType.AC],
+            session=session,
+        ),
+        interest_scorer=default_scorer,
+        batch_size=batch_size,
+        lower_scores_are_better=True,
+        filter_strategy=filter_strategy,
+    )
+    new_strategy = pull(selected_strategy=selected_topologies, session=session)
     # Something went wrong during the mutation
     if new_strategy == []:
         return []

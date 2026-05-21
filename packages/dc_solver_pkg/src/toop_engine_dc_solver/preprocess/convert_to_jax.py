@@ -636,6 +636,7 @@ def load_grid(
     pandapower: bool = False,
     parameters: Optional[PreprocessParameters] = None,
     status_update_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
+    # TODO: Confusing naming with dc_params/LoadflowSolverParameters, consider renaming
     lf_params: Optional[LoadflowParameters | dict] = None,
 ) -> tuple[StaticInformationStats, StaticInformation, NetworkData]:
     """Load the grid and preprocess it

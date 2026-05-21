@@ -86,7 +86,7 @@ def apply_pst_taps(
     current_shift_angles = nodal_injections[:, :, nodal_inj_info.controllable_linear_pst_indices]
 
     # Compute the delta in shift angles
-    delta_shift_angles = new_shift_angles - current_shift_angles
+    delta_shift_angles = -new_shift_angles + current_shift_angles
     # Shape: (batch_size, n_timesteps, n_controllable_linear_pst)
 
     # Extract PSDF columns from PTDF using controllable_linear_pst_indices

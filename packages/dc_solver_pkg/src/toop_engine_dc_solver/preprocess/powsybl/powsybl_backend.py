@@ -454,7 +454,7 @@ class PowsyblBackend(BackendInterface):
 
         for pst_id in self._get_branches()[self._get_branches()["pst_controllable_linear"]].index:
             taps_df = steps.loc[pst_id].sort_index()
-            taps = np.squeeze(taps_df.values)
+            taps = -np.squeeze(taps_df.values)
             shift_taps.append(taps)
         return shift_taps
 

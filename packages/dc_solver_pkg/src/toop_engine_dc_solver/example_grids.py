@@ -39,6 +39,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     create_busbar_b_in_ieee,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     extract_station_info_powsybl,
+    parallel_pst_example,
     powsybl_case30_with_psts,
     powsybl_case1354,
     powsybl_case9241,
@@ -47,6 +48,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
+from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
@@ -58,6 +60,12 @@ from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
+)
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    AreaSettings,
+    CgmesImporterParameters,
+    LimitAdjustmentParameters,
+    PreprocessParameters,
 )
 
 
@@ -1085,7 +1093,7 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     )
 
 
-def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> None:
+def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> PreprocessParameters:
     """Create a preprocessed folder for create_complex_grid_battery_hvdc_svc_3w_trafo().
 
     Runs the importer and preprocessing.
@@ -1093,6 +1101,9 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> None:
     Parameter:
     folder: Path
         The root folder where the data is saved to.
+    Returns:
+    PreprocessParameters
+        The parameters used for preprocessing, which can be used for testing the consistency of the preprocessing step
     """
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
     pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
@@ -1101,19 +1112,61 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> None:
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
     net.save(grid_file_path)
 
-    output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
-    output_path_masks.mkdir(parents=True, exist_ok=True)
-    rel_sub_mask = np.zeros(len(net.get_buses()), dtype=bool)
-    rel_sub_mask[1:3] = True
-    np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
-    line_mask = np.ones(len(net.get_lines()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
-    trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_controllable"], trafo_mask)
-
-    save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        data_folder=folder,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
     )
+
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
+    return preprocessing_parameters
+
+
+def parallel_pst_data_folder(folder: Path) -> PreprocessParameters:
+    """Create a preprocessed folder for parallel_pst_example().
+
+    Runs the importer and preprocessing.
+
+    Parameter:
+    folder: Path
+        The root folder where the data is saved to.
+    Returns:
+    PreprocessParameters
+        The parameters used for preprocessing, which can be used for testing the consistency of the preprocessing step
+    """
+    net = parallel_pst_example()
+    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+
+    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_file_path)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        data_folder=folder,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
+    return preprocessing_parameters

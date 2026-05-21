@@ -38,14 +38,7 @@ from toop_engine_dc_solver.jax.types import ActionSet
 from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
-from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
-    AreaSettings,
-    CgmesImporterParameters,
-    LimitAdjustmentParameters,
-    PreprocessParameters,
-)
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition, load_nminus1_definition
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
@@ -261,9 +254,9 @@ def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
         complex_grid_path = target_path / "complex_grid"
         if not complex_grid_path.exists():
-            complex_grid_battery_hvdc_svc_3w_trafo_preprocess(complex_grid_path)
+            preprocess_parameters = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(complex_grid_path)
             filesystem_dir = DirFileSystem(str(complex_grid_path))
-            load_grid(filesystem_dir, pandapower=False, lf_params=DISTRIBUTED_SLACK)
+            load_grid(filesystem_dir, pandapower=False, lf_params=DISTRIBUTED_SLACK, parameters=preprocess_parameters)
 
         case30_path = target_path / "case30"
         if not case30_path.exists():
@@ -622,37 +615,6 @@ def create_consumer():
         return consumer
 
     return _create
-
-
-def complex_grid_battery_hvdc_svc_3w_trafo_preprocess(folder: Path) -> None:
-    """Create a preprocessed folder for create_complex_grid_battery_hvdc_svc_3w_trafo().
-
-    Runs the importer and preprocessing.
-
-    Parameter:
-    folder: Path
-        The root folder where the data is saved to.
-    """
-    folder.mkdir(parents=True, exist_ok=True)
-    complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder)
-
-    importer_parameters = CgmesImporterParameters(
-        grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
-        data_folder=folder,
-        area_settings=AreaSettings(
-            cutoff_voltage=1,
-            control_area=[""],
-            view_area=[""],
-            nminus1_area=[""],
-            dso_trafo_factors=LimitAdjustmentParameters(),
-            dso_trafo_weight=1.0,
-            border_line_factors=LimitAdjustmentParameters(),
-            border_line_weight=1.0,
-        ),
-    )
-    _preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
-
-    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
 
 
 def _synthetic_action_set(

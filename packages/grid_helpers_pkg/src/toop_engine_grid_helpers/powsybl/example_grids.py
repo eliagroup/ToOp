@@ -26,7 +26,8 @@ def add_phaseshift_transformer_to_line_powsybl(
     line_idx: str,
     tap_min: int = -30,
     tap_max: int = 30,
-    tap_step_degree: float = 2.0,
+    alpha_min_degree: float = -30,
+    alpha_max_degree: float = 30,
     x_min: float = 5,
     x_max: float = 6,
 ) -> None:
@@ -94,10 +95,11 @@ def add_phaseshift_transformer_to_line_powsybl(
 
     taps = range(tap_min, tap_max + 1)
     x_sets = abs(np.linspace(-x_min, x_max, len(taps)))
+    alpha_steps = abs(np.linspace(alpha_min_degree, alpha_max_degree, len(taps)))
     steps_df = pd.DataFrame.from_records(
         index="id",
         columns=["id", "b", "g", "r", "x", "rho", "alpha"],
-        data=[(pst, 0, 0, 0, x, 1, tap_step_degree * tap) for x, tap in zip(x_sets, taps, strict=True)],
+        data=[(pst, 0, 0, 0, x, 1, alpha) for x, alpha in zip(x_sets, alpha_steps, strict=True)],
     )
     net.create_phase_tap_changers(ptc_df, steps_df)
 
@@ -111,9 +113,11 @@ def powsybl_case30_with_psts() -> pypowsybl.network.Network:
         The Powsybl IEEE 30 bus network with phase-shifting transformers.
     """
     net = pypowsybl.network.create_ieee30()
-    add_phaseshift_transformer_to_line_powsybl(net, "L8-28-1", tap_min=-20, tap_max=10, tap_step_degree=3.0)
     add_phaseshift_transformer_to_line_powsybl(
-        net, "L6-28-1", tap_min=-30, tap_max=35, tap_step_degree=4.0, x_min=0.0, x_max=0.0
+        net, "L8-28-1", tap_min=-20, tap_max=10, alpha_min_degree=-30.0, alpha_max_degree=30.0, x_min=0.0, x_max=0.0
+    )
+    add_phaseshift_transformer_to_line_powsybl(
+        net, "L6-28-1", tap_min=-30, tap_max=35, alpha_min_degree=-30.0, alpha_max_degree=25.0, x_min=0.0, x_max=0.0
     )
     return net
 
@@ -692,7 +696,9 @@ def case14_matching_asset_topo_powsybl(folder: Path) -> None:
 
 # ruff: noqa: PLR0915
 # sonar: noqa: S3776
-def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
+def create_complex_grid_battery_hvdc_svc_3w_trafo(
+    linear_pst: np.ndarray = None, connect_line_out_of_service: bool = False
+) -> Network:
     """Create a complex grid with batteries, HVDC, SVC, and 3-winding transformers using Powsybl.
 
     This grid includes various components to test different functionalities. It is not aimed to be a realistic
@@ -702,11 +708,20 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     TODO: add sensable operational limits, maybe some ratio/phase tap changers, etc.
     Ideally it should have some overloads that can be solved by ToOp
 
+    Parameters
+    ----------
+    linear_pst : Array[Bool, " n_pst"]
+        Whether to use linear phase-shifting transformers
+    connect_line_out_of_service : bool
+        Whether to connect the line that is out of service.
+
     Returns
     -------
     Network
         The created complex grid network.
     """
+    if linear_pst is None:
+        linear_pst = np.array([False, False])
     n = pypowsybl.network.create_empty("TESTGRID_NODE_BREAKER_HVDC_BAT_SVC_3W_TRAFO")
 
     # ---------------------------------------------------------------------
@@ -1145,9 +1160,9 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         columns=["id", "target_deadband", "regulation_mode", "low_tap", "tap"],
         data=[("2W_MV_HV_PST", 2, "CURRENT_LIMITER", -30, -20)],
     )
-    taps = np.arange(-30, 31)  # -30 .. 30 inclusive
 
     # base/min/max values (keep b,g,r,x constant as before, interpolate rho and alpha)
+    taps = np.arange(-30, 24)
     b_val, g_val, rho_val = 0, 0, 1
     alpha_min, alpha_max = -21.0, 28.0
     x_min, x_max = -20.0, 30.0
@@ -1156,6 +1171,10 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     alphas = np.linspace(alpha_min, alpha_max, len(taps))
     x_vals = abs(np.linspace(x_min, x_max, len(taps)))
     r_vals = abs(np.linspace(r_min, r_max, len(taps)))
+
+    if linear_pst[0]:
+        x_vals = np.zeros_like(x_vals)
+        r_vals = np.zeros_like(r_vals)
 
     rows = [
         ("2W_MV_HV_PST", b_val, g_val, r_val, x_val, rho_val, alpha)
@@ -1186,18 +1205,25 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
         columns=["id", "target_deadband", "regulation_mode", "low_tap", "tap"],
         data=[("MV_load_PST_no_limit", 2, "CURRENT_LIMITER", -30, -20)],
     )
-    taps = np.arange(-30, 31)  # -30 .. 30 inclusive
 
     # base/min/max values (keep b,g,r,x constant as before, interpolate rho and alpha)
-    # create one linear pst
+    taps = np.arange(-30, 19)
     b_val, g_val, rho_val = 0, 0, 1
     alpha_min, alpha_max = -21.0, 28.0
-    r_val = 0
-    x_val = 0
+    x_min, x_max = -20.0, 30.0
+    r_min, r_max = -15.0, 25.0
 
     alphas = np.linspace(alpha_min, alpha_max, len(taps))
+    x_vals = abs(np.linspace(x_min, x_max, len(taps)))
+    r_vals = abs(np.linspace(r_min, r_max, len(taps)))
 
-    rows = [("MV_load_PST_no_limit", b_val, g_val, r_val, x_val, rho_val, alpha) for alpha in alphas]
+    if linear_pst[1]:
+        x_vals = np.zeros_like(x_vals)
+        r_vals = np.zeros_like(r_vals)
+    rows = [
+        ("MV_load_PST_no_limit", b_val, g_val, r_val, x_val, rho_val, alpha)
+        for r_val, x_val, alpha in zip(r_vals, x_vals, alphas, strict=True)
+    ]
 
     steps_df = pd.DataFrame.from_records(data=rows, index="id", columns=["id", "b", "g", "r", "x", "rho", "alpha"])
     n.create_phase_tap_changers(ptc_df, steps_df)
@@ -1599,6 +1625,8 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo() -> Network:
     t_ids = ["MV_load_PST_no_limit"]
     limits_tr = limits_tr.drop(t_ids)
     n.create_operational_limits(limits_tr)
+    if connect_line_out_of_service:
+        n.connect("LINE_out_of_service")
 
     return n
 
@@ -1861,9 +1889,25 @@ def three_node_pst_example() -> Network:
     )
 
     add_phaseshift_transformer_to_line_powsybl(
-        net, line_idx="LINE_BC_1", tap_min=-30, tap_max=25, tap_step_degree=0.01, x_min=0.0, x_max=0.0
+        net,
+        line_idx="LINE_BC_1",
+        tap_min=-30,
+        tap_max=25,
+        alpha_min_degree=-10.0,
+        alpha_max_degree=10.0,
+        x_min=0.0,
+        x_max=0.0,
     )
 
-    add_phaseshift_transformer_to_line_powsybl(net, line_idx="LINE_BC_2", tap_min=-30, tap_max=30, tap_step_degree=0.01)
+    add_phaseshift_transformer_to_line_powsybl(
+        net,
+        line_idx="LINE_BC_2",
+        tap_min=-30,
+        tap_max=30,
+        alpha_min_degree=-10.0,
+        alpha_max_degree=20.0,
+        x_min=0.0,
+        x_max=0.0,
+    )
 
     return net

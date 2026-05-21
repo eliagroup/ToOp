@@ -1215,24 +1215,88 @@ def overlapping_monitored_and_disconnected_branch_data(
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid")
-    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path)
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, False]))
     return tmp_path
 
 
-@pytest.fixture(scope="function")
-def create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(
-    _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path: Path, tmp_path: Path
-) -> Path:
-    shutil.copytree(_create_complex_grid_battery_hvdc_svc_3w_trafo_data_path, tmp_path, dirs_exist_ok=True)
+@pytest.fixture(scope="session")
+def __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_0")
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, False]))
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
+def __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_1")
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, True]))
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
+def __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("complex_grid_linear_0_1")
+    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, True]))
     return tmp_path
 
 
 @pytest.fixture(scope="function")
 def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
-    create_complex_grid_battery_hvdc_svc_3w_trafo_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+    _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> Path:
-    powsybl_data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_data_path
+    powsybl_data_folder = _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path
     tmp_path = tmp_path_factory.mktemp("complex_grid", numbered=True)
+
+    # Copy over the grid file
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
+
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder(
+    __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    powsybl_data_folder = __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path
+    tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_0", numbered=True)
+
+    # Copy over the grid file
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
+
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder(
+    __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    powsybl_data_folder = __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path
+    tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_1", numbered=True)
+
+    # Copy over the grid file
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
+
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_folder(
+    __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    powsybl_data_folder = __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path
+    tmp_path = tmp_path_factory.mktemp("complex_grid_linear_0_1", numbered=True)
 
     # Copy over the grid file
     shutil.copytree(
@@ -1278,7 +1342,7 @@ def default_nodal_inj_start_options(static_information: StaticInformation):
     )
 
 
-def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> None:
+def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst: np.ndarray = None) -> None:
     """Create a preprocessed folder for create_complex_grid_battery_hvdc_svc_3w_trafo().
 
     Runs the importer and preprocessing.
@@ -1286,8 +1350,11 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> N
     Parameter:
     folder: Path
         The root folder where the data is saved to.
+    linear_pst: np.ndarray, optional
+        A boolean array of length 2 indicating whether the PSTs in the grid should be linear
     """
-    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    # Connect the out of service line to bring the second PST operational
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=linear_pst, connect_line_out_of_service=True)
     pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
     save_lf_params_to_fs(
         DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])

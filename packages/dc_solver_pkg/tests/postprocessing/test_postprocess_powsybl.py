@@ -232,7 +232,14 @@ def test_apply_disconnections_matches_loadflows(
 
 
 @pytest.mark.parametrize(
-    "fixture_name", ["three_node_pst_example_data_folder", "complex_grid_battery_hvdc_svc_3w_trafo_data_folder"]
+    "fixture_name",
+    [
+        "three_node_pst_example_data_folder",
+        "complex_grid_battery_hvdc_svc_3w_trafo_data_folder",
+        "complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder",
+        "complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder",
+        "complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_folder",
+    ],
 )
 def test_change_pst_matches_loadflows(
     request,
@@ -298,6 +305,8 @@ def test_change_pst_matches_loadflows(
     assert np.allclose(n_0_runner_no_pst, n_0_no_pst), "Runner should match direct pypowsybl computation"
     assert np.allclose(n_1_runner_no_pst, n_1_no_pst), "Runner should match direct pypowsybl computation"
 
+    assert di.nodal_injection_information is not None, "Grid should have nodal injection information for this test"
+
     solver_res, success_dc = compute_symmetric_batch(
         topology_batch=default_topology(solver_config),
         disconnection_batch=None,
@@ -316,8 +325,8 @@ def test_change_pst_matches_loadflows(
     pst_indices = [pst.id for pst in action_set.pst_ranges]
 
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    net.update_phase_tap_changers(id=pst_indices, tap=(abs_taps).tolist())
     net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", DISTRIBUTED_SLACK)
+    net.update_phase_tap_changers(id=pst_indices, tap=(abs_taps).tolist())
     pypowsybl.loadflow.run_dc(net)
     n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
 

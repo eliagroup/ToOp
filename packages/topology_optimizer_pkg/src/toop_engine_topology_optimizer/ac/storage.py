@@ -10,6 +10,7 @@
 from datetime import datetime, timedelta
 
 from beartype.typing import Optional
+from sqlalchemy import StaticPool
 from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, delete
 from toop_engine_topology_optimizer.interfaces.messages.commons import OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import Strategy, Topology
@@ -140,17 +141,18 @@ def convert_message_topo_to_db_topo(
 
 
 def create_session() -> Session:
-    """Create an in-memory SQLite session with the ACOptimTopology table created.
+    """Create a thread-safe shared in-memory SQLite session for the AC worker.
 
-    Returns
-    -------
-    Session
-        The created session with the in-memory SQLite database
+    Using ``StaticPool`` plus ``check_same_thread=False`` keeps the
+    worker on a single shared in-memory database connection.
     """
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     SQLModel.metadata.create_all(engine, tables=[ACOptimTopology.__table__, FinishedOptimizations.__table__])
-    session = Session(engine)
-    return session
+    return Session(engine, expire_on_commit=False)
 
 
 def scrub_db(session: Session, max_age_seconds: int = 86400) -> None:

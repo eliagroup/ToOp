@@ -280,11 +280,11 @@ def test_write_summary_exports_only_accepted_topologies(
 ) -> None:
     # This runs the full query + export loop against the grid snapshot and action set.
     write_summary(
-        grid_files=[complex_grid_summary_context.grid_file],
+        grid_file=complex_grid_summary_context.grid_file,
         db=stored_topologies.session,
         optimization_id="opt-1",
         processed_gridfile_fs=complex_grid_summary_context.filesystem,
-        action_sets=[complex_grid_summary_context.action_set],
+        action_set=complex_grid_summary_context.action_set,
     )
 
     output_dir = (

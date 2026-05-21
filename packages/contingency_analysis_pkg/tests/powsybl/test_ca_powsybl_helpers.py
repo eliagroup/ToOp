@@ -15,6 +15,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     PowsyblMonitoredElements,
     PowsyblNMinus1Definition,
     add_name_column,
+    build_branch_limit_cache,
     get_blank_va_diff,
     get_blank_va_diff_with_buses,
     get_branch_results,
@@ -23,8 +24,10 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_va_diff_results,
     prepare_branch_limits,
     set_target_values_to_lf_values_incl_distributed_slack,
+    translate_branch_limits_for_powsybl,
     translate_contingency_to_powsybl,
     translate_monitored_elements_to_powsybl,
+    translate_nminus1_components_for_powsybl,
     translate_nminus1_for_powsybl,
     update_basename,
 )
@@ -520,6 +523,65 @@ def test_translate_nminus1_for_powsybl(powsybl_bus_breaker_net: pypowsybl.networ
     nminus1_def.id_type = "unique_pandapower"
     with pytest.raises(ValueError):
         translate_nminus1_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
+
+
+def test_translate_nminus1_for_powsybl_split_helpers(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[
+            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            for index, row in powsybl_bus_breaker_net.get_branches().iloc[:4].iterrows()
+        ],
+        contingencies=[Contingency(id="BASECASE", elements=[])],
+        id_type="powsybl",
+    )
+
+    translated_full = translate_nminus1_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
+    translated_rest = translate_nminus1_components_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
+    translated_branch_limits = translate_branch_limits_for_powsybl(
+        branch_limits=powsybl_bus_breaker_net.get_operational_limits().query("type=='CURRENT'"),
+        monitored_branches=translated_rest.monitored_elements["branches"],
+    )
+
+    assert translated_rest.branch_limits.empty
+    assert translated_full.branch_limits.equals(translated_branch_limits)
+    assert translated_full.contingencies == translated_rest.contingencies
+    assert translated_full.monitored_elements == translated_rest.monitored_elements
+    assert translated_full.missing_elements == translated_rest.missing_elements
+    assert translated_full.missing_contingencies == translated_rest.missing_contingencies
+    assert translated_full.element_name_mapping == translated_rest.element_name_mapping
+    assert translated_full.contingency_name_mapping == translated_rest.contingency_name_mapping
+    assert translated_full.blank_va_diff.equals(translated_rest.blank_va_diff)
+    assert translated_full.bus_map.equals(translated_rest.bus_map)
+    assert translated_full.voltage_levels.equals(translated_rest.voltage_levels)
+
+
+def test_translate_nminus1_for_powsybl_with_branch_limit_cache(
+    powsybl_bus_breaker_net: pypowsybl.network.Network,
+) -> None:
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[
+            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            for index, row in powsybl_bus_breaker_net.get_branches().iloc[:4].iterrows()
+        ],
+        contingencies=[Contingency(id="BASECASE", elements=[])],
+        id_type="powsybl",
+    )
+
+    uncached_translation = translate_nminus1_for_powsybl(nminus1_def, powsybl_bus_breaker_net)
+    branch_limit_cache = build_branch_limit_cache(
+        powsybl_bus_breaker_net,
+        monitored_branches=uncached_translation.monitored_elements["branches"],
+    )
+    cached_translation = translate_nminus1_for_powsybl(
+        nminus1_def,
+        powsybl_bus_breaker_net,
+        branch_limit_cache=branch_limit_cache,
+    )
+
+    assert cached_translation.contingencies == uncached_translation.contingencies
+    assert cached_translation.monitored_elements == uncached_translation.monitored_elements
+    assert cached_translation.branch_limits.equals(uncached_translation.branch_limits)
+    assert cached_translation.blank_va_diff.equals(uncached_translation.blank_va_diff)
 
 
 def test_get_branch_results():

@@ -299,7 +299,7 @@ def convert_file(
     )
 
     # load network
-    status_update_fn("load_ucte", "start loading grid file")
+    status_update_fn("load_from_fs", "start loading grid file")
     network = load_powsybl_from_fs(
         filesystem=unprocessed_gridfile_fs,
         file_path=importer_parameters.grid_model_file,
@@ -307,7 +307,7 @@ def convert_file(
     )
 
     network_analysis.remove_branches_with_same_bus(network)
-    status_update_fn("load_ucte", "done loading grid file")
+    status_update_fn("load_from_fs", "done loading grid file")
 
     pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
     if pypowsybl.__version__ <= "1.12.0":

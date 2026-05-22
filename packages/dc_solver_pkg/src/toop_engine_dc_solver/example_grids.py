@@ -26,6 +26,8 @@ import pypowsybl
 from beartype.typing import Literal, Optional
 from fsspec.implementations.dirfs import DirFileSystem
 from networkx.algorithms.community import kernighan_lin_bisection
+from toop_engine_dc_solver.preprocess import NetworkData
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_grid_helpers.pandapower.example_grids import (
@@ -1093,7 +1095,9 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     )
 
 
-def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> PreprocessParameters:
+def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
+    folder: Path, linear_pst: Optional[np.ndarray[bool]] = None
+) -> NetworkData:
     """Create a preprocessed folder for create_complex_grid_battery_hvdc_svc_3w_trafo().
 
     Runs the importer and preprocessing.
@@ -1101,11 +1105,18 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> Preproce
     Parameter:
     folder: Path
         The root folder where the data is saved to.
+    linear_pst: np.ndarray
+        The linear PST coefficients to use for the grid.
+        This is required to ensure that the preprocessing step is consistent with the grid creation step,
+        which uses the same linear PST coefficients.
     Returns:
-    PreprocessParameters
-        The parameters used for preprocessing, which can be used for testing the consistency of the preprocessing step
+    NetworkData
+        The network data after preprocessing, which can be used for testing the consistency of the preprocessing step
     """
-    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    if linear_pst is None:
+        linear_pst = np.array([[False, False]])
+    # Connect the out of service line to bring the second PST operational
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=linear_pst, connect_line_out_of_service=True)
     pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
 
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
@@ -1129,10 +1140,18 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> Preproce
 
     _ = preprocessing.convert_file(importer_parameters=importer_parameters)
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
-    return preprocessing_parameters
+
+    _info, _static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(folder),
+        pandapower=False,
+        status_update_fn=None,
+        parameters=preprocessing_parameters,
+    )
+
+    return network_data
 
 
-def parallel_pst_data_folder(folder: Path) -> PreprocessParameters:
+def parallel_pst_data_folder(folder: Path) -> NetworkData:
     """Create a preprocessed folder for parallel_pst_example().
 
     Runs the importer and preprocessing.
@@ -1141,8 +1160,8 @@ def parallel_pst_data_folder(folder: Path) -> PreprocessParameters:
     folder: Path
         The root folder where the data is saved to.
     Returns:
-    PreprocessParameters
-        The parameters used for preprocessing, which can be used for testing the consistency of the preprocessing step
+    NetworkData
+        The network data after preprocessing, which can be used for testing the consistency of the preprocessing step
     """
     net = parallel_pst_example()
     pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
@@ -1169,4 +1188,11 @@ def parallel_pst_data_folder(folder: Path) -> PreprocessParameters:
     _ = preprocessing.convert_file(importer_parameters=importer_parameters)
 
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
-    return preprocessing_parameters
+    _info, _static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(folder),
+        pandapower=False,
+        status_update_fn=None,
+        parameters=preprocessing_parameters,
+    )
+
+    return network_data

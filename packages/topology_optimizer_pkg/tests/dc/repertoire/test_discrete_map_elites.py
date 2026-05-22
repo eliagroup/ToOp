@@ -153,7 +153,8 @@ def test_manual_pst_optimization(
 
     inj_info = di.nodal_injection_information
     assert jnp.array_equal(
-        inj_info.pst_tap_values[jnp.arange(len(inj_info.starting_tap_idx)), inj_info.starting_tap_idx], jnp.array([0.0, 0.0])
+        inj_info.pst_tap_values[jnp.arange(len(inj_info.starting_tap_idx)), inj_info.starting_tap_idx],
+        -jnp.array(net.get_2_windings_transformers(all_attributes=True)["alpha"].values),
     )
 
     # Default taps should lead to overload, optimization should fix it

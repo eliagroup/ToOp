@@ -19,6 +19,7 @@ def get_relevant_branches(
     outaged_branch_mask: Bool[np.ndarray, " n_branch"],
     multi_outage_mask: Bool[np.ndarray, " n_multi_outages n_branch"],
     busbar_outage_branch_mask: Bool[np.ndarray, " n_branch"],
+    controllable_phase_shift_mask: Bool[np.ndarray, " n_branch"],
 ) -> Int[np.ndarray, " n_branch_reduced"]:
     """Get all relevant branches.
 
@@ -41,6 +42,8 @@ def get_relevant_branches(
         A mask indicating which branches are outaged in the multi-outage case.
     busbar_outage_branch_mask : Bool[np.ndarray, " n_branch"]
         A mask indicating which branches are outaged due to busbar outages.
+    controllable_phase_shift_mask : Bool[np.ndarray, " n_branch"]
+        A mask indicating which branches are controllable phase shifters.
 
     Returns
     -------
@@ -57,6 +60,7 @@ def get_relevant_branches(
         | outaged_branch_mask
         | multi_outage_mask.any(axis=0)
         | busbar_outage_branch_mask
+        | controllable_phase_shift_mask
     )
 
     return np.flatnonzero(branches_relevant)

@@ -12,19 +12,27 @@ busbars of lines, transformers, loads and generators (because it's not supported
 routines that help parsing a topology optimization result
 """
 
+from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
 import pypowsybl
-from beartype.typing import Literal, Optional
+import structlog
+from beartype.typing import Iterator, Literal, Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float
 from overrides import overrides
 from pypowsybl.network import Network
 from toop_engine_contingency_analysis.pypowsybl import (
+    PowsyblBranchLimitCache,
+    build_branch_limit_cache,
     run_contingency_analysis_powsybl,
+)
+from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
+    fingerprint_current_limits_for_powsybl,
+    get_current_branch_limits_for_powsybl,
 )
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
@@ -42,6 +50,8 @@ from toop_engine_interfaces.asset_topology_helpers import electrical_components
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet
+
+logger = structlog.get_logger(__name__)
 
 
 def count_connected_components(net: Network) -> int:
@@ -160,15 +170,8 @@ def apply_disconnections(net: Network, disconnections: list[int], action_set: Ac
     for disconnection in disconnections:
         assert disconnection < len(action_set.disconnectable_branches), "Disconnection index out of range"
         elem = action_set.disconnectable_branches[disconnection]
-        branches = net.get_branches(attributes=["connected1", "connected2"])
-        if elem.id not in branches.index:
-            raise RuntimeError(f"Failed to disconnect {elem}")
-
-        branch = branches.loc[elem.id]
-        if not bool(branch["connected1"] or branch["connected2"]):
-            continue
-
-        net.update_branches(id=elem.id, connected1=False, connected2=False)
+        if not net.disconnect(elem.id):
+            logger.warning(f"Failed to disconnect element {elem.id} of type {elem.kind} at index {disconnection}")
 
 
 def apply_pst_setpoints(net: Network, pst_setpoints: list[int], action_set: ActionSet) -> None:
@@ -315,11 +318,136 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self.net = None
         self.action_set: Optional[ActionSet] = None
         self.nminus1_definition: Optional[Nminus1Definition] = None
+        self.branch_limit_cache: Optional[PowsyblBranchLimitCache] = None
         self.last_action_info: Optional[AdditionalActionInfo] = None
         self.variant_id = "InitialState"
+        self._variant_counter = 0
         if lf_params is None:
             lf_params = DISTRIBUTED_SLACK
         self.lf_params = deepcopy(lf_params)
+
+    def _refresh_branch_limit_cache(self) -> Optional[PowsyblBranchLimitCache]:
+        """Build or clear the cached branch-limit translation for the runner's current state.
+
+        Returns
+        -------
+        Optional[PowsyblBranchLimitCache]
+            The cached branch-limit preparation for the current base grid and N-1 definition,
+            or None if the runner does not have enough state yet.
+        """
+        if self.net is None or self.nminus1_definition is None:
+            self.branch_limit_cache = None
+            return None
+
+        monitored_branches = [
+            element.id for element in self.nminus1_definition.monitored_elements if element.kind == "branch"
+        ]
+
+        if self.branch_limit_cache is not None:
+            current_limit_fingerprint = fingerprint_current_limits_for_powsybl(
+                get_current_branch_limits_for_powsybl(self.net)
+            )
+            if self.branch_limit_cache.matches(
+                monitored_branches=monitored_branches,
+                chosen_limit="permanent_limit",
+                current_limit_fingerprint=current_limit_fingerprint,
+            ):
+                return self.branch_limit_cache
+
+        self.branch_limit_cache = build_branch_limit_cache(self.net, monitored_branches=monitored_branches)
+        return self.branch_limit_cache
+
+    def _next_temporary_variant_id(self) -> str:
+        """Return a unique temporary variant id for an isolated runner invocation.
+
+        Returns
+        -------
+        str
+            A unique temporary variant id that can be used for cloning the base variant
+            and applying topology changes in-place.
+        """
+        self._variant_counter += 1
+        return f"{self.variant_id}_runner_tmp_{self._variant_counter}"
+
+    def _get_relevant_station_id(self) -> Optional[str]:
+        """Return a representative relevant station id for topology-kind detection."""
+        if self.action_set is None:
+            return None
+
+        for topology in (self.action_set.starting_topology, self.action_set.simplified_starting_topology):
+            if topology is not None and len(topology.stations):
+                return topology.stations[0].grid_model_id
+        return None
+
+    @contextmanager
+    def temp_grid(self) -> Iterator[Network]:
+        """Yield the base grid with a temporary working variant selected.
+
+        For node-breaker grids, this will clone the base variant and set the clone as the working variant,
+        then remove the clone after use.
+        For other grids, this will yield a deepcopy of the base grid,
+        since only switches and state changes are working with variants.
+
+        Returns
+        -------
+        Iterator[Network]
+            An iterator yielding a powsybl network with the base grid topology,
+            which can be modified in-place without affecting the base grid.
+            The changes will be discarded after use.
+        """
+        assert self.net is not None, "Base grid must be loaded before using temporary variants"
+        if is_node_breaker_grid(self.net, relevant_station=self._get_relevant_station_id()):
+            temporary_variant_id = self._next_temporary_variant_id()
+            self.net.clone_variant(self.variant_id, temporary_variant_id)
+            self.net.set_working_variant(temporary_variant_id)
+            try:
+                yield self.net
+            finally:
+                self.net.remove_variant(temporary_variant_id)
+                self.net.set_working_variant(self.variant_id)
+        else:
+            # For bus-branch grids, we can just deepcopy the network, as the topology application is not in-place
+            net_copy = deepcopy(self.net)
+            try:
+                yield net_copy
+            finally:
+                del net_copy
+
+    def _apply_requested_changes(
+        self,
+        net: Network,
+        actions: list[int],
+        disconnections: list[int],
+        pst_setpoints: Optional[list[int]] = None,
+    ) -> None:
+        """Apply runner-requested changes to a working network in-place.
+
+        Parameters
+        ----------
+        net : Network
+            The powsybl network to apply the changes to. This is a working copy of the base grid,
+            so changes will be applied in-place.
+        actions : list[int]
+            The list of actions to be applied. This is a list of indices into the action set local_actions list.
+        disconnections : list[int]
+            The list of disconnections to be applied. This is a list of indices
+            into the action set disconnectable_branches list.
+        pst_setpoints : Optional[list[int]]
+            The list of phase shift tap setpoints to be applied. The shape should be (n
+            _controllable_psts,) and these are assumed to correspond to the range of PSTs in the grid.
+            If None, no tap changes will be applied.
+
+        Returns
+        -------
+        None
+        """
+        self.last_action_info = None
+        if len(actions):
+            self.last_action_info = apply_topology(net, actions, self.action_set)
+        if len(disconnections):
+            apply_disconnections(net, disconnections, self.action_set)
+        if pst_setpoints is not None and len(pst_setpoints):
+            apply_pst_setpoints(net, pst_setpoints, self.action_set)
 
     def build_topology_network(
         self,
@@ -371,11 +499,14 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The powsybl network to use as the base grid
         """
         self.net = net
+        self.branch_limit_cache = None
+        _ = self._refresh_branch_limit_cache()
 
     @overrides
     def store_nminus1_definition(self, nminus1_definition: Nminus1Definition) -> None:
         """Store the N-1 definition in the runner."""
         self.nminus1_definition = nminus1_definition
+        _ = self._refresh_branch_limit_cache()
 
     @overrides
     def get_nminus1_definition(self) -> Nminus1Definition:
@@ -420,28 +551,22 @@ class PowsyblRunner(AbstractLoadflowRunner):
         """
         assert self.net is not None, "Base grid must be loaded before running loadflow"
 
-        net = deepcopy(self.net)
-        self.last_action_info = None
-        if len(actions):
-            self.last_action_info = apply_topology(net, actions, self.action_set)
-        if len(disconnections):
-            apply_disconnections(net, disconnections, self.action_set)
-        if pst_setpoints is not None and len(pst_setpoints):
-            apply_pst_setpoints(net, pst_setpoints, self.action_set)
-
         # Run a "N-1" loadflow with only the BASECASE outage
         nminus1_definition = self.nminus1_definition.model_copy(
             update={"contingencies": [Contingency(elements=[], id="BASECASE")]}
         )
-        return run_contingency_analysis_powsybl(
-            net=net,
-            n_minus_1_definition=nminus1_definition,
-            job_id="",
-            timestep=0,
-            method="dc",
-            polars=True,
-            lf_params=self.lf_params,
-        )
+        with self.temp_grid() as net:
+            self._apply_requested_changes(net, actions, disconnections, pst_setpoints)
+            return run_contingency_analysis_powsybl(
+                net=net,
+                n_minus_1_definition=nminus1_definition,
+                job_id="",
+                timestep=0,
+                method="dc",
+                polars=True,
+                lf_params=self.lf_params,
+                branch_limit_cache=self.branch_limit_cache,
+            )
 
     @overrides
     def run_dc_loadflow(
@@ -529,24 +654,19 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The results of the loadflow computation
         """
         assert self.net is not None, "Base grid must be loaded before running loadflow"
-        self.last_action_info = None
-        net = deepcopy(self.net)
-        if len(actions):
-            self.last_action_info = apply_topology(net, actions, self.action_set)
-        if len(disconnections):
-            apply_disconnections(net, disconnections, self.action_set)
-        if pst_setpoints is not None and len(pst_setpoints):
-            apply_pst_setpoints(net, pst_setpoints, self.action_set)
-        return run_contingency_analysis_powsybl(
-            net=net,
-            n_minus_1_definition=self.nminus1_definition,
-            job_id="",
-            timestep=0,
-            method=method,
-            polars=True,
-            n_processes=self.n_processes,
-            lf_params=self.lf_params,
-        )
+        with self.temp_grid() as net:
+            self._apply_requested_changes(net, actions, disconnections, pst_setpoints)
+            return run_contingency_analysis_powsybl(
+                net=net,
+                n_minus_1_definition=self.nminus1_definition,
+                job_id="",
+                timestep=0,
+                method=method,
+                polars=True,
+                lf_params=self.lf_params,
+                n_processes=self.n_processes,
+                branch_limit_cache=self.branch_limit_cache,
+            )
 
     @overrides
     def get_last_action_info(self) -> Optional[AdditionalActionInfo]:

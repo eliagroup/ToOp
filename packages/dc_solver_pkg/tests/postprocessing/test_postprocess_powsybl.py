@@ -23,6 +23,7 @@ from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jax_dataclasses import replace
 from tests.network_data_pickle import load_network_data
+from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl import PowsyblBranchLimitCache
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import set_target_values_to_lf_values_incl_distributed_slack
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.injections import default_injection
@@ -55,7 +56,8 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     extract_node_matrices_polars,
     extract_solver_matrices_polars,
 )
-from toop_engine_interfaces.nminus1_definition import GridElement, load_nminus1_definition
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition, load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
 
 
@@ -409,6 +411,107 @@ def test_powsybl_runner(preprocessed_powsybl_data_folder: Path) -> None:
     assert np.allclose(n_0, n_0_mp)
     assert n_1.shape == n_1_mp.shape
     assert np.allclose(n_1, n_1_mp)
+
+
+def test_powsybl_runner_reuses_branch_limit_cache_for_contingency_only_updates(
+    preprocessed_powsybl_data_folder: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    built_monitored_branches: list[list[str]] = []
+    built_caches: list[PowsyblBranchLimitCache] = []
+    seen_caches: list[PowsyblBranchLimitCache | None] = []
+
+    runner = PowsyblRunner()
+    net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+
+    monkeypatch.setattr(
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.is_node_breaker_grid",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.get_current_branch_limits_for_powsybl",
+        lambda *_args, **_kwargs: "current-limits",
+    )
+    monkeypatch.setattr(
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.fingerprint_current_limits_for_powsybl",
+        lambda *_args, **_kwargs: "current-fingerprint",
+    )
+
+    def fake_build_branch_limit_cache(net, monitored_branches, chosen_limit="permanent_limit") -> PowsyblBranchLimitCache:
+        del net, chosen_limit
+        built_monitored_branches.append(list(monitored_branches))
+        cache = PowsyblBranchLimitCache(
+            chosen_limit="permanent_limit",
+            monitored_branches=tuple(monitored_branches),
+            current_limit_fingerprint="current-fingerprint",
+            branch_limits=pd.DataFrame(),
+        )
+        built_caches.append(cache)
+        return cache
+
+    def fake_run_contingency_analysis_powsybl(**kwargs) -> LoadflowResultsPolars:
+        seen_caches.append(kwargs.get("branch_limit_cache"))
+        return LoadflowResultsPolars(
+            job_id="test_job",
+            branch_results=pl.LazyFrame(),
+            node_results=pl.LazyFrame(),
+            va_diff_results=pl.LazyFrame(),
+            regulating_element_results=pl.LazyFrame(),
+            converged=pl.LazyFrame(),
+        )
+
+    monkeypatch.setattr(
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.build_branch_limit_cache",
+        fake_build_branch_limit_cache,
+    )
+    monkeypatch.setattr(
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.run_contingency_analysis_powsybl",
+        fake_run_contingency_analysis_powsybl,
+    )
+
+    runner.replace_grid(net)
+    assert built_monitored_branches == []
+
+    runner.store_nminus1_definition(
+        Nminus1Definition(
+            monitored_elements=[GridElement(id="line_a", kind="branch", type="LINE")],
+            contingencies=[Contingency(id="BASECASE", elements=[])],
+            id_type="powsybl",
+        )
+    )
+
+    assert built_monitored_branches == [["line_a"]]
+    assert runner.branch_limit_cache is built_caches[0]
+
+    runner.store_nminus1_definition(
+        Nminus1Definition(
+            monitored_elements=[GridElement(id="line_a", kind="branch", type="LINE")],
+            contingencies=[Contingency(id="BASECASE", elements=[]), Contingency(id="other", elements=[])],
+            id_type="powsybl",
+        )
+    )
+
+    assert built_monitored_branches == [["line_a"]]
+    assert runner.branch_limit_cache is built_caches[0]
+
+    _ = runner.run_ac_loadflow([], [])
+    assert seen_caches == [built_caches[0]]
+
+    runner.store_nminus1_definition(
+        Nminus1Definition(
+            monitored_elements=[GridElement(id="line_b", kind="branch", type="LINE")],
+            contingencies=[Contingency(id="BASECASE", elements=[])],
+            id_type="powsybl",
+        )
+    )
+
+    assert built_monitored_branches == [["line_a"], ["line_b"]]
+    assert runner.branch_limit_cache is built_caches[1]
+
+    runner.replace_grid(net)
+
+    assert built_monitored_branches == [["line_a"], ["line_b"], ["line_b"]]
+    assert runner.branch_limit_cache is built_caches[2]
 
 
 def test_compute_cross_coupler_flows(preprocessed_powsybl_data_folder: Path) -> None:

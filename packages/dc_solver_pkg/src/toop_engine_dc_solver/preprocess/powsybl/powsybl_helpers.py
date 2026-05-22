@@ -37,6 +37,9 @@ class BranchModel(DataFrameModel):
     name: Series[str]
     rho: Series[float] = Field(nullable=True, description="Ratio of the rated voltages of the transformer")
     alpha: Series[float] = Field(nullable=True, description="Phase shift angle in degrees")
+    has_pst_tap: Series[bool] = Field(
+        nullable=True, default=False, description="Whether the transformer has a phase tap changer"
+    )
     has_pst_linear_tap: Series[bool] = Field(
         nullable=True, default=False, description="Whether the transformer has a phase tap changer"
     )
@@ -221,8 +224,8 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
     linear_psts = get_linear_pst(net, mode="dc")
     trafos["has_pst_linear_tap"] = False
     trafos.loc[linear_psts.index, "has_pst_linear_tap"] = linear_psts.values
-
-    return trafos[["x", "r", "rho", "alpha", "name", "has_pst_linear_tap"]]
+    trafos.loc[linear_psts.index, "has_pst_tap"] = True
+    return trafos[["x", "r", "rho", "alpha", "name", "has_pst_linear_tap", "has_pst_tap"]]
 
 
 @pa.check_types

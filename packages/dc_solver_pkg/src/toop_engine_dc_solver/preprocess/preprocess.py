@@ -1264,6 +1264,46 @@ def compute_separation_set_for_stations(
     )
 
 
+def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> NetworkData:
+    """Exclude nonlinear phase shifters from the controllable phase shifter mask.
+
+    This is necessary because nonlinear phase shifters cannot be handled correctly in the backend
+    at this moment.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        The network data to exclude the nonlinear phase shifters from the controllable mask for
+
+    Returns
+    -------
+    NetworkData
+        The network data with the nonlinear phase shifters excluded from the controllable mask
+    """
+    if network_data.phase_shift_mask is None or network_data.controllable_phase_shift_mask is None:
+        return network_data
+    logger.info(
+        "Excluding nonlinear phase shifters from the controllable mask, "
+        "since they cannot be handled correctly in the backend."
+    )
+    pst_linearity = network_data.phase_shift_linearity
+    phase_shift_low_tap = network_data.phase_shift_low_tap[pst_linearity]
+    phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[pst_linearity]
+    phase_shift_taps = [taps for taps, linear in zip(network_data.phase_shift_taps, pst_linearity, strict=True) if linear]
+
+    controllable_pst_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
+    controllable_phase_shift_mask = np.zeros_like(network_data.controllable_phase_shift_mask, dtype=bool)
+    controllable_phase_shift_mask[controllable_pst_indices[pst_linearity]] = True
+    return replace(
+        network_data,
+        controllable_phase_shift_mask=controllable_phase_shift_mask,
+        phase_shift_low_tap=phase_shift_low_tap,
+        phase_shift_starting_tap_idx=phase_shift_starting_tap_idx,
+        phase_shift_taps=phase_shift_taps,
+        phase_shift_linearity=np.ones_like(phase_shift_low_tap, dtype=bool),
+    )
+
+
 def preprocess(  # noqa: PLR0915
     interface: BackendInterface,
     logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
@@ -1295,6 +1335,9 @@ def preprocess(  # noqa: PLR0915
 
     logging_fn("extract_network_data_from_interface", None)
     network_data = extract_network_data_from_interface(interface)
+
+    logging_fn("exclude_nonlinear_psts_from_controllable", None)
+    network_data = exclude_nonlinear_psts_from_controllable(network_data)
 
     logging_fn("compute_bridging_branches", None)
     network_data = compute_bridging_branches(network_data)

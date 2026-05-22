@@ -249,6 +249,16 @@ class BackendInterface(ABC):
         """
         return np.zeros_like(self.get_phase_shift_mask())
 
+    def get_phase_shift_linearity(self) -> Bool[np.ndarray, " n_controllable_psts"]:
+        """Which of the phase shifters have linear shift behavior
+
+        Returns
+        -------
+        Bool[np.ndarray, " n_controllable_psts"]
+            The mask of phase shifters with linear shift behavior
+        """
+        return np.zeros(sum(self.get_controllable_phase_shift_mask()), dtype=bool)
+
     def get_phase_shift_taps(self) -> list[Float[np.ndarray, " n_tap_positions"]]:
         """Return the possible tap positions of each controllable PST.
 

@@ -101,6 +101,9 @@ class NetworkData:
     value representing the angle shift for the given tap position.
     The taps are ordered smallest to largest angle shift."""
 
+    phase_shift_linearity: Bool[np.ndarray, " n_controllable_pst"]
+    """Whether the shift angle of each controllable PST is linear to the tap position."""
+
     phase_shift_starting_tap_idx: Int[np.ndarray, " n_controllable_pst"]
     """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
 
@@ -418,6 +421,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         phase_shift_taps=interface.get_phase_shift_taps(),
         phase_shift_starting_tap_idx=interface.get_phase_shift_starting_taps(),
         phase_shift_low_tap=interface.get_phase_shift_low_taps(),
+        phase_shift_linearity=interface.get_phase_shift_linearity(),
         busbar_outage_map=interface.get_busbar_outage_map(),
     )
 

@@ -248,7 +248,7 @@ def test_change_pst_matches_loadflows(
     fixture_name: str,
 ) -> None:
     if fixture_name == "complex_grid_battery_hvdc_svc_3w_trafo_data_folder":
-        pytest.xfail("PSDF implementation has a bug on complex grids")
+        pytest.xfail("No linear PSTs in this grid, which is not implemented currently")
 
     preprocessed_powsybl_data_folder = request.getfixturevalue(fixture_name)
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])

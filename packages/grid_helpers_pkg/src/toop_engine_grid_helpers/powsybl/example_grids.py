@@ -1585,6 +1585,14 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "type": "CURRENT",
                 "acceptable_duration": -1,
             },
+            {
+                "element_id": "LINE_out_of_service",
+                "value": 400,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
         ],
         index="element_id",
     )
@@ -1606,7 +1614,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     limits["name"] = "permanent"
     limits["type"] = "CURRENT"
     limits["acceptable_duration"] = -1
-    limits.loc[limits["value"] < 0, "value"] = 1000
+    limits.loc[limits["value"] <= 0, "value"] = 1000
     n.create_operational_limits(limits)
 
     # transformer limits

@@ -316,7 +316,7 @@ def validate_static_information(
         assert jnp.all(
             di.nodal_injection_information.shift_degree_min <= di.nodal_injection_information.shift_degree_max
         )  # not used for now, needs a preprocessing step
-        assert jnp.all(di.nodal_injection_information.pst_n_taps > 0)  # If not, this would not a controllable linear PST
+        assert jnp.all(di.nodal_injection_information.pst_n_taps > 0)  # If not, this would not a controllable PST
         assert (
             di.nodal_injection_information.pst_n_taps.shape
             == di.nodal_injection_information.controllable_linear_pst_indices.shape

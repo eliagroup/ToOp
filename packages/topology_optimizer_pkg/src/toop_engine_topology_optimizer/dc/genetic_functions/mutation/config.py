@@ -73,11 +73,11 @@ class NodalInjectionMutationConfig(eqx.Module):
     """The probability for an individual PST to be reverted to its initial set point. A value of 0.0 means no reset. A
     value of 1.0 means all PSTs will be reset."""
 
-    pst_n_taps: Int[Array, " n_controllable_linear_pst"]
+    pst_n_taps: Int[Array, " n_controllable_pst"]
     """The number of taps for each PST, used to determine the valid range of tap positions for mutation."""
 
-    pst_start_tap_idx: Int[Array, " n_controllable_linear_pst"]
-    """The starting tap position as an index into the tap range of each controllable linear PST"""
+    pst_start_tap_idx: Int[Array, " n_controllable_pst"]
+    """The starting tap position as an index into the tap range of each controllable PST"""
 
 
 class MutationConfig(eqx.Module):

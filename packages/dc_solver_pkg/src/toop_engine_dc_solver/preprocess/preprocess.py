@@ -280,7 +280,7 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
     phase_shift_indices = np.flatnonzero(phase_shift_mask)
     number_of_phase_shifters = phase_shift_indices.shape[0]
 
-    # We want to find out for each controllable linear PST which injection it is connected to
+    # We want to find out for each controllable PST which injection it is connected to
     controllable_linear_psts = np.flatnonzero(network_data.controllable_phase_shift_mask[phase_shift_mask])
     controllable_linear_pst_node_mask = np.zeros((number_of_phase_shifters + len(network_data.node_ids),), dtype=bool)
     controllable_linear_pst_node_mask[controllable_linear_psts] = True
@@ -566,12 +566,12 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
     pst_node_indices = np.flatnonzero(network_data.controllable_linear_pst_node_mask)
     # Assert that the number of PST branches and nodes is the same
     assert len(pst_branches) == len(pst_node_indices), (
-        "Number of PST branches and PST nodes do not match. Please check the controllable linear PST masks."
+        "Number of PST branches and PST nodes do not match. Please check the controllable PST masks."
     )
     if np.any(kept_pst_branches):
         # WARNING: This assumes that PSTs are ordered the same way in both masks
         kept_pst_nodes_indices = pst_node_indices[kept_pst_branches]
-        # Adapt the controllable linear PST node mask
+        # Adapt the controllable PST node mask
         kept_controllable_linear_pst_node_mask = np.zeros(network_data.controllable_linear_pst_node_mask.shape, dtype=bool)
         kept_controllable_linear_pst_node_mask[kept_pst_nodes_indices] = True
     else:

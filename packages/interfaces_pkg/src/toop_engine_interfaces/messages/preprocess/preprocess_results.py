@@ -125,7 +125,7 @@ class StaticInformationStats(BaseModel):
     n_nminus1_cases: NonNegativeInt = 0
     """How many N-1 cases are there in total"""
 
-    n_controllable_linear_psts: NonNegativeInt = 0
+    n_controllable_psts: NonNegativeInt = 0
     """How many controllable phase shifting transformers are in the grid"""
 
     n_monitored_branches: NonNegativeInt = 0

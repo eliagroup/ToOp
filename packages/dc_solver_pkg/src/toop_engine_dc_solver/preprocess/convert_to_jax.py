@@ -768,7 +768,7 @@ def extract_static_information_stats(
         n_multi_outages=static_information.n_multi_outages,
         n_injection_outages=static_information.n_inj_failures,
         n_busbar_outages=di.n_bb_outages,
-        n_controllable_linear_psts=di.n_controllable_linear_pst,
+        n_controllable_psts=di.n_controllable_pst,
         n_nminus1_cases=di.n_nminus1_cases,
         n_monitored_branches=static_information.n_branches_monitored,
         n_timesteps=static_information.n_timesteps,

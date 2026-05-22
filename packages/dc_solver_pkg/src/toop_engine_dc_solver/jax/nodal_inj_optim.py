@@ -40,7 +40,7 @@ def make_start_options(
 def apply_pst_taps(
     n_0: Float[Array, " batch_size n_timesteps n_branches"],
     nodal_injections: Float[Array, " batch_size n_timesteps n_buses"],
-    pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_linear_pst"],
+    pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_pst"],
     topo_res: TopologyResults,
     nodal_inj_info: NodalInjectionInformation,
 ) -> Float[Array, " batch_size n_timesteps n_branches"]:
@@ -56,8 +56,8 @@ def apply_pst_taps(
         The base case N-0 flows for each topology (with current PST settings)
     nodal_injections : Float[Array, " batch_size n_timesteps n_buses"]
         The nodal injections including current PST angles at the beginning
-    pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_linear_pst"]
-        The tap indices for the controllable linear PSTs from the start options,
+    pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_pst"]
+        The tap indices for the controllable PSTs from the start options,
         which indicate the new tap settings to apply.
     topo_res : TopologyResults
         The topology results containing PTDF matrix (with PSDF prepended)
@@ -70,16 +70,16 @@ def apply_pst_taps(
         The updated N-0 flows after applying PST taps
     """
     # Convert tap indices to shift angles in degrees using pst_tap_values
-    # pst_tap_values shape: (n_controllable_linear_pst, max_n_tap_positions)
-    # pst_tap_indices shape: (batch_size, n_timesteps, n_controllable_linear_pst)
-    n_controllable_linear_pst = nodal_inj_info.controllable_linear_pst_indices.shape[0]
+    # pst_tap_values shape: (n_controllable_pst, max_n_tap_positions)
+    # pst_tap_indices shape: (batch_size, n_timesteps, n_controllable_pst)
+    n_controllable_pst = nodal_inj_info.controllable_linear_pst_indices.shape[0]
 
     # Use advanced indexing to gather tap values
     # Create index array for first dimension (PST index)
-    pst_idx = jnp.arange(n_controllable_linear_pst)[None, None, :]  # Shape: (1, 1, n_controllable_linear_pst)
+    pst_idx = jnp.arange(n_controllable_pst)[None, None, :]  # Shape: (1, 1, n_controllable_pst)
     # Broadcasting allows: result[b, t, i] = pst_tap_values[i, pst_tap_indices[b, t, i]]
     new_shift_angles = nodal_inj_info.pst_tap_values[pst_idx, pst_tap_indices]
-    # Shape: (batch_size, n_timesteps, n_controllable_linear_pst)
+    # Shape: (batch_size, n_timesteps, n_controllable_pst)
 
     # Get current PST angles from nodal_injections using controllable_linear_pst_indices
     # controllable_linear_pst_indices maps PST positions to node array indices
@@ -87,13 +87,13 @@ def apply_pst_taps(
 
     # Compute the delta in shift angles
     delta_shift_angles = -new_shift_angles + current_shift_angles
-    # Shape: (batch_size, n_timesteps, n_controllable_linear_pst)
+    # Shape: (batch_size, n_timesteps, n_controllable_pst)
 
     # Extract PSDF columns from PTDF using controllable_linear_pst_indices
     # PTDF shape: (batch_size, n_branches, n_buses)
     # PSDF columns are at node indices specified by controllable_linear_pst_indices
     psdf_columns = topo_res.ptdf[:, :, nodal_inj_info.controllable_linear_pst_indices]
-    # Shape: (batch_size, n_branches, n_controllable_linear_pst)
+    # Shape: (batch_size, n_branches, n_controllable_pst)
 
     # Compute the flow delta using PSDF: delta_flows = PSDF @ delta_angles
     # Use einsum for batched matrix multiplication:
@@ -152,7 +152,7 @@ def nodal_inj_optimization(
     nodal_inj_info = dynamic_information.nodal_injection_information
     assert nodal_inj_info is not None, "Nodal injection information must be provided for PST optimization"
 
-    # Get PST tap indices from start options (shape: batch_size x n_timesteps x n_controllable_linear_pst)
+    # Get PST tap indices from start options (shape: batch_size x n_timesteps x n_controllable_pst)
     pst_tap_indices = start_options.previous_results.pst_tap_idx
     if pst_tap_indices.ndim == 2:
         pst_tap_indices = pst_tap_indices[None, :, :]

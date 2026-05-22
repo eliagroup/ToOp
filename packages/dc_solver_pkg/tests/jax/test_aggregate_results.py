@@ -948,7 +948,7 @@ def test_get_pst_switching_distance_squared() -> None:
 
     # Case 2: PST optimization enabled but no initial taps provided
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[0, 1, 2, 3, 4]], dtype=int)  # shape: (n_timesteps=1, n_controllable_linear_pst)
+        pst_tap_idx=jnp.array([[0, 1, 2, 3, 4]], dtype=int)  # shape: (n_timesteps=1, n_controllable_pst)
     )
     switching_distance = get_pst_switching_distance_squared(optimized_taps=optimized_taps, initial_tap_idx=None)
     assert switching_distance == 0.0, "Switching distance should be 0 when initial tap indices are not provided"
@@ -956,7 +956,7 @@ def test_get_pst_switching_distance_squared() -> None:
     # Case 3: No switching_distance - optimized taps match initial taps
     initial_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
     optimized_taps = NodalInjOptimResults(
-        pst_tap_idx=jnp.array([[2, 3, 4, 5, 6]], dtype=int)  # shape: (n_timesteps=1, n_controllable_linear_pst)
+        pst_tap_idx=jnp.array([[2, 3, 4, 5, 6]], dtype=int)  # shape: (n_timesteps=1, n_controllable_pst)
     )
     switching_distance = get_pst_switching_distance_squared(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
     assert switching_distance == 0.0, "Switching distance should be 0 when taps haven't changed"
@@ -994,7 +994,7 @@ def test_get_pst_switching_distance_squared() -> None:
                 [0, 0, 0, 0],  # Third timestep: (2+3+4+5)^2 = 196
             ],
             dtype=int,
-        )  # shape: (n_timesteps=3, n_controllable_linear_pst=4)
+        )  # shape: (n_timesteps=3, n_controllable_pst=4)
     )
     switching_distance = get_pst_switching_distance_squared(optimized_taps=optimized_taps, initial_tap_idx=initial_tap_idx)
     expected_switching_distance = 16.0 + 676.0 + 196.0  # Should sum switching distances across all timesteps

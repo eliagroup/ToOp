@@ -517,7 +517,7 @@ def update_trafo_masks(
     )
     is_disconnectable = _is_disconnectable(network=network, grid_model_id=trafos_df.index.tolist())
     disconnectable_mask = controllable_mask & hv_trafos & is_disconnectable & ~is_3w_lower_leg
-    pst_controllable_linear_mask = controllable_mask & hv_trafos
+    pst_controllable_mask = controllable_mask & hv_trafos
     outage_mask = nminus1_area_mask & hv_trafos & ~is_3w_lower_leg
     reward_mask = view_area_mask & trafos_with_limits & hv_trafos
 
@@ -542,7 +542,7 @@ def update_trafo_masks(
         trafo_dso_border=trafo_dso_border,
         trafo_overload_weight=trafo_overload_weight,
         trafo_disconnectable=disconnectable_mask,
-        trafo_pst_controllable=pst_controllable_linear_mask,
+        trafo_pst_controllable=pst_controllable_mask,
     )
 
 

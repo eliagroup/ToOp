@@ -106,7 +106,7 @@ class AbstractLoadflowRunner(ABC):
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
             The list of phase shift tap setpoints to be applied.
-            This is an array setting a tap for each controllable linear PST
+            This is an array setting a tap for each controllable PST
             in the action set. If None, taps will be unchanged.
 
         Returns
@@ -131,9 +131,9 @@ class AbstractLoadflowRunner(ABC):
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
             The list of phase shift tap setpoints to be applied.
-            This is a list setting a tap for each controllable linear PST in the action set.
+            This is a list setting a tap for each controllable PST in the action set.
             If None, taps will be unchanged.
-            Empty list only applies if there are no controllable linear PSTs in
+            Empty list only applies if there are no controllable PSTs in
             the grid model.
 
         Returns
@@ -158,7 +158,7 @@ class AbstractLoadflowRunner(ABC):
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
             The list of phase shift tap setpoints to be applied.
-            This is an array setting a tap for each controllable linear PST in the action set.
+            This is an array setting a tap for each controllable PST in the action set.
             If None, taps will be unchanged.
 
         Returns

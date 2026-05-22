@@ -561,7 +561,7 @@ def get_bb_outage_grid_splits(bb_outage_grid_splits: Optional[Int[Array, " "]]) 
 
 def get_pst_switching_distance_squared(
     optimized_taps: Optional[NodalInjOptimResults],
-    initial_tap_idx: Optional[Int[Array, " n_controllable_linear_pst"]],
+    initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
 ) -> Float[Array, " "]:
     """Compute the switching distances between optimized PST tap positions and initial setpoints.
 
@@ -574,21 +574,21 @@ def get_pst_switching_distance_squared(
     optimized_taps : Optional[NodalInjOptimResults]
         The optimized PST tap positions from the solver. If None (PST optimization disabled),
         returns 0.0
-    initial_tap_idx : Optional[Int[Array, " n_controllable_linear_pst"]]
-        The initial tap positions for each controllable linear PST as indices. If None (no PST info
+    initial_tap_idx : Optional[Int[Array, " n_controllable_pst"]]
+        The initial tap positions for each controllable PST as indices. If None (no PST info
         available), returns 0.0
 
     Returns
     -------
     Float[Array, " "]
         The sum of squared differences between optimized and initial tap positions across all
-        controllable linear PSTs. Returns 0.0 if PST optimization is not enabled or data is unavailable.
+        controllable PSTs. Returns 0.0 if PST optimization is not enabled or data is unavailable.
     """
     if optimized_taps is None or initial_tap_idx is None:
         return jnp.array(0.0)
 
     # Extract optimized tap indices
-    # Shape: (n_timesteps, n_controllable_linear_pst)
+    # Shape: (n_timesteps, n_controllable_pst)
     optimized_tap_idx = optimized_taps.pst_tap_idx
 
     # TODO: Proper multi-timestep support.
@@ -603,7 +603,7 @@ def get_pst_switching_distance_squared(
 
 def get_pst_switching_distance(
     optimized_taps: Optional[NodalInjOptimResults],
-    initial_tap_idx: Optional[Int[Array, " n_controllable_linear_pst"]],
+    initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
 ) -> Float[Array, " "]:
     """Compute the linear PST switching distance from initial PST setpoints.
 
@@ -617,15 +617,15 @@ def get_pst_switching_distance(
     optimized_taps : Optional[NodalInjOptimResults]
         The optimized PST tap positions from the solver. If None (PST optimization disabled),
         returns 0.0.
-    initial_tap_idx : Optional[Int[Array, " n_controllable_linear_pst"]]
-        The initial tap positions for each controllable linear PST as indices. If None (no PST info
+    initial_tap_idx : Optional[Int[Array, " n_controllable_pst"]]
+        The initial tap positions for each controllable PST as indices. If None (no PST info
         available), returns 0.0.
 
     Returns
     -------
     Float[Array, " "]
         The sum of absolute differences between optimized and initial tap positions across all
-        controllable linear PSTs and timesteps. Returns 0.0 if PST optimization is not enabled or data
+        controllable PSTs and timesteps. Returns 0.0 if PST optimization is not enabled or data
         is unavailable.
     """
     if optimized_taps is None or initial_tap_idx is None:
@@ -638,11 +638,11 @@ def get_pst_switching_distance(
 
 def get_pst_activated(
     optimized_taps: Optional[NodalInjOptimResults],
-    initial_tap_idx: Optional[Int[Array, " n_controllable_linear_pst"]],
+    initial_tap_idx: Optional[Int[Array, " n_controllable_pst"]],
 ) -> Float[Array, " "]:
     """Compute the startup cost induced by PST tap changes.
 
-    The startup cost is defined as the number of controllable linear PSTs whose optimized tap index
+    The startup cost is defined as the number of controllable PSTs whose optimized tap index
     differs from the initial tap index, summed across all timesteps. This implements an implicit
     unit cost; any additional weighting is applied by the optimizer fitness weights.
 
@@ -650,8 +650,8 @@ def get_pst_activated(
     ----------
     optimized_taps : Optional[NodalInjOptimResults]
         The optimized PST tap positions from the solver. If None, returns 0.0.
-    initial_tap_idx : Optional[Int[Array, " n_controllable_linear_pst"]]
-        The initial tap positions for each controllable linear PST as indices. If None, returns 0.0.
+    initial_tap_idx : Optional[Int[Array, " n_controllable_pst"]]
+        The initial tap positions for each controllable PST as indices. If None, returns 0.0.
 
     Returns
     -------
@@ -662,7 +662,7 @@ def get_pst_activated(
     if optimized_taps is None or initial_tap_idx is None:
         return jnp.array(0.0)
 
-    # Shape: (n_timesteps, n_controllable_linear_pst)
+    # Shape: (n_timesteps, n_controllable_pst)
     optimized_tap_idx = optimized_taps.pst_tap_idx
     tap_changed = optimized_tap_idx != initial_tap_idx[None, :]
     return jnp.sum(tap_changed).astype(float)
@@ -728,7 +728,7 @@ def aggregate_to_metric_batched(
     reassignment_distance: Optional[Int[ArrayLike, " n_branch_actions"]],
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
-    initial_pst_tap_idx: Optional[Int[Array, " n_controllable_linear_pst"]] = None,
+    initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
 ) -> Float[Array, " batch_size"]:
     """Aggregate the N-0 and N-1 results down to a single metric
 
@@ -747,7 +747,7 @@ def aggregate_to_metric_batched(
         The number of relevant substations in the grid, used for split_subs metric
     metric : MetricType = "max_flow_n_1"
         The metric to use for aggregation.
-    initial_pst_tap_idx : Optional[Int[Array, " n_controllable_linear_pst"]], optional
+    initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
         The initial tap positions for PSTs. Required for computing PST-based metrics.
         If None, pst_switching_distance, pst_switching_distance_squared and pst_activated will return 0.0
 
@@ -826,7 +826,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
     n_relevant_subs: int,
     metric: MetricType = "max_flow_n_1",
     aggregate_strategy: Optional[AggregateStrategy] = "max",
-    initial_pst_tap_idx: Optional[Int[Array, " n_controllable_linear_pst"]] = None,
+    initial_pst_tap_idx: Optional[Int[Array, " n_controllable_pst"]] = None,
 ) -> Float[Array, " "]:
     """Aggregate the N-0 and N-1 results down to a single metric
 
@@ -851,7 +851,7 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
         Can be "max" or "nanmax". The "nanmax" will ignore NaN values, while "max" will not.
         This is useful if you want to ignore failures that are not relevant for the metric,
         e.g. if you want to ignore busbar outage failures in the overload energy calculation.
-    initial_pst_tap_idx : Optional[Int[Array, " n_controllable_linear_pst"]], optional
+    initial_pst_tap_idx : Optional[Int[Array, " n_controllable_pst"]], optional
         The initial tap positions for PSTs. Required for computing PST-based metrics.
         If None, pst_switching_distance, pst_switching_distance_squared and pst_activated will return 0.0
 

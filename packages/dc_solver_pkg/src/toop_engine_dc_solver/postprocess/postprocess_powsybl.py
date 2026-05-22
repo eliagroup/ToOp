@@ -174,7 +174,7 @@ def apply_disconnections(net: Network, disconnections: list[int], action_set: Ac
 def apply_pst_setpoints(net: Network, pst_setpoints: list[int], action_set: ActionSet) -> None:
     """Apply phase shift tap setpoints to a powsybl network.
 
-    Works by setting the tap position of the controllable linear PSTs in the network to the given setpoints.
+    Works by setting the tap position of the controllable PSTs in the network to the given setpoints.
 
     Parameters
     ----------
@@ -182,14 +182,14 @@ def apply_pst_setpoints(net: Network, pst_setpoints: list[int], action_set: Acti
         The powsybl network to modify. Will be modified in-place.
     pst_setpoints : list[int]
         The list of phase shift tap setpoints to be applied.
-        The shape should be (n_controllable_linear_psts,) and these are
+        The shape should be (n_controllable_psts,) and these are
         assumed to correspond to the range of PSTs in the grid.
     action_set : ActionSet
-        The action set to use for the controllable linear PSTs
+        The action set to use for the controllable PSTs
     """
     pst_indices = [pst.id for pst in action_set.pst_ranges]
     assert len(pst_setpoints) == len(pst_indices), (
-        "Number of PST setpoints must match number of controllable linear PSTs, "
+        "Number of PST setpoints must match number of controllable PSTs, "
         f"got {pst_setpoints} setpoints for {pst_indices} PSTs"
     )
     net.update_phase_tap_changers(
@@ -410,7 +410,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
-            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_linear_psts,)
+            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
             and these are assumed to correspond to the range of PSTs in the grid. If None, no tap changes will be applied.
 
         Returns
@@ -462,7 +462,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
-            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_linear_psts,)
+            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
             and these are assumed to correspond to the range of PSTs in the grid
 
         Returns
@@ -491,7 +491,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
-            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_linear_psts,)
+            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
             and these are assumed to correspond to the range of PSTs in the grid
 
         Returns
@@ -518,7 +518,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
-            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_linear_psts,)
+            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
             and these are assumed to correspond to the range of PSTs in the grid
         method : Literal["ac", "dc"], optional
             The method to use for the loadflow, by default "dc"

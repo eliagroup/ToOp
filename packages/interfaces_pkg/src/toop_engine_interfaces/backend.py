@@ -195,7 +195,7 @@ class BackendInterface(ABC):
             The to nodes of the branches
         """
 
-    def get_controllable_linear_pst_node_mask(self) -> Bool[np.ndarray, " n_node"]:
+    def get_controllable_pst_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get the mask of controllable phase shifters over nodes
 
         True means a node is (bogus node and) a controllable phase shifter, i.e. is connected to a branch

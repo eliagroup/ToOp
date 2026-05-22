@@ -301,14 +301,14 @@ def validate_static_information(
             assert baseline.overload_weight.shape == (n_branch_monitored,)
 
     if di.nodal_injection_information is not None:
-        assert jnp.all(di.nodal_injection_information.controllable_linear_pst_indices >= 0)
-        assert jnp.all(di.nodal_injection_information.controllable_linear_pst_indices < n_bus)
+        assert jnp.all(di.nodal_injection_information.controllable_pst_indices >= 0)
+        assert jnp.all(di.nodal_injection_information.controllable_pst_indices < n_bus)
         assert (
-            di.nodal_injection_information.controllable_linear_pst_indices.shape
+            di.nodal_injection_information.controllable_pst_indices.shape
             == di.nodal_injection_information.shift_degree_min.shape
         )
         assert (
-            di.nodal_injection_information.controllable_linear_pst_indices.shape
+            di.nodal_injection_information.controllable_pst_indices.shape
             == di.nodal_injection_information.shift_degree_max.shape
         )
         assert jnp.isfinite(di.nodal_injection_information.shift_degree_min).all()
@@ -318,12 +318,11 @@ def validate_static_information(
         )  # not used for now, needs a preprocessing step
         assert jnp.all(di.nodal_injection_information.pst_n_taps > 0)  # If not, this would not a controllable PST
         assert (
-            di.nodal_injection_information.pst_n_taps.shape
-            == di.nodal_injection_information.controllable_linear_pst_indices.shape
+            di.nodal_injection_information.pst_n_taps.shape == di.nodal_injection_information.controllable_pst_indices.shape
         )
         assert (
             di.nodal_injection_information.pst_tap_values.shape[0]
-            == di.nodal_injection_information.controllable_linear_pst_indices.shape[0]
+            == di.nodal_injection_information.controllable_pst_indices.shape[0]
         )
         assert jnp.equal(
             di.nodal_injection_information.shift_degree_min,
@@ -336,11 +335,11 @@ def validate_static_information(
 
         assert (
             di.nodal_injection_information.starting_tap_idx.shape
-            == di.nodal_injection_information.controllable_linear_pst_indices.shape
+            == di.nodal_injection_information.controllable_pst_indices.shape
         )
         assert (
             di.nodal_injection_information.grid_model_low_tap.shape
-            == di.nodal_injection_information.controllable_linear_pst_indices.shape
+            == di.nodal_injection_information.controllable_pst_indices.shape
         )
         assert jnp.all(di.nodal_injection_information.starting_tap_idx >= 0)
         assert jnp.all(di.nodal_injection_information.starting_tap_idx < di.nodal_injection_information.pst_n_taps)
@@ -561,8 +560,8 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
         if dynamic_information.nodal_injection_information is not None:
             nodal_inj_opt = dynamic_information.nodal_injection_information
             file.create_dataset(
-                "controllable_linear_pst_indices",
-                data=nodal_inj_opt.controllable_linear_pst_indices,
+                "controllable_pst_indices",
+                data=nodal_inj_opt.controllable_pst_indices,
             )
             file.create_dataset(
                 "shift_degree_min",
@@ -917,7 +916,7 @@ def load_nodal_injection_optimization(
     """
     if nodal_injection_optimization_present:
         return NodalInjectionInformation(
-            controllable_linear_pst_indices=jnp.array(file["controllable_linear_pst_indices"][:]),
+            controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
             shift_degree_min=jnp.array(file["shift_degree_min"][:]),
             shift_degree_max=jnp.array(file["shift_degree_max"][:]),
             pst_n_taps=jnp.array(file["pst_n_taps"][:]),
@@ -973,7 +972,7 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bo
     )
 
     nodal_injection_optimization_present = (
-        "controllable_linear_pst_indices" in file
+        "controllable_pst_indices" in file
         and "shift_degree_min" in file
         and "shift_degree_max" in file
         and "pst_n_taps" in file

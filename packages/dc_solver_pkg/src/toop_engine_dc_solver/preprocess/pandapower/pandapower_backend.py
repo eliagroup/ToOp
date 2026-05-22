@@ -398,29 +398,29 @@ class PandaPowerBackend(BackendInterface):
             The shift taps of the controllable phase shifters
         """
         try:
-            controllable_linear_pst_mask = load_numpy_filesystem(
+            controllable_pst_mask = load_numpy_filesystem(
                 filesystem=self.data_folder_dirfs,
                 file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_pst_controllable"]),
             )
         except FileNotFoundError:
-            controllable_linear_pst_mask = np.zeros(len(self.net.trafo), dtype=bool)
+            controllable_pst_mask = np.zeros(len(self.net.trafo), dtype=bool)
 
-        controllable_linear_pst_mask_extended = np.zeros(self.ppci["branch"].shape[0], dtype=bool)
+        controllable_pst_mask_extended = np.zeros(self.ppci["branch"].shape[0], dtype=bool)
 
         if self.net.trafo.empty:
-            return controllable_linear_pst_mask_extended, []
+            return controllable_pst_mask_extended, []
         trafo_start, trafo_end = self.net._pd2ppc_lookups["branch"]["trafo"]
-        controllable_linear_pst_mask_extended[trafo_start:trafo_end] = controllable_linear_pst_mask
+        controllable_pst_mask_extended[trafo_start:trafo_end] = controllable_pst_mask
 
         mask, tech_controllable, shift_taps = get_phaseshift_mask(self.net)
         # A trafo is controllable if it is technically a controllable phase shifter and in the controllable mask
-        controllable = tech_controllable & controllable_linear_pst_mask_extended
+        controllable = tech_controllable & controllable_pst_mask_extended
 
         # Filter the shift taps to only include the ones also in the mask
         shift_taps = [
             taps
             for (taps, index) in zip(shift_taps, np.flatnonzero(tech_controllable), strict=True)
-            if controllable_linear_pst_mask_extended[index]
+            if controllable_pst_mask_extended[index]
         ]
 
         assert not np.any(controllable & ~mask)

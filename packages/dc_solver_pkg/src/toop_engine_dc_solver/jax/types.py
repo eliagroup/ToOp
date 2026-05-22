@@ -59,7 +59,7 @@ class MODFMatrix(eqx.Module):
 class NodalInjectionInformation(eqx.Module):
     """Holds the nodal injection optimization data required by the DC solver."""
 
-    controllable_linear_pst_indices: Int[Array, " n_controllable_pst"]
+    controllable_pst_indices: Int[Array, " n_controllable_pst"]
     """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
     actually shift angles and can be varied between shift_min and shift_max."""
 
@@ -722,7 +722,7 @@ class DynamicInformation(eqx.Module):
     def n_controllable_pst(self) -> int:
         """The number of controllable PSTs"""
         return (
-            len(self.nodal_injection_information.controllable_linear_pst_indices)
+            len(self.nodal_injection_information.controllable_pst_indices)
             if self.nodal_injection_information is not None
             else 0
         )

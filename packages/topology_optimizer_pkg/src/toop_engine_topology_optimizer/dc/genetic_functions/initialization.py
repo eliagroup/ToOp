@@ -242,10 +242,7 @@ def verify_static_information(
         assert all(
             [
                 static_information.dynamic_information.nodal_injection_information is not None
-                and static_information.dynamic_information.nodal_injection_information.controllable_linear_pst_indices.shape[
-                    0
-                ]
-                > 0
+                and static_information.dynamic_information.nodal_injection_information.controllable_pst_indices.shape[0] > 0
                 for static_information in static_informations
             ]
         ), (

@@ -72,7 +72,7 @@ def apply_pst_taps(
     # Convert tap indices to shift angles in degrees using pst_tap_values
     # pst_tap_values shape: (n_controllable_pst, max_n_tap_positions)
     # pst_tap_indices shape: (batch_size, n_timesteps, n_controllable_pst)
-    n_controllable_pst = nodal_inj_info.controllable_linear_pst_indices.shape[0]
+    n_controllable_pst = nodal_inj_info.controllable_pst_indices.shape[0]
 
     # Use advanced indexing to gather tap values
     # Create index array for first dimension (PST index)
@@ -81,18 +81,18 @@ def apply_pst_taps(
     new_shift_angles = nodal_inj_info.pst_tap_values[pst_idx, pst_tap_indices]
     # Shape: (batch_size, n_timesteps, n_controllable_pst)
 
-    # Get current PST angles from nodal_injections using controllable_linear_pst_indices
-    # controllable_linear_pst_indices maps PST positions to node array indices
-    current_shift_angles = nodal_injections[:, :, nodal_inj_info.controllable_linear_pst_indices]
+    # Get current PST angles from nodal_injections using controllable_pst_indices
+    # controllable_pst_indices maps PST positions to node array indices
+    current_shift_angles = nodal_injections[:, :, nodal_inj_info.controllable_pst_indices]
 
     # Compute the delta in shift angles
     delta_shift_angles = -new_shift_angles + current_shift_angles
     # Shape: (batch_size, n_timesteps, n_controllable_pst)
 
-    # Extract PSDF columns from PTDF using controllable_linear_pst_indices
+    # Extract PSDF columns from PTDF using controllable_pst_indices
     # PTDF shape: (batch_size, n_branches, n_buses)
-    # PSDF columns are at node indices specified by controllable_linear_pst_indices
-    psdf_columns = topo_res.ptdf[:, :, nodal_inj_info.controllable_linear_pst_indices]
+    # PSDF columns are at node indices specified by controllable_pst_indices
+    psdf_columns = topo_res.ptdf[:, :, nodal_inj_info.controllable_pst_indices]
     # Shape: (batch_size, n_branches, n_controllable_pst)
 
     # Compute the flow delta using PSDF: delta_flows = PSDF @ delta_angles

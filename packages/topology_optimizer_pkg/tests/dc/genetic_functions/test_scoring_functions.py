@@ -356,7 +356,7 @@ def test_pst_switching_distance_metric_integration(static_information_file_compl
     # Skip test if there are no controllable PSTs in this grid
     if (
         static_information.dynamic_information.nodal_injection_information is None
-        or len(static_information.dynamic_information.nodal_injection_information.controllable_linear_pst_indices) == 0
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
     ):
         pytest.skip("No controllable PSTs in this grid")
 
@@ -497,7 +497,7 @@ def test_pst_switching_distance_in_target_metrics(static_information_file_comple
     # Skip test if there are no controllable PSTs in this grid
     if (
         static_information.dynamic_information.nodal_injection_information is None
-        or len(static_information.dynamic_information.nodal_injection_information.controllable_linear_pst_indices) == 0
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
     ):
         pytest.skip("No controllable PSTs in this grid")
 
@@ -675,7 +675,7 @@ def test_pst_activated_metric_integration(static_information_file_complex: str) 
 
     if (
         static_information.dynamic_information.nodal_injection_information is None
-        or len(static_information.dynamic_information.nodal_injection_information.controllable_linear_pst_indices) == 0
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
     ):
         pytest.skip("No controllable PSTs in this grid")
 
@@ -791,7 +791,7 @@ def test_pst_activated_in_target_metrics(static_information_file_complex: str) -
 
     if (
         static_information.dynamic_information.nodal_injection_information is None
-        or len(static_information.dynamic_information.nodal_injection_information.controllable_linear_pst_indices) == 0
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
     ):
         pytest.skip("No controllable PSTs in this grid")
 
@@ -900,7 +900,7 @@ def test_pst_switching_distance_squared_metric_integration(static_information_fi
 
     if (
         static_information.dynamic_information.nodal_injection_information is None
-        or len(static_information.dynamic_information.nodal_injection_information.controllable_linear_pst_indices) == 0
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
     ):
         pytest.skip("No controllable PSTs in this grid")
 
@@ -1010,7 +1010,7 @@ def test_pst_switching_distance_squared_in_target_metrics(static_information_fil
 
     if (
         static_information.dynamic_information.nodal_injection_information is None
-        or len(static_information.dynamic_information.nodal_injection_information.controllable_linear_pst_indices) == 0
+        or len(static_information.dynamic_information.nodal_injection_information.controllable_pst_indices) == 0
     ):
         pytest.skip("No controllable PSTs in this grid")
 

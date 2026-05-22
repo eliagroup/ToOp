@@ -373,8 +373,7 @@ def get_linear_pst(net: Network, mode: Literal["ac", "dc"], tol: float = 1e-9) -
         pst_info = tap_steps.loc[pst_id]
         for col in lineal_col:
             pst_info_col = pst_info[col].values
-            diffs_from_start = pst_info_col - pst_info_col[0]
-            if np.any(np.abs(diffs_from_start) - tol > 0):
+            if not np.allclose(pst_info_col, pst_info_col[0], atol=tol):
                 trafo_linear_pst[pst_id] = False
                 break
 

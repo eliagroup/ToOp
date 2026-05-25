@@ -10,15 +10,16 @@
 import networkx as nx
 import numpy as np
 import pandapower as pp
+import pandapower.topology as top
 import pandas as pd
-from beartype.typing import Optional, Union
+from beartype.typing import Optional
 from pandapower.create import create_gen
 from pandapower.toolbox.grid_modification import (
     _adapt_profiles_in_replace_functions,
     _adapt_result_tables_in_replace_functions,
     _replace_group_member_element_type,
 )
-from toop_engine_grid_helpers.pandapower.network_topology_utils import collect_element_edges
+from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
 
 
 def _slack_allocation_tie_break(df_min: pd.DataFrame) -> tuple[int, str]:
@@ -373,48 +374,42 @@ def assign_slack_gen_by_weight(net: pp.pandapowerNet, bus_idx_set: set[np.int64]
 
 def assign_slack_per_island(
     net: pp.pandapowerNet,
-    net_graph: Union[nx.Graph, nx.MultiGraph],
-    bus_lookup: list[int],
-    elements_ids: list[str],
     min_island_size: int,
-) -> list[tuple[np.int64, np.int64]]:
+) -> None:
     """
-    Assign one slack generator per valid island in the network after isolating specific elements.
+    Assign one slack generator per valid electrical island in the network.
 
-    This function deactivates all existing slack generators, removes selected element edges
-    to simulate outages or disconnections, and identifies independent network islands.
-    For each valid island (meeting size and generation criteria), it assigns a new slack generator
-    based on generator weighting rules.
+    Deactivates all existing slack generators, then builds a fresh NetworkX graph
+    directly from *net* via ``pandapower.topology.create_nxgraph``.  Because outages
+    are applied to *net* before this function is called (elements flagged
+    ``in_service=False``, circuit breakers opened), the resulting graph already
+    reflects the post-outage topology — no explicit edge removal is needed.
+
+    For each valid island (size ≥ *min_island_size*, at least one reference-capable
+    generator, and at least two generating/load units) a slack generator is selected
+    via :func:`assign_slack_gen_by_weight`.  If the chosen candidate is an ``sgen``,
+    it is promoted to a ``gen`` via :func:`replace_sgen_by_gen` before being marked
+    as slack.
 
     Parameters
     ----------
     net : pandapowerNet
-        The pandapower network object containing buses, lines, generators, etc.
-    net_graph : Union[nx.Graph, nx.MultiGraph]
-        The network graph representation of the power system.
-    bus_lookup : list[int]
-        A list mapping graph node indices to pandapower bus indices.
-    elements_ids : list[str]
-        A list of element IDs (e.g., line or transformer IDs) to deactivate or remove.
+        The pandapower network object.  Must be in its post-outage state so that
+        ``create_nxgraph`` reflects the correct topology.
     min_island_size : int
-        Minimum number of nodes required for an island to be considered valid.
-
-    Returns
-    -------
-    list of tuple[int, int]
-        List of edges (tuples of node indices) that were removed from the graph.
+        Minimum number of buses required for an island to receive a slack bus.
     """
     if (not net.sgen.empty and "referencePriority" not in net.sgen.columns) or (
         not net.gen.empty and "referencePriority" not in net.gen.columns
     ):
         # This function requires 'referencePriority' columns in both sgen and gen tables.
         # Networks without these columns are not supported.
-        return []
+        return
+    bus_lookup = create_bus_lookup_simple(net)[0]
     # Deactivate all pre-allocated slacks
     net.gen["slack"] = False
 
-    edges = collect_element_edges(net, elements_ids)
-    net_graph.remove_edges_from(edges)
+    net_graph = top.create_nxgraph(net)
 
     components = list(nx.connected_components(net_graph))
     candidate_buses = get_buses_with_reference_sources(net)
@@ -435,5 +430,3 @@ def assign_slack_per_island(
             chosen_idx = replace_sgen_by_gen(net, sgen=chosen_idx, bus_lookup=bus_lookup, retain_sgen_elm=True)
 
         net.gen.at[chosen_idx, "slack"] = True
-
-    return edges

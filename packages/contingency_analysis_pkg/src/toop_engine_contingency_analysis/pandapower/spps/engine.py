@@ -39,6 +39,7 @@ import pandapower as pp
 import pandas as pd
 import pandera.typing as pat
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
+    SlackAllocationConfig,
     SppsActionsPandapowerSchema,
     SppsConditionsPandapowerSchema,
 )
@@ -50,6 +51,7 @@ from toop_engine_contingency_analysis.pandapower.spps.schema import (
     SppsResult,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
+from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
     SppsConditionLogic,
@@ -552,7 +554,7 @@ def _run_power_flow(
 # --------------------------------------------------------------------------- #
 
 
-def run_spps(
+def run_spps(  # noqa: C901
     net: pp.pandapowerNet,
     conditions: pat.DataFrame[SppsConditionsPandapowerSchema],
     actions: pat.DataFrame[SppsActionsPandapowerSchema],
@@ -561,6 +563,7 @@ def run_spps(
     max_iterations: int = 1,
     runpp_kwargs: dict[str, Any] | None = None,
     on_power_flow_error: SppsPowerFlowFailurePolicy = SppsPowerFlowFailurePolicy.RAISE,
+    slack_allocation_config: SlackAllocationConfig | None = None,
 ) -> SppsResult:
     """Execute the SpPS rule engine.
 
@@ -588,6 +591,12 @@ def run_spps(
         power flow is run so ``res_*`` matches the updated net.
     runpp_kwargs
         Keyword arguments forwarded to the power-flow solver on every call.
+    slack_allocation_config
+        When provided, :func:`_apply_slack_allocation` is called after every
+        batch of SpPS actions and before the subsequent power flow.  This
+        re-assigns slack generators to account for new electrical islands that
+        may form when switches are opened by the activated schemes.  If
+        ``None`` (default), no in-loop slack reassignment is performed.
     on_power_flow_error
         Strategy for power-flow failures after applying actions (the initial PF
         always raises, as there is no previous state to fall back on):
@@ -658,6 +667,12 @@ def run_spps(
 
         activated_scheme_names.update(new_schemes)
         _apply_actions(active_actions, net)
+
+        if slack_allocation_config is not None:
+            assign_slack_per_island(
+                net=net,
+                min_island_size=slack_allocation_config.min_island_size,
+            )
 
         snapshot = _snapshot_res_tables(net) if on_power_flow_error == SppsPowerFlowFailurePolicy.KEEP_PREVIOUS else None
         try:

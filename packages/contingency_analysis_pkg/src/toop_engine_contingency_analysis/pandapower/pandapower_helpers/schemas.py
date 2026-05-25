@@ -13,7 +13,6 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
-from networkx.classes import MultiGraph
 from pandera.typing import Index, Series
 from pydantic import BaseModel, ConfigDict, Field
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
@@ -60,13 +59,12 @@ class CascadeConfig(BaseModel):
 
 @dataclasses.dataclass
 class SlackAllocationConfig:
-    """Carry configuration required for slack allocation per island."""
+    """Configuration for :func:`assign_slack_per_island`.
 
-    net_graph: MultiGraph
-    """NetworkX graph of the pandapower network used for island detection."""
-
-    bus_lookup: list[int]
-    """Mapping from PPCI bus indices to pandapower bus indices."""
+    The network graph and bus-lookup are derived internally by
+    :func:`assign_slack_per_island` from the current network state, so this
+    config only carries the parameters that remain constant across calls.
+    """
 
     min_island_size: int = 11
     """Minimum PPCI node count for an island to receive a slack bus."""

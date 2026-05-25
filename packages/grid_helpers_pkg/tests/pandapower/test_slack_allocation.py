@@ -5,7 +5,6 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
@@ -429,16 +428,25 @@ def test_non_positive_and_nan_priorities_are_excluded(monkeypatch):
     assert etype == "gen"
 
 
-def make_graph(n=4):
-    """Create a simple chain graph 0-1-2-3."""
-    G = nx.Graph()
-    G.add_nodes_from(range(n))
-    G.add_edges_from([(0, 1), (1, 2), (2, 3)])
-    return G
+def _add_chain_lines(net: pp.pandapowerNet) -> None:
+    """Connect buses sequentially as a chain using line-from-parameters."""
+    buses = list(net.bus.index)
+    for from_bus, to_bus in zip(buses, buses[1:]):
+        pp.create_line_from_parameters(
+            net,
+            from_bus=from_bus,
+            to_bus=to_bus,
+            length_km=1.0,
+            r_ohm_per_km=0.1,
+            x_ohm_per_km=0.1,
+            c_nf_per_km=0,
+            max_i_ka=1.0,
+        )
 
 
 def test_clears_existing_slacks_and_assigns_new_one(monkeypatch):
     net4 = _net_with_buses(4)
+    _add_chain_lines(net4)
     b0, b1, b2, b3 = net4.bus.index
     g0 = pp.create_gen(net4, bus=b1, p_mw=1.0, vm_pu=1.0)
     net4.gen.at[g0, "slack"] = True
@@ -447,12 +455,6 @@ def test_clears_existing_slacks_and_assigns_new_one(monkeypatch):
     s0 = pp.create_sgen(net4, bus=b2, p_mw=0.5)
     net4.sgen.at[s0, "referencePriority"] = 2.0
 
-    G = make_graph()
-    bus_lookup = list(net4.bus.index)  # [0,1,2,3]
-
-    def fake_collect_edges(net, element_ids):
-        return [(np.int64(1), np.int64(2))]
-
     def fake_get_ref_buses(net):
         return {b1, b2}
 
@@ -460,25 +462,18 @@ def test_clears_existing_slacks_and_assigns_new_one(monkeypatch):
         return {b0, b1, b2}
 
     def fake_assign_by_weight(net, cc):
-        assert cc in ({0, 1}, {2, 3})
-        if 1 in cc:
-            return g0, "gen"
         return g0, "gen"
 
     def fake_replace_sgen(net, sgen, retain_sgen_elm=True):
         raise AssertionError("Should not be called in this test")
 
     mod = __import__(IMPORT_PATH, fromlist=["*"])
-    monkeypatch.setattr(mod, "collect_element_edges", fake_collect_edges)
     monkeypatch.setattr(mod, "get_buses_with_reference_sources", lambda net: fake_get_ref_buses(net))
     monkeypatch.setattr(mod, "get_generating_units_with_load", lambda net: fake_get_genload_buses(net))
     monkeypatch.setattr(mod, "assign_slack_gen_by_weight", fake_assign_by_weight)
     monkeypatch.setattr(mod, "replace_sgen_by_gen", fake_replace_sgen)
 
-    removed = mod.assign_slack_per_island(net4, G, bus_lookup, elements_ids=["dummy"], min_island_size=1)
-
-    assert removed == [(1, 2)]
-    assert not G.has_edge(1, 2)
+    mod.assign_slack_per_island(net4, min_island_size=1)
 
     assert net4.gen["slack"].fillna(False).sum() == 1
     assert bool(net4.gen.at[g0, "slack"]) is True
@@ -486,18 +481,12 @@ def test_clears_existing_slacks_and_assigns_new_one(monkeypatch):
 
 def test_converts_sgen_then_sets_slack(monkeypatch):
     net4 = _net_with_buses(4)
+    _add_chain_lines(net4)
     b0, b1, b2, b3 = net4.bus.index
     s0 = pp.create_sgen(net4, bus=b2, p_mw=0.5)
     net4.sgen.at[s0, "referencePriority"] = 1.0
 
-    G = make_graph()
-    bus_lookup = list(net4.bus.index)
-
-    def fake_collect_edges(net, element_ids):
-        return []
-
     mod = __import__(IMPORT_PATH, fromlist=["*"])
-    monkeypatch.setattr(mod, "collect_element_edges", fake_collect_edges)
     monkeypatch.setattr(mod, "get_buses_with_reference_sources", lambda net: {b2})
     monkeypatch.setattr(mod, "get_generating_units_with_load", lambda net: {b1, b2})
 
@@ -511,8 +500,7 @@ def test_converts_sgen_then_sets_slack(monkeypatch):
 
     monkeypatch.setattr(mod, "replace_sgen_by_gen", fake_replace_sgen)
 
-    removed = mod.assign_slack_per_island(net4, G, bus_lookup, elements_ids=[], min_island_size=1)
-    assert removed == []
+    mod.assign_slack_per_island(net4, min_island_size=1)
 
     assert new_gen_idx in net4.gen.index
     assert bool(net4.gen.at[new_gen_idx, "slack"]) is True
@@ -520,14 +508,16 @@ def test_converts_sgen_then_sets_slack(monkeypatch):
 
 def test_filters_islands_by_min_size_and_candidates(monkeypatch):
     net4 = _net_with_buses(4)
+    _add_chain_lines(net4)
     b0, b1, b2, b3 = net4.bus.index
     g0 = pp.create_gen(net4, bus=b0, p_mw=1.0, vm_pu=1.0)
     net4.gen.at[g0, "referencePriority"] = 1.0
 
-    G = make_graph()
-    bus_lookup = list(net4.bus.index)
+    # Disconnect b1–b2 so the chain splits into {b0, b1} and {b2, b3}.
+    # _add_chain_lines creates lines in order: b0-b1 (idx 0), b1-b2 (idx 1), b2-b3 (idx 2).
+    net4.line.at[net4.line.index[1], "in_service"] = False
+
     mod = __import__(IMPORT_PATH, fromlist=["*"])
-    monkeypatch.setattr(mod, "collect_element_edges", lambda net, ids: [(np.int64(1), np.int64(2))])
     monkeypatch.setattr(mod, "get_buses_with_reference_sources", lambda net: {b0})
     monkeypatch.setattr(mod, "get_generating_units_with_load", lambda net: {b0, b1})
 
@@ -535,58 +525,26 @@ def test_filters_islands_by_min_size_and_candidates(monkeypatch):
 
     def fake_assign(net, cc):
         called["count"] += 1
-        assert cc == {0, 1}
+        assert b0 in cc and b1 in cc and b2 not in cc
         return g0, "gen"
 
     monkeypatch.setattr(mod, "assign_slack_gen_by_weight", fake_assign)
     monkeypatch.setattr(mod, "replace_sgen_by_gen", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
 
-    mod.assign_slack_per_island(net4, G, bus_lookup, elements_ids=["x"], min_island_size=1)
+    mod.assign_slack_per_island(net4, min_island_size=1)
     assert called["count"] == 1
     assert bool(net4.gen.at[g0, "slack"]) is True
 
 
-@pytest.mark.xfail(reason="Function compares node indices to bus indices without mapping via bus_lookup")
-def test_bus_vs_node_index_mismatch_exposes_filtering_bug(monkeypatch):
-    net4 = _net_with_buses(4)
-    net4.bus.drop(net4.bus.index, inplace=True)
-    net = pp.create_empty_network()
-    [pp.create_bus(net, vn_kv=20) for _ in range(4)]
-    bus_lookup = [100, 101, 102, 103]
-
-    G = make_graph()
-
-    def fake_collect_edges(n, ids):
-        return [(0, 1)]
-
-    mod = __import__(IMPORT_PATH, fromlist=["*"])
-    monkeypatch.setattr(mod, "collect_element_edges", fake_collect_edges)
-    monkeypatch.setattr(mod, "get_buses_with_reference_sources", lambda n: {101})
-    monkeypatch.setattr(mod, "get_generating_units_with_load", lambda n: {101, 102})
-
-    called = {"hit": False}
-
-    def fake_assign(*args, **kwargs):
-        called["hit"] = True
-        return 0, "gen"
-
-    monkeypatch.setattr(mod, "assign_slack_gen_by_weight", fake_assign)
-    monkeypatch.setattr(mod, "replace_sgen_by_gen", lambda *a, **k: 0)
-
-    edges = mod.assign_slack_per_island(net, G, bus_lookup, elements_ids=["irrelevant"], min_island_size=1)
-    assert edges == [(0, 1)]
-    assert called["hit"] is False
-
-
-def test_returns_empty_when_reference_priority_columns_missing(monkeypatch):
+def test_skips_allocation_when_reference_priority_columns_missing():
     net = pp.create_empty_network()
     b0 = pp.create_bus(net, vn_kv=20)
-    pp.create_gen(net, bus=b0, p_mw=1.0, vm_pu=1.0)
+    g0 = pp.create_gen(net, bus=b0, p_mw=1.0, vm_pu=1.0)
     pp.create_sgen(net, bus=b0, p_mw=0.5)
+    net.gen.at[g0, "slack"] = True  # pre-existing slack should remain untouched
 
-    G = nx.Graph()
-    G.add_nodes_from([0])
-    bus_lookup = [int(b0)]
     mod = __import__(IMPORT_PATH, fromlist=["*"])
-    edges = mod.assign_slack_per_island(net, G, bus_lookup, elements_ids=["x"], min_island_size=1)
-    assert edges == []
+    mod.assign_slack_per_island(net, min_island_size=1)
+
+    # Early return — gen.slack is not cleared
+    assert bool(net.gen.at[g0, "slack"]) is True

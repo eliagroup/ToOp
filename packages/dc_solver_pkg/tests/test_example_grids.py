@@ -18,7 +18,7 @@ from tests.numpy_reference import calc_bsdf as calc_bsdf_numpy
 from toop_engine_dc_solver.example_grids import (
     PandapowerCounters,
     case14_pandapower,
-    case30_with_psts,
+    case30_with_psts_pandapower,
     case30_with_psts_powsybl,
     case57_data_pandapower,
     case57_data_powsybl,
@@ -450,7 +450,7 @@ def test_case14_pandapower() -> None:
 def test_case30_with_psts() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir = Path(tmp_dir)
-        case30_with_psts(tmp_dir)
+        case30_with_psts_pandapower(tmp_dir)
 
         filesystem_dir = DirFileSystem(str(tmp_dir))
         pp_backend = PandaPowerBackend(filesystem_dir)

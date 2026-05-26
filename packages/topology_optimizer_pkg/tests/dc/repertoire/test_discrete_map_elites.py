@@ -130,6 +130,7 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
     assert repertoire.fitnesses.shape == (20 * cell_depth,)
 
 
+# TODO: Move fixture to conftest
 @pytest.fixture
 def create_3_node_pst_example_grid(
     tmp_path_factory,
@@ -143,6 +144,7 @@ def create_3_node_pst_example_grid(
     return stats, static_information, network_data, net
 
 
+# TODO: Fix tap to reduce overload
 def test_manual_pst_optimization(
     create_3_node_pst_example_grid: tuple[StaticInformationStats, StaticInformation, NetworkData, Network],
 ) -> None:

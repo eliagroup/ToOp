@@ -385,6 +385,24 @@ class PandaPowerBackend(BackendInterface):
 
         return mask
 
+    def _get_controllable_phase_shift_trafo_mask(self) -> Bool[np.ndarray, " n_trafo"]:
+        """Get the controllable PST mask on pandapower trafo level."""
+        try:
+            controllable_pst_mask = load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs,
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_pst_controllable"]),
+            )
+        except FileNotFoundError:
+            controllable_pst_mask = np.zeros(len(self.net.trafo), dtype=bool)
+
+        if self.net.trafo.empty:
+            return controllable_pst_mask
+
+        _mask, tech_controllable, _shift_taps = get_phaseshift_mask(self.net)
+        trafo_start, trafo_end = self.net._pd2ppc_lookups["branch"]["trafo"]
+        tech_controllable_trafos = tech_controllable[trafo_start:trafo_end]
+        return tech_controllable_trafos & controllable_pst_mask
+
     def _get_controllable_phase_shift_data(
         self,
     ) -> tuple[Bool[np.ndarray, " n_branch"], list[Float[np.ndarray, " n_tap_positions"]]]:
@@ -397,20 +415,12 @@ class PandaPowerBackend(BackendInterface):
         list[Float[np.ndarray, " n_tap_positions"]]
             The shift taps of the controllable phase shifters
         """
-        try:
-            controllable_pst_mask = load_numpy_filesystem(
-                filesystem=self.data_folder_dirfs,
-                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_pst_controllable"]),
-            )
-        except FileNotFoundError:
-            controllable_pst_mask = np.zeros(len(self.net.trafo), dtype=bool)
-
         controllable_pst_mask_extended = np.zeros(self.ppci["branch"].shape[0], dtype=bool)
 
         if self.net.trafo.empty:
             return controllable_pst_mask_extended, []
         trafo_start, trafo_end = self.net._pd2ppc_lookups["branch"]["trafo"]
-        controllable_pst_mask_extended[trafo_start:trafo_end] = controllable_pst_mask
+        controllable_pst_mask_extended[trafo_start:trafo_end] = self._get_controllable_phase_shift_trafo_mask()
 
         mask, tech_controllable, shift_taps = get_phaseshift_mask(self.net)
         # A trafo is controllable if it is technically a controllable phase shifter and in the controllable mask
@@ -451,6 +461,34 @@ class PandaPowerBackend(BackendInterface):
         """
         _mask, taps = self._get_controllable_phase_shift_data()
         return taps
+
+    def get_phase_shift_linearity(self) -> Bool[np.ndarray, " n_controllable_psts"]:
+        """Return which controllable pandapower PSTs have linear phase shift behaviour."""
+        controllable_trafo_mask = self._get_controllable_phase_shift_trafo_mask()
+        if not controllable_trafo_mask.any():
+            return np.zeros(0, dtype=bool)
+
+        tap_changer_types = self.net.trafo.loc[controllable_trafo_mask, "tap_changer_type"].tolist()
+        return np.array([tap_changer_type in ("Ideal", True) for tap_changer_type in tap_changer_types], dtype=bool)
+
+    def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_psts"]:
+        """Get the starting tap position for each controllable PST as an index into the tap values."""
+        controllable_trafo_mask = self._get_controllable_phase_shift_trafo_mask()
+        if not controllable_trafo_mask.any():
+            return np.zeros(0, dtype=int)
+
+        controllable_tap_data = self.net.trafo.loc[controllable_trafo_mask, ["tap_pos", "tap_min"]].copy()
+        controllable_tap_data["tap_pos"] = controllable_tap_data["tap_pos"].fillna(controllable_tap_data["tap_min"])
+        starting_taps = controllable_tap_data["tap_pos"].astype(int) - controllable_tap_data["tap_min"].astype(int)
+        return starting_taps.to_numpy(dtype=int)
+
+    def get_phase_shift_low_taps(self) -> Int[np.ndarray, " n_controllable_psts"]:
+        """Get the lowest original tap position for each controllable PST."""
+        controllable_trafo_mask = self._get_controllable_phase_shift_trafo_mask()
+        if not controllable_trafo_mask.any():
+            return np.zeros(0, dtype=int)
+
+        return self.net.trafo.loc[controllable_trafo_mask, "tap_min"].astype(int).to_numpy(dtype=int)
 
     def get_monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get mask of monitored branches for the reward calculation

@@ -22,7 +22,8 @@ from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import Lo
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
-    extract_results,
+    convert_topologies_to_messages,
+    extract_topologies,
     initialize_optimization,
     run_epoch,
 )
@@ -216,18 +217,14 @@ def optimization_loop(
         logger.error(f"Error during initialization of optimization {optimization_id}: {e}")
         return
 
-    def push_topologies(optimizer_data: OptimizerData) -> None:
+    def push_topologies(optimizer_data: OptimizerData, epoch: int) -> None:
         """Push topologies to the results topic."""
         with jax.default_device(jax.devices("cpu")[0]):
-            push_result = extract_results(optimizer_data)
-            if len(push_result.strategies):
+            push_results = convert_topologies_to_messages(extract_topologies(optimizer_data), epoch)
+            for push_result in push_results:
                 send_result_fn(push_result)
-                best_fitness = max(
-                    timestep.metrics.fitness for strategy in push_result.strategies for timestep in strategy.timesteps
-                )
-                logger.info(
-                    f"Sent {len(push_result.strategies)} strategies with best fitness {best_fitness} to results topic"
-                )
+            if len(push_results) > 0:
+                logger.info(f"Sent {len(push_results)} strategies to results topic")
             else:
                 logger.warning("No strategies extracted, skipping push.")
 
@@ -238,7 +235,7 @@ def optimization_loop(
     while running:
         try:
             optimizer_data = run_epoch(optimizer_data)
-            push_topologies(optimizer_data)
+            push_topologies(optimizer_data, epoch)
         except Exception as e:
             # Send a stop message to the results
             send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))

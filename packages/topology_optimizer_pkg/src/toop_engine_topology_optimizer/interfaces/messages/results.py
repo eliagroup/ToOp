@@ -198,21 +198,11 @@ class TopologyPushResult(BaseModel):
     message_type: Literal["topology_push"] = "topology_push"
     """The result type, don't change this"""
 
-    strategies: list[Strategy]
-    """The strategies to be pushed to the master. Each strategy contains a list of timestep-
-    topologies, one for every timestep that was optimized (i.e. Strategy.timesteps have the
-    same length for all strategies)"""
+    strategy: Strategy
+    """The strategy to be pushed to the master."""
 
     epoch: Optional[int] = None
     """The epoch of the optimization run. Enables plotting the results over time on backend side."""
-
-    @field_validator("strategies", mode="after")
-    @classmethod
-    def strategy_same_length(cls, v: list[Strategy]) -> list[Strategy]:
-        """Ensure that all strategies have the same number of timesteps."""
-        if len(set(len(strategy.timesteps) for strategy in v)) > 1:
-            raise ValueError("All strategies must have the same number of timesteps")
-        return v
 
 
 class OptimizationStoppedResult(BaseModel):

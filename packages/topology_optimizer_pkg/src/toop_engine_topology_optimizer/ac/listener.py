@@ -100,7 +100,7 @@ def poll_results_topic(
 
         strategies = None
         if isinstance(result.result, TopologyPushResult):
-            strategies = result.result.strategies
+            strategies = [result.result.strategy]
         elif isinstance(result.result, OptimizationStartedResult):
             strategies = [result.result.initial_topology]
         elif isinstance(result.result, OptimizationStoppedResult):

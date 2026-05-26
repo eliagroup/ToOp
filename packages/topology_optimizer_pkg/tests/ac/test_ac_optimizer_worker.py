@@ -180,7 +180,7 @@ def test_main_warmup_processes_many_results_and_exits_via_mocked_idle_loop(
             ),
         )
         result_message = Result(
-            result=TopologyPushResult(strategies=[Strategy(timesteps=[topology])]),
+            result=TopologyPushResult(strategy=Strategy(timesteps=[topology])),
             optimization_id=optimization_id,
             optimizer_type=OptimizerType.DC,
             instance_id="dc_optimizer_warmup",
@@ -227,7 +227,7 @@ def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Res
     rng = np.random.default_rng(42)
     contingency_ids_sorted = sorted(contingency_ids_case_57)
 
-    topos = []
+    topopushresult = None
     for _ in range(10):
         action = random_actions(action_set, rng, n_split_subs=2)
 
@@ -251,15 +251,16 @@ def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Res
                 worst_k_contingency_cases=worst_k_contingency_cases,
             ),
         )
-        topos.append(topology)
-    topopushresult = Result(
-        result=TopologyPushResult(
-            strategies=[Strategy(timesteps=[topo]) for topo in topos],
-        ),
-        optimization_id="test",
-        optimizer_type=OptimizerType.DC,
-        instance_id="dc_optimizer",
-    )
+        topopushresult = Result(
+            result=TopologyPushResult(
+                strategy=Strategy(timesteps=[topology]),
+            ),
+            optimization_id="test",
+            optimizer_type=OptimizerType.DC,
+            instance_id="dc_optimizer",
+        )
+        break
+    assert topopushresult is not None
     return topopushresult
 
 

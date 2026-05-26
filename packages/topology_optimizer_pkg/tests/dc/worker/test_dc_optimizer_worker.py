@@ -300,9 +300,8 @@ def test_main(
         result = Result.model_validate_json(deserialize_message(message.value()))
         if isinstance(result.result, TopologyPushResult):
             topo_push_found = True
-            for strategy in result.result.strategies:
-                if len(strategy.timesteps[0].actions):
-                    split_topo_push_found = True
+            if len(result.result.strategy.timesteps[0].actions):
+                split_topo_push_found = True
         elif isinstance(result.result, OptimizationStoppedResult):
             stopped_found = True
             assert result.result.reason == "converged"
@@ -361,6 +360,7 @@ def test_optimization_loop(
 
     assert isinstance(results[0], OptimizationStartedResult)
     assert isinstance(results[1], TopologyPushResult)
+    assert len(results[1].strategy.timesteps) == 1
     assert isinstance(results[-1], OptimizationStoppedResult)
     assert results[-1].reason == "converged"
 

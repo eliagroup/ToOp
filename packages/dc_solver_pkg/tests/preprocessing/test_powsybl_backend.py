@@ -402,10 +402,18 @@ def test_psts(tmp_path_factory: pytest.TempPathFactory) -> None:
     case30_with_psts_powsybl(tmp_dir)
     filesystem_dir_powsybl = DirFileSystem(str(tmp_dir))
     backend = PowsyblBackend(filesystem_dir_powsybl)
-
+    net = pypowsybl.network.load(tmp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    powsybl_taps = net.get_phase_tap_changer_steps()["alpha"].sort_index()
+    powsybl_tap_ids = powsybl_taps.index.get_level_values("id").unique()
     assert backend.get_controllable_phase_shift_mask().sum() == 2
     assert len(backend.get_phase_shift_taps()) == 2
     for taps in backend.get_phase_shift_taps():
+        tap_found = False
         assert len(taps)
-        assert taps[0] == taps.min()
-        assert taps[-1] == taps.max()
+        for powsybl_tap_id in powsybl_tap_ids:
+            cond_start = powsybl_taps.loc[powsybl_tap_id].iloc[0] == -1 * taps[0]
+            cond_end = powsybl_taps.loc[powsybl_tap_id].iloc[-1] == -1 * taps[-1]
+            if cond_end and cond_start and len(taps) == len(powsybl_taps.loc[powsybl_tap_id]):
+                tap_found = True
+                break
+        assert tap_found

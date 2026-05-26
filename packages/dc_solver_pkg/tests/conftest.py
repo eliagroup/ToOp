@@ -1220,21 +1220,21 @@ def _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(tmp_path_factory: p
 
 
 @pytest.fixture(scope="session")
-def __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_0")
     create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, False]))
     return tmp_path
 
 
 @pytest.fixture(scope="session")
-def __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_1")
     create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, True]))
     return tmp_path
 
 
 @pytest.fixture(scope="session")
-def __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_0_1")
     create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, True]))
     return tmp_path
@@ -1259,9 +1259,9 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
 
 @pytest.fixture(scope="function")
 def complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder(
-    __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+    _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> Path:
-    powsybl_data_folder = __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path
+    powsybl_data_folder = _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_0", numbered=True)
 
     # Copy over the grid file
@@ -1276,9 +1276,9 @@ def complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder(
 
 @pytest.fixture(scope="function")
 def complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder(
-    __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+    _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> Path:
-    powsybl_data_folder = __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path
+    powsybl_data_folder = _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_1", numbered=True)
 
     # Copy over the grid file
@@ -1293,9 +1293,9 @@ def complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder(
 
 @pytest.fixture(scope="function")
 def complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_folder(
-    __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+    _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> Path:
-    powsybl_data_folder = __create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path
+    powsybl_data_folder = _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_0_1", numbered=True)
 
     # Copy over the grid file

@@ -1095,9 +1095,7 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     )
 
 
-def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
-    folder: Path, linear_pst: Optional[np.ndarray[bool]] = None
-) -> NetworkData:
+def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst: np.ndarray = None) -> NetworkData:
     """Create a preprocessed folder for create_complex_grid_battery_hvdc_svc_3w_trafo().
 
     Runs the importer and preprocessing.
@@ -1113,8 +1111,6 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
     NetworkData
         The network data after preprocessing, which can be used for testing the consistency of the preprocessing step
     """
-    if linear_pst is None:
-        linear_pst = np.array([False, False])
     # Connect the out of service line to bring the second PST operational
     net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=linear_pst, connect_line_out_of_service=True)
     pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
@@ -1142,10 +1138,13 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
     preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
 
     _info, _static_information, network_data = load_grid(
-        data_folder_dirfs=DirFileSystem(folder),
+        data_folder_dirfs=DirFileSystem(str(folder)),
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,
+    )
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
     return network_data

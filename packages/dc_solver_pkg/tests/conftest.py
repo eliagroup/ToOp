@@ -40,7 +40,7 @@ from toop_engine_dc_solver.example_classes import (
 )
 from toop_engine_dc_solver.example_grids import (
     case14_pandapower,
-    case30_with_psts,
+    case30_with_psts_pandapower,
     case57_data_powsybl,
     complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     node_breaker_folder_powsybl,
@@ -645,7 +645,7 @@ def oberrhein_outage_station_busbars_map(_oberrhein_data_folder: Path) -> dict:
 @pytest.fixture(scope="session")
 def _case30_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("case30_with_psts")
-    case30_with_psts(tmp_path)
+    case30_with_psts_pandapower(tmp_path)
     return tmp_path
 
 

@@ -25,6 +25,7 @@ from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, sav
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
     SppsConditionLogic,
+    SppsConditionMode,
     SppsConditionSide,
     SppsConditionType,
     SppsMeasureType,
@@ -130,7 +131,13 @@ class Condition(BaseModel):
     """Threshold value for numeric checks."""
 
     condition_element_unique_id: str
-    """Globally unique identifier of the condition element.
+    """Globally unique identifier of the condition element."""
+
+    condition_mode: SppsConditionMode = SppsConditionMode.CON
+    """Network state against which the condition is evaluated.
+
+    * ``BC``  — base-case results (before the contingency is applied).
+    * ``CON`` — post-contingency results (default).
     """
 
 

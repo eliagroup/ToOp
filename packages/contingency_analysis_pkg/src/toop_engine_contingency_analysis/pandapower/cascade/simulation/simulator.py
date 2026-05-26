@@ -8,6 +8,7 @@
 """Coordinate iterative cascade simulation after an initial outage."""
 
 import json
+from copy import deepcopy
 from dataclasses import replace
 from itertools import chain
 from typing import Any
@@ -407,6 +408,9 @@ class CascadeSimulator:
             monitored_elements=monitored_breakers,
             side="bus",
         )  # TODO: think about move out of this function and create only once
+        # Capture the pre-step network state (res_* = previous iteration's PF
+        # results) before any topology changes are applied.
+        basecase_net = deepcopy(net)
         open_outaged_circuit_breakers(net, contingency.elements)
         try:
             return run_spps_with_branch_switch_results(
@@ -415,7 +419,7 @@ class CascadeSimulator:
                 self._spps,
                 switch_element_mapping,
                 timestep=1,
-                basecase_voltage=net.res_bus.vm_pu.copy(),
+                basecase_net=basecase_net,
                 method=self._lf_method,
                 runpp_kwargs=self._runpp_kwargs,
                 min_island_size=self._cfg.min_island_size,

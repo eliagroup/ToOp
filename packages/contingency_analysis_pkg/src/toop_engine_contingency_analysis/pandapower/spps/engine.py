@@ -55,6 +55,7 @@ from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_pe
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
     SppsConditionLogic,
+    SppsConditionMode,
     SppsConditionSide,
     SppsConditionType,
     SppsPowerFlowFailurePolicy,
@@ -554,11 +555,12 @@ def _run_power_flow(
 # --------------------------------------------------------------------------- #
 
 
-def run_spps(  # noqa: C901
+def run_spps(  # noqa: C901, PLR0915
     net: pp.pandapowerNet,
     conditions: pat.DataFrame[SppsConditionsPandapowerSchema],
     actions: pat.DataFrame[SppsActionsPandapowerSchema],
     failed_elements: set[str],
+    basecase_net: pp.pandapowerNet,
     method: Literal["ac", "dc"] = "ac",
     max_iterations: int = 1,
     runpp_kwargs: dict[str, Any] | None = None,
@@ -572,7 +574,11 @@ def run_spps(  # noqa: C901
     net
         Pandapower network. Mutated in place.
     conditions
-        Condition rows: :class:`SppsConditionsPandapowerSchema`.
+        Condition rows: :class:`SppsConditionsPandapowerSchema`.  Each row
+        carries a ``condition_mode`` field (``"BC"`` or ``"CON"``).  Rows with
+        ``condition_mode == "BC"`` are evaluated against ``basecase_net.res_*``;
+        rows with ``condition_mode == "CON"`` (default) are evaluated against
+        the post-contingency results after each load-flow iteration.
     actions
         Action rows sharing ``scheme_name`` with *conditions*:
         :class:`SppsActionsPandapowerSchema`.
@@ -597,6 +603,12 @@ def run_spps(  # noqa: C901
         re-assigns slack generators to account for new electrical islands that
         may form when switches are opened by the activated schemes.  If
         ``None`` (default), no in-loop slack reassignment is performed.
+    basecase_net
+        Deep-copy of the pandapower network after the base-case load flow.
+        Condition rows with ``condition_mode == "BC"`` are evaluated against
+        ``basecase_net.res_*`` tables; rows with ``condition_mode == "CON"``
+        are evaluated against the post-contingency results after each
+        load-flow iteration.
     on_power_flow_error
         Strategy for power-flow failures after applying actions (the initial PF
         always raises, as there is no previous state to fall back on):
@@ -635,11 +647,24 @@ def run_spps(  # noqa: C901
     # are handled as "failed" instead of updating energized status dynamically.
     _populate_energized(conditions, net)
 
+    # --- BC condition stash ------------------------------------------------- #
+    # Extract condition values for every BC-mode row against the base-case
+    # network and keep them fixed throughout all iterations (the base case does
+    # not change between SpPS iterations).
+
+    bc_mask = conditions["condition_mode"] == SppsConditionMode.BC
+    _extract_condition_values(conditions, basecase_net)
+    bc_values = conditions.loc[bc_mask, "condition_element_value"].copy()
+    # ----------------------------------------------------------------------- #
+
     _run_power_flow(net, method, runpp_kwargs)
 
     for iteration in range(1, max_iterations + 1):
         _populate_failed(conditions, failed_elements, net)
         _extract_condition_values(conditions, net)
+        # Restore base-case values for BC-mode rows (they must not reflect the
+        # post-contingency state).
+        conditions.loc[bc_mask, "condition_element_value"] = bc_values
         _evaluate_conditions(conditions)
         candidate_schemes = _satisfied_scheme_names(conditions)
         new_schemes = sorted(n for n in candidate_schemes if n not in activated_scheme_names)

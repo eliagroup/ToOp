@@ -30,6 +30,7 @@ def run_outage_power_flow(
     spps: SingleOutageSppsContext,
     method: Literal["ac", "dc"],
     outaged_elements: list[PandapowerElements],
+    basecase_net: pp.pandapowerNet,
     *,
     runpp_kwargs: dict[str, Any] | None = None,
     slack_allocation_config: SlackAllocationConfig | None = None,
@@ -47,6 +48,10 @@ def run_outage_power_flow(
     * **SpPS in-loop PFs** — the config is forwarded to :func:`run_spps` so
       that slack buses are reassigned after each batch of rule actions (switch
       openings, setpoint changes) before the subsequent power flow.
+
+    *basecase_net* (deep-copy of the network after the base-case load flow) is
+    forwarded to :func:`run_spps`, which uses it to evaluate condition rows
+    whose ``condition_mode`` is ``"BC"`` against base-case results.
 
     Additional pandapower arguments go through *runpp_kwargs*.
     """
@@ -78,8 +83,9 @@ def run_outage_power_flow(
             net=net,
             conditions=spps.conditions,
             actions=spps.actions,
-            method=method,
             failed_elements={get_globally_unique_id(element.table_id, element.table) for element in outaged_elements},
+            basecase_net=basecase_net,
+            method=method,
             runpp_kwargs=merged_runpp,
             max_iterations=spps.rules_max_iterations,
             on_power_flow_error=spps.on_power_flow_error,

@@ -9,7 +9,7 @@
 
 import dataclasses
 
-import pandas as pd
+import pandapower as pp
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
@@ -24,6 +24,7 @@ from toop_engine_interfaces.nminus1_definition import (
 from toop_engine_interfaces.spps_parameters import (
     SPPS_CONDITION_CHECK_TYPE_VALUES,
     SPPS_CONDITION_LOGIC_VALUES,
+    SPPS_CONDITION_MODE_VALUES,
     SPPS_CONDITION_SIDE_VALUES,
     SPPS_CONDITION_TYPE_VALUES,
     SPPS_MEASURE_TYPE_VALUES,
@@ -197,6 +198,15 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
 
     condition_element_table_id: Series[int] = pa.Field(coerce=True)
     """Row id of the monitored element in the table."""
+
+    condition_mode: Series[str] = pa.Field(isin=SPPS_CONDITION_MODE_VALUES)
+    """Network state against which the condition is evaluated.
+
+    * ``"BC"``  — evaluated against the base-case power-flow results (before
+      the contingency is applied).
+    * ``"CON"`` — evaluated against the post-contingency power-flow results
+      (default).
+    """
 
 
 class SppsActionsPandapowerSchema(pa.DataFrameModel):
@@ -457,12 +467,12 @@ class SingleOutageContext(BaseModel):
     object for traceability.
     """
 
-    basecase_voltage: pd.Series
-    """Voltage results from the base-case load-flow.
+    basecase_net: pp.pandapowerNet
+    """Deep-copy of the pandapower network after the base-case load flow.
 
-    Contains valid voltage magnitudes if the base case converged,
-    otherwise a series of NaN values. Used for voltage comparison
-    and delta calculations.
+    All ``res_*`` tables are populated with base-case power-flow results.
+    Used for voltage deviation calculations and for evaluating SpPS conditions
+    against the base-case operating point (``condition_mode == "BC"``).
     """
 
     method: Literal["ac", "dc"] = "ac"
@@ -512,11 +522,12 @@ class SequentialContingencyAnalysisContext(BaseModel):
     timestep: int
     """Timestep associated with the computed results."""
 
-    basecase_voltage: pd.Series
-    """Voltage results from the base-case load-flow.
+    basecase_net: pp.pandapowerNet
+    """Deep-copy of the pandapower network after the base-case load flow.
 
-    Used for comparison with contingency results and for computing
-    voltage differences.
+    All ``res_*`` tables are populated with base-case power-flow results.
+    Used for voltage deviation calculations and for evaluating SpPS conditions
+    against the base-case operating point (``condition_mode == "BC"``).
     """
 
     slack_allocation_config: SlackAllocationConfig
@@ -611,8 +622,13 @@ class ParallelContingencyAnalysisContext(BaseModel):
     slack_allocation_config: SlackAllocationConfig
     """Configuration for slack bus allocation per electrical island."""
 
-    basecase_voltage: pd.Series
-    """Voltage results from the base-case load-flow."""
+    basecase_net: pp.pandapowerNet
+    """Deep-copy of the pandapower network after the base-case load flow.
+
+    All ``res_*`` tables are populated with base-case power-flow results.
+    Used for voltage deviation calculations and for evaluating SpPS conditions
+    against the base-case operating point (``condition_mode == "BC"``).
+    """
 
     switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema]
     """Mapping between switches and connected elements."""

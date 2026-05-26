@@ -164,6 +164,7 @@ def run_single_outage(
         outaged_elements=outaged_elements,
         runpp_kwargs=ctx.runpp_kwargs,
         slack_allocation_config=slack_allocation_config,
+        basecase_net=ctx.basecase_net,
     )
 
     spps_results = (
@@ -274,7 +275,7 @@ def _collect_element_results(
         ctx.monitored_elements,
         ctx.timestep,
         status,
-        ctx.basecase_voltage,
+        ctx.basecase_net,
         ctx.switch_element_mapping,
     )
 
@@ -466,7 +467,7 @@ def get_element_results_df(
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     timestep: int,
     status: ConvergenceStatus,
-    basecase_voltage: pat.Series[float],
+    basecase_net: pp.pandapowerNet,
     switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
 ) -> tuple[
     pat.DataFrame[BranchResultSchema],
@@ -489,10 +490,9 @@ def get_element_results_df(
         The timestep of the results
     status : ConvergenceStatus
         The convergence status of the loadflow computation
-    basecase_voltage: pat.Series[float]
-        The voltage results from the basecase run.
-        Contains computed voltages if the basecase converged,
-        otherwise a series of NaN values.
+    basecase_net : pp.pandapowerNet
+        Deep-copy of the network after the base-case load flow.  ``res_bus.vm_pu``
+        is used to compute per-bus voltage deviation.
     switch_element_mapping : pat.DataFrame[SwitchElementMappingSchema]
         Mapping between switches and connected elements, used to compute
         switch-level results during each outage.
@@ -505,7 +505,7 @@ def get_element_results_df(
     """
     if status == ConvergenceStatus.CONVERGED:
         full_branch_results_df = get_branch_results(net, contingency, timestep)
-        node_results_df = get_node_result_df(net, contingency, timestep, basecase_voltage)
+        node_results_df = get_node_result_df(net, contingency, timestep, basecase_net)
         va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
         # IMPORTANT:
         # Do NOT filter branch/node results before this step.
@@ -555,7 +555,7 @@ def run_contingency_analysis_sequential(
         job_id=ctx.job_id,
         method=ctx.method,
         runpp_kwargs=ctx.runpp_kwargs,
-        basecase_voltage=ctx.basecase_voltage,
+        basecase_net=ctx.basecase_net,
         switch_element_mapping=ctx.switch_element_mapping,
         spps=SingleOutageSppsContext(
             conditions=ctx.spps_conditions,
@@ -615,7 +615,7 @@ def run_contingency_analysis_parallel(
         slack_allocation_config=ctx.slack_allocation_config,
         method=ctx.method,
         runpp_kwargs=ctx.runpp_kwargs,
-        basecase_voltage=ctx.basecase_voltage,
+        basecase_net=ctx.basecase_net,
         switch_element_mapping=ctx.switch_element_mapping,
         spps_conditions=ctx.spps_conditions,
         spps_actions=ctx.spps_actions,
@@ -771,7 +771,6 @@ def run_contingency_analysis_pandapower(
 
     _run_base_case_loadflow(
         net=net,
-        base_case=pp_n1_definition.base_case,
         cfg=cfg,
         slack_allocation_config=slack_allocation_config,
     )
@@ -792,7 +791,7 @@ def run_contingency_analysis_pandapower(
                 slack_allocation_config=slack_allocation_config,
                 method=cfg.method,
                 runpp_kwargs=cfg.runpp_kwargs,
-                basecase_voltage=net.res_bus.vm_pu.copy(),
+                basecase_net=deepcopy(net),
                 switch_element_mapping=switch_element_mapping,
                 spps_conditions=pp_n1_definition.spps_conditions,
                 spps_actions=pp_n1_definition.spps_actions,
@@ -809,7 +808,7 @@ def run_contingency_analysis_pandapower(
                 job_id=job_id,
                 timestep=timestep,
                 slack_allocation_config=slack_allocation_config,
-                basecase_voltage=net.res_bus.vm_pu.copy(),
+                basecase_net=deepcopy(net),
                 switch_element_mapping=switch_element_mapping,
                 spps_conditions=pp_n1_definition.spps_conditions,
                 spps_actions=pp_n1_definition.spps_actions,

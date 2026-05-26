@@ -83,7 +83,7 @@ def run_spps_with_branch_switch_results(
     spps: SingleOutageSppsContext,
     switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
     timestep: int,
-    basecase_voltage: pat.Series[float],
+    basecase_net: pp.pandapowerNet,
     method: Literal["ac", "dc"] = "ac",
     runpp_kwargs: dict[str, Any] | None = None,
     min_island_size: int = 11,
@@ -107,8 +107,9 @@ def run_spps_with_branch_switch_results(
         Mapping used to calculate switch results.
     timestep : int
         Timestep label to write into result tables.
-    basecase_voltage : pat.Series[float]
-        Base voltage values used by node result calculations.
+    basecase_net : pp.pandapowerNet
+        Deep-copy of the network whose ``res_bus.vm_pu`` column holds the
+        reference (pre-step) voltages used by node result calculations.
     method : Literal["ac", "dc"]
         Load-flow method, either ac or dc.
     runpp_kwargs : dict[str, Any] | None
@@ -134,6 +135,7 @@ def run_spps_with_branch_switch_results(
         contingency.elements,
         runpp_kwargs=runpp_kwargs,
         slack_allocation_config=slack_allocation_config,
+        basecase_net=basecase_net,
     )
 
     if convergence_status != ConvergenceStatus.CONVERGED:
@@ -146,7 +148,7 @@ def run_spps_with_branch_switch_results(
         )
 
     branch_results = get_branch_results(net, contingency, timestep)
-    node_results = get_node_result_df(net, contingency, timestep, basecase_voltage)
+    node_results = get_node_result_df(net, contingency, timestep, basecase_net)
     switch_results: pat.DataFrame[SwitchResultsSchema] = get_switch_results(
         net,
         contingency,

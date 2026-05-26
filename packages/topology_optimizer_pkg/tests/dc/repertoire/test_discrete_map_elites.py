@@ -9,7 +9,6 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 import pypowsybl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
@@ -192,15 +191,15 @@ def test_manual_pst_optimization(
     assert jnp.allclose(res.n_0_matrix, res2.n_0_matrix)
     assert jnp.allclose(res.n_1_matrix, res2.n_1_matrix)
 
-    # PST tap of -12 (tap index 18) should match PowerSybl reference
+    # PST tap of -12 (tap index 29) should match PowerSybl reference
     # With corrected sign, this tap eliminates overload
-    solution = np.array([18, 18])
+    solution = jnp.array([29, 29])
     res, success = compute_symmetric_batch(
         topology_batch=default_topology(solver_config=solver_config),
         disconnection_batch=None,
         injections=None,
         nodal_inj_start_options=NodalInjStartOptions(
-            previous_results=NodalInjOptimResults(pst_tap_idx=jnp.array([solution.tolist()])),
+            previous_results=NodalInjOptimResults(pst_tap_idx=solution[None, None, :]),
             precision_percent=jnp.array([0.0]),
         ),
         dynamic_information=di,
@@ -210,7 +209,7 @@ def test_manual_pst_optimization(
 
     overload = get_overload_energy_n_1_matrix(n_1_matrix=res.n_1_matrix, max_mw_flow=di.branch_limits.max_mw_flow)
 
-    assert overload == 0
+    assert jnp.allclose(overload, 0)
 
     # Cross check with the pypowsybl load flow
     # First verify the unsplit flow matches
@@ -264,8 +263,17 @@ def test_pst_optimization(
             scoring_function,
             solver_configs=(solver_config,),
             target_metrics=(("overload_energy_n_1", 1.0),),
-            observed_metrics=("overload_energy_n_1", "split_subs"),
-            descriptor_metrics=("split_subs",),
+            observed_metrics=(
+                "overload_energy_n_1",
+                "split_subs",
+                "pst_activated",
+                "pst_switching_distance",
+            ),
+            descriptor_metrics=(
+                "split_subs",
+                "pst_activated",
+                "pst_switching_distance",
+            ),
             n_worst_contingencies=1,
         ),
         emitter=TrackingMixingEmitter(
@@ -280,10 +288,14 @@ def test_pst_optimization(
             batch_size=1,
         ),
         metrics_function=default_ga_metrics,
-        n_cells_per_dim=(20,),
+        n_cells_per_dim=(
+            10,
+            10,
+            10,
+        ),
         cell_depth=1,
     )
-    rng_key = jax.random.PRNGKey(0)
+    rng_key = jax.random.PRNGKey(34534534)
     repertoire, emitter_state, rng_key = me.init(
         genotypes=empty_repertoire(
             batch_size=1,

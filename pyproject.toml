@@ -70,7 +70,7 @@ toop_engine_topology_optimizer = { path = "packages/topology_optimizer_pkg", edi
 
 [dependency-groups]
 ci = [
-    "commitizen>=4.15.1",
+    "commitizen>=4.16.2",
 ]
 dev = [
     "pep8-naming",

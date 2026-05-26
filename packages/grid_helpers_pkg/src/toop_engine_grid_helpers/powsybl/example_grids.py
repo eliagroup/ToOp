@@ -96,7 +96,7 @@ def add_phaseshift_transformer_to_line_powsybl(
 
     taps = range(tap_min, tap_max + 1)
     x_sets = abs(np.linspace(-x_min, x_max, len(taps)))
-    alpha_steps = abs(np.linspace(alpha_min_degree, alpha_max_degree, len(taps)))
+    alpha_steps = np.linspace(alpha_min_degree, alpha_max_degree, len(taps))
     steps_df = pd.DataFrame.from_records(
         index="id",
         columns=["id", "b", "g", "r", "x", "rho", "alpha"],

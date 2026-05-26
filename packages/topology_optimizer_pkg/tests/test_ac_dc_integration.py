@@ -634,10 +634,10 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     grid_folder = tmp_path_factory.mktemp("grid_folder")
     fixture_folder = grid_folder / fixture_name
     fixture_folder.mkdir()
-    preprocess_params = parallel_pst_data_folder(fixture_folder)
+    _ = parallel_pst_data_folder(fixture_folder)
     _, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(fixture_folder)),
-        parameters=preprocess_params,
+        parameters=PreprocessParameters(),
     )
 
     dynamic_information = static_information.dynamic_information
@@ -735,10 +735,11 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
     grid_folder = tmp_path_factory.mktemp("grid_folder")
     fixture_folder = grid_folder / fixture_name
     fixture_folder.mkdir()
-    preprocess_params = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(fixture_folder)
+    _ = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(fixture_folder)
+    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
     _, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(fixture_folder)),
-        parameters=preprocess_params,
+        parameters=preprocessing_parameters,
     )
 
     dynamic_information = static_information.dynamic_information

@@ -342,6 +342,9 @@ def test_optimization_loop(
     def send_result_fn(result: ResultUnion) -> None:
         results.append(result)
 
+    def flush_result_fn() -> None:
+        return None
+
     heartbeats = []
 
     def send_heartbeat_fn(heartbeat: HeartbeatUnion) -> None:
@@ -353,6 +356,7 @@ def test_optimization_loop(
         dc_params=start_opt_command.dc_params,
         grid_files=start_opt_command.grid_files,
         send_result_fn=send_result_fn,
+        flush_result_fn=flush_result_fn,
         send_heartbeat_fn=send_heartbeat_fn,
         optimization_id=start_opt_command.optimization_id,
         processed_gridfile_fs=processed_gridfile_fs,
@@ -389,6 +393,9 @@ def test_optimization_loop_error_handling(
     def send_result_fn(result: ResultUnion) -> None:
         results.append(result)
 
+    def flush_result_fn() -> None:
+        return None
+
     heartbeats = []
 
     def send_heartbeat_fn(heartbeat: HeartbeatUnion) -> None:
@@ -402,6 +409,7 @@ def test_optimization_loop_error_handling(
             dc_params=start_opt_command.dc_params,
             grid_files=start_opt_command.grid_files,
             send_result_fn=send_result_fn,
+            flush_result_fn=flush_result_fn,
             send_heartbeat_fn=send_heartbeat_fn,
             optimization_id=start_opt_command.optimization_id,
             processed_gridfile_fs=processed_gridfile_fs,
@@ -421,6 +429,7 @@ def test_optimization_loop_error_handling(
             dc_params=start_opt_command.dc_params,
             grid_files=start_opt_command.grid_files,
             send_result_fn=send_result_fn,
+            flush_result_fn=flush_result_fn,
             send_heartbeat_fn=send_heartbeat_fn,
             optimization_id=start_opt_command.optimization_id,
             processed_gridfile_fs=processed_gridfile_fs,

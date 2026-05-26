@@ -227,39 +227,37 @@ def topopushresult(grid_folder: Path, contingency_ids_case_57: list[str]) -> Res
     rng = np.random.default_rng(42)
     contingency_ids_sorted = sorted(contingency_ids_case_57)
 
-    topopushresult = None
-    for _ in range(10):
-        action = random_actions(action_set, rng, n_split_subs=2)
+    action = random_actions(action_set, rng, n_split_subs=2)
 
-        # Create a random integer array for worst_k_contingency_cases
-        worst_k_contingency_cases = rng.choice(
-            contingency_ids_sorted,
-            size=min(5, len(contingency_ids_sorted)),
-            replace=False,
-        ).tolist()
+    # Create a random integer array for worst_k_contingency_cases
+    worst_k_contingency_cases = rng.choice(
+        contingency_ids_sorted,
+        size=min(5, len(contingency_ids_sorted)),
+        replace=False,
+    ).tolist()
 
-        topology = Topology(
-            actions=action,
-            disconnections=[],
-            pst_setpoints=None,
-            metrics=Metrics(
-                fitness=-42,
-                extra_scores={
-                    "overload_energy_n_1": 123.4,
-                    "top_k_overloads_n_1": float(rng.random()),
-                },
-                worst_k_contingency_cases=worst_k_contingency_cases,
-            ),
-        )
-        topopushresult = Result(
-            result=TopologyPushResult(
-                strategy=Strategy(timesteps=[topology]),
-            ),
-            optimization_id="test",
-            optimizer_type=OptimizerType.DC,
-            instance_id="dc_optimizer",
-        )
-        break
+    topology = Topology(
+        actions=action,
+        disconnections=[],
+        pst_setpoints=None,
+        metrics=Metrics(
+            fitness=-42,
+            extra_scores={
+                "overload_energy_n_1": 123.4,
+                "top_k_overloads_n_1": float(rng.random()),
+            },
+            worst_k_contingency_cases=worst_k_contingency_cases,
+        ),
+    )
+    topopushresult = Result(
+        result=TopologyPushResult(
+            strategy=Strategy(timesteps=[topology]),
+        ),
+        optimization_id="test",
+        optimizer_type=OptimizerType.DC,
+        instance_id="dc_optimizer",
+    )
+
     assert topopushresult is not None
     return topopushresult
 

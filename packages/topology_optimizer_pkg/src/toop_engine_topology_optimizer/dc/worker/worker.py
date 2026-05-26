@@ -217,16 +217,13 @@ def optimization_loop(
         logger.error(f"Error during initialization of optimization {optimization_id}: {e}")
         return
 
-    def push_topologies(optimizer_data: OptimizerData, epoch: int) -> None:
+    def push_topologies(optimizer_data: OptimizerData, epoch: int) -> int:
         """Push topologies to the results topic."""
         with jax.default_device(jax.devices("cpu")[0]):
             push_results = convert_topologies_to_messages(extract_topologies(optimizer_data), epoch)
             for push_result in push_results:
                 send_result_fn(push_result)
-            if len(push_results) > 0:
-                logger.info(f"Sent {len(push_results)} strategies to results topic")
-            else:
-                logger.warning("No strategies extracted, skipping push.")
+            return len(push_results)
 
     logger.info(f"Starting optimization {optimization_id}")
     epoch = 1
@@ -235,7 +232,11 @@ def optimization_loop(
     while running:
         try:
             optimizer_data = run_epoch(optimizer_data)
-            push_topologies(optimizer_data, epoch)
+            n_pushes = push_topologies(optimizer_data, epoch)
+            logger.info(
+                f"Sent {n_pushes} strategies to results topic,"
+                f" best repofitness: {optimizer_data.jax_data.repertoire.fitnesses.max().item()}, epoch: {epoch}"
+            )
         except Exception as e:
             # Send a stop message to the results
             send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))

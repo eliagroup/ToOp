@@ -1901,9 +1901,9 @@ def three_node_pst_example() -> Network:
         net,
         line_idx="LINE_BC_1",
         tap_min=-30,
-        tap_max=25,
+        tap_max=24,
         alpha_min_degree=-10.0,
-        alpha_max_degree=10.0,
+        alpha_max_degree=8.0,
         x_min=0.0,
         x_max=0.0,
     )
@@ -1914,7 +1914,7 @@ def three_node_pst_example() -> Network:
         tap_min=-30,
         tap_max=30,
         alpha_min_degree=-10.0,
-        alpha_max_degree=20.0,
+        alpha_max_degree=10.0,
         x_min=0.0,
         x_max=0.0,
     )

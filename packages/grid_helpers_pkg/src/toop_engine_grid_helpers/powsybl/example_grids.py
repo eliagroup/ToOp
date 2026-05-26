@@ -45,8 +45,14 @@ def add_phaseshift_transformer_to_line_powsybl(
         The minimum tap position, by default -30
     tap_max : int, optional
         The maximum tap position, by default 30
-    tap_step_degree : float, optional
-        The step size in degrees for each tap position, by default 2.0
+    alpha_min_degree : float, optional
+        The minimum phase shift angle in degree, by default -30
+    alpha_max_degree : float, optional
+        The maximum phase shift angle in degree, by default 30
+    x_min : float, optional
+        The minimum reactance of the transformer, by default 5
+    x_max : float, optional
+        The maximum reactance of the transformer, by default 6
     """
     assert x_min >= 0, "x_min should be non-negative"
     assert x_max >= 0, "x_max should be non-negative"

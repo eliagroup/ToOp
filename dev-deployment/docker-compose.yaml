@@ -10,14 +10,14 @@ volumes:
 
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.9.5@sha256:61e960bcbe5796d2987edc61fab297387f63d6f831754576cd107543d2cdc8bb
+    image: confluentinc/cp-zookeeper:7.9.7@sha256:b692a1dafdccd09dd2a9e109a4da1e74835d82907099028a6aa691df002d9375
     ports:
       - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
 
   kafka:
-    image: confluentinc/cp-kafka:8.1.1@sha256:d20bd62f01826c454e88530efc6d73654cb4697182f37206742b96c7b947236e
+    image: confluentinc/cp-kafka:8.2.1@sha256:68cf7eb0d994f9c94206a0cca751abbb491ab1f308d4580debbfcdc5b45ee4fc
     depends_on:
       - zookeeper
     ports:
@@ -39,7 +39,7 @@ services:
       retries: 10
 
   init-kafka:
-    image: confluentinc/cp-kafka:8.1.1@sha256:d20bd62f01826c454e88530efc6d73654cb4697182f37206742b96c7b947236e
+    image: confluentinc/cp-kafka:8.2.1@sha256:68cf7eb0d994f9c94206a0cca751abbb491ab1f308d4580debbfcdc5b45ee4fc
     depends_on:
       kafka:
         condition: service_healthy

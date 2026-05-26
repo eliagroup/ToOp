@@ -1114,7 +1114,7 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
         The network data after preprocessing, which can be used for testing the consistency of the preprocessing step
     """
     if linear_pst is None:
-        linear_pst = np.array([[False, False]])
+        linear_pst = np.array([False, False])
     # Connect the out of service line to bring the second PST operational
     net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=linear_pst, connect_line_out_of_service=True)
     pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)

@@ -254,9 +254,10 @@ def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
         complex_grid_path = target_path / "complex_grid"
         if not complex_grid_path.exists():
-            preprocess_parameters = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(complex_grid_path)
-            filesystem_dir = DirFileSystem(str(complex_grid_path))
-            load_grid(filesystem_dir, pandapower=False, lf_params=DISTRIBUTED_SLACK, parameters=preprocess_parameters)
+            _ = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
+                complex_grid_path,
+                linear_pst=np.array([True, False]),
+            )
 
         case30_path = target_path / "case30"
         if not case30_path.exists():

@@ -61,7 +61,7 @@ def get_phaseshift_mask(
 
     controllable: Bool[np.ndarray, " n_trafos"] = (
         (net.trafo.vn_hv_kv == net.trafo.vn_lv_kv)
-        & (net.trafo.tap_changer_type is not None)
+        & (net.trafo.tap_changer_type == "Ideal")  # Only ideal linear PSTs are supported
         & (net.trafo.tap_step_degree != 0)
         & ~net.trafo.tap_min.isna()
         & ~net.trafo.tap_max.isna()
@@ -69,10 +69,12 @@ def get_phaseshift_mask(
     ).values
     tap_min = np.array(net.trafo.tap_min)[controllable]
     tap_max = np.array(net.trafo.tap_max)[controllable]
+    tap_neutral = np.array(net.trafo.tap_neutral)[controllable]
     tap_step = np.array(net.trafo.tap_step_degree)[controllable]
 
     shift_taps = [
-        np.arange(t_min, t_max + 1) * t_step for (t_min, t_max, t_step) in zip(tap_min, tap_max, tap_step, strict=True)
+        (np.arange(t_min, t_max + 1) - t_neutral) * t_step
+        for (t_min, t_max, t_neutral, t_step) in zip(tap_min, tap_max, tap_neutral, tap_step, strict=True)
     ]
 
     ppci_start, ppci_end = net._pd2ppc_lookups["branch"]["trafo"]

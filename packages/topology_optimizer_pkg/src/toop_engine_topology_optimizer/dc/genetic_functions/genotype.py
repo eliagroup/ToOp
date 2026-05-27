@@ -59,7 +59,8 @@ def deduplicate_genotypes(
     # Include nodal_injections_optimized (PST taps) in deduplication when present
     if genotypes.nodal_injections_optimized is not None:
         # Flatten the nodal injection optimization results into the comparison
-        # Shape: (batch_size, n_timesteps, n_controllable_pst) -> (batch_size, n_timesteps * n_controllable_pst)
+        # Shape: (batch_size, n_timesteps, n_controllable_pst)
+        # -> (batch_size, n_timesteps * n_controllable_pst)
         pst_taps_flat = genotypes.nodal_injections_optimized.pst_tap_idx.reshape(
             genotypes.nodal_injections_optimized.pst_tap_idx.shape[0], -1
         )

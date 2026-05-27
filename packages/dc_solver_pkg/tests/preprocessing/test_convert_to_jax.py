@@ -15,7 +15,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
-from toop_engine_dc_solver.example_grids import case30_with_psts, case30_with_psts_powsybl
+from toop_engine_dc_solver.example_grids import case30_with_psts_pandapower, case30_with_psts_powsybl
 from toop_engine_dc_solver.jax.injections import default_injection
 from toop_engine_dc_solver.jax.inputs import (
     load_static_information,
@@ -178,7 +178,7 @@ def test_load_grid(data_folder: Path) -> None:
 
 def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
     folder = tmp_path_factory.mktemp("case30")
-    case30_with_psts(folder)
+    case30_with_psts_pandapower(folder)
     filesystem_dir = DirFileSystem(str(folder))
     _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=True)
     validate_static_information(static_information)

@@ -55,8 +55,8 @@ def add_phaseshift_transformer_to_line_powsybl(
     x_max : float, optional
         The maximum reactance of the transformer, by default 6
     """
-    assert x_min >= 0, "x_min should be non-negative"
-    assert x_max >= 0, "x_max should be non-negative"
+    if x_min < 0 or x_max < 0:
+        raise ValueError("x_min and x_max should be non-negative")
     line = net.get_lines(all_attributes=True).loc[line_idx]
     vl = line["voltage_level1_id"]
     nominal_v = net.get_voltage_levels().loc[vl, "nominal_v"]
@@ -101,7 +101,7 @@ def add_phaseshift_transformer_to_line_powsybl(
     )
 
     taps = range(tap_min, tap_max + 1)
-    x_sets = abs(np.linspace(-x_min, x_max, len(taps)))
+    x_sets = np.linspace(x_min, x_max, len(taps))
     alpha_steps = np.linspace(alpha_min_degree, alpha_max_degree, len(taps))
     steps_df = pd.DataFrame.from_records(
         index="id",

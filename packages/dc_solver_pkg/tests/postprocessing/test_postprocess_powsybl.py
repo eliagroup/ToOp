@@ -296,14 +296,12 @@ def test_change_pst_matches_loadflows(
     n_0_no_pst = -solver_res_no_pst.n_0_matrix[0, 0]
     n_1_no_pst = -solver_res_no_pst.n_1_matrix[0, 0]
 
-    runner_res_no_pst = runner.run_dc_loadflow([], [], [])
+    runner_res_no_pst = runner.run_dc_loadflow([], [], None)
     n_0_runner_no_pst, n_1_runner_no_pst, success_ref = extract_solver_matrices_polars(
         runner_res_no_pst, nminus1_definition, 0
     )
 
     assert np.all(success_ref), "Pypowsybl runner without PST changes should succeed"
-    n_0_no_pst = -solver_res_no_pst.n_0_matrix[0, 0]
-    n_1_no_pst = -solver_res_no_pst.n_1_matrix[0, 0]
 
     assert np.allclose(n_0_no_pst_direct, n_0_runner_no_pst), "Runner should match direct pypowsybl computation"
     assert np.allclose(n_0_runner_no_pst, n_0_no_pst), "Runner should match direct pypowsybl computation"

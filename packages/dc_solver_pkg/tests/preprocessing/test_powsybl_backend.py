@@ -114,7 +114,7 @@ def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
     filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     net = backend.net
-    loadflow_ref = -net.get_branches()["p1"].loc[backend.get_branch_ids()].values
+    loadflow_ref = net.get_branches()["p1"].loc[backend.get_branch_ids()].values
 
     ptdf = compute_ptdf(
         backend.get_from_nodes(),
@@ -142,13 +142,15 @@ def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
     loadflow = ptdf @ nodal_injections
     loadflow += psdf @ shift_angles
 
-    assert np.allclose(loadflow, loadflow_ref)
+    # different sign convention in pypowsybl loadflow results
+    assert np.allclose(loadflow, -loadflow_ref)
 
     pypowsybl.loadflow.run_ac(net, DISTRIBUTED_SLACK)
     ac_loadflow_ref = net.get_branches()["p1"].loc[backend.get_branch_ids()].values
 
+    # different sign convention in pypowsybl loadflow results
     ac_loadflow = loadflow + backend.get_ac_dc_mismatch()[0, :]
-    assert np.allclose(np.abs(ac_loadflow), np.abs(ac_loadflow_ref))
+    assert np.allclose(ac_loadflow, -ac_loadflow_ref)
 
 
 def test_extract_network_data(powsybl_data_folder: Path) -> None:
@@ -158,13 +160,14 @@ def test_extract_network_data(powsybl_data_folder: Path) -> None:
     assert network_data.ptdf.size > 0
     assert network_data.nodal_injection.size > 0
 
-    lf_results = np.abs(network_data.ptdf[network_data.monitored_branch_mask, :] @ network_data.nodal_injection[0])
+    lf_results = network_data.ptdf[network_data.monitored_branch_mask, :] @ network_data.nodal_injection[0]
 
     backend_branches = backend._get_branches()
-    lf_reference = np.abs(backend_branches[backend_branches["for_reward"]]["p1"].values)
+    lf_reference = backend_branches[backend_branches["for_reward"]]["p1"].values
 
     assert lf_reference.shape == lf_results.shape
-    assert np.allclose(lf_results, lf_reference)
+    # different sign convention in pypowsybl loadflow results
+    assert np.allclose(lf_results, -lf_reference)
     validate_network_data(network_data)
 
 
@@ -183,8 +186,8 @@ def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:
         timestep=0,
     )
     assert np.all(success)
-    n_0 = np.abs(n_0)
-    n_1 = np.abs(n_1)
+    n_0 = n_0
+    n_1 = n_1
 
     static_information = load_static_information(
         preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
@@ -203,12 +206,14 @@ def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:
     assert np.all(success)
 
     base_loadflow = static_information.dynamic_information.ptdf @ static_information.dynamic_information.nodal_injections[0]
-    assert np.allclose(np.abs(base_loadflow), n_0)
+    # different sign convention in pypowsybl loadflow results
+    assert np.allclose(base_loadflow, -n_0)
 
     diff_flow = lodf * base_loadflow[branch_to_outage]
-    n_1_loadflow = np.abs(base_loadflow + diff_flow)
+    n_1_loadflow = base_loadflow + diff_flow
 
-    assert np.allclose(n_1_loadflow, n_1[outage_idx])
+    # different sign convention in pypowsybl loadflow results
+    assert np.allclose(n_1_loadflow, -n_1[outage_idx])
 
 
 def test_injection_outages_match(preprocessed_powsybl_data_folder: Path) -> None:
@@ -270,8 +275,8 @@ def test_loadflows_match(preprocessed_powsybl_data_folder: Path) -> None:
         static_information.solver_config,
         lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
     )
-    n_0 = np.abs(n_0[0, 0])
-    n_1 = np.abs(n_1[0, 0])
+    n_0 = n_0[0, 0]
+    n_1 = n_1[0, 0]
     assert np.all(success)
 
     runner = PowsyblRunner(lf_params=lf_params)
@@ -288,13 +293,15 @@ def test_loadflows_match(preprocessed_powsybl_data_folder: Path) -> None:
     )
 
     assert np.all(success)
-    n_0_ref = np.abs(n_0_ref)
-    n_1_ref = np.abs(n_1_ref)
+    n_0_ref = n_0_ref
+    n_1_ref = n_1_ref
 
     assert n_0.shape == n_0_ref.shape
-    assert np.allclose(n_0, n_0_ref)
+    # different sign convention in pypowsybl loadflow results
+    assert np.allclose(-n_0, n_0_ref)
     assert n_1.shape == n_1_ref.shape
-    assert np.allclose(n_1, n_1_ref)
+    # different sign convention in pypowsybl loadflow results
+    assert np.allclose(-n_1, n_1_ref)
 
 
 def test_loadflows_match_bat_hvdc_shunt_svc(complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path) -> None:
@@ -316,8 +323,8 @@ def test_loadflows_match_bat_hvdc_shunt_svc(complex_grid_battery_hvdc_svc_3w_tra
         aggregate_output_fn=lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
     )
 
-    n_0 = np.abs(n_0[0, 0])
-    n_1 = np.abs(n_1[0, 0])
+    n_0 = n_0[0, 0]
+    n_1 = n_1[0, 0]
     assert np.all(success)
 
     runner = PowsyblRunner(lf_params=lf_params)
@@ -334,13 +341,15 @@ def test_loadflows_match_bat_hvdc_shunt_svc(complex_grid_battery_hvdc_svc_3w_tra
     )
 
     assert np.all(success)
-    n_0_ref = np.abs(n_0_ref)
-    n_1_ref = np.abs(n_1_ref)
+    n_0_ref = n_0_ref
+    n_1_ref = n_1_ref
 
     assert n_0.shape == n_0_ref.shape
-    assert np.allclose(n_0, n_0_ref)
+    # different sign convention in pypowsybl loadflow results
+    assert np.allclose(-n_0, n_0_ref)
     assert n_1.shape == n_1_ref.shape
-    assert np.allclose(n_1, n_1_ref)
+    # different sign convention in pypowsybl loadflow results
+    assert np.allclose(-n_1, n_1_ref)
 
 
 def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
@@ -361,8 +370,8 @@ def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
         aggregate_output_fn=lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
     )
 
-    n_0 = np.abs(n_0[0, 0])
-    n_1 = np.abs(n_1[0, 0])
+    n_0 = n_0[0, 0]
+    n_1 = n_1[0, 0]
     assert np.all(success)
 
     runner = PowsyblRunner(lf_params=lf_params)
@@ -379,13 +388,15 @@ def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
     )
 
     assert np.all(success)
-    n_0_ref = np.abs(n_0_ref)
-    n_1_ref = np.abs(n_1_ref)
+    n_0_ref = n_0_ref
+    n_1_ref = n_1_ref
 
     assert n_0.shape == n_0_ref.shape
-    assert np.allclose(n_0, n_0_ref)
+    # different sign convention in pypowsybl loadflow results
+    assert np.allclose(-n_0, n_0_ref)
     assert n_1.shape == n_1_ref.shape
-    assert np.allclose(n_1, n_1_ref)
+    # different sign convention in pypowsybl loadflow results
+    assert np.allclose(-n_1, n_1_ref)
 
 
 def test_globally_unique_ids(powsybl_data_folder: Path) -> None:

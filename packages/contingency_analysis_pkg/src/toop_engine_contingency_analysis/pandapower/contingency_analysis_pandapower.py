@@ -373,6 +373,7 @@ def _collect_cascade_results(
         branch_results_df,
         switch_results_df,
         initial_contingency=grouped_contingency.contingencies[0],
+        basecase_net=ctx.basecase_net,
     )
 
     return _build_cascade_results_df(

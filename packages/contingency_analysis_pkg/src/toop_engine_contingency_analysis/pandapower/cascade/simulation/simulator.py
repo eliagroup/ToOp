@@ -8,7 +8,6 @@
 """Coordinate iterative cascade simulation after an initial outage."""
 
 import json
-from copy import deepcopy
 from dataclasses import replace
 from itertools import chain
 from typing import Any
@@ -115,6 +114,7 @@ class CascadeSimulator:
         branch_results_df: pat.DataFrame[BranchResultSchema],
         switch_results_df: pat.DataFrame[SwitchResultsSchema],
         initial_contingency: PandapowerContingency,
+        basecase_net: pp.pandapowerNet,
     ) -> list[CascadeEvent]:
         """Run the cascade loop starting from initial load-flow results.
 
@@ -128,6 +128,11 @@ class CascadeSimulator:
             Switch result table from the initial load flow.
         initial_contingency : PandapowerContingency
             Contingency that started this cascade.
+        basecase_net : pp.pandapowerNet
+            Deep-copy of the network after the base-case load flow, before any
+            contingency outages. Forwarded to each inner load-flow step so that
+            SpPS BC-mode conditions are evaluated against the true base-case
+            state rather than the previous cascade step.
 
         Returns
         -------
@@ -173,6 +178,7 @@ class CascadeSimulator:
                 net=net,
                 contingency=contingency,
                 monitored_breakers=monitored_breakers,
+                basecase_net=basecase_net,
             )
             step_events = self._add_spps_activation_info(
                 events=step_events,
@@ -386,6 +392,7 @@ class CascadeSimulator:
         net: pp.pandapowerNet,
         contingency: PandapowerContingency,
         monitored_breakers: pat.DataFrame[PandapowerMonitoredElementSchema],
+        basecase_net: pp.pandapowerNet,
     ) -> CascadeSppsBranchSwitchResults | None:
         """Run one inner cascade load flow after applying accumulated outages.
 
@@ -397,6 +404,11 @@ class CascadeSimulator:
             Accumulated outages to apply.
         monitored_breakers : pat.DataFrame[PandapowerMonitoredElementSchema]
             Breakers monitored for switch result calculation.
+        basecase_net : pp.pandapowerNet
+            Deep-copy of the network after the base-case load flow, before any
+            contingency outages. Passed to SpPS so that BC-mode conditions are
+            evaluated against the true base-case state throughout all cascade
+            steps.
 
         Returns
         -------
@@ -408,9 +420,6 @@ class CascadeSimulator:
             monitored_elements=monitored_breakers,
             side="bus",
         )  # TODO: think about move out of this function and create only once
-        # Capture the pre-step network state (res_* = previous iteration's PF
-        # results) before any topology changes are applied.
-        basecase_net = deepcopy(net)
         open_outaged_circuit_breakers(net, contingency.elements)
         try:
             return run_spps_with_branch_switch_results(

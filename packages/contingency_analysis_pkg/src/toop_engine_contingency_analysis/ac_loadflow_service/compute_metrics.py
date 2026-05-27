@@ -230,12 +230,23 @@ def compute_metrics(
     dict[MetricType, float]
         A dictionary with the computed metrics.
     """
+    n_1_branch_res = (
+        loadflow_results.branch_results.filter(pl.col("contingency") != base_case_id)
+        if base_case_id is not None
+        else loadflow_results.branch_results
+    )
+    n_1_va_diff_res = (
+        loadflow_results.va_diff_results.filter(pl.col("contingency") != base_case_id)
+        if base_case_id is not None
+        else loadflow_results.va_diff_results
+    )
+
     metrics = {
-        "max_flow_n_1": compute_max_load(loadflow_results.branch_results),
-        "overload_energy_n_1": compute_overload_energy(loadflow_results.branch_results, field="p"),
-        "max_va_diff_n_1": compute_max_va_diff(loadflow_results.va_diff_results),
-        "overload_current_n_1": compute_overload_energy(loadflow_results.branch_results, field="i"),
-        "critical_branch_count_n_1": count_critical_branches(loadflow_results.branch_results),
+        "max_flow_n_1": compute_max_load(n_1_branch_res),
+        "overload_energy_n_1": compute_overload_energy(n_1_branch_res, field="p"),
+        "max_va_diff_n_1": compute_max_va_diff(n_1_va_diff_res),
+        "overload_current_n_1": compute_overload_energy(n_1_branch_res, field="i"),
+        "critical_branch_count_n_1": count_critical_branches(n_1_branch_res),
     }
 
     if base_case_id is not None:

@@ -8,6 +8,7 @@
 import numpy as np
 import pandapower
 import pypowsybl
+import polars as pl
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
     compute_metrics,
@@ -19,6 +20,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_full_nminus1_definition_powsybl,
     run_contingency_analysis_powsybl,
 )
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 
 
 def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
@@ -144,3 +146,45 @@ def test_get_worst_k_contingencies_ac_k_greater_than_available(branch_results_df
     assert all(len(c) == 3 for c in contingencies)
     for o in overloads:
         assert overload_n_minus_1 == o
+
+
+def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
+    branch_results_df_fast_failing_polars: pl.LazyFrame,
+) -> None:
+    basecase_branch_results = (
+        branch_results_df_fast_failing_polars.filter(pl.col("timestep") == 0)
+        .filter(pl.col("contingency") == "cont1")
+        .limit(2)
+        .with_columns(
+            contingency=pl.lit("BASECASE"),
+            p=pl.lit(500.0),
+            i=pl.lit(50.0),
+            loading=pl.lit(10.0),
+        )
+    )
+    branch_results = pl.concat([branch_results_df_fast_failing_polars, basecase_branch_results], how="vertical")
+
+    va_diff_results = pl.DataFrame(
+        {
+            "timestep": [0, 0],
+            "contingency": ["BASECASE", "cont1"],
+            "element": ["branch1", "branch1"],
+            "va_diff": [9.0, 1.0],
+        }
+    ).lazy()
+
+    loadflow_results = LoadflowResultsPolars(
+        job_id="test_job",
+        branch_results=branch_results,
+        va_diff_results=va_diff_results,
+        node_results=pl.LazyFrame(),
+        regulating_element_results=pl.LazyFrame(),
+        converged=pl.LazyFrame(),
+    )
+
+    metrics_without_basecase_filter = compute_metrics(loadflow_results)
+    metrics_with_basecase_filter = compute_metrics(loadflow_results, base_case_id="BASECASE")
+
+    assert metrics_with_basecase_filter["overload_energy_n_1"] < metrics_without_basecase_filter["overload_energy_n_1"]
+    assert np.isclose(metrics_with_basecase_filter["overload_energy_n_0"], 900.0)
+    assert np.isclose(metrics_with_basecase_filter["max_va_diff_n_1"], 1.0)

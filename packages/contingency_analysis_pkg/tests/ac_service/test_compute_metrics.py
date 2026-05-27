@@ -11,8 +11,10 @@ import pypowsybl
 import polars as pl
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
+    compute_max_load,
     compute_metrics,
     compute_overload_energy,
+    count_critical_branches,
     get_worst_k_contingencies_ac,
 )
 from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
@@ -151,15 +153,19 @@ def test_get_worst_k_contingencies_ac_k_greater_than_available(branch_results_df
 def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
     branch_results_df_fast_failing_polars: pl.LazyFrame,
 ) -> None:
+    # Choose strongly overloaded basecase values so inclusion in N-1 metrics is easy to detect.
+    basecase_power = 500.0
+    basecase_current = 50.0
+    basecase_loading_factor = 10.0
     basecase_branch_results = (
         branch_results_df_fast_failing_polars.filter(pl.col("timestep") == 0)
         .filter(pl.col("contingency") == "cont1")
         .limit(2)
         .with_columns(
             contingency=pl.lit("BASECASE"),
-            p=pl.lit(500.0),
-            i=pl.lit(50.0),
-            loading=pl.lit(10.0),
+            p=pl.lit(basecase_power),
+            i=pl.lit(basecase_current),
+            loading=pl.lit(basecase_loading_factor),
         )
     )
     branch_results = pl.concat([branch_results_df_fast_failing_polars, basecase_branch_results], how="vertical")
@@ -184,7 +190,18 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
 
     metrics_without_basecase_filter = compute_metrics(loadflow_results)
     metrics_with_basecase_filter = compute_metrics(loadflow_results, base_case_id="BASECASE")
+    n_1_only_branch_results = branch_results.filter(pl.col("contingency") != "BASECASE")
 
-    assert metrics_with_basecase_filter["overload_energy_n_1"] < metrics_without_basecase_filter["overload_energy_n_1"]
-    assert np.isclose(metrics_with_basecase_filter["overload_energy_n_0"], 900.0)
+    expected_overload_energy_n_1 = compute_overload_energy(n_1_only_branch_results, field="p")
+    expected_overload_current_n_1 = compute_overload_energy(n_1_only_branch_results, field="i")
+    expected_max_flow_n_1 = compute_max_load(n_1_only_branch_results)
+    expected_critical_branch_count_n_1 = count_critical_branches(n_1_only_branch_results)
+
+    assert np.isclose(metrics_with_basecase_filter["overload_energy_n_1"], expected_overload_energy_n_1)
+    assert np.isclose(metrics_with_basecase_filter["overload_current_n_1"], expected_overload_current_n_1)
+    assert np.isclose(metrics_with_basecase_filter["max_flow_n_1"], expected_max_flow_n_1)
+    assert metrics_with_basecase_filter["critical_branch_count_n_1"] == expected_critical_branch_count_n_1
+    assert metrics_without_basecase_filter["overload_energy_n_1"] > metrics_with_basecase_filter["overload_energy_n_1"]
+    expected_basecase_power_overload_per_branch = basecase_power - abs(basecase_power / basecase_loading_factor)
+    assert np.isclose(metrics_with_basecase_filter["overload_energy_n_0"], 2 * expected_basecase_power_overload_per_branch)
     assert np.isclose(metrics_with_basecase_filter["max_va_diff_n_1"], 1.0)

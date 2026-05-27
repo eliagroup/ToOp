@@ -32,6 +32,7 @@ The engine is not reentrant: it relies on mutating ``net`` between iterations.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import Any, Final, Literal
 
@@ -555,7 +556,140 @@ def _run_power_flow(
 # --------------------------------------------------------------------------- #
 
 
-def run_spps(  # noqa: C901, PLR0915
+@dataclasses.dataclass
+class _SppsLoopContext:
+    """Immutable per-run configuration passed into every iteration."""
+
+    actions: pat.DataFrame[SppsActionsPandapowerSchema]
+    """Full action table shared across all iterations. Rows are filtered per
+    iteration to the schemes that became active in that iteration."""
+
+    bc_mask: pd.Series
+    """Boolean mask over *conditions* rows that have ``condition_mode == "BC"``.
+    Used to restore frozen base-case values after each condition extraction."""
+
+    bc_values: pd.Series
+    """Pre-extracted ``condition_element_value`` snapshot for all BC-mode rows,
+    taken once from ``basecase_net`` before the loop starts. Written back into
+    *conditions* at the start of every iteration so BC rows are never updated
+    with post-contingency results."""
+
+    max_iterations: int
+    """Upper bound on the number of iterations. The loop exits early when no
+    new schemes trigger, but ``max_iterations_reached`` is set when the loop
+    completes its final iteration with schemes still activating."""
+
+    method: Literal["ac", "dc"]
+    """Power-flow method forwarded to :func:`_run_power_flow` on every call."""
+
+    runpp_kwargs: dict[str, Any]
+    """Extra keyword arguments forwarded to the pandapower solver unchanged."""
+
+    on_power_flow_error: SppsPowerFlowFailurePolicy
+    """Controls behaviour when a post-action power flow fails.  ``"raise"``
+    re-raises as :class:`SppsPowerFlowError`; ``"keep_previous"`` restores the
+    last successful ``res_*`` snapshot and stops the loop."""
+
+    slack_allocation_config: SlackAllocationConfig | None
+    """When not ``None``, :func:`assign_slack_per_island` is called after every
+    batch of actions to reassign slack generators to newly formed islands.
+    ``None`` disables in-loop slack reassignment."""
+
+
+@dataclasses.dataclass
+class _IterationResult:
+    """Return value of :func:`_run_spps_iteration`."""
+
+    stop: bool
+    """``True`` when the main loop should break — either because no new schemes
+    triggered or because the power flow failed with ``"keep_previous"`` policy."""
+
+    power_flow_failed: bool
+    """``True`` when the post-action power flow failed and the loop was stopped
+    via the ``"keep_previous"`` policy.  Always ``False`` when *stop* is
+    ``True`` due to no new schemes."""
+
+    max_iterations_reached: bool
+    """``True`` when this was the final allowed iteration and at least one scheme
+    was still activating.  Set only on the last iteration; ``False`` on all
+    earlier iterations and on early stops."""
+
+    new_schemes: list[str]
+    """Schemes activated in this iteration, sorted for determinism.  Empty list
+    signals that no new schemes triggered and the loop should stop."""
+
+
+def _run_spps_iteration(
+    iteration: int,
+    conditions: pat.DataFrame[SppsConditionsPandapowerSchema],
+    net: pp.pandapowerNet,
+    failed_elements: set[str],
+    activated_scheme_names: set[str],
+    ctx: _SppsLoopContext,
+) -> _IterationResult:
+    """Execute one SpPS iteration and return control signals for the main loop.
+
+    Mutates *conditions*, *net*, *failed_elements*, and *activated_scheme_names*
+    in place.  The caller is responsible for appending ``new_schemes`` to
+    ``schemes_per_iter`` and for tracking ``iterations``.
+    """
+    _populate_failed(conditions, failed_elements, net)
+    _extract_condition_values(conditions, net)
+    conditions.loc[ctx.bc_mask, "condition_element_value"] = ctx.bc_values
+    _evaluate_conditions(conditions)
+
+    candidate_schemes = _satisfied_scheme_names(conditions)
+    new_schemes = sorted(n for n in candidate_schemes if n not in activated_scheme_names)
+    if not new_schemes:
+        logger.info("No new schemes triggered — stopping.")
+        return _IterationResult(stop=True, power_flow_failed=False, max_iterations_reached=False, new_schemes=[])
+
+    active_actions = ctx.actions[ctx.actions["scheme_name"].isin(new_schemes)].copy()
+    active_actions = active_actions.assign(_iteration=iteration)
+
+    logger.info(
+        "Iteration %d: activated %d scheme(s), %d action row(s): %s",
+        iteration,
+        len(new_schemes),
+        len(active_actions),
+        new_schemes,
+    )
+
+    switch_activations = active_actions[active_actions["measure_element_table"] == "switch"]
+    if not switch_activations.empty:
+        opened_uids = switch_activations["measure_element_table_id"].astype(int).astype(str) + SEPARATOR + "switch"
+        failed_elements.update(opened_uids.tolist())
+
+    activated_scheme_names.update(new_schemes)
+    _apply_actions(active_actions, net)
+
+    if ctx.slack_allocation_config is not None:
+        assign_slack_per_island(net=net, min_island_size=ctx.slack_allocation_config.min_island_size)
+
+    snapshot = _snapshot_res_tables(net) if ctx.on_power_flow_error == SppsPowerFlowFailurePolicy.KEEP_PREVIOUS else None
+    try:
+        _run_power_flow(net, ctx.method, ctx.runpp_kwargs)
+    except Exception as exc:
+        if ctx.on_power_flow_error == SppsPowerFlowFailurePolicy.RAISE:
+            raise SppsPowerFlowError(f"Power flow failed on iteration {iteration}: {exc}") from exc
+        logger.warning(
+            "Power flow failed on iteration %d; keeping previous res_* tables and stopping loop: %s",
+            iteration,
+            exc,
+        )
+        if snapshot is not None:
+            _restore_res_tables(net, snapshot)
+        return _IterationResult(stop=True, power_flow_failed=True, max_iterations_reached=False, new_schemes=new_schemes)
+
+    return _IterationResult(
+        stop=False,
+        power_flow_failed=False,
+        max_iterations_reached=(iteration == ctx.max_iterations),
+        new_schemes=new_schemes,
+    )
+
+
+def run_spps(
     net: pp.pandapowerNet,
     conditions: pat.DataFrame[SppsConditionsPandapowerSchema],
     actions: pat.DataFrame[SppsActionsPandapowerSchema],
@@ -659,64 +793,33 @@ def run_spps(  # noqa: C901, PLR0915
 
     _run_power_flow(net, method, runpp_kwargs)
 
+    ctx = _SppsLoopContext(
+        actions=actions,
+        bc_mask=bc_mask,
+        bc_values=bc_values,
+        max_iterations=max_iterations,
+        method=method,
+        runpp_kwargs=runpp_kwargs,
+        on_power_flow_error=on_power_flow_error,
+        slack_allocation_config=slack_allocation_config,
+    )
+
     for iteration in range(1, max_iterations + 1):
-        _populate_failed(conditions, failed_elements, net)
-        _extract_condition_values(conditions, net)
-        # Restore base-case values for BC-mode rows (they must not reflect the
-        # post-contingency state).
-        conditions.loc[bc_mask, "condition_element_value"] = bc_values
-        _evaluate_conditions(conditions)
-        candidate_schemes = _satisfied_scheme_names(conditions)
-        new_schemes = sorted(n for n in candidate_schemes if n not in activated_scheme_names)
-        if not new_schemes:
-            logger.info("No new schemes triggered — stopping.")
-            break
-
-        iterations = iteration
-        active_actions = actions[actions["scheme_name"].isin(new_schemes)].copy() if new_schemes else actions.iloc[0:0]
-        active_actions = active_actions.assign(_iteration=iteration)
-
-        schemes_per_iter.append(new_schemes)
-        logger.info(
-            "Iteration %d: activated %d scheme(s), %d action row(s): %s",
-            iteration,
-            len(new_schemes),
-            len(active_actions),
-            new_schemes,
+        result = _run_spps_iteration(
+            iteration=iteration,
+            conditions=conditions,
+            net=net,
+            failed_elements=failed_elements,
+            activated_scheme_names=activated_scheme_names,
+            ctx=ctx,
         )
-
-        switch_activations = active_actions[active_actions["measure_element_table"] == "switch"]
-        if not switch_activations.empty:
-            opened_uids = switch_activations["measure_element_table_id"].astype(int).astype(str) + SEPARATOR + "switch"
-            failed_elements.update(opened_uids.tolist())
-
-        activated_scheme_names.update(new_schemes)
-        _apply_actions(active_actions, net)
-
-        if slack_allocation_config is not None:
-            assign_slack_per_island(
-                net=net,
-                min_island_size=slack_allocation_config.min_island_size,
-            )
-
-        snapshot = _snapshot_res_tables(net) if on_power_flow_error == SppsPowerFlowFailurePolicy.KEEP_PREVIOUS else None
-        try:
-            _run_power_flow(net, method, runpp_kwargs)
-        except Exception as exc:
-            if on_power_flow_error == SppsPowerFlowFailurePolicy.RAISE:
-                raise SppsPowerFlowError(f"Power flow failed on iteration {iteration}: {exc}") from exc
-            logger.warning(
-                "Power flow failed on iteration %d; keeping previous res_* tables and stopping loop: %s",
-                iteration,
-                exc,
-            )
-            if snapshot is not None:
-                _restore_res_tables(net, snapshot)
-            power_flow_failed = True
+        if result.new_schemes:
+            iterations = iteration
+            schemes_per_iter.append(result.new_schemes)
+        power_flow_failed = result.power_flow_failed
+        max_iterations_reached = result.max_iterations_reached
+        if result.stop:
             break
-
-        if iteration == max_iterations:
-            max_iterations_reached = True
 
     if max_iterations_reached:
         logger.warning(

@@ -9,17 +9,18 @@ from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
-    extract_results,
+    convert_topologies_to_messages,
+    extract_topologies,
     initialize_optimization,
     run_epoch,
 )
 from toop_engine_topology_optimizer.interfaces.messages.commands import StartOptimizationCommand
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import BatchedMEParameters, DCOptimizerParameters
-from toop_engine_topology_optimizer.interfaces.messages.results import Strategy, TopologyPushResult
+from toop_engine_topology_optimizer.interfaces.messages.results import Strategy, Topology, TopologyPushResult
 
 
-def test_extract_results(
+def test_extract_topologies(
     grid_folder: str,
 ) -> None:
     start_opt_command = StartOptimizationCommand(
@@ -48,5 +49,14 @@ def test_extract_results(
     assert isinstance(initial_strategy, Strategy)
 
     optimizer_data = run_epoch(optimizer_data)
-    res = extract_results(optimizer_data)
-    assert isinstance(res, TopologyPushResult)
+    topologies = extract_topologies(optimizer_data)
+    assert topologies
+    assert isinstance(topologies[0], Topology)
+
+    messages = convert_topologies_to_messages(topologies, epoch=1)
+    assert messages
+    assert isinstance(messages[0], TopologyPushResult)
+    assert isinstance(messages[0].strategy, Strategy)
+    assert len(messages[0].strategy.timesteps) == 1
+
+    assert extract_topologies(optimizer_data) == []

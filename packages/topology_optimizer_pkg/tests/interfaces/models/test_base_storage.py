@@ -147,11 +147,18 @@ def test_hashing() -> None:
     assert hash1 != hash2
 
     # Convert them to db topologies and re-hash them
-    db_topos = convert_message_topo_to_db_topo(
-        message_strategies=[strategy1, strategy2],
-        optimization_id="test",
-        optimizer_type=OptimizerType.DC,
-    )
+    db_topos = [
+        *convert_message_topo_to_db_topo(
+            message_strategy=strategy1,
+            optimization_id="test",
+            optimizer_type=OptimizerType.DC,
+        ),
+        *convert_message_topo_to_db_topo(
+            message_strategy=strategy2,
+            optimization_id="test",
+            optimizer_type=OptimizerType.DC,
+        ),
+    ]
 
     assert len(db_topos) == 4
 

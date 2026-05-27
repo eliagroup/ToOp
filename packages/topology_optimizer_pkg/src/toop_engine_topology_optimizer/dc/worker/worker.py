@@ -22,7 +22,8 @@ from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import Lo
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_topology_optimizer.dc.worker.optimizer import (
     OptimizerData,
-    extract_results,
+    convert_topologies_to_messages,
+    extract_topologies,
     initialize_optimization,
     run_epoch,
 )
@@ -154,10 +155,35 @@ def idle_loop(
         consumer.commit()
 
 
+def push_topologies(optimizer_data: OptimizerData, epoch: int, send_result_fn: Callable[[ResultUnion], None]) -> int:
+    """Push topologies to the results topic.
+
+    Parameters
+    ----------
+    optimizer_data : OptimizerData
+        The data of the optimizer, containing the repertoire with topologies to push.
+    epoch : int
+        The current epoch, used for logging and to include in the messages.
+    send_result_fn : Callable[[ResultUnion], None]
+        A function to call to send results back to the results topic.
+
+    Returns
+    -------
+    int
+        The number of topologies pushed
+    """
+    with jax.default_device(jax.devices("cpu")[0]):
+        push_results = convert_topologies_to_messages(extract_topologies(optimizer_data), epoch)
+        for push_result in push_results:
+            send_result_fn(push_result)
+        return len(push_results)
+
+
 def optimization_loop(
     dc_params: DCOptimizerParameters,
     grid_files: list[GridFile],
     send_result_fn: Callable[[ResultUnion], None],
+    flush_result_fn: Callable[[], None],
     send_heartbeat_fn: Callable[[HeartbeatUnion], None],
     optimization_id: str,
     processed_gridfile_fs: AbstractFileSystem,
@@ -171,7 +197,11 @@ def optimization_loop(
     grid_files : list[GridFile]
         The grid files to load, where each gridfile represents one timestep.
     send_result_fn : Callable[[ResultUnion], None]
-        A function to call to send results back to the results topic.
+        A function to queue results for the results topic. This callback is not expected to flush and will be called
+        multiple times in every epoch, for every topology discovered. After all topologies have been sent, the
+        flush_result_fn will be called to flush the results to Kafka.
+    flush_result_fn : Callable[[], None]
+        A function to flush queued results to Kafka after one or more calls to ``send_result_fn``.
     send_heartbeat_fn : Callable[[HeartbeatUnion], None]
         A function to call after every epoch to signal that the worker is still alive.
     optimization_id : str
@@ -192,6 +222,7 @@ def optimization_loop(
         If a ShutdownCommand is received
     """
     logger.info(f"Initializing DC optimization {optimization_id}")
+
     try:
         send_heartbeat_fn(
             OptimizationStartedHeartbeat(
@@ -210,26 +241,13 @@ def optimization_loop(
                 initial_stats=stats,
             )
         )
+        flush_result_fn()
 
     except Exception as e:
         send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
+        flush_result_fn()
         logger.error(f"Error during initialization of optimization {optimization_id}: {e}")
         return
-
-    def push_topologies(optimizer_data: OptimizerData) -> None:
-        """Push topologies to the results topic."""
-        with jax.default_device(jax.devices("cpu")[0]):
-            push_result = extract_results(optimizer_data)
-            if len(push_result.strategies):
-                send_result_fn(push_result)
-                best_fitness = max(
-                    timestep.metrics.fitness for strategy in push_result.strategies for timestep in strategy.timesteps
-                )
-                logger.info(
-                    f"Sent {len(push_result.strategies)} strategies with best fitness {best_fitness} to results topic"
-                )
-            else:
-                logger.warning("No strategies extracted, skipping push.")
 
     logger.info(f"Starting optimization {optimization_id}")
     epoch = 1
@@ -238,10 +256,17 @@ def optimization_loop(
     while running:
         try:
             optimizer_data = run_epoch(optimizer_data)
-            push_topologies(optimizer_data)
+            n_pushes = push_topologies(optimizer_data, epoch, send_result_fn)
+            if n_pushes > 0:
+                flush_result_fn()
+            logger.info(
+                f"Sent {n_pushes} strategies to results topic,"
+                f" best repofitness: {optimizer_data.jax_data.repertoire.fitnesses.max().item()}, epoch: {epoch}"
+            )
         except Exception as e:
             # Send a stop message to the results
             send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
+            flush_result_fn()
 
             logger.error(f"Error during optimization {optimization_id}, epoch {epoch}: {e}")
             return
@@ -260,6 +285,7 @@ def optimization_loop(
         if time.time() - start_time > dc_params.ga_config.runtime_seconds:
             logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
             send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
+            flush_result_fn()
             running = False
             break
 
@@ -331,13 +357,16 @@ def main(
             value=serialize_message(result.model_dump_json()),
             key=optimization_id.encode(),
         )
+
+    def send_result_and_flush(message: ResultUnion, optimization_id: str) -> None:
+        send_result(message=message, optimization_id=optimization_id)
         producer.flush()
 
     while True:
         command = idle_loop(
             consumer=command_consumer,
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=False),
-            send_result_fn=send_result,
+            send_result_fn=send_result_and_flush,
             heartbeat_interval_ms=args.heartbeat_interval_ms,
             max_command_age_hours=args.max_command_age_hours,
         )
@@ -347,6 +376,7 @@ def main(
             dc_params=command.dc_params,
             grid_files=command.grid_files,
             send_result_fn=partial(send_result, optimization_id=command.optimization_id),
+            flush_result_fn=producer.flush,
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=True),
             optimization_id=command.optimization_id,
             processed_gridfile_fs=processed_gridfile_fs,

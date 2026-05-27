@@ -99,14 +99,14 @@ def convert_single_topology(
 
 
 def convert_message_topo_to_db_topo(
-    message_strategies: list[Strategy], optimization_id: str, optimizer_type: OptimizerType
+    message_strategy: Strategy, optimization_id: str, optimizer_type: OptimizerType
 ) -> list[ACOptimTopology]:
     """Convert a TopologyPushResult to a list of ACOptimTopology
 
     Parameters
     ----------
-    message_strategies : list[Strategy]
-        The strategies to convert, usually from a TopologyPushResult or OptimizationStartedResult. Strategies
+    message_strategy : Strategy
+        The strategy to convert, usually from a TopologyPushResult or OptimizationStartedResult. Strategy timesteps
         are flattened into the list of topologies that are being returned.
     optimization_id : str
         The optimization ID to assign to the topologies. This was sent through with the parent
@@ -118,25 +118,24 @@ def convert_message_topo_to_db_topo(
     Returns
     -------
     list[ACOptimTopology]
-        A list of converted topologies where for each topology and for each timestep a new
+        A list of converted topologies where for each timestep a new
         ACOptimTopology instance is created.
     """
     converted = []
-    for strategy in message_strategies:
-        # Hash the strategy to get a unique global identifier
-        strategy_hash = hash_strategy(strategy)
-        unsplit = is_unsplit_strategy(strategy)
-        for time_id, timestep_topo in enumerate(strategy.timesteps):
-            converted.append(
-                convert_single_topology(
-                    topology=timestep_topo,
-                    optimization_id=optimization_id,
-                    optimizer_type=optimizer_type,
-                    timestep=time_id,
-                    strategy_hash=strategy_hash,
-                    unsplit=unsplit,
-                )
+    # Hash the strategy to get a unique global identifier
+    strategy_hash = hash_strategy(message_strategy)
+    unsplit = is_unsplit_strategy(message_strategy)
+    for time_id, timestep_topo in enumerate(message_strategy.timesteps):
+        converted.append(
+            convert_single_topology(
+                topology=timestep_topo,
+                optimization_id=optimization_id,
+                optimizer_type=optimizer_type,
+                timestep=time_id,
+                strategy_hash=strategy_hash,
+                unsplit=unsplit,
             )
+        )
     return converted
 
 

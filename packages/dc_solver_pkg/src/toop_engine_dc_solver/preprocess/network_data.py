@@ -99,7 +99,7 @@ class NetworkData:
     The outer list has as many entries as there are controllable PSTs (see controllable_phase_shift_mask).
     The inner np array has as many entries as there are taps for the given PST with each
     value representing the angle shift for the given tap position.
-    The taps are ordered by tap, from smallest to largest."""
+    The taps are ordered smallest to largest angle shift."""
 
     phase_shift_linearity: Bool[np.ndarray, " n_controllable_pst"]
     """Whether the shift angle of each controllable PST is linear to the tap position."""

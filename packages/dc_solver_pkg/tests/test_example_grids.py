@@ -502,10 +502,46 @@ def test_node_breaker_folder_powsybl() -> None:
         assert len(network_data.branch_action_set)
 
 
-def test_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
-    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path,
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(
+    _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path: Path,
 ) -> None:
-    tmp_dir = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder
+    tmp_dir = _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path
+    filesystem_dir = DirFileSystem(str(tmp_dir))
+    backend = PowsyblBackend(filesystem_dir)
+    assert sum(backend.get_relevant_node_mask())
+    network_data = preprocess(backend)
+    assert sum(network_data.relevant_node_mask) > 0
+    assert len(network_data.branch_action_set)
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(
+    _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path: Path,
+) -> None:
+    tmp_dir = _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path
+    filesystem_dir = DirFileSystem(str(tmp_dir))
+    backend = PowsyblBackend(filesystem_dir)
+    assert sum(backend.get_relevant_node_mask())
+    network_data = preprocess(backend)
+    assert sum(network_data.relevant_node_mask) > 0
+    assert len(network_data.branch_action_set)
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path(
+    _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path: Path,
+) -> None:
+    tmp_dir = _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path
+    filesystem_dir = DirFileSystem(str(tmp_dir))
+    backend = PowsyblBackend(filesystem_dir)
+    assert sum(backend.get_relevant_node_mask())
+    network_data = preprocess(backend)
+    assert sum(network_data.relevant_node_mask) > 0
+    assert len(network_data.branch_action_set)
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path(
+    _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path: Path,
+) -> None:
+    tmp_dir = _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path
     filesystem_dir = DirFileSystem(str(tmp_dir))
     backend = PowsyblBackend(filesystem_dir)
     assert sum(backend.get_relevant_node_mask())

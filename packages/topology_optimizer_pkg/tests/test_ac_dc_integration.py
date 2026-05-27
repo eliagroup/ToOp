@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import jax.numpy as jnp
 import numpy as np
+import pypowsybl
 import pytest
 import ray
 import structlog
@@ -27,7 +28,6 @@ from toop_engine_dc_solver.example_grids import (
 )
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric_batched
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
-from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
@@ -638,9 +638,13 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     fixture_folder = grid_folder / fixture_name
     fixture_folder.mkdir()
     _ = parallel_pst_data_folder(fixture_folder)
+    net = pypowsybl.network.load(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
+    pypowsybl.loadflow.run_dc(net, SINGLE_SLACK)
+    net.save(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
     _, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(fixture_folder)),
         parameters=PreprocessParameters(),
+        lf_params=SINGLE_SLACK,
     )
 
     dynamic_information = static_information.dynamic_information
@@ -654,7 +658,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     disconnections: list[int] = []
     n_random_cases = 10
 
-    runner = PowsyblRunner()
+    runner = PowsyblRunner(lf_params=SINGLE_SLACK)
     runner.load_base_grid(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
@@ -666,6 +670,60 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     grid_model_low_tap = np.asarray(nodal_injection_information.grid_model_low_tap, dtype=int)
     possible_changed_states = int(np.prod(pst_n_taps, dtype=np.int64)) - 1
     assert possible_changed_states >= n_random_cases, "Need at least 10 distinct changed PST states for this test"
+
+    solver_res_no_pst, success_dc_no_pst = compute_symmetric_batch(
+        topology_batch=default_topology(solver_config),
+        disconnection_batch=None,
+        injections=None,
+        nodal_inj_start_options=None,
+        dynamic_information=dynamic_information,
+        solver_config=solver_config,
+    )
+    assert np.all(success_dc_no_pst), "DC solver without PST changes should succeed"
+
+    n_0_no_pst = -solver_res_no_pst.n_0_matrix[0, 0]
+    n_1_no_pst = -solver_res_no_pst.n_1_matrix[0, 0]
+
+    solver_basecase_n_0_metric = float(
+        np.asarray(
+            aggregate_to_metric_batched(
+                lf_res_batch=solver_res_no_pst,
+                branch_limits=dynamic_information.branch_limits,
+                reassignment_distance=dynamic_information.action_set.reassignment_distance,
+                n_relevant_subs=dynamic_information.n_sub_relevant,
+                metric="overload_energy_n_0",
+                initial_pst_tap_idx=None,
+            )
+        )[0]
+    )
+    solver_basecase_n_1_metric = float(
+        np.asarray(
+            aggregate_to_metric_batched(
+                lf_res_batch=solver_res_no_pst,
+                branch_limits=dynamic_information.branch_limits,
+                reassignment_distance=dynamic_information.action_set.reassignment_distance,
+                n_relevant_subs=dynamic_information.n_sub_relevant,
+                metric="overload_energy_n_1",
+                initial_pst_tap_idx=None,
+            )
+        )[0]
+    )
+
+    # Runner for validation - needs to use SINGLE_SLACK to match DC solver computations
+    runner_res_no_pst = runner.run_dc_loadflow(
+        actions=actions,
+        disconnections=disconnections,
+        pst_setpoints=None,
+    )
+    # Matrices
+    n_0_runner_no_pst, n_1_runner_pst, success_ref = extract_solver_matrices_polars(runner_res_no_pst, nminus1_definition, 0)
+    assert np.all(success_ref), "Pypowsybl runner without PST changes should succeed"
+    assert np.allclose(n_0_no_pst - n_0_runner_no_pst, 0.0, atol=1e-5, rtol=0.0), (
+        f"N-0 matrix mismatch between DC solver and runner. Solver: {n_0_no_pst}, Runner: {n_0_runner_no_pst}"
+    )
+    assert np.allclose(n_1_no_pst - n_1_runner_pst, 0.0, atol=1e-5, rtol=0.0), (
+        f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_no_pst}, Runner: {n_1_runner_pst}"
+    )
 
     rng = np.random.default_rng(42)
     sampled_rel_taps: list[np.ndarray] = []
@@ -739,14 +797,23 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
     """
     fixture_name = "complex_grid_data_folder"
 
-    grid_folder = tmp_path_factory.mktemp(fixture_name)
-    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(grid_folder, np.array([True, True]))
-    static_information = load_static_information(grid_folder / PREPROCESSING_PATHS["static_information_file_path"])
+    grid_folder = tmp_path_factory.mktemp("grid_folder")
+    fixture_folder = grid_folder / fixture_name
+    fixture_folder.mkdir()
+    _ = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(fixture_folder, np.array([True, True]))
+    net = pypowsybl.network.load(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
+    pypowsybl.loadflow.run_dc(net, SINGLE_SLACK)
+    net.save(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
+    _, static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(fixture_folder)),
+        parameters=PreprocessParameters(),
+        lf_params=SINGLE_SLACK,
+    )
 
-    di = static_information.dynamic_information
-    nodal_injection_information = di.nodal_injection_information
+    dynamic_information = static_information.dynamic_information
+    nodal_injection_information = dynamic_information.nodal_injection_information
     assert nodal_injection_information is not None, "Grid should have controllable PSTs for this test"
-    assert di.action_set is not None, "Grid should have an action set for metric aggregation"
+    assert dynamic_information.action_set is not None, "Grid should have an action set for metric aggregation"
 
     solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
     topology_batch = default_topology(solver_config)
@@ -754,79 +821,12 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
     disconnections: list[int] = []
     n_random_cases = 10
 
-    solver_res_no_pst, success_dc_no_pst = compute_symmetric_batch(
-        topology_batch=default_topology(solver_config),
-        disconnection_batch=None,
-        injections=None,
-        nodal_inj_start_options=None,
-        dynamic_information=di,
-        solver_config=solver_config,
-    )
-    assert np.all(success_dc_no_pst), "DC solver without PST changes should succeed"
-
-    n_0_no_pst = -solver_res_no_pst.n_0_matrix[0, 0]
-    n_1_no_pst = -solver_res_no_pst.n_1_matrix[0, 0]
-
-    solver_n_1 = float(
-        np.asarray(
-            aggregate_to_metric_batched(
-                lf_res_batch=solver_res_no_pst,
-                branch_limits=di.branch_limits,
-                reassignment_distance=di.action_set.reassignment_distance,
-                n_relevant_subs=di.n_sub_relevant,
-                metric="overload_energy_n_0",
-                initial_pst_tap_idx=None,
-            )
-        )[0]
-    )
-    solver_basecase_n_1_metric = float(
-        np.asarray(
-            aggregate_to_metric_batched(
-                lf_res_batch=solver_res_no_pst,
-                branch_limits=di.branch_limits,
-                reassignment_distance=di.action_set.reassignment_distance,
-                n_relevant_subs=di.n_sub_relevant,
-                metric="overload_energy_n_1",
-                initial_pst_tap_idx=None,
-            )
-        )[0]
-    )
-
-    # Runner for validation - needs to use SINGLE_SLACK to match DC solver computations
-    runner = PowsyblRunner(lf_params=SINGLE_SLACK)  # Required to match DC solver results.
-    runner.load_base_grid(grid_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    runner = PowsyblRunner(lf_params=SINGLE_SLACK)
+    runner.load_base_grid(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     runner.store_action_set(extract_action_set(network_data))
     nminus1_definition = extract_nminus1_definition(network_data)
     runner.store_nminus1_definition(nminus1_definition)
     base_case_id = nminus1_definition.base_case.id if nminus1_definition.base_case is not None else None
-
-    runner_res_no_pst = runner.run_dc_loadflow(
-        actions=actions,
-        disconnections=disconnections,
-        pst_setpoints=None,
-    )
-    # Matrices
-    n_0_runner_pst, n_1_runner_pst, success_ref = extract_solver_matrices_polars(runner_res_no_pst, nminus1_definition, 0)
-    assert np.all(success_ref), "Pypowsybl runner without PST changes should succeed"
-    assert np.allclose(n_0_no_pst, n_0_runner_pst, atol=1e-5, rtol=0.0), (
-        f"N-0 matrix mismatch between DC solver and runner. Solver: {n_0_no_pst}, Runner: {n_0_runner_pst}"
-    )
-    assert np.allclose(n_1_no_pst, n_1_runner_pst, atol=1e-5, rtol=0.0), (
-        f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_no_pst}, Runner: {n_1_runner_pst}"
-    )
-
-    runner_basecase_n_1_metrics = compute_metrics_single_timestep(
-        actions=actions,
-        disconnections=disconnections,
-        loadflow=runner_res_no_pst,
-        additional_info=None,
-        base_case_id=base_case_id,
-    )
-    runner_basecase_n_1_metric = float(runner_basecase_n_1_metrics.extra_scores["overload_energy_n_1"])
-
-    assert np.allclose(solver_basecase_n_1_metric, runner_basecase_n_1_metric, atol=1e-5, rtol=0.0), (
-        f"DC solver versus DC validation failed on initial state. Solver: {solver_basecase_n_1_metric}, Runner: {runner_basecase_n_1_metric}"
-    )
 
     pst_n_taps = np.asarray(nodal_injection_information.pst_n_taps, dtype=int)
     initial_rel_taps = np.asarray(nodal_injection_information.starting_tap_idx, dtype=int)
@@ -834,7 +834,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
     possible_changed_states = int(np.prod(pst_n_taps, dtype=np.int64)) - 1
     assert possible_changed_states >= n_random_cases, "Need at least 10 distinct changed PST states for this test"
 
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(4534534)
     sampled_rel_taps: list[np.ndarray] = []
     seen_taps: set[tuple[int, ...]] = set()
     while len(sampled_rel_taps) < n_random_cases:
@@ -857,18 +857,20 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
                 previous_results=NodalInjOptimResults(pst_tap_idx=jnp.asarray(rel_taps, dtype=int)[None, None, :]),
                 precision_percent=jnp.array(0.0),
             ),
-            dynamic_information=di,
+            dynamic_information=dynamic_information,
             solver_config=solver_config,
         )
         assert np.all(success_dc), f"DC solver failed for sample {sample_index} with relative taps {rel_taps.tolist()}"
+        n_0_sample = -solver_results.n_0_matrix[0, 0]
+        n_1_sample = -solver_results.n_1_matrix[0, 0]
 
         solver_metric = float(
             np.asarray(
                 aggregate_to_metric_batched(
                     lf_res_batch=solver_results,
-                    branch_limits=di.branch_limits,
-                    reassignment_distance=di.action_set.reassignment_distance,
-                    n_relevant_subs=di.n_sub_relevant,
+                    branch_limits=dynamic_information.branch_limits,
+                    reassignment_distance=dynamic_information.action_set.reassignment_distance,
+                    n_relevant_subs=dynamic_information.n_sub_relevant,
                     metric="overload_energy_n_1",
                     initial_pst_tap_idx=nodal_injection_information.starting_tap_idx,
                 )
@@ -884,6 +886,141 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
             pst_setpoints=absolute_taps,
             method="dc",
         )
+
+        n_0_runner_sample, n_1_runner_sample, success_ref = extract_solver_matrices_polars(
+            dc_loadflow, nminus1_definition, 0
+        )
+        assert np.all(success_ref), (
+            f"Pypowsybl runner failed for sample {sample_index} with relative taps {rel_taps.tolist()}"
+        )
+        assert np.allclose(n_0_sample - n_0_runner_sample, 0.0, atol=1e-5, rtol=0.0), (
+            f"N-0 matrix mismatch between DC solver and runner. Solver: {n_0_sample}, Runner: {n_0_runner_sample}"
+        )
+        assert np.allclose(n_1_sample - n_1_runner_sample, 0.0, atol=1e-5, rtol=0.0), (
+            f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_sample}, Runner: {n_1_runner_sample}"
+        )
+
+        dc_metrics_validation = compute_metrics_single_timestep(
+            actions=actions,
+            disconnections=disconnections,
+            loadflow=dc_loadflow,
+            additional_info=None,
+            base_case_id=base_case_id,
+        )
+        runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
+        runner_metrics.append(runner_metric)
+
+    assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
+        f"DC solver versus DC validation failed. Taps: {absolute_taps_list}"
+    )
+
+
+def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst_new(tmp_path_factory: pytest.TempPathFactory) -> None:
+    fixture_name = "three_node_pst_example_data_folder"
+
+    grid_folder = tmp_path_factory.mktemp("grid_folder")
+    fixture_folder = grid_folder / fixture_name
+    fixture_folder.mkdir()
+    _ = parallel_pst_data_folder(grid_folder)
+    net = pypowsybl.network.load(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
+    pypowsybl.loadflow.run_dc(net, SINGLE_SLACK)
+    net.save(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
+    _, static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(fixture_folder)),
+        parameters=PreprocessParameters(),
+        lf_params=SINGLE_SLACK,
+    )
+
+    dynamic_information = static_information.dynamic_information
+    nodal_injection_information = dynamic_information.nodal_injection_information
+    assert nodal_injection_information is not None, "Grid should have controllable PSTs for this test"
+    assert dynamic_information.action_set is not None, "Grid should have an action set for metric aggregation"
+
+    solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
+    topology_batch = default_topology(solver_config)
+    actions: list[int] = []
+    disconnections: list[int] = []
+    n_random_cases = 10
+
+    runner = PowsyblRunner(lf_params=SINGLE_SLACK)
+    runner.load_base_grid(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    runner.store_action_set(extract_action_set(network_data))
+    nminus1_definition = extract_nminus1_definition(network_data)
+    runner.store_nminus1_definition(nminus1_definition)
+    base_case_id = nminus1_definition.base_case.id if nminus1_definition.base_case is not None else None
+
+    pst_n_taps = np.asarray(nodal_injection_information.pst_n_taps, dtype=int)
+    initial_rel_taps = np.asarray(nodal_injection_information.starting_tap_idx, dtype=int)
+    grid_model_low_tap = np.asarray(nodal_injection_information.grid_model_low_tap, dtype=int)
+    possible_changed_states = int(np.prod(pst_n_taps, dtype=np.int64)) - 1
+    assert possible_changed_states >= n_random_cases, "Need at least 10 distinct changed PST states for this test"
+
+    rng = np.random.default_rng(4534534)
+    sampled_rel_taps: list[np.ndarray] = []
+    seen_taps: set[tuple[int, ...]] = set()
+    while len(sampled_rel_taps) < n_random_cases:
+        candidate = rng.integers(low=np.zeros_like(pst_n_taps), high=pst_n_taps)
+        candidate_key = tuple(int(value) for value in candidate.tolist())
+        if np.array_equal(candidate, initial_rel_taps) or candidate_key in seen_taps:
+            continue
+        sampled_rel_taps.append(candidate)
+        seen_taps.add(candidate_key)
+
+    solver_metrics = []
+    runner_metrics = []
+    absolute_taps_list = []
+    for sample_index, rel_taps in enumerate(sampled_rel_taps):
+        solver_results, success_dc = compute_symmetric_batch(
+            topology_batch=topology_batch,
+            disconnection_batch=None,
+            injections=None,
+            nodal_inj_start_options=NodalInjStartOptions(
+                previous_results=NodalInjOptimResults(pst_tap_idx=jnp.asarray(rel_taps, dtype=int)[None, None, :]),
+                precision_percent=jnp.array(0.0),
+            ),
+            dynamic_information=dynamic_information,
+            solver_config=solver_config,
+        )
+        assert np.all(success_dc), f"DC solver failed for sample {sample_index} with relative taps {rel_taps.tolist()}"
+        n_0_sample = -solver_results.n_0_matrix[0, 0]
+        n_1_sample = -solver_results.n_1_matrix[0, 0]
+
+        solver_metric = float(
+            np.asarray(
+                aggregate_to_metric_batched(
+                    lf_res_batch=solver_results,
+                    branch_limits=dynamic_information.branch_limits,
+                    reassignment_distance=dynamic_information.action_set.reassignment_distance,
+                    n_relevant_subs=dynamic_information.n_sub_relevant,
+                    metric="overload_energy_n_1",
+                    initial_pst_tap_idx=nodal_injection_information.starting_tap_idx,
+                )
+            )[0]
+        )
+        solver_metrics.append(solver_metric)
+
+        absolute_taps = (rel_taps + grid_model_low_tap).tolist()
+        absolute_taps_list.append(absolute_taps)
+        dc_loadflow = runner.run_loadflow_single_timestep(
+            actions=actions,
+            disconnections=disconnections,
+            pst_setpoints=absolute_taps,
+            method="dc",
+        )
+
+        n_0_runner_sample, n_1_runner_sample, success_ref = extract_solver_matrices_polars(
+            dc_loadflow, nminus1_definition, 0
+        )
+        assert np.all(success_ref), (
+            f"Pypowsybl runner failed for sample {sample_index} with relative taps {rel_taps.tolist()}"
+        )
+        assert np.allclose(n_0_sample - n_0_runner_sample, 0.0, atol=1e-5, rtol=0.0), (
+            f"N-0 matrix mismatch between DC solver and runner. Solver: {n_0_sample}, Runner: {n_0_runner_sample}"
+        )
+        assert np.allclose(n_1_sample - n_1_runner_sample, 0.0, atol=1e-5, rtol=0.0), (
+            f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_sample}, Runner: {n_1_runner_sample}"
+        )
+
         dc_metrics_validation = compute_metrics_single_timestep(
             actions=actions,
             disconnections=disconnections,

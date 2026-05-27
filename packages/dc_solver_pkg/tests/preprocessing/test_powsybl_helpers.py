@@ -93,6 +93,37 @@ def test_get_p_max(powsybl_data_folder: Path) -> None:
     assert all(p_max_lines["p_max_mw_n_1"] == expected_p_max_n_1)
 
 
+def test_get_p_max_uses_operational_limit_side_voltage(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
+) -> None:
+    net = pypowsybl.network.load(
+        complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    )
+
+    branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
+    voltage_levels = net.get_voltage_levels(attributes=["nominal_v"])
+    operational_limits = net.get_operational_limits().reset_index()[["element_id", "side", "name", "value"]]
+    transformer_limits = operational_limits[
+        operational_limits["element_id"].isin(["2W_MV_HV_1", "2W_MV_HV_2", "2W_MV_LV"])
+        & (operational_limits["name"] == "permanent")
+    ].copy()
+
+    transformer_limits["expected_voltage"] = np.where(
+        transformer_limits["side"] == "ONE",
+        voltage_levels.loc[branches.loc[transformer_limits["element_id"], "voltage_level1_id"].values, "nominal_v"].values,
+        voltage_levels.loc[branches.loc[transformer_limits["element_id"], "voltage_level2_id"].values, "nominal_v"].values,
+    )
+    transformer_limits["expected_p_max"] = (
+        transformer_limits["value"] * transformer_limits["expected_voltage"] * 1e-3 * math.sqrt(3)
+    )
+
+    p_max = get_p_max(net)
+
+    for row in transformer_limits.itertuples(index=False):
+        assert p_max.loc[row.element_id, "p_max_mw"] == pytest.approx(row.expected_p_max)
+        assert p_max.loc[row.element_id, "p_max_mw_n_1"] == pytest.approx(row.expected_p_max)
+
+
 def test_get_tie_lines():
     net = pypowsybl.network.create_eurostag_tutorial_example1_with_tie_lines_and_areas()
     net_pu = get_network_as_pu(net)

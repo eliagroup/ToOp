@@ -85,7 +85,7 @@ def apply_pst_taps(
     # controllable_pst_indices maps PST positions to node array indices
     current_shift_angles = nodal_injections[:, :, nodal_inj_info.controllable_pst_indices]
 
-    # Compute the delta in shift angles
+    # Compute the delta in shift angles # TODO: Check sign
     delta_shift_angles = -new_shift_angles + current_shift_angles
     # Shape: (batch_size, n_timesteps, n_controllable_pst)
 

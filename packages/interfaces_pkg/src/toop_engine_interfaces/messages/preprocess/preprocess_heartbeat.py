@@ -34,6 +34,7 @@ ConvertToJaxStage: TypeAlias = Literal[
 NumpyPreprocessStage: TypeAlias = Literal[
     "preprocess_started",
     "extract_network_data_from_interface",
+    "exclude_nonlinear_psts_from_controllable",
     "filter_relevant_nodes",
     "assert_network_data",
     "compute_ptdf_if_not_given",

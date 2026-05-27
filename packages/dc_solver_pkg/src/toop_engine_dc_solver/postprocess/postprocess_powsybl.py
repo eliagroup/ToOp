@@ -184,7 +184,8 @@ def apply_pst_setpoints(net: Network, pst_setpoints: list[int], action_set: Acti
     net : Network
         The powsybl network to modify. Will be modified in-place.
     pst_setpoints : list[int]
-        The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,) and these are
+        The list of phase shift tap setpoints to be applied.
+        The shape should be (n_controllable_psts,) and these are
         assumed to correspond to the range of PSTs in the grid.
     action_set : ActionSet
         The action set to use for the controllable PSTs
@@ -540,8 +541,8 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The list of disconnections to be applied. This is a list of indices into the action set
             disconnectable_branches list.
         pst_setpoints : Optional[list[int]]
-            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,) and these are
-            assumed to correspond to the range of PSTs in the grid. If None, no tap changes will be applied.
+            The list of phase shift tap setpoints to be applied. The shape should be (n_controllable_psts,)
+            and these are assumed to correspond to the range of PSTs in the grid. If None, no tap changes will be applied.
 
         Returns
         -------

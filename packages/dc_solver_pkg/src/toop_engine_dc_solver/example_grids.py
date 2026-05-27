@@ -692,7 +692,7 @@ def case9241_pandapower(data_folder: Path) -> None:
     # Setting tap_step_degree is required to compute voltage angles but setting
     # both tap_step_percent and degree is disallowed, so setting to NA
     net.trafo.loc[net.trafo.vn_lv_kv == net.trafo.vn_hv_kv, "tap_step_percent"] = tap_step_percent
-    net.trafo.loc[net.trafo.vn_lv_kv == net.trafo.vn_hv_kv, "tap_changer_type"] = True
+    net.trafo.loc[net.trafo.vn_lv_kv == net.trafo.vn_hv_kv, "tap_changer_type"] = "Ideal"
     net.trafo.loc[net.trafo.vn_lv_kv == net.trafo.vn_hv_kv, "tap_neutral"] = tap_neutral
     net.trafo.loc[net.trafo.vn_lv_kv == net.trafo.vn_hv_kv, "tap_pos"] = tap_pos
 
@@ -988,7 +988,7 @@ def case14_pandapower(folder: Path) -> None:
     save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
-def case30_with_psts(folder: Path) -> None:
+def case30_with_psts_pandapower(folder: Path) -> None:
     net = pandapower_case30_with_psts_and_weak_branches()
 
     pp.runpp(net)

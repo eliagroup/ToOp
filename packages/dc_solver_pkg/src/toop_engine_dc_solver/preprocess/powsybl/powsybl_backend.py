@@ -444,21 +444,30 @@ class PowsyblBackend(BackendInterface):
         return self._get_branches()["has_pst_tap"].values
 
     def get_controllable_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
-        """Get a mask of controllable psts"""
+        """Get a mask of controllable PSTs"""
         return self._get_branches()["pst_controllable"].values
+
+    def get_phase_shift_linearity(self) -> Bool[np.ndarray, " n_controllable_psts"]:
+        """Get the linearity of the phase shift for each controllable PST.
+
+        i.e. whether the shift angle is linear to the tap position
+        """
+        return self._get_branches()[self.get_controllable_phase_shift_mask()]["has_pst_linear_tap"].values
 
     def get_phase_shift_taps(self) -> list[Float[np.ndarray, " n_controllable_psts"]]:
         """Get a list of taps for each pst"""
         shift_taps = []
         steps = self.net.get_phase_tap_changer_steps(attributes=["alpha"])
-        for pst_id in self._get_branches()[self._get_branches()["pst_controllable"]].index:
-            taps = np.squeeze(steps.loc[pst_id].values)
-            shift_taps.append(np.sort(taps))
+
+        for pst_id in self._get_branches()[self.get_controllable_phase_shift_mask()].index:
+            taps_df = steps.loc[pst_id].sort_index()
+            taps = -np.squeeze(taps_df.values)
+            shift_taps.append(taps)
         return shift_taps
 
     def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_psts"]:
         """Get the starting setpoint of each controllable PST as an integer index into the tap values"""
-        psts = self._get_branches()[self._get_branches()["pst_controllable"]].index
+        psts = self._get_branches()[self.get_controllable_phase_shift_mask()].index
         tap_changers = self.net.get_phase_tap_changers().loc[psts]
         return tap_changers["tap"].values.astype(int) - tap_changers["low_tap"].values.astype(int)
 
@@ -468,7 +477,7 @@ class PowsyblBackend(BackendInterface):
         This is needed so taps as integer indices into tap values
         can be converted back to the original tap positions by tap + low_tap
         """
-        psts = self._get_branches()[self._get_branches()["pst_controllable"]].index
+        psts = self._get_branches()[self.get_controllable_phase_shift_mask()].index
         tap_changers = self.net.get_phase_tap_changers().loc[psts]
         return tap_changers["low_tap"].values.astype(int)
 

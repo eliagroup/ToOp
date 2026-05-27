@@ -635,7 +635,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path) -> N
     folder: Path
         The root folder where the data is saved to.
     """
-    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=np.array([True, False]))
     pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
 
     output_path_grid = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]

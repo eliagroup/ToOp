@@ -23,6 +23,7 @@ def test_reduce_branch_dimension(
         network_data_filled.outaged_branch_mask,
         network_data_filled.multi_outage_branch_mask,
         np.zeros_like(network_data_filled.monitored_branch_mask, dtype=bool),
+        network_data_filled.controllable_phase_shift_mask,
     )
 
     # Check for the same number of true values in all branch masks

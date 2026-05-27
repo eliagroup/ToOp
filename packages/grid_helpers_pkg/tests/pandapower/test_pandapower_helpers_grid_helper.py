@@ -11,7 +11,10 @@ import pandas as pd
 import pytest
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
-from toop_engine_grid_helpers.pandapower.example_grids import pandapower_case30_with_psts
+from toop_engine_grid_helpers.pandapower.example_grids import (
+    add_phaseshift_transformer_to_line_pandapower,
+    pandapower_case30_with_psts,
+)
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     check_for_splits,
     get_dc_bus_voltage,
@@ -41,6 +44,8 @@ def test_get_phaseshift_mask() -> None:
     assert len(shift_taps) == controllable.sum()
 
     controllable_trafos = controllable[len(net.line) :]
+    assert net.trafo.loc[controllable_trafos, "tap_changer_type"].eq("Ideal").all()
+    assert net.trafo.loc[controllable_trafos, "tap_step_percent"].isna().all()
     tap_min = (net.trafo.tap_min * net.trafo.tap_step_degree)[controllable_trafos]
     tap_max = (net.trafo.tap_max * net.trafo.tap_step_degree)[controllable_trafos]
     for taps, t_min, t_max in zip(shift_taps, tap_min, tap_max):
@@ -53,6 +58,26 @@ def test_get_phaseshift_mask() -> None:
 
     assert isinstance(controllable, Bool[np.ndarray, " n_branches"])
     assert isinstance(mask, Bool[np.ndarray, " n_branches"])
+
+
+def test_add_phaseshift_transformer_to_line_creates_linear_ideal_pst() -> None:
+    net = pp.networks.case30()
+
+    trafo_idx, _helper_bus = add_phaseshift_transformer_to_line_pandapower(
+        net,
+        13,
+        at_from_bus=False,
+        tap_min=-20,
+        tap_max=30,
+    )
+
+    trafo = net.trafo.loc[trafo_idx]
+
+    assert trafo.tap_changer_type == "Ideal"
+    assert np.isnan(trafo.tap_step_percent)
+    assert trafo.tap_neutral == 0
+    assert trafo.tap_pos == 0
+    assert trafo.tap_step_degree == pytest.approx(2.0)
 
 
 def test_get_remotely_connected_buses() -> None:

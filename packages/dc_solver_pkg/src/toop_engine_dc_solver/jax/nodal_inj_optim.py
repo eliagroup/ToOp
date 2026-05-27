@@ -57,7 +57,8 @@ def apply_pst_taps(
     nodal_injections : Float[Array, " batch_size n_timesteps n_buses"]
         The nodal injections including current PST angles at the beginning
     pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_pst"]
-        The tap indices for the controllable PSTs from the start options, which indicate the new tap settings to apply.
+        The tap indices for the controllable PSTs from the start options,
+        which indicate the new tap settings to apply.
     topo_res : TopologyResults
         The topology results containing PTDF matrix (with PSDF prepended)
     nodal_inj_info : NodalInjectionInformation
@@ -85,7 +86,7 @@ def apply_pst_taps(
     current_shift_angles = nodal_injections[:, :, nodal_inj_info.controllable_pst_indices]
 
     # Compute the delta in shift angles
-    delta_shift_angles = new_shift_angles - current_shift_angles
+    delta_shift_angles = -new_shift_angles + current_shift_angles
     # Shape: (batch_size, n_timesteps, n_controllable_pst)
 
     # Extract PSDF columns from PTDF using controllable_pst_indices

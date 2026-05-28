@@ -7,8 +7,8 @@
 
 import numpy as np
 import pandapower
-import pypowsybl
 import polars as pl
+import pypowsybl
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
     compute_max_load,

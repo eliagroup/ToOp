@@ -258,10 +258,6 @@ def _grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
                 complex_grid_path,
                 linear_pst=np.array([True, False]),
             )
-            _info, _static_information, _network_data = load_grid(
-                data_folder_dirfs=DirFileSystem(str(complex_grid_path)),
-                pandapower=False,
-            )
 
         case30_path = target_path / "case30"
         if not case30_path.exists():

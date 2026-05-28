@@ -1135,13 +1135,10 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
     )
 
     _ = preprocessing.convert_file(importer_parameters=importer_parameters)
-    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
 
     _info, _static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(folder)),
         pandapower=False,
-        status_update_fn=None,
-        parameters=preprocessing_parameters,
     )
     save_lf_params_to_fs(
         DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])

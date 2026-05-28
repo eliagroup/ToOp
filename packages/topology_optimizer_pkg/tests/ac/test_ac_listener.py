@@ -33,30 +33,28 @@ def result() -> Result:
         optimization_id="test",
         optimizer_type=OptimizerType.DC,
         result=TopologyPushResult(
-            strategies=[
-                Strategy(
-                    timesteps=[
-                        MessageTopology(
-                            actions=[1, 2, 555],
-                            disconnections=[0, 1],
-                            pst_setpoints=[1, 2, 3, 4],
-                            metrics=Metrics(
-                                fitness=0.5,
-                                extra_scores={"overload_energy_n_1": 123.4},
-                            ),
+            strategy=Strategy(
+                timesteps=[
+                    MessageTopology(
+                        actions=[1, 2, 555],
+                        disconnections=[0, 1],
+                        pst_setpoints=[1, 2, 3, 4],
+                        metrics=Metrics(
+                            fitness=0.5,
+                            extra_scores={"overload_energy_n_1": 123.4},
                         ),
-                        MessageTopology(
-                            actions=[1, 2, 3],
-                            disconnections=[0, 1],
-                            pst_setpoints=[1, 2, 3, 4],
-                            metrics=Metrics(
-                                fitness=0.5,
-                                extra_scores={"overload_energy_n_1": 123.4},
-                            ),
+                    ),
+                    MessageTopology(
+                        actions=[1, 2, 3],
+                        disconnections=[0, 1],
+                        pst_setpoints=[1, 2, 3, 4],
+                        metrics=Metrics(
+                            fitness=0.5,
+                            extra_scores={"overload_energy_n_1": 123.4},
                         ),
-                    ],
-                )
-            ]
+                    ),
+                ],
+            )
         ),
     )
 
@@ -138,7 +136,7 @@ def test_poll_results_topic(result: Result, session: Session) -> None:
 def test_poll_results_topic_optimization_started_result(result: Result, session: Session) -> None:
     # Should handle OptimizationStartedResult messages
     result.result = OptimizationStartedResult(
-        initial_topology=result.result.strategies[0], initial_stats=[StaticInformationStats()]
+        initial_topology=result.result.strategy, initial_stats=[StaticInformationStats()]
     )
 
     consumer = Mock(spec=LongRunningKafkaConsumer)

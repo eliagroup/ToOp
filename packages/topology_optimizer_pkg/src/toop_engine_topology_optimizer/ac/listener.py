@@ -98,18 +98,18 @@ def poll_results_topic(
     for message in messages:
         result = Result.model_validate_json(deserialize_message(message.value()))
 
-        strategies = None
+        strategy = None
         if isinstance(result.result, TopologyPushResult):
-            strategies = result.result.strategies
+            strategy = result.result.strategy
         elif isinstance(result.result, OptimizationStartedResult):
-            strategies = [result.result.initial_topology]
+            strategy = result.result.initial_topology
         elif isinstance(result.result, OptimizationStoppedResult):
             finished_optimizations.append(result)
             continue
         else:
             continue
 
-        topologies = convert_message_topo_to_db_topo(strategies, result.optimization_id, result.optimizer_type)
+        topologies = convert_message_topo_to_db_topo(strategy, result.optimization_id, result.optimizer_type)
 
         # Push the topologies to the database, ignoring duplicates
         # Duplicates will trigger an IntegrityError

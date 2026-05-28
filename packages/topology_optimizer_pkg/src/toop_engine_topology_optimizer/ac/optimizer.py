@@ -561,7 +561,7 @@ def send_topology_result(
     )
 
     if not local_enable_ac_rejection or rejection_reason is None:
-        send_result_fn(TopologyPushResult(strategies=[Strategy(timesteps=[topology_message])], epoch=epoch))
+        send_result_fn(TopologyPushResult(strategy=Strategy(timesteps=[topology_message]), epoch=epoch))
     else:
         send_result_fn(
             TopologyRejectionResult(

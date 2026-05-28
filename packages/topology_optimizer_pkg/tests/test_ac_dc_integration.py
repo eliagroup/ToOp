@@ -265,10 +265,8 @@ def test_ac_dc_integration(
                     ac_topo_push = True
                 elif result.optimizer_type == OptimizerType.DC:
                     dc_topo_push = True
-                for strategy in result.result.strategies:
-                    if len(strategy.timesteps[0].actions):
+                    if len(result.result.strategy.timesteps[0].actions):
                         split_topo_push = True
-                        break
 
             if ac_converged and dc_converged:
                 break
@@ -347,8 +345,7 @@ def test_ac_dc_integration_sequential(grid_folder: Path, tmp_path_factory: pytes
     second_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][1]))
     assert isinstance(second_msg, Result)
     assert isinstance(second_msg.result, TopologyPushResult)
-    assert len(second_msg.result.strategies) > 0
-    assert len(second_msg.result.strategies[0].timesteps) > 0
+    assert len(second_msg.result.strategy.timesteps) > 0
 
     last_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][-1]))
     assert isinstance(last_msg, Result)
@@ -392,8 +389,7 @@ def test_ac_dc_integration_sequential(grid_folder: Path, tmp_path_factory: pytes
     second_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][1]))
     assert isinstance(second_msg, Result)
     assert isinstance(second_msg.result, TopologyPushResult)
-    assert len(second_msg.result.strategies) > 0
-    assert len(second_msg.result.strategies[0].timesteps) > 0
+    assert len(second_msg.result.strategy.timesteps) > 0
 
     last_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][-1]))
     assert isinstance(last_msg, Result)
@@ -475,9 +471,8 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
     second_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][1]))
     assert isinstance(second_msg, Result)
     assert isinstance(second_msg.result, TopologyPushResult)
-    assert len(second_msg.result.strategies) > 0
-    assert len(second_msg.result.strategies[0].timesteps) > 0
-    assert second_msg.result.strategies[0].timesteps[0].pst_setpoints is not None
+    assert len(second_msg.result.strategy.timesteps) > 0
+    assert second_msg.result.strategy.timesteps[0].pst_setpoints is not None
 
     last_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][-1]))
     assert isinstance(last_msg, Result)
@@ -521,8 +516,7 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
     second_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][1]))
     assert isinstance(second_msg, Result)
     assert isinstance(second_msg.result, TopologyPushResult)
-    assert len(second_msg.result.strategies) > 0
-    assert len(second_msg.result.strategies[0].timesteps) > 0
+    assert len(second_msg.result.strategy.timesteps) > 0
 
     last_msg = Result.model_validate_json(deserialize_message(producer.messages["results"][-1]))
     assert isinstance(last_msg, Result)

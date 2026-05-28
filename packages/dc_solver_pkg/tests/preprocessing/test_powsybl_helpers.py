@@ -105,7 +105,7 @@ def test_get_p_max_uses_operational_limit_side_voltage(
     operational_limits = net.get_operational_limits().reset_index()[["element_id", "side", "name", "value"]]
     transformer_limits = operational_limits[
         operational_limits["element_id"].isin(["2W_MV_HV_1", "2W_MV_HV_2", "2W_MV_LV"])
-        & (operational_limits["name"] == "permanent")
+        & (operational_limits["name"] == "permanent_limit")
     ].copy()
 
     transformer_limits["expected_voltage"] = np.where(

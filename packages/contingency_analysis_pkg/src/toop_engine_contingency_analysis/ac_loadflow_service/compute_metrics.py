@@ -215,8 +215,14 @@ def get_worst_k_contingencies_ac(
 def compute_metrics(
     loadflow_results: LoadflowResultsPolars,
     base_case_id: Optional[str] = None,
-) -> dict[MetricType, float]:
+) -> dict[MetricType, float | None]:
     """Compute the metrics from the loadflow results.
+
+    N-1 overload energy will exclude the base case results if base_case_id is provided,
+    otherwise it will include all contingencies.
+    This method will return None for metrics that cannot be computed due to missing or invalid data. For example,
+    if basecase is provided and is the only contingency, then N-1 metrics will be None
+    since there are no valid N-1 contingencies to compute on.
 
     Parameters
     ----------
@@ -227,7 +233,7 @@ def compute_metrics(
 
     Returns
     -------
-    dict[MetricType, float]
+    dict[MetricType, float | None]
         A dictionary with the computed metrics.
     """
     n_1_branch_res = (

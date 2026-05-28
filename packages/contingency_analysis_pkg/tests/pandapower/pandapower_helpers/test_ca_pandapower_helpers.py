@@ -469,7 +469,7 @@ def test_get_node_results(
         outage_net,
         contingency,
         timestep=timestep,
-        basecase_voltage=outage_net.res_bus.vm_pu,
+        basecase_net=outage_net,
     )
     assert isinstance(node_result_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(node_result_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
@@ -499,7 +499,7 @@ def test_get_node_results_basecase(
         outage_net,
         contingency,
         timestep=timestep,
-        basecase_voltage=outage_net.res_bus.vm_pu,
+        basecase_net=outage_net,
     )
     assert isinstance(node_result_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(node_result_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
@@ -537,7 +537,7 @@ def test_get_node_results_multi_outage(
         outage_net,
         contingency,
         timestep=timestep,
-        basecase_voltage=outage_net.res_bus.vm_pu,
+        basecase_net=outage_net,
     )
     assert isinstance(node_result_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(node_result_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
@@ -571,7 +571,7 @@ def test_get_node_results_no_monitored(pandapower_net: pp.pandapowerNet):
         outage_net,
         contingency,
         timestep=timestep,
-        basecase_voltage=outage_net.res_bus.vm_pu,
+        basecase_net=outage_net,
     )
     assert not node_result_df.empty, "The result should not be empty if no monitored elements are provided"
 

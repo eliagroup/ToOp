@@ -128,6 +128,7 @@ def build_cascade_test_net():
             "x_v": [1.0, 1.0, 14.0, 35.0, 1.0, 1.0],
             "angle": [30.0, 30.0, 30.0, 35.0, 30.0, 30.0],
             "relay_side": ["element", "element", "element", "bus", "element", "element"],
+            "protection_side": ["element", "element", "element", "bus", "element", "element"],
             "custom_warning_distance_protection": [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
         },
     )

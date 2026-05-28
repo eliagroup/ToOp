@@ -85,7 +85,7 @@ def compute_affected_nodes(
     net : pp.pandapowerNet
         Pandapower network to inspect.
     el_list : pd.DataFrame
-        Switch rows that include switch_id and relay_side columns.
+        Switch rows that include switch_id and protection_side columns.
 
     Returns
     -------
@@ -96,10 +96,10 @@ def compute_affected_nodes(
     graph = create_closed_bb_switches_graph(net)
     for sw_row in el_list.itertuples():
         sw_idx = sw_row.switch_id
-        relay_side = sw_row.relay_side
+        protection_side = sw_row.protection_side
 
         sw = net.switch.loc[sw_idx]
-        from_node = sw[relay_side]
+        from_node = sw[protection_side]
 
         nodes: list[int] = []
         if graph.has_edge(sw.bus, sw.element):

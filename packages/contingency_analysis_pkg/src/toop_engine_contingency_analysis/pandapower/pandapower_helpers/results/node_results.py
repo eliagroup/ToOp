@@ -9,6 +9,7 @@
 """Utilities for extracting pandapower bus (node) simulation results per contingency."""
 
 import numpy as np
+import pandapower as pp
 import pandera as pa
 import pandera.typing as pat
 from pandapower import pandapowerNet
@@ -26,7 +27,7 @@ def get_node_result_df(
     net: pandapowerNet,
     contingency: PandapowerContingency,
     timestep: int,
-    basecase_voltage: pat.Series[float],
+    basecase_net: pp.pandapowerNet,
 ) -> pat.DataFrame[NodeResultSchema]:
     """Get the node results for the given network and contingency
 
@@ -38,14 +39,17 @@ def get_node_result_df(
         The contingency to compute the node results for
     timestep : int
         The timestep of the results
-    basecase_voltage: pat.DataFrame[float]
-        The basecase voltage results
+    basecase_net : pp.pandapowerNet
+        Deep-copy of the network after the base-case load flow.  The
+        ``res_bus.vm_pu`` column is used to compute per-bus voltage deviation
+        relative to the base-case operating point.
 
     Returns
     -------
     pat.DataFrame[NodeResultSchema]
         The node results for the given network and contingency
     """
+    basecase_voltage = basecase_net.res_bus["vm_pu"]
     # Add logic for 5% ΔV voltage limit
     net.res_bus["vm_basecase_deviation"] = (
         abs(net.res_bus["vm_pu"] - basecase_voltage) / basecase_voltage.replace(0, np.nan)

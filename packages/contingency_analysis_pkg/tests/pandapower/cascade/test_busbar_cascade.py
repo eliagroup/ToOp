@@ -104,6 +104,7 @@ def create_net():
             "x_v": [30.0, 14.0],
             "angle": [30.0, 30.0],
             "relay_side": ["element", "element"],
+            "protection_side": ["element", "element"],
             "custom_warning_distance_protection": [np.nan, np.nan],
         },
     )

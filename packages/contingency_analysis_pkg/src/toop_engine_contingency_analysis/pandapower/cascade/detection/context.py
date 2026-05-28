@@ -40,7 +40,9 @@ def get_switch_characteristics(net: pp.pandapowerNet, closed_status: bool | None
     filtered_switches = net.switch[net.switch.closed == closed_status] if closed_status is not None else net.switch
 
     return filtered_switches[["bus", "element", "origin_id"]].merge(
-        net.sw_characteristics[["breaker_uuid", "poly", "relay_side", "custom_warning_distance_protection"]],
+        net.sw_characteristics[
+            ["breaker_uuid", "poly", "relay_side", "protection_side", "custom_warning_distance_protection"]
+        ],
         left_on="origin_id",
         right_on="breaker_uuid",
         how="inner",

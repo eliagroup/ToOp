@@ -525,6 +525,7 @@ def test_ac_dc_integration_psts(tmp_path_factory: pytest.TempPathFactory) -> Non
 
 
 def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Compare DC solver fitness to AC validation fitness (using DC loadflow mode) for several PST taps on the three node grid."""
     fixture_name = "three_node_pst_example_data_folder"
 
     grid_folder = tmp_path_factory.mktemp("grid_folder")
@@ -564,61 +565,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
     possible_changed_states = int(np.prod(pst_n_taps, dtype=np.int64)) - 1
     assert possible_changed_states >= n_random_cases, "Need at least 10 distinct changed PST states for this test"
 
-    solver_res_no_pst, success_dc_no_pst = compute_symmetric_batch(
-        topology_batch=default_topology(solver_config),
-        disconnection_batch=None,
-        injections=None,
-        nodal_inj_start_options=None,
-        dynamic_information=dynamic_information,
-        solver_config=solver_config,
-    )
-    assert np.all(success_dc_no_pst), "DC solver without PST changes should succeed"
-
-    n_0_no_pst = -solver_res_no_pst.n_0_matrix[0, 0]
-    n_1_no_pst = -solver_res_no_pst.n_1_matrix[0, 0]
-
-    solver_basecase_n_0_metric = float(
-        np.asarray(
-            aggregate_to_metric_batched(
-                lf_res_batch=solver_res_no_pst,
-                branch_limits=dynamic_information.branch_limits,
-                reassignment_distance=dynamic_information.action_set.reassignment_distance,
-                n_relevant_subs=dynamic_information.n_sub_relevant,
-                metric="overload_energy_n_0",
-                initial_pst_tap_idx=None,
-            )
-        )[0]
-    )
-    solver_basecase_n_1_metric = float(
-        np.asarray(
-            aggregate_to_metric_batched(
-                lf_res_batch=solver_res_no_pst,
-                branch_limits=dynamic_information.branch_limits,
-                reassignment_distance=dynamic_information.action_set.reassignment_distance,
-                n_relevant_subs=dynamic_information.n_sub_relevant,
-                metric="overload_energy_n_1",
-                initial_pst_tap_idx=None,
-            )
-        )[0]
-    )
-
-    # Runner for validation - needs to use SINGLE_SLACK to match DC solver computations
-    runner_res_no_pst = runner.run_dc_loadflow(
-        actions=actions,
-        disconnections=disconnections,
-        pst_setpoints=None,
-    )
-    # Matrices
-    n_0_runner_no_pst, n_1_runner_pst, success_ref = extract_solver_matrices_polars(runner_res_no_pst, nminus1_definition, 0)
-    assert np.all(success_ref), "Pypowsybl runner without PST changes should succeed"
-    assert np.allclose(n_0_no_pst - n_0_runner_no_pst, 0.0, atol=1e-5, rtol=0.0), (
-        f"N-0 matrix mismatch between DC solver and runner. Solver: {n_0_no_pst}, Runner: {n_0_runner_no_pst}"
-    )
-    assert np.allclose(n_1_no_pst - n_1_runner_pst, 0.0, atol=1e-5, rtol=0.0), (
-        f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_no_pst}, Runner: {n_1_runner_pst}"
-    )
-
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(4534534)
     sampled_rel_taps: list[np.ndarray] = []
     seen_taps: set[tuple[int, ...]] = set()
     while len(sampled_rel_taps) < n_random_cases:
@@ -645,6 +592,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
             solver_config=solver_config,
         )
         assert np.all(success_dc), f"DC solver failed for sample {sample_index} with relative taps {rel_taps.tolist()}"
+        n_0_sample = -solver_results.n_0_matrix[0, 0]
+        n_1_sample = -solver_results.n_1_matrix[0, 0]
 
         solver_metric = float(
             np.asarray(
@@ -668,6 +617,20 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
             pst_setpoints=absolute_taps,
             method="dc",
         )
+
+        n_0_runner_sample, n_1_runner_sample, success_ref = extract_solver_matrices_polars(
+            dc_loadflow, nminus1_definition, 0
+        )
+        assert np.all(success_ref), (
+            f"Pypowsybl runner failed for sample {sample_index} with relative taps {rel_taps.tolist()}"
+        )
+        assert np.allclose(n_0_sample - n_0_runner_sample, 0.0, atol=1e-5, rtol=0.0), (
+            f"N-0 matrix mismatch between DC solver and runner. Solver: {n_0_sample}, Runner: {n_0_runner_sample}"
+        )
+        assert np.allclose(n_1_sample - n_1_runner_sample, 0.0, atol=1e-5, rtol=0.0), (
+            f"N-1 matrix mismatch between DC solver and runner. Solver: {n_1_sample}, Runner: {n_1_runner_sample}"
+        )
+
         dc_metrics_validation = compute_metrics_single_timestep(
             actions=actions,
             disconnections=disconnections,
@@ -684,6 +647,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
 
 
 def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Compare DC solver fitness to AC validation fitness (using DC loadflow mode) for several PST taps on the parallel PST grid."""
     fixture_name = "parallel_pst_folder"
 
     grid_folder = tmp_path_factory.mktemp("grid_folder")
@@ -843,7 +807,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
 
 
 def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: pytest.TempPathFactory) -> None:
-    """Test that the DC solver's fitness metric matches the validation's fitness metric in DC on a more complex grid with PSTs.
+    """Compare DC solver fitness to AC validation fitness (using DC loadflow mode) for several PST taps on the complex grid.
+
 
     Warning: DC computation of Powsybl runner needs to use `SINGLE_SLACK` to match DC solver results.
     """

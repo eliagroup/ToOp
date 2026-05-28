@@ -703,7 +703,7 @@ def case14_matching_asset_topo_powsybl(folder: Path) -> None:
 # ruff: noqa: PLR0915
 # sonar: noqa: S3776
 def create_complex_grid_battery_hvdc_svc_3w_trafo(
-    linear_pst: np.ndarray = None, connect_line_out_of_service: bool = False
+    linear_pst: np.ndarray | None = None, connect_line_out_of_service: bool = False
 ) -> Network:
     """Create a complex grid with batteries, HVDC, SVC, and 3-winding transformers using Powsybl.
 
@@ -716,7 +716,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
 
     Parameters
     ----------
-    linear_pst : Array[Bool, " n_pst"]
+    linear_pst : np.ndarray | None
         Whether to use linear phase-shifting transformers
     connect_line_out_of_service : bool
         Whether to connect the line that is out of service.

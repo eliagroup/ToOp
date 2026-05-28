@@ -409,7 +409,10 @@ def pipeline_and_configs(
     file_name = "grid.xiidm"
     iteration_name = ""
     pipeline_cfg = build_pipeline_cfg(complex_grid_dst, iteration_name, file_name)
-    dc_cfg = build_dc_config(str(tmp_grid_folder), complex_grid_dst / PREPROCESSING_PATHS["static_information_file_path"])
+    dc_cfg = build_dc_config(
+        str(tmp_grid_folder),
+        complex_grid_dst / Path(file_name).stem / PREPROCESSING_PATHS["static_information_file_path"],
+    )
     ac_cfg = build_ac_config()
     return pipeline_cfg, dc_cfg, ac_cfg
 

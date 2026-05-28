@@ -54,10 +54,46 @@ from toop_engine_interfaces.asset_topology import (
     Topology,
 )
 from toop_engine_interfaces.backend import BackendInterface
+from toop_engine_interfaces.filesystem_helper import save_numpy_filesystem
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
+
+
+def _convert_powsybl_grid_file(folder: Path, grid_file_path: Path, data_type: Literal["ucte", "cgmes"] = "ucte") -> bool:
+    from toop_engine_importer.pypowsybl_import import preprocessing  # noqa: PLC0415
+    from toop_engine_interfaces.messages.preprocess.preprocess_commands import (  # noqa: PLC0415
+        AreaSettings,
+        CgmesImporterParameters,
+        UcteImporterParameters,
+    )
+
+    area_settings = AreaSettings(
+        cutoff_voltage=1,
+        control_area=[""],
+        view_area=[""],
+        nminus1_area=[""],
+        cross_border_limits_n0=None,
+        cross_border_limits_n1=None,
+    )
+    if data_type == "cgmes":
+        importer_parameters = CgmesImporterParameters(
+            grid_model_file=grid_file_path,
+            data_folder=folder,
+            area_settings=area_settings,
+        )
+    else:
+        importer_parameters = UcteImporterParameters(
+            grid_model_file=grid_file_path,
+            data_folder=folder,
+            area_settings=area_settings,
+        )
+    try:
+        preprocessing.convert_file(importer_parameters=importer_parameters)
+    except Exception:
+        return False
+    return True
 
 
 def compress_bz2(source_file: str) -> None:
@@ -1022,24 +1058,21 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
     net.save(grid_file_path)
+    _convert_powsybl_grid_file(folder=folder, grid_file_path=grid_file_path, data_type="ucte")
 
-    output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
-    output_path_masks.mkdir(parents=True, exist_ok=True)
-
+    filesystem = DirFileSystem(str(folder))
+    masks_path = Path(PREPROCESSING_PATHS["masks_path"])
     rel_sub_mask = np.ones(len(net.get_buses()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
-
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
     line_mask = np.ones(len(net.get_lines()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
-
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
     trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_controllable"], trafo_mask)
-
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["trafo_pst_controllable"], trafo_mask)
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(
@@ -1064,19 +1097,19 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
     net.save(grid_file_path)
-
-    output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
-    output_path_masks.mkdir(parents=True, exist_ok=True)
+    _convert_powsybl_grid_file(folder=folder, grid_file_path=grid_file_path, data_type="ucte")
+    filesystem = DirFileSystem(str(folder))
+    masks_path = Path(PREPROCESSING_PATHS["masks_path"])
     rel_sub_mask = np.zeros(len(net.get_buses()), dtype=bool)
     rel_sub_mask[1:3] = True
-    np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
     line_mask = np.ones(len(net.get_lines()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
     trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_controllable"], trafo_mask)
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
+    save_numpy_filesystem(filesystem, masks_path / NETWORK_MASK_NAMES["trafo_pst_controllable"], trafo_mask)
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(

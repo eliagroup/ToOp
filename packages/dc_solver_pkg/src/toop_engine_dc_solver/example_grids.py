@@ -11,6 +11,7 @@
 
 import bz2
 import datetime
+import logging
 import os
 import shutil
 from copy import deepcopy
@@ -60,8 +61,30 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 
+logger = logging.getLogger(__name__)
 
-def _convert_powsybl_grid_file(folder: Path, grid_file_path: Path, data_type: Literal["ucte", "cgmes"] = "ucte") -> bool:
+
+def _run_importer_preprocessing_for_powsybl(
+    folder: Path, grid_file_path: Path, data_type: Literal["ucte", "cgmes"] = "ucte"
+) -> bool:
+    """Run importer preprocessing on a saved powsybl example grid file.
+
+    Parameters
+    ----------
+    folder : Path
+        Root folder where preprocessing artifacts are stored.
+    grid_file_path : Path
+        Path to the saved powsybl grid file.
+    data_type : Literal["ucte", "cgmes"]
+        Importer parameter type used for conversion.
+
+    Returns
+    -------
+    bool
+        True if conversion succeeds.
+        False if importer preprocessing is unavailable for this example grid; callers should then
+        keep the explicit example masks they were going to write anyway.
+    """
     from toop_engine_importer.pypowsybl_import import preprocessing  # noqa: PLC0415
     from toop_engine_interfaces.messages.preprocess.preprocess_commands import (  # noqa: PLC0415
         AreaSettings,
@@ -91,7 +114,8 @@ def _convert_powsybl_grid_file(folder: Path, grid_file_path: Path, data_type: Li
         )
     try:
         preprocessing.convert_file(importer_parameters=importer_parameters)
-    except Exception:
+    except (ImportError, KeyError, ValueError, pypowsybl.PyPowsyblError) as error:
+        logger.warning("Example-grid importer preprocessing failed for %s: %s", grid_file_path, error)
         return False
     return True
 
@@ -1058,7 +1082,7 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
     net.save(grid_file_path)
-    _convert_powsybl_grid_file(folder=folder, grid_file_path=grid_file_path, data_type="ucte")
+    _run_importer_preprocessing_for_powsybl(folder=folder, grid_file_path=grid_file_path, data_type="ucte")
 
     filesystem = DirFileSystem(str(folder))
     masks_path = Path(PREPROCESSING_PATHS["masks_path"])
@@ -1097,7 +1121,7 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
     net.save(grid_file_path)
-    _convert_powsybl_grid_file(folder=folder, grid_file_path=grid_file_path, data_type="ucte")
+    _run_importer_preprocessing_for_powsybl(folder=folder, grid_file_path=grid_file_path, data_type="ucte")
     filesystem = DirFileSystem(str(folder))
     masks_path = Path(PREPROCESSING_PATHS["masks_path"])
     rel_sub_mask = np.zeros(len(net.get_buses()), dtype=bool)

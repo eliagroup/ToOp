@@ -471,14 +471,18 @@ def test_case30_with_psts_powsybl() -> None:
 
 
 def test_three_node_pst_example_folder_powsybl() -> None:
+    """Check that the three-node PST example keeps only the two PST stations relevant."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir = Path(tmp_dir)
         three_node_pst_example_folder_powsybl(tmp_dir)
 
         backend = PowsyblBackend(DirFileSystem(str(tmp_dir)))
         relevant_mask = backend.get_relevant_node_mask()
+        first_pst_connected_bus = 1
+        second_pst_connected_bus = 2
+        # The 3-node PST example marks only the two PST-connected buses as relevant.
         assert relevant_mask.sum() == 2
-        assert relevant_mask[1:3].all()
+        assert relevant_mask[[first_pst_connected_bus, second_pst_connected_bus]].all()
 
 
 def test_case14_with_matching_asset_topo() -> None:

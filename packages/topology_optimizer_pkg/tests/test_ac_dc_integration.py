@@ -700,31 +700,6 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     n_0_no_pst = -solver_res_no_pst.n_0_matrix[0, 0]
     n_1_no_pst = -solver_res_no_pst.n_1_matrix[0, 0]
 
-    solver_basecase_n_0_metric = float(
-        np.asarray(
-            aggregate_to_metric_batched(
-                lf_res_batch=solver_res_no_pst,
-                branch_limits=dynamic_information.branch_limits,
-                reassignment_distance=dynamic_information.action_set.reassignment_distance,
-                n_relevant_subs=dynamic_information.n_sub_relevant,
-                metric="overload_energy_n_0",
-                initial_pst_tap_idx=None,
-            )
-        )[0]
-    )
-    solver_basecase_n_1_metric = float(
-        np.asarray(
-            aggregate_to_metric_batched(
-                lf_res_batch=solver_res_no_pst,
-                branch_limits=dynamic_information.branch_limits,
-                reassignment_distance=dynamic_information.action_set.reassignment_distance,
-                n_relevant_subs=dynamic_information.n_sub_relevant,
-                metric="overload_energy_n_1",
-                initial_pst_tap_idx=None,
-            )
-        )[0]
-    )
-
     # Runner for validation - needs to use SINGLE_SLACK to match DC solver computations
     runner_res_no_pst = runner.run_dc_loadflow(
         actions=actions,

@@ -1930,7 +1930,8 @@ def three_node_pst_example() -> Network:
 def parallel_pst_example() -> Network:
     """Creates a 3 node example grid with 3 PSTs in it.
 
-    TODO: Fill in explanation here.
+    The grid contains four substations (A, B, C, D) and three PSTs (PST1, PST2, PST3). It is intended to exercise
+    import/preprocessing and tap-optimization logic in the presence of parallel PST branches.
 
     This grid can be used to test tap optimization algorithms and
     if parallel PSTs are correctly handled during import and optimization.

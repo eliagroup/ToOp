@@ -1095,7 +1095,7 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     )
 
 
-def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst: np.ndarray = None) -> NetworkData:
+def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst: np.ndarray | None = None) -> NetworkData:
     """Create a preprocessed folder for create_complex_grid_battery_hvdc_svc_3w_trafo().
 
     Runs the importer and preprocessing.
@@ -1103,10 +1103,8 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
     Parameter:
     folder: Path
         The root folder where the data is saved to.
-    linear_pst: np.ndarray
-        The linear PST coefficients to use for the grid.
-        This is required to ensure that the preprocessing step is consistent with the grid creation step,
-        which uses the same linear PST coefficients.
+    linear_pst: np.ndarray | None
+        The linear PST coefficients to use during the creation of the grid.
     Returns:
     NetworkData
         The network data after preprocessing, which can be used for testing the consistency of the preprocessing step

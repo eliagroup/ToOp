@@ -81,9 +81,26 @@ class SppsConditionLogic(StrEnum):
     """At least one condition row for the scheme must pass (logical OR)."""
 
 
+class SppsConditionMode(StrEnum):
+    """Network state against which a condition is evaluated.
+
+    * ``BC``  — evaluate against the **base-case** power-flow results (before
+      the contingency is applied).
+    * ``CON`` — evaluate against the **post-contingency** power-flow results
+      (default behaviour).
+    """
+
+    BC = "BC"
+    """Evaluate the condition on the base-case network state."""
+
+    CON = "CON"
+    """Evaluate the condition after the contingency has been applied."""
+
+
 # For Pandera ``isin=`` and similar (stable order)
 SPPS_CONDITION_TYPE_VALUES: tuple[str, ...] = _values(SppsConditionType)
 SPPS_CONDITION_CHECK_TYPE_VALUES: tuple[str, ...] = _values(SppsConditionCheckType)
 SPPS_CONDITION_SIDE_VALUES: tuple[str, ...] = _values(SppsConditionSide)
 SPPS_CONDITION_LOGIC_VALUES: tuple[str, ...] = _values(SppsConditionLogic)
+SPPS_CONDITION_MODE_VALUES: tuple[str, ...] = _values(SppsConditionMode)
 SPPS_MEASURE_TYPE_VALUES: tuple[str, ...] = _values(SppsMeasureType)

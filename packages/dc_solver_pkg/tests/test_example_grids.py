@@ -43,6 +43,7 @@ from toop_engine_grid_helpers.pandapower.example_grids import example_multivolta
 from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     case14_matching_asset_topo_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK, SINGLE_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import assert_station_in_network
@@ -548,6 +549,19 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path(
     network_data = preprocess(backend)
     assert sum(network_data.relevant_node_mask) > 0
     assert len(network_data.branch_action_set)
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo() -> None:
+    _: Network = create_complex_grid_battery_hvdc_svc_3w_trafo(
+        linear_pst=np.array([False, True]), connect_line_out_of_service=False
+    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        filesystem_dir = DirFileSystem(str(tmp_dir))
+        backend = PowsyblBackend(filesystem_dir)
+        assert sum(backend.get_relevant_node_mask())
+        network_data = preprocess(backend)
+        assert sum(network_data.relevant_node_mask) > 0
+        assert len(network_data.branch_action_set)
 
 
 def test_create_ucte_data_folder(create_ucte_data_path) -> None:

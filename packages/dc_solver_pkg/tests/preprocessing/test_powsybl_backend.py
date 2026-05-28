@@ -304,9 +304,10 @@ def test_loadflows_match(preprocessed_powsybl_data_folder: Path) -> None:
     assert np.allclose(-n_1, n_1_ref)
 
 
-def test_loadflows_match_bat_hvdc_shunt_svc(complex_grid_battery_hvdc_svc_3w_trafo_data_folder: Path) -> None:
-    preprocessed_powsybl_data_folder = complex_grid_battery_hvdc_svc_3w_trafo_data_folder
+def test_loadflows_match_bat_hvdc_shunt_svc(complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path) -> None:
+    preprocessed_powsybl_data_folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+
     network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
     lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     static_information = load_static_information(

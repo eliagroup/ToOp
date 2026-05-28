@@ -1925,3 +1925,409 @@ def three_node_pst_example() -> Network:
     )
 
     return net
+
+
+def parallel_pst_example() -> Network:
+    """Creates a 3 node example grid with 3 PSTs in it.
+
+    TODO: Fill in explanation here.
+
+    This grid can be used to test tap optimization algorithms and
+    if parallel PSTs are correctly handled during import and optimization.
+    """
+    # Create an empty network
+    net = pypowsybl.network.create_empty("parallel_pst")
+    substations_df = pd.DataFrame(
+        [
+            {"id": "A", "name": "A", "tso": "TSO", "country": "BE"},
+            {"id": "B", "name": "B", "tso": "TSO", "country": "BE"},
+            {"id": "C", "name": "C", "tso": "TSO", "country": "BE"},
+            {"id": "D", "name": "D", "tso": "TSO", "country": "BE"},
+        ]
+    ).set_index("id")
+    net.create_substations(df=substations_df)
+
+    # Voltage levels
+    vls_df = pd.DataFrame(
+        [
+            {
+                "id": "VL_D",
+                "name": "VL_D",
+                "substation_id": "D",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_A",
+                "name": "VL_A",
+                "substation_id": "A",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_B",
+                "name": "VL_B",
+                "substation_id": "B",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
+                "id": "VL_C",
+                "name": "VL_C",
+                "substation_id": "C",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+        ]
+    ).set_index("id")
+    net.create_voltage_levels(vls_df)
+    # Topologies: A: 8 sections, B and C 6 sections
+    pypowsybl.network.create_voltage_level_topology(
+        network=net, raise_exception=True, id="VL_D", aligned_buses_or_busbar_count=1
+    )
+    pypowsybl.network.create_voltage_level_topology(
+        network=net, raise_exception=True, id="VL_A", aligned_buses_or_busbar_count=4, switch_kinds="BREAKER, BREAKER"
+    )
+    pypowsybl.network.create_voltage_level_topology(
+        network=net, raise_exception=True, id="VL_B", aligned_buses_or_busbar_count=2, switch_kinds="BREAKER, BREAKER"
+    )
+    pypowsybl.network.create_voltage_level_topology(
+        network=net, raise_exception=True, id="VL_C", aligned_buses_or_busbar_count=2, switch_kinds="BREAKER, BREAKER"
+    )
+    # Slack bus terminal
+    # net.create_extensions()
+    # Couplers
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL_A_2_1"], bus_or_busbar_section_id_2=["VL_A_3_1"], switch_prefix_id="sw"
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL_A_2_2"], bus_or_busbar_section_id_2=["VL_A_3_2"], switch_prefix_id="sw"
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL_A_2_3"], bus_or_busbar_section_id_2=["VL_A_3_3"], switch_prefix_id="sw"
+    )
+    # pypowsybl.network.create_coupling_device(
+    #     net, bus_or_busbar_section_id_1=["VL_B_1_1"], bus_or_busbar_section_id_2=["VL_B_2_1"], switch_prefix_id="sw"
+    # )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL_C_1_1"], bus_or_busbar_section_id_2=["VL_C_2_1"], switch_prefix_id="sw"
+    )
+    # Lines
+    hv_short = {"r": 0.8, "x": 8.8, "g1": 0.0, "b1": 3.4626e-07, "g2": 0.0, "b2": 3.4626e-07}
+    hv_long: dict[str, int | float] = {"r": 1.0, "x": 15.0, "g1": 0.0, "b1": 1.1080e-06, "g2": 0.0, "b2": 1.1080e-06}
+    hv_lines = pd.DataFrame(
+        [
+            {"id": "LAB1", "bus_or_busbar_section_id_1": "VL_A_1_1", "bus_or_busbar_section_id_2": "VL_B_1_1", **hv_short},
+            {"id": "LAB2", "bus_or_busbar_section_id_1": "VL_A_1_2", "bus_or_busbar_section_id_2": "VL_B_1_2", **hv_short},
+            {
+                "id": "LAB1-PST1",
+                "bus_or_busbar_section_id_1": "VL_A_2_3",
+                "bus_or_busbar_section_id_2": "VL_B_2_1",
+                **hv_long,
+            },  # PST line
+            {
+                "id": "LAB2-PST1",
+                "bus_or_busbar_section_id_1": "VL_A_2_3",
+                "bus_or_busbar_section_id_2": "VL_B_2_1",
+                **hv_long,
+            },  # PST line
+            {
+                "id": "LAB3-PST2",
+                "bus_or_busbar_section_id_1": "VL_A_3_3",
+                "bus_or_busbar_section_id_2": "VL_B_2_2",
+                **hv_long,
+            },  # PST line
+            {
+                "id": "LAB4-PST2",
+                "bus_or_busbar_section_id_1": "VL_A_3_3",
+                "bus_or_busbar_section_id_2": "VL_B_2_2",
+                **hv_long,
+            },  # PST line
+            {
+                "id": "LAC1-PST",
+                "bus_or_busbar_section_id_1": "VL_A_4_2",
+                "bus_or_busbar_section_id_2": "VL_C_2_2",
+                **hv_long,
+            },  # PST line
+            {
+                "id": "LAC2-PST",
+                "bus_or_busbar_section_id_1": "VL_A_4_2",
+                "bus_or_busbar_section_id_2": "VL_C_2_2",
+                **hv_long,
+            },  # PST line
+            {"id": "LBC1", "bus_or_busbar_section_id_1": "VL_B_1_3", "bus_or_busbar_section_id_2": "VL_C_1_3", **hv_short},
+            {"id": "LBC2", "bus_or_busbar_section_id_1": "VL_B_1_3", "bus_or_busbar_section_id_2": "VL_C_1_3", **hv_short},
+            {"id": "LBC3", "bus_or_busbar_section_id_1": "VL_B_2_3", "bus_or_busbar_section_id_2": "VL_C_2_3", **hv_short},
+            {"id": "LBC4", "bus_or_busbar_section_id_1": "VL_B_2_3", "bus_or_busbar_section_id_2": "VL_C_2_3", **hv_short},
+            {"id": "LAD1", "bus_or_busbar_section_id_1": "VL_D_1_1", "bus_or_busbar_section_id_2": "VL_A_1_1", **hv_short},
+            {"id": "LAD2", "bus_or_busbar_section_id_1": "VL_D_1_1", "bus_or_busbar_section_id_2": "VL_A_1_1", **hv_short},
+        ]
+    ).set_index("id")
+    hv_lines["position_order_1"] = 1
+    hv_lines["position_order_2"] = 1
+    pypowsybl.network.create_line_bays(net, df=hv_lines)
+
+    # PSTs
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="PST1",
+        b=1e-6,
+        g=5e-7,
+        r=0.1,
+        x=1.0,
+        rated_u1=380.0,
+        rated_u2=380.0,
+        bus_or_busbar_section_id_1="VL_A_1_3",
+        position_order_1=1,
+        direction_1="BOTTOM",
+        bus_or_busbar_section_id_2="VL_A_2_3",
+        position_order_2=1,
+        direction_2="BOTTOM",
+    )
+    ptc_df = pd.DataFrame.from_records(
+        index="id",
+        columns=["id", "target_deadband", "regulation_mode", "regulating", "low_tap", "tap"],
+        data=[("PST1", 2, "CURRENT_LIMITER", False, -30, 0)],
+    )
+    steps_df = pd.DataFrame.from_records(
+        index="id",
+        columns=["id", "b", "g", "r", "x", "rho", "alpha"],
+        data=[("PST1", 0, 0, 0.1, 1, 1, 0.1 * tap) for tap in range(-30, 30 + 1)],
+    )
+    net.create_phase_tap_changers(ptc_df, steps_df)
+
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="PST2",
+        b=1e-6,
+        g=5e-7,
+        r=0.1,
+        x=1.0,
+        rated_u1=380.0,
+        rated_u2=380.0,
+        bus_or_busbar_section_id_1="VL_A_1_3",
+        position_order_1=1,
+        direction_1="BOTTOM",
+        bus_or_busbar_section_id_2="VL_A_3_3",
+        position_order_2=1,
+        direction_2="BOTTOM",
+    )
+    ptc_df = pd.DataFrame.from_records(
+        index="id",
+        columns=["id", "target_deadband", "regulation_mode", "regulating", "low_tap", "tap"],
+        data=[("PST2", 2, "CURRENT_LIMITER", False, -30, 0)],
+    )
+    steps_df = pd.DataFrame.from_records(
+        index="id",
+        columns=["id", "b", "g", "r", "x", "rho", "alpha"],
+        data=[("PST2", 0, 0, 0.1, 1, 1, 0.1 * tap) for tap in range(-30, 30 + 1)],
+    )
+    net.create_phase_tap_changers(ptc_df, steps_df)
+    # Single PST
+    pypowsybl.network.create_2_windings_transformer_bays(
+        net,
+        id="PST3",
+        b=1e-6,
+        g=5e-7,
+        r=0.1,
+        x=1.0,
+        rated_u1=380.0,
+        rated_u2=380.0,
+        bus_or_busbar_section_id_1="VL_A_1_2",
+        position_order_1=1,
+        direction_1="BOTTOM",
+        bus_or_busbar_section_id_2="VL_A_4_2",
+        position_order_2=1,
+        direction_2="BOTTOM",
+    )
+    ptc_df = pd.DataFrame.from_records(
+        index="id",
+        columns=["id", "target_deadband", "regulation_mode", "regulating", "low_tap", "tap"],
+        data=[("PST3", 2, "CURRENT_LIMITER", False, -20, 0)],
+    )
+    steps_df = pd.DataFrame.from_records(
+        index="id",
+        columns=["id", "b", "g", "r", "x", "rho", "alpha"],
+        data=[("PST3", 0, 0, 0.1, 1, 1, 0.1 * tap) for tap in range(-20, 20 + 1)],
+    )
+    net.create_phase_tap_changers(ptc_df, steps_df)
+
+    # Generators and loads
+    gens = pd.DataFrame(
+        [
+            {
+                "id": "GEN1",
+                "bus_or_busbar_section_id": "VL_D_1_1",
+                "target_p": 100.0,
+                "min_p": 0.0,
+                "max_p": 200,
+                "target_q": 0.0,
+                "voltage_regulator_on": True,
+                "position_order": 1,
+                "target_v": 380.0,
+                "direction": "BOTTOM",
+            },
+            # {'id': 'GEN2', 'bus_or_busbar_section_id':'VL_B_1_1', 'target_p': 50., 'min_p':0., 'max_p': 50,
+            # 'target_q': 0., 'voltage_regulator_on': True, 'position_order': 2, 'target_v': 380., 'direction': 'BOTTOM'},
+            {
+                "id": "GEN3",
+                "bus_or_busbar_section_id": "VL_C_1_1",
+                "target_p": 50.0,
+                "min_p": 0.0,
+                "max_p": 50,
+                "target_q": 0.0,
+                "voltage_regulator_on": True,
+                "position_order": 1,
+                "target_v": 380.0,
+                "direction": "BOTTOM",
+            },
+        ]
+    ).set_index("id")
+    loads = pd.DataFrame(
+        [
+            {
+                "id": "LOAD1",
+                "bus_or_busbar_section_id": "VL_B_1_1",
+                "p0": 100.0,
+                "q0": 0.0,
+                "position_order": 1,
+                "direction": "BOTTOM",
+            },
+            {
+                "id": "LOAD2",
+                "bus_or_busbar_section_id": "VL_C_2_1",
+                "p0": 100.0,
+                "q0": 0.0,
+                "position_order": 1,
+                "direction": "BOTTOM",
+            },
+        ]
+    ).set_index("id")
+    pypowsybl.network.create_generator_bay(net, pd.DataFrame(gens))
+    pypowsybl.network.create_load_bay(net, pd.DataFrame(loads))
+
+    # Create operational limits
+    limit_ab_pst = 60
+    limit_ab = 50
+    limit_bc = 20
+    limit_value3 = 200
+    limits = pd.DataFrame.from_records(
+        data=[
+            {
+                "element_id": "LAB1",
+                "value": limit_ab,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LAB2",
+                "value": limit_ab,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LBC1",
+                "value": limit_bc,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LBC2",
+                "value": limit_bc,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LBC3",
+                "value": limit_bc,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LBC4",
+                "value": limit_bc,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LAB1-PST1",
+                "value": limit_ab_pst,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LAB2-PST1",
+                "value": limit_ab_pst,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LAB3-PST2",
+                "value": limit_ab_pst,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LAB4-PST2",
+                "value": limit_ab_pst,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LAC1-PST",
+                "value": limit_value3,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LAC2-PST",
+                "value": limit_value3,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LAD1",
+                "value": limit_value3,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "LAD2",
+                "value": limit_value3,
+                "side": "ONE",
+                "name": "permanent",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+        ],
+        index="element_id",
+    )
+    net.create_operational_limits(df=limits)
+
+    return net

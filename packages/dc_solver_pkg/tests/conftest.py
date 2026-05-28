@@ -42,6 +42,7 @@ from toop_engine_dc_solver.example_grids import (
     case14_pandapower,
     case30_with_psts_pandapower,
     case57_data_powsybl,
+    complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
     three_node_pst_example_folder_powsybl,
@@ -62,6 +63,8 @@ from toop_engine_dc_solver.jax.topology_computations import (
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     InjectionComputations,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
     StaticInformation,
     TopoVectBranchComputations,
 )
@@ -87,7 +90,6 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_id
 from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     case14_matching_asset_topo_powsybl,
-    create_complex_grid_battery_hvdc_svc_3w_trafo,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK, SINGLE_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
@@ -108,7 +110,6 @@ from toop_engine_interfaces.folder_structure import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
-    CgmesImporterParameters,
     PreprocessParameters,
     UcteImporterParameters,
 )
@@ -1108,7 +1109,9 @@ def overlapping_branch_data(
     return network_data, static_information, best_actions
 
 
-def check_branches_match_between_network_data_and_static_info(network_data, static_information):
+def check_branches_match_between_network_data_and_static_info(
+    network_data: NetworkData, static_information: StaticInformation
+) -> None:
     branch_names = np.array(network_data.branch_names)
     assert all(
         branch_names[network_data.disconnectable_branch_mask]
@@ -1215,45 +1218,32 @@ def overlapping_monitored_and_disconnected_branch_data(
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid")
-    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, False]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, False]))
+    save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
 
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_0")
-    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, False]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, False]))
+    save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
 
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_1")
-    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, True]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, True]))
+    save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
 
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_0_1")
-    create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, True]))
-    return tmp_path
-
-
-@pytest.fixture(scope="function")
-def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
-    _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path: Path, tmp_path_factory: pytest.TempPathFactory
-) -> Path:
-    powsybl_data_folder = _create_complex_grid_battery_hvdc_svc_3w_trafo_data_path
-    tmp_path = tmp_path_factory.mktemp("complex_grid", numbered=True)
-
-    # Copy over the grid file
-    shutil.copytree(
-        powsybl_data_folder,
-        tmp_path,
-        dirs_exist_ok=True,
-    )
-
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, True]))
+    save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
 
@@ -1330,7 +1320,6 @@ def default_nodal_inj_start_options(static_information: StaticInformation):
     This provides a simple starting point for tests that need NodalInjStartOptions
     but don't care about the specific optimization configuration.
     """
-    from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions
 
     n_pst = static_information.dynamic_information.n_controllable_pst
     n_timesteps = static_information.dynamic_information.nodal_injections.shape[0]
@@ -1340,56 +1329,6 @@ def default_nodal_inj_start_options(static_information: StaticInformation):
         previous_results=NodalInjOptimResults(pst_tap_idx=jnp.zeros((batch_size, n_timesteps, n_pst), dtype=jnp.float32)),
         precision_percent=jnp.array(1.0),
     )
-
-
-def create_complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst: np.ndarray = None) -> None:
-    """Create a preprocessed folder for create_complex_grid_battery_hvdc_svc_3w_trafo().
-
-    Runs the importer and preprocessing.
-
-    Parameter:
-    folder: Path
-        The root folder where the data is saved to.
-    linear_pst: np.ndarray, optional
-        A boolean array of length 2 indicating whether the PSTs in the grid should be linear
-    """
-    # Connect the out of service line to bring the second PST operational
-    net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=linear_pst, connect_line_out_of_service=True)
-    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
-    save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
-    )
-    output_path_grid = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
-    output_path_grid.parent.mkdir(parents=True, exist_ok=True)
-    net.save(output_path_grid)
-    output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
-    output_path_masks.mkdir(parents=True, exist_ok=True)
-
-    importer_parameters = CgmesImporterParameters(
-        grid_model_file=output_path_grid,
-        data_folder=folder,
-        area_settings=AreaSettings(
-            cutoff_voltage=1,
-            control_area=[""],
-            view_area=[""],
-            nminus1_area=[""],
-            cross_border_limits_n0=None,
-            cross_border_limits_n1=None,
-        ),
-    )
-    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
-
-    _import_result = preprocessing.convert_file(importer_parameters=importer_parameters)
-    filesystem_dir = DirFileSystem(str(folder))
-    _info, _static_information, network_data = load_grid(
-        data_folder_dirfs=filesystem_dir,
-        pandapower=False,
-        status_update_fn=None,
-        parameters=preprocessing_parameters,
-        lf_params=DISTRIBUTED_SLACK,
-    )
-    save_network_data(folder / "network_data.pkl", network_data)
-    save_lf_params_to_fs(DISTRIBUTED_SLACK, filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
 def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:

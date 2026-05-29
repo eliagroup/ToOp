@@ -155,7 +155,6 @@ def element_tables_to_scan_default() -> List[Tuple[str, str]]:
     """Return element tables to scan for connectivity."""
     return [
         ("line", "line"),
-        ("impedance", "impedance"),
         ("trafo", "trafo"),
         ("trafo3w", "trafo3w"),
         ("shunt", "shunt"),

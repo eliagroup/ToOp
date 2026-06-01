@@ -19,6 +19,7 @@ import structlog
 from beartype.typing import Callable, Optional
 from fsspec import AbstractFileSystem
 from pydantic import PositiveInt
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
     get_worst_k_contingencies_ac,
@@ -342,9 +343,7 @@ def initialize_optimization(
     unsplit_topology.metrics = initial_metrics.extra_scores
     unsplit_topology.worst_k_contingency_cases = initial_metrics.worst_k_contingency_cases
     unsplit_topology.set_loadflow_reference(initial_loadflow_reference)
-    session.add(unsplit_topology)
-    session.commit()
-    logger.debug("Stored initial AC strategy in DB")
+    store_initial_strategy(session, optimization_id, unsplit_topology)
 
     # As we have the initial loadflows, we can now define a scoring+acceptance function
     scoring_params = ACScoringParameters(
@@ -400,6 +399,44 @@ def initialize_optimization(
         ),
         initial_strategy_message[0],
     )
+
+
+def store_initial_strategy(session: Session, optimization_id: str, unsplit_topology: ACOptimTopology) -> None:
+    """Store the initial strategy in the database, handling potential integrity errors if it already exists.
+
+    Parameters
+    ----------
+    session : Session
+        The database session to use for storing the topology
+    optimization_id : str
+        The ID of the optimization run, used to identify the topology in the database
+    unsplit_topology : ACOptimTopology
+        The initial topology to store, which should already have its strategy hash computed and assigned
+
+    Returns
+    -------
+    None
+    """
+    try:
+        session.add(unsplit_topology)
+        session.commit()
+        logger.debug("Stored initial AC strategy in DB")
+    except IntegrityError as exc:
+        session.rollback()
+        existing_topology_id = session.exec(
+            select(ACOptimTopology.id)
+            .where(ACOptimTopology.optimization_id == optimization_id)
+            .where(ACOptimTopology.optimizer_type == OptimizerType.AC)
+            .where(ACOptimTopology.strategy_hash == unsplit_topology.strategy_hash)
+            .where(ACOptimTopology.timestep == unsplit_topology.timestep)
+        ).first()
+        if not isinstance(existing_topology_id, int):
+            raise exc
+        logger.info(
+            "Initial AC strategy already present in DB, reusing existing entry",
+            optimization_id=optimization_id,
+            topology_id=existing_topology_id,
+        )
 
 
 def wait_for_first_dc_results(

@@ -74,6 +74,50 @@ def test_initialize_optimization(grid_folder: Path, loadflow_result_folder: Path
     assert isinstance(loaded_initial_loadflow, LoadflowResultsPolars)
 
 
+def test_initialize_optimization_reuses_existing_initial_topology(grid_folder: Path, loadflow_result_folder: Path) -> None:
+    params = ACOptimizerParameters(
+        ga_config=ACGAParameters(
+            runtime_seconds=10,
+            pull_prob=0.9,
+            reconnect_prob=0.05,
+            close_coupler_prob=0.05,
+            seed=42,
+        )
+    )
+    grid_file = GridFile(framework=Framework.PANDAPOWER, grid_folder="case14")
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
+    session = create_session()
+
+    _, first_strategy = initialize_optimization(
+        params=params,
+        session=session,
+        optimization_id="test_duplicate_init",
+        grid_file=grid_file,
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
+    )
+    _, second_strategy = initialize_optimization(
+        params=params,
+        session=session,
+        optimization_id="test_duplicate_init",
+        grid_file=grid_file,
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
+    )
+
+    stored_topologies = session.exec(
+        select(ACOptimTopology)
+        .where(ACOptimTopology.optimization_id == "test_duplicate_init")
+        .where(ACOptimTopology.optimizer_type == OptimizerType.AC)
+    ).all()
+
+    assert len(stored_topologies) == 1
+    assert len(first_strategy.timesteps) == 1
+    assert len(second_strategy.timesteps) == 1
+    assert first_strategy.timesteps[0].metrics.fitness == second_strategy.timesteps[0].metrics.fitness
+
+
 def test_initialize_with_initial_loadflow(grid_folder: Path, tmp_path: Path) -> None:
     grid_file = GridFile(framework=Framework.PANDAPOWER, grid_folder="case14")
 

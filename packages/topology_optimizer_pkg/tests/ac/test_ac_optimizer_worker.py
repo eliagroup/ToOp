@@ -462,18 +462,21 @@ def test_optimization_loop_error_during_initialization(
 
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
-    with patch("toop_engine_topology_optimizer.ac.worker.initialize_optimization") as init_mock:
-        init_mock.side_effect = Exception("Test error")
-        optimization_loop(
-            ac_params=parameters,
-            grid_file=grid_file,
-            worker_data=worker_data,
-            send_result_fn=send_result_fn,
-            send_heartbeat_fn=send_heartbeat_fn,
-            optimization_id="test_init_error",
-            loadflow_result_fs=loadflow_result_fs,
-            processed_gridfile_fs=processed_gridfile_fs,
-        )
+    with patch.object(worker_data.db, "rollback", wraps=worker_data.db.rollback) as rollback_mock:
+        with patch("toop_engine_topology_optimizer.ac.worker.initialize_optimization") as init_mock:
+            init_mock.side_effect = Exception("Test error")
+            optimization_loop(
+                ac_params=parameters,
+                grid_file=grid_file,
+                worker_data=worker_data,
+                send_result_fn=send_result_fn,
+                send_heartbeat_fn=send_heartbeat_fn,
+                optimization_id="test_init_error",
+                loadflow_result_fs=loadflow_result_fs,
+                processed_gridfile_fs=processed_gridfile_fs,
+            )
+
+    rollback_mock.assert_called_once()
 
     assert len(results) == 1
     assert isinstance(results[0], OptimizationStoppedResult)
@@ -561,24 +564,26 @@ def test_optimization_loop_error_during_epoch(
     loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
     processed_gridfile_fs = DirFileSystem(str(grid_folder))
     # Patch wait_for_first_dc_results to avoid timeout since no real DC results are sent
-    with patch("toop_engine_topology_optimizer.ac.worker.wait_for_first_dc_results"):
-        with patch("toop_engine_topology_optimizer.ac.worker.run_fast_failing_epoch") as run_mock:
-            run_mock.side_effect = Exception("Test error")
-            optimization_loop(
-                ac_params=parameters,
-                grid_file=grid_file,
-                worker_data=worker_data,
-                send_result_fn=send_result_fn,
-                send_heartbeat_fn=send_heartbeat_fn,
-                optimization_id="test_epoch_error",
-                loadflow_result_fs=loadflow_result_fs,
-                processed_gridfile_fs=processed_gridfile_fs,
-            )
+    with patch.object(worker_data.db, "rollback", wraps=worker_data.db.rollback) as rollback_mock:
+        with patch("toop_engine_topology_optimizer.ac.worker.wait_for_first_dc_results"):
+            with patch("toop_engine_topology_optimizer.ac.worker.run_fast_failing_epoch") as run_mock:
+                run_mock.side_effect = Exception("Test error")
+                optimization_loop(
+                    ac_params=parameters,
+                    grid_file=grid_file,
+                    worker_data=worker_data,
+                    send_result_fn=send_result_fn,
+                    send_heartbeat_fn=send_heartbeat_fn,
+                    optimization_id="test_epoch_error",
+                    loadflow_result_fs=loadflow_result_fs,
+                    processed_gridfile_fs=processed_gridfile_fs,
+                )
 
     assert len(results) == 2
     assert isinstance(results[0], OptimizationStartedResult)
     assert isinstance(results[1], OptimizationStoppedResult)
     assert results[1].reason == "error"
+    rollback_mock.assert_called_once()
 
 
 @pytest.mark.timeout(30)

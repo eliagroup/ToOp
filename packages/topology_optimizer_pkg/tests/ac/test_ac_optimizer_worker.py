@@ -387,7 +387,8 @@ def test_optimization_loop(
             reconnect_prob=0.0,
             close_coupler_prob=0.0,
             seed=42,
-            runner_processes=8,
+            runner_processes=1,
+            worst_k_runner_processes=1,
             enable_ac_rejection=False,
         )
     )

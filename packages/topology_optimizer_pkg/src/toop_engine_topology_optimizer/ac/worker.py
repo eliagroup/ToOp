@@ -341,10 +341,7 @@ def optimization_loop(
             logger.error(f"DC results for optimization {optimization_id} did not arrive in time: {e}")
             return
         except Exception as e:
-            # If an error occurs while a session is still open,
-            # we need to rollback the session to avoid locking the database for future runs.
-            if worker_data.db.in_transaction():
-                worker_data.db.rollback()
+            worker_data.db.rollback()
             # Send a stop message to the results
             send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
             logger.error(f"Error during initialization of optimization {optimization_id}: {e}")

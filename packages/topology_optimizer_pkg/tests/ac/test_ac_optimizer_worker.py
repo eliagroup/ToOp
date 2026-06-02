@@ -611,6 +611,7 @@ def test_main(
             close_coupler_prob=0.0,
             seed=42,
             runner_processes=8,
+            remaining_loadflow_wait_seconds=0.0,
             enable_ac_rejection=False,
         )
     )

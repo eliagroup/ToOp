@@ -343,7 +343,8 @@ def initialize_optimization(
     unsplit_topology.metrics = initial_metrics.extra_scores
     unsplit_topology.worst_k_contingency_cases = initial_metrics.worst_k_contingency_cases
     unsplit_topology.set_loadflow_reference(initial_loadflow_reference)
-    store_initial_strategy(session, optimization_id, unsplit_topology)
+    with session.begin():
+        unsplit_topology = get_or_create_initial_strategy(session, optimization_id, unsplit_topology)
 
     # As we have the initial loadflows, we can now define a scoring+acceptance function
     scoring_params = ACScoringParameters(
@@ -401,42 +402,50 @@ def initialize_optimization(
     )
 
 
-def store_initial_strategy(session: Session, optimization_id: str, unsplit_topology: ACOptimTopology) -> None:
-    """Store the initial strategy in the database, handling potential integrity errors if it already exists.
+def get_or_create_initial_strategy(
+    session: Session,
+    optimization_id: str,
+    unsplit_topology: ACOptimTopology,
+) -> ACOptimTopology:
+    """Store the initial strategy in the database, reusing an existing row on duplicates.
 
     Parameters
     ----------
     session : Session
-        The database session to use for storing the topology
+        The database session to use for storing the topology. The caller is expected to own the
+        surrounding transaction.
     optimization_id : str
-        The ID of the optimization run, used to identify the topology in the database
+        The ID of the optimization run, used to identify the topology in the database.
     unsplit_topology : ACOptimTopology
-        The initial topology to store, which should already have its strategy hash computed and assigned
+        The initial topology to store, which should already have its strategy hash computed and assigned.
 
     Returns
     -------
-    None
+    ACOptimTopology
+        The persisted topology row. If the insert hits a duplicate, the existing database row is returned.
     """
     try:
-        session.add(unsplit_topology)
-        session.commit()
+        with session.begin_nested():
+            session.add(unsplit_topology)
+            session.flush()
         logger.debug("Stored initial AC strategy in DB")
-    except IntegrityError as exc:
-        session.rollback()
-        existing_topology_id = session.exec(
-            select(ACOptimTopology.id)
+        return unsplit_topology
+    except IntegrityError:
+        existing_topology = session.exec(
+            select(ACOptimTopology)
             .where(ACOptimTopology.optimization_id == optimization_id)
             .where(ACOptimTopology.optimizer_type == OptimizerType.AC)
             .where(ACOptimTopology.strategy_hash == unsplit_topology.strategy_hash)
             .where(ACOptimTopology.timestep == unsplit_topology.timestep)
-        ).first()
-        if not isinstance(existing_topology_id, int):
+        ).one_or_none()
+        if existing_topology is None:
             raise
         logger.info(
             "Initial AC strategy already present in DB, reusing existing entry",
             optimization_id=optimization_id,
-            topology_id=existing_topology_id,
+            topology_id=existing_topology.id,
         )
+        return existing_topology
 
 
 def wait_for_first_dc_results(

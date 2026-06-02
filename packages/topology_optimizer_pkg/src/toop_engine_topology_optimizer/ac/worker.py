@@ -330,20 +330,22 @@ def optimization_loop(
                 processed_gridfile_fs=processed_gridfile_fs,
             )
         except AcNotConvergedError as e:
-            worker_data.db.rollback()
             # If the AC optimization did not converge in the base grid, we send a special message
             # to indicate that the optimization cannot be run.
             send_result_fn(OptimizationStoppedResult(reason="ac-not-converged", message=str(e)))
             logger.error(f"AC optimization {optimization_id} did not converge in the base grid: {e}")
             return
         except TimeoutError as e:
-            worker_data.db.rollback()
             # If the DC results did not arrive in time, we assume a failure on DC side and abandon the optimization
             send_result_fn(OptimizationStoppedResult(reason="dc-not-started", message=str(e)))
             logger.error(f"DC results for optimization {optimization_id} did not arrive in time: {e}")
             return
         except Exception as e:
-            worker_data.db.rollback()
+            # If an error occurs while a session is still open,
+            # we need to rollback the session to avoid locking the database for future runs.
+            if worker_data.db.in_transaction():
+                worker_data.db.rollback()
+            # Send a stop message to the results
             send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
             logger.error(f"Error during initialization of optimization {optimization_id}: {e}")
             return

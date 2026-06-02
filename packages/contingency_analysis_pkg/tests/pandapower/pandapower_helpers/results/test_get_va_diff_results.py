@@ -102,7 +102,7 @@ def create_test_net_for_va_diff_with_multiple_els():
 
     b5 = pp.create_bus(net, vn_kv=110, name="bus_5")
 
-    pp.create_switch(net, bus=b4, element=b5, et="b", closed=False, type="CB", name="switch_2")
+    pp.create_switch(net, bus=b4, element=b5, et="b", closed=False, type="DS", name="switch_2")
 
     b6 = pp.create_bus(net, vn_kv=110, name="bus_6")
     pp.create_line(net, from_bus=b3, to_bus=b6, length_km=1, std_type="NAYY 4x50 SE", name="line_1")
@@ -209,7 +209,11 @@ def test_va_diff_out_group_multiple_els():
     va_diff_df = get_va_diff_results(net, timestep, monitored_elements, contingency)
     va_diff_df.reset_index(inplace=True)
     assert va_diff_df.loc[va_diff_df.element == "0%%switch"].va_diff.item() == 12
-    assert va_diff_df.loc[va_diff_df.element == "1%%switch"].va_diff.item() == 9
+    # switch_2 (idx=1) is a DS (disconnector), not a CB.
+    # Impedances in real grids are separated by disconnectors, not circuit breakers,
+    # because they are not individually switchable under load.
+    # VA diff only applies to CB-bounded outage groups, so switch_2 must not appear.
+    assert "1%%switch" not in va_diff_df.element.values
     assert va_diff_df.loc[va_diff_df.element == "2%%switch"].va_diff.item() == 8
     assert va_diff_df.loc[va_diff_df.element == "3%%switch"].va_diff.item() == 12
 

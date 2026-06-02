@@ -918,3 +918,50 @@ def test_bc_mode_bus_voltage_uses_basecase_voltage() -> None:
     activated = [s for batch in result.activated_schemes_per_iter for s in batch]
     assert "V_bc" in activated, "BC voltage condition (base-case vm below threshold) should activate scheme"
     assert "V_con" not in activated, "CON voltage condition (post-contingency vm above threshold) must not activate"
+
+
+# ---------------------------------------------------------------------------
+# condition_side optionality
+# ---------------------------------------------------------------------------
+
+
+def test_condition_side_none_passes_schema_validation() -> None:
+    """condition_side=None must be accepted by SppsConditionsPandapowerSchema.
+
+    State-based checks (e.g. 'failed', 'de_energized') do not require a side
+    and should be representable without supplying condition_side.
+    """
+    row = _cond_row(
+        ctype=SppsConditionType.CURRENT.value,
+        check=SppsConditionCheckType.FAILED.value,
+    )
+    row["condition_side"] = None
+
+    df = pd.DataFrame([row])
+    validated = _validate_conditions(df)
+
+    assert pd.isna(validated.loc[0, "condition_side"]), "condition_side should be NaN after validation"
+
+
+def test_condition_side_none_mixed_with_valued_rows_passes_schema_validation() -> None:
+    """A DataFrame mixing None and real condition_side values must validate.
+
+    Typical case: one state-check row (no side) and one current-threshold row
+    (with side) belonging to the same scheme.
+    """
+    row_with_side = _cond_row(
+        ctype=SppsConditionType.CURRENT.value,
+        check=SppsConditionCheckType.GT.value,
+        side=SppsConditionSide.PRIMARY.value,
+    )
+    row_without_side = _cond_row(
+        ctype=SppsConditionType.CURRENT.value,
+        check=SppsConditionCheckType.FAILED.value,
+    )
+    row_without_side["condition_side"] = None
+
+    df = pd.DataFrame([row_with_side, row_without_side])
+    validated = _validate_conditions(df)
+
+    assert validated.loc[0, "condition_side"] == SppsConditionSide.PRIMARY.value
+    assert pd.isna(validated.loc[1, "condition_side"])

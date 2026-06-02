@@ -184,8 +184,13 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
     condition_check_type: Series[str] = pa.Field(isin=SPPS_CONDITION_CHECK_TYPE_VALUES)
     """How the condition is evaluated (comparison or state check)."""
 
-    condition_side: Series[str] = pa.Field(isin=SPPS_CONDITION_SIDE_VALUES)
-    """Which side or value of the element is used for the check."""
+    condition_side: Series[str] = pa.Field(nullable=True, isin=SPPS_CONDITION_SIDE_VALUES)
+    """Which side or value of the element is used for the check.
+
+    Optional — may be ``None`` / ``NaN`` for condition types that do not require
+    a specific side (e.g. state checks such as ``failed`` or ``de_energized``).
+    When ``None``, the column value is ignored during result extraction.
+    """
 
     condition_limit_value: Series[float] = pa.Field(
         nullable=True,

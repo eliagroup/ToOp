@@ -431,7 +431,7 @@ def store_initial_strategy(session: Session, optimization_id: str, unsplit_topol
             .where(ACOptimTopology.timestep == unsplit_topology.timestep)
         ).first()
         if not isinstance(existing_topology_id, int):
-            raise exc
+            raise
         logger.info(
             "Initial AC strategy already present in DB, reusing existing entry",
             optimization_id=optimization_id,

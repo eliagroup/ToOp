@@ -197,7 +197,7 @@ def run_optimization_epochs(
 
     def runtime_exceeded() -> bool:
         """Check if the total runtime of the optimization has exceeded the maximum allowed runtime."""
-        return (time.time() - start_time) > ac_params.ga_config.max_total_runtime_seconds
+        return (time.time() - start_time) > ac_params.ga_config.runtime_seconds
 
     while True:
         with structlog.contextvars.bound_contextvars(epoch=epoch):

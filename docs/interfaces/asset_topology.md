@@ -72,15 +72,14 @@ See the [`Asset Topology Reference`][toop_engine_interfaces.asset_topology] for 
 
 The intended station contract is bus-view based:
 
-- `Station.grid_model_id` and `TopologyStation.grid_model_id` identify the bus-branch bus id of the splitable station view.
+- `MaterializedStation.grid_model_id` and `RawStation.grid_model_id` identify the bus-branch bus id of the splitable station view.
 - The station busbars belong to that bus view and therefore must carry matching `bus_branch_bus_id` values.
 - The station-local asset arrays and switching tables describe which assets are visible in that station view and how they attach locally.
 
 The current importer implementations are not fully uniform yet:
 
 - The bus-breaker powsybl helper narrows busbars and assets to the selected `bus_id` before building the station view.
-- The node-breaker powsybl importer currently assigns a bus-specific `Station.grid_model_id` but still derives the asset list from the full substation graph. This is broader than the intended "single bus-branch bus" scope and should be treated as current implementation behavior, not as the desired long-term contract.
-
+- The node-breaker powsybl importer currently assigns a bus-specific `MaterializedStation.grid_model_id` but still derives the asset list from the full substation graph. This is broader than the intended "single bus-branch bus" scope and should be treated as current implementation behavior, not as the desired long-term contract.
 To populate Asset Topology data from grid models, use the [`Network Graph module`][toop_engine_importer.network_graph].  
 
 A Pandapower to Asset Topology implementation is found in the importer: [`get_list_of_stations_ids`][toop_engine_importer.pandapower_import.asset_topology.get_list_of_stations_ids]

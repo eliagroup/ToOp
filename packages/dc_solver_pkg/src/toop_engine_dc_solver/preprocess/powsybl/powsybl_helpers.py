@@ -62,10 +62,26 @@ class BranchModel(DataFrameModel):
         nullable=True, default=-1.0, description="Maximum difference factor between N-0 and N-1 limits"
     )
 
-    class Config:
-        """Configuration for the BranchModel."""
 
-        add_missing_columns = True
+def add_missing_branch_model_columns(branches: pd.DataFrame) -> pat.DataFrame[BranchModel]:
+    """Add any missing BranchModel columns using schema defaults or null values."""
+    branch_template = get_empty_dataframe_from_model(BranchModel).reindex(branches.index)
+    normalized_branches = branches.copy()
+
+    for column_name, (_, field) in BranchModel.__fields__.items():
+        if column_name == branch_template.index.name or column_name in normalized_branches.columns:
+            continue
+
+        default_value = field.default
+        if default_value is None or default_value is ...:
+            default_value = np.nan
+        branch_template[column_name] = default_value
+
+    missing_columns = [
+        column_name for column_name in branch_template.columns if column_name not in normalized_branches.columns
+    ]
+    normalized_branches = pd.concat([normalized_branches, branch_template[missing_columns]], axis=1)
+    return normalized_branches[branch_template.columns]
 
 
 def get_cgmes_ids(merged_net: Network) -> list[str]:
@@ -231,7 +247,7 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
     trafos["has_pst_tap"] = False
     trafos.loc[linear_psts.index, "has_pst_linear_tap"] = linear_psts.values
     trafos.loc[linear_psts.index, "has_pst_tap"] = True
-    return trafos[["x", "r", "rho", "alpha", "name", "has_pst_linear_tap", "has_pst_tap"]]
+    return add_missing_branch_model_columns(trafos[["x", "r", "rho", "alpha", "name", "has_pst_linear_tap", "has_pst_tap"]])
 
 
 @pa.check_types
@@ -309,7 +325,7 @@ def get_tie_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFra
             + (tie_lines["elementName_nopu_d2"] if "elementName_nopu_d2" in tie_lines.keys() else tie_lines["name_d2"])
         )
 
-    return tie_lines[["x", "r", "name"]]
+    return add_missing_branch_model_columns(tie_lines[["x", "r", "name"]])
 
 
 @pa.check_types
@@ -359,7 +375,7 @@ def get_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[B
             + " ## "
             + (lines["elementName_nopu"] if "elementName_nopu" in lines.keys() else lines["name"])
         )
-    return lines[["x", "r", "name"]]
+    return add_missing_branch_model_columns(lines[["x", "r", "name"]])
 
 
 def get_linear_pst(net: Network, mode: Literal["ac", "dc"], tol: float = 1e-9) -> pd.Series:

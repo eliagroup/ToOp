@@ -67,7 +67,7 @@ def build_raw_station(
     RawStation
         Raw station representation suitable for topology construction in tests.
     """
-    return RawStation.model_construct(
+    return RawStation(
         grid_model_id=grid_model_id,
         name=None,
         type=None,

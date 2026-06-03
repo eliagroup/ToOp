@@ -64,7 +64,24 @@ class BranchModel(DataFrameModel):
 
 
 def add_missing_branch_model_columns(branches: pd.DataFrame) -> pat.DataFrame[BranchModel]:
-    """Add any missing BranchModel columns using schema defaults or null values."""
+    """Add any missing BranchModel columns using schema defaults or null values.
+
+    This function ensures that the input dataframe has all the columns defined in the BranchModel schema.
+    If any columns are missing, they will be added with default values from the schema or NaN if no default is defined.
+    This is used instead of settings add_missing_col on the pandera model, since the latter will not work,
+    if pandera validation is disabled (like it is in production)
+
+    Parameters
+    ----------
+    branches: pd.DataFrame
+        The input dataframe containing branch data, which may be missing some columns defined in the BranchModel schema.
+
+    Returns
+    -------
+    pat.DataFrame[BranchModel]
+        A dataframe that conforms to the BranchModel schema,
+        with all missing columns added and filled with default values or NaN.
+    """
     branch_template = get_empty_dataframe_from_model(BranchModel).reindex(branches.index)
     normalized_branches = branches.copy()
 

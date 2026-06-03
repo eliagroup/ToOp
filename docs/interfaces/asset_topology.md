@@ -10,14 +10,14 @@ Asset Topology is essential when stations do not allow free assignment of lines 
   Collection of time steps, each represented by a [`Topology`][toop_engine_interfaces.asset_topology.Topology].
 
 - [`Topology`][toop_engine_interfaces.asset_topology.Topology]  
-  Stores lean [`TopologyStation`][toop_engine_interfaces.asset_topology.TopologyStation] records in `raw_stations`, topology-owned canonical assets in `assets`, and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects. Rich [`Station`][toop_engine_interfaces.asset_topology.Station] objects are reconstructed with [`Topology.materialize_stations()`][toop_engine_interfaces.asset_topology.Topology.materialize_stations].
+  Stores lean [`RawStation`][toop_engine_interfaces.asset_topology.RawStation] records in `raw_stations`, topology-owned canonical assets in `assets`, and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects. Rich [`MaterializedStation`][toop_engine_interfaces.asset_topology.MaterializedStation] objects are reconstructed with [`Topology.materialize_stations()`][toop_engine_interfaces.asset_topology.Topology.materialize_stations].
 
-- [`Station`][toop_engine_interfaces.asset_topology.Station]  
+- [`MaterializedStation`][toop_engine_interfaces.asset_topology.MaterializedStation]  
   Contains lists of [`Busbar`][toop_engine_interfaces.asset_topology.Busbar], [`BusbarCoupler`][toop_engine_interfaces.asset_topology.BusbarCoupler], and [`SwitchableAsset`][toop_engine_interfaces.asset_topology.SwitchableAsset].  
   Includes `asset_switching_table`, the current switch connection layout and `asset_connectivity`, all possible selections.
   The `grid_model_id` refers to the bus-branch bus id of the splitable station view, not to the full voltage level id.
 
-- [`TopologyStation`][toop_engine_interfaces.asset_topology.TopologyStation]
+- [`RawStation`][toop_engine_interfaces.asset_topology.RawStation]
   Stores the lean station representation used inside [`Topology`][toop_engine_interfaces.asset_topology.Topology].
   Instead of embedded asset payloads it stores aligned station-local arrays `asset_ids`, `asset_branch_ends`, and `asset_bay_ids`.
 

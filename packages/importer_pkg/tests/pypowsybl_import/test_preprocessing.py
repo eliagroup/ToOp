@@ -6,10 +6,12 @@
 # Mozilla Public License, version 2.0
 
 import time
+from datetime import datetime
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import numpy as np
 import pandapower as pp
 import pandas as pd
 import pypowsybl
@@ -23,6 +25,12 @@ from toop_engine_importer.pandapower_import.preprocessing import modify_constan_
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.preprocessing import create_nminus1_definition_from_masks
+from toop_engine_interfaces.asset_topology import (
+    Busbar,
+    RawStation,
+    SwitchableAsset,
+    Topology,
+)
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -42,6 +50,62 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 )
 
 logger = structlog.get_logger(__name__)
+
+
+def test_filter_split_stations_from_relevant_subs(basic_node_breaker_network_powsybl_grid: Network) -> None:
+    network = basic_node_breaker_network_powsybl_grid
+    network_masks = powsybl_masks.create_default_network_masks(network)
+    buses = network.get_buses(attributes=[])
+    relevant_subs = (
+        buses.index.isin(["S1VL1_1", "S1VL1_2"])
+        if "S1VL1_1" in buses.index
+        else np.array([True, True, *([False] * (len(buses) - 2))])
+    )
+    network_masks = powsybl_masks.NetworkMasks(**{**network_masks.__dict__, "relevant_subs": relevant_subs})
+
+    split_station = RawStation(
+        grid_model_id=buses.index[0],
+        name="split",
+        busbars=[
+            Busbar(int_id=0, grid_model_id="bb0", bus_branch_bus_id=buses.index[0]),
+            Busbar(int_id=1, grid_model_id="bb1", bus_branch_bus_id=buses.index[1]),
+        ],
+        couplers=[],
+        asset_ids=["asset0"],
+        asset_branch_ends=[None],
+        asset_bay_ids=[None],
+        asset_switching_table=np.array([[True], [False]]),
+    )
+    regular_station = RawStation(
+        grid_model_id=buses.index[1],
+        name="regular",
+        busbars=[Busbar(int_id=0, grid_model_id="bb2", bus_branch_bus_id=buses.index[1])],
+        couplers=[],
+        asset_ids=["asset1"],
+        asset_branch_ends=[None],
+        asset_bay_ids=[None],
+        asset_switching_table=np.array([[True]]),
+    )
+    topology_model = Topology(
+        topology_id="topology",
+        grid_model_file="grid.xiidm",
+        raw_stations=[split_station, regular_station],
+        assets=[SwitchableAsset(grid_model_id="asset0"), SwitchableAsset(grid_model_id="asset1")],
+        timestamp=datetime.now(),
+    )
+
+    filtered_masks = preprocessing.filter_split_stations_from_relevant_subs(
+        network=network,
+        topology_model=topology_model,
+        network_masks=network_masks,
+    )
+
+    assert [station.grid_model_id for station in topology_model.materialize_stations()] == [
+        split_station.grid_model_id,
+        regular_station.grid_model_id,
+    ]
+    assert filtered_masks.relevant_subs[buses.index.get_loc(split_station.grid_model_id)] == np.False_
+    assert filtered_masks.relevant_subs[buses.index.get_loc(regular_station.grid_model_id)] == np.True_
 
 
 def test_save_load_preprocessing_statistics():

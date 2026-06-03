@@ -53,7 +53,7 @@ from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker impo
     fuse_closed_switches_by_bus_ids,
     get_coupler_types_of_substation,
 )
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology import Topology, copy_topology_with_updates
 
 logger = structlog.get_logger(__name__)
 
@@ -198,11 +198,14 @@ def preprocess_net_step2(network: pp.pandapowerNet, topology_model: Topology) ->
     if "bus_geodata" in network:
         del network["bus_geodata"]
     old_index = pp.toolbox.create_continuous_bus_index(network, start=0, store_old_index=True)
-    for station in topology_model.stations:
+    raw_stations = []
+    for station in topology_model.raw_stations:
         station_id = int(station.grid_model_id.split(SEPARATOR)[0])
         new_id = old_index[station_id]
-        station.grid_model_id = f"{new_id}{SEPARATOR}{station.grid_model_id.split(SEPARATOR)[1]}"
-    return topology_model
+        raw_stations.append(
+            station.model_copy(update={"grid_model_id": f"{new_id}{SEPARATOR}{station.grid_model_id.split(SEPARATOR)[1]}"})
+        )
+    return copy_topology_with_updates(topology_model, raw_stations, topology_model.assets, topology_model.asset_bays)
 
 
 def fuse_cross_coupler(
@@ -268,7 +271,7 @@ def validate_asset_topology(net: pp.pandapowerNet, topology_model: Topology) -> 
     ValueError
         if the number of connections in the network does not match the number of assets in the station
     """
-    for station in topology_model.stations:
+    for station in topology_model.materialize_stations():
         s_id = int(station.grid_model_id.split(r"%%")[0])
         connection_dict = pp.toolbox.get_connected_elements_dict(net, [s_id])
         del connection_dict["bus"]

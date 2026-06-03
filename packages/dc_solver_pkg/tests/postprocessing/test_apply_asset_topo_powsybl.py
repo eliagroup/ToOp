@@ -21,16 +21,41 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
 )
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_interfaces.asset_topology import (
+    RawStation,
     Topology,
+    copy_topology_with_updates,
 )
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+
+
+def build_test_topology(reference_topology: Topology, raw_stations: list[RawStation]) -> Topology:
+    """Build a topology copy from raw stations for postprocessing tests.
+
+    Parameters
+    ----------
+    reference_topology : Topology
+        Source topology providing shared metadata and topology-owned payloads.
+    raw_stations : list[RawStation]
+        Raw stations to place into the copied topology.
+
+    Returns
+    -------
+    Topology
+        Topology copy with updated raw stations.
+    """
+    return copy_topology_with_updates(
+        reference_topology=reference_topology,
+        raw_stations=raw_stations,
+        assets=reference_topology.assets,
+        asset_bays=reference_topology.asset_bays,
+    )
 
 
 def test_find_asset(case14_data_with_asset_topo: tuple[Path, Topology]) -> None:
     grid_path, topology = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
-    station = topology.stations[0]
+    station = topology.materialize_stations()[0]
     bus_id = station.grid_model_id
     vl_id = net.get_buses().loc[bus_id]["voltage_level_id"]
 
@@ -57,7 +82,7 @@ def test_find_asset(case14_data_with_asset_topo: tuple[Path, Topology]) -> None:
             assert inj["bus_id"] == bus_id
             assert inj["bus_breaker_bus_id"] == bus_breaker_id
 
-    for elem in topology.stations[10].assets:
+    for elem in topology.materialize_stations()[10].assets:
         if elem.is_branch():
             with pytest.raises(ValueError, match=f"Branch {elem.grid_model_id} not found in the station"):
                 find_asset(
@@ -80,8 +105,9 @@ def test_apply_single_asset_bus_branch_reassign(case14_data_with_asset_topo: tup
     grid_path, topology = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
-    for asset_index in range(len(topology.stations[0].assets)):
-        station = topology.stations[0].model_copy(deep=True)
+    base_station = topology.materialize_stations()[0]
+    for asset_index in range(len(base_station.assets)):
+        station = base_station.model_copy(deep=True)
         # Reassign the first asset to the second bus
         assert len(station.busbars) == 2
         station.asset_switching_table[:, asset_index] = ~station.asset_switching_table[:, asset_index]
@@ -115,8 +141,9 @@ def test_apply_single_asset_bus_branch_disconnect(case14_data_with_asset_topo: t
     grid_path, topology = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
-    for asset_index in range(len(topology.stations[0].assets)):
-        station = topology.stations[0].model_copy(deep=True)
+    base_station = topology.materialize_stations()[0]
+    for asset_index in range(len(base_station.assets)):
+        station = base_station.model_copy(deep=True)
         # Disconnect the first asset
         assert len(station.busbars) == 2
         station.asset_switching_table[:, asset_index] = False
@@ -140,10 +167,11 @@ def test_apply_single_asset_bus_branch_nothing(case14_data_with_asset_topo: tupl
     grid_path, topology = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
-    for asset_index in range(len(topology.stations[0].assets)):
+    base_station = topology.materialize_stations()[0]
+    for asset_index in range(len(base_station.assets)):
         status, reassignments = apply_single_asset_bus_branch(
             net=net,
-            station=topology.stations[0],
+            station=base_station,
             asset_index=asset_index,
         )
         assert status == "nothing"
@@ -155,7 +183,7 @@ def test_apply_station_bus_branch_reassign(case14_data_with_asset_topo: tuple[Pa
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     # Try do nothing
-    station = topology.stations[0].model_copy(deep=True)
+    station = topology.materialize_stations()[0].model_copy(deep=True)
     realized_station = apply_station_bus_branch(
         net=net,
         station=station,
@@ -164,7 +192,7 @@ def test_apply_station_bus_branch_reassign(case14_data_with_asset_topo: tuple[Pa
     assert len(realized_station.reassignment_diff) == 0
     assert len(realized_station.disconnection_diff) == 0
 
-    realized_station_2 = apply_station(net=net, station=station)
+    realized_station_2 = apply_station(net=net, topology=topology, raw_station=topology.raw_stations[0])
     assert realized_station_2 == realized_station
 
     # Try with disconnections and reassignments
@@ -184,7 +212,7 @@ def test_apply_station_bus_branch_coupler(case14_data_with_asset_topo: tuple[Pat
     grid_path, topology = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
-    station = topology.stations[0].model_copy(deep=True)
+    station = topology.materialize_stations()[0].model_copy(deep=True)
     station.asset_switching_table = np.array([[True, False, True], [False, True, False]])
     station.couplers[0].open = True
 
@@ -221,7 +249,7 @@ def test_apply_node_breaker_topology(basic_node_breaker_topology: Topology) -> N
     assert sw.loc["L82_BREAKER", "open"]
 
     net = basic_node_breaker_network_powsybl()
-    switch_update_df_2 = apply_station(net, basic_node_breaker_topology.stations[0])
+    switch_update_df_2 = apply_station(net, basic_node_breaker_topology, basic_node_breaker_topology.raw_stations[0])
     assert isinstance(switch_update_df_2, pd.DataFrame)
     assert switch_update_df_2.isin(switch_update_df).all().all()
 
@@ -247,8 +275,14 @@ def test_apply_topology_bus_branch_reassign(case14_data_with_asset_topo: tuple[P
 
     # Try with disconnections and reassignments
     # Just randomize the switching tables, we'll have both disconnections and reassignments then
-    for station in topology.stations:
-        station.asset_switching_table = np.random.randint(0, 2, size=station.asset_switching_table.shape, dtype=bool)
+    raw_stations = [
+        station.model_copy(
+            update={"asset_switching_table": np.random.randint(0, 2, size=station.asset_switching_table.shape, dtype=bool)}
+        )
+        for station in topology.raw_stations
+    ]
+
+    topology = build_test_topology(topology, raw_stations)
 
     realized_topology = apply_topology_bus_branch(
         net=net,

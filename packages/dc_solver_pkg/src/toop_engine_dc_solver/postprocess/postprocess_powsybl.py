@@ -46,6 +46,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     extract_single_injection_loadflow_result,
     load_powsybl_from_fs,
 )
+from toop_engine_interfaces.asset_topology import topology_from_materialized_stations
 from toop_engine_interfaces.asset_topology_helpers import electrical_components
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
@@ -135,7 +136,7 @@ def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> A
         return None
 
     stations = [action_set.local_actions[action] for action in actions]
-    changed_stations_topo = action_set.starting_topology.model_copy(update={"stations": stations})
+    changed_stations_topo = topology_from_materialized_stations(action_set.starting_topology, stations)
 
     if is_node_breaker_grid(net, stations[0].grid_model_id):
         additional_info = apply_node_breaker_topology(net, changed_stations_topo)
@@ -375,8 +376,8 @@ class PowsyblRunner(AbstractLoadflowRunner):
             return None
 
         for topology in (self.action_set.starting_topology, self.action_set.simplified_starting_topology):
-            if topology is not None and len(topology.stations):
-                return topology.stations[0].grid_model_id
+            if topology is not None and len(topology.raw_stations):
+                return topology.raw_stations[0].grid_model_id
         return None
 
     @contextmanager

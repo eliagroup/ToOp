@@ -5,6 +5,7 @@ The `interfaces` package provides a set of abstractions and adapters to enable i
 ## Interfaces
 
 [Asset Topology][toop_engine_interfaces.asset_topology] - Defines the physical structure and configuration of electrical assets in the grid system.
+Topology stores lean station records in `raw_stations`; rich `Station` objects are reconstructed with `Topology.materialize_stations()`.
 A full description is found here: [Asset Topology](https://eliagroup.github.io/ToOp/interfaces/asset_topology/)
 
 The [`BackendInterface`][toop_engine_interfaces.backend.BackendInterface] is an abstract interface to read grid data for a bus-branch model. It provides raw numeric inputs for the solver — no validation or processing. Specifically not task of this interface is to perform any validations or processing of the data.

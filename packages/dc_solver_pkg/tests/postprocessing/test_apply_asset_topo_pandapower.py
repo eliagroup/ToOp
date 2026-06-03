@@ -21,7 +21,7 @@ def test_apply_station(case14_data_folder: Path) -> None:
 
     # Make sure we have valid busbar ids
     # Currently only one bus exists in the station, so we expect the method to create the coupler and the missing busbar.
-    station = asset_topo.stations[0].model_copy()
+    station = asset_topo.materialize_stations()[0].model_copy()
     station.busbars[0].grid_model_id = f"1{SEPARATOR}bus"
     station.busbars[1].grid_model_id = f"15{SEPARATOR}bus"
     station.couplers[0].grid_model_id = f"1{SEPARATOR}switch"
@@ -43,7 +43,7 @@ def test_apply_station_existing_buses(case14_data_folder: Path) -> None:
     with open(case14_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"]) as f:
         asset_topo = Topology.model_validate_json(f.read())
 
-    station = asset_topo.stations[0].model_copy()
+    station = asset_topo.materialize_stations()[0].model_copy()
     station.busbars[0].grid_model_id = f"1{SEPARATOR}bus"
     station.busbars[1].grid_model_id = f"15{SEPARATOR}bus"
     station.couplers[0].grid_model_id = f"1{SEPARATOR}switch"
@@ -66,7 +66,7 @@ def test_apply_station_extra_busbar(case14_data_folder: Path) -> None:
     with open(case14_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"]) as f:
         asset_topo = Topology.model_validate_json(f.read())
 
-    station = asset_topo.stations[0].model_copy()
+    station = asset_topo.materialize_stations()[0].model_copy()
     station.busbars[0].grid_model_id = f"1{SEPARATOR}bus"
     station.busbars[1].grid_model_id = f"15{SEPARATOR}bus"
     station.couplers[0].grid_model_id = f"1{SEPARATOR}switch"

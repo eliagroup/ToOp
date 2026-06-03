@@ -17,20 +17,20 @@ import pandera as pa
 import pandera.typing as pat
 from beartype.typing import cast
 from jaxtyping import Bool
-from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_interfaces.asset_topology import MaterializedStation, Topology
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 
-def _get_busbar_lookup(station: Station) -> dict[int, str]:
+def _get_busbar_lookup(station: MaterializedStation) -> dict[int, str]:
     """Map busbar row indices in the switching table to busbar ids."""
     return {index: busbar.grid_model_id for index, busbar in enumerate(station.busbars)}
 
 
 def _resolve_changed_stations(
-    changed_stations: list[Station],
+    changed_stations: list[MaterializedStation],
     starting_topology: Topology,
-) -> tuple[dict[str, Station], dict[str, Station], list[str]]:
+) -> tuple[dict[str, MaterializedStation], dict[str, MaterializedStation], list[str]]:
     """Resolve station lookups and preserve changed-station ordering.
 
     This helper is intentionally limited to station actions. It validates that all changed stations
@@ -62,21 +62,22 @@ def _resolve_changed_stations(
     if len(changed_station_ids) != len(set(changed_station_ids)):
         raise ValueError("Changed stations must be unique by grid_model_id.")
 
-    starting_station_lookup = {station.grid_model_id: station for station in starting_topology.stations}
+    starting_stations = starting_topology.materialize_stations()
+    starting_station_lookup = {station.grid_model_id: station for station in starting_stations}
     changed_station_lookup = {station.grid_model_id: station for station in changed_stations}
     missing_station_ids = set(changed_station_lookup).difference(starting_station_lookup)
     if missing_station_ids:
         raise ValueError(f"Changed stations not found in starting topology: {sorted(missing_station_ids)}")
 
     ordered_changed_station_ids = [
-        station.grid_model_id for station in starting_topology.stations if station.grid_model_id in changed_station_lookup
+        station.grid_model_id for station in starting_stations if station.grid_model_id in changed_station_lookup
     ]
     return starting_station_lookup, changed_station_lookup, ordered_changed_station_ids
 
 
 def _get_coupler_switch_diffs(
-    changed_station: Station,
-    starting_station: Station,
+    changed_station: MaterializedStation,
+    starting_station: MaterializedStation,
 ) -> list[dict[str, str | bool]]:
     """Collect coupler switch changes between two station states.
 
@@ -121,8 +122,8 @@ def _get_coupler_switch_diffs(
 
 
 def _get_asset_switch_diffs(
-    changed_station: Station,
-    starting_station: Station,
+    changed_station: MaterializedStation,
+    starting_station: MaterializedStation,
     fail_on_disconnect: bool = False,
 ) -> list[dict[str, str | bool]]:
     """Collect selector and breaker switch changes between two station states.
@@ -201,8 +202,8 @@ def _get_asset_switch_diffs(
 
 
 def _get_switch_updates_from_station_ids(
-    changed_station_lookup: dict[str, Station],
-    starting_station_lookup: dict[str, Station],
+    changed_station_lookup: dict[str, MaterializedStation],
+    starting_station_lookup: dict[str, MaterializedStation],
     ordered_station_ids: list[str],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Build switch updates for a specific ordered list of stations.
@@ -242,7 +243,7 @@ def _get_switch_updates_from_station_ids(
     return cast(pat.DataFrame[SwitchUpdateSchema], diff_switch_df)
 
 
-def _get_station_switching_table(station: Station) -> Bool[np.ndarray, " n_busbar n_asset"]:
+def _get_station_switching_table(station: MaterializedStation) -> Bool[np.ndarray, " n_busbar n_asset"]:
     """Return the station switching table as a boolean numpy array.
 
     Parameters
@@ -260,7 +261,7 @@ def _get_station_switching_table(station: Station) -> Bool[np.ndarray, " n_busba
 
 @pa.check_types
 def get_changing_switches_from_changed_stations(
-    changed_stations: list[Station],
+    changed_stations: list[MaterializedStation],
     starting_topology: Topology,
 ) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get changed switches by comparing changed stations to the starting topology.

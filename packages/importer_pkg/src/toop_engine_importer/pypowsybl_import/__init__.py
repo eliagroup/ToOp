@@ -8,7 +8,7 @@
 """Import data from PyPowSyBl networks to the Topology Optimizer."""
 
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
-    get_list_of_stations,
+    get_raw_stations_and_assets,
     get_topology,
 )
 
@@ -52,7 +52,7 @@ __all__ = [
     "convert_low_impedance_lines",
     "create_default_network_masks",
     "get_branches_df_with_element_name",
-    "get_list_of_stations",
+    "get_raw_stations_and_assets",
     "get_topology",
     "load_preprocessing_statistics_filesystem",
     "make_masks",

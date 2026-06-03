@@ -32,7 +32,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     parse_globally_unique_id,
 )
-from toop_engine_interfaces.asset_topology import RealizedStation, RealizedTopology
+from toop_engine_interfaces.asset_topology import AppliedStation, RealizedTopology, topology_from_materialized_stations
 from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs, electrical_components
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -76,7 +76,7 @@ def apply_topology(
     """
     net = deepcopy(net)
 
-    realized_stations: list[RealizedStation] = []
+    realized_stations: list[AppliedStation] = []
     for action in actions:
         # Apply the action to the network
         if action >= len(action_set.local_actions):
@@ -86,10 +86,9 @@ def apply_topology(
 
     coupler_diff, reassignment_diff, disconnection_diff = accumulate_diffs(realized_stations)
     realized_topology = RealizedTopology(
-        topology=action_set.starting_topology.model_copy(
-            update={
-                "stations": [s.station for s in realized_stations],
-            }
+        topology=topology_from_materialized_stations(
+            action_set.starting_topology,
+            [s.station for s in realized_stations],
         ),
         coupler_diff=coupler_diff,
         reassignment_diff=reassignment_diff,

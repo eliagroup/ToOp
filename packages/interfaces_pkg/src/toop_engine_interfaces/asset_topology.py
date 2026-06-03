@@ -13,7 +13,7 @@ from enum import Enum
 import numpy as np
 from beartype.typing import Any, Literal, Optional, TypeAlias, Union, get_args
 from numpydantic import NDArray, Shape
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class PowsyblSwitchValues(Enum):
@@ -132,6 +132,9 @@ class AssetBay(BaseModel):
 
 
     """
+
+    asset_bay_id: Optional[str] = None
+    """Topology-scoped identifier for the asset bay."""
 
     sl_switch_grid_model_id: Optional[str] = None
     """ The id of the switch, which connects the asset to the circuit breaker node.
@@ -263,6 +266,9 @@ class SwitchableAsset(BaseModel):
     The connection path is used to determine the physical connection of the asset to the busbar.
     None of these switches will be found in the network model, they are only used for the asset topology."""
 
+    asset_bay_id: Optional[str] = None
+    """Topology-scoped identifier for the asset bay associated with this asset."""
+
     def is_branch(self) -> Optional[bool]:
         """Return True if the asset is a branch.
 
@@ -300,89 +306,142 @@ class AssetSetpoint(BaseModel):
     """ The setpoint of the asset. """
 
 
-class Station(BaseModel):
-    """Station data describing a single station.
+def _validate_station_switching_tables(
+    station_grid_model_id: str,
+    station_name: Optional[str],
+    busbar_count: int,
+    asset_count: int,
+    asset_switching_table: np.ndarray,
+    asset_connectivity: Optional[np.ndarray],
+) -> None:
+    """Validate switching-table shapes against the station dimensions.
 
-    The minimal station model refers to a single bus-brach model bus_id, which contains a splitable bus.
-    A physical representation may have multiple bus-brach model bus_ids.
+    Parameters
+    ----------
+    station_grid_model_id : str
+        Grid model id of the station being validated.
+    station_name : Optional[str]
+        Human-readable station name used in validation errors.
+    busbar_count : int
+        Expected number of busbar rows in the switching tables.
+    asset_count : int
+        Expected number of asset columns in the switching tables.
+    asset_switching_table : np.ndarray
+        Current station switching table.
+    asset_connectivity : Optional[np.ndarray]
+        Optional connectivity mask describing physically allowed assignments.
+
+    Returns
+    -------
+    None
+        This function returns nothing and raises on invalid shapes.
+
+    Raises
+    ------
+    ValueError
+        If either switching table does not match the expected station dimensions.
     """
+    if asset_switching_table.shape != (busbar_count, asset_count):
+        raise ValueError(
+            f"asset_switching_table shape {asset_switching_table.shape} does not match busbars "
+            f"{busbar_count} and assets {asset_count}"
+            f" Station_id: {station_grid_model_id}, Name: {station_name}"
+        )
+
+    if asset_connectivity is not None and asset_connectivity.shape != (busbar_count, asset_count):
+        raise ValueError(
+            f"asset_connectivity shape {asset_connectivity.shape} does not match busbars "
+            f"{busbar_count} and assets {asset_count}"
+            f" Station_id: {station_grid_model_id}, Name: {station_name}"
+        )
+
+
+def _validate_station_physical_assignments(
+    station_grid_model_id: str,
+    station_name: Optional[str],
+    asset_switching_table: np.ndarray,
+    asset_connectivity: Optional[np.ndarray],
+) -> None:
+    """Validate that all current assignments are physically allowed.
+
+    Parameters
+    ----------
+    station_grid_model_id : str
+        Grid model id of the station being validated.
+    station_name : Optional[str]
+        Human-readable station name used in validation errors.
+    asset_switching_table : np.ndarray
+        Current station switching table.
+    asset_connectivity : Optional[np.ndarray]
+        Optional connectivity mask describing physically allowed assignments.
+
+    Returns
+    -------
+    None
+        This function returns nothing and raises on invalid assignments.
+
+    Raises
+    ------
+    ValueError
+        If the switching table contains assignments forbidden by ``asset_connectivity``.
+    """
+    if asset_connectivity is not None:
+        if np.logical_and(asset_switching_table, np.logical_not(asset_connectivity)).any():
+            raise ValueError(
+                f"Not all current assignments are physically allowed "
+                f"Station_id: {station_grid_model_id}, Name: {station_name}"
+            )
+
+
+class _StationStructure(BaseModel):
+    """Shared station fields and structural validators for station views."""
 
     grid_model_id: str
-    """ The unique identifier of the station.
-    Corresponds to the stations's id in the grid model.
-    Expects the bus-branch model bus_id, which is the most splitable bus_id."""
+    """The unique identifier of the station.
+
+    Expects the bus-branch model bus_id, not the full voltage level id.
+    """
 
     name: Optional[str] = None
-    """ The name of the station. """
+    """The name of the station."""
 
     type: Optional[str] = None
-    """ The type of the station. """
+    """The type of the station."""
 
     region: Optional[str] = None
-    """ The region of the station. """
+    """The region of the station."""
 
     voltage_level: Optional[float] = None
-    """ The voltage level of the station. """
+    """The voltage level of the station."""
 
     busbars: list[Busbar]
-    """ The list of busbars at the station. The order of this list is the same order as the busbars
-    in the switching table."""
+    """The list of busbars at the station."""
 
     couplers: list[BusbarCoupler]
-    """ The list of couplers at the station. """
-
-    assets: list[SwitchableAsset]
-    """ The list of assets at the station. The order of this list is the same order as the
-     assets in the asset_switching_table. """
+    """The list of couplers at the station."""
 
     asset_switching_table: NDArray[Shape[" * bus, * asset"], bool]
-    """ Holds the switching of each asset to each busbar, shape (n_bus, n_asset).
+    """Holds the switching of each asset to each busbar, shape (n_bus, n_asset).
 
     An entry is true if the asset is connected to the busbar.
-    Note: An asset can be connected to multiple busbars, in which case a closed coupler is
-    assumed to be present between these busbars
-    Note: An asset can be connected to none of the busbars. In this case, the asset is intentionally
-    disconnected as part of a transmission line switching action. In practice, this usually involves
-    a separate switch from the asset-to-busbar couplers, as each asset usually has a switch that
-    completely disconnects it from the station. These switches are not modelled here, a
-    postprocessing routine needs to do the translation to this physical layout. Do not use
-    in_service for intentional disconnections.
+    Note: An asset can be connected to multiple busbars, in which case a closed coupler is assumed
+    to be present between these busbars.
     """
 
     asset_connectivity: Optional[NDArray[Shape[" * bus, * asset"], bool]] = None
-    """ Holds the all possible layouts of the asset_switching_table, shape (n_bus, n_asset).
+    """Holds the all possible layouts of the asset_switching_table, shape (n_bus, n_asset).
 
     An entry is true if it is possible to connect an asset to the busbar.
     If None, it is assumed that all branches can be connected to all busbars.
     """
 
     model_log: Optional[list[str]] = None
-    """ Holds log messages from the model creation process.
-
-    This can be used to store information about the model creation process, e.g. warnings or errors.
-    A potential use case is to inform the user about data quality issues e.g. missing the Asset Bay switches.
-    """
+    """Holds log messages from the model creation process."""
 
     @field_validator("busbars")
     @classmethod
     def check_int_id_unique(cls, v: list[Busbar]) -> list[Busbar]:
-        """Check if int_id is unique for all busbars.
-
-        Parameters
-        ----------
-        v : list[Busbar]
-            The list of busbars to check.
-
-        Returns
-        -------
-        list[Busbar]
-            The list of busbars.
-
-        Raises
-        ------
-        ValueError
-            If int_id is not unique for all busbars.
-        """
+        """Check if int_id is unique for all busbars."""
         int_ids = [busbar.int_id for busbar in v]
         if len(int_ids) != len(set(int_ids)):
             raise ValueError("int_id must be unique for busbars")
@@ -391,30 +450,14 @@ class Station(BaseModel):
     @field_validator("couplers")
     @classmethod
     def check_coupler_busbars_different(cls, v: list[BusbarCoupler]) -> list[BusbarCoupler]:
-        """Check if busbar_from_id and busbar_to_id are different for all couplers.
-
-        Parameters
-        ----------
-        v : list[BusbarCoupler]
-            The list of couplers to check.
-
-        Returns
-        -------
-        list[BusbarCoupler]
-            The list of couplers.
-
-        Raises
-        ------
-        ValueError
-            If busbar_from_id and busbar_to_id are the same for any coupler.
-        """
+        """Check if busbar_from_id and busbar_to_id are different for all couplers."""
         for coupler in v:
             if coupler.busbar_from_id == coupler.busbar_to_id:
                 raise ValueError(f"busbar_from_id and busbar_to_id must be different for coupler {coupler.grid_model_id}")
         return v
 
     @model_validator(mode="after")
-    def check_busbar_exists(self: "Station") -> "Station":
+    def check_busbar_exists(self: "_StationStructure") -> "_StationStructure":
         """Check if all busbars in couplers exist in the busbars list."""
         busbar_ids = [busbar.int_id for busbar in self.busbars]
         for coupler in self.couplers:
@@ -431,7 +474,7 @@ class Station(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_coupler_references(self: "Station") -> "Station":
+    def check_coupler_references(self: "_StationStructure") -> "_StationStructure":
         """Check if all closed couplers reference in-service busbars."""
         busbar_state_map = {busbar.int_id: busbar.in_service for busbar in self.busbars}
         for coupler in self.couplers:
@@ -445,45 +488,63 @@ class Station(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_asset_switching_table_shape(self: "Station") -> "Station":
-        """Check if the switching table shape matches the busbars and assets."""
-        if self.asset_switching_table.shape != (len(self.busbars), len(self.assets)):
+    def check_bus_id(self: "_StationStructure") -> "_StationStructure":
+        """Check if station grid_model_id is in the busbar.bus_branch_bus_id."""
+        busbar_grid_model_id = [busbar.bus_branch_bus_id for busbar in self.busbars if busbar.bus_branch_bus_id is not None]
+        if len(busbar_grid_model_id) > 0 and self.grid_model_id not in busbar_grid_model_id:
             raise ValueError(
-                f"asset_switching_table shape {self.asset_switching_table.shape} does not match busbars "
-                f"{len(self.busbars)} and assets {len(self.assets)}"
+                f"Station grid_model_id {self.grid_model_id} does not exist in busbars bus_branch_bus_id"
                 f" Station_id: {self.grid_model_id}, Name: {self.name}"
             )
 
-        if self.asset_connectivity is not None:
-            if self.asset_connectivity.shape != (len(self.busbars), len(self.assets)):
-                raise ValueError(
-                    f"asset_connectivity shape {self.asset_connectivity.shape} does not match busbars "
-                    f"{len(self.busbars)} and assets {len(self.assets)}"
-                    f" Station_id: {self.grid_model_id}, Name: {self.name}"
-                )
+        return self
 
+    def is_split(self) -> bool:
+        """Return whether the station view spans more than one non-empty bus-branch bus id."""
+        bus_ids = {busbar.bus_branch_bus_id for busbar in self.busbars if busbar.bus_branch_bus_id not in {None, ""}}
+        return len(bus_ids) > 1
+
+
+class MaterializedStation(_StationStructure):
+    """Station data describing a single materialized station.
+
+    The station identity refers to a single bus-branch model bus_id that represents one splitable
+    station view.
+    A physical substation or voltage level may contain multiple bus-branch model bus_ids.
+    The station assets are aligned with the switching tables and describe the assets visible in that
+    station view; they are not intended to define a topology-owned canonical asset list.
+    """
+
+    assets: list[SwitchableAsset]
+    """The list of assets at the station.
+
+    The order of this list is the same order as the assets in the asset_switching_table.
+    This list is station-local and switching-table aligned. Topology-owned canonical assets are
+    stored on Topology.assets instead.
+    """
+
+    @model_validator(mode="after")
+    def check_asset_shapes(self: "MaterializedStation") -> "MaterializedStation":
+        """Check if switching-table-aligned station-local assets match the matrix shapes."""
+        _validate_station_switching_tables(
+            station_grid_model_id=self.grid_model_id,
+            station_name=self.name,
+            busbar_count=len(self.busbars),
+            asset_count=len(self.assets),
+            asset_switching_table=self.asset_switching_table,
+            asset_connectivity=self.asset_connectivity,
+        )
+        _validate_station_physical_assignments(
+            station_grid_model_id=self.grid_model_id,
+            station_name=self.name,
+            asset_switching_table=self.asset_switching_table,
+            asset_connectivity=self.asset_connectivity,
+        )
         return self
 
     @model_validator(mode="after")
-    def check_asset_switching_table_current_vs_physical(self: "Station") -> "Station":
-        """Check all current assignments are physically allowed."""
-        if self.asset_connectivity is not None:
-            if np.logical_and(self.asset_switching_table, np.logical_not(self.asset_connectivity)).any():
-                raise ValueError(
-                    f"Not all current assignments are physically allowed Station_id: {self.grid_model_id}, Name: {self.name}"
-                )
-
-        return self
-
-    @model_validator(mode="after")
-    def check_asset_bay(self: "Station") -> "Station":
-        """Check if the asset bay bus is in busbars.
-
-        Returns
-        -------
-        Station
-            The station itself.
-        """
+    def check_asset_bay(self: "MaterializedStation") -> "MaterializedStation":
+        """Check if the asset bay bus is in busbars."""
         busbar_grid_model_id = [busbar.grid_model_id for busbar in self.busbars]
         for asset in self.assets:
             if asset.asset_bay is not None:
@@ -493,24 +554,6 @@ class Station(BaseModel):
                             f"busbar_id {busbar_id} in asset {asset.grid_model_id} does not exist in busbars"
                             f" Station_id: {self.grid_model_id}, Name: {self.name}"
                         )
-
-        return self
-
-    @model_validator(mode="after")
-    def check_bus_id(self: "Station") -> "Station":
-        """Check if station grid_model_id is in the busbar.bus_branch_bus_id.
-
-        Returns
-        -------
-        Station
-            The station itself.
-        """
-        busbar_grid_model_id = [busbar.bus_branch_bus_id for busbar in self.busbars if busbar.bus_branch_bus_id is not None]
-        if len(busbar_grid_model_id) > 0 and self.grid_model_id not in busbar_grid_model_id:
-            raise ValueError(
-                f"Station grid_model_id {self.grid_model_id} does not exist in busbars bus_branch_bus_id"
-                f" Station_id: {self.grid_model_id}, Name: {self.name}"
-            )
 
         return self
 
@@ -527,7 +570,7 @@ class Station(BaseModel):
         bool
             True if the stations are equal, False otherwise.
         """
-        if not isinstance(other, Station):
+        if not isinstance(other, MaterializedStation):
             return False
         return (
             self.grid_model_id == other.grid_model_id
@@ -544,10 +587,87 @@ class Station(BaseModel):
         )
 
 
+class RawStation(_StationStructure):
+    """Station data stored inside a topology without embedded asset payloads.
+
+    The station identity still refers to a bus-branch model bus_id for one splitable station view.
+    Asset membership is expressed through the aligned station-local arrays instead of embedded
+    SwitchableAsset payloads.
+    """
+
+    asset_ids: list[str]
+    """Asset grid model ids aligned with the switching tables.
+
+    These are station-local references into Topology.assets.
+    """
+
+    asset_branch_ends: list[Optional[BranchEnd]]
+    """Station-local branch ends aligned with the switching tables."""
+
+    asset_bay_ids: list[Optional[str]]
+    """Topology-scoped asset bay identifiers aligned with the switching tables."""
+
+    @model_validator(mode="after")
+    def check_asset_reference_alignment(self: "RawStation") -> "RawStation":
+        """Check if station-local asset reference arrays are aligned."""
+        if len(self.asset_branch_ends) != len(self.asset_ids):
+            raise ValueError(
+                f"asset_branch_ends length {len(self.asset_branch_ends)} "
+                f"does not match asset_ids length {len(self.asset_ids)}"
+                f" Station_id: {self.grid_model_id}, Name: {self.name}"
+            )
+        if len(self.asset_bay_ids) != len(self.asset_ids):
+            raise ValueError(
+                f"asset_bay_ids length {len(self.asset_bay_ids)} does not match asset_ids length {len(self.asset_ids)}"
+                f" Station_id: {self.grid_model_id}, Name: {self.name}"
+            )
+        _validate_station_switching_tables(
+            station_grid_model_id=self.grid_model_id,
+            station_name=self.name,
+            busbar_count=len(self.busbars),
+            asset_count=len(self.asset_ids),
+            asset_switching_table=self.asset_switching_table,
+            asset_connectivity=self.asset_connectivity,
+        )
+        _validate_station_physical_assignments(
+            station_grid_model_id=self.grid_model_id,
+            station_name=self.name,
+            asset_switching_table=self.asset_switching_table,
+            asset_connectivity=self.asset_connectivity,
+        )
+        return self
+
+    def __eq__(self, other: object) -> bool:
+        """Check if two topology stations are equal."""
+        if not isinstance(other, RawStation):
+            return False
+        return (
+            self.grid_model_id == other.grid_model_id
+            and self.name == other.name
+            and self.type == other.type
+            and self.region == other.region
+            and self.voltage_level == other.voltage_level
+            and self.busbars == other.busbars
+            and self.couplers == other.couplers
+            and self.asset_ids == other.asset_ids
+            and self.asset_branch_ends == other.asset_branch_ends
+            and self.asset_bay_ids == other.asset_bay_ids
+            and np.array_equal(self.asset_switching_table, other.asset_switching_table)
+            and (
+                np.array_equal(self.asset_connectivity, other.asset_connectivity)
+                if (self.asset_connectivity is not None and other.asset_connectivity is not None)
+                else self.asset_connectivity == other.asset_connectivity
+            )
+            and self.model_log == other.model_log
+        )
+
+
 class Topology(BaseModel):
     """Topology data describing a single timestep topology.
 
-    A topology includes switchings for substations and potentially asset setpoints.
+    A topology includes lean station records in raw_stations, topology-owned canonical assets and
+    asset bays, and potentially asset setpoints.
+    Use materialize_stations() to reconstruct rich Station objects.
     """
 
     topology_id: str
@@ -561,8 +681,21 @@ class Topology(BaseModel):
     name: Optional[str] = None
     """ The name of the topology. """
 
-    stations: list[Station]
-    """ The list of stations in the topology. """
+    raw_stations: list[RawStation]
+    """The topology-owned station records without embedded asset payloads.
+
+    Each raw station represents one bus-branch bus view of a splitable station.
+    """
+
+    assets: list[SwitchableAsset] = Field(default_factory=list)
+    """The topology-owned canonical asset payloads.
+
+    Station-local branch-end and asset-bay assignment data are stored on raw_stations instead of on
+    these canonical payloads.
+    """
+
+    asset_bays: list[AssetBay] = Field(default_factory=list)
+    """The topology-owned asset bay payloads."""
 
     asset_setpoints: Optional[list[AssetSetpoint]] = None
     """ The list of asset setpoints in the topology. """
@@ -574,6 +707,270 @@ class Topology(BaseModel):
 
     metrics: Optional[dict[str, float]] = None
     """ The metrics of the topology. """
+
+    @field_validator("assets")
+    @classmethod
+    def check_asset_ids_unique(cls, v: list[SwitchableAsset]) -> list[SwitchableAsset]:
+        """Check if all topology assets have unique grid model ids."""
+        asset_ids = [asset.grid_model_id for asset in v]
+        if len(asset_ids) != len(set(asset_ids)):
+            raise ValueError("grid_model_id must be unique for topology assets")
+        return v
+
+    @field_validator("asset_bays")
+    @classmethod
+    def check_asset_bay_ids_unique(cls, v: list[AssetBay]) -> list[AssetBay]:
+        """Check if all topology asset bay ids are unique."""
+        asset_bay_ids = [asset_bay.asset_bay_id for asset_bay in v]
+        if any(asset_bay_id is None for asset_bay_id in asset_bay_ids):
+            raise ValueError("All topology asset bays must define asset_bay_id")
+        if len(asset_bay_ids) != len(set(asset_bay_ids)):
+            raise ValueError("asset_bay_id must be unique for topology asset bays")
+        return v
+
+    @model_validator(mode="after")
+    def check_station_asset_references(self: "Topology") -> "Topology":
+        """Check if all station asset references exist in the topology-owned collections."""
+        asset_ids = {asset.grid_model_id for asset in self.assets}
+        asset_bay_ids = {asset_bay.asset_bay_id for asset_bay in self.asset_bays}
+
+        for station in self.raw_stations:
+            for asset_id in station.asset_ids:
+                if asset_id not in asset_ids:
+                    raise ValueError(
+                        f"Asset grid_model_id {asset_id} referenced by station "
+                        f"{station.grid_model_id} does not exist in topology assets"
+                    )
+            for asset_bay_id in station.asset_bay_ids:
+                if asset_bay_id is not None and asset_bay_id not in asset_bay_ids:
+                    raise ValueError(
+                        f"asset_bay_id {asset_bay_id} referenced by station "
+                        f"{station.grid_model_id} does not exist in topology asset bays"
+                    )
+
+        return self
+
+    def materialize_stations(self) -> list[MaterializedStation]:
+        """Materialize station-local asset payloads from topology-owned assets and asset bays."""
+        asset_map = {asset.grid_model_id: asset for asset in self.assets}
+        asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in self.asset_bays}
+        materialized_stations: list[MaterializedStation] = []
+
+        for station in self.raw_stations:
+            station_assets: list[SwitchableAsset] = []
+            for asset_id, asset_branch_end, asset_bay_id in zip(
+                station.asset_ids, station.asset_branch_ends, station.asset_bay_ids, strict=True
+            ):
+                asset = asset_map[asset_id]
+                asset_bay = asset_bay_map.get(asset_bay_id) if asset_bay_id is not None else None
+                station_assets.append(
+                    asset.model_copy(
+                        update={
+                            "branch_end": asset_branch_end,
+                            "asset_bay_id": asset_bay_id,
+                            "asset_bay": asset_bay.model_copy(deep=True) if asset_bay is not None else None,
+                        },
+                        deep=True,
+                    )
+                )
+
+            materialized_stations.append(
+                MaterializedStation(
+                    grid_model_id=station.grid_model_id,
+                    name=station.name,
+                    type=station.type,
+                    region=station.region,
+                    voltage_level=station.voltage_level,
+                    busbars=station.busbars,
+                    couplers=station.couplers,
+                    assets=station_assets,
+                    asset_switching_table=station.asset_switching_table,
+                    asset_connectivity=station.asset_connectivity,
+                    model_log=station.model_log,
+                )
+            )
+
+        return materialized_stations
+
+
+def _default_asset_bay_id(station_grid_model_id: str, asset_grid_model_id: str, occurrence_index: int) -> str:
+    """Create a deterministic station-scoped asset bay identifier.
+
+    Parameters
+    ----------
+    station_grid_model_id : str
+        Station identifier owning the asset bay.
+    asset_grid_model_id : str
+        Asset identifier for which the bay id is created.
+    occurrence_index : int
+        Zero-based occurrence index for repeated asset ids within one station.
+
+    Returns
+    -------
+    str
+        Deterministic asset bay identifier scoped to the station.
+    """
+    base_asset_bay_id = f"{station_grid_model_id}::{asset_grid_model_id}::bay"
+    if occurrence_index == 0:
+        return base_asset_bay_id
+    return f"{base_asset_bay_id}::{occurrence_index}"
+
+
+def topology_parts_from_materialized_station(
+    station: MaterializedStation,
+) -> tuple[RawStation, list[SwitchableAsset], list[AssetBay]]:
+    """Extract topology-owned payloads from a materialized station.
+
+    Parameters
+    ----------
+    station : MaterializedStation
+        Materialized station to decompose.
+
+    Returns
+    -------
+    tuple[RawStation, list[SwitchableAsset], list[AssetBay]]
+        Raw station record plus topology-owned assets and asset bays derived from the station.
+    """
+    assets: list[SwitchableAsset] = []
+    asset_bays: list[AssetBay] = []
+    asset_ids: list[str] = []
+    asset_branch_ends: list[Optional[BranchEnd]] = []
+    asset_bay_ids: list[Optional[str]] = []
+    station_asset_occurrences: dict[str, int] = {}
+
+    for asset in station.assets:
+        asset_id = asset.grid_model_id
+        asset_bay_id: Optional[str] = asset.asset_bay_id
+        asset_occurrence_index = station_asset_occurrences.get(asset_id, 0)
+        station_asset_occurrences[asset_id] = asset_occurrence_index + 1
+
+        if asset.asset_bay is not None:
+            asset_bay = asset.asset_bay
+            asset_bay_id = asset_bay.asset_bay_id or _default_asset_bay_id(
+                station.grid_model_id, asset_id, asset_occurrence_index
+            )
+            asset_bays.append(asset_bay.model_copy(update={"asset_bay_id": asset_bay_id}, deep=True))
+
+        assets.append(
+            asset.model_copy(
+                update={
+                    "branch_end": None,
+                    "asset_bay_id": None,
+                    "asset_bay": None,
+                },
+                deep=True,
+            )
+        )
+        asset_ids.append(asset_id)
+        asset_branch_ends.append(asset.branch_end)
+        asset_bay_ids.append(asset_bay_id)
+
+    return (
+        RawStation(
+            grid_model_id=station.grid_model_id,
+            name=station.name,
+            type=station.type,
+            region=station.region,
+            voltage_level=station.voltage_level,
+            busbars=station.busbars,
+            couplers=station.couplers,
+            asset_ids=asset_ids,
+            asset_branch_ends=asset_branch_ends,
+            asset_bay_ids=asset_bay_ids,
+            asset_switching_table=station.asset_switching_table,
+            asset_connectivity=station.asset_connectivity,
+            model_log=station.model_log,
+        ),
+        assets,
+        asset_bays,
+    )
+
+
+def topology_from_materialized_stations(reference_topology: Topology, stations: list[MaterializedStation]) -> Topology:
+    """Create a topology from materialized stations.
+
+    Parameters
+    ----------
+    reference_topology : Topology
+        Reference topology providing shared metadata.
+    stations : list[MaterializedStation]
+        Materialized stations to convert.
+
+    Returns
+    -------
+    Topology
+        Topology containing raw stations and topology-owned payloads derived from ``stations``.
+    """
+    topology_stations: list[RawStation] = []
+    topology_assets: dict[str, SwitchableAsset] = {}
+    topology_asset_bays: dict[str, AssetBay] = {}
+
+    for station in stations:
+        topology_station, station_assets, station_asset_bays = topology_parts_from_materialized_station(station)
+        topology_stations.append(topology_station)
+        for asset in station_assets:
+            existing_asset = topology_assets.get(asset.grid_model_id)
+            if existing_asset is None:
+                topology_assets[asset.grid_model_id] = asset
+            elif existing_asset != asset:
+                raise ValueError(f"Conflicting topology asset payload for grid_model_id {asset.grid_model_id}")
+        for asset_bay in station_asset_bays:
+            if asset_bay.asset_bay_id is None:
+                continue
+            existing_asset_bay = topology_asset_bays.get(asset_bay.asset_bay_id)
+            if existing_asset_bay is None:
+                topology_asset_bays[asset_bay.asset_bay_id] = asset_bay
+            elif existing_asset_bay != asset_bay:
+                raise ValueError(f"Conflicting topology asset bay payload for asset_bay_id {asset_bay.asset_bay_id}")
+
+    return Topology(
+        topology_id=reference_topology.topology_id,
+        grid_model_file=reference_topology.grid_model_file,
+        name=reference_topology.name,
+        raw_stations=topology_stations,
+        assets=list(topology_assets.values()),
+        asset_bays=list(topology_asset_bays.values()),
+        asset_setpoints=reference_topology.asset_setpoints,
+        timestamp=reference_topology.timestamp,
+        metrics=reference_topology.metrics,
+    )
+
+
+def copy_topology_with_updates(
+    reference_topology: Topology,
+    raw_stations: list[RawStation],
+    assets: list[SwitchableAsset],
+    asset_bays: list[AssetBay],
+) -> Topology:
+    """Create a validated topology copy with updated payloads.
+
+    Parameters
+    ----------
+    reference_topology : Topology
+        Reference topology providing shared metadata.
+    raw_stations : list[RawStation]
+        Raw stations to set on the copied topology.
+    assets : list[SwitchableAsset]
+        Topology-owned assets to set on the copied topology.
+    asset_bays : list[AssetBay]
+        Topology-owned asset bays to set on the copied topology.
+
+    Returns
+    -------
+    Topology
+        Validated topology copy with updated topology-owned payloads.
+    """
+    return Topology(
+        topology_id=reference_topology.topology_id,
+        grid_model_file=reference_topology.grid_model_file,
+        name=reference_topology.name,
+        raw_stations=raw_stations,
+        assets=assets,
+        asset_bays=asset_bays,
+        asset_setpoints=reference_topology.asset_setpoints,
+        timestamp=reference_topology.timestamp,
+        metrics=reference_topology.metrics,
+    )
 
 
 class Strategy(BaseModel):
@@ -604,10 +1001,10 @@ class Strategy(BaseModel):
     """ Additional metadata that might be useful for the strategy. """
 
 
-class RealizedStation(BaseModel):
+class AppliedStation(BaseModel):
     """A realized station, including the new station and the changes made to the original station"""
 
-    station: Station
+    station: MaterializedStation
     """The realized asset station object"""
 
     coupler_diff: list[BusbarCoupler]
@@ -627,7 +1024,7 @@ class RealizedStation(BaseModel):
 class RealizedTopology(BaseModel):
     """A realized topology, including the new topology and the changes made to the original topology.
 
-    This is similar to RealizedStation but holding information for all stations in the topology.
+    This is similar to AppliedStation but holding information for all stations in the topology.
     The diffs are include a station identifier that shows which station in the topology was affected by the
     diff.
     """

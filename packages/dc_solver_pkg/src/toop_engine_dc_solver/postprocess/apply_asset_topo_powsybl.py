@@ -18,8 +18,6 @@ For the bus/branch way, see the function apply_topology_bus_branch.
 the node/breaker way is still TODO.
 """
 
-from datetime import datetime
-
 import numpy as np
 import pandas as pd
 import pandera as pa
@@ -29,11 +27,13 @@ from beartype.typing import Literal, Optional, Union, cast
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import assert_station_in_network
 from toop_engine_interfaces.asset_topology import (
+    AppliedStation,
     BusbarCoupler,
-    RealizedStation,
+    MaterializedStation,
+    RawStation,
     RealizedTopology,
-    Station,
     Topology,
+    copy_topology_with_updates,
 )
 from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
@@ -57,7 +57,7 @@ def get_coupler_states_from_busbar_couplers(station_couplers: list[BusbarCoupler
     return cast(pat.DataFrame[SwitchUpdateSchema], switch_df)
 
 
-def get_asset_bay_grid_model_id_list(station: Station) -> list[dict[str, str] | None]:
+def get_asset_bay_grid_model_id_list(station: MaterializedStation) -> list[dict[str, str] | None]:
     """Get selector switch ids for each station asset."""
     asset_bays = [asset.asset_bay for asset in station.assets]
     sr_switch_grid_model_id_list: list[dict[str, str] | None] = []
@@ -69,14 +69,14 @@ def get_asset_bay_grid_model_id_list(station: Station) -> list[dict[str, str] | 
     return sr_switch_grid_model_id_list
 
 
-def get_busbar_lookup(station: Station) -> dict[int, str]:
+def get_busbar_lookup(station: MaterializedStation) -> dict[int, str]:
     """Get the busbar lookup for the given station."""
     return {index: busbar.grid_model_id for index, busbar in enumerate(station.busbars)}
 
 
 @pa.check_types
 def get_asset_switch_states_from_station(
-    station: Station,
+    station: MaterializedStation,
 ) -> tuple[pat.DataFrame[SwitchUpdateSchema], pat.DataFrame[SwitchUpdateSchema]]:
     """Translate asset selector and breaker states of one station to switch updates."""
     switch_reassignment_list: list[dict[str, str | bool]] = []
@@ -157,7 +157,7 @@ def get_diff_switch_states(
 def get_changing_switches_from_topology(network: Network, target_topology: Topology) -> pat.DataFrame[SwitchUpdateSchema]:
     """Get the switch updates needed to realize a target topology on a node-breaker network."""
     switch_update_df = get_empty_dataframe_from_model(SwitchUpdateSchema)
-    for station in target_topology.stations:
+    for station in target_topology.materialize_stations():
         coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
         switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
         station_switch_updates = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
@@ -331,7 +331,7 @@ def disconnect_injection(
 
 def apply_single_asset_bus_branch(
     net: Network,
-    station: Station,
+    station: MaterializedStation,
     asset_index: int,
 ) -> tuple[Literal["disconnected", "reassigned", "nothing"], list[tuple[int, int, bool]]]:
     """Reassign or disconnect a single asset in a bus/branch topology
@@ -455,7 +455,7 @@ def set_coupler(
     return True
 
 
-def apply_station_bus_branch(net: Network, station: Station) -> RealizedStation:
+def apply_station_bus_branch(net: Network, station: MaterializedStation) -> AppliedStation:
     """Apply a station topology to a powsybl model in bus/branch format
 
     This will assume that the substations are in bus/branch format and that the busbars in the station are the same as in
@@ -469,13 +469,13 @@ def apply_station_bus_branch(net: Network, station: Station) -> RealizedStation:
         busbar. Furthermore, we assume to find the bus-breaker buses in the voltage level to represent the busbars in the
         asset topology. If there are more buses, these additional buses will be ignored, if there are fewer buses, an
         exception is raised. Will be modified in-place.
-    station : Station
+    station : MaterializedStation
         The asset topology station. The switching state of the assets and busbar couplers shall be applied to the matched
         station in the powsybl grid
 
     Returns
     -------
-    RealizedStation
+    AppliedStation
         The realized station object which contains the input station plus a diff of switched couplers, reassignments and
         disconnections.
 
@@ -501,7 +501,7 @@ def apply_station_bus_branch(net: Network, station: Station) -> RealizedStation:
         if set_coupler(net, coupler.grid_model_id, coupler.open):
             coupler_diff.append(coupler)
 
-    return RealizedStation(
+    return AppliedStation(
         station=station,
         disconnection_diff=disconnection_diff,
         reassignment_diff=reassignment_diff,
@@ -534,7 +534,7 @@ def apply_topology_bus_branch(net: Network, topology: Topology) -> RealizedTopol
         The realized topology object which contains the input topology plus a diff of switched couplers, reassignments and
         disconnections.
     """
-    realized_stations = [apply_station_bus_branch(net, station) for station in topology.stations]
+    realized_stations = [apply_station_bus_branch(net, station) for station in topology.materialize_stations()]
 
     coupler_diff, reassignment_diff, disconnection_diff = accumulate_diffs(realized_stations)
 
@@ -600,7 +600,9 @@ def is_node_breaker_grid(net: Network, relevant_station: Optional[str] = None) -
     )
 
 
-def apply_station(net: Network, station: Station) -> Union[pa.typing.DataFrame[SwitchUpdateSchema], RealizedStation]:
+def apply_station(
+    net: Network, topology: Topology, raw_station: RawStation
+) -> Union[pa.typing.DataFrame[SwitchUpdateSchema], AppliedStation]:
     """Apply a station topology to a powsybl model
 
     This will apply the station topology to the network. If the network is in bus/branch format, it will return the
@@ -614,23 +616,23 @@ def apply_station(net: Network, station: Station) -> Union[pa.typing.DataFrame[S
         busbar. Furthermore, we assume to find the bus-breaker buses in the voltage level to represent the busbars in the
         asset topology. If there are more buses, these additional buses will be ignored, if there are fewer buses, an
         exception is raised. Will be modified in-place.
-    station : Station
-        The asset topology station. The switching state of the assets and busbar couplers shall be applied to the matched
-        station in the powsybl grid
+    topology : Topology
+        The owning topology that provides canonical assets and asset bays for the raw station.
+    raw_station : RawStation
+        The lean station view to apply. The switching state of the assets and busbar couplers shall be applied to the
+        matched station in the powsybl grid.
 
     Returns
     -------
-    Union[pa.typing.DataFrame[SwitchUpdateSchema], RealizedStation]
+    Union[pa.typing.DataFrame[SwitchUpdateSchema], AppliedStation]
         The realized station object which contains the input station plus a diff of switched couplers, reassignments and
         disconnections or a dataframe of switches that were updated.
     """
-    if is_node_breaker_grid(net=net, relevant_station=station.grid_model_id):
+    station_topology = copy_topology_with_updates(topology, [raw_station], topology.assets, topology.asset_bays)
+
+    if is_node_breaker_grid(net=net, relevant_station=raw_station.grid_model_id):
         return apply_node_breaker_topology(
             net=net,
-            target_topology=Topology(
-                topology_id="this_id_will_be_ignored",
-                stations=[station],
-                timestamp=datetime.now(),
-            ),
+            target_topology=station_topology,
         )
-    return apply_station_bus_branch(net=net, station=station)
+    return apply_station_bus_branch(net=net, station=station_topology.materialize_stations()[0])

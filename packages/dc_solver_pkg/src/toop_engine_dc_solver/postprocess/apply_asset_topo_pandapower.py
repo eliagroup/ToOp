@@ -21,11 +21,11 @@ from pandapower.toolbox import element_bus_tuples, get_connected_elements_dict
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_element_table, get_remotely_connected_buses
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import parse_globally_unique_id, table_id
 from toop_engine_interfaces.asset_topology import (
+    AppliedStation,
     Busbar,
     BusbarCoupler,
-    RealizedStation,
+    MaterializedStation,
     RealizedTopology,
-    Station,
     Topology,
 )
 from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs, find_busbars_for_coupler
@@ -278,7 +278,7 @@ def delete_excess_switches(
 
 def apply_station_assets(
     net: pp.pandapowerNet,
-    station: Station,
+    station: MaterializedStation,
 ) -> tuple[list[int], list[tuple[int, int, bool]]]:
     """Apply a station topology to a pandapower network.
 
@@ -286,13 +286,13 @@ def apply_station_assets(
     If the assets are connected via asset bays and switches before the application of this function,
     these asset bays will be dangling after.
 
-    It returns diffs compatible with the RealizedStation format.
+    It returns diffs compatible with the AppliedStation format.
 
     Parameters
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    station : Station
+    station : MaterializedStation
         The station to apply. It is assumed that the station grid_model_id refers to a bus in the pandapower network.
 
     Returns
@@ -423,8 +423,8 @@ class ApplyGridDiff:
 
 def apply_station(
     net: pp.pandapowerNet,
-    station: Station,
-) -> tuple[ApplyGridDiff, RealizedStation]:
+    station: MaterializedStation,
+) -> tuple[ApplyGridDiff, AppliedStation]:
     """Apply an asset topology station to a pandapower network.
 
     This will force the station into the format of the asset topology, meaning missing busbars and switches will be created,
@@ -441,7 +441,7 @@ def apply_station(
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    station : Station
+    station : MaterializedStation
         The station to apply. It is assumed that the station grid_model_id refers to a bus in the pandapower network.
 
     Returns
@@ -449,7 +449,7 @@ def apply_station(
     ApplyGridDiff
         The difference between the switches and busbars that were expected by the asset topology and the actual switches
         and busbars in the grid.
-    RealizedStation
+    AppliedStation
         The realized station, containing the coupler diff, reassignment diff and disconnection diff.
     """
     busbars_created = create_missing_busbars(
@@ -506,7 +506,7 @@ def apply_station(
             busbars_deleted=busbars_deleted,
             switches_deleted=switches_deleted,
         ),
-        RealizedStation(
+        AppliedStation(
             station=station,
             coupler_diff=coupler_diff,
             reassignment_diff=reassignment_diff,
@@ -538,7 +538,7 @@ def apply_topology(net: pp.pandapowerNet, topology: Topology) -> tuple[list[tupl
     RealizedTopology
         The realized topology, containing the coupler diff, reassignment diff and disconnection diff for each station.
     """
-    realizations = [apply_station(net, station) for station in topology.stations]
+    realizations = [apply_station(net, station) for station in topology.materialize_stations()]
     apply_diffs = [(rs.station.grid_model_id, apply_diff) for apply_diff, rs in realizations]
     realized_stations = [rs for _, rs in realizations]
 

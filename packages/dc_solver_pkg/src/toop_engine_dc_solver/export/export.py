@@ -21,7 +21,7 @@ from toop_engine_dc_solver.export.disconnection_switch_updates import get_changi
 from toop_engine_dc_solver.export.station_switch_updates import (
     get_changing_switches_from_changed_stations,
 )
-from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_interfaces.asset_topology import MaterializedStation, Topology
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.stored_action_set import ActionSet
@@ -33,7 +33,7 @@ logger = structlog.get_logger(__name__)
 def _get_changed_stations_from_action_indices(
     action_set: ActionSet,
     actions: list[int],
-) -> list[Station]:
+) -> list[MaterializedStation]:
     """Resolve action indices to concrete changed stations.
 
     Parameters
@@ -53,7 +53,7 @@ def _get_changed_stations_from_action_indices(
     ValueError
         If any action index is negative or beyond the available range.
     """
-    changed_stations: list[Station] = []
+    changed_stations: list[MaterializedStation] = []
     for action_index in actions:
         if action_index < 0 or action_index >= len(action_set.local_actions):
             raise ValueError(f"Action index {action_index} is out of bounds for the action set")
@@ -94,7 +94,7 @@ def _get_disconnections_from_indices(
 
 @pa.check_types
 def get_changing_switches_from_actions(
-    changed_stations: list[Station],
+    changed_stations: list[MaterializedStation],
     simplified_starting_topology: Topology,
     disconnections: list[GridElement] | None = None,
     full_starting_topology: Topology | None = None,

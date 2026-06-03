@@ -141,7 +141,7 @@ def test_get_coupler_states_from_busbar_couplers():
 
 
 def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
-    station = basic_node_breaker_topology.stations[0]
+    station = basic_node_breaker_topology.materialize_stations()[0]
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
     expected_reassignment = [
         {"grid_model_id": "L42_DISCONNECTOR_3_0", "open": True},
@@ -190,7 +190,7 @@ def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
 
 
 def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
-    station = deepcopy(basic_node_breaker_topology.stations[0])
+    station = deepcopy(basic_node_breaker_topology.materialize_stations()[0])
     asset_bay_sr_fid_list = get_asset_bay_grid_model_id_list(station)
     expected = [
         {"BBS4_1": "L42_DISCONNECTOR_3_0", "BBS4_2": "L42_DISCONNECTOR_3_1"},
@@ -214,14 +214,14 @@ def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
 
 
 def test_get_busbar_lookup(basic_node_breaker_topology):
-    station = basic_node_breaker_topology.stations[0]
+    station = basic_node_breaker_topology.materialize_stations()[0]
     busbar_lookup = get_busbar_lookup(station)
     expected = {0: "BBS4_1", 1: "BBS4_2"}
     assert busbar_lookup == expected
 
 
 def test_station_helpers_build_switch_update_schema(basic_node_breaker_topology):
-    station = basic_node_breaker_topology.stations[0]
+    station = basic_node_breaker_topology.materialize_stations()[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
     switch_update_schema = cast(
@@ -243,7 +243,7 @@ def test_station_helpers_build_switch_update_schema(basic_node_breaker_topology)
 
 def test_get_diff_switch_states(basic_node_breaker_grid_v1, basic_node_breaker_topology):
     net = basic_node_breaker_grid_v1
-    station = basic_node_breaker_topology.stations[0]
+    station = basic_node_breaker_topology.materialize_stations()[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
     switch_update_schema = cast(
@@ -277,7 +277,7 @@ def test_get_changing_switches_from_topology(basic_node_breaker_grid_v1, basic_n
 
 def test_switch_update_schema_to_dgs(basic_node_breaker_grid_v1, basic_node_breaker_topology):
     _net = basic_node_breaker_grid_v1
-    station = basic_node_breaker_topology.stations[0]
+    station = basic_node_breaker_topology.materialize_stations()[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
     switch_update_schema = cast(

@@ -43,7 +43,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
 from pydantic import BaseModel, ConfigDict, model_validator
-from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_interfaces.asset_topology import MaterializedStation, Topology
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.nminus1_definition import GridElement
 
@@ -113,7 +113,7 @@ class ActionSet(BaseModel):
     """A list of high voltage direct current lines that can be set as a remedial action. This is currently not implemented
     yet in the solver."""
 
-    local_actions: list[Station]
+    local_actions: list[MaterializedStation]
     """A list of split/reconfiguration actions that affect exactly one substation. These are must be ordered by station,
     i.e. actions affecting the same station are next to each other. The grid_model_id of
     the station should be used to determine which substation it affects. Within a station, asset
@@ -172,7 +172,7 @@ class StationDiffArray(BaseModel):
         return self
 
 
-def validate_actions_grouped(actions: list[Station]) -> None:
+def validate_actions_grouped(actions: list[MaterializedStation]) -> None:
     """Validate that actions are grouped by station grid model id.
 
     Parameters
@@ -198,7 +198,7 @@ def validate_actions_grouped(actions: list[Station]) -> None:
             last_grid_model_id = grid_model_id
 
 
-def _validate_station_diff_hypothesis(starting_station: Station, action: Station) -> None:
+def _validate_station_diff_hypothesis(starting_station: MaterializedStation, action: MaterializedStation) -> None:
     """Validate that only coupler open states and switching table values differ.
 
     Parameters
@@ -219,7 +219,7 @@ def _validate_station_diff_hypothesis(starting_station: Station, action: Station
             f"{starting_station.grid_model_id}."
         )
 
-    def normalize_station(station: Station) -> dict[str, object]:
+    def normalize_station(station: MaterializedStation) -> dict[str, object]:
         station_data = station.model_dump(mode="json")
         station_data.pop("asset_switching_table", None)
         for coupler in station_data.get("couplers", []):
@@ -325,7 +325,9 @@ def load_station_diff_fs(filesystem: AbstractFileSystem, diff_file_path: str | P
     return _load_station_diff_io(buffer)
 
 
-def expand_single_station_diff_to_actions(starting_station: Station, station_diff: StationDiffArray) -> list[Station]:
+def expand_single_station_diff_to_actions(
+    starting_station: MaterializedStation, station_diff: StationDiffArray
+) -> list[MaterializedStation]:
     """Expand densely stored station diffs to a list of stations with the same format as in the action set.
 
     This only expands a single station diff, so it should be called once per station in the action set.
@@ -362,7 +364,7 @@ def expand_single_station_diff_to_actions(starting_station: Station, station_dif
     return actions
 
 
-def expand_station_diffs(starting_topology: Topology, station_diffs: list[StationDiffArray]) -> list[Station]:
+def expand_station_diffs(starting_topology: Topology, station_diffs: list[StationDiffArray]) -> list[MaterializedStation]:
     """Expand densely stored station diffs to a list of stations with the same format as in the action set.
 
     This expands a list of station diffs, so it can be called once per action set.
@@ -381,7 +383,7 @@ def expand_station_diffs(starting_topology: Topology, station_diffs: list[Statio
     list[Station]
         A list of stations, each corresponding to an action in the station diffs action dimension.
     """
-    grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.stations}
+    grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.materialize_stations()}
     actions = []
     for station_diff in station_diffs:
         starting_station = grid_model_id_to_station[station_diff.grid_model_id]
@@ -390,7 +392,7 @@ def expand_station_diffs(starting_topology: Topology, station_diffs: list[Statio
 
 
 def compress_actions_to_station_diffs(
-    starting_topology: Topology, actions: list[Station], validate_diff_hypothesis: bool = False
+    starting_topology: Topology, actions: list[MaterializedStation], validate_diff_hypothesis: bool = False
 ) -> list[StationDiffArray]:
     """Compress a list of stations with the same format as in the action set to densely stored station diffs.
 
@@ -429,7 +431,7 @@ def compress_actions_to_station_diffs(
         If validate_diff_hypothesis is True and the change between actions for the same station regards fields other than the
         coupler states and switching table.
     """
-    grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.stations}
+    grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.materialize_stations()}
     station_diffs = {}
     for grid_model_id, group in itertools.groupby(actions, key=lambda action: action.grid_model_id):
         if grid_model_id not in grid_model_id_to_station:

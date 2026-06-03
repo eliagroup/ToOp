@@ -14,6 +14,7 @@ Created: 2024-09-04
 
 import json
 from copy import deepcopy
+from dataclasses import replace
 from itertools import product
 from pathlib import Path
 
@@ -63,6 +64,40 @@ logger = structlog.get_logger(__name__)
 
 
 CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
+
+
+def filter_split_stations_from_relevant_subs(
+    network: Network, topology_model: Topology, network_masks: NetworkMasks
+) -> NetworkMasks:
+    """Remove split stations from the ``relevant_subs`` mask.
+
+    Parameters
+    ----------
+    network : Network
+        Network whose bus ids define the mask ordering.
+    topology_model : Topology
+        Topology used to identify split stations.
+    network_masks : NetworkMasks
+        Existing network masks to update.
+
+    Returns
+    -------
+    NetworkMasks
+        Updated masks with split stations removed from ``relevant_subs``.
+
+    Notes
+    -----
+    A split station spans more than one non-empty bus-branch bus id in its station view.
+    Those stations are not safe optimizer targets because one relevant bus id would already
+    represent multiple bus-branch buses.
+    """
+    split_station_ids = {station.grid_model_id for station in topology_model.raw_stations if station.is_split()}
+    if len(split_station_ids) == 0:
+        return network_masks
+
+    relevant_subs = network_masks.relevant_subs & ~network.get_buses(attributes=[]).index.isin(split_station_ids)
+    logger.warning("Removed split stations from relevant_subs", split_station_ids=sorted(split_station_ids))
+    return replace(network_masks, relevant_subs=relevant_subs)
 
 
 def save_preprocessing_statistics_filesystem(
@@ -376,18 +411,6 @@ def convert_file(
     network_masks = get_network_masks(
         network, main_result.reference_bus_id, importer_parameters, statistics, filesystem=unprocessed_gridfile_fs
     )
-    save_masks_to_filesystem(
-        data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
-    )
-
-    # get nminus1 definition
-    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
-    save_pydantic_model_fs(
-        filesystem=processed_gridfile_fs,
-        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
-        pydantic_model=nminus1_definition,
-    )
-
     if (
         importer_parameters.area_settings.dso_trafo_factors is not None
         or importer_parameters.area_settings.border_line_factors is not None
@@ -403,14 +426,28 @@ def convert_file(
             file_path=grid_file_path,
         )
 
+    status_update_fn("get_topology_model", "Creating Pydantic Topology Model")
+    topology_model = get_topology_model(network, network_masks, importer_parameters)
+    network_masks = filter_split_stations_from_relevant_subs(network, topology_model, network_masks)
+    fill_statistics_for_network_masks(network=network, statistics=statistics, network_masks=network_masks)
+
+    save_masks_to_filesystem(
+        data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
+    )
+
+    # get nminus1 definition
+    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
+    save_pydantic_model_fs(
+        filesystem=processed_gridfile_fs,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        pydantic_model=nminus1_definition,
+    )
+
     save_preprocessing_statistics_filesystem(
         statistics=statistics,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"],
         filesystem=processed_gridfile_fs,
     )
-
-    status_update_fn("get_topology_model", "Creating Pydantic Topology Model")
-    topology_model = get_topology_model(network, network_masks, importer_parameters)
 
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,

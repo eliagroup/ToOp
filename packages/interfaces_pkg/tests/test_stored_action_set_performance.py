@@ -12,7 +12,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
+from toop_engine_interfaces.asset_topology import (
+    Busbar,
+    BusbarCoupler,
+    MaterializedStation,
+    RawStation,
+    SwitchableAsset,
+    Topology,
+)
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set, load_action_set_fs, save_action_set
 
@@ -46,8 +53,9 @@ def _build_large_random_action_set(
     )
     asset_counts = np.tile(asset_counts, n_stations // len(asset_counts))
 
-    stations: list[Station] = []
-    local_actions: list[Station] = []
+    raw_stations: list[RawStation] = []
+    topology_assets: list[SwitchableAsset] = []
+    local_actions: list[MaterializedStation] = []
 
     for station_idx in range(n_stations):
         grid_model_id = f"station_{station_idx:03d}"
@@ -92,7 +100,27 @@ def _build_large_random_action_set(
             for asset_idx in range(n_assets)
         ]
 
-        starting_station = Station.model_construct(
+        asset_switching_table = rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool)
+
+        raw_station = RawStation.model_construct(
+            grid_model_id=grid_model_id,
+            name=None,
+            type=None,
+            region=None,
+            voltage_level=None,
+            busbars=busbars,
+            couplers=couplers,
+            asset_ids=[asset.grid_model_id for asset in assets],
+            asset_branch_ends=[asset.branch_end for asset in assets],
+            asset_bay_ids=[asset.asset_bay_id for asset in assets],
+            asset_switching_table=asset_switching_table,
+            asset_connectivity=None,
+            model_log=None,
+        )
+        raw_stations.append(raw_station)
+        topology_assets.extend(assets)
+
+        starting_station = MaterializedStation.model_construct(
             grid_model_id=grid_model_id,
             name=None,
             type=None,
@@ -101,11 +129,10 @@ def _build_large_random_action_set(
             busbars=busbars,
             couplers=couplers,
             assets=assets,
-            asset_switching_table=rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool),
+            asset_switching_table=asset_switching_table,
             asset_connectivity=None,
             model_log=None,
         )
-        stations.append(starting_station)
 
         base_switching_table = np.asarray(starting_station.asset_switching_table, dtype=bool)
         for _ in range(actions_per_station):
@@ -128,11 +155,12 @@ def _build_large_random_action_set(
                 )
             )
 
-    starting_topology = Topology.model_construct(
+    starting_topology = Topology(
         topology_id="performance_starting_topology",
         grid_model_file=None,
         name=None,
-        stations=stations,
+        raw_stations=raw_stations,
+        assets=topology_assets,
         asset_setpoints=None,
         timestamp=datetime.now(),
         metrics=None,
@@ -175,11 +203,12 @@ def test_stored_action_set_large_performance(tmp_path: Path, record_property) ->
     )
 
     # Sanity checks for requested test configuration.
-    assert len(action_set.starting_topology.stations) == n_stations
+    starting_stations = action_set.starting_topology.materialize_stations()
+    assert len(starting_stations) == n_stations
     assert len(action_set.local_actions) == n_actions
-    mean_assets = float(np.mean([len(station.assets) for station in action_set.starting_topology.stations]))
+    mean_assets = float(np.mean([len(station.assets) for station in starting_stations]))
     assert mean_assets == avg_assets_per_station
-    assert all(len(station.couplers) == couplers_per_station for station in action_set.starting_topology.stations)
+    assert all(len(station.couplers) == couplers_per_station for station in starting_stations)
 
     old_file = tmp_path / "action_set_legacy.json"
     new_json = tmp_path / "action_set_split.json"

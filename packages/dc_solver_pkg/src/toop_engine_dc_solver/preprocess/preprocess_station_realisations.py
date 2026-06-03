@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology import Station
+from toop_engine_interfaces.asset_topology import RawStation
 from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
@@ -77,7 +77,7 @@ def enumerate_station_realisations(
 
     for index, (station, local_branch_action_set, separation_set_info) in enumerate(
         zip(
-            network_data.simplified_asset_topology.stations,
+            network_data.simplified_asset_topology.materialize_stations(),
             branch_action_set,
             network_data.separation_sets_info,
             strict=True,
@@ -111,7 +111,7 @@ def enumerate_station_realisations(
 
 
 def get_injections_on_physical_bb(
-    network_data: NetworkData, sub: Station, busbar_index: int
+    network_data: NetworkData, sub: RawStation, busbar_index: int
 ) -> Float[np.ndarray, " n_timesteps"]:
     """Calculate the total connected injections in megawatts (MW) to a given physical busbar inside a substation.
 
@@ -129,7 +129,7 @@ def get_injections_on_physical_bb(
     Float[np.ndarray, " n_timesteps"]
         The total connected injections in MW for the specified busbar index over all timesteps.
     """
-    connected_assets = get_connected_assets(sub, busbar_index)
+    connected_assets = get_connected_assets(sub, busbar_index, network_data.simplified_asset_topology.assets)
     connected_injection_ids = [
         asset.grid_model_id for asset in connected_assets if asset.in_service and not asset.is_branch()
     ]
@@ -148,7 +148,7 @@ def get_injections_on_physical_bb(
 
 
 def get_injections_on_electrical_busbar(
-    network_data: NetworkData, sub: Station, busbar_mapping: list[int]
+    network_data: NetworkData, sub: RawStation, busbar_mapping: list[int]
 ) -> Float[np.ndarray, " n_timesteps"]:
     """Calculate the total injections on an electrical busbar.
 

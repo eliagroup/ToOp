@@ -12,7 +12,7 @@ import pandera as pa
 import pandera.typing as pat
 import structlog
 from beartype.typing import cast
-from toop_engine_interfaces.asset_topology import AssetBay, Station, Topology
+from toop_engine_interfaces.asset_topology import AssetBay, MaterializedStation, Topology
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
@@ -20,7 +20,7 @@ logger = structlog.get_logger(__name__)
 
 
 def get_disconnected_asset_ids(
-    stations: list[Station],
+    stations: list[MaterializedStation],
     disconnections: list[GridElement],
 ) -> dict[str, list[AssetBay]]:
     """Collect representable disconnection asset ids from the provided topology.
@@ -73,8 +73,9 @@ def get_changing_switches_from_disconnections(
     pat.DataFrame[SwitchUpdateSchema]
         Switch update rows representing the requested disconnections where possible.
     """
+    stations = starting_topology.materialize_stations()
     disconnection_asset_map: dict[str, list[AssetBay]] = get_disconnected_asset_ids(
-        stations=starting_topology.stations,
+        stations=stations,
         disconnections=disconnections,
     )
 
@@ -91,7 +92,7 @@ def get_changing_switches_from_disconnections(
                 disconnection_id=disconnection.id,
                 disconnection_name=disconnection.name,
                 disconnection_type=disconnection.type,
-                available_station_ids=[station.grid_model_id for station in starting_topology.stations],
+                available_station_ids=[station.grid_model_id for station in stations],
             )
         for asset in assets:
             switch_updates.append(

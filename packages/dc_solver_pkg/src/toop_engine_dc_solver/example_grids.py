@@ -54,9 +54,10 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
-    Station,
+    MaterializedStation,
     SwitchableAsset,
     Topology,
+    topology_from_materialized_stations,
 )
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.folder_structure import (
@@ -158,7 +159,7 @@ class PandapowerCounters:
 
 def random_station_info_backend(
     backend: BackendInterface, node_idx: Integral, pp_counters: Optional[PandapowerCounters]
-) -> tuple[Station, Optional[PandapowerCounters]]:
+) -> tuple[MaterializedStation, Optional[PandapowerCounters]]:
     """Generate a random station for any backend
 
     This will create a Station object with 2 busbars, 1 coupler and a random assignment of assets
@@ -256,7 +257,7 @@ def random_station_info_backend(
         bus_b_id = global_id + "_b"
         switch_id = global_id + "_coupler"
 
-    return Station(
+    return MaterializedStation(
         grid_model_id=global_id,
         busbars=[
             Busbar(
@@ -307,10 +308,13 @@ def random_topology_info_backend(backend: BackendInterface, pp_counters: Optiona
         new_station, pp_counters = random_station_info_backend(backend, node_idx, pp_counters)
         stations.append(new_station)
 
-    return Topology(
+    return topology_from_materialized_stations(
+        reference_topology=Topology(
+            topology_id="random_topology",
+            raw_stations=[],
+            timestamp=datetime.datetime.now(),
+        ),
         stations=stations,
-        topology_id="random_topology",
-        timestamp=datetime.datetime.now(),
     )
 
 

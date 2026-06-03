@@ -12,7 +12,14 @@ import numpy as np
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from pydantic import ValidationError
-from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
+from toop_engine_interfaces.asset_topology import (
+    Busbar,
+    BusbarCoupler,
+    MaterializedStation,
+    RawStation,
+    SwitchableAsset,
+    Topology,
+)
 from toop_engine_interfaces.stored_action_set import (
     ActionSet,
     StationDiffArray,
@@ -25,6 +32,56 @@ from toop_engine_interfaces.stored_action_set import (
     store_station_diff_fs,
     validate_actions_grouped,
 )
+
+
+def build_raw_station(
+    grid_model_id: str,
+    busbars: list[Busbar],
+    couplers: list[BusbarCoupler],
+    asset_ids: list[str],
+    asset_switching_table: np.ndarray,
+    asset_branch_ends: list[str | None] | None = None,
+    asset_bay_ids: list[str | None] | None = None,
+) -> RawStation:
+    """Build a raw station from explicit raw-topology fields.
+
+    Parameters
+    ----------
+    grid_model_id : str
+        Identifier of the station in the grid model.
+    busbars : list[Busbar]
+        Busbars belonging to the station.
+    couplers : list[BusbarCoupler]
+        Couplers belonging to the station.
+    asset_ids : list[str]
+        Grid model ids of the assets connected to the station.
+    asset_switching_table : np.ndarray
+        Busbar-to-asset switching matrix for the station.
+    asset_branch_ends : list[str | None] | None, optional
+        Optional branch-end metadata aligned with ``asset_ids``.
+    asset_bay_ids : list[str | None] | None, optional
+        Optional asset-bay metadata aligned with ``asset_ids``.
+
+    Returns
+    -------
+    RawStation
+        Raw station representation suitable for topology construction in tests.
+    """
+    return RawStation.model_construct(
+        grid_model_id=grid_model_id,
+        name=None,
+        type=None,
+        region=None,
+        voltage_level=None,
+        busbars=busbars,
+        couplers=couplers,
+        asset_ids=asset_ids,
+        asset_branch_ends=asset_branch_ends if asset_branch_ends is not None else [None] * len(asset_ids),
+        asset_bay_ids=asset_bay_ids if asset_bay_ids is not None else [None] * len(asset_ids),
+        asset_switching_table=asset_switching_table,
+        asset_connectivity=None,
+        model_log=None,
+    )
 
 
 class DummyStation:
@@ -206,7 +263,7 @@ def test_store_and_load_station_diff_io_preserves_station_order(tmp_path: Path) 
 
 
 def test_validate_actions_grouped_accepts_grouped_actions():
-    station_s1 = Station.model_construct(
+    station_s1 = MaterializedStation.model_construct(
         grid_model_id="s1",
         name=None,
         type=None,
@@ -227,7 +284,7 @@ def test_validate_actions_grouped_accepts_grouped_actions():
 
 
 def test_validate_actions_grouped_raises_for_non_grouped_actions():
-    station_s1 = Station.model_construct(
+    station_s1 = MaterializedStation.model_construct(
         grid_model_id="s1",
         name=None,
         type=None,
@@ -269,7 +326,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
         )
     ]
 
-    station_a = Station.model_construct(
+    station_a = MaterializedStation.model_construct(
         grid_model_id="station_a",
         name=None,
         type=None,
@@ -282,13 +339,50 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
         asset_connectivity=None,
         model_log=None,
     )
-    station_b = station_a.model_copy(update={"grid_model_id": "station_b"})
+    station_b = station_a.model_copy(
+        update={
+            "grid_model_id": "station_b",
+            "assets": [station_a.assets[0].model_copy(update={"grid_model_id": "station_b_asset_0"})],
+        }
+    )
 
-    starting_topology = Topology.model_construct(
+    starting_topology = Topology(
         topology_id="starting_topology",
         grid_model_file=None,
         name=None,
-        stations=[station_a, station_b],
+        raw_stations=[
+            RawStation(
+                grid_model_id="station_a",
+                name=None,
+                type=None,
+                region=None,
+                voltage_level=None,
+                busbars=busbars,
+                couplers=[],
+                asset_ids=["station_a_asset_0"],
+                asset_branch_ends=[None],
+                asset_bay_ids=[None],
+                asset_switching_table=np.zeros((1, 1), dtype=bool),
+                asset_connectivity=None,
+                model_log=None,
+            ),
+            RawStation(
+                grid_model_id="station_b",
+                name=None,
+                type=None,
+                region=None,
+                voltage_level=None,
+                busbars=busbars,
+                couplers=[],
+                asset_ids=["station_b_asset_0"],
+                asset_branch_ends=[None],
+                asset_bay_ids=[None],
+                asset_switching_table=np.zeros((1, 1), dtype=bool),
+                asset_connectivity=None,
+                model_log=None,
+            ),
+        ],
+        assets=station_a.assets + station_b.assets,
         asset_setpoints=None,
         timestamp=datetime.now(),
         metrics=None,
@@ -310,25 +404,50 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
 def test_compress_and_expand_station_diffs_random_roundtrip():
     rng = np.random.default_rng(20260313)
 
-    starting_stations: list[Station] = []
-    actions: list[Station] = []
-    expected_by_station: dict[str, list[Station]] = {}
+    starting_stations: list[MaterializedStation] = []
+    starting_raw_stations: list[RawStation] = []
+    starting_assets: list[SwitchableAsset] = []
+    actions: list[MaterializedStation] = []
+    expected_by_station: dict[str, list[MaterializedStation]] = {}
 
     n_stations = 4
     for station_idx in range(n_stations):
         grid_model_id = f"station_{station_idx}"
-        n_busbars = int(rng.integers(1, 5))
+        n_busbars = int(rng.integers(2, 5))
         n_assets = int(rng.integers(1, 7))
         n_couplers = int(rng.integers(1, 6))
         n_actions = int(rng.integers(1, 6))
+
+        busbars = [
+            Busbar.model_construct(
+                grid_model_id=f"{grid_model_id}_busbar_{busbar_idx}",
+                type=None,
+                name=None,
+                int_id=busbar_idx,
+                in_service=True,
+                bus_branch_bus_id=None,
+            )
+            for busbar_idx in range(n_busbars)
+        ]
+        assets = [
+            SwitchableAsset.model_construct(
+                grid_model_id=f"{grid_model_id}_asset_{asset_idx}",
+                type=None,
+                name=None,
+                in_service=True,
+                branch_end=None,
+                asset_bay=None,
+            )
+            for asset_idx in range(n_assets)
+        ]
 
         starting_couplers = [
             BusbarCoupler.model_construct(
                 grid_model_id=f"{grid_model_id}_coupler_{coupler_idx}",
                 type=None,
                 name=None,
-                busbar_from_id=0,
-                busbar_to_id=0,
+                busbar_from_id=coupler_idx % n_busbars,
+                busbar_to_id=(coupler_idx + 1) % n_busbars,
                 open=bool(rng.integers(0, 2)),
                 in_service=True,
                 asset_bay=None,
@@ -336,22 +455,34 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
             for coupler_idx in range(n_couplers)
         ]
 
-        starting_station = Station.model_construct(
+        starting_switching_table = rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool)
+        starting_raw_stations.append(
+            build_raw_station(
+                grid_model_id,
+                busbars,
+                starting_couplers,
+                [asset.grid_model_id for asset in assets],
+                starting_switching_table,
+            )
+        )
+        starting_assets.extend(assets)
+
+        starting_station = MaterializedStation.model_construct(
             grid_model_id=grid_model_id,
             name=None,
             type=None,
             region=None,
             voltage_level=None,
-            busbars=[],
+            busbars=busbars,
             couplers=starting_couplers,
-            assets=[],
-            asset_switching_table=rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool),
+            assets=assets,
+            asset_switching_table=starting_switching_table,
             asset_connectivity=None,
             model_log=None,
         )
         starting_stations.append(starting_station)
 
-        station_actions: list[Station] = []
+        station_actions: list[MaterializedStation] = []
         for _ in range(n_actions):
             couplers = [
                 coupler.model_copy(update={"open": bool(rng.integers(0, 2))}) for coupler in starting_station.couplers
@@ -369,11 +500,12 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
         expected_by_station[grid_model_id] = station_actions
         actions.extend(station_actions)
 
-    starting_topology = Topology.model_construct(
+    starting_topology = Topology(
         topology_id="starting_topology",
         grid_model_file=None,
         name=None,
-        stations=starting_stations,
+        raw_stations=starting_raw_stations,
+        assets=starting_assets,
         asset_setpoints=None,
         timestamp=datetime.now(),
         metrics=None,
@@ -382,7 +514,7 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
     station_diffs = compress_actions_to_station_diffs(starting_topology, actions)
     expanded_actions = expand_station_diffs(starting_topology, station_diffs)
 
-    result_by_station: dict[str, list[Station]] = {grid_model_id: [] for grid_model_id in expected_by_station}
+    result_by_station: dict[str, list[MaterializedStation]] = {grid_model_id: [] for grid_model_id in expected_by_station}
     for action in expanded_actions:
         result_by_station[action.grid_model_id].append(action)
 
@@ -400,56 +532,87 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
 
 
 def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
-    starting_station = Station.model_construct(
+    busbars = [
+        Busbar.model_construct(
+            grid_model_id="station_x_busbar_1",
+            type=None,
+            name=None,
+            int_id=1,
+            in_service=True,
+            bus_branch_bus_id=None,
+        ),
+        Busbar.model_construct(
+            grid_model_id="station_x_busbar_2",
+            type=None,
+            name=None,
+            int_id=2,
+            in_service=True,
+            bus_branch_bus_id=None,
+        ),
+    ]
+    couplers = [
+        BusbarCoupler.model_construct(
+            grid_model_id="station_x_coupler_0",
+            type=None,
+            name=None,
+            busbar_from_id=1,
+            busbar_to_id=2,
+            open=False,
+            in_service=True,
+            asset_bay=None,
+        )
+    ]
+    assets = [
+        SwitchableAsset.model_construct(
+            grid_model_id="station_save_load_asset_1",
+            type=None,
+            name=None,
+            in_service=True,
+            branch_end=None,
+            asset_bay=None,
+        ),
+        SwitchableAsset.model_construct(
+            grid_model_id="station_save_load_asset_2",
+            type=None,
+            name=None,
+            in_service=True,
+            branch_end=None,
+            asset_bay=None,
+        ),
+    ]
+    asset_switching_table = np.array([[True, False], [False, True]], dtype=bool)
+
+    starting_topology = Topology(
+        topology_id="starting_topology",
+        grid_model_file=None,
+        name=None,
+        raw_stations=[
+            build_raw_station(
+                "station_x",
+                busbars,
+                couplers,
+                [asset.grid_model_id for asset in assets],
+                asset_switching_table,
+            )
+        ],
+        assets=assets,
+        asset_setpoints=None,
+        timestamp=datetime.now(),
+        metrics=None,
+    )
+
+    starting_station = MaterializedStation.model_construct(
         grid_model_id="station_x",
         name=None,
         type=None,
         region=None,
         voltage_level=None,
-        busbars=[],
-        couplers=[
-            BusbarCoupler.model_construct(
-                grid_model_id="station_x_coupler_0",
-                type=None,
-                name=None,
-                busbar_from_id=1,
-                busbar_to_id=2,
-                open=False,
-                in_service=True,
-                asset_bay=None,
-            )
-        ],
-        assets=[
-            SwitchableAsset.model_construct(
-                grid_model_id="station_save_load_asset_1",
-                type=None,
-                name=None,
-                in_service=True,
-                branch_end=None,
-                asset_bay=None,
-            ),
-            SwitchableAsset.model_construct(
-                grid_model_id="station_save_load_asset_2",
-                type=None,
-                name=None,
-                in_service=True,
-                branch_end=None,
-                asset_bay=None,
-            ),
-        ],
-        asset_switching_table=np.array([[True, False], [False, True]], dtype=bool),
+        busbars=busbars,
+        couplers=couplers,
+        assets=assets,
+        asset_switching_table=asset_switching_table,
         asset_connectivity=None,
         model_log=None,
-    )
-
-    starting_topology = Topology.model_construct(
-        topology_id="starting_topology",
-        grid_model_file=None,
-        name=None,
-        stations=[starting_station],
-        asset_setpoints=None,
-        timestamp=datetime.now(),
-        metrics=None,
     )
 
     valid_action = starting_station.model_copy(
@@ -481,73 +644,87 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
 
 
 def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
-    starting_station = Station.model_construct(
+    busbars = [
+        Busbar.model_construct(
+            grid_model_id="busbar1",
+            type=None,
+            name=None,
+            int_id=1,
+            in_service=True,
+            bus_branch_bus_id=None,
+        ),
+        Busbar.model_construct(
+            grid_model_id="busbar2",
+            type=None,
+            name=None,
+            int_id=2,
+            in_service=True,
+            bus_branch_bus_id=None,
+        ),
+    ]
+    couplers = [
+        BusbarCoupler.model_construct(
+            grid_model_id="coupler1",
+            type=None,
+            name=None,
+            busbar_from_id=1,
+            busbar_to_id=2,
+            open=False,
+            in_service=True,
+            asset_bay=None,
+        )
+    ]
+    assets = [
+        SwitchableAsset.model_construct(
+            grid_model_id="asset1",
+            type=None,
+            name=None,
+            in_service=True,
+            branch_end=None,
+            asset_bay=None,
+        ),
+        SwitchableAsset.model_construct(
+            grid_model_id="asset2",
+            type=None,
+            name=None,
+            in_service=True,
+            branch_end=None,
+            asset_bay=None,
+        ),
+    ]
+    asset_switching_table = np.array([[True, False], [False, True]], dtype=bool)
+
+    starting_topology = Topology(
+        topology_id="starting_topology",
+        grid_model_file=None,
+        name=None,
+        raw_stations=[
+            build_raw_station(
+                "station1",
+                busbars,
+                couplers,
+                [asset.grid_model_id for asset in assets],
+                asset_switching_table,
+            )
+        ],
+        assets=assets,
+        asset_setpoints=None,
+        timestamp=datetime.now(),
+        metrics=None,
+    )
+
+    starting_station = MaterializedStation.model_construct(
         grid_model_id="station1",
         name=None,
         type=None,
         region=None,
         voltage_level=None,
-        busbars=[
-            Busbar.model_construct(
-                grid_model_id="busbar1",
-                type=None,
-                name=None,
-                int_id=1,
-                in_service=True,
-                bus_branch_bus_id=None,
-            ),
-            Busbar.model_construct(
-                grid_model_id="busbar2",
-                type=None,
-                name=None,
-                int_id=2,
-                in_service=True,
-                bus_branch_bus_id=None,
-            ),
-        ],
-        couplers=[
-            BusbarCoupler.model_construct(
-                grid_model_id="coupler1",
-                type=None,
-                name=None,
-                busbar_from_id=1,
-                busbar_to_id=2,
-                open=False,
-                in_service=True,
-                asset_bay=None,
-            )
-        ],
-        assets=[
-            SwitchableAsset.model_construct(
-                grid_model_id="asset1",
-                type=None,
-                name=None,
-                in_service=True,
-                branch_end=None,
-                asset_bay=None,
-            ),
-            SwitchableAsset.model_construct(
-                grid_model_id="asset2",
-                type=None,
-                name=None,
-                in_service=True,
-                branch_end=None,
-                asset_bay=None,
-            ),
-        ],
-        asset_switching_table=np.array([[True, False], [False, True]], dtype=bool),
+        busbars=busbars,
+        couplers=couplers,
+        assets=assets,
+        asset_switching_table=asset_switching_table,
         asset_connectivity=None,
         model_log=None,
-    )
-
-    starting_topology = Topology.model_construct(
-        topology_id="starting_topology",
-        grid_model_file=None,
-        name=None,
-        stations=[starting_station],
-        asset_setpoints=None,
-        timestamp=datetime.now(),
-        metrics=None,
     )
 
     local_action = starting_station.model_copy(

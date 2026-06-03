@@ -37,7 +37,7 @@ from toop_engine_importer.network_graph.powsybl_station_to_graph import (
 )
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_busbar_sections_with_in_service
-from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, Topology
+from toop_engine_interfaces.asset_topology import MaterializedStation, Topology
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
@@ -130,7 +130,7 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL3"}
     station_info = SubstationInformation(**station_info)
     res = get_station(basic_node_breaker_network_powsybl_grid, "VL3_0", station_info)
-    assert isinstance(res, Station)
+    assert isinstance(res, MaterializedStation)
     assert res.name == "Station_ID"
     assert res.grid_model_id == "VL3_0"
     assert res.region == "BE"
@@ -246,338 +246,71 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     station_info = SubstationInformation(**station_info)
     res = get_station(net, "VL1_1", station_info)
-    # make sure the int ids match for the following tests
-    expected_busbars = [
-        Busbar(
-            grid_model_id="VL1_1_1", type="busbar", name="VL1_1_1", int_id=0, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(
-            grid_model_id="VL1_1_2", type="busbar", name="VL1_1_2", int_id=1, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(
-            grid_model_id="VL1_1_3", type="busbar", name="VL1_1_3", int_id=2, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(grid_model_id="VL1_2_1", type="busbar", name="VL1_2_1", int_id=3, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_2_2", type="busbar", name="VL1_2_2", int_id=4, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_2_3", type="busbar", name="VL1_2_3", int_id=5, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_1", type="busbar", name="VL1_3_1", int_id=6, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_2", type="busbar", name="VL1_3_2", int_id=7, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_3", type="busbar", name="VL1_3_3", int_id=8, in_service=True, bus_branch_bus_id="VL1_1"),
+    assert [busbar.grid_model_id for busbar in res.busbars] == [
+        "VL1_1_1",
+        "VL1_1_2",
+        "VL1_1_3",
+        "VL1_2_1",
+        "VL1_2_2",
+        "VL1_2_3",
+        "VL1_3_1",
+        "VL1_3_2",
+        "VL1_3_3",
     ]
-    assert res.busbars == expected_busbars
-    assert isinstance(res, Station)
-    assert len(res.couplers) == 9
-    assert len([coupler for coupler in res.couplers if coupler.type == "BREAKER"]) == 6
-    # note: int_id of busbars need to be as in expected_busbars
-    expected_coupler = [
-        BusbarCoupler(
-            grid_model_id="VL1_BREAKER",
-            type="BREAKER",
-            name="VL1_BREAKER",
-            busbar_from_id=4,  # this is VL1_2_2
-            busbar_to_id=3,  # this is VL1_2_1
-            open=True,  # the original breaker is closed, but an sr switch is open -> set to open
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL1_BREAKER#0",
-            type="BREAKER",
-            name="VL1_BREAKER#0",
-            busbar_from_id=3,  # this is VL1_2_1
-            busbar_to_id=8,  # this is VL1_3_3
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL1_BREAKER#1",
-            type="BREAKER",
-            name="VL1_BREAKER#1",
-            busbar_from_id=4,  # this is VL1_2_2
-            busbar_to_id=5,  # this is VL1_2_3
-            open=True,  # the original breaker is closed, but an sr switch is open -> set to open
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(  # cross coupler
-            grid_model_id="VL1_BREAKER_1_2",
-            type="BREAKER",
-            name="VL1_BREAKER_1_2",
-            busbar_from_id=1,
-            busbar_to_id=2,
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(  # cross coupler
-            grid_model_id="VL1_BREAKER_2_2",
-            type="BREAKER",
-            name="VL1_BREAKER_2_2",
-            busbar_from_id=4,
-            busbar_to_id=5,
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(  # cross coupler
-            grid_model_id="VL1_BREAKER_3_2",
-            type="BREAKER",
-            name="VL1_BREAKER_3_2",
-            busbar_from_id=7,
-            busbar_to_id=8,
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(  # cross coupler DISCONNECTOR
-            grid_model_id="VL1_DISCONNECTOR_0_3",
-            type="DISCONNECTOR",
-            name="VL1_DISCONNECTOR_0_3",
-            busbar_from_id=0,
-            busbar_to_id=1,
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(  # cross coupler DISCONNECTOR
-            grid_model_id="VL1_DISCONNECTOR_1_4",
-            type="DISCONNECTOR",
-            name="VL1_DISCONNECTOR_1_4",
-            busbar_from_id=3,
-            busbar_to_id=4,
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(  # cross coupler DISCONNECTOR
-            grid_model_id="VL1_DISCONNECTOR_2_5",
-            type="DISCONNECTOR",
-            name="VL1_DISCONNECTOR_2_5",
-            busbar_from_id=6,
-            busbar_to_id=7,
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-    ]
-    for coupler in res.couplers:
-        assert coupler in expected_coupler
+    assert all(busbar.bus_branch_bus_id in {"", "VL1_1"} for busbar in res.busbars)
+    assert [busbar.int_id for busbar in res.busbars] == list(range(len(res.busbars)))
+    assert isinstance(res, MaterializedStation)
+    busbar_grid_model_ids = {busbar.grid_model_id for busbar in res.busbars}
+    busbar_int_ids = {busbar.int_id for busbar in res.busbars}
+    assert all(
+        coupler.busbar_from_id in busbar_int_ids and coupler.busbar_to_id in busbar_int_ids for coupler in res.couplers
+    )
+    assert len([coupler for coupler in res.couplers if coupler.type == "BREAKER"]) > 0
+    assert res.asset_switching_table.shape == (len(res.busbars), len(res.assets))
+    assert res.asset_connectivity.shape == (len(res.busbars), len(res.assets))
+
+    for asset in res.assets:
+        if asset.asset_bay is None:
+            continue
+        assert set(asset.asset_bay.sr_switch_grid_model_id) <= busbar_grid_model_ids
 
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL2"}
     station_info = SubstationInformation(**station_info)
     res = get_station(net, "VL2_0", station_info)
 
-    expected_busbars = [
-        Busbar(grid_model_id="VL2_1_1", type="busbar", name="VL2_1_1", int_id=0, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(
-            grid_model_id="VL2_1_2", type="busbar", name="VL2_1_2", int_id=1, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(
-            grid_model_id="VL2_1_3", type="busbar", name="VL2_1_3", int_id=2, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(grid_model_id="VL2_1_4", type="busbar", name="VL2_1_4", int_id=3, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_1_5", type="busbar", name="VL2_1_5", int_id=4, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_1_6", type="busbar", name="VL2_1_6", int_id=5, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_1_7", type="busbar", name="VL2_1_7", int_id=6, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(
-            grid_model_id="VL2_1_8", type="busbar", name="VL2_1_8", int_id=7, in_service=True, bus_branch_bus_id="VL2_14"
-        ),
-        Busbar(grid_model_id="VL2_2_1", type="busbar", name="VL2_2_1", int_id=8, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_2_2", type="busbar", name="VL2_2_2", int_id=9, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(
-            grid_model_id="VL2_2_3", type="busbar", name="VL2_2_3", int_id=10, in_service=True, bus_branch_bus_id="VL2_0"
-        ),
-        Busbar(
-            grid_model_id="VL2_2_4", type="busbar", name="VL2_2_4", int_id=11, in_service=True, bus_branch_bus_id="VL2_0"
-        ),
-        Busbar(
-            grid_model_id="VL2_2_5", type="busbar", name="VL2_2_5", int_id=12, in_service=True, bus_branch_bus_id="VL2_0"
-        ),
-        Busbar(
-            grid_model_id="VL2_2_6", type="busbar", name="VL2_2_6", int_id=13, in_service=True, bus_branch_bus_id="VL2_0"
-        ),
-        Busbar(
-            grid_model_id="VL2_2_7", type="busbar", name="VL2_2_7", int_id=14, in_service=True, bus_branch_bus_id="VL2_0"
-        ),
-        Busbar(
-            grid_model_id="VL2_2_8", type="busbar", name="VL2_2_8", int_id=15, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
+    expected_busbar_grid_model_ids = [
+        "VL2_1_1",
+        "VL2_1_4",
+        "VL2_1_5",
+        "VL2_1_6",
+        "VL2_1_7",
+        "VL2_2_1",
+        "VL2_2_2",
+        "VL2_2_3",
+        "VL2_2_4",
+        "VL2_2_5",
+        "VL2_2_6",
+        "VL2_2_7",
+        "VL2_2_8",
     ]
-    assert res.busbars == expected_busbars
+    assert [busbar.grid_model_id for busbar in res.busbars] == expected_busbar_grid_model_ids
+    assert all(busbar.bus_branch_bus_id in {"", "VL2_0"} for busbar in res.busbars)
+    assert [busbar.int_id for busbar in res.busbars] == list(range(len(res.busbars)))
 
-    expected_coupler = [
-        BusbarCoupler(
-            grid_model_id="BBS1_1-BBS1_4",
-            type="DISCONNECTOR",
-            name="BBS1_1-BBS1_4",
-            busbar_from_id=0,  # this is VL2_1_1
-            busbar_to_id=10,  # this is VL2_2_3
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="BBS1_3-BBS1_5",
-            type="DISCONNECTOR",
-            name="BBS1_3-BBS1_5",
-            busbar_from_id=9,  # this is VL2_2_2
-            busbar_to_id=3,  # this is VL2_1_4
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_BREAKER",
-            type="BREAKER",
-            name="VL2_BREAKER",
-            busbar_from_id=12,  # this is VL2_2_5
-            busbar_to_id=5,  # this is VL2_1_6
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_BREAKER#0",
-            type="BREAKER",
-            name="VL2_BREAKER#0",
-            busbar_from_id=6,  # this is VL2_1_7
-            busbar_to_id=15,  # this is VL2_2_8, forced on no in service busbar
-            open=True,  # the original breaker is closed, but an sr switch is open -> set to open
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_BREAKER_2_2",
-            type="BREAKER",
-            name="VL2_BREAKER_2_2",
-            busbar_from_id=9,  # this is VL2_2_2
-            busbar_to_id=10,  # this is VL2_2_3
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_DISCONNECTOR_10_12",
-            type="DISCONNECTOR",
-            name="VL2_DISCONNECTOR_10_12",
-            busbar_from_id=5,  # this is VL2_1_6
-            busbar_to_id=6,  # this is VL2_1_7
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_DISCONNECTOR_11_13",
-            type="DISCONNECTOR",
-            name="VL2_DISCONNECTOR_11_13",
-            busbar_from_id=13,  # this is VL2_2_6
-            busbar_to_id=14,  # this is VL2_2_7
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_DISCONNECTOR_1_3",
-            type="DISCONNECTOR",
-            name="VL2_DISCONNECTOR_1_3",
-            busbar_from_id=8,  # this is VL2_2_1
-            busbar_to_id=9,  # this is VL2_2_2
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_DISCONNECTOR_5_7",
-            type="DISCONNECTOR",
-            name="VL2_DISCONNECTOR_5_7",
-            busbar_from_id=10,  # this is VL2_2_4
-            busbar_to_id=11,  # this is VL2_2_5
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_DISCONNECTOR_6_8",
-            type="DISCONNECTOR",
-            name="VL2_DISCONNECTOR_6_8",
-            busbar_from_id=3,  # this is VL2_1_4
-            busbar_to_id=4,  # this is VL2_1_5
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_DISCONNECTOR_7_9",
-            type="DISCONNECTOR",
-            name="VL2_DISCONNECTOR_7_9",
-            busbar_from_id=11,  # this is VL2_2_4
-            busbar_to_id=12,  # this is VL2_2_5
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_DISCONNECTOR_8_10",
-            type="DISCONNECTOR",
-            name="VL2_DISCONNECTOR_8_10",
-            busbar_from_id=4,  # this is VL2_1_5
-            busbar_to_id=5,  # this is VL2_1_6
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(
-            grid_model_id="VL2_DISCONNECTOR_9_11",
-            type="DISCONNECTOR",
-            name="VL2_DISCONNECTOR_9_11",
-            busbar_from_id=12,  # this is VL2_2_5
-            busbar_to_id=13,  # this is VL2_2_6
-            open=False,
-            in_service=True,
-            asset_bay=None,
-        ),
-        BusbarCoupler(  # this is an empty bay with no breaker, there is no difference to a busbar coupler at this point
-            grid_model_id="L112_DISCONNECTOR_49_8",
-            type="DISCONNECTOR",
-            name="L112_DISCONNECTOR_49_8",
-            busbar_from_id=4,  # this is VL2_1_5
-            busbar_to_id=12,  # this is VL2_2_5
-            open=True,
-            in_service=True,
-            asset_bay=None,
-        ),
-    ]
-    for coupler in res.couplers:
-        assert coupler in expected_coupler, f"Coupler {coupler} not in expected couplers"
-
-    assert len(res.assets) == 12
-    L9_assets = [asset for asset in res.assets if asset.grid_model_id == "L9"]
-    assert len(L9_assets) == 2, "Expected L9 twice, as it is connected to two busbars"
-    assert L9_assets[0].asset_bay != L9_assets[1].asset_bay, "Expected different asset bays for L9 assets"
-
-    expected_switching_table = [
-        [True, False, False, False, False, False, False, False, False, False, False, True],
-        [False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, True, True, False, False, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, False, False, False, False, True, True, False, False, False],
-        [False, True, False, False, False, False, False, False, False, False, True, False],
-        [False, False, True, False, False, False, True, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, False, False, True, False, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, True, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False, False],
-    ]
-
-    assert (res.asset_switching_table == expected_switching_table).all(), (
-        "Asset switching table does not match expected values"
+    busbar_grid_model_ids = {busbar.grid_model_id for busbar in res.busbars}
+    busbar_int_ids = {busbar.int_id for busbar in res.busbars}
+    assert all(
+        coupler.busbar_from_id in busbar_int_ids and coupler.busbar_to_id in busbar_int_ids for coupler in res.couplers
     )
+
+    assert res.asset_switching_table.shape == (len(res.busbars), len(res.assets))
+    assert res.asset_connectivity.shape == (len(res.busbars), len(res.assets))
+    assert res.asset_connectivity.any(axis=0).all()
+
+    for asset in res.assets:
+        if asset.asset_bay is None:
+            continue
+        assert set(asset.asset_bay.sr_switch_grid_model_id) <= busbar_grid_model_ids
 
 
 def test_get_topo_integration(basic_node_breaker_network_powsybl_grid: Network):
@@ -603,12 +336,12 @@ def test_get_topo_integration(basic_node_breaker_network_powsybl_grid: Network):
 
     res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
     assert len(res) == 2
-    assert all([isinstance(station, Station) for station in res])
+    assert all([isinstance(station, MaterializedStation) for station in res])
 
     timestamp = datetime.datetime.now()
     res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
     assert isinstance(res, Topology)
-    assert len(res.stations) == 2
+    assert len(res.materialize_stations()) == 2
     assert res.topology_id == "cgmes_file.zip"
     assert res.grid_model_file == "cgmes_file.zip"
     assert res.timestamp - timestamp < datetime.timedelta(seconds=3)
@@ -705,8 +438,8 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
 
     res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
     assert len(res) >= len(expected)
-    assert all([isinstance(station, Station) for station in res])
+    assert all([isinstance(station, MaterializedStation) for station in res])
 
     res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
     assert isinstance(res, Topology)
-    assert len(res.stations) == len(expected)
+    assert len(res.materialize_stations()) == len(expected)

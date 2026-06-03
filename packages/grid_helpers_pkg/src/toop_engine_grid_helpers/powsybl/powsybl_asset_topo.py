@@ -24,7 +24,8 @@ from toop_engine_interfaces.asset_topology import (
     AssetBay,
     Busbar,
     BusbarCoupler,
-    Station,
+    MaterializedStation,
+    RawStation,
     SwitchableAsset,
     Topology,
 )
@@ -390,7 +391,7 @@ def get_relevant_network_data(
 
 def get_relevant_stations(
     network: Network, relevant_stations: Union[list[str], Bool[np.ndarray, " n_buses"]]
-) -> list[Station]:
+) -> list[RawStation]:
     """Get all relevant stations from the network.
 
     Parameters
@@ -403,8 +404,8 @@ def get_relevant_stations(
 
     Returns
     -------
-    station: list[Station]
-        List of all formatted stations of the relevant buses in the network
+    station: list[RawStation]
+        List of all lean topology stations of the relevant buses in the network
     """
     # Load relevant data once
     buses_with_substation_and_voltage, switches, dangling_lines, element_names = get_relevant_network_data(
@@ -413,38 +414,43 @@ def get_relevant_stations(
     )
 
     # Calculate the pydantic station for each relevant bus
-    station_list = get_list_of_stations(network, buses_with_substation_and_voltage, switches, dangling_lines, element_names)
-    return station_list
+    raw_stations, _ = get_raw_stations_and_assets(
+        network, buses_with_substation_and_voltage, switches, dangling_lines, element_names
+    )
+    return raw_stations
 
 
-def get_list_of_stations(
+def get_raw_stations_and_assets(
     network: Network,
     buses_with_substation_and_voltage: pd.DataFrame,
     switches: pd.DataFrame,
     dangling_lines: pd.DataFrame,
     element_names: pd.Series,
-) -> list[Station]:
-    """Get the list of stations from the relevant buses.
+) -> tuple[list[RawStation], list[SwitchableAsset]]:
+    """Build raw topology stations and topology-owned assets from the relevant buses.
 
     Parameters
     ----------
-    network: Network
+    network : Network
         pypowsybl network object
-    buses_with_substation_and_voltage: pd.DataFrame
+    buses_with_substation_and_voltage : pd.DataFrame
         DataFrame with the relevant buses, substation id and voltage level
-    switches: pd.DataFrame
+    switches : pd.DataFrame
         DataFrame with all the switches in the network. Includes the column "name"
-    dangling_lines: pd.DataFrame
+    dangling_lines : pd.DataFrame
         DataFrame with all the dangling lines in the network. Includes the column "tie_line_id"
-    element_names: pd.Series
+    element_names : pd.Series
         Series with the names of all injections and branches in the network and their ids as index
 
     Returns
     -------
-    station_list: list[Station]
-        List of all formatted stations of the relevant buses in the network
+    station_list : list[RawStation]
+        List of all lean topology stations of the relevant buses in the network
+    topology_assets : list[SwitchableAsset]
+        Deduplicated topology-owned assets referenced by the stations
     """
-    station_list = []
+    station_list: list[RawStation] = []
+    topology_assets: dict[str, SwitchableAsset] = {}
     for bus_id, bus_info in buses_with_substation_and_voltage.iterrows():
         station_topology = network.get_bus_breaker_topology(bus_info.voltage_level_id)
         station_buses = get_bus_info_from_topology(station_topology.buses, bus_id)
@@ -453,19 +459,27 @@ def get_list_of_stations(
             station_topology.elements, station_buses, dangling_lines, element_names
         )
         asset_connectivity = np.ones_like(switching_matrix, dtype=bool)
-        station = Station(
+        assets = get_list_of_switchable_assets_from_df(station_elements)
+        for asset in assets:
+            topology_assets.setdefault(
+                asset.grid_model_id, asset.model_copy(update={"branch_end": None, "asset_bay_id": None})
+            )
+
+        station = RawStation(
             grid_model_id=bus_id,
             name=bus_info.substation_id,
             region=bus_info.voltage_level_id[0:2],
             voltage_level=bus_info.nominal_v,
             busbars=get_list_of_busbars_from_df(station_buses),
             couplers=get_list_of_coupler_from_df(coupler_elements),
-            assets=get_list_of_switchable_assets_from_df(station_elements),
+            asset_ids=[asset.grid_model_id for asset in assets],
+            asset_branch_ends=[asset.branch_end for asset in assets],
+            asset_bay_ids=[None] * len(assets),
             asset_switching_table=switching_matrix,
             asset_connectivity=asset_connectivity,
         )
         station_list.append(station)
-    return station_list
+    return station_list, list(topology_assets.values())
 
 
 def get_topology(
@@ -493,39 +507,49 @@ def get_topology(
     topology: Topology
         Topology object, including all relevant stations
     """
-    station_list = get_relevant_stations(network=network, relevant_stations=relevant_stations)
+    buses_with_substation_and_voltage, switches, dangling_lines, element_names = get_relevant_network_data(
+        network=network,
+        relevant_stations=relevant_stations,
+    )
+    raw_stations, topology_assets = get_raw_stations_and_assets(
+        network, buses_with_substation_and_voltage, switches, dangling_lines, element_names
+    )
     timestamp = datetime.datetime.now()
 
     return Topology(
         topology_id=topology_id,
         grid_model_file=grid_model_file,
-        stations=station_list,
+        raw_stations=raw_stations,
+        assets=topology_assets,
+        asset_bays=[],
         timestamp=timestamp,
     )
 
 
-def get_stations_bus_breaker(net: Network) -> list[Station]:
-    """Convert all stations in a bus-breaker topology grid to the asset topology format.
+def get_raw_stations_and_assets_bus_breaker(net: Network) -> tuple[list[RawStation], list[SwitchableAsset]]:
+    """Convert a bus-breaker topology grid to raw topology stations and topology-owned assets.
 
-    This is very similar to get_topology but only works for bus-breaker grids. This is mainly used for the test grids.
-    TODO find out why get_topology didn't work and remove either of the two.
+    This is mainly used for fixture and test-grid extraction.
 
     Parameters
     ----------
-    net: Network
+    net : Network
         The bus/breaker powsybl network to convert
 
     Returns
     -------
-    stations: list[Station]
-        List of all stations in the network
+    stations : list[RawStation]
+        List of all lean topology stations in the network
+    topology_assets : list[SwitchableAsset]
+        Deduplicated topology-owned assets referenced by the raw stations
     """
     all_switches = net.get_switches(all_attributes=True)
     all_branches = net.get_branches(all_attributes=True)
     all_injections = net.get_injections(all_attributes=True)
     all_breaker_buses = net.get_bus_breaker_view_buses(all_attributes=True)
 
-    stations = []
+    stations: list[RawStation] = []
+    topology_assets: dict[str, SwitchableAsset] = {}
     for bus_id, bus_row in net.get_buses().iterrows():
         local_buses = all_breaker_buses[all_breaker_buses["bus_id"] == bus_id]
         local_switches = all_switches[
@@ -580,22 +604,29 @@ def get_stations_bus_breaker(net: Network) -> list[Station]:
         for asset_index, idx in enumerate(bus_index):
             switching_table[idx, asset_index] = True
 
-        station = Station(
+        for asset in assets:
+            topology_assets.setdefault(
+                asset.grid_model_id, asset.model_copy(update={"branch_end": None, "asset_bay_id": None})
+            )
+
+        station = RawStation(
             grid_model_id=bus_id,
             name=bus_row.name,
             busbars=busbars,
             couplers=couplers,
-            assets=assets,
+            asset_ids=[asset.grid_model_id for asset in assets],
+            asset_branch_ends=[asset.branch_end for asset in assets],
+            asset_bay_ids=[None] * len(assets),
             asset_switching_table=switching_table,
         )
         stations.append(station)
-    return stations
+    return stations, list(topology_assets.values())
 
 
 # TODO: refactor due to C901
 def assert_station_in_network(  # noqa: C901
     net: Network,
-    station: Station,
+    station: MaterializedStation,
     couplers_strict: bool = True,
     assets_strict: bool = True,
     busbars_strict: bool = True,

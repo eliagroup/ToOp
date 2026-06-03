@@ -26,13 +26,13 @@ from toop_engine_interfaces.asset_topology import (
     AssetInjectionType,
     Busbar,
     BusbarCoupler,
-    Station,
+    MaterializedStation,
     SwitchableAsset,
 )
 
 
 def test_make_configurations_table():
-    station = Station(
+    station = MaterializedStation(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -138,7 +138,7 @@ def test_identify_unnecessary_combinations() -> None:
 
 
 def test_preprocess_station() -> None:
-    station = Station(
+    station = MaterializedStation(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -182,7 +182,7 @@ def test_preprocess_station() -> None:
 
 
 def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> None:
-    num_assets_before = sum(len(station.assets) for station in network_data.asset_topology.stations)
+    num_assets_before = sum(len(station.assets) for station in network_data.asset_topology.materialize_stations())
 
     topo = add_missing_asset_topology_branch_info(
         asset_topology=network_data.asset_topology,
@@ -195,7 +195,7 @@ def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> No
 
     from_ends = 0
     to_ends = 0
-    for station in topo.stations:
+    for station in topo.materialize_stations():
         for asset in station.assets:
             if asset.grid_model_id in network_data.branch_ids:
                 assert asset.name in network_data.branch_names
@@ -209,12 +209,12 @@ def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> No
     assert from_ends > 0
     assert to_ends > 0
 
-    num_assets_after = sum(len(station.assets) for station in topo.stations)
+    num_assets_after = sum(len(station.assets) for station in topo.materialize_stations())
     assert num_assets_before == num_assets_after
 
 
 def test_add_missing_asset_topology_injection_info(network_data: NetworkData) -> None:
-    num_assets_before = sum(len(station.assets) for station in network_data.asset_topology.stations)
+    num_assets_before = sum(len(station.assets) for station in network_data.asset_topology.materialize_stations())
 
     topo = add_missing_asset_topology_injection_info(
         asset_topology=network_data.asset_topology,
@@ -224,13 +224,13 @@ def test_add_missing_asset_topology_injection_info(network_data: NetworkData) ->
         overwrite_if_present=True,
     )
 
-    for station in topo.stations:
+    for station in topo.materialize_stations():
         for asset in station.assets:
             if asset.grid_model_id in network_data.injection_ids:
                 assert asset.name in network_data.injection_names
                 assert asset.type in network_data.injection_types
 
-    num_assets_after = sum(len(station.assets) for station in topo.stations)
+    num_assets_after = sum(len(station.assets) for station in topo.materialize_stations())
     assert num_assets_before == num_assets_after
 
     # Test with overwrite_if_present=False
@@ -242,7 +242,7 @@ def test_add_missing_asset_topology_injection_info(network_data: NetworkData) ->
         overwrite_if_present=False,
     )
 
-    for station in topo.stations:
+    for station in topo.materialize_stations():
         for asset in station.assets:
             if asset.grid_model_id in network_data.injection_ids:
                 assert asset.name in network_data.injection_names
@@ -256,7 +256,7 @@ def test_add_missing_asset_topology_injection_info(network_data: NetworkData) ->
         overwrite_if_present=True,
     )
 
-    for station in topo.stations:
+    for station in topo.materialize_stations():
         for asset in station.assets:
             if asset.grid_model_id in network_data.injection_ids:
                 assert asset.name == "new_name"
@@ -266,7 +266,7 @@ def test_add_missing_asset_topology_injection_info(network_data: NetworkData) ->
 def test_prepare_for_separation_set_node_breaker_test_station():
     file = Path(__file__).parent.parent / "files" / "test_station.json"
     with open(file, "r") as f:
-        station = Station.model_validate_json(f.read())
+        station = MaterializedStation.model_validate_json(f.read())
 
     x = nx.Graph()
     for busbar in station.busbars:

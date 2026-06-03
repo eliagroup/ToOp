@@ -52,10 +52,45 @@ from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import (
     get_voltage_level_with_region,
 )
 from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
-from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_interfaces.asset_topology import MaterializedStation, Topology, topology_parts_from_materialized_station
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 
 logger = structlog.get_logger(__name__)
+
+
+def _expand_busbars_connected_via_switches(
+    seed_busbar_ids: set[str], full_busbar_connection_info: dict[str, object], allowed_busbar_ids: set[str]
+) -> set[str]:
+    """Expand a bus view with busbars reachable through switchable couplers.
+
+    Parameters
+    ----------
+    seed_busbar_ids : set[str]
+        Initial busbar ids that seed the search.
+    full_busbar_connection_info : dict[str, object]
+        Mapping of busbar ids to connection metadata exposing ``connectable_busbars``.
+    allowed_busbar_ids : set[str]
+        Busbar ids that may be included in the expanded view.
+
+    Returns
+    -------
+    set[str]
+        Expanded set of reachable busbar ids restricted to ``allowed_busbar_ids``.
+    """
+    selected_busbar_ids = set(seed_busbar_ids)
+    frontier = set(seed_busbar_ids)
+
+    while frontier:
+        busbar_id = frontier.pop()
+        connection_info = full_busbar_connection_info.get(busbar_id)
+        if connection_info is None:
+            continue
+        connected_busbar_ids = set(connection_info.connectable_busbars) & allowed_busbar_ids
+        new_busbar_ids = connected_busbar_ids - selected_busbar_ids
+        selected_busbar_ids.update(new_busbar_ids)
+        frontier.update(new_busbar_ids)
+
+    return selected_busbar_ids
 
 
 def node_breaker_topology_to_graph_data(net: Network, substation_info: SubstationInformation) -> NetworkGraphData:
@@ -261,7 +296,7 @@ def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.Series) -> pat.Data
     return node_assets_df
 
 
-def get_station(network: Network, bus_id: str, station_info: SubstationInformation) -> Station:
+def get_station(network: Network, bus_id: str, station_info: SubstationInformation) -> MaterializedStation:
     """Get the station from a pypowsybl network.
 
     Parameters
@@ -285,12 +320,42 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     graph = get_node_breaker_topology_graph(graph_data)
 
     busbar_df = get_busbar_df(nodes_df=graph_data.nodes, substation_id=substation_id)
+    seed_busbar_ids = set(busbar_df.loc[busbar_df["bus_branch_bus_id"] == bus_id, "grid_model_id"])
+    full_busbar_connection_info = get_busbar_connection_info(graph=graph)
+    selected_busbar_ids = _expand_busbars_connected_via_switches(
+        seed_busbar_ids=seed_busbar_ids,
+        full_busbar_connection_info=full_busbar_connection_info,
+        allowed_busbar_ids=set(busbar_df["grid_model_id"]),
+    )
+    busbar_df = busbar_df[busbar_df["grid_model_id"].isin(selected_busbar_ids)].copy().reset_index(drop=True)
+    busbar_df["int_id"] = busbar_df.index
+    if busbar_df.empty:
+        raise ValueError(f"No busbars found for bus_id {bus_id} in substation {substation_id}")
+    selected_busbar_ids = set(busbar_df["grid_model_id"])
+
     coupler_df = get_coupler_df(
         switches_df=graph_data.switches, busbar_df=busbar_df, substation_id=substation_id, graph=graph
     )
-    busbar_connection_info = get_busbar_connection_info(graph=graph)
+    coupler_df = coupler_df.dropna(subset=["busbar_from_id", "busbar_to_id"]).copy()
+    if not coupler_df.empty:
+        coupler_df[["busbar_from_id", "busbar_to_id"]] = coupler_df[["busbar_from_id", "busbar_to_id"]].astype(int)
+
+    busbar_connection_info = {
+        busbar_grid_model_id: connection_info
+        for busbar_grid_model_id, connection_info in full_busbar_connection_info.items()
+        if busbar_grid_model_id in selected_busbar_ids
+    }
     edge_connection_info = get_edge_connection_info(graph=graph)
     switchable_assets_df = get_switchable_asset(busbar_connection_info, graph_data.node_assets, graph_data.branches)
+    connected_asset_ids = {
+        asset_grid_model_id
+        for connection_info in busbar_connection_info.values()
+        for asset_grid_model_id in connection_info.connectable_assets
+    }
+    switchable_assets_df = switchable_assets_df[switchable_assets_df["grid_model_id"].isin(connected_asset_ids)].reset_index(
+        drop=True
+    )
+
     asset_bay_dict = {}
     for asset_grid_model_id in switchable_assets_df["grid_model_id"].to_list():
         asset_bay, logs = get_asset_bay(
@@ -302,6 +367,14 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
         station_logs.extend(logs)
         if asset_bay is None:
             continue
+        station_local_sr_switches = {
+            busbar_grid_model_id: switch_grid_model_id
+            for busbar_grid_model_id, switch_grid_model_id in asset_bay.sr_switch_grid_model_id.items()
+            if busbar_grid_model_id in selected_busbar_ids
+        }
+        if len(station_local_sr_switches) == 0:
+            continue
+        asset_bay = asset_bay.model_copy(update={"sr_switch_grid_model_id": station_local_sr_switches}, deep=True)
         asset_bay_dict[asset_grid_model_id] = asset_bay
 
     asset_connectivity, asset_switching_table, busbar_connectivity, busbar_switching_table = get_station_connection_tables(
@@ -314,7 +387,7 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     assets = get_list_of_switchable_assets_from_df(station_branches=switchable_assets_df, asset_bay_dict=asset_bay_dict)
     remove_suffix_from_switchable_assets(assets)
 
-    station = Station(
+    station = MaterializedStation(
         grid_model_id=bus_id,
         name=substation_id,
         region=station_info.region,
@@ -331,7 +404,7 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     return station
 
 
-def get_station_list(network: Network, relevant_voltage_level_with_region: pd.DataFrame) -> list[Station]:
+def get_station_list(network: Network, relevant_voltage_level_with_region: pd.DataFrame) -> list[MaterializedStation]:
     """Get the station list from a pypowsybl network.
 
     Note: include only wanted voltage levels and regions.
@@ -428,9 +501,32 @@ def get_topology(network: Network, network_masks: NetworkMasks, importer_paramet
     topology_id = importer_parameters.grid_model_file.name
     timestamp = datetime.datetime.now()
 
+    topology_stations = []
+    topology_assets = {}
+    topology_asset_bays = {}
+    for station in station_list:
+        topology_station, station_assets, station_asset_bays = topology_parts_from_materialized_station(station)
+        topology_stations.append(topology_station)
+        for asset in station_assets:
+            existing_asset = topology_assets.get(asset.grid_model_id)
+            if existing_asset is None:
+                topology_assets[asset.grid_model_id] = asset
+            elif existing_asset != asset:
+                raise ValueError(f"Conflicting topology asset payload for grid_model_id {asset.grid_model_id}")
+        for asset_bay in station_asset_bays:
+            if asset_bay.asset_bay_id is None:
+                continue
+            existing_asset_bay = topology_asset_bays.get(asset_bay.asset_bay_id)
+            if existing_asset_bay is None:
+                topology_asset_bays[asset_bay.asset_bay_id] = asset_bay
+            elif existing_asset_bay != asset_bay:
+                raise ValueError(f"Conflicting topology asset bay payload for asset_bay_id {asset_bay.asset_bay_id}")
+
     return Topology(
         topology_id=topology_id,
         grid_model_file=grid_model_file,
-        stations=station_list,
+        raw_stations=topology_stations,
+        assets=list(topology_assets.values()),
+        asset_bays=list(topology_asset_bays.values()),
         timestamp=timestamp,
     )

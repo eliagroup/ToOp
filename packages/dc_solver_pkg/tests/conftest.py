@@ -97,7 +97,7 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
-    Station,
+    MaterializedStation,
     SwitchableAsset,
     Topology,
 )
@@ -631,7 +631,7 @@ def oberrhein_outage_station_busbars_map(_oberrhein_data_folder: Path) -> dict:
 
     asset_topo = load_asset_topology(_oberrhein_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"])
     retval = {}
-    for station in asset_topo.stations:
+    for station in asset_topo.materialize_stations():
         if station.grid_model_id in stations_desired:
             # Get the busbar IDs for the station
             busbars = [bb.grid_model_id for bb in station.busbars]
@@ -841,7 +841,7 @@ def basic_node_breaker_topology() -> Topology:
 
 
 @pytest.fixture(scope="session")
-def mock_station() -> Station:
+def mock_station() -> MaterializedStation:
     asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, branch_end="from", type="line")
     asset2 = SwitchableAsset(grid_model_id="branch_02", in_service=True, branch_end="to", type="line")
     asset3 = SwitchableAsset(grid_model_id="branch_03", in_service=True, branch_end="from", type="line")
@@ -859,7 +859,7 @@ def mock_station() -> Station:
     # 1-2-3-4-5
 
     # Create a mock Station object
-    station = Station(
+    station = MaterializedStation(
         grid_model_id="station_1",
         busbars=[busbar_0, busbar_1, busbar_2, busbar_3, busbar_4],
         couplers=[

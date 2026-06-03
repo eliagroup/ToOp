@@ -21,7 +21,7 @@ import pandas as pd
 import structlog
 from beartype.typing import Optional, Union
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
-from toop_engine_interfaces.asset_topology import BusbarCoupler, Station, Topology
+from toop_engine_interfaces.asset_topology import BusbarCoupler, MaterializedStation, Topology
 
 logger = structlog.get_logger(__name__)
 
@@ -103,7 +103,7 @@ def asset_topo_to_uct(
     if grid_model_file_input is None:
         grid_model_file_input = asset_topology.grid_model_file
     preamble, nodes, lines, trafos, trafo_reg, postamble = load_ucte(grid_model_file_input)
-    for station in asset_topology.stations:
+    for station in asset_topology.materialize_stations():
         if station_list is not None and station.grid_model_id not in station_list:
             continue
         asset_change_df = pd.DataFrame(get_changes_from_switching_table(station))
@@ -280,7 +280,7 @@ def get_coupler_state_ucte(couplers: list[BusbarCoupler]) -> list[dict[str, Unio
 
 
 def get_changes_from_switching_table(
-    station: Station,
+    station: MaterializedStation,
 ) -> list[dict[str, Union[str, None]]]:
     """Get changes from switching table.
 

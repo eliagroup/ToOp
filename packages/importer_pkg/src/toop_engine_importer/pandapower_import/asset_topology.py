@@ -33,8 +33,9 @@ from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker impo
 )
 from toop_engine_interfaces.asset_topology import (
     AssetBay,
-    Station,
+    MaterializedStation,
     Topology,
+    topology_parts_from_materialized_station,
 )
 
 logger = structlog.get_logger(__name__)
@@ -417,7 +418,7 @@ def get_station_from_id(
     network: pp.pandapowerNet,
     station_id_list: list[int],
     foreign_key: str = "equipment",
-) -> Station:
+) -> MaterializedStation:
     """Get the busses from a station_id.
 
     Parameters
@@ -458,7 +459,7 @@ def get_station_from_id(
     station_name = station_buses["name"].values[0]
     grid_model_id = station_buses["grid_model_id"].values[0]
 
-    return Station(
+    return MaterializedStation(
         grid_model_id=grid_model_id,
         name=station_name,
         # region=region,
@@ -474,7 +475,7 @@ def get_list_of_stations_ids(
     network: pp.pandapowerNet,
     station_list: List[List[int]],
     foreign_key: str = "equipment",
-) -> List[Station]:
+) -> List[MaterializedStation]:
     """Get the list of stations from the network.
 
     Parameters
@@ -528,12 +529,35 @@ def get_asset_topology_from_network(
     asset_topology: Topology
         Topology class of the network.
     """
-    asset_topology = get_list_of_stations_ids(network=network, station_list=station_id_list, foreign_key=foreign_key)
+    station_topologies = get_list_of_stations_ids(network=network, station_list=station_id_list, foreign_key=foreign_key)
     timestamp = datetime.datetime.now()
+    topology_stations = []
+    topology_assets = {}
+    topology_asset_bays = {}
+    for station in station_topologies:
+        topology_station, station_assets, station_asset_bays = topology_parts_from_materialized_station(station)
+        topology_stations.append(topology_station)
+        for asset in station_assets:
+            existing_asset = topology_assets.get(asset.grid_model_id)
+            if existing_asset is None:
+                topology_assets[asset.grid_model_id] = asset
+            elif existing_asset != asset:
+                raise ValueError(f"Conflicting topology asset payload for grid_model_id {asset.grid_model_id}")
+        for asset_bay in station_asset_bays:
+            if asset_bay.asset_bay_id is None:
+                continue
+            existing_asset_bay = topology_asset_bays.get(asset_bay.asset_bay_id)
+            if existing_asset_bay is None:
+                topology_asset_bays[asset_bay.asset_bay_id] = asset_bay
+            elif existing_asset_bay != asset_bay:
+                raise ValueError(f"Conflicting topology asset bay payload for asset_bay_id {asset_bay.asset_bay_id}")
+
     return Topology(
         topology_id=topology_id,
         grid_model_file=grid_model_file,
-        stations=asset_topology,
+        raw_stations=topology_stations,
+        assets=list(topology_assets.values()),
+        asset_bays=list(topology_asset_bays.values()),
         timestamp=timestamp,
     )
 

@@ -14,7 +14,7 @@ import structlog.testing
 from toop_engine_importer.pandapower_import import asset_topology
 from toop_engine_interfaces.asset_topology import (
     AssetBay,
-    Station,
+    MaterializedStation,
     Topology,
 )
 
@@ -287,7 +287,7 @@ def test_get_station_from_id(pp_network_w_switches):
     net = pp_network_w_switches
     station_id_list = [el for el in range(0, 15)]
     result = asset_topology.get_station_from_id(network=net, station_id_list=station_id_list, foreign_key="name")
-    assert isinstance(result, Station)
+    assert isinstance(result, MaterializedStation)
     assert result.grid_model_id == r"0%%bus"
     assert result.name == "Double Busbar 1"
     assert result.type is None
@@ -301,8 +301,8 @@ def test_get_list_of_stations_ids(pp_network_w_switches):
     result = asset_topology.get_list_of_stations_ids(network=net, station_list=station_id_list, foreign_key="name")
     assert isinstance(result, list)
     assert len(result) == 2
-    assert isinstance(result[0], Station)
-    assert isinstance(result[1], Station)
+    assert isinstance(result[0], MaterializedStation)
+    assert isinstance(result[1], MaterializedStation)
     assert result[0].grid_model_id == r"0%%bus"
     assert result[0].name == "Double Busbar 1"
     assert result[1].grid_model_id == r"16%%bus"
@@ -322,7 +322,7 @@ def test_get_asset_topology_from_network(pp_network_w_switches):
     assert isinstance(result, Topology)
     assert result.topology_id == "1"
     assert result.grid_model_file == "test"
-    assert isinstance(result.stations, list)
+    assert isinstance(result.raw_stations, list)
     assert isinstance(result.timestamp, datetime)
     current_time = datetime.now()
     time_difference = current_time - result.timestamp

@@ -17,7 +17,7 @@ from beartype.typing import Literal, Optional
 from jaxtyping import Array, Bool, Int
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_station_switching_distance
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
-from toop_engine_interfaces.asset_topology import Station
+from toop_engine_interfaces.asset_topology import MaterializedStation
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)
@@ -345,13 +345,13 @@ def compute_switching_table(
 
 def realise_ba_to_physical_topo_per_station_jax(
     local_branch_action_set: Bool[np.ndarray, " n_combinations n_branches"],
-    station: Station,
+    station: MaterializedStation,
     separation_set_info: OptimalSeparationSetInfo,
     batch_size: int = 1024,
     choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"] = "least_connected_busbar",
     validate: bool = True,
     reassignment_limits: Optional[ReassignmentLimits] = None,
-) -> tuple[list[Station], Bool[np.ndarray, "n_combinations n_branches"], list[list[int]], list[int]]:
+) -> tuple[list[MaterializedStation], Bool[np.ndarray, "n_combinations n_branches"], list[list[int]], list[int]]:
     """Realize the branch actions to physical topology per station.
 
     This iterates over all actions in the local branch action set and tries to find a realization for them.
@@ -494,7 +494,7 @@ def realise_ba_to_physical_topo_per_station_jax(
     ]
     if validate:
         for realised_station in realised_stations:
-            Station.model_validate(realised_station)
+            MaterializedStation.model_validate(realised_station)
 
     # Convert the busbar mapping to a list of busbar A mappings
     busbar_mappings_converted = [np.flatnonzero(~mapping).tolist() for mapping in chosen_busbar_mapping]

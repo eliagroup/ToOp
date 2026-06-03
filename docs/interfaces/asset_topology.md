@@ -10,11 +10,16 @@ Asset Topology is essential when stations do not allow free assignment of lines 
   Collection of time steps, each represented by a [`Topology`][toop_engine_interfaces.asset_topology.Topology].
 
 - [`Topology`][toop_engine_interfaces.asset_topology.Topology]  
-  Contains multiple [`Station`][toop_engine_interfaces.asset_topology.Station] objects and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects.
+  Stores lean [`TopologyStation`][toop_engine_interfaces.asset_topology.TopologyStation] records in `raw_stations`, topology-owned canonical assets in `assets`, and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects. Rich [`Station`][toop_engine_interfaces.asset_topology.Station] objects are reconstructed with [`Topology.materialize_stations()`][toop_engine_interfaces.asset_topology.Topology.materialize_stations].
 
 - [`Station`][toop_engine_interfaces.asset_topology.Station]  
   Contains lists of [`Busbar`][toop_engine_interfaces.asset_topology.Busbar], [`BusbarCoupler`][toop_engine_interfaces.asset_topology.BusbarCoupler], and [`SwitchableAsset`][toop_engine_interfaces.asset_topology.SwitchableAsset].  
-  Includes asset_switching_table, the current switch connection layout and asset_connectivity, all possible selections.
+  Includes `asset_switching_table`, the current switch connection layout and `asset_connectivity`, all possible selections.
+  The `grid_model_id` refers to the bus-branch bus id of the splitable station view, not to the full voltage level id.
+
+- [`TopologyStation`][toop_engine_interfaces.asset_topology.TopologyStation]
+  Stores the lean station representation used inside [`Topology`][toop_engine_interfaces.asset_topology.Topology].
+  Instead of embedded asset payloads it stores aligned station-local arrays `asset_ids`, `asset_branch_ends`, and `asset_bay_ids`.
 
 - [`Busbar`][toop_engine_interfaces.asset_topology.Busbar]  
   Represents a single busbar in a station.
@@ -62,6 +67,19 @@ Asset Topology is essential when stations do not allow free assignment of lines 
 See the [`Asset Topology Reference`][toop_engine_interfaces.asset_topology] for full class and method documentation.
 
 ## How to use / Implementation
+
+## Station Identity And Asset Scope
+
+The intended station contract is bus-view based:
+
+- `Station.grid_model_id` and `TopologyStation.grid_model_id` identify the bus-branch bus id of the splitable station view.
+- The station busbars belong to that bus view and therefore must carry matching `bus_branch_bus_id` values.
+- The station-local asset arrays and switching tables describe which assets are visible in that station view and how they attach locally.
+
+The current importer implementations are not fully uniform yet:
+
+- The bus-breaker powsybl helper narrows busbars and assets to the selected `bus_id` before building the station view.
+- The node-breaker powsybl importer currently assigns a bus-specific `Station.grid_model_id` but still derives the asset list from the full substation graph. This is broader than the intended "single bus-branch bus" scope and should be treated as current implementation behavior, not as the desired long-term contract.
 
 To populate Asset Topology data from grid models, use the [`Network Graph module`][toop_engine_importer.network_graph].  
 

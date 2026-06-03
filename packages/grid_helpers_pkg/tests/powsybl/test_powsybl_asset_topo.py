@@ -23,12 +23,18 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_coupler_from_df,
     get_list_of_switchable_assets_from_df,
     get_name_of_station_elements,
+    get_raw_stations_and_assets_bus_breaker,
     get_relevant_network_data,
     get_relevant_stations,
-    get_stations_bus_breaker,
     get_topology,
 )
-from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
+from toop_engine_interfaces.asset_topology import (
+    Busbar,
+    BusbarCoupler,
+    RawStation,
+    SwitchableAsset,
+    Topology,
+)
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
@@ -341,7 +347,7 @@ def test_get_relevant_stations(ucte_file: Path):
     stations = get_relevant_stations(network, relevant_subs)
 
     assert len(stations) == sum(relevant_subs), "Wrong number of stations"
-    assert isinstance(stations[0], Station), "Wrong type of station"
+    assert isinstance(stations[0], RawStation), "Wrong type of station"
 
 
 def test_get_topology_ucte(ucte_file: Path):
@@ -351,7 +357,7 @@ def test_get_topology_ucte(ucte_file: Path):
     topology = get_topology(network, relevant_subs, grid_model_file="booga", topology_id="wooga")
 
     assert isinstance(topology, Topology), "Wrong type of topology"
-    assert len(topology.stations) == sum(relevant_subs), "Wrong number of stations"
+    assert len(topology.materialize_stations()) == sum(relevant_subs), "Wrong number of stations"
     assert topology.grid_model_file == "booga"
     assert topology.topology_id == "wooga"
 
@@ -389,11 +395,12 @@ def test_assert_station_in_network(case14_data_with_asset_topo: tuple[Path, Topo
     grid_path, topology = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
-    for station in topology.stations:
+    stations = topology.materialize_stations()
+    for station in stations:
         assert_station_in_network(net, station)
 
     # Change the station ID
-    station = topology.stations[0].model_copy(update={"grid_model_id": "hugawuga"})
+    station = stations[0].model_copy(update={"grid_model_id": "hugawuga"})
     with pytest.raises(ValueError, match="Station hugawuga not found in the network"):
         assert_station_in_network(net, station)
 
@@ -403,11 +410,11 @@ def test_assert_station_in_network_coupler(case14_data_with_asset_topo: tuple[Pa
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     # Add a coupler to the station that is not in the grid
-    station = topology.stations[0].model_copy(
+    station = topology.materialize_stations()[0].model_copy(
         update={
             "couplers": [
-                topology.stations[0].couplers[0],
-                topology.stations[0].couplers[0].model_copy(update={"grid_model_id": "hugawuga"}),
+                topology.materialize_stations()[0].couplers[0],
+                topology.materialize_stations()[0].couplers[0].model_copy(update={"grid_model_id": "hugawuga"}),
             ],
         }
     )
@@ -416,7 +423,7 @@ def test_assert_station_in_network_coupler(case14_data_with_asset_topo: tuple[Pa
         assert_station_in_network(net, station)
 
     # Remove a coupler from the station
-    station = topology.stations[0].model_copy(
+    station = topology.materialize_stations()[0].model_copy(
         update={
             "couplers": [],
         }
@@ -432,15 +439,19 @@ def test_assert_station_in_network_busbar(case14_data_with_asset_topo: tuple[Pat
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     # Add a busbar to the station that is not in the grid
-    station = topology.stations[0].model_copy(
+    station = topology.materialize_stations()[0].model_copy(
         update={
             "busbars": [
-                topology.stations[0].busbars[0],
-                topology.stations[0].busbars[1],
-                topology.stations[0].busbars[0].model_copy(update={"grid_model_id": "hugawuga", "int_id": 3}),
+                topology.materialize_stations()[0].busbars[0],
+                topology.materialize_stations()[0].busbars[1],
+                topology.materialize_stations()[0].busbars[0].model_copy(update={"grid_model_id": "hugawuga", "int_id": 3}),
             ],
             "asset_switching_table": np.concatenate(
-                [topology.stations[0].asset_switching_table, topology.stations[0].asset_switching_table[0:1]], axis=0
+                [
+                    topology.materialize_stations()[0].asset_switching_table,
+                    topology.materialize_stations()[0].asset_switching_table[0:1],
+                ],
+                axis=0,
             ),
         }
     )
@@ -448,12 +459,12 @@ def test_assert_station_in_network_busbar(case14_data_with_asset_topo: tuple[Pat
         assert_station_in_network(net, station)
 
     # Remove a busbar from the station
-    station = topology.stations[0].model_copy(
+    station = topology.materialize_stations()[0].model_copy(
         update={
             "busbars": [
-                topology.stations[0].busbars[0],
+                topology.materialize_stations()[0].busbars[0],
             ],
-            "asset_switching_table": topology.stations[0].asset_switching_table[0:1],
+            "asset_switching_table": topology.materialize_stations()[0].asset_switching_table[0:1],
         }
     )
     # Should pass without strict
@@ -467,14 +478,18 @@ def test_assert_station_in_network_asset(case14_data_with_asset_topo: tuple[Path
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     # Add a switchable asset to the station that is not in the grid
-    station = topology.stations[0].model_copy(
+    station = topology.materialize_stations()[0].model_copy(
         update={
-            "assets": topology.stations[0].assets
+            "assets": topology.materialize_stations()[0].assets
             + [
-                topology.stations[0].assets[0].model_copy(update={"grid_model_id": "hugawuga"}),
+                topology.materialize_stations()[0].assets[0].model_copy(update={"grid_model_id": "hugawuga"}),
             ],
             "asset_switching_table": np.concatenate(
-                [topology.stations[0].asset_switching_table, topology.stations[0].asset_switching_table[:, 0:1]], axis=1
+                [
+                    topology.materialize_stations()[0].asset_switching_table,
+                    topology.materialize_stations()[0].asset_switching_table[:, 0:1],
+                ],
+                axis=1,
             ),
         }
     )
@@ -482,10 +497,10 @@ def test_assert_station_in_network_asset(case14_data_with_asset_topo: tuple[Path
         assert_station_in_network(net, station)
 
     # Remove a switchable asset from the station
-    station = topology.stations[0].model_copy(
+    station = topology.materialize_stations()[0].model_copy(
         update={
-            "assets": topology.stations[0].assets[:-1],
-            "asset_switching_table": topology.stations[0].asset_switching_table[:, :-1],
+            "assets": topology.materialize_stations()[0].assets[:-1],
+            "asset_switching_table": topology.materialize_stations()[0].asset_switching_table[:, :-1],
         }
     )
     # Should pass without strict
@@ -498,14 +513,17 @@ def test_convert_bus_breaker_stations_to_asset_topo() -> None:
     net = pypowsybl.network.create_ieee30()
     create_busbar_b_in_ieee(net)
 
-    stations = get_stations_bus_breaker(net)
+    stations, assets = get_raw_stations_and_assets_bus_breaker(net)
     assert len(stations) == 30
 
     for station in stations:
         assert len(station.busbars) == 2
         assert len(station.couplers) == 1
-        for asset in station.assets:
-            if asset.is_branch():
-                assert asset.grid_model_id in net.get_branches().index
-            else:
-                assert asset.grid_model_id in net.get_injections().index
+        for asset_id in station.asset_ids:
+            assert any(asset.grid_model_id == asset_id for asset in assets)
+
+    for asset in assets:
+        if asset.is_branch():
+            assert asset.grid_model_id in net.get_branches().index
+        else:
+            assert asset.grid_model_id in net.get_injections().index

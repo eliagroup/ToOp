@@ -9,8 +9,7 @@ from collections import Counter
 from dataclasses import replace
 
 import numpy as np
-from tests.deprecated.assignment import realise_bus_split_single_station
-from toop_engine_dc_solver.preprocess.network_data import NetworkData, map_branch_injection_ids
+from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess import compute_separation_set_for_stations
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     extract_busbar_outage_data,
@@ -23,12 +22,11 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     get_non_rel_articulation_nodes,
     get_rel_articulation_nodes,
     get_rel_non_rel_sub_bb_maps,
-    get_relevant_stations,
     get_total_injection_along_stub_branch,
     update_network_data_with_non_rel_bb_outages,
 )
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
-from toop_engine_interfaces.asset_topology import Busbar, Station, SwitchableAsset
+from toop_engine_interfaces.asset_topology import Busbar, MaterializedStation, SwitchableAsset
 
 
 def test_get_total_injection_along_stub_branch(network_data: NetworkData):
@@ -236,7 +234,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         grid_model_id="busbar_1",
         int_id=1,
     )
-    station = Station(
+    station = MaterializedStation(
         grid_model_id="node_2",
         busbars=[busbar_0, busbar_1],
         couplers=[],
@@ -327,7 +325,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         grid_model_id="busbar_0",
         int_id=0,
     )
-    station = Station(
+    station = MaterializedStation(
         grid_model_id="node_0",
         busbars=[busbar_0],
         couplers=[],
@@ -389,7 +387,7 @@ def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: 
 
     # Test case 3: Check if the branches to be outaged are valid and connected to the busbar
     for branch_outages, station_id in zip(updated_net_data.non_rel_bb_outage_br_indices, non_rel_bb_map):
-        for station in updated_net_data.asset_topology.stations:
+        for station in updated_net_data.asset_topology.materialize_stations():
             if station.grid_model_id == station_id:
                 break
 
@@ -448,19 +446,11 @@ def test_get_branch_injection_outages_for_rel_subs(
         f"{[[len(outage_data_nodal_index[i][j]) for j in range(len(outage_data_nodal_index[i]))] for i in range(len(outage_data_nodal_index))]}"
     )
 
-    rel_stations = get_relevant_stations(network_data_preprocessed)
+    assert network_data_preprocessed.realised_stations is not None
     rel_station_index = 0
-    branch_ids_mapped, _ = map_branch_injection_ids(network_data_preprocessed)
-    branch_actions = network_data_preprocessed.branch_action_set
     for station_combis in outage_data_branch_indices:
         for combi_index, busbar_outages in enumerate(station_combis):
-            modified_station, _, _ = realise_bus_split_single_station(
-                branch_ids_local=branch_ids_mapped[rel_station_index],
-                branch_topology_local=branch_actions[rel_station_index][combi_index],
-                injection_ids_local=[],
-                injection_topology_local=np.array([], dtype=bool),
-                station=rel_stations[rel_station_index],
-            )
+            modified_station = network_data_preprocessed.realised_stations[rel_station_index][combi_index]
 
             busbar_branches_map = get_busbar_branches_map(modified_station, network_data_preprocessed)
 
@@ -498,7 +488,7 @@ def test_get_modified_stations(network_data_preprocessed: NetworkData):
     # switching_table:
     # array([[False,  True, False, False, False,  True, False],
     #        [True, False,  True,  True,  True, False,  True]]
-    monitored_station = network_data_preprocessed.asset_topology.stations[156]
+    monitored_station = network_data_preprocessed.asset_topology.materialize_stations()[156]
     outage_stations = [monitored_station.grid_model_id]
     branch_actions_all_rel_sub = network_data_preprocessed.branch_action_set
     modified_stations_br = get_modified_stations(network_data=network_data_preprocessed, stations_to_outage=outage_stations)
@@ -601,7 +591,7 @@ def test_get_non_rel_bridge_busbars(network_data_test_grid: NetworkData):
     assert non_rel_busbar_outage_map == expected_map, f"Expected {expected_map}, but got {non_rel_busbar_outage_map}"
 
 
-def test_get_rel_bridge_busbars(mock_station: Station):
+def test_get_rel_bridge_busbars(mock_station: MaterializedStation):
     articulation_nodes = get_rel_articulation_nodes([mock_station], [[[2, 3, 4]]])
     assert articulation_nodes == [[[3]]], f"Expected [[[3]]], but got {articulation_nodes}"
 

@@ -439,6 +439,7 @@ def get_or_create_initial_strategy(
             .where(ACOptimTopology.timestep == unsplit_topology.timestep)
         ).one_or_none()
         if existing_topology is None:
+            logger.error("Failed to store initial AC strategy in DB and could not find existing entry")
             raise
         logger.info(
             "Initial AC strategy already present in DB, reusing existing entry",

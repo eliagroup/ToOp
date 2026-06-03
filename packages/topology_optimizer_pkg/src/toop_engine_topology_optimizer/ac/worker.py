@@ -187,8 +187,8 @@ def run_optimization_epochs(
             )
         )
 
-    def runtime_exceeded_since_last_full_run() -> bool:
-        """Check if the runtime since the last full run has exceeded the allowed wait time."""
+    def runtime_exceeded_since_last_full_evaluation() -> bool:
+        """Check if the runtime since the last full evaluation has exceeded the allowed wait time."""
         return (time.time() - last_full_run) > ac_params.ga_config.remaining_loadflow_wait_seconds
 
     def enough_survivors() -> bool:
@@ -228,7 +228,7 @@ def run_optimization_epochs(
                 survivor_early_results.extend(worst_k_results)
                 evaluated_topologies += len(topologies)
 
-            while enough_survivors() or (len(survivor_topologies) > 0 and runtime_exceeded_since_last_full_run()):
+            while enough_survivors() or (len(survivor_topologies) > 0 and runtime_exceeded_since_last_full_evaluation()):
                 logger.debug(
                     f"Collected {len(survivor_topologies)} survivor topologies, running remaining contingencies evaluation"
                 )

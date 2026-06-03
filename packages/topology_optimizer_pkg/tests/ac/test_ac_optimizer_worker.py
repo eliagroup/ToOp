@@ -21,7 +21,15 @@ from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.protobuf_message_factory import deserialize_message, serialize_message
 from toop_engine_interfaces.stored_action_set import load_action_set, random_actions
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
-from toop_engine_topology_optimizer.ac.worker import Args, WorkerData, idle_loop, main, optimization_loop
+from toop_engine_topology_optimizer.ac.types import OptimizerData
+from toop_engine_topology_optimizer.ac.worker import (
+    Args,
+    WorkerData,
+    idle_loop,
+    main,
+    optimization_loop,
+    run_optimization_epochs,
+)
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.commands import (
     Command,
@@ -51,6 +59,36 @@ from fake_kafka import FakeConsumer, FakeConsumerEmptyException, FakeProducer
 
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
+
+
+def make_worker_epoch_test_objects(
+    *,
+    runtime_seconds: float,
+    remaining_loadflow_wait_seconds: float,
+    runner_processes: int,
+) -> tuple[ACOptimizerParameters, OptimizerData, WorkerData]:
+    parameters = ACOptimizerParameters(
+        ga_config=ACGAParameters(
+            runtime_seconds=runtime_seconds,
+            remaining_loadflow_wait_seconds=remaining_loadflow_wait_seconds,
+            runner_processes=runner_processes,
+            worst_k_runner_processes=1,
+            pull_prob=1.0,
+            reconnect_prob=0.0,
+            close_coupler_prob=0.0,
+            seed=42,
+            enable_ac_rejection=False,
+        )
+    )
+    optimizer_data = Mock(spec=OptimizerData)
+    optimizer_data.session = Mock()
+    worker_data = WorkerData(
+        db=create_session(),
+        command_consumer=Mock(spec=LongRunningKafkaConsumer),
+        result_consumer=Mock(spec=LongRunningKafkaConsumer),
+        producer=Mock(spec=Producer),
+    )
+    return parameters, optimizer_data, worker_data
 
 
 @pytest.mark.timeout(60)
@@ -433,6 +471,94 @@ def test_optimization_loop(
     assert isinstance(heartbeats[0], OptimizationStartedHeartbeat)
 
     assert len(worker_data.db.exec(select(ACOptimTopology)).all())
+
+
+def test_run_optimization_epochs_runtime_exceeded_since_last_full_evaluation_triggers_remaining_evaluation() -> None:
+    parameters, optimizer_data, worker_data = make_worker_epoch_test_objects(
+        runtime_seconds=10,
+        remaining_loadflow_wait_seconds=1,
+        runner_processes=2,
+    )
+    heartbeats = []
+    results = []
+
+    with patch("toop_engine_topology_optimizer.ac.worker.poll_results_topic", return_value=([], None)):
+        with patch("toop_engine_topology_optimizer.ac.worker.run_fast_failing_epoch", return_value=([Mock()], [Mock()])):
+            with patch("toop_engine_topology_optimizer.ac.worker.evaluate_remaining_contingencies") as evaluate_mock:
+                with patch(
+                    "toop_engine_topology_optimizer.ac.worker.time.time",
+                    side_effect=[0.0, 2.0, 2.0, 2.0, 2.0, 20.0, 20.0, 20.0],
+                ):
+                    run_optimization_epochs(
+                        ac_params=parameters,
+                        optimizer_data=optimizer_data,
+                        worker_data=worker_data,
+                        send_result_fn=results.append,
+                        send_heartbeat_fn=heartbeats.append,
+                        optimization_id="test-runtime-since-last-full",
+                    )
+
+    evaluate_mock.assert_called_once()
+    assert isinstance(results[-1], OptimizationStoppedResult)
+    assert results[-1].message == "runtime limit"
+
+
+def test_run_optimization_epochs_enough_survivors_triggers_remaining_evaluation() -> None:
+    parameters, optimizer_data, worker_data = make_worker_epoch_test_objects(
+        runtime_seconds=10,
+        remaining_loadflow_wait_seconds=999,
+        runner_processes=1,
+    )
+    heartbeats = []
+    results = []
+
+    with patch("toop_engine_topology_optimizer.ac.worker.poll_results_topic", return_value=([], None)):
+        with patch("toop_engine_topology_optimizer.ac.worker.run_fast_failing_epoch", return_value=([Mock()], [Mock()])):
+            with patch("toop_engine_topology_optimizer.ac.worker.evaluate_remaining_contingencies") as evaluate_mock:
+                with patch(
+                    "toop_engine_topology_optimizer.ac.worker.time.time",
+                    side_effect=[0.0, 2.0, 2.0, 2.0, 20.0, 20.0, 20.0],
+                ):
+                    run_optimization_epochs(
+                        ac_params=parameters,
+                        optimizer_data=optimizer_data,
+                        worker_data=worker_data,
+                        send_result_fn=results.append,
+                        send_heartbeat_fn=heartbeats.append,
+                        optimization_id="test-enough-survivors",
+                    )
+
+    evaluate_mock.assert_called_once()
+    assert isinstance(results[-1], OptimizationStoppedResult)
+    assert results[-1].message == "runtime limit"
+
+
+def test_run_optimization_epochs_runtime_exceeded_stops_without_remaining_evaluation() -> None:
+    parameters, optimizer_data, worker_data = make_worker_epoch_test_objects(
+        runtime_seconds=10,
+        remaining_loadflow_wait_seconds=999,
+        runner_processes=2,
+    )
+    heartbeats = []
+    results = []
+
+    with patch("toop_engine_topology_optimizer.ac.worker.poll_results_topic", return_value=([], None)):
+        with patch("toop_engine_topology_optimizer.ac.worker.run_fast_failing_epoch", return_value=([], [])):
+            with patch("toop_engine_topology_optimizer.ac.worker.evaluate_remaining_contingencies") as evaluate_mock:
+                with patch("toop_engine_topology_optimizer.ac.worker.time.time", side_effect=[0.0, 0.0, 20.0]):
+                    run_optimization_epochs(
+                        ac_params=parameters,
+                        optimizer_data=optimizer_data,
+                        worker_data=worker_data,
+                        send_result_fn=results.append,
+                        send_heartbeat_fn=heartbeats.append,
+                        optimization_id="test-runtime-exceeded",
+                    )
+
+    evaluate_mock.assert_not_called()
+    assert isinstance(results[-1], OptimizationStoppedResult)
+    assert results[-1].reason == "converged"
+    assert results[-1].message == "runtime limit"
 
 
 def test_optimization_loop_error_during_initialization(

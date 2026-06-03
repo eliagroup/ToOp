@@ -14,6 +14,7 @@ import pandas as pd
 import pypowsybl
 import pytest
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
+    add_missing_branch_model_columns,
     get_lines,
     get_network_as_pu,
     get_p_max,
@@ -31,6 +32,29 @@ def test_powsybl_helpers(powsybl_data_folder: Path) -> None:
     assert len(get_tie_lines(net)) == len(net.get_tie_lines())
     assert len(get_trafos(net)) == len(net.get_2_windings_transformers())
     assert len(get_p_max(net)) == len(net.get_branches())
+
+
+def test_add_missing_branch_model_columns() -> None:
+    branches = pd.DataFrame(
+        {"x": [0.1], "r": [0.2], "name": ["branch"]},
+        index=pd.Index(["branch_id"], name="id"),
+    )
+
+    normalized_branches = add_missing_branch_model_columns(branches)
+
+    assert normalized_branches.loc["branch_id", "name"] == "branch"
+    assert pd.isna(normalized_branches.loc["branch_id", "rho"])
+    assert pd.isna(normalized_branches.loc["branch_id", "alpha"])
+    assert bool(normalized_branches.loc["branch_id", "has_pst_tap"]) is False
+    assert bool(normalized_branches.loc["branch_id", "has_pst_linear_tap"]) is False
+    assert bool(normalized_branches.loc["branch_id", "for_reward"]) is False
+    assert bool(normalized_branches.loc["branch_id", "for_nminus1"]) is False
+    assert normalized_branches.loc["branch_id", "overload_weight"] == 1.0
+    assert pd.isna(normalized_branches.loc["branch_id", "p_max_mw"])
+    assert pd.isna(normalized_branches.loc["branch_id", "p_max_mw_n_1"])
+    assert bool(normalized_branches.loc["branch_id", "disconnectable"]) is False
+    assert bool(normalized_branches.loc["branch_id", "pst_controllable"]) is False
+    assert normalized_branches.loc["branch_id", "n0_n1_max_diff_factor"] == -1.0
 
 
 def get_op_lims_for_lines(lines_df: pd.DataFrame) -> pd.DataFrame:

@@ -43,8 +43,9 @@ segfault, the lease will just expire. Future workers will see the row, which is 
 - if the attempt counter is less than a configured threshold, reaquire the lease on themselves and keep working.
 - if the attempt threshold is exceeded, set the stage to FAILED
 
-If a worker took very long during an epoch and exceeded the lease, it has to drop all generated results and assume the job
-is no longer allocated to itself.
+If a worker took very long during an epoch and exceeded the lease, two things might happen: either the job has not yet been
+picked up - in this case it can keep working, or another worker took over the stage and it has to drop all work
+and assume the job is no longer allocated to itself.
 
 To cancel a run, the user shall set every stage work item to CANCELLED upon which the workers will exit on their next update.
 Note that setting this from None to CANCELLED is the desired flow, but once it was set and has propagated, this should

@@ -229,12 +229,6 @@ def update_stage_work_item(
 		attempt, or the current attempt belongs to a different worker.
 	"""
 	update_time = now if now is not None else datetime.now()
-	terminal_statuses = {
-		StageWorkItemStatus.COMPLETED,
-		StageWorkItemStatus.FAILED,
-		StageWorkItemStatus.BLOCKED,
-		StageWorkItemStatus.CANCELLED,
-	}
 
 	with _begin_utility_transaction(session):
 		stage_work_item = session.exec(

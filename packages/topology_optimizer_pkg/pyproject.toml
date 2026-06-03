@@ -57,6 +57,7 @@ dev = [
     "pytest-mock",
     "pytest-timeout",
     "pytest-xdist>=3.8.0",
+    "psycopg[binary]>=3.2.9",
     "ipykernel>=6.25.2",
     "jupyter>=1.0.0",
     "seaborn>=0.13.0",

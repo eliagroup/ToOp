@@ -29,7 +29,7 @@ Asset Topology is essential when stations do not allow free assignment of lines 
   Note: the current implementation only supports a busbar connection between two busbars. It is planned to add an asset bay for both connection sides.
 
 - [`SwitchableAsset`][toop_engine_interfaces.asset_topology.SwitchableAsset]  
-  Represents an asset (line, transformer, generator, etc.) that can be switched. You may leave out non-switchable assets or assign them to a single busbar to have a complete representation of the physical [`Station`][toop_engine_interfaces.asset_topology.Station].
+  Represents an asset (line, transformer, generator, etc.) that can be switched. You may leave out non-switchable assets or assign them to a single busbar to have a complete representation of the physical [`MaterializedStation`][toop_engine_interfaces.asset_topology.MaterializedStation].
 
 - [`AssetBay`][toop_engine_interfaces.asset_topology.AssetBay]  
   Describes the physical connection (switches) between an asset and busbars. It may contain breaker and disconnector switches.

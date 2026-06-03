@@ -175,6 +175,30 @@ def run_optimization_epochs(
     survivor_topologies = []
     survivor_early_results = []
 
+    def send_heartbeat_update() -> None:
+        """Send a heartbeat update with the current optimization stats."""
+        send_heartbeat_fn(
+            OptimizationStatsHeartbeat(
+                optimization_id=optimization_id,
+                wall_time=time.time() - start_time,
+                iteration=epoch,
+                num_branch_topologies_tried=evaluated_topologies - len(survivor_topologies),
+                num_injection_topologies_tried=0,
+            )
+        )
+
+    def runtime_exceeded_since_last_full_evaluation() -> bool:
+        """Check if the runtime since the last full evaluation has exceeded the allowed wait time."""
+        return (time.time() - last_full_run) > ac_params.ga_config.remaining_loadflow_wait_seconds
+
+    def enough_survivors() -> bool:
+        """Check if we have enough survivor topologies to run a full batch through the remaining contingencies evaluation."""
+        return len(survivor_topologies) >= survivor_batch_size
+
+    def runtime_exceeded() -> bool:
+        """Check if the total runtime of the optimization has exceeded the maximum allowed runtime."""
+        return (time.time() - start_time) > ac_params.ga_config.runtime_seconds
+
     while True:
         with structlog.contextvars.bound_contextvars(epoch=epoch):
             added_topos, _ = poll_results_topic(
@@ -204,11 +228,7 @@ def run_optimization_epochs(
                 survivor_early_results.extend(worst_k_results)
                 evaluated_topologies += len(topologies)
 
-            enough_survivors = len(survivor_topologies) >= survivor_batch_size
-            runtime_exceeded_since_last_full_run = (
-                time.time() - last_full_run
-            ) > ac_params.ga_config.remaining_loadflow_wait_seconds
-            if enough_survivors or (runtime_exceeded_since_last_full_run and len(survivor_topologies) > 0):
+            while enough_survivors() or (len(survivor_topologies) > 0 and runtime_exceeded_since_last_full_evaluation()):
                 logger.debug(
                     f"Collected {len(survivor_topologies)} survivor topologies, running remaining contingencies evaluation"
                 )
@@ -223,33 +243,17 @@ def run_optimization_epochs(
                 survivor_early_results = survivor_early_results[survivor_batch_size:]
                 epoch += 1
                 last_full_run = time.time()
+                send_heartbeat_update()
+                if runtime_exceeded():
+                    break
+            else:
+                send_heartbeat_update()
 
-            send_heartbeat_fn(
-                OptimizationStatsHeartbeat(
-                    optimization_id=optimization_id,
-                    wall_time=time.time() - start_time,
-                    iteration=epoch,
-                    num_branch_topologies_tried=evaluated_topologies - len(survivor_topologies),
-                    num_injection_topologies_tried=0,
+            if runtime_exceeded():
+                logger.info(
+                    "Stopping optimization at epoch {epoch} due to runtime limit",
+                    skipped_survivor_count=len(survivor_topologies),
                 )
-            )
-
-            if time.time() - start_time > ac_params.ga_config.runtime_seconds:
-                if len(survivor_topologies) > 0:
-                    logger.info(
-                        f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit"
-                        f" with survivor strategies still present"
-                        f" Running remaining contingencies evaluation before stopping"
-                    )
-                    evaluate_remaining_contingencies(
-                        send_result_fn,
-                        optimizer_data,
-                        epoch,
-                        survivor_topologies,
-                        survivor_early_results,
-                    )
-                else:
-                    logger.info(f"Stopping optimization at epoch {epoch} due to runtime limit with no survivor strategies")
                 send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
                 return
 
@@ -337,6 +341,8 @@ def optimization_loop(
             logger.error(f"DC results for optimization {optimization_id} did not arrive in time: {e}")
             return
         except Exception as e:
+            worker_data.db.rollback()
+            # Send a stop message to the results
             send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
             logger.error(f"Error during initialization of optimization {optimization_id}: {e}")
             return
@@ -353,6 +359,7 @@ def optimization_loop(
                 optimization_id=optimization_id,
             )
         except Exception as e:
+            worker_data.db.rollback()
             # Send a stop message to the results
             send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
             logger.error(f"Error during optimization {optimization_id}: {e}")
@@ -368,6 +375,7 @@ def optimization_loop(
                 processed_gridfile_fs=processed_gridfile_fs,
             )
         except Exception as e:
+            worker_data.db.rollback()
             logger.error(f"Error while writing summary for optimization {optimization_id}: {e}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return

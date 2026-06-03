@@ -13,14 +13,19 @@ in ``command_models.py``.
 The lifecycle of a topology begins in a discovery stage. This is usually the DC stage, but other stages could also discover
 new topology. When that happens, a ``Topology`` is inserted into the database and never modified again. The
 canonical element holds everything that is required to define the topology itself (actions, disconnections, pst setpoints)
-but does not yet contain metrics. When an evaluation runs in any stage (including the discovery stage), metrics for this
-topology are generated and stored in a StageTopologyEvaluation.
+but does not yet contain metrics.
+
+Stage-local persistence is then split into two concerns:
+
+- ``StageTopologyEvaluation`` is the mutable coordination row for one stage and one topology. It is the scheduling,
+  locking and lifecycle surface.
+- ``StageTopologyResult`` is the payload row that is only inserted once actual results are present.
 
 For future multi-timestep support, topologies are furthermore grouped into strategies, but this is not fully supported at the
 moment.
 
-A major design decision revolves around the StageTopologyEvaluation lifecycle. The most naive approach would be:
-- A stage picks up a topology, evaluates it and then inserts a new StageTopologyEvaluation row
+A major design decision revolves around the ``StageTopologyEvaluation`` lifecycle. The most naive approach would be:
+- A stage picks up a topology, evaluates it and then inserts a new lifecycle row and result row
 Here we choose a slightly different semantic
 - Upon the topology discovery/previous stage evaluation, a StageTopologyEvaluation for the next stage is already inserted
 into the database, but with a TRIGGERED flag. When a stage starts evaluation of a topology, it moves it to RUNNING and then
@@ -28,13 +33,16 @@ to a terminal state ACCEPTED/WARN/REJECT. Except for the terminal stage (AC), al
 StageTopologyEvaluation objects for the next stage if they deem a topology feasible for evaluation by that stage (e.g. it is
 in ACCEPTED or WARN category.
 
+Once a stage has actual result payload, it inserts a ``StageTopologyResult`` row. This keeps the queue-like lifecycle row
+small and allows non-null constraints such as mandatory fitness on the result table.
+
 The stage workers are free to use the StageTopologyEvaluation table as an additional synchronization mechanism for in-worker
 parallelism, i.e. if two threads within the worker evaluate topologies in parallel they can sync using the table.
 
 Worst-k evaluation requires information from the previous stage - which N-1 cases were the most severe ones. Concretely,
 the AC-FAST-FAIL stage requires information from the DC stage. Now, the worst-k cases could be stored either in the
-Evaluation entry of the early (DC) or the later (AC-FAST-FAIL) stage. As the worst-k cases are a denser form of metrics, it
-semantically seems to be preffered to write them in the Evaluation of the stage that computed them.
+result entry of the early (DC) or the later (AC-FAST-FAIL) stage. As the worst-k cases are a denser form of metrics, it
+semantically seems to be preffered to write them in the result entry of the stage that computed them.
 
 In contrast to StageWorkItems, StageTopologyEvaluations do not carry a lease. This makes a recovery of individual failed
 worker threads impossible. Instead, we assume that if a stage worker fails then all worker threads from the job will fail.
@@ -42,15 +50,15 @@ The cleanup routine in utils.py performs a cleanup of stale StageTopologyEvaluat
 reset to TRIGGERED. This must happen in a transaction together with the reset of the StageWorkItem. If not, there would be a
 possible race condition in case of a too short lease time where a worker would still be working, trying to write results.
 However, as the workers check the StageWorkItem for a possible termination (cancellation or lease expiry) __before__ writing
-results to StageTopologyEvaluation, this is remedied.
+results to StageTopologyResult, this is remedied.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, cast
-from uuid import UUID
+from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID, uuid4
 
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
@@ -59,6 +67,9 @@ from toop_engine_interfaces.types import MetricType
 from toop_engine_topology_optimizer.database.json_adapter import TypedJson
 from toop_engine_topology_optimizer.interfaces.messages.commons import OptimizerType
 from toop_engine_topology_optimizer.interfaces.messages.results import TopologyRejectionReason
+
+if TYPE_CHECKING:
+    from toop_engine_topology_optimizer.database.command_models import OptimizationJob
 
 
 ACTION_INDEX_LIST_JSON: TypedJson[list[int]] = TypedJson(list[int])
@@ -110,11 +121,11 @@ class Topology(SQLModel, table=True):
         UniqueConstraint("strategy_id", "timestep", name="uq_topology_timestep"),
     )
 
-    id: UUID | None = Field(default=None, primary_key=True)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
     """The primary key as a topology UUID. We choose a UUID to persist topology IDs even when the optimizer database is
     wiped so they can be disambiguated in the persisted api-service database."""
 
-    strategy_id: UUID = Field(foreign_key="strategy.id", nullable=False, index=True)
+    strategy_id: UUID = Field(foreign_key="strategy.id", ondelete="CASCADE", nullable=False, index=True)
     """The strategy this topology belongs to."""
 
     strategy: "Strategy" = Relationship(back_populates="topologies")
@@ -160,10 +171,13 @@ class Strategy(SQLModel, table=True):
         UniqueConstraint("optimization_job_id", "strategy_hash", name="uq_strategy"),
     )
 
-    id: UUID | None = Field(default=None, primary_key=True)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
     """The primary key."""
 
-    optimization_job_id: UUID = Field(foreign_key="optimization_job.id", nullable=False, index=True)
+    optimization_job_id: UUID = Field(foreign_key="optimization_job.id", ondelete="CASCADE", nullable=False, index=True)
+    """The optimization job this strategy belongs to."""
+
+    optimization_job: "OptimizationJob" = Relationship(back_populates="strategies")
     """The optimization job this strategy belongs to."""
 
     strategy_hash: bytes = Field(nullable=False, index=True)
@@ -183,16 +197,19 @@ class Strategy(SQLModel, table=True):
 
 
 class StageTopologyEvaluation(SQLModel, table=True):
-    """A stage-specific evaluation of one topology.
+    """A stage-specific lifecycle row for one topology.
 
     The evaluation is owned by ``Topology`` rather than by a strategy.
     Since every topology belongs to exactly one strategy, no extra occurrence
     indirection is needed.
 
-    Unlike a purely append-only result table, this row is also the scheduling
-    surface for the next stage on topology granularity. It is created in
+    This row is the scheduling surface for the next stage on topology
+    granularity. It is created in
     ``TRIGGERED``, then moved to ``RUNNING`` by the stage, and finally to one
     of the terminal states ``ACCEPTED``, ``WARN`` or ``REJECTED``.
+
+    The heavy evaluation payload lives in ``StageTopologyResult`` and is only
+    inserted once actual results are available.
     """
 
     __tablename__ = cast(Any, "stage_topology_evaluation")
@@ -204,7 +221,7 @@ class StageTopologyEvaluation(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     """The primary key."""
 
-    optimization_job_id: UUID = Field(foreign_key="optimization_job.id", nullable=False, index=True)
+    optimization_job_id: UUID = Field(foreign_key="optimization_job.id", ondelete="CASCADE", nullable=False, index=True)
     """The optimization job this topology evaluation belongs to."""
 
     stage_execution_history_id: int | None = Field(default=None, foreign_key="stage_execution_history.id", nullable=True, index=True)
@@ -218,7 +235,7 @@ class StageTopologyEvaluation(SQLModel, table=True):
     stage: OptimizerType = Field(nullable=False, index=True)
     """The optimizer stage that shall produce this topology evaluation."""
 
-    topology_id: UUID = Field(foreign_key="topology.id", nullable=False, index=True)
+    topology_id: UUID = Field(foreign_key="topology.id", ondelete="CASCADE", nullable=False, index=True)
     """The topology that was evaluated."""
 
     topology: Topology = Relationship(back_populates="topology_evaluations")
@@ -233,12 +250,48 @@ class StageTopologyEvaluation(SQLModel, table=True):
     iteration: int | None = Field(default=None, nullable=True, index=True)
     """The optimization iteration during which this evaluation was written, if any."""
 
-    rejection_reason: TopologyRejectionReason | None = Field(default=None, sa_type=cast(Any, REJECTION_REASON_JSON))
-    """The rejection reason if this stage evaluation rejected the topology."""
+    last_edited: datetime = Field(default_factory=datetime.now, nullable=False, sa_column_kwargs={"onupdate": datetime.now})
+    """When this evaluation row was last modified."""
 
-    fitness: float | None = Field(default=None, nullable=True)
-    """The primary objective value reported for this evaluated topology. This must be set if the Evaluation reached
-    ACCEPTED or WARN stage."""
+    created_at: datetime = Field(default_factory=datetime.now, nullable=False)
+    """When this stage topology evaluation row was persisted."""
+
+    result: "StageTopologyResult | None" = Relationship(
+        back_populates="stage_topology_evaluation",
+        sa_relationship_kwargs={"uselist": False},
+        cascade_delete=True,
+    )
+    """The payload row produced for this stage evaluation, if any."""
+
+
+class StageTopologyResult(SQLModel, table=True):
+    """The result payload produced for a stage topology evaluation.
+
+    This row is inserted only once actual result data is present. Separating it
+    from ``StageTopologyEvaluation`` keeps the lifecycle row compact and makes
+    result fields such as ``fitness`` mandatory.
+    """
+
+    __tablename__ = cast(Any, "stage_topology_result")
+
+    __table_args__ = (
+        UniqueConstraint("stage_topology_evaluation_id", name="uq_stage_topology_result_evaluation"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    """The primary key."""
+
+    stage_topology_evaluation_id: int = Field(foreign_key="stage_topology_evaluation.id", ondelete="CASCADE", nullable=False, index=True)
+    """The lifecycle row this result payload belongs to."""
+
+    stage_topology_evaluation: StageTopologyEvaluation = Relationship(back_populates="result")
+    """The lifecycle row this result payload belongs to."""
+
+    rejection_reason: TopologyRejectionReason | None = Field(default=None, sa_type=cast(Any, REJECTION_REASON_JSON))
+    """The rejection reason if this stage rejected the topology."""
+
+    fitness: float = Field(nullable=False)
+    """The primary objective value reported for this evaluated topology."""
 
     metrics: dict[MetricType, float] = Field(default_factory=dict, sa_type=cast(Any, METRIC_SCORES_JSON))
     """Additional metric values emitted for this evaluated topology."""
@@ -249,8 +302,5 @@ class StageTopologyEvaluation(SQLModel, table=True):
     loadflow_reference: StoredLoadflowReference | None = Field(default=None, sa_type=cast(Any, LOADFLOW_REFERENCE_JSON))
     """Optional reference to stored detailed loadflow results for this topology."""
 
-    last_edited: datetime = Field(default_factory=datetime.now, nullable=False, sa_column_kwargs={"onupdate": datetime.now})
-    """When this evaluation row was last modified."""
-
     created_at: datetime = Field(default_factory=datetime.now, nullable=False)
-    """When this stage topology evaluation row was persisted."""
+    """When this stage topology result row was persisted."""

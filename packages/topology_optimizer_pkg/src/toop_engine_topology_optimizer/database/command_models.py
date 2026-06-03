@@ -99,13 +99,13 @@ class OptimizationJob(SQLModel, table=True):
     id: UUID = Field(primary_key=True)
     """The optimization id shared across commands, results and the API database."""
 
-    ac_params: ACOptimizerParameters = Field(sa_type=AC_OPTIMIZER_PARAMETERS_JSON)
+    ac_params: ACOptimizerParameters = Field(sa_type=cast(Any, AC_OPTIMIZER_PARAMETERS_JSON))
     """Json-serialized representation of the AC optimizer parameters in this job."""
 
-    dc_params: DCOptimizerParameters = Field(sa_type=DC_OPTIMIZER_PARAMETERS_JSON)
+    dc_params: DCOptimizerParameters = Field(sa_type=cast(Any, DC_OPTIMIZER_PARAMETERS_JSON))
     """Json-serialized representation of the DC optimizer parameters in this job."""
 
-    grid_files: list[GridFile] = Field(sa_type=GRID_FILES_JSON)
+    grid_files: list[GridFile] = Field(sa_type=cast(Any, GRID_FILES_JSON))
     """Json-serialized representation of the grid file under optimization.
 
     We currently only support single-timestep operation, but for compatibility reasons we will defer the refactor to single
@@ -135,7 +135,6 @@ class OptimizationJob(SQLModel, table=True):
 
     stage_execution_history: list["StageExecutionHistory"] = Relationship(back_populates="optimization_job", cascade_delete=True)
     """The append-only execution history for this optimization job."""
-
 
 class StageWorkItemStatus(str, Enum):
     """The status of a materialized stage work item."""

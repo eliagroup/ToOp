@@ -84,6 +84,7 @@ def run_spps_with_branch_switch_results(
     switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
     timestep: int,
     basecase_net: pp.pandapowerNet,
+    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     method: Literal["ac", "dc"] = "ac",
     runpp_kwargs: dict[str, Any] | None = None,
     min_island_size: int = 11,
@@ -117,6 +118,11 @@ def run_spps_with_branch_switch_results(
     min_island_size : int
         Smallest island size that can receive a slack bus; passed through to
         :class:`SlackAllocationConfig`.
+    monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
+        Branch and node results are filtered to this set after
+        the load flow. Only monitored branches and nodes are then used for
+        subsequent cascade trigger detection. When ``None``, no filtering is
+        applied.
 
     Returns
     -------
@@ -157,6 +163,10 @@ def run_spps_with_branch_switch_results(
         node_results,
         switch_element_mapping,
     )
+
+    monitored_index = monitored_elements.index
+    branch_results = branch_results[branch_results.index.isin(monitored_index, level="element")]
+    node_results = node_results[node_results.index.isin(monitored_index, level="element")]
 
     return CascadeSppsBranchSwitchResults(
         convergence_status=convergence_status,

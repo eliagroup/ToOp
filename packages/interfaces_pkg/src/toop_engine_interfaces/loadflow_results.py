@@ -144,11 +144,11 @@ class BranchResultSchema(pa.DataFrameModel):
     If the engine does not support the computation of this value, the column can be omitted.
     """
 
-    element_name: Series[str] = pa.Field(default="")
+    element_name: Series[str]
     """The name of the Branch, if available. This is not used for the loadflow computation, but can be used for display
     purposes. If no name is available, this should be set to an empty string.
     """
-    contingency_name: Series[str] = pa.Field(default="")
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
@@ -211,11 +211,11 @@ class NodeResultSchema(pa.DataFrameModel):
         NaN if no valid basecase voltage exists(basecase not converged).
     """
 
-    element_name: Series[str] = pa.Field(default="", nullable=True)
+    element_name: Series[str]
     """The name of the node, if available. This is not used for the loadflow computation, but can be used for display
     purposes. If no name is available, this should be set to an empty string.
     """
-    contingency_name: Series[str] = pa.Field(default="", nullable=True)
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
@@ -273,11 +273,11 @@ class VADiffResultSchema(pa.DataFrameModel):
     """The voltage angle difference in degrees between the two ends of the element.
     nan if at least one of the ends has no voltage angle (island, out of service)"""
 
-    element_name: Series[str] = pa.Field(default="")
+    element_name: Series[str]
     """The name of the Branch or Switch, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
-    contingency_name: Series[str] = pa.Field(default="")
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
@@ -326,11 +326,11 @@ class SwitchResultsSchema(pa.DataFrameModel):
     This should only be NaN if the branch has no connection to the slack bus.
     """
 
-    element_name: Series[str] = pa.Field(default="")
+    element_name: Series[str]
     """The name of the Branch or Switch, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
-    contingency_name: Series[str] = pa.Field(default="")
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
@@ -399,11 +399,11 @@ class RegulatingElementResultSchema(pa.DataFrameModel):
     regulating_element_type: Series[str] = pa.Field(isin=[side.value for side in RegulatingElementType])
     """The type of the regulating element (generator, regulating transformer, SVC, ...)."""
 
-    element_name: Optional[Series[str]] = pa.Field(default="")
+    element_name: Series[str]
     """The name of the Regulating Element, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
-    contingency_name: Optional[Series[str]] = pa.Field(default="")
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
@@ -431,10 +431,10 @@ class ConvergedSchema(pa.DataFrameModel):
     iteration_count: Series[float] = pa.Field(nullable=True)  # float so its nullable
     """The number of iterations required for the loadflow to converge."""
 
-    warnings: Series[str] = pa.Field(default="")
+    warnings: Series[str] = pa.Field(nullable=True)
     """An additional string field that carries warnings or error logs for specific timesteps/contingencys/components."""
 
-    contingency_name: Series[str] = pa.Field(default="")
+    contingency_name: Series[str]
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """

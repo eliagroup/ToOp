@@ -200,6 +200,8 @@ def get_nodes(
     nodes_df.fillna({"foreign_id": ""}, inplace=True)
     cond = nodes_df["foreign_id"] == ""
     nodes_df.loc[cond, "foreign_id"] = nodes_df.loc[cond, "grid_model_id"]
+    nodes_df.loc[nodes_df["in_service"].isna(), "in_service"] = True
+    nodes_df["in_service"] = nodes_df["in_service"].astype(bool)
 
     return NodeSchema.validate(nodes_df)
 

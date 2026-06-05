@@ -11,8 +11,9 @@ import jax.numpy as jnp
 from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from toop_engine_dc_solver.example_grids import case30_with_psts_powsybl
-from toop_engine_dc_solver.jax.nodal_inj_optim import nodal_inj_optimization
+from toop_engine_dc_solver.jax.nodal_inj_optim import canonicalize_parallel_pst_taps, nodal_inj_optimization
 from toop_engine_dc_solver.jax.types import (
+    NodalInjectionInformation,
     NodalInjOptimResults,
     NodalInjStartOptions,
     TopologyResults,
@@ -112,3 +113,28 @@ def test_compare_nodal_inj_to_powsybl(tmp_path: Path) -> None:
     # Verify that when we apply different taps, we get different flows than with starting taps
     assert not jnp.allclose(n_0_changed, n_0_unchanged), "N-0 flows should differ between different tap settings"
     assert n_0_changed.shape == n_0_batched.shape, "Output shape should match input shape"
+
+
+def test_canonicalize_parallel_pst_taps_uses_shared_group_delta() -> None:
+    nodal_inj_info = NodalInjectionInformation(
+        controllable_pst_indices=jnp.array([0, 1, 2]),
+        shift_degree_min=jnp.array([-10.0, -10.0, -10.0]),
+        shift_degree_max=jnp.array([10.0, 10.0, 10.0]),
+        pst_n_taps=jnp.array([10, 10, 10]),
+        pst_tap_values=jnp.zeros((3, 10)),
+        starting_tap_idx=jnp.array([4, 4, 2]),
+        grid_model_low_tap=jnp.array([0, 0, 0]),
+        parallel_pst_group_mask=jnp.array(
+            [
+                [True, True, False],
+                [False, False, True],
+            ]
+        ),
+    )
+    pst_tap_indices = jnp.array([[[6, 1, 5]]])
+
+    canonical = canonicalize_parallel_pst_taps(pst_tap_indices=pst_tap_indices, nodal_inj_info=nodal_inj_info)
+
+    assert canonical.shape == pst_tap_indices.shape
+    assert canonical[0, 0, 0] == canonical[0, 0, 1]
+    assert canonical[0, 0, 0] == 6

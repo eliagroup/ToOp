@@ -310,6 +310,9 @@ class NetworkData:
     """The mask over nodes that are a controllable phase shifter. When adding the PSDF matrix, bogus
     nodes will be included. The ones that refer to a controllable PST will be mentioned in this mask."""
 
+    parallel_pst_group_mask: Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]] = None
+    """Boolean masks describing groups of parallel controllable PSTs aligned with PST arrays."""
+
     realised_stations: Optional[list[list[Station]]] = None
     """The realised stations for each relevant node depending on the branch_actions. The outer list
     is of length equal to the number of relevant nodes. The inner list if of length equal to the number
@@ -422,6 +425,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         phase_shift_starting_tap_idx=interface.get_phase_shift_starting_taps(),
         phase_shift_low_tap=interface.get_phase_shift_low_taps(),
         phase_shift_linearity=interface.get_phase_shift_linearity(),
+        parallel_pst_group_mask=interface.get_parallel_pst_group_mask(),
         busbar_outage_map=interface.get_busbar_outage_map(),
     )
 
@@ -462,6 +466,13 @@ def assert_network_data(network_data: NetworkData) -> None:
     )
     # We currently can't split the slack node - something in the BSDF doesn't work properly...
     assert network_data.relevant_node_mask[network_data.slack].item() is False
+    if network_data.parallel_pst_group_mask is not None:
+        assert network_data.parallel_pst_group_mask.shape[1] == int(np.sum(network_data.controllable_phase_shift_mask)), (
+            "Parallel PST group mask must align with controllable PST arrays"
+        )
+        assert np.all(network_data.parallel_pst_group_mask.sum(axis=0) == 1), (
+            "Each controllable PST must belong to exactly one parallel PST group"
+        )
 
 
 # ruff: noqa: PLR0915

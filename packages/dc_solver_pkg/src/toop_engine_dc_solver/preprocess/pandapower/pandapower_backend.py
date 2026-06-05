@@ -18,6 +18,7 @@ from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from pandapower.pypower.idx_brch import F_BUS, SHIFT, T_BUS
 from pandapower.pypower.makeBdc import calc_b_from_branch
+from toop_engine_dc_solver.preprocess.parallel_pst_groups import load_or_create_parallel_pst_group_mask
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_dc_bus_voltage,
     get_pandapower_branch_loadflow_results_sequence,
@@ -489,6 +490,13 @@ class PandaPowerBackend(BackendInterface):
             return np.zeros(0, dtype=int)
 
         return self.net.trafo.loc[controllable_trafo_mask, "tap_min"].astype(int).to_numpy(dtype=int)
+
+    def get_parallel_pst_group_mask(self) -> Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]:
+        """Get the parallel PST groups aligned with the controllable PST arrays."""
+        return load_or_create_parallel_pst_group_mask(
+            filesystem=self.data_folder_dirfs,
+            pst_ids=self.get_controllable_phase_shift_ids(),
+        )
 
     def get_monitored_branch_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get mask of monitored branches for the reward calculation

@@ -562,6 +562,10 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
     )
     relevant_phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[kept_pst_branches]
     relevant_phase_shift_low_tap = network_data.phase_shift_low_tap[kept_pst_branches]
+    relevant_parallel_pst_group_mask = None
+    if network_data.parallel_pst_group_mask is not None:
+        relevant_parallel_pst_group_mask = network_data.parallel_pst_group_mask[:, kept_pst_branches]
+        relevant_parallel_pst_group_mask = relevant_parallel_pst_group_mask[np.any(relevant_parallel_pst_group_mask, axis=1)]
     # PST branches carry a node injection as well, so we need to adjust the injection indices
     pst_node_indices = np.flatnonzero(network_data.controllable_pst_node_mask)
     # Assert that the number of PST branches and nodes is the same
@@ -595,6 +599,7 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         phase_shift_taps=relevant_phase_shift_taps,
         phase_shift_starting_tap_idx=relevant_phase_shift_starting_tap_idx,
         phase_shift_low_tap=relevant_phase_shift_low_tap,
+        parallel_pst_group_mask=relevant_parallel_pst_group_mask,
         controllable_pst_node_mask=kept_controllable_pst_node_mask,
         monitored_branch_mask=network_data.monitored_branch_mask[relevant_branches],
         disconnectable_branch_mask=network_data.disconnectable_branch_mask[relevant_branches],
@@ -1287,9 +1292,37 @@ def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> Netwo
         "since they cannot be handled correctly in the backend."
     )
     pst_linearity = network_data.phase_shift_linearity
+    parallel_pst_group_mask = network_data.parallel_pst_group_mask
+    if parallel_pst_group_mask is not None:
+        assert parallel_pst_group_mask.shape[1] == pst_linearity.shape[0], (
+            "Parallel PST group mask must align with controllable PST linearity information."
+        )
+        linear_group_counts = parallel_pst_group_mask.astype(int) @ pst_linearity.astype(int)
+        group_sizes = parallel_pst_group_mask.sum(axis=1)
+        mixed_parallel_groups = (linear_group_counts > 0) & (linear_group_counts < group_sizes)
+        if np.any(mixed_parallel_groups):
+            raise ValueError(
+                "Parallel PST groups cannot mix linear and non-linear controllable PSTs when grouped optimization data "
+                "is prepared. Update parallel_psts.csv so each group only contains linear or only non-linear PSTs."
+            )
+        parallel_pst_group_mask = parallel_pst_group_mask[:, pst_linearity]
+        parallel_pst_group_mask = parallel_pst_group_mask[np.any(parallel_pst_group_mask, axis=1)]
+
     phase_shift_low_tap = network_data.phase_shift_low_tap[pst_linearity]
     phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[pst_linearity]
     phase_shift_taps = [taps for taps, linear in zip(network_data.phase_shift_taps, pst_linearity, strict=True) if linear]
+    if parallel_pst_group_mask is not None:
+        for group_idx, group_mask in enumerate(parallel_pst_group_mask):
+            if np.sum(group_mask) <= 1:
+                continue
+            group_starting_taps = phase_shift_starting_tap_idx[group_mask]
+            if not np.all(group_starting_taps == group_starting_taps[0]):
+                logger.warning(
+                    "Parallel PST group members do not share the same starting tap. "
+                    "Grouped optimization will use a shared delta and clip individually.",
+                    group_index=group_idx,
+                    starting_taps=group_starting_taps.tolist(),
+                )
 
     controllable_pst_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
     controllable_phase_shift_mask = np.zeros_like(network_data.controllable_phase_shift_mask, dtype=bool)
@@ -1301,6 +1334,7 @@ def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> Netwo
         phase_shift_starting_tap_idx=phase_shift_starting_tap_idx,
         phase_shift_taps=phase_shift_taps,
         phase_shift_linearity=np.ones_like(phase_shift_low_tap, dtype=bool),
+        parallel_pst_group_mask=parallel_pst_group_mask,
     )
 
 

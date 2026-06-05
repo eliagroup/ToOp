@@ -218,3 +218,31 @@ def test_resetting_psts() -> None:
     assert jnp.any(difference > 0)
     assert jnp.any(difference == 0)
     assert jnp.any(mutated_pst_taps == pst_starting_taps)
+
+
+def test_grouped_mutate_psts_keeps_parallel_members_equal() -> None:
+    random_key = jax.random.PRNGKey(1234)
+    pst_taps = jnp.array([5, 5, 9, 9])
+    pst_starting_taps = jnp.array([5, 5, 9, 9])
+    pst_n_taps = jnp.array([20, 20, 20, 20])
+    parallel_pst_group_mask = jnp.array(
+        [
+            [True, True, False, False],
+            [False, False, True, True],
+        ]
+    )
+
+    mutated_pst_taps = mutate_psts(
+        random_key=random_key,
+        pst_taps=pst_taps,
+        pst_n_taps=pst_n_taps,
+        pst_starting_taps=pst_starting_taps,
+        pst_mutation_sigma=3.0,
+        pst_mutation_probability=1.0,
+        pst_reset_probability=0.0,
+        enable_parallel_pst_group_optim=True,
+        parallel_pst_group_mask=parallel_pst_group_mask,
+    )
+
+    assert mutated_pst_taps[0] == mutated_pst_taps[1]
+    assert mutated_pst_taps[2] == mutated_pst_taps[3]

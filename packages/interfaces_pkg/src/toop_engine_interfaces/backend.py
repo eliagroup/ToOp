@@ -296,6 +296,23 @@ class BackendInterface(ABC):
         """
         return np.zeros(sum(self.get_controllable_phase_shift_mask()), dtype=int)
 
+    def get_controllable_phase_shift_ids(self) -> list[str]:
+        """Get branch ids of controllable PSTs aligned with controllable PST arrays."""
+        branch_ids = self.get_branch_ids()
+        controllable_pst_mask = self.get_controllable_phase_shift_mask()
+        return [
+            str(branch_id)
+            for branch_id, is_controllable in zip(branch_ids, controllable_pst_mask, strict=True)
+            if is_controllable
+        ]
+
+    def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
+        """Get a PST group mask aligned with the controllable PST arrays.
+
+        Returns None when no explicit grouping metadata is available.
+        """
+        return None
+
     @abstractmethod
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get true if a node is part of the relevant nodes

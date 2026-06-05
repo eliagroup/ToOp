@@ -295,6 +295,7 @@ def convert_to_jax(  # noqa: PLR0913
                 pst_tap_values=pst_tap_values,
                 starting_tap_idx=jnp.array(network_data.phase_shift_starting_tap_idx, dtype=int),
                 grid_model_low_tap=jnp.array(network_data.phase_shift_low_tap, dtype=int),
+                parallel_pst_group_mask=jnp.array(network_data.parallel_pst_group_mask, dtype=bool),
             )
             if network_data.controllable_pst_node_mask.any()
             else None,

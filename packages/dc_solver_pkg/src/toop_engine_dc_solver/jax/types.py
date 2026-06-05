@@ -84,6 +84,11 @@ class NodalInjectionInformation(eqx.Module):
     taps are to be reconstructed from indices into pst_tap_values then tap + grid_model_low_tap gives the actual tap position
     in the original grid model."""
 
+    parallel_pst_group_mask: Bool[Array, " n_parallel_pst_groups n_controllable_pst"] = eqx.field(
+        default_factory=lambda: jnp.zeros((0, 0), dtype=bool)
+    )
+    """Boolean masks describing groups of controllable PSTs that must move together."""
+
 
 class N2BaselineAnalysis(eqx.Module):
     """The output of the N-2 baseline analysis, used to compare the split n-2 analysis against."""
@@ -475,6 +480,9 @@ class SolverConfig:
     We set this parameter to False, if we want the optimiser to solve busbar outage problems in the grid. However,
     when we just want to ensure that the busbar outage problems are not exacerbated due to the optimiser, we set
     this to True."""
+
+    enable_parallel_pst_group_optim: bool = False
+    """Whether controllable PSTs should be optimized and applied in configured parallel groups."""
 
     def __hash__(self) -> int:
         """Get id as the hash for the static information.

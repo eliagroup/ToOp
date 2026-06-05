@@ -236,3 +236,4 @@ poetry.lock
 .aider/
 .cursor/
 .opencode/
+.agents/

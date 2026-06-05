@@ -121,8 +121,7 @@ def run_spps_with_branch_switch_results(
     monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
         Branch and node results are filtered to this set after
         the load flow. Only monitored branches and nodes are then used for
-        subsequent cascade trigger detection. When ``None``, no filtering is
-        applied.
+        subsequent cascade trigger detection.
 
     Returns
     -------

@@ -418,6 +418,12 @@ class _StationStructure(BaseModel):
     An entry is true if the asset is connected to the busbar.
     Note: An asset can be connected to multiple busbars, in which case a closed coupler is assumed
     to be present between these busbars.
+    Note: An asset can be connected to none of the busbars. In this case, the asset is intentionally
+    disconnected as part of a transmission line switching action. In practice, this usually involves
+    a separate switch from the asset-to-busbar couplers, as each asset usually has a switch that
+    completely disconnects it from the station. These switches are not modelled here, a
+    postprocessing routine needs to do the translation to this physical layout. Do not use
+    in_service for intentional disconnections.
     """
 
     asset_connectivity: Optional[Bool[ArrayLike, "n_bus n_asset"]] = None
@@ -428,7 +434,11 @@ class _StationStructure(BaseModel):
     """
 
     model_log: Optional[list[str]] = None
-    """Holds log messages from the model creation process."""
+    """Holds log messages from the model creation process.
+
+    This can be used to store information about the model creation process, e.g. warnings or errors.
+    A potential use case is to inform the user about data quality issues e.g. missing the Asset Bay switches.
+    """
 
     @field_validator("busbars")
     @classmethod

@@ -439,6 +439,7 @@ def extract_spps_rules_with_unique_pandapower_id(
         act_rows.extend(_build_spps_action_rows(rule, resolved_actions))
 
     spps_conditions = pd.concat([empty_conditions, pd.DataFrame(cond_rows)], ignore_index=True)
+    spps_conditions["condition_limit_value"] = pd.to_numeric(spps_conditions["condition_limit_value"], errors="coerce")
     spps_actions = pd.concat([empty_actions, pd.DataFrame(act_rows)], ignore_index=True)
     return spps_conditions, spps_actions, missing_rules, []
 
@@ -552,5 +553,6 @@ def extract_spps_rules_with_cgmes_id(
         act_rows.extend(_build_spps_action_rows(rule, resolved_actions))
 
     spps_conditions = pd.concat([empty_conditions, pd.DataFrame(cond_rows)], ignore_index=True)
+    spps_conditions["condition_limit_value"] = pd.to_numeric(spps_conditions["condition_limit_value"], errors="coerce")
     spps_actions = pd.concat([empty_actions, pd.DataFrame(act_rows)], ignore_index=True)
     return spps_conditions, spps_actions, missing_rules, list(dict.fromkeys(seen_duplicated_ids))

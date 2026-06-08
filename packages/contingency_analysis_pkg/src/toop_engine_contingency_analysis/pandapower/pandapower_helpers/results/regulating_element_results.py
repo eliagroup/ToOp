@@ -59,4 +59,7 @@ def get_regulating_element_results(
         ] = RegulatingElementType.SLACK_P.value
     regulating_elements["element_name"] = ""
     regulating_elements["contingency_name"] = ""
+    regulating_elements[["element_name", "contingency_name"]] = regulating_elements[
+        ["element_name", "contingency_name"]
+    ].fillna("")
     return regulating_elements

@@ -195,7 +195,7 @@ def run_single_outage(
         ctx=ctx,
         grouped_contingency=grouped_contingency,
         status=status,
-        branch_results_df=element_results.full_branch_results,
+        branch_results_df=element_results.branch_results,
         switch_results_df=element_results.switch_results,
     )
 
@@ -374,6 +374,7 @@ def _collect_cascade_results(
         switch_results_df,
         initial_contingency=grouped_contingency.contingencies[0],
         basecase_net=ctx.basecase_net,
+        monitored_elements=ctx.monitored_elements,
     )
 
     return _build_cascade_results_df(

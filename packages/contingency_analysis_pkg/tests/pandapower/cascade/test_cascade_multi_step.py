@@ -257,3 +257,109 @@ class TestCascades(unittest.TestCase):
             },
         ]
         assert cascade_events == expected
+
+    def test_cascade_stops_when_step2_elements_not_monitored(self):
+        """Cascade event log stops after step 1 when step-2 triggers are on non-monitored elements.
+
+        Setup
+        -----
+        Same network and line limits as ``test_cascade_with_2_trips``.  The
+        contingency (l1 trip) would normally produce a 2-step cascade:
+
+          step 1 — l2 trips (current overload)
+          step 2 — l4 trips (distance protection) + l7 trips (current overload)
+
+        Here l4 and l7 are **excluded** from ``monitored_elements``.
+
+        Why no step-2 events appear
+        ---------------------------
+        Current overload (l7):
+            Branch results fed to ``_detect_triggers_from_results`` are
+            pre-filtered to monitored elements.  l7 is absent, so the overload
+            detector never sees it as triggered.
+
+        Distance protection (l4 via sw3):
+            Switch results are not filtered — sw3 still fires and its outage
+            group (which includes l4) is fully applied to the network.
+            However, l4 is not monitored so the resulting event is suppressed
+            by ``_filter_events_to_monitored`` and does not appear in the log.
+
+        Outages are intentionally not filtered: when a monitored switch trips,
+        all elements in its outage group must be taken out of service to keep
+        the topology consistent, even if those elements are not monitored.
+        """
+        net = build_cascade_test_net()
+        net.line.loc[0, "max_i_ka"] = 0.3
+        net.line.loc[1, "max_i_ka"] = 0.3
+        net.line.loc[2, "max_i_ka"] = 0.6
+        net.line.loc[3, "max_i_ka"] = 0.4
+        net.line.loc[4, "max_i_ka"] = 0.6
+
+        cascade_cfg = CascadeConfig(
+            depth_limit=3,
+            current_loading_threshold=1.5,
+            min_island_size=2,
+            cascade_log_elements=["line", "switch"],
+            basecase_distance_protection_factor=2,
+            contingency_distance_protection_factor=2,
+        )
+        net.line["global_id"] = net.line.index.map(lambda imp_id: get_globally_unique_id(imp_id, "line"))
+        net.bus["global_id"] = net.bus.index.map(lambda imp_id: get_globally_unique_id(imp_id, "bus"))
+        net.switch["global_id"] = net.switch.index.map(lambda imp_id: get_globally_unique_id(imp_id, "switch"))
+
+        # l4 (idx 6, origin_id="line:l4") and l7 (idx 5, origin_id="line:l7")
+        # are intentionally excluded — they are the step-2 cascade triggers.
+        unmonitored_line_names = {"l4", "l7"}
+        monitored_elements = (
+            [
+                GridElement(id=row.global_id, type="line", kind="branch", name=row.name)
+                for row in net.line.itertuples()
+                if row.name not in unmonitored_line_names
+            ]
+            + [GridElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
+            + [GridElement(id=row.global_id, type="switch", kind="switch", name=row.name) for row in net.switch.itertuples()]
+        )
+
+        contingencies = [
+            Contingency(id="BASECASE", name="BASECASE", elements=[]),
+            Contingency(
+                id="line:l1",
+                name="l1",
+                elements=[GridElement(id="0%%line", type="line", kind="branch")],
+            ),
+        ]
+        nminus1_def = Nminus1Definition(
+            monitored_elements=monitored_elements,
+            contingencies=contingencies,
+        )
+        cfg = ContingencyAnalysisConfig(
+            method="ac",
+            min_island_size=2,
+            cascade=cascade_cfg,
+            parallel=ParallelConfig(n_processes=1, batch_size=None),
+            runpp_kwargs={"lightsim2grid": False, "enforce_q_lims": True},
+        )
+
+        lf_results = run_contingency_analysis_pandapower(
+            net=net,
+            n_minus_1_definition=nminus1_def,
+            job_id="test",
+            timestep=0,
+            cfg=cfg,
+        )
+
+        all_cascade_events = _cascade_results_to_events(lf_results.cascade_results)
+        cascade_events = [e for e in all_cascade_events if e["contingency_name"] == "l1"]
+
+        # Only the step-1 event (l2 current overload) must appear.
+        # l4 and l7 are not monitored, so their step-2 events are suppressed.
+        assert len(cascade_events) == 1
+        assert cascade_events[0] == {
+            "cascade_number": 1,
+            "cascade_reason": CascadeReasonType.CASCADE_REASON_CURRENT,
+            "contingency_mrid": "line:l1",
+            "contingency_name": "l1",
+            "distance_protection_severity": None,
+            "element_mrid": "line:l2",
+            "element_name": "l2",
+        }

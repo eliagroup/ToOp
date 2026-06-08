@@ -84,9 +84,7 @@ class NodalInjectionInformation(eqx.Module):
     taps are to be reconstructed from indices into pst_tap_values then tap + grid_model_low_tap gives the actual tap position
     in the original grid model."""
 
-    parallel_pst_group_mask: Bool[Array, " n_parallel_pst_groups n_controllable_pst"] = eqx.field(
-        default_factory=lambda: jnp.zeros((0, 0), dtype=bool)
-    )
+    parallel_pst_group_mask: Optional[Bool[Array, " n_parallel_pst_groups n_controllable_pst"]] = None
     """Boolean masks describing groups of controllable PSTs that must move together."""
 
 

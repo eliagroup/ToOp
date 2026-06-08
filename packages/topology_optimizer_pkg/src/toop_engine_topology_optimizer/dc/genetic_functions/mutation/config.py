@@ -8,7 +8,6 @@
 """Mutation configuration classes for the genetic algorithm."""
 
 import equinox as eqx
-import jax.numpy as jnp
 from beartype.typing import Optional
 from jaxtyping import Array, Bool, Int
 
@@ -83,8 +82,8 @@ class NodalInjectionMutationConfig(eqx.Module):
     enable_parallel_pst_group_optim: bool = eqx.field(static=True, default=False)
     """Whether PST mutations should be sampled once per configured parallel group."""
 
-    parallel_pst_group_mask: Bool[Array, " n_parallel_pst_groups n_controllable_pst"] = eqx.field(
-        default_factory=lambda: jnp.zeros((0, 0), dtype=bool)
+    parallel_pst_group_mask: Optional[Bool[Array, " n_parallel_pst_groups n_controllable_pst"]] = eqx.field(
+        static=True, default=None
     )
     """Boolean masks that map each controllable PST to exactly one parallel-optimization group."""
 

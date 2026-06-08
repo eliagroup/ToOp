@@ -12,7 +12,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 from beartype.typing import Optional
-from jaxtyping import Array, Int, PRNGKeyArray
+from jaxtyping import Array, Bool, Int, PRNGKeyArray
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults
 from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import NodalInjectionMutationConfig
 
@@ -26,7 +26,7 @@ def mutate_psts(
     pst_mutation_probability: float = 0.2,
     pst_reset_probability: float = 0.1,
     enable_parallel_pst_group_optim: bool = False,
-    parallel_pst_group_mask: Int[Array, " n_parallel_pst_groups n_controllable_pst"] | None = None,
+    parallel_pst_group_mask: Bool[Array, " n_parallel_pst_groups n_controllable_pst"] | None = None,
 ) -> Int[Array, " n_controllable_pst"]:
     """Mutate the PST taps of a single topology.
 
@@ -69,7 +69,7 @@ def mutate_psts(
     # Sample number of PSTs to adjust from a n_controllable_pst-dimensional uniform distribution
     key, key_mutate, key_reset = jax.random.split(random_key, 3)
 
-    if enable_parallel_pst_group_optim and parallel_pst_group_mask is not None and parallel_pst_group_mask.size > 0:
+    if enable_parallel_pst_group_optim and parallel_pst_group_mask is not None:
         n_parallel_groups = parallel_pst_group_mask.shape[0]
         group_indices_to_mutate = jax.random.bernoulli(key=key, p=pst_mutation_probability, shape=(n_parallel_groups,))
         mutation_samples = jax.random.normal(key_mutate, shape=(n_parallel_groups,)) * pst_mutation_sigma

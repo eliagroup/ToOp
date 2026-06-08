@@ -229,7 +229,8 @@ def test_grouped_mutate_psts_keeps_parallel_members_equal() -> None:
         [
             [True, True, False, False],
             [False, False, True, True],
-        ]
+        ],
+        dtype=bool,
     )
 
     mutated_pst_taps = mutate_psts(

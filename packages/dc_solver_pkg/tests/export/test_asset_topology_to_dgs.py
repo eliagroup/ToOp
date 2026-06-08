@@ -199,11 +199,7 @@ def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
     ]
     assert asset_bay_sr_fid_list == expected
 
-    station.assets[1] = station.assets[1].model_copy(
-        update={
-            "asset_bay": None,
-        }
-    )
+    station.asset_bays[1] = None
     asset_bay_sr_fid_list = get_asset_bay_grid_model_id_list(station)
     expected = [
         {"BBS4_1": "L42_DISCONNECTOR_3_0", "BBS4_2": "L42_DISCONNECTOR_3_1"},

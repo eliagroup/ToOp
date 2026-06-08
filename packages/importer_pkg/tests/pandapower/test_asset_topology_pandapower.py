@@ -16,6 +16,7 @@ from toop_engine_interfaces.asset_topology import (
     AssetBay,
     MaterializedStation,
     Topology,
+    build_asset_bay_id,
 )
 
 
@@ -121,26 +122,31 @@ def test_get_branches_from_station(pp_network_w_switches):
     expected_switching_matrix = np.array([[True, True, True, True, True]])
     expected_asset_connection = [
         AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "HV Line1"),
             sl_switch_grid_model_id="SB DS2.1",
             dv_switch_grid_model_id="SB CB2",
             sr_switch_grid_model_id={"16%%bus": "SB DS2.2"},
         ),
         AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "HV Line6"),
             sl_switch_grid_model_id="SB DS3.1",
             dv_switch_grid_model_id="SB CB3",
             sr_switch_grid_model_id={"16%%bus": "SB DS3.2"},
         ),
         AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "EHV-HV-Trafo"),
             sl_switch_grid_model_id="SB DS1.1",
             dv_switch_grid_model_id="SB CB1",
             sr_switch_grid_model_id={"16%%bus": "SB DS1.2"},
         ),
         AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "MV Net 0"),
             sl_switch_grid_model_id="SB DS4.1",
             dv_switch_grid_model_id="SB CB4",
             sr_switch_grid_model_id={"16%%bus": "SB DS4.2"},
         ),
         AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "Wind Park"),
             sl_switch_grid_model_id="SB DS5.1",
             dv_switch_grid_model_id="SB CB5",
             sr_switch_grid_model_id={"16%%bus": "SB DS5.2"},
@@ -222,6 +228,7 @@ def test_get_branches_from_station_edge_cases(pp_network_w_switches):
         net.switch.loc[31, "element"] = 19
         net.switch.loc[33, "closed"] = False
         expected_path = AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "HV Line6"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="SB CB3",
             sr_switch_grid_model_id={"16%%bus": "SB DS3.2"},
@@ -243,6 +250,7 @@ def test_get_branches_from_station_edge_cases(pp_network_w_switches):
         net.switch.loc[5, "closed"] = True
         expected_path = [
             AssetBay(
+                asset_bay_id=build_asset_bay_id("0%%bus", "EHV-HV-Trafo"),
                 sl_switch_grid_model_id="DB DS11",
                 dv_switch_grid_model_id="DB CB2",
                 sr_switch_grid_model_id={"1%%bus": "DB DS4", "0%%bus": "DB DS5"},

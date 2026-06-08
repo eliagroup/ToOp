@@ -18,6 +18,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_interfaces.asset_topology import (
     AppliedStation,
+    AssetBay,
     Busbar,
     BusbarCoupler,
     MaterializedStation,
@@ -129,32 +130,28 @@ def remove_busbar(station: MaterializedStation, grid_model_id: str) -> Materiali
         np.delete(station.asset_connectivity, index, axis=0) if station.asset_connectivity is not None else None
     )
 
-    def filter_sr_keys(asset: SwitchableAsset) -> SwitchableAsset:
-        """Filter out the sr keys from the asset bay"""
-        if asset.asset_bay is None:
-            return asset
-        return asset.model_copy(
+    def filter_sr_keys(asset_bay: Optional[AssetBay]) -> Optional[AssetBay]:
+        """Filter out the sr keys from the asset bay."""
+        if asset_bay is None:
+            return None
+        return asset_bay.model_copy(
             update={
-                "asset_bay": asset.asset_bay.model_copy(
-                    update={
-                        "sr_switch_grid_model_id": {
-                            busbar_id: foreign_id
-                            for busbar_id, foreign_id in asset.asset_bay.sr_switch_grid_model_id.items()
-                            if busbar_id != grid_model_id
-                        }
-                    }
-                )
+                "sr_switch_grid_model_id": {
+                    busbar_id: foreign_id
+                    for busbar_id, foreign_id in asset_bay.sr_switch_grid_model_id.items()
+                    if busbar_id != grid_model_id
+                }
             }
         )
 
-    assets = [filter_sr_keys(a) for a in station.assets]
+    asset_bays = [filter_sr_keys(asset_bay) for asset_bay in station.asset_bays]
 
     # Create a new station object with the modified busbars, couplers, and asset switching table
     new_station = station.model_copy(
         update={
             "busbars": busbars,
             "couplers": couplers,
-            "assets": assets,
+            "asset_bays": asset_bays,
             "asset_switching_table": asset_switching_table,
             "asset_connectivity": asset_connectivity,
         }
@@ -183,6 +180,14 @@ def filter_out_of_service_assets(station: MaterializedStation) -> MaterializedSt
     return station.model_copy(
         update={
             "assets": [asset for asset in station.assets if asset.in_service],
+            "asset_terminals": [
+                branch_end
+                for branch_end, in_service in zip(station.asset_terminals, in_service_assets, strict=True)
+                if in_service
+            ],
+            "asset_bays": [
+                asset_bay for asset_bay, in_service in zip(station.asset_bays, in_service_assets, strict=True) if in_service
+            ],
             "asset_switching_table": station.asset_switching_table[:, in_service_assets],
             "asset_connectivity": station.asset_connectivity[:, in_service_assets]
             if station.asset_connectivity is not None
@@ -449,6 +454,10 @@ def filter_assets_by_type(
     new_station = station.model_copy(
         update={
             "assets": kept_assets,
+            "asset_terminals": [
+                branch_end for branch_end, mask in zip(station.asset_terminals, asset_mask, strict=True) if mask
+            ],
+            "asset_bays": [asset_bay for asset_bay, mask in zip(station.asset_bays, asset_mask, strict=True) if mask],
             "asset_switching_table": station.asset_switching_table[:, asset_mask],
             "asset_connectivity": station.asset_connectivity[:, asset_mask]
             if station.asset_connectivity is not None
@@ -1275,6 +1284,8 @@ def order_station_assets(
     station = station.model_copy(
         update={
             "assets": new_assets,
+            "asset_terminals": [station.asset_terminals[index] for index in old_positions],
+            "asset_bays": [station.asset_bays[index] for index in old_positions],
             "asset_switching_table": asset_switching_table,
             "asset_connectivity": asset_connectivity,
         }
@@ -1389,30 +1400,28 @@ def fuse_coupler(
     busbar_to_remove = station.busbars[busbar_index_to_remove]
     busbar_to_keep = station.busbars[busbar_index_to_keep]
 
-    def _replace_sr_keys(asset: SwitchableAsset) -> SwitchableAsset:
-        """Update the sr switch asset if it is connected to the removed busbar."""
-        if asset.asset_bay is None:
-            return asset
+    def _replace_sr_keys(asset_bay: Optional[AssetBay]) -> Optional[AssetBay]:
+        """Update the sr switch asset bay if it is connected to the removed busbar."""
+        if asset_bay is None:
+            return None
         if (
-            busbar_to_remove.grid_model_id in asset.asset_bay.sr_switch_grid_model_id.keys()
-            and busbar_to_keep.grid_model_id in asset.asset_bay.sr_switch_grid_model_id.keys()
+            busbar_to_remove.grid_model_id in asset_bay.sr_switch_grid_model_id.keys()
+            and busbar_to_keep.grid_model_id in asset_bay.sr_switch_grid_model_id.keys()
         ):
             # If both busbars are present, we need to remove the one that is not kept
             new_sr_switch_grid_model_id = {
                 key: foreign_id
-                for (key, foreign_id) in asset.asset_bay.sr_switch_grid_model_id.items()
+                for (key, foreign_id) in asset_bay.sr_switch_grid_model_id.items()
                 if key != busbar_to_remove.grid_model_id
             }
         else:
             # If the target busbar is not present, we change the key
             new_sr_switch_grid_model_id = {
                 (busbar_to_keep.grid_model_id if key == busbar_to_remove.grid_model_id else key): foreign_id
-                for (key, foreign_id) in asset.asset_bay.sr_switch_grid_model_id.items()
+                for (key, foreign_id) in asset_bay.sr_switch_grid_model_id.items()
             }
 
-        return asset.model_copy(
-            update={"asset_bay": asset.asset_bay.model_copy(update={"sr_switch_grid_model_id": new_sr_switch_grid_model_id})}
-        )
+        return asset_bay.model_copy(update={"sr_switch_grid_model_id": new_sr_switch_grid_model_id})
 
     def _replace_int_id(coupler: BusbarCoupler) -> BusbarCoupler:
         """Update coupler int-ids that are pointing to the removed busbar."""
@@ -1424,14 +1433,14 @@ def fuse_coupler(
 
     new_busbars = [b for i, b in enumerate(station.busbars) if i != busbar_index_to_remove]
     new_couplers = [_replace_int_id(c) for c in station.couplers if c.grid_model_id != coupler_grid_model_id]
-    new_assets = [_replace_sr_keys(a) for a in station.assets]
+    new_asset_bays = [_replace_sr_keys(asset_bay) for asset_bay in station.asset_bays]
 
     station = station.model_copy(
         update={
             "busbars": new_busbars,
             "asset_switching_table": new_switching_table,
             "asset_connectivity": new_connectivity_table,
-            "assets": new_assets,
+            "asset_bays": new_asset_bays,
             "couplers": new_couplers,
         }
     )

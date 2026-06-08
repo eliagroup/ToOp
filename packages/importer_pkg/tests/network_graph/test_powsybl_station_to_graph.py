@@ -160,15 +160,16 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert couplers[0].in_service
 
     assets = res.assets
+    asset_bays = res.asset_bays
     assert len(assets) == 5
     assert assets[0].grid_model_id == "L3"
     assert assets[0].type == "LINE"
     assert assets[0].name == ""
     assert assets[0].in_service
     assert assets[0].branch_end is None
-    assert assets[0].asset_bay.sl_switch_grid_model_id is None
-    assert assets[0].asset_bay.dv_switch_grid_model_id == "L32_BREAKER"
-    assert assets[0].asset_bay.sr_switch_grid_model_id == {
+    assert asset_bays[0].sl_switch_grid_model_id is None
+    assert asset_bays[0].dv_switch_grid_model_id == "L32_BREAKER"
+    assert asset_bays[0].sr_switch_grid_model_id == {
         "BBS3_1": "L32_DISCONNECTOR_3_0",
         "BBS3_2": "L32_DISCONNECTOR_3_1",
     }
@@ -178,9 +179,9 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[1].name == ""
     assert assets[1].in_service
     assert assets[1].branch_end is None
-    assert assets[1].asset_bay.sl_switch_grid_model_id is None
-    assert assets[1].asset_bay.dv_switch_grid_model_id == "L62_BREAKER"
-    assert assets[1].asset_bay.sr_switch_grid_model_id == {
+    assert asset_bays[1].sl_switch_grid_model_id is None
+    assert asset_bays[1].dv_switch_grid_model_id == "L62_BREAKER"
+    assert asset_bays[1].sr_switch_grid_model_id == {
         "BBS3_1": "L62_DISCONNECTOR_5_0",
         "BBS3_2": "L62_DISCONNECTOR_5_1",
     }
@@ -190,9 +191,9 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[2].name == ""
     assert assets[2].in_service
     assert assets[2].branch_end is None
-    assert assets[2].asset_bay.sl_switch_grid_model_id is None
-    assert assets[2].asset_bay.dv_switch_grid_model_id == "L72_BREAKER"
-    assert assets[2].asset_bay.sr_switch_grid_model_id == {
+    assert asset_bays[2].sl_switch_grid_model_id is None
+    assert asset_bays[2].dv_switch_grid_model_id == "L72_BREAKER"
+    assert asset_bays[2].sr_switch_grid_model_id == {
         "BBS3_1": "L72_DISCONNECTOR_7_0",
         "BBS3_2": "L72_DISCONNECTOR_7_1",
     }
@@ -202,9 +203,9 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[3].name == ""
     assert assets[3].in_service
     assert assets[3].branch_end is None
-    assert assets[3].asset_bay.sl_switch_grid_model_id is None
-    assert assets[3].asset_bay.dv_switch_grid_model_id == "L91_BREAKER"
-    assert assets[3].asset_bay.sr_switch_grid_model_id == {
+    assert asset_bays[3].sl_switch_grid_model_id is None
+    assert asset_bays[3].dv_switch_grid_model_id == "L91_BREAKER"
+    assert asset_bays[3].sr_switch_grid_model_id == {
         "BBS3_1": "L91_DISCONNECTOR_9_0",
         "BBS3_2": "L91_DISCONNECTOR_9_1",
     }
@@ -214,9 +215,9 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[4].name == ""
     assert assets[4].in_service
     assert assets[4].branch_end is None
-    assert assets[4].asset_bay.sl_switch_grid_model_id is None
-    assert assets[4].asset_bay.dv_switch_grid_model_id == "load2_BREAKER"
-    assert assets[4].asset_bay.sr_switch_grid_model_id == {
+    assert asset_bays[4].sl_switch_grid_model_id is None
+    assert asset_bays[4].dv_switch_grid_model_id == "load2_BREAKER"
+    assert asset_bays[4].sr_switch_grid_model_id == {
         "BBS3_1": "load2_DISCONNECTOR_13_0",
         "BBS3_2": "load2_DISCONNECTOR_13_1",
     }
@@ -237,8 +238,11 @@ def test_get_station_edge_cases_one_bay_two_assets(asset_topo_edge_cases_node_br
     station_info = SubstationInformation(**station_info)
     res = get_station(net, "VL1_1", station_info)
     load_assets = [asset for asset in res.assets if "load" in asset.grid_model_id]
+    load_asset_bays = [
+        asset_bay for asset, asset_bay in zip(res.assets, res.asset_bays, strict=True) if "load" in asset.grid_model_id
+    ]
     assert len(load_assets) == 2, "Expected two loads"
-    assert load_assets[0].asset_bay == load_assets[1].asset_bay, "Both loads should be in the same asset bay"
+    assert load_asset_bays[0] == load_asset_bays[1], "Both loads should be in the same asset bay"
 
 
 def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
@@ -269,10 +273,10 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     assert res.asset_switching_table.shape == (len(res.busbars), len(res.assets))
     assert res.asset_connectivity.shape == (len(res.busbars), len(res.assets))
 
-    for asset in res.assets:
-        if asset.asset_bay is None:
+    for asset_bay in res.asset_bays:
+        if asset_bay is None:
             continue
-        assert set(asset.asset_bay.sr_switch_grid_model_id) <= busbar_grid_model_ids
+        assert set(asset_bay.sr_switch_grid_model_id) <= busbar_grid_model_ids
 
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL2"}
     station_info = SubstationInformation(**station_info)
@@ -307,10 +311,10 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     assert res.asset_connectivity.shape == (len(res.busbars), len(res.assets))
     assert res.asset_connectivity.any(axis=0).all()
 
-    for asset in res.assets:
-        if asset.asset_bay is None:
+    for asset_bay in res.asset_bays:
+        if asset_bay is None:
             continue
-        assert set(asset.asset_bay.sr_switch_grid_model_id) <= busbar_grid_model_ids
+        assert set(asset_bay.sr_switch_grid_model_id) <= busbar_grid_model_ids
 
 
 def test_get_topo_integration(basic_node_breaker_network_powsybl_grid: Network):

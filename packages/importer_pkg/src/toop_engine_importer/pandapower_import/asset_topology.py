@@ -35,6 +35,7 @@ from toop_engine_interfaces.asset_topology import (
     AssetBay,
     MaterializedStation,
     Topology,
+    build_asset_bay_id,
     topology_parts_from_materialized_station,
 )
 
@@ -248,6 +249,8 @@ def get_branches_from_station(  # noqa: PLR0912, C901
             will not raise an error. But calling an "not_existing_attribute" will raise an error.
         If any bus name from bus_from_to_names is not found in the branch type.
     """
+    station_grid_model_id = str(station_buses["grid_model_id"].values[0])
+
     if branch_types is None:
         branch_types = [
             "line",
@@ -297,6 +300,8 @@ def get_branches_from_station(  # noqa: PLR0912, C901
                 # asset is not directly connected to a busbar -> get connection path
                 asset_connection = get_asset_connection_path_to_busbars(
                     network=network,
+                    station_grid_model_id=station_grid_model_id,
+                    asset_grid_model_id=str(branch[foreign_key]),
                     asset_bus=asset_bus,
                     station_buses=station_buses,
                     save_col_name=foreign_key,
@@ -449,6 +454,11 @@ def get_station_from_id(
     switchable_assets_list = get_list_of_switchable_assets_from_df(
         station_branches=station_branches, asset_bay_list=asset_connection_path
     )
+    asset_terminals = (
+        station_branches["branch_end"].tolist()
+        if "branch_end" in station_branches.columns
+        else [None] * len(station_branches)
+    )
 
     voltage_level_float = get_parameter_from_station(network=network, station_bus_index=station_id_list, parameter="vn_kv")
     # region = get_parameter_from_station(network, station_name, "zone")
@@ -467,6 +477,8 @@ def get_station_from_id(
         busbars=busbar_list,
         couplers=coupler_list,
         assets=switchable_assets_list,
+        asset_terminals=asset_terminals,
+        asset_bays=asset_connection_path,
         asset_switching_table=switching_matrix,
     )
 
@@ -609,6 +621,8 @@ def get_station_bus_df(
 # TODO: replace by networkX_logic_modules
 def get_asset_connection_path_to_busbars(  # noqa: PLR0915
     network: pp.pandapowerNet,
+    station_grid_model_id: str,
+    asset_grid_model_id: str,
     asset_bus: int,
     station_buses: pd.DataFrame,
     save_col_name: str = "equipment",
@@ -619,6 +633,10 @@ def get_asset_connection_path_to_busbars(  # noqa: PLR0915
     ----------
     network: pp.pandapowerNet
         pandapower network object
+    station_grid_model_id: str
+        Station identifier owning the asset bay.
+    asset_grid_model_id: str
+        Asset identifier for which the asset bay is constructed.
     asset_bus: int
         Asset bus id for which the connection path should be retrieved.
     station_buses: pd.DataFrame
@@ -722,6 +740,7 @@ def get_asset_connection_path_to_busbars(  # noqa: PLR0915
         sl_switch_grid_model_id = None
 
     asset_connection = AssetBay(
+        asset_bay_id=build_asset_bay_id(station_grid_model_id, asset_grid_model_id),
         sl_switch_grid_model_id=sl_switch_grid_model_id,
         dv_switch_grid_model_id=circuit_breaker[save_col_name].iloc[0],
         sr_switch_grid_model_id=final_buses,

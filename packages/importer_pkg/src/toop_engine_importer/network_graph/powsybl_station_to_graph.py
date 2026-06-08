@@ -360,6 +360,7 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     for asset_grid_model_id in switchable_assets_df["grid_model_id"].to_list():
         asset_bay, logs = get_asset_bay(
             graph_data.switches,
+            station_grid_model_id=substation_id,
             asset_grid_model_id=asset_grid_model_id,
             busbar_df=busbar_df,
             edge_connection_info=edge_connection_info,
@@ -386,6 +387,7 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     couplers = get_list_of_coupler_from_df(coupler_df)
     assets = get_list_of_switchable_assets_from_df(station_branches=switchable_assets_df, asset_bay_dict=asset_bay_dict)
     remove_suffix_from_switchable_assets(assets)
+    asset_bays_by_id = {asset_bay.asset_bay_id: asset_bay for asset_bay in asset_bay_dict.values()}
 
     station = MaterializedStation(
         grid_model_id=bus_id,
@@ -395,6 +397,7 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
         busbars=busbars,
         couplers=couplers,
         assets=assets,
+        asset_bays=[asset_bays_by_id.get(asset.asset_bay_id) for asset in assets],
         asset_switching_table=asset_switching_table,
         asset_connectivity=asset_connectivity,
         busbar_switching_table=busbar_switching_table,

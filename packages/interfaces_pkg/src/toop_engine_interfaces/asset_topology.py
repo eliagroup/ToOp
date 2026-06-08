@@ -12,7 +12,7 @@ from enum import Enum
 
 import numpy as np
 from beartype.typing import Any, Literal, Optional, TypeAlias, Union, get_args
-from numpydantic import NDArray, Shape
+from jaxtyping import ArrayLike, Bool
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -133,7 +133,7 @@ class AssetBay(BaseModel):
 
     """
 
-    asset_bay_id: Optional[str] = None
+    asset_bay_id: str
     """Topology-scoped identifier for the asset bay."""
 
     sl_switch_grid_model_id: Optional[str] = None
@@ -252,19 +252,6 @@ class SwitchableAsset(BaseModel):
     """ If the element is in service. False means the switching entry for this element will be
     ignored. This shall not be used for elements intentionally disconnected, instead set all zeros
     in the switching table."""
-
-    branch_end: Optional[BranchEnd] = None
-    """If the asset was a branch, this can store which end of the branch was connected to the
-    station in the original grid model. This can take the values "from", "to", "hv", "mv", "lv",
-    where from/to works for lines and hv/mv/lv works for transformers. This should only be set if
-    this is needed for the postprocessing, in theory a branch should be identifiable by the branch
-    id and the station id. Injection-type assets like generators and loads should not have this set.
-    """
-
-    asset_bay: Optional[AssetBay] = None
-    """ The asset bay (Schaltfeld) of the asset.
-    The connection path is used to determine the physical connection of the asset to the busbar.
-    None of these switches will be found in the network model, they are only used for the asset topology."""
 
     asset_bay_id: Optional[str] = None
     """Topology-scoped identifier for the asset bay associated with this asset."""
@@ -400,6 +387,11 @@ class _StationStructure(BaseModel):
     """The unique identifier of the station.
 
     Expects the bus-branch model bus_id, not the full voltage level id.
+
+    Included are all assets, busbars and couplers that are connectable via switches.
+    Buses in the same station that are connected via branches are excluded in this specific bus.
+
+    This means, that two stations/buses can have the same elements if the station is currently split.
     """
 
     name: Optional[str] = None
@@ -420,7 +412,7 @@ class _StationStructure(BaseModel):
     couplers: list[BusbarCoupler]
     """The list of couplers at the station."""
 
-    asset_switching_table: NDArray[Shape[" * bus, * asset"], bool]
+    asset_switching_table: Bool[ArrayLike, "n_bus n_asset"]
     """Holds the switching of each asset to each busbar, shape (n_bus, n_asset).
 
     An entry is true if the asset is connected to the busbar.
@@ -428,7 +420,7 @@ class _StationStructure(BaseModel):
     to be present between these busbars.
     """
 
-    asset_connectivity: Optional[NDArray[Shape[" * bus, * asset"], bool]] = None
+    asset_connectivity: Optional[Bool[ArrayLike, "n_bus n_asset"]] = None
     """Holds the all possible layouts of the asset_switching_table, shape (n_bus, n_asset).
 
     An entry is true if it is possible to connect an asset to the busbar.
@@ -523,9 +515,48 @@ class MaterializedStation(_StationStructure):
     stored on Topology.assets instead.
     """
 
+    asset_terminals: list[Optional[BranchEnd]] = Field(default_factory=list)
+    """Station-local branch terminals aligned with ``assets``.
+
+    Each entry describes which terminal of the asset is connected in this station view.
+    """
+
+    asset_bays: list[Optional[AssetBay]] = Field(default_factory=list)
+    """Station-local asset bay payloads aligned with ``assets``.
+
+    Each entry corresponds to the asset at the same index. ``None`` means the asset has no bay.
+    """
+
     @model_validator(mode="after")
     def check_asset_shapes(self: "MaterializedStation") -> "MaterializedStation":
         """Check if switching-table-aligned station-local assets match the matrix shapes."""
+        if len(self.asset_terminals) == 0:
+            self.asset_terminals = [None] * len(self.assets)
+        elif len(self.asset_terminals) != len(self.assets):
+            raise ValueError(
+                f"asset_terminals length {len(self.asset_terminals)} does not match assets length {len(self.assets)}"
+                f" Station_id: {self.grid_model_id}, Name: {self.name}"
+            )
+
+        if len(self.asset_bays) == 0:
+            self.asset_bays = [None] * len(self.assets)
+        elif len(self.asset_bays) != len(self.assets):
+            raise ValueError(
+                f"asset_bays length {len(self.asset_bays)} does not match assets length {len(self.assets)}"
+                f" Station_id: {self.grid_model_id}, Name: {self.name}"
+            )
+
+        for index, (asset, asset_bay) in enumerate(zip(self.assets, self.asset_bays, strict=True)):
+            if asset_bay is None:
+                continue
+            if asset.asset_bay_id is None:
+                asset.asset_bay_id = asset_bay.asset_bay_id
+            elif asset.asset_bay_id != asset_bay.asset_bay_id:
+                raise ValueError(
+                    f"asset_bay_id mismatch for asset index {index}: {asset.asset_bay_id} != {asset_bay.asset_bay_id}"
+                    f" Station_id: {self.grid_model_id}, Name: {self.name}"
+                )
+
         _validate_station_switching_tables(
             station_grid_model_id=self.grid_model_id,
             station_name=self.name,
@@ -546,9 +577,9 @@ class MaterializedStation(_StationStructure):
     def check_asset_bay(self: "MaterializedStation") -> "MaterializedStation":
         """Check if the asset bay bus is in busbars."""
         busbar_grid_model_id = [busbar.grid_model_id for busbar in self.busbars]
-        for asset in self.assets:
-            if asset.asset_bay is not None:
-                for busbar_id in asset.asset_bay.sr_switch_grid_model_id.keys():
+        for asset, asset_bay in zip(self.assets, self.asset_bays, strict=True):
+            if asset_bay is not None:
+                for busbar_id in asset_bay.sr_switch_grid_model_id.keys():
                     if busbar_id not in busbar_grid_model_id:
                         raise ValueError(
                             f"busbar_id {busbar_id} in asset {asset.grid_model_id} does not exist in busbars"
@@ -578,6 +609,8 @@ class MaterializedStation(_StationStructure):
             and self.busbars == other.busbars
             and self.couplers == other.couplers
             and self.assets == other.assets
+            and self.asset_terminals == other.asset_terminals
+            and self.asset_bays == other.asset_bays
             and np.array_equal(self.asset_switching_table, other.asset_switching_table)
             and (
                 np.array_equal(self.asset_connectivity, other.asset_connectivity)
@@ -601,8 +634,8 @@ class RawStation(_StationStructure):
     These are station-local references into Topology.assets.
     """
 
-    asset_branch_ends: list[Optional[BranchEnd]]
-    """Station-local branch ends aligned with the switching tables."""
+    asset_terminals: list[Optional[BranchEnd]]
+    """Station-local terminals aligned with the switching tables."""
 
     asset_bay_ids: list[Optional[str]]
     """Topology-scoped asset bay identifiers aligned with the switching tables."""
@@ -610,9 +643,9 @@ class RawStation(_StationStructure):
     @model_validator(mode="after")
     def check_asset_reference_alignment(self: "RawStation") -> "RawStation":
         """Check if station-local asset reference arrays are aligned."""
-        if len(self.asset_branch_ends) != len(self.asset_ids):
+        if len(self.asset_terminals) != len(self.asset_ids):
             raise ValueError(
-                f"asset_branch_ends length {len(self.asset_branch_ends)} "
+                f"asset_terminals length {len(self.asset_terminals)} "
                 f"does not match asset_ids length {len(self.asset_ids)}"
                 f" Station_id: {self.grid_model_id}, Name: {self.name}"
             )
@@ -650,7 +683,7 @@ class RawStation(_StationStructure):
             and self.busbars == other.busbars
             and self.couplers == other.couplers
             and self.asset_ids == other.asset_ids
-            and self.asset_branch_ends == other.asset_branch_ends
+            and self.asset_terminals == other.asset_terminals
             and self.asset_bay_ids == other.asset_bay_ids
             and np.array_equal(self.asset_switching_table, other.asset_switching_table)
             and (
@@ -758,21 +791,23 @@ class Topology(BaseModel):
 
         for station in self.raw_stations:
             station_assets: list[SwitchableAsset] = []
-            for asset_id, asset_branch_end, asset_bay_id in zip(
-                station.asset_ids, station.asset_branch_ends, station.asset_bay_ids, strict=True
+            for asset_id, _asset_terminal, asset_bay_id in zip(
+                station.asset_ids, station.asset_terminals, station.asset_bay_ids, strict=True
             ):
                 asset = asset_map[asset_id]
-                asset_bay = asset_bay_map.get(asset_bay_id) if asset_bay_id is not None else None
                 station_assets.append(
                     asset.model_copy(
                         update={
-                            "branch_end": asset_branch_end,
                             "asset_bay_id": asset_bay_id,
-                            "asset_bay": asset_bay.model_copy(deep=True) if asset_bay is not None else None,
                         },
                         deep=True,
                     )
                 )
+
+            station_asset_bays = [
+                asset_bay_map[asset_bay_id].model_copy(deep=True) if asset_bay_id is not None else None
+                for asset_bay_id in station.asset_bay_ids
+            ]
 
             materialized_stations.append(
                 MaterializedStation(
@@ -784,6 +819,8 @@ class Topology(BaseModel):
                     busbars=station.busbars,
                     couplers=station.couplers,
                     assets=station_assets,
+                    asset_terminals=station.asset_terminals,
+                    asset_bays=station_asset_bays,
                     asset_switching_table=station.asset_switching_table,
                     asset_connectivity=station.asset_connectivity,
                     model_log=station.model_log,
@@ -792,8 +829,47 @@ class Topology(BaseModel):
 
         return materialized_stations
 
+    def get_asset_bay_ids_for_asset(self, asset_grid_model_id: str) -> list[str]:
+        """Return all station-scoped asset bay ids connected to a topology asset.
 
-def _default_asset_bay_id(station_grid_model_id: str, asset_grid_model_id: str, occurrence_index: int) -> str:
+        Parameters
+        ----------
+        asset_grid_model_id : str
+            Grid model id of the topology-owned asset.
+
+        Returns
+        -------
+        list[str]
+            Ordered unique asset bay ids connected to the asset across all raw stations.
+        """
+        asset_bay_ids: list[str] = []
+        seen_ids: set[str] = set()
+        for station in self.raw_stations:
+            for asset_id, asset_bay_id in zip(station.asset_ids, station.asset_bay_ids, strict=True):
+                if asset_id != asset_grid_model_id or asset_bay_id is None or asset_bay_id in seen_ids:
+                    continue
+                seen_ids.add(asset_bay_id)
+                asset_bay_ids.append(asset_bay_id)
+        return asset_bay_ids
+
+    def get_asset_bays_for_asset(self, asset_grid_model_id: str) -> list[AssetBay]:
+        """Return all station-scoped asset bays connected to a topology asset.
+
+        Parameters
+        ----------
+        asset_grid_model_id : str
+            Grid model id of the topology-owned asset.
+
+        Returns
+        -------
+        list[AssetBay]
+            Ordered unique asset bay payloads connected to the asset across all raw stations.
+        """
+        asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in self.asset_bays}
+        return [asset_bay_map[asset_bay_id] for asset_bay_id in self.get_asset_bay_ids_for_asset(asset_grid_model_id)]
+
+
+def build_asset_bay_id(station_grid_model_id: str, asset_grid_model_id: str, occurrence_index: int = 0) -> str:
     """Create a deterministic station-scoped asset bay identifier.
 
     Parameters
@@ -802,7 +878,7 @@ def _default_asset_bay_id(station_grid_model_id: str, asset_grid_model_id: str, 
         Station identifier owning the asset bay.
     asset_grid_model_id : str
         Asset identifier for which the bay id is created.
-    occurrence_index : int
+    occurrence_index : int, default=0
         Zero-based occurrence index for repeated asset ids within one station.
 
     Returns
@@ -834,35 +910,25 @@ def topology_parts_from_materialized_station(
     assets: list[SwitchableAsset] = []
     asset_bays: list[AssetBay] = []
     asset_ids: list[str] = []
-    asset_branch_ends: list[Optional[BranchEnd]] = []
+    asset_terminals = list(station.asset_terminals)
     asset_bay_ids: list[Optional[str]] = []
-    station_asset_occurrences: dict[str, int] = {}
-
-    for asset in station.assets:
+    for asset, asset_bay in zip(station.assets, station.asset_bays, strict=True):
         asset_id = asset.grid_model_id
         asset_bay_id: Optional[str] = asset.asset_bay_id
-        asset_occurrence_index = station_asset_occurrences.get(asset_id, 0)
-        station_asset_occurrences[asset_id] = asset_occurrence_index + 1
 
-        if asset.asset_bay is not None:
-            asset_bay = asset.asset_bay
-            asset_bay_id = asset_bay.asset_bay_id or _default_asset_bay_id(
-                station.grid_model_id, asset_id, asset_occurrence_index
-            )
-            asset_bays.append(asset_bay.model_copy(update={"asset_bay_id": asset_bay_id}, deep=True))
+        if asset_bay is not None:
+            asset_bay_id = asset_bay.asset_bay_id
+            asset_bays.append(asset_bay.model_copy(deep=True))
 
         assets.append(
             asset.model_copy(
                 update={
-                    "branch_end": None,
                     "asset_bay_id": None,
-                    "asset_bay": None,
                 },
                 deep=True,
             )
         )
         asset_ids.append(asset_id)
-        asset_branch_ends.append(asset.branch_end)
         asset_bay_ids.append(asset_bay_id)
 
     return (
@@ -875,7 +941,7 @@ def topology_parts_from_materialized_station(
             busbars=station.busbars,
             couplers=station.couplers,
             asset_ids=asset_ids,
-            asset_branch_ends=asset_branch_ends,
+            asset_terminals=asset_terminals,
             asset_bay_ids=asset_bay_ids,
             asset_switching_table=station.asset_switching_table,
             asset_connectivity=station.asset_connectivity,
@@ -915,8 +981,6 @@ def topology_from_materialized_stations(reference_topology: Topology, stations: 
             elif existing_asset != asset:
                 raise ValueError(f"Conflicting topology asset payload for grid_model_id {asset.grid_model_id}")
         for asset_bay in station_asset_bays:
-            if asset_bay.asset_bay_id is None:
-                continue
             existing_asset_bay = topology_asset_bays.get(asset_bay.asset_bay_id)
             if existing_asset_bay is None:
                 topology_asset_bays[asset_bay.asset_bay_id] = asset_bay

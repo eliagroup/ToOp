@@ -59,9 +59,8 @@ def get_coupler_states_from_busbar_couplers(station_couplers: list[BusbarCoupler
 
 def get_asset_bay_grid_model_id_list(station: MaterializedStation) -> list[dict[str, str] | None]:
     """Get selector switch ids for each station asset."""
-    asset_bays = [asset.asset_bay for asset in station.assets]
     sr_switch_grid_model_id_list: list[dict[str, str] | None] = []
-    for asset_bay in asset_bays:
+    for asset_bay in station.asset_bays:
         if asset_bay is None or asset_bay.sr_switch_grid_model_id is None:
             sr_switch_grid_model_id_list.append(None)
         else:
@@ -105,7 +104,7 @@ def get_asset_switch_states_from_station(
                     }
                 )
         elif active_busbars == 0:
-            asset_bay = station.assets[column].asset_bay
+            asset_bay = station.asset_bays[column]
             assert asset_bay is not None
             switch_disconnection_list.append(
                 {

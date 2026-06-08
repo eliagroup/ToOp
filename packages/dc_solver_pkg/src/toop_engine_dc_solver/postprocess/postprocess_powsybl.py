@@ -270,9 +270,10 @@ def compute_cross_coupler_flows(
             if station.asset_switching_table[busbars_a, index].any():
                 # The asset is on busbar A, include it
                 if asset.is_branch() is True:
-                    if asset.branch_end is None:
+                    branch_end = station.asset_terminals[index]
+                    if branch_end is None:
                         raise ValueError("Branch end is None")
-                    from_end = asset.branch_end in ("from", "hv")
+                    from_end = branch_end in ("from", "hv")
                     p, q = extract_single_branch_loadflow_result(branch_res, asset.grid_model_id, from_end)
                     p_sum += p
                     q_sum += q

@@ -72,7 +72,7 @@ def test_filter_split_stations_from_relevant_subs(basic_node_breaker_network_pow
         ],
         couplers=[],
         asset_ids=["asset0"],
-        asset_branch_ends=[None],
+        asset_terminals=[None],
         asset_bay_ids=[None],
         asset_switching_table=np.array([[True], [False]]),
     )
@@ -82,7 +82,7 @@ def test_filter_split_stations_from_relevant_subs(basic_node_breaker_network_pow
         busbars=[Busbar(int_id=0, grid_model_id="bb2", bus_branch_bus_id=buses.index[1])],
         couplers=[],
         asset_ids=["asset1"],
-        asset_branch_ends=[None],
+        asset_terminals=[None],
         asset_bay_ids=[None],
         asset_switching_table=np.array([[True]]),
     )

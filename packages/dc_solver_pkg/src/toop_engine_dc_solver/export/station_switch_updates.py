@@ -171,7 +171,7 @@ def _get_asset_switch_diffs(
 
     diff_switches: list[dict[str, str | bool]] = []
     for column, changed_asset in enumerate(changed_station.assets):
-        asset_bay = changed_asset.asset_bay
+        asset_bay = changed_station.asset_bays[column]
         if asset_bay is None:
             continue
         changed_switch_states = changed_switching_table[:, column]

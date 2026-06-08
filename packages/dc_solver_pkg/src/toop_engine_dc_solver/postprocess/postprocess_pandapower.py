@@ -200,9 +200,10 @@ def compute_cross_coupler_flows(
             if station.asset_switching_table[busbars_a, index].any():
                 # The asset is on busbar A, include it
                 if asset.is_branch() is True:
-                    if asset.branch_end is None:
+                    branch_end = station.asset_terminals[index]
+                    if branch_end is None:
                         raise ValueError("Branch end must be set in asset topo")
-                    from_end = asset.branch_end in ("from", "hv")
+                    from_end = branch_end in ("from", "hv")
                     p_on_a += get_pandapower_branch_loadflow_results_sequence(
                         net, types=[asset_type], ids=[asset_id], measurement="active", from_end=from_end, adjust_signs=False
                     ).item()

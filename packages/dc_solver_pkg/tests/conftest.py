@@ -842,10 +842,10 @@ def basic_node_breaker_topology() -> Topology:
 
 @pytest.fixture(scope="session")
 def mock_station() -> MaterializedStation:
-    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, branch_end="from", type="line")
-    asset2 = SwitchableAsset(grid_model_id="branch_02", in_service=True, branch_end="to", type="line")
-    asset3 = SwitchableAsset(grid_model_id="branch_03", in_service=True, branch_end="from", type="line")
-    asset4 = SwitchableAsset(grid_model_id="branch_04", in_service=True, branch_end="to", type="line")
+    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, type="line")
+    asset2 = SwitchableAsset(grid_model_id="branch_02", in_service=True, type="line")
+    asset3 = SwitchableAsset(grid_model_id="branch_03", in_service=True, type="line")
+    asset4 = SwitchableAsset(grid_model_id="branch_04", in_service=True, type="line")
 
     # Create mock Busbar objects
     busbar_0 = Busbar(grid_model_id="busbar_0", int_id=1)

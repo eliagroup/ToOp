@@ -196,12 +196,12 @@ def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> No
     from_ends = 0
     to_ends = 0
     for station in topo.materialize_stations():
-        for asset in station.assets:
+        for index, asset in enumerate(station.assets):
             if asset.grid_model_id in network_data.branch_ids:
                 assert asset.name in network_data.branch_names
                 assert asset.type in network_data.branch_types
-                assert asset.branch_end in ["from", "to"]
-                if asset.branch_end == "from":
+                assert station.asset_terminals[index] in ["from", "to"]
+                if station.asset_terminals[index] == "from":
                     from_ends += 1
                 else:
                     to_ends += 1

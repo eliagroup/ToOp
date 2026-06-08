@@ -151,11 +151,11 @@ def get_list_of_switchable_assets_from_df(
     switchable_assets_dict = station_branches.to_dict(orient="records")
     if asset_bay_list is not None:
         for index, _ in enumerate(switchable_assets_dict):
-            switchable_assets_dict[index]["asset_bay"] = asset_bay_list[index]
+            switchable_assets_dict[index]["asset_bay_id"] = asset_bay_list[index].asset_bay_id
     elif asset_bay_dict is not None:
         for index, asset in enumerate(switchable_assets_dict):
             if asset["grid_model_id"] in asset_bay_dict:
-                switchable_assets_dict[index]["asset_bay"] = asset_bay_dict[asset["grid_model_id"]]
+                switchable_assets_dict[index]["asset_bay_id"] = asset_bay_dict[asset["grid_model_id"]].asset_bay_id
     switchable_assets_list = [SwitchableAsset(**switchable_asset) for switchable_asset in switchable_assets_dict]
 
     return switchable_assets_list
@@ -459,11 +459,14 @@ def get_raw_stations_and_assets(
             station_topology.elements, station_buses, dangling_lines, element_names
         )
         asset_connectivity = np.ones_like(switching_matrix, dtype=bool)
+        asset_terminals = (
+            station_elements["branch_end"].tolist()
+            if "branch_end" in station_elements.columns
+            else [None] * len(station_elements)
+        )
         assets = get_list_of_switchable_assets_from_df(station_elements)
         for asset in assets:
-            topology_assets.setdefault(
-                asset.grid_model_id, asset.model_copy(update={"branch_end": None, "asset_bay_id": None})
-            )
+            topology_assets.setdefault(asset.grid_model_id, asset.model_copy(update={"asset_bay_id": None}))
 
         station = RawStation(
             grid_model_id=bus_id,
@@ -473,7 +476,7 @@ def get_raw_stations_and_assets(
             busbars=get_list_of_busbars_from_df(station_buses),
             couplers=get_list_of_coupler_from_df(coupler_elements),
             asset_ids=[asset.grid_model_id for asset in assets],
-            asset_branch_ends=[asset.branch_end for asset in assets],
+            asset_terminals=asset_terminals,
             asset_bay_ids=[None] * len(assets),
             asset_switching_table=switching_matrix,
             asset_connectivity=asset_connectivity,
@@ -582,11 +585,11 @@ def get_raw_stations_and_assets_bus_breaker(net: Network) -> tuple[list[RawStati
             for grid_model_id, switch in local_switches.iterrows()
         ]
         from_branch_assets = [
-            SwitchableAsset(grid_model_id=grid_model_id, type=branch.type, branch_end="from")
+            SwitchableAsset(grid_model_id=grid_model_id, type=branch.type)
             for grid_model_id, branch in from_branches.iterrows()
         ]
         to_branch_assets = [
-            SwitchableAsset(grid_model_id=grid_model_id, type=branch.type, branch_end="to")
+            SwitchableAsset(grid_model_id=grid_model_id, type=branch.type)
             for grid_model_id, branch in to_branches.iterrows()
         ]
         injection_assets = [
@@ -594,6 +597,9 @@ def get_raw_stations_and_assets_bus_breaker(net: Network) -> tuple[list[RawStati
             for grid_model_id, injection in injections.iterrows()
         ]
         assets = from_branch_assets + to_branch_assets + injection_assets
+        asset_terminals = (
+            ["from"] * len(from_branch_assets) + ["to"] * len(to_branch_assets) + [None] * len(injection_assets)
+        )
 
         from_branch_bus_index = [busbar_mapper[branch.bus_breaker_bus1_id] for branch in from_branches.itertuples()]
         to_branch_bus_index = [busbar_mapper[branch.bus_breaker_bus2_id] for branch in to_branches.itertuples()]
@@ -605,9 +611,7 @@ def get_raw_stations_and_assets_bus_breaker(net: Network) -> tuple[list[RawStati
             switching_table[idx, asset_index] = True
 
         for asset in assets:
-            topology_assets.setdefault(
-                asset.grid_model_id, asset.model_copy(update={"branch_end": None, "asset_bay_id": None})
-            )
+            topology_assets.setdefault(asset.grid_model_id, asset.model_copy(update={"asset_bay_id": None}))
 
         station = RawStation(
             grid_model_id=bus_id,
@@ -615,7 +619,7 @@ def get_raw_stations_and_assets_bus_breaker(net: Network) -> tuple[list[RawStati
             busbars=busbars,
             couplers=couplers,
             asset_ids=[asset.grid_model_id for asset in assets],
-            asset_branch_ends=[asset.branch_end for asset in assets],
+            asset_terminals=asset_terminals,
             asset_bay_ids=[None] * len(assets),
             asset_switching_table=switching_table,
         )

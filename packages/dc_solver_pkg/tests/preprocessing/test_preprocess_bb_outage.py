@@ -72,9 +72,9 @@ def test_get_total_injection_along_stub_branch(network_data: NetworkData):
 
 def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     # Create mock SwitchableAsset objects
-    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, branch_end="from", type="line")
-    asset2 = SwitchableAsset(grid_model_id="branch_12", in_service=False, branch_end="to", type="line")
-    asset3 = SwitchableAsset(grid_model_id="branch_23", in_service=True, branch_end="from", type="line")
+    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, type="line")
+    asset2 = SwitchableAsset(grid_model_id="branch_12", in_service=False, type="line")
+    asset3 = SwitchableAsset(grid_model_id="branch_23", in_service=True, type="line")
     # asset4 = SwitchableAsset(
     #     grid_model_id="branch_02", in_service=True, branch_end="from"
     # )
@@ -87,7 +87,6 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     asset7 = SwitchableAsset(
         grid_model_id="injection_node_2",
         in_service=True,
-        branch_end=None,
         type="GENERATOR",
     )
     # asset8 = SwitchableAsset(
@@ -178,21 +177,19 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
 
 def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     # Create mock SwitchableAsset objects
-    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, branch_end="from", type="line")
-    asset2 = SwitchableAsset(grid_model_id="branch_12", in_service=False, branch_end="to", type="line")
-    asset3 = SwitchableAsset(grid_model_id="branch_23", in_service=True, branch_end="from", type="line")
-    asset4 = SwitchableAsset(grid_model_id="branch_02", in_service=True, branch_end="from", type="line")
-    asset5 = SwitchableAsset(grid_model_id="branch_03", in_service=True, branch_end="from", type="line")
+    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, type="line")
+    asset2 = SwitchableAsset(grid_model_id="branch_12", in_service=False, type="line")
+    asset3 = SwitchableAsset(grid_model_id="branch_23", in_service=True, type="line")
+    asset4 = SwitchableAsset(grid_model_id="branch_02", in_service=True, type="line")
+    asset5 = SwitchableAsset(grid_model_id="branch_03", in_service=True, type="line")
     asset6 = SwitchableAsset(
         grid_model_id="injection_node_0",
         in_service=True,
-        branch_end=None,
         type="GENERATOR",
     )
     asset7 = SwitchableAsset(
         grid_model_id="injection_node_2",
         in_service=True,
-        branch_end=None,
         type="GENERATOR",
     )
     # asset8 = SwitchableAsset(

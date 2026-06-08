@@ -25,6 +25,7 @@ from toop_engine_importer.network_graph.data_classes import (
 )
 from toop_engine_interfaces.asset_topology import (
     AssetBay,
+    build_asset_bay_id,
 )
 
 logger = structlog.get_logger(__name__)
@@ -583,6 +584,7 @@ def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> tuple[dict[str, str], list[
 
 def get_asset_bay(
     switches_df: pat.DataFrame[SwitchSchema],
+    station_grid_model_id: str,
     asset_grid_model_id: str,
     busbar_df: pd.DataFrame,
     edge_connection_info: dict[str, EdgeConnectionInfo],
@@ -594,6 +596,8 @@ def get_asset_bay(
     switches_df: pat.DataFrame[SwitchSchema]
         Dataframe with all switches of the substation.
         expects NetworkGraphData.switches
+    station_grid_model_id: str
+        Station identifier owning the asset bay.
     asset_grid_model_id: str
         Asset grid model id for which the asset bays should be retrieved.
     busbar_df: pd.DataFrame
@@ -653,7 +657,10 @@ def get_asset_bay(
             f" AssetBay ignored for grid_model_id: {asset_grid_model_id}"
         )
         return None, logs
-    return AssetBay(**asset_bay_dict), logs
+    return AssetBay(
+        asset_bay_id=build_asset_bay_id(station_grid_model_id, asset_grid_model_id),
+        **asset_bay_dict,
+    ), logs
 
 
 def get_station_connection_tables(

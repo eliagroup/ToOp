@@ -95,7 +95,7 @@ def _build_large_random_action_set(
                 name=None,
                 in_service=True,
                 branch_end=None,
-                asset_bay=None,
+                asset_bay_id=None,
             )
             for asset_idx in range(n_assets)
         ]
@@ -111,7 +111,7 @@ def _build_large_random_action_set(
             busbars=busbars,
             couplers=couplers,
             asset_ids=[asset.grid_model_id for asset in assets],
-            asset_branch_ends=[asset.branch_end for asset in assets],
+            asset_terminals=[None for _ in assets],
             asset_bay_ids=[asset.asset_bay_id for asset in assets],
             asset_switching_table=asset_switching_table,
             asset_connectivity=None,

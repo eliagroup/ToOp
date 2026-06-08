@@ -31,7 +31,7 @@ from toop_engine_importer.network_graph.network_graph import (
 )
 from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
 from toop_engine_importer.network_graph.powsybl_station_to_graph import get_station
-from toop_engine_interfaces.asset_topology import AssetBay
+from toop_engine_interfaces.asset_topology import AssetBay, build_asset_bay_id
 
 
 def test_remove_double_connections():
@@ -295,26 +295,31 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     )
     expected = {
         "L3": AssetBay(
+            asset_bay_id=build_asset_bay_id(substation_id, "L3"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="L32_BREAKER",
             sr_switch_grid_model_id={"BBS3_1": "L32_DISCONNECTOR_5_0", "BBS3_2": "L32_DISCONNECTOR_5_1"},
         ),
         "L6": AssetBay(
+            asset_bay_id=build_asset_bay_id(substation_id, "L6"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="L62_BREAKER",
             sr_switch_grid_model_id={"BBS3_1": "L62_DISCONNECTOR_7_0", "BBS3_2": "L62_DISCONNECTOR_7_1"},
         ),
         "L7": AssetBay(
+            asset_bay_id=build_asset_bay_id(substation_id, "L7"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="L72_BREAKER",
             sr_switch_grid_model_id={"BBS3_1": "L72_DISCONNECTOR_9_0", "BBS3_2": "L72_DISCONNECTOR_9_1"},
         ),
         "L9": AssetBay(
+            asset_bay_id=build_asset_bay_id(substation_id, "L9"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="L91_BREAKER",
             sr_switch_grid_model_id={"BBS3_1": "L91_DISCONNECTOR_11_0", "BBS3_2": "L91_DISCONNECTOR_11_1"},
         ),
         "load2": AssetBay(
+            asset_bay_id=build_asset_bay_id(substation_id, "load2"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="load2_BREAKER",
             sr_switch_grid_model_id={"BBS3_1": "load2_DISCONNECTOR_19_0", "BBS3_2": "load2_DISCONNECTOR_19_1"},
@@ -325,6 +330,7 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     for asset_grid_model_id in switchable_assets_df["grid_model_id"].to_list():
         asset_bay, logs = get_asset_bay(
             network_graph_data.switches,
+            station_grid_model_id=substation_id,
             asset_grid_model_id=asset_grid_model_id,
             busbar_df=busbar_df,
             edge_connection_info=edge_connection_info,
@@ -338,6 +344,7 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     with pytest.raises(ValueError, match="Expected 3 switches, but got"):
         get_asset_bay(
             switches_df=switches_df,
+            station_grid_model_id=substation_id,
             asset_grid_model_id="L3",
             busbar_df=busbar_df,
             edge_connection_info=edge_connection_info,
@@ -348,11 +355,13 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
 
     asset_grid_model_id, logs = get_asset_bay(
         switches_df=switches_df,
+        station_grid_model_id=substation_id,
         asset_grid_model_id="L3",
         busbar_df=busbar_df,
         edge_connection_info=edge_connection_info,
     )
     expected = AssetBay(
+        asset_bay_id=build_asset_bay_id(substation_id, "L3"),
         sl_switch_grid_model_id=None,
         dv_switch_grid_model_id="L32_BREAKER",
         sr_switch_grid_model_id={"BBS3_1": "L32_DISCONNECTOR_5_0", "BBS3_2": "L32_DISCONNECTOR_5_1"},
@@ -366,6 +375,7 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     switches_df.drop(2, inplace=True)
     asset_grid_model_id, logs = get_asset_bay(
         switches_df=switches_df,
+        station_grid_model_id=substation_id,
         asset_grid_model_id="L3",
         busbar_df=busbar_df,
         edge_connection_info=edge_connection_info,
@@ -376,11 +386,13 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     edge_connection_info["L62_DISCONNECTOR_7_0"].direct_busbar_grid_model_id = ""
     asset_grid_model_id, logs = get_asset_bay(
         switches_df=switches_df,
+        station_grid_model_id=substation_id,
         asset_grid_model_id="L6",
         busbar_df=busbar_df,
         edge_connection_info=edge_connection_info,
     )
     expected = AssetBay(
+        asset_bay_id=build_asset_bay_id(substation_id, "L6"),
         sl_switch_grid_model_id="L62_DISCONNECTOR_7_0",
         dv_switch_grid_model_id="L62_BREAKER",
         sr_switch_grid_model_id={"BBS3_2": "L62_DISCONNECTOR_7_1"},

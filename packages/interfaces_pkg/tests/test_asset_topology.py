@@ -20,6 +20,7 @@ from toop_engine_interfaces.asset_topology import (
     RawStation,
     SwitchableAsset,
     Topology,
+    build_asset_bay_id,
     topology_from_materialized_stations,
 )
 from toop_engine_interfaces.asset_topology_helpers import (
@@ -333,7 +334,7 @@ def test_topology_station_is_split() -> None:
         ],
         couplers=[],
         asset_ids=["line1"],
-        asset_branch_ends=[None],
+        asset_terminals=[None],
         asset_bay_ids=[None],
         asset_switching_table=np.array([[True], [False]]),
     )
@@ -459,13 +460,17 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
             SwitchableAsset(
                 grid_model_id="line1",
                 branch_end="from",
-                asset_bay=AssetBay(
-                    asset_bay_id="station1::line1::bay",
-                    dv_switch_grid_model_id="dv1",
-                    sr_switch_grid_model_id={"busbar1": "sr1"},
-                ),
+                asset_bay_id="station1::line1::bay",
             ),
             SwitchableAsset(grid_model_id="load1"),
+        ],
+        asset_bays=[
+            AssetBay(
+                asset_bay_id="station1::line1::bay",
+                dv_switch_grid_model_id="dv1",
+                sr_switch_grid_model_id={"busbar1": "sr1"},
+            ),
+            None,
         ],
         asset_switching_table=np.array([[True, False], [False, True]]),
         grid_model_id="station1",
@@ -486,7 +491,7 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
             busbars=station.busbars,
             couplers=station.couplers,
             asset_ids=["line1", "load1"],
-            asset_branch_ends=["from", None],
+            asset_terminals=["from", None],
             asset_bay_ids=["station1::line1::bay", None],
             asset_switching_table=np.array([[True, False], [False, True]]),
         )
@@ -506,14 +511,15 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
 
 
 def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_two_station_views() -> None:
-    asset_from = SwitchableAsset(grid_model_id="line1", type="line", branch_end="from")
-    asset_to = SwitchableAsset(grid_model_id="line1", type="line", branch_end="to")
+    asset_from = SwitchableAsset(grid_model_id="line1", type="line")
+    asset_to = SwitchableAsset(grid_model_id="line1", type="line")
 
     station_from = MaterializedStation(
         grid_model_id="station_from",
         busbars=[Busbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
         assets=[asset_from],
+        asset_terminals=["from"],
         asset_switching_table=np.array([[True]]),
     )
     station_to = MaterializedStation(
@@ -521,6 +527,7 @@ def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_tw
         busbars=[Busbar(int_id=1, grid_model_id="busbar2")],
         couplers=[],
         assets=[asset_to],
+        asset_terminals=["to"],
         asset_switching_table=np.array([[True]]),
     )
 
@@ -535,9 +542,9 @@ def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_tw
 
     assert [asset.grid_model_id for asset in topology.assets] == ["line1"]
     assert topology.raw_stations[0].asset_ids == ["line1"]
-    assert topology.raw_stations[0].asset_branch_ends == ["from"]
+    assert topology.raw_stations[0].asset_terminals == ["from"]
     assert topology.raw_stations[1].asset_ids == ["line1"]
-    assert topology.raw_stations[1].asset_branch_ends == ["to"]
+    assert topology.raw_stations[1].asset_terminals == ["to"]
     assert topology.materialize_stations() == [station_from, station_to]
 
 
@@ -550,8 +557,15 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
             SwitchableAsset(
                 grid_model_id="line1",
                 type="line",
-                branch_end="from",
-                asset_bay=AssetBay(dv_switch_grid_model_id="dv_from", sr_switch_grid_model_id={"busbar1": "sr_from"}),
+                asset_bay_id=build_asset_bay_id("station_from", "line1"),
+            )
+        ],
+        asset_terminals=["from"],
+        asset_bays=[
+            AssetBay(
+                asset_bay_id=build_asset_bay_id("station_from", "line1"),
+                dv_switch_grid_model_id="dv_from",
+                sr_switch_grid_model_id={"busbar1": "sr_from"},
             )
         ],
         asset_switching_table=np.array([[True]]),
@@ -564,8 +578,15 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
             SwitchableAsset(
                 grid_model_id="line1",
                 type="line",
-                branch_end="to",
-                asset_bay=AssetBay(dv_switch_grid_model_id="dv_to", sr_switch_grid_model_id={"busbar2": "sr_to"}),
+                asset_bay_id=build_asset_bay_id("station_to", "line1"),
+            )
+        ],
+        asset_terminals=["to"],
+        asset_bays=[
+            AssetBay(
+                asset_bay_id=build_asset_bay_id("station_to", "line1"),
+                dv_switch_grid_model_id="dv_to",
+                sr_switch_grid_model_id={"busbar2": "sr_to"},
             )
         ],
         asset_switching_table=np.array([[True]]),
@@ -597,12 +618,24 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
             SwitchableAsset(
                 grid_model_id="line1",
                 type="line",
-                asset_bay=AssetBay(dv_switch_grid_model_id="dv1", sr_switch_grid_model_id={"busbar1": "sr1"}),
+                asset_bay_id=build_asset_bay_id("station1", "line1"),
             ),
             SwitchableAsset(
                 grid_model_id="line1",
                 type="line",
-                asset_bay=AssetBay(dv_switch_grid_model_id="dv2", sr_switch_grid_model_id={"busbar1": "sr2"}),
+                asset_bay_id=build_asset_bay_id("station1", "line1", 1),
+            ),
+        ],
+        asset_bays=[
+            AssetBay(
+                asset_bay_id=build_asset_bay_id("station1", "line1"),
+                dv_switch_grid_model_id="dv1",
+                sr_switch_grid_model_id={"busbar1": "sr1"},
+            ),
+            AssetBay(
+                asset_bay_id=build_asset_bay_id("station1", "line1", 1),
+                dv_switch_grid_model_id="dv2",
+                sr_switch_grid_model_id={"busbar1": "sr2"},
             ),
         ],
         asset_switching_table=np.array([[True, True]]),
@@ -924,6 +957,7 @@ def test_filter_assets_by_type() -> None:
 def test_asset_bay() -> None:
     # Test valid AssetBay
     path = AssetBay(
+        asset_bay_id="station1::line1::bay",
         sl_switch_grid_model_id="sl_switch_1",
         dv_switch_grid_model_id="dv_switch_1",
         sr_switch_grid_model_id={"busbar1": "sr_switch_1", "busbar2": "sr_switch_2"},
@@ -931,6 +965,7 @@ def test_asset_bay() -> None:
     assert path is not None
 
     path = AssetBay(
+        asset_bay_id="station1::line2::bay",
         sl_switch_grid_model_id="sl_switch_1",
         dv_switch_grid_model_id="dv_switch_1",
         sr_switch_grid_model_id={"busbar1": "sr_switch_1", "busbar2": "sr_switch_2"},
@@ -941,6 +976,7 @@ def test_asset_bay() -> None:
     # Test AssetBay with missing dv_switch_grid_model_id
     with pytest.raises(ValidationError, match="Field required"):
         path = AssetBay(
+            asset_bay_id="station1::line3::bay",
             sl_switch_grid_model_id="sl_switch_1",
             sr_switch_grid_model_id={"busbar1": "sr_switch_1", "busbar2": "sr_switch_2"},
         )
@@ -948,6 +984,7 @@ def test_asset_bay() -> None:
     # Test AssetBay with empty sr_switch_grid_model_id
     with pytest.raises(ValidationError, match="sr_switch_grid_model_id must not be empty"):
         path = AssetBay(
+            asset_bay_id="station1::line4::bay",
             sl_switch_grid_model_id="sl_switch_1",
             dv_switch_grid_model_id="dv_switch_1",
             sr_switch_grid_model_id={},
@@ -956,6 +993,7 @@ def test_asset_bay() -> None:
     # Test AssetBay with invalid sr_switch_grid_model_id type
     with pytest.raises(ValidationError):
         path = AssetBay(
+            asset_bay_id="station1::line5::bay",
             sl_switch_grid_model_id="sl_switch_1",
             dv_switch_grid_model_id="dv_switch_1",
             sr_switch_grid_model_id={"busbar1": 123},  # Invalid type
@@ -964,6 +1002,7 @@ def test_asset_bay() -> None:
 
 def test_station_bay() -> None:
     path = AssetBay(
+        asset_bay_id="station1::line2::bay",
         sl_switch_grid_model_id="sl_switch_1",
         dv_switch_grid_model_id="dv_switch_1",
         sr_switch_grid_model_id={"busbar1": "sr_switch_1", "busbar2": "sr_switch_2"},
@@ -978,7 +1017,7 @@ def test_station_bay() -> None:
     ]
     assets = [
         SwitchableAsset(grid_model_id="line1"),
-        SwitchableAsset(grid_model_id="line2", asset_bay=path),
+        SwitchableAsset(grid_model_id="line2", asset_bay_id=path.asset_bay_id),
         SwitchableAsset(grid_model_id="line3"),
     ]
     asset_switching_table = np.array([[True, False, True], [False, True, False]])
@@ -989,6 +1028,7 @@ def test_station_bay() -> None:
         busbars=busbars,
         couplers=couplers,
         assets=assets,
+        asset_bays=[None, path, None],
         asset_switching_table=asset_switching_table,
         grid_model_id=grid_model_id,
     )
@@ -996,13 +1036,14 @@ def test_station_bay() -> None:
 
     # Test invalid AssetBay -> busbar3 is not in busbars
     path_error = AssetBay(
+        asset_bay_id="station1::line2::bay",
         sl_switch_grid_model_id="sl_switch_1",
         dv_switch_grid_model_id="dv_switch_1",
         sr_switch_grid_model_id={"busbar1": "sr_switch_1", "busbar3": "sr_switch_2"},
     )
     assets = [
         SwitchableAsset(grid_model_id="line1"),
-        SwitchableAsset(grid_model_id="line2", asset_bay=path_error),
+        SwitchableAsset(grid_model_id="line2", asset_bay_id=path_error.asset_bay_id),
         SwitchableAsset(grid_model_id="line3"),
     ]
     with pytest.raises(ValidationError, match="busbar_id busbar3 in asset line2 does not exist in busbars"):
@@ -1010,6 +1051,7 @@ def test_station_bay() -> None:
             busbars=busbars,
             couplers=couplers,
             assets=assets,
+            asset_bays=[None, path_error, None],
             asset_switching_table=asset_switching_table,
             grid_model_id=grid_model_id,
         )

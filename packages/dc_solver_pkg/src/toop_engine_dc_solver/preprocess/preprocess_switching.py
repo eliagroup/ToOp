@@ -440,13 +440,13 @@ def add_missing_asset_topology_branch_info(
     new_raw_stations = []
     for station in asset_topology.raw_stations:
         new_branch_ends = []
-        for asset_id, branch_end in zip(station.asset_ids, station.asset_branch_ends, strict=True):
+        for asset_id, branch_end in zip(station.asset_ids, station.asset_terminals, strict=True):
             index = branch_id_lookup.get(asset_id, None)
             if index is not None and (overwrite_if_present or branch_end is None):
                 new_branch_ends.append("from" if branch_from_nodes[index] == station.grid_model_id else "to")
             else:
                 new_branch_ends.append(branch_end)
-        new_raw_stations.append(station.model_copy(update={"asset_branch_ends": new_branch_ends}))
+        new_raw_stations.append(station.model_copy(update={"asset_terminals": new_branch_ends}))
 
     return copy_topology_with_updates(
         reference_topology=asset_topology,

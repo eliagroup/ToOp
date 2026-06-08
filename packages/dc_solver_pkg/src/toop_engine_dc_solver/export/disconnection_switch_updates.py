@@ -47,10 +47,10 @@ def get_disconnected_asset_ids(
     disconnection_map: dict[str, GridElement] = {disconnection.id: disconnection for disconnection in disconnections}
     disconnection_asset_map: dict[str, list[AssetBay]] = {disconnection.id: [] for disconnection in disconnections}
     for station in stations:
-        for asset in station.assets:
-            if asset.grid_model_id in disconnection_map and asset.asset_bay is not None:
+        for asset, asset_bay in zip(station.assets, station.asset_bays, strict=True):
+            if asset.grid_model_id in disconnection_map and asset_bay is not None:
                 corresponding_disconnection = disconnection_map[asset.grid_model_id]
-                disconnection_asset_map[corresponding_disconnection.id].append(asset.asset_bay)
+                disconnection_asset_map[corresponding_disconnection.id].append(asset_bay)
     return disconnection_asset_map
 
 

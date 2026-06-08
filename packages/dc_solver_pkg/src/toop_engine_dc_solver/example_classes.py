@@ -56,16 +56,16 @@ def get_basic_node_breaker_topology() -> Topology:
                     )
                 ],
                 asset_ids=["L4", "L5", "L8"],
-                asset_branch_ends=[None, None, None],
+                asset_terminals=[None, None, None],
                 asset_bay_ids=["VL4_0::L4::bay", "VL4_0::L5::bay", "VL4_0::L8::bay"],
                 asset_switching_table=np.array([[False, False, False], [True, True, False]]),
                 asset_connectivity=np.array([[True, True, True], [True, True, True]]),
             )
         ],
         assets=[
-            SwitchableAsset(grid_model_id="L4", type="LINE", name="", in_service=True, branch_end=None),
-            SwitchableAsset(grid_model_id="L5", type="LINE", name="", in_service=True, branch_end=None),
-            SwitchableAsset(grid_model_id="L8", type="LINE", name="", in_service=True, branch_end=None),
+            SwitchableAsset(grid_model_id="L4", type="LINE", name="", in_service=True),
+            SwitchableAsset(grid_model_id="L5", type="LINE", name="", in_service=True),
+            SwitchableAsset(grid_model_id="L8", type="LINE", name="", in_service=True),
         ],
         asset_bays=[
             AssetBay(

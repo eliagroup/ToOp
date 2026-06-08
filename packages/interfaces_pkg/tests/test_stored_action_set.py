@@ -40,7 +40,7 @@ def build_raw_station(
     couplers: list[BusbarCoupler],
     asset_ids: list[str],
     asset_switching_table: np.ndarray,
-    asset_branch_ends: list[str | None] | None = None,
+    asset_terminals: list[str | None] | None = None,
     asset_bay_ids: list[str | None] | None = None,
 ) -> RawStation:
     """Build a raw station from explicit raw-topology fields.
@@ -57,7 +57,7 @@ def build_raw_station(
         Grid model ids of the assets connected to the station.
     asset_switching_table : np.ndarray
         Busbar-to-asset switching matrix for the station.
-    asset_branch_ends : list[str | None] | None, optional
+    asset_terminals : list[str | None] | None, optional
         Optional branch-end metadata aligned with ``asset_ids``.
     asset_bay_ids : list[str | None] | None, optional
         Optional asset-bay metadata aligned with ``asset_ids``.
@@ -76,7 +76,7 @@ def build_raw_station(
         busbars=busbars,
         couplers=couplers,
         asset_ids=asset_ids,
-        asset_branch_ends=asset_branch_ends if asset_branch_ends is not None else [None] * len(asset_ids),
+        asset_terminals=asset_terminals if asset_terminals is not None else [None] * len(asset_ids),
         asset_bay_ids=asset_bay_ids if asset_bay_ids is not None else [None] * len(asset_ids),
         asset_switching_table=asset_switching_table,
         asset_connectivity=None,
@@ -322,7 +322,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
             name=None,
             in_service=True,
             branch_end=None,
-            asset_bay=None,
+            asset_bay_id=None,
         )
     ]
 
@@ -360,7 +360,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
                 busbars=busbars,
                 couplers=[],
                 asset_ids=["station_a_asset_0"],
-                asset_branch_ends=[None],
+                asset_terminals=[None],
                 asset_bay_ids=[None],
                 asset_switching_table=np.zeros((1, 1), dtype=bool),
                 asset_connectivity=None,
@@ -375,7 +375,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
                 busbars=busbars,
                 couplers=[],
                 asset_ids=["station_b_asset_0"],
-                asset_branch_ends=[None],
+                asset_terminals=[None],
                 asset_bay_ids=[None],
                 asset_switching_table=np.zeros((1, 1), dtype=bool),
                 asset_connectivity=None,
@@ -436,7 +436,7 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
                 name=None,
                 in_service=True,
                 branch_end=None,
-                asset_bay=None,
+                asset_bay_id=None,
             )
             for asset_idx in range(n_assets)
         ]
@@ -569,7 +569,7 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
             name=None,
             in_service=True,
             branch_end=None,
-            asset_bay=None,
+            asset_bay_id=None,
         ),
         SwitchableAsset.model_construct(
             grid_model_id="station_save_load_asset_2",
@@ -577,7 +577,7 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
             name=None,
             in_service=True,
             branch_end=None,
-            asset_bay=None,
+            asset_bay_id=None,
         ),
     ]
     asset_switching_table = np.array([[True, False], [False, True]], dtype=bool)
@@ -681,7 +681,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
             name=None,
             in_service=True,
             branch_end=None,
-            asset_bay=None,
+            asset_bay_id=None,
         ),
         SwitchableAsset.model_construct(
             grid_model_id="asset2",
@@ -689,7 +689,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
             name=None,
             in_service=True,
             branch_end=None,
-            asset_bay=None,
+            asset_bay_id=None,
         ),
     ]
     asset_switching_table = np.array([[True, False], [False, True]], dtype=bool)

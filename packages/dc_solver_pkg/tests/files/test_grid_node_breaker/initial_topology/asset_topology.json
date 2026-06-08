@@ -118,7 +118,7 @@
         "L8",
         "load1"
       ],
-      "asset_branch_ends": [
+      "asset_terminals": [
         null,
         null,
         null,
@@ -275,7 +275,7 @@
         "L9",
         "load2"
       ],
-      "asset_branch_ends": [
+      "asset_terminals": [
         null,
         null,
         null,

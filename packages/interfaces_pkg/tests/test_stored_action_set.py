@@ -321,7 +321,6 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
             type=None,
             name=None,
             in_service=True,
-            branch_end=None,
             asset_bay_id=None,
         )
     ]
@@ -435,7 +434,6 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
                 type=None,
                 name=None,
                 in_service=True,
-                branch_end=None,
                 asset_bay_id=None,
             )
             for asset_idx in range(n_assets)
@@ -568,7 +566,6 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
             type=None,
             name=None,
             in_service=True,
-            branch_end=None,
             asset_bay_id=None,
         ),
         SwitchableAsset.model_construct(
@@ -576,7 +573,6 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
             type=None,
             name=None,
             in_service=True,
-            branch_end=None,
             asset_bay_id=None,
         ),
     ]
@@ -680,7 +676,6 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
             type=None,
             name=None,
             in_service=True,
-            branch_end=None,
             asset_bay_id=None,
         ),
         SwitchableAsset.model_construct(
@@ -688,7 +683,6 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
             type=None,
             name=None,
             in_service=True,
-            branch_end=None,
             asset_bay_id=None,
         ),
     ]

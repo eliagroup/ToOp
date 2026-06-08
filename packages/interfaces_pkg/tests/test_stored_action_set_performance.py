@@ -94,7 +94,6 @@ def _build_large_random_action_set(
                 type=None,
                 name=None,
                 in_service=True,
-                branch_end=None,
                 asset_bay_id=None,
             )
             for asset_idx in range(n_assets)

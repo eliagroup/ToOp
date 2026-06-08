@@ -161,12 +161,13 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
 
     assets = res.assets
     asset_bays = res.asset_bays
+    asset_terminals = res.asset_terminals
     assert len(assets) == 5
+    assert asset_terminals == [None] * len(assets)
     assert assets[0].grid_model_id == "L3"
     assert assets[0].type == "LINE"
     assert assets[0].name == ""
     assert assets[0].in_service
-    assert assets[0].branch_end is None
     assert asset_bays[0].sl_switch_grid_model_id is None
     assert asset_bays[0].dv_switch_grid_model_id == "L32_BREAKER"
     assert asset_bays[0].sr_switch_grid_model_id == {
@@ -178,7 +179,6 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[1].type == "LINE"
     assert assets[1].name == ""
     assert assets[1].in_service
-    assert assets[1].branch_end is None
     assert asset_bays[1].sl_switch_grid_model_id is None
     assert asset_bays[1].dv_switch_grid_model_id == "L62_BREAKER"
     assert asset_bays[1].sr_switch_grid_model_id == {
@@ -190,7 +190,6 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[2].type == "LINE"
     assert assets[2].name == ""
     assert assets[2].in_service
-    assert assets[2].branch_end is None
     assert asset_bays[2].sl_switch_grid_model_id is None
     assert asset_bays[2].dv_switch_grid_model_id == "L72_BREAKER"
     assert asset_bays[2].sr_switch_grid_model_id == {
@@ -202,7 +201,6 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[3].type == "LINE"
     assert assets[3].name == ""
     assert assets[3].in_service
-    assert assets[3].branch_end is None
     assert asset_bays[3].sl_switch_grid_model_id is None
     assert asset_bays[3].dv_switch_grid_model_id == "L91_BREAKER"
     assert asset_bays[3].sr_switch_grid_model_id == {
@@ -214,7 +212,6 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert assets[4].type == "LOAD"
     assert assets[4].name == ""
     assert assets[4].in_service
-    assert assets[4].branch_end is None
     assert asset_bays[4].sl_switch_grid_model_id is None
     assert asset_bays[4].dv_switch_grid_model_id == "load2_BREAKER"
     assert asset_bays[4].sr_switch_grid_model_id == {

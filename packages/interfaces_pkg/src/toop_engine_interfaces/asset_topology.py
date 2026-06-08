@@ -12,8 +12,10 @@ from enum import Enum
 
 import numpy as np
 from beartype.typing import Any, Literal, Optional, TypeAlias, Union, get_args
-from jaxtyping import ArrayLike, Bool
-from pydantic import BaseModel, Field, field_validator, model_validator
+from numpydantic import NDArray, Shape
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+StationSwitchingArray: TypeAlias = NDArray[Shape["* n_bus, * n_asset"], np.bool_]
 
 
 class PowsyblSwitchValues(Enum):
@@ -383,6 +385,8 @@ def _validate_station_physical_assignments(
 class _StationStructure(BaseModel):
     """Shared station fields and structural validators for station views."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     grid_model_id: str
     """The unique identifier of the station.
 
@@ -412,7 +416,7 @@ class _StationStructure(BaseModel):
     couplers: list[BusbarCoupler]
     """The list of couplers at the station."""
 
-    asset_switching_table: Bool[ArrayLike, "n_bus n_asset"]
+    asset_switching_table: StationSwitchingArray
     """Holds the switching of each asset to each busbar, shape (n_bus, n_asset).
 
     An entry is true if the asset is connected to the busbar.
@@ -426,7 +430,7 @@ class _StationStructure(BaseModel):
     in_service for intentional disconnections.
     """
 
-    asset_connectivity: Optional[Bool[ArrayLike, "n_bus n_asset"]] = None
+    asset_connectivity: Optional[StationSwitchingArray] = None
     """Holds the all possible layouts of the asset_switching_table, shape (n_bus, n_asset).
 
     An entry is true if it is possible to connect an asset to the busbar.

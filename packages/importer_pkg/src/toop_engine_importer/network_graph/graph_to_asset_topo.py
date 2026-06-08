@@ -13,7 +13,8 @@ import pandas as pd
 import pandera.typing as pat
 import structlog
 from beartype.typing import Literal, Optional, Union
-from jaxtyping import ArrayLike, Bool
+from jaxtyping import Bool
+from numpy.typing import ArrayLike
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     BusbarConnectionInfo,

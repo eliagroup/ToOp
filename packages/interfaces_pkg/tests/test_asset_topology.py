@@ -459,11 +459,11 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
         assets=[
             SwitchableAsset(
                 grid_model_id="line1",
-                branch_end="from",
                 asset_bay_id="station1::line1::bay",
             ),
             SwitchableAsset(grid_model_id="load1"),
         ],
+        asset_terminals=["from", None],
         asset_bays=[
             AssetBay(
                 asset_bay_id="station1::line1::bay",

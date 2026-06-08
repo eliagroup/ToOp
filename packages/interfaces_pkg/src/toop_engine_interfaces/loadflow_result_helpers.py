@@ -135,14 +135,20 @@ def load_loadflow_results(
         cascade_results = get_empty_dataframe_from_model(CascadeResultSchema)
 
     if validate:
+        BranchResultSchema.validate(branch_results)
+        NodeResultSchema.validate(node_results)
+        RegulatingElementResultSchema.validate(regulating_element_results)
+        ConvergedSchema.validate(converged)
+        VADiffResultSchema.validate(va_diff_results)
+        CascadeResultSchema.validate(cascade_results)
         return LoadflowResults(
             job_id=job_id,
-            branch_results=BranchResultSchema.validate(branch_results),
-            node_results=NodeResultSchema.validate(node_results),
-            regulating_element_results=RegulatingElementResultSchema.validate(regulating_element_results),
-            converged=ConvergedSchema.validate(converged),
-            va_diff_results=VADiffResultSchema.validate(va_diff_results),
-            cascade_results=CascadeResultSchema.validate(cascade_results),
+            branch_results=branch_results,
+            node_results=node_results,
+            regulating_element_results=regulating_element_results,
+            converged=converged,
+            va_diff_results=va_diff_results,
+            cascade_results=cascade_results,
             warnings=warnings,
         )
     return LoadflowResults.model_construct(
@@ -591,6 +597,65 @@ def convert_polars_loadflow_results_to_pandas(
     )
 
 
+def pandas_to_polars(
+    df: Optional[pd.DataFrame],
+    lazy: bool,
+    *,
+    nan_to_null: bool = False,
+) -> Optional[pl.DataFrame | pl.LazyFrame]:
+    """Convert a pandas DataFrame to a polars DataFrame.
+
+    Parameters
+    ----------
+    df : Optional[pd.DataFrame]
+        The pandas DataFrame to convert.
+    lazy : bool
+        Whether to return a LazyFrame or a DataFrame.
+    nan_to_null : bool
+        Whether NaN values should be converted to polars null values.
+
+    Returns
+    -------
+    Optional[pl.DataFrame]
+        The polars DataFrame or None if the input was None.
+    """
+    if df is None:
+        return None
+    if isinstance(df, pd.DataFrame):
+        df = pl.from_pandas(df, include_index=True, nan_to_null=nan_to_null)
+        for column in ["element_name", "contingency_name", "warnings"]:
+            if column in df.columns:
+                df = df.with_columns(pl.col(column).cast(pl.String))
+    if lazy:
+        df = df.lazy()  # Assume it's a pandas DataFrame
+    return df  # Assume it's already a polars DataFrame
+
+
+def cascade_pandas_to_polars(df: Optional[pd.DataFrame], lazy: bool) -> Optional[pl.DataFrame | pl.LazyFrame]:
+    """Convert cascade results to polars with stable nullable dtypes.
+
+    Parameters
+    ----------
+    df : Optional[pd.DataFrame]
+        Cascade results in pandas format.
+    lazy : bool
+        Whether to return a LazyFrame or a DataFrame.
+
+    Returns
+    -------
+    Optional[pl.DataFrame | pl.LazyFrame]
+        Cascade results converted to polars, or None if the input was None.
+    """
+    if df is None:
+        return None
+    if isinstance(df, pd.DataFrame):
+        df = df.copy()
+        for column in ["loading", "r_ohm", "x_ohm"]:
+            if column in df.columns:
+                df[column] = pd.to_numeric(df[column], errors="coerce")
+    return pandas_to_polars(df, lazy=lazy, nan_to_null=True)
+
+
 def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults) -> LoadflowResultsPolars:
     """Convert the LoadflowResults class to LoadflowResultsPolars class.
 
@@ -604,61 +669,6 @@ def convert_pandas_loadflow_results_to_polars(loadflow_results: LoadflowResults)
     LoadflowResultsPolars
         The loadflow results in polars format.
     """
-
-    def pandas_to_polars(
-        df: Optional[pd.DataFrame],
-        lazy: bool,
-        *,
-        nan_to_null: bool = False,
-    ) -> Optional[pl.DataFrame | pl.LazyFrame]:
-        """Convert a pandas DataFrame to a polars DataFrame.
-
-        Parameters
-        ----------
-        df : Optional[pd.DataFrame]
-            The pandas DataFrame to convert.
-        lazy : bool
-            Whether to return a LazyFrame or a DataFrame.
-        nan_to_null : bool
-            Whether NaN values should be converted to polars null values.
-
-        Returns
-        -------
-        Optional[pl.DataFrame]
-            The polars DataFrame or None if the input was None.
-        """
-        if df is None:
-            return None
-        if isinstance(df, pd.DataFrame):
-            df = pl.from_pandas(df, include_index=True, nan_to_null=nan_to_null)
-        if lazy:
-            df = df.lazy()  # Assume it's a pandas DataFrame
-        return df  # Assume it's already a polars DataFrame
-
-    def cascade_pandas_to_polars(df: Optional[pd.DataFrame], lazy: bool) -> Optional[pl.DataFrame | pl.LazyFrame]:
-        """Convert cascade results to polars with stable nullable dtypes.
-
-        Parameters
-        ----------
-        df : Optional[pd.DataFrame]
-            Cascade results in pandas format.
-        lazy : bool
-            Whether to return a LazyFrame or a DataFrame.
-
-        Returns
-        -------
-        Optional[pl.DataFrame | pl.LazyFrame]
-            Cascade results converted to polars, or None if the input was None.
-        """
-        if df is None:
-            return None
-        if isinstance(df, pd.DataFrame):
-            df = df.copy()
-            for column in ["loading", "r_ohm", "x_ohm"]:
-                if column in df.columns:
-                    df[column] = pd.to_numeric(df[column], errors="coerce")
-        return pandas_to_polars(df, lazy=lazy, nan_to_null=True)
-
     return LoadflowResultsPolars(
         job_id=loadflow_results.job_id,
         branch_results=pandas_to_polars(loadflow_results.branch_results, lazy=True),

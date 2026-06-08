@@ -192,16 +192,13 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
     When ``None``, the column value is ignored during result extraction.
     """
 
-    condition_limit_value: Series[float] = pa.Field(
-        nullable=True,
-        coerce=True,
-    )
+    condition_limit_value: Series[float] = pa.Field(nullable=True)
     """Threshold value for the condition (empty for state-based checks)."""
 
     condition_element_table: Series[str]
     """Pandapower table containing the element to monitor."""
 
-    condition_element_table_id: Series[int] = pa.Field(coerce=True)
+    condition_element_table_id: Series[int]
     """Row id of the monitored element in the table."""
 
     condition_mode: Series[str] = pa.Field(isin=SPPS_CONDITION_MODE_VALUES)
@@ -229,7 +226,7 @@ class SppsActionsPandapowerSchema(pa.DataFrameModel):
     measure_element_table: Series[str]
     """Pandapower table containing the element to control."""
 
-    measure_element_table_id: Series[int] = pa.Field(coerce=True)
+    measure_element_table_id: Series[int]
     """Row id of the controlled element in the table."""
 
 

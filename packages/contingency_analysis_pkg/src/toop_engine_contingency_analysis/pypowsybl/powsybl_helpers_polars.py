@@ -16,12 +16,10 @@ import pandera.typing.polars as patpl
 import polars as pl
 import pypowsybl
 from beartype.typing import Literal, Optional
-from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_result_helpers import get_failed_branch_results, get_failed_node_results
 from toop_engine_interfaces.loadflow_results import (
     BranchSide,
     ConvergenceStatus,
-    VADiffResultSchema,
 )
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchResultSchemaPolars,
@@ -110,7 +108,9 @@ def get_node_results_polars(
     node_results = node_results.rename({"v_mag": "vm", "v_angle": "va"})
 
     # Calculate the values
-    if method == "dc":
+    if method == "ac":
+        node_results = node_results.with_columns((pl.col("vm") * pl.col("nominal_v")).alias("vm"))
+    elif method == "dc":
         node_results = node_results.with_columns(
             pl.when(pl.col("va").is_not_null())
             .then(pl.col("nominal_v"))  # fill vm with nominal v if va is present
@@ -306,12 +306,6 @@ def get_va_diff_results_polars(
     VADiffResultSchemaPolars
         The dataframe containing the voltage angle difference results for the given outages.
     """
-    if len(outages) == 0 or bus_results.limit(1).collect().is_empty():
-        return (
-            pl.from_pandas(get_empty_dataframe_from_model(VADiffResultSchema), include_index=True, nan_to_null=False)
-            .lazy()
-            .cast({"timestep": pl.Int64, "va_diff": pl.Float64})
-        )
     basecase_in_result = ""
     iteration_va_diff = va_diff_with_buses.filter(pl.col("contingency").is_in([basecase_in_result, *outages]))
 

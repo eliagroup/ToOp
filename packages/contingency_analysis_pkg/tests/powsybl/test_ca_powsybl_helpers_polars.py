@@ -92,7 +92,38 @@ def test_get_va_diff_results():
     VADiffResultSchemaPolars.validate(va_results)
     va_results = va_results.collect()
     VADiffResultSchemaPolars.validate(va_results)
-    assert va_results.height == 0, "As only the first contingency is considered, there should be 2 rows"
+    assert va_results.height == 2, "Rows should be preserved even when voltage angles are unavailable"
+    assert va_results["va_diff"].is_null().sum() == 2, "Missing voltage angles should produce null va_diff values"
+
+    blank_va_diff_basecase = pl.LazyFrame(
+        {
+            "contingency": ["", ""],
+            "element": ["element_1", "element_2"],
+            "bus_breaker_bus1_id": ["bus_1", "bus_2"],
+            "bus_breaker_bus2_id": ["bus_2", "bus_1"],
+        }
+    )
+    bus_results_basecase = pl.LazyFrame(
+        {
+            "contingency_id": ["", ""],
+            "operator_strategy_id": ["", ""],
+            "voltage_level_id": ["placeholder", "placeholder"],
+            "bus_id": ["bus_1", "bus_2"],
+            "v_mag": [10.0, 10.0],
+            "v_angle": [180.0, 0.0],
+        }
+    )
+    va_results = get_va_diff_results_polars(
+        bus_results_basecase,
+        [],
+        va_diff_with_buses=blank_va_diff_basecase,
+        bus_map=bus_map,
+        timestep=timestep,
+    ).collect()
+    VADiffResultSchemaPolars.validate(va_results)
+    assert va_results.height == 2, "Basecase switch rows should be preserved when there are no outages"
+    assert va_results.filter(pl.col("element") == "element_1")["va_diff"][0] == 180.0
+    assert va_results.filter(pl.col("element") == "element_2")["va_diff"][0] == -180.0
 
 
 def test_get_branch_results():
@@ -377,7 +408,7 @@ def test_get_node_results_ac():
             "operator_strategy_id": ["", "", "", ""],
             "voltage_level_id": ["VL_1"] * 4,
             "bus_id": ["bus_1", "bus_2", "bus_1", "bus_2"],
-            "v_mag": [10.0, 11.0, 9.0, np.nan],
+            "v_mag": [1.0, 1.1, 0.9, np.nan],
             "v_angle": [180.0, 0, 10, np.nan],
         }
     )
@@ -428,6 +459,10 @@ def test_get_node_results_ac():
             )
             orig_vm = row["v_mag"]
             nominal_v = voltage_levels_df.filter(pl.col("id") == "VL_1").select("nominal_v").item()
+            expected_vm = orig_vm * nominal_v if not np.isnan(orig_vm) else np.nan
+            assert vm_result == expected_vm or (np.isnan(vm_result) and np.isnan(expected_vm)), (
+                f"Voltage magnitude for {bus_id} in {contingency} in {method} should match"
+            )
             vm_loading = (
                 node_results.filter(
                     (pl.col("timestep") == timestep) & (pl.col("contingency") == contingency) & (pl.col("element") == bus_id)
@@ -437,16 +472,18 @@ def test_get_node_results_ac():
             )
             if np.isnan(vm_loading):
                 assert np.isnan(orig_vm), "Loading should only be NaN if the original voltage is NaN"
-            elif vm_loading > nominal_v:
+            elif vm_result >= nominal_v:
                 voltage_max = voltage_levels_df.filter(pl.col("id") == "VL_1").select("high_voltage_limit").item()
-                assert vm_loading == (vm_result - nominal_v) / (voltage_max - nominal_v), (
+                expected_loading = (vm_result - nominal_v) / (voltage_max - nominal_v)
+                assert vm_loading == expected_loading, (
                     f"Voltage loading for {bus_id} in {contingency} in {method} should match"
                 )
             elif vm_loading == 0.0:
                 assert vm_loading == 0.0, "Loading should be 0 if the voltage is equal to the nominal voltage"
             else:
                 voltage_min = voltage_levels_df.filter(pl.col("id") == "VL_1").select("low_voltage_limit").item()
-                assert vm_loading == (vm_result - nominal_v) / (nominal_v - voltage_min), (
+                expected_loading = (vm_result - nominal_v) / (nominal_v - voltage_min)
+                assert vm_loading == expected_loading, (
                     f"Voltage loading for {bus_id} in {contingency} in {method} should match"
                 )
             va_result = (

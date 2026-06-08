@@ -59,3 +59,20 @@ DISTRIBUTED_SLACK = Parameters(
     dc_use_transformer_ratio=True,
 )
 SINGLE_SLACK = Parameters(distributed_slack=False, dc_use_transformer_ratio=True)
+UNIFORM_SINGLE_SLACK = Parameters(
+    balance_type=BalanceType.PROPORTIONAL_TO_GENERATION_P,
+    component_mode=ComponentMode.ALL_CONNECTED,
+    countries_to_balance=None,
+    dc_power_factor=1.0,
+    dc_use_transformer_ratio=False,
+    distributed_slack=False,
+    phase_shifter_regulation_on=False,
+    provider_parameters=OPENLOADFLOW_PARAM_PF,
+    read_slack_bus=True,
+    shunt_compensator_voltage_control_on=False,
+    transformer_voltage_control_on=False,
+    use_reactive_limits=False,
+    twt_split_shunt_admittance=False,
+    voltage_init_mode=VoltageInitMode.UNIFORM_VALUES,
+    write_slack_bus=False,
+)

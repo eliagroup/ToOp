@@ -113,7 +113,7 @@ uv run pytest -n auto --dist loadgroup           # Parallel, all packages
     - Use NumPy-style docstrings for all functions.
     - Prefer sectioned multi-line NumPy docstrings with `Parameters`, `Returns`, and `Raises` when applicable; one-line docstrings are fine for small helpers without parameters.
     - When editing an existing function docstring, normalize it to NumPy style instead of mixing styles.
-    - For dataclasses, pydantic models, and similar attribute-based classes, document attributes with multiline strings directly below the attributes instead of function-style docstrings.
+    - For dataclasses, Pydantic models, and similar attribute-based classes, document attributes with multiline strings directly below the attributes instead of function-style docstrings.
     - Keep attribute documentation concise and aligned with the existing field-by-field style used in this repository.
 - **Commitizen**: Conventional commits required (`feat:`, `fix:`, `docs:`, etc.)
 - **Pre-commit hooks**: Auto-run ruff, commitizen validation

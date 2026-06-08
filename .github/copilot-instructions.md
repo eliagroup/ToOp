@@ -111,7 +111,7 @@ uv run pytest -n auto --dist loadgroup           # Parallel, all packages
 - **Type Hints**: ALL functions must have complete type annotations (parameters + return type)
 - **Docstrings**:
     - Use NumPy-style docstrings for all functions.
-    - Do not add compact one-line docstrings for functions; include sectioned multi-line docstrings with `Parameters`, `Returns`, and `Raises` when applicable.
+    - Prefer sectioned multi-line NumPy docstrings with `Parameters`, `Returns`, and `Raises` when applicable; one-line docstrings are fine for small helpers without parameters.
     - When editing an existing function docstring, normalize it to NumPy style instead of mixing styles.
     - For dataclasses, pydantic models, and similar attribute-based classes, document attributes with multiline strings directly below the attributes instead of function-style docstrings.
     - Keep attribute documentation concise and aligned with the existing field-by-field style used in this repository.

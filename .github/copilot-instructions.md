@@ -110,6 +110,7 @@ uv run pytest -n auto --dist loadgroup           # Parallel, all packages
 - **Ruff**: Line length 125, enforces annotations (`ANN`), docstrings (`D`), no prints (`T20`)
 - **Type Hints**: ALL functions must have complete type annotations (parameters + return type)
 - **Docstrings**: Required for all public functions using Google style with parameter type documentation
+- **Pandera coercion**: Do not rely on `coerce=True` or schema-level coercion for runtime correctness; normalize dtypes explicitly in regular pandas code before validation so behavior stays correct when Pandera is disabled.
 - **Commitizen**: Conventional commits required (`feat:`, `fix:`, `docs:`, etc.)
 - **Pre-commit hooks**: Auto-run ruff, commitizen validation
 - Ignore patterns in `ruff.toml`: `S101` (assert in tests), `F722` (JAX typing with spaces)

@@ -1427,6 +1427,9 @@ def get_va_diff_results(
     va_diff_df = get_empty_dataframe_from_model(VADiffResultSchema)
     if out.empty:
         return va_diff_df
+    switch_name_map = monitored_elements.query("kind == 'switch'")["name"].to_dict()
+    out["element_name"] = out.index.get_level_values("element").map(switch_name_map).fillna("")
+    out["contingency_name"] = contingency.name or ""
     va_diff_df = pd.concat([va_diff_df, out], axis=0)
 
     return va_diff_df

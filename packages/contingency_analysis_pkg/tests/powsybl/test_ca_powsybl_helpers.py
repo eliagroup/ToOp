@@ -21,6 +21,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_branch_results,
     get_convergence_result_df,
     get_node_results,
+    get_regulating_element_results,
     get_va_diff_results,
     prepare_branch_limits,
     set_target_values_to_lf_values_incl_distributed_slack,
@@ -929,6 +930,19 @@ def test_update_basename_with_new_name():
     updated_empty_df = update_basename(empty_df, base_case_name)
     assert empty_df.empty, "The empty dataframe should remain empty"
     assert updated_empty_df.empty, "The updated empty dataframe should remain empty"
+
+
+def test_get_regulating_element_results_sets_non_nullable_name_columns() -> None:
+    regulating_element_results = get_regulating_element_results(
+        monitored_buses=["bus_1", "bus_2"],
+        timestep=0,
+        basecase_name="BASECASE",
+    )
+
+    assert len(regulating_element_results) == 2
+    assert set(regulating_element_results.index.get_level_values("element")) == {"bus_1", "bus_2"}
+    assert regulating_element_results["element_name"].tolist() == ["", ""]
+    assert regulating_element_results["contingency_name"].tolist() == ["", ""]
 
 
 def test_update_basename_drops():

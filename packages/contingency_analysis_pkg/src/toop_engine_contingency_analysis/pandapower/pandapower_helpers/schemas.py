@@ -10,6 +10,7 @@
 import dataclasses
 
 import pandapower as pp
+import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
@@ -228,6 +229,30 @@ class SppsActionsPandapowerSchema(pa.DataFrameModel):
 
     measure_element_table_id: Series[int]
     """Row id of the controlled element in the table."""
+
+
+def normalize_spps_conditions_dataframe(conditions: pd.DataFrame) -> pd.DataFrame:
+    """Normalize SpPS condition tables to the expected runtime dtypes.
+
+    Parameters
+    ----------
+    conditions : pd.DataFrame
+        SpPS condition table that may have been created from Python dicts with
+        ``None`` values, which would otherwise leave ``condition_limit_value``
+        as ``object`` dtype.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of ``conditions`` with ``condition_limit_value`` converted to
+        nullable float semantics using plain pandas operations.
+    """
+    normalized_conditions = conditions.copy()
+    if "condition_limit_value" in normalized_conditions.columns:
+        normalized_conditions["condition_limit_value"] = pd.to_numeric(
+            normalized_conditions["condition_limit_value"], errors="coerce"
+        ).astype("float64")
+    return normalized_conditions
 
 
 def _default_spps_conditions() -> "pat.DataFrame[SppsConditionsPandapowerSchema]":

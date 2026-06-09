@@ -53,9 +53,10 @@ dependencies = [
     "toop_engine_contingency_analysis=={{ version }}",
     "toop_engine_interfaces=={{ version }}",
     "toop_engine_grid_helpers=={{ version }}",
-    "pandapower (>=3.4.0,<4.0.0)",
     "equinox (>=0.13.8,<0.14.0)"
 ]
+[project.optional-dependencies]
+pandapower = ["pandapower>=3.4.0", "lxml>=5.0.0"]
 
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]

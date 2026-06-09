@@ -5,12 +5,13 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from __future__ import annotations
+
 import datetime
 import os
 from pathlib import Path
 
 import numpy as np
-import pandapower
 import pandas as pd
 import pypowsybl
 from pypowsybl.network import Network
@@ -19,6 +20,21 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_pandapower_net
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.asset_topology_helpers import save_asset_topology
 from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
+
+
+def _is_missing_pandapower_dependency(exc: ModuleNotFoundError) -> bool:
+    """Return whether the import failed because pandapower is not installed."""
+    return (exc.name == "pandapower" or (exc.name is not None and exc.name.startswith("pandapower."))) or (
+        "pandapower" in str(exc)
+    )
+
+
+try:
+    import pandapower
+except ModuleNotFoundError as exc:
+    if not _is_missing_pandapower_dependency(exc):
+        raise
+    pandapower = None
 
 
 def add_phaseshift_transformer_to_line_powsybl(
@@ -609,6 +625,9 @@ def powsybl_case9241() -> pypowsybl.network.Network:
     pypowsybl.network.Network
         The loaded Powsybl pegase case9241 network.
     """
+    if pandapower is None:
+        raise ModuleNotFoundError("pandapower is required to load the Powsybl case9241 example")
+
     pandapower_net = pandapower.networks.case9241pegase()
     net = load_pandapower_net_for_powsybl(pandapower_net, check_trafo_resistance=False)
 
@@ -623,6 +642,9 @@ def powsybl_case1354() -> pypowsybl.network.Network:
     pypowsybl.network.Network
         The loaded Powsybl pegase case1354 network.
     """
+    if pandapower is None:
+        raise ModuleNotFoundError("pandapower is required to load the Powsybl case1354 example")
+
     pandapower_net = pandapower.networks.case1354pegase()
     net = load_pandapower_net_for_powsybl(pandapower_net, check_trafo_resistance=False)
 

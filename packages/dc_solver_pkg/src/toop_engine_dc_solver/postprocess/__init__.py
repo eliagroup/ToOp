@@ -12,14 +12,32 @@ There are currently implementations for pandapower and powsybl as runners.
 This module helps with postprocessing of optimizer results.
 """
 
-from .abstract_runner import (
-    AbstractLoadflowRunner,
-)
-from .postprocess_pandapower import (
-    PandapowerRunner,
-)
-from .postprocess_powsybl import (
-    PowsyblRunner,
-)
+from importlib import import_module
+from importlib.util import find_spec
 
-__all__ = ["AbstractLoadflowRunner", "PandapowerRunner", "PowsyblRunner"]
+from .abstract_runner import AbstractLoadflowRunner
+from .postprocess_powsybl import PowsyblRunner
+
+
+def _is_missing_pandapower_dependency(exc: ModuleNotFoundError) -> bool:
+    """Return whether the import failed because pandapower is not installed."""
+    return (exc.name == "pandapower" or (exc.name is not None and exc.name.startswith("pandapower."))) or (
+        "pandapower" in str(exc)
+    )
+
+
+def _has_pandapower_dependency() -> bool:
+    """Return whether pandapower can be resolved without importing optional exports."""
+    try:
+        return find_spec("pandapower") is not None
+    except ModuleNotFoundError as exc:
+        if not _is_missing_pandapower_dependency(exc):
+            raise
+        return False
+
+
+__all__ = ["AbstractLoadflowRunner", "PowsyblRunner"]
+
+if _has_pandapower_dependency():
+    PandapowerRunner = import_module(".postprocess_pandapower", package=__name__).PandapowerRunner
+    __all__.append("PandapowerRunner")

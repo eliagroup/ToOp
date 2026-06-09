@@ -7,23 +7,41 @@
 
 """Get the results of the AC Contingency Analysis for the given network"""
 
+from __future__ import annotations
+
+from importlib import import_module
+from typing import TYPE_CHECKING
+
 import pypowsybl
 from beartype.typing import Optional
-from pandapower import pandapowerNet as PandapowerNetwork
 from pypowsybl.network import Network as PowsyblNetwork
-from toop_engine_contingency_analysis.pandapower import (
-    run_contingency_analysis_pandapower,
-)
-from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import ContingencyAnalysisConfig, ParallelConfig
-from toop_engine_contingency_analysis.pypowsybl import (
-    run_contingency_analysis_powsybl,
-)
-from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+
+if TYPE_CHECKING:
+    from pandapower import pandapowerNet
+    from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
+
+
+def _is_missing_pandapower_dependency(exc: ModuleNotFoundError) -> bool:
+    """Return whether the import failed because pandapower is not installed."""
+    return (exc.name == "pandapower" or (exc.name is not None and exc.name.startswith("pandapower."))) or (
+        "pandapower" in str(exc)
+    )
+
+
+def _is_pandapower_network(net: object) -> bool:
+    """Return whether the provided network is a pandapower network."""
+    try:
+        pandapower_network_type = import_module("pandapower").pandapowerNet
+    except ModuleNotFoundError as exc:
+        if not _is_missing_pandapower_dependency(exc):
+            raise
+        return False
+    return isinstance(net, pandapower_network_type)
 
 
 def get_ac_loadflow_results(
-    net: PandapowerNetwork | PowsyblNetwork,
+    net: pandapowerNet | PowsyblNetwork,
     n_minus_1_definition: Nminus1Definition,
     timestep: int = 0,
     job_id: str = "",
@@ -65,17 +83,20 @@ def get_ac_loadflow_results(
     ValueError
         If the network is not a PandapowerNetwork or PowsyblNetwork
     """
-    if isinstance(net, PandapowerNetwork):
-        cfg = ContingencyAnalysisConfig(
+    if _is_pandapower_network(net):
+        pandapower_module = import_module("toop_engine_contingency_analysis.pandapower")
+        pandapower_schema_module = import_module("toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas")
+
+        cfg = pandapower_schema_module.ContingencyAnalysisConfig(
             runpp_kwargs=lf_params if isinstance(lf_params, dict) else None,
             method="ac",
             polars=True,
-            parallel=ParallelConfig(
+            parallel=pandapower_schema_module.ParallelConfig(
                 n_processes=n_processes,
                 batch_size=batch_size,
             ),
         )
-        lf_results = run_contingency_analysis_pandapower(
+        lf_results = pandapower_module.run_contingency_analysis_pandapower(
             net,
             n_minus_1_definition,
             job_id,
@@ -83,7 +104,9 @@ def get_ac_loadflow_results(
             cfg=cfg,
         )
     elif isinstance(net, PowsyblNetwork):
-        lf_results = run_contingency_analysis_powsybl(
+        pypowsybl_module = import_module("toop_engine_contingency_analysis.pypowsybl")
+
+        lf_results = pypowsybl_module.run_contingency_analysis_powsybl(
             net,
             n_minus_1_definition,
             job_id,

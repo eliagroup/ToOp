@@ -11,21 +11,42 @@ These functions are used to extract and manipulate data from pypowsybl networks,
 such as loadflow results, branch limits, and monitored elements.
 """
 
+from __future__ import annotations
+
 import json
 import math
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pandapower
 import pandas as pd
 import pypowsybl
 from beartype.typing import Dict, List, Literal, Optional
 from fsspec import AbstractFileSystem
-from pandapower.converter.matpower import to_mpc
 from pypowsybl.network import Network
 from pypowsybl.report import ReportNode
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+
+
+def _is_missing_pandapower_dependency(exc: ModuleNotFoundError) -> bool:
+    """Return whether the import failed because pandapower is not installed."""
+    return (exc.name == "pandapower" or (exc.name is not None and exc.name.startswith("pandapower."))) or (
+        "pandapower" in str(exc)
+    )
+
+
+try:
+    import pandapower
+    from pandapower.converter.matpower import to_mpc
+except ModuleNotFoundError as exc:
+    if not _is_missing_pandapower_dependency(exc):
+        raise
+    pandapower = None
+    to_mpc = None
+
+if TYPE_CHECKING:
+    import pandapower
 
 
 def extract_single_injection_loadflow_result(injections: pd.DataFrame, injection_id: str) -> tuple[float, float]:
@@ -534,6 +555,9 @@ def load_pandapower_net_for_powsybl(
         The converted pypowsybl network.
 
     """
+    if pandapower is None:
+        raise ModuleNotFoundError("pandapower is required to convert pandapower networks to pypowsybl")
+
     try:
         pypowsybl_network = load_pandapower_net_for_powsybl_with_convert_from_pandapower(net)
         check_powsybl_import(pypowsybl_network, check_trafo_resistance=check_trafo_resistance)
@@ -575,6 +599,9 @@ def load_pandapower_net_for_powsybl_with_convert_from_pandapower(net: pandapower
     pypowsybl.network.Network
         The converted pypowsybl network.
     """
+    if pandapower is None:
+        raise ModuleNotFoundError("pandapower is required to convert pandapower networks to pypowsybl")
+
     pypowsybl_network = pypowsybl.network.convert_from_pandapower(net)
     return pypowsybl_network
 
@@ -606,6 +633,9 @@ def load_pandapower_net_via_grid2opt_for_powsybl(
     pypowsybl.network.Network
         The converted pypowsybl network.
     """
+    if pandapower is None or to_mpc is None:
+        raise ModuleNotFoundError("pandapower is required to convert pandapower networks to pypowsybl")
+
     pandapower.runpp(net)
     with tempfile.NamedTemporaryFile(suffix=".mat", delete=True) as tmpfile:
         _ = to_mpc(net, tmpfile.name)

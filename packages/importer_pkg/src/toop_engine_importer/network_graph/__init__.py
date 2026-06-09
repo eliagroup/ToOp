@@ -7,6 +7,9 @@
 
 """Functions to get an AssetTopology from a Node-Breaker grid model."""
 
+from importlib import import_module
+from importlib.util import find_spec
+
 from .data_classes import (
     BRANCH_TYPES,
     BRANCH_TYPES_PANDAPOWER,
@@ -55,14 +58,28 @@ from .network_graph_data import (
     add_node_tuple_column,
     remove_helper_branches,
 )
-from .pandapower_network_to_graph import (
-    get_network_graph,
-    get_network_graph_data,
-)
 from .powsybl_station_to_graph import (
     get_node_breaker_topology_graph,
     node_breaker_topology_to_graph_data,
 )
+
+
+def _is_missing_pandapower_dependency(exc: ModuleNotFoundError) -> bool:
+    """Return whether the import failed because pandapower is not installed."""
+    return (exc.name == "pandapower" or (exc.name is not None and exc.name.startswith("pandapower."))) or (
+        "pandapower" in str(exc)
+    )
+
+
+def _has_pandapower_dependency() -> bool:
+    """Return whether pandapower can be resolved without importing optional exports."""
+    try:
+        return find_spec("pandapower") is not None
+    except ModuleNotFoundError as exc:
+        if not _is_missing_pandapower_dependency(exc):
+            raise
+        return False
+
 
 __all__ = [
     "BRANCH_TYPES",
@@ -88,8 +105,6 @@ __all__ = [
     "get_busbar_df",
     "get_coupler_df",
     "get_empty_dataframe_from_df_model",
-    "get_network_graph",
-    "get_network_graph_data",
     "get_node_breaker_topology_graph",
     "get_station_connection_tables",
     "get_switchable_asset",
@@ -106,3 +121,9 @@ __all__ = [
     "set_zero_impedance_connected",
     "shortest_paths_to_target_ids",
 ]
+
+if _has_pandapower_dependency():
+    pandapower_network_to_graph = import_module(".pandapower_network_to_graph", package=__name__)
+    get_network_graph = pandapower_network_to_graph.get_network_graph
+    get_network_graph_data = pandapower_network_to_graph.get_network_graph_data
+    __all__.extend(["get_network_graph", "get_network_graph_data"])

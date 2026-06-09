@@ -2441,7 +2441,7 @@ requires-dist = [
     { name = "jaxtyping", specifier = ">=0.3.10,<0.4.0" },
     { name = "mypy-protobuf", specifier = ">=3.7.0" },
     { name = "networkx", specifier = ">=2.5.0" },
-    { name = "numpy", specifier = ">=2.1.0,<3.0.0" },
+    { name = "numpy", specifier = ">=2.1.0,<2.4.0" },
     { name = "numpydantic", specifier = ">=1.6.4,<2.0.0" },
     { name = "pandapower", marker = "extra == 'pandapower'", specifier = ">=3.4.0" },
     { name = "pandas", specifier = ">=2.2.3,<3.0.0" },

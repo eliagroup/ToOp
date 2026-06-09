@@ -12,6 +12,7 @@ Includes the high-level load_grid function which is performing the entire prepro
 
 from dataclasses import replace
 from functools import partial
+from importlib import import_module
 from pathlib import Path
 
 import jax
@@ -59,7 +60,6 @@ from toop_engine_dc_solver.preprocess.action_set import (
     pad_out_action_set,
 )
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
-from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
@@ -73,6 +73,13 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 
 logger = structlog.get_logger(__name__)
+
+
+def _is_missing_pandapower_dependency(exc: ModuleNotFoundError) -> bool:
+    """Return whether the import failed because pandapower is not installed."""
+    return (exc.name == "pandapower" or (exc.name is not None and exc.name.startswith("pandapower."))) or (
+        "pandapower" in str(exc)
+    )
 
 
 def convert_relevant_injections(
@@ -682,7 +689,21 @@ def load_grid(
 
     if pandapower:
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into PandaPower backend")
-        backend = PandaPowerBackend(data_folder_dirfs=data_folder_dirfs, chronics_id=chronics_id, chronics_slice=timesteps)
+        try:
+            pandapower_backend_cls = import_module(
+                "toop_engine_dc_solver.preprocess.pandapower.pandapower_backend"
+            ).PandaPowerBackend
+        except ModuleNotFoundError as exc:
+            if not _is_missing_pandapower_dependency(exc):
+                raise
+            raise ModuleNotFoundError(
+                "pandapower support requires the optional pandapower dependency to be installed"
+            ) from exc
+        backend = pandapower_backend_cls(
+            data_folder_dirfs=data_folder_dirfs,
+            chronics_id=chronics_id,
+            chronics_slice=timesteps,
+        )
     else:
         status_update_fn("load_grid_into_loadflow_solver_backend", "load into Powsybl backend")
         backend = PowsyblBackend(

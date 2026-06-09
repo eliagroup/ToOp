@@ -7,6 +7,9 @@
 
 """Backend/preprocessing/postprocessing functionalities for the DC solver, refactored version."""
 
+from importlib import import_module
+from importlib.util import find_spec
+
 from toop_engine_interfaces.backend import BackendInterface
 
 from .action_set import (
@@ -19,7 +22,6 @@ from .network_data import (
     assert_network_data,
     extract_network_data_from_interface,
 )
-from .pandapower.pandapower_backend import PandaPowerBackend
 from .powsybl.powsybl_backend import PowsyblBackend
 from .preprocess import (
     add_bus_b_columns_to_ptdf,
@@ -37,10 +39,27 @@ from .preprocess import (
     reduce_branch_dimension,
 )
 
+
+def _is_missing_pandapower_dependency(exc: ModuleNotFoundError) -> bool:
+    """Return whether the import failed because pandapower is not installed."""
+    return (exc.name == "pandapower" or (exc.name is not None and exc.name.startswith("pandapower."))) or (
+        "pandapower" in str(exc)
+    )
+
+
+def _has_pandapower_dependency() -> bool:
+    """Return whether pandapower can be resolved without importing optional exports."""
+    try:
+        return find_spec("pandapower") is not None
+    except ModuleNotFoundError as exc:
+        if not _is_missing_pandapower_dependency(exc):
+            raise
+        return False
+
+
 __all__ = [
     "BackendInterface",
     "NetworkData",
-    "PandaPowerBackend",
     "PowsyblBackend",
     "add_bus_b_columns_to_ptdf",
     "add_nodal_injections_to_network_data",
@@ -62,3 +81,7 @@ __all__ = [
     "preprocess",
     "reduce_branch_dimension",
 ]
+
+if _has_pandapower_dependency():
+    PandaPowerBackend = import_module(".pandapower.pandapower_backend", package=__name__).PandaPowerBackend
+    __all__.append("PandaPowerBackend")

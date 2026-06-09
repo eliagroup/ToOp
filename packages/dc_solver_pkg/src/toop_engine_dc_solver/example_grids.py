@@ -7,20 +7,22 @@
 
 """Provides example grids for testing the dc_solver package."""
 
-# ruff/sonar: noqa: PLR0915, S3776
+from __future__ import annotations
 
+# ruff/sonar: noqa: PLR0915, S3776
 import bz2
 import datetime
 import os
 import shutil
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from importlib import import_module
 from numbers import Integral
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import networkx as nx
 import numpy as np
-import pandapower as pp
 import pandas as pd
 import pypowsybl
 from beartype.typing import Literal, Optional
@@ -28,15 +30,7 @@ from fsspec.implementations.dirfs import DirFileSystem
 from networkx.algorithms.community import kernighan_lin_bisection
 from toop_engine_dc_solver.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
-from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
-from toop_engine_grid_helpers.pandapower.example_grids import (
-    pandapower_case30_with_psts_and_weak_branches,
-    pandapower_extended_case57,
-    pandapower_extended_oberrhein,
-    pandapower_non_converging_case57,
-)
-from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.example_grids import (
     create_busbar_b_in_ieee,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
@@ -69,6 +63,56 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     LimitAdjustmentParameters,
     PreprocessParameters,
 )
+
+if TYPE_CHECKING:
+    import pandapower as pp
+
+
+def _is_missing_pandapower_dependency(exc: ModuleNotFoundError) -> bool:
+    """Return whether the import failed because pandapower is not installed."""
+    return (exc.name == "pandapower" or (exc.name is not None and exc.name.startswith("pandapower."))) or (
+        "pandapower" in str(exc)
+    )
+
+
+def _require_pandapower_module() -> object:
+    """Import and return the pandapower module."""
+    try:
+        return import_module("pandapower")
+    except ModuleNotFoundError as exc:
+        if not _is_missing_pandapower_dependency(exc):
+            raise
+        raise ModuleNotFoundError("pandapower example grids require the optional pandapower dependency") from exc
+
+
+def _require_pandapower_backend_cls() -> type:
+    """Import and return the pandapower backend class."""
+    try:
+        return import_module("toop_engine_dc_solver.preprocess.pandapower.pandapower_backend").PandaPowerBackend
+    except ModuleNotFoundError as exc:
+        if not _is_missing_pandapower_dependency(exc):
+            raise
+        raise ModuleNotFoundError("pandapower example grids require the optional pandapower dependency") from exc
+
+
+def _require_pandapower_example_grids_module() -> object:
+    """Import and return the pandapower example grids module."""
+    try:
+        return import_module("toop_engine_grid_helpers.pandapower.example_grids")
+    except ModuleNotFoundError as exc:
+        if not _is_missing_pandapower_dependency(exc):
+            raise
+        raise ModuleNotFoundError("pandapower example grids require the optional pandapower dependency") from exc
+
+
+def _require_pandapower_separator() -> str:
+    """Import and return the pandapower id separator."""
+    try:
+        return import_module("toop_engine_grid_helpers.pandapower.pandapower_id_helpers").SEPARATOR
+    except ModuleNotFoundError as exc:
+        if not _is_missing_pandapower_dependency(exc):
+            raise
+        raise ModuleNotFoundError("pandapower example grids require the optional pandapower dependency") from exc
 
 
 def compress_bz2(source_file: str) -> None:
@@ -242,9 +286,10 @@ def random_station_info_backend(
 
     global_id = backend.get_node_ids()[node_idx]
     if pp_counters is not None:
+        separator = _require_pandapower_separator()
         bus_a_id = global_id
-        bus_b_id = f"{pp_counters.highest_bus_id + 1}{SEPARATOR}bus"
-        switch_id = f"{pp_counters.highest_switch_id + 1}{SEPARATOR}switch"
+        bus_b_id = f"{pp_counters.highest_bus_id + 1}{separator}bus"
+        switch_id = f"{pp_counters.highest_switch_id + 1}{separator}switch"
 
         pp_counters = replace(
             pp_counters,
@@ -327,7 +372,8 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
     """
     filesystem_dir = DirFileSystem(folder)
     if pandapower:
-        backend = PandaPowerBackend(filesystem_dir)
+        pandapower_backend_cls = _require_pandapower_backend_cls()
+        backend = pandapower_backend_cls(filesystem_dir)
         pp_counters = PandapowerCounters(
             highest_switch_id=int(backend.net.switch.index.max()) if len(backend.net.switch) else 0,
             highest_bus_id=int(backend.net.bus.index.max()),
@@ -346,7 +392,9 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
 # ruff/sonar: noqa: PLR0915, S3776
 def oberrhein_data(folder: Path) -> None:
     """Build an example grid file which resembles the grid2op format but has more elements for testing"""
-    net = pandapower_extended_oberrhein()
+    pp = _require_pandapower_module()
+    pandapower_example_grids = _require_pandapower_example_grids_module()
+    net = pandapower_example_grids.pandapower_extended_oberrhein()
     os.makedirs(folder, exist_ok=True)
     pp.rundcpp(net)
     n_2_safe_line = np.argwhere(net.line.name == "n_2_safe_line").item()
@@ -447,7 +495,9 @@ def oberrhein_data(folder: Path) -> None:
 
 def case57_data_pandapower(folder: Path) -> None:
     """A case57 variant that looks the same as the powsybl example network"""
-    net = pandapower_extended_case57()
+    pp = _require_pandapower_module()
+    pandapower_example_grids = _require_pandapower_example_grids_module()
+    net = pandapower_example_grids.pandapower_extended_case57()
     os.makedirs(folder, exist_ok=True)
     pp.rundcpp(net)
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
@@ -565,7 +615,9 @@ def case57_data_powsybl(folder: Path) -> None:
 
 def case57_non_converging(folder: Path) -> None:
     """A case57 variant that does not converge in AC but does converge in DC"""
-    net = pandapower_non_converging_case57()
+    pp = _require_pandapower_module()
+    pandapower_example_grids = _require_pandapower_example_grids_module()
+    net = pandapower_example_grids.pandapower_non_converging_case57()
     os.makedirs(folder, exist_ok=True)
     pp.rundcpp(net)
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
@@ -608,6 +660,7 @@ def case57_non_converging(folder: Path) -> None:
 
 def case300_pandapower(folder: Path) -> None:
     """A 300 bus case for mini benchmarks"""
+    pp = _require_pandapower_module()
     net = pp.networks.case300()
     os.makedirs(folder, exist_ok=True)
     pp.rundcpp(net)
@@ -688,6 +741,7 @@ def case9241_pandapower(data_folder: Path) -> None:
     data_folder : Path
         The folder to save the data to
     """
+    pp = _require_pandapower_module()
     np.random.seed(0)
     net = pp.networks.case9241pegase()
     pp.runpp(net)
@@ -956,6 +1010,7 @@ def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
 
 def case14_pandapower(folder: Path) -> None:
     """A 14 bus case for basic tests"""
+    pp = _require_pandapower_module()
     net = pp.networks.case14()
     pp.rundcpp(net)
 
@@ -1000,7 +1055,9 @@ def case14_pandapower(folder: Path) -> None:
 
 
 def case30_with_psts_pandapower(folder: Path) -> None:
-    net = pandapower_case30_with_psts_and_weak_branches()
+    pp = _require_pandapower_module()
+    pandapower_example_grids = _require_pandapower_example_grids_module()
+    net = pandapower_example_grids.pandapower_case30_with_psts_and_weak_branches()
 
     pp.runpp(net)
 

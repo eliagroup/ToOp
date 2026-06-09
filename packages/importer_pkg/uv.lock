@@ -3337,7 +3337,6 @@ dependencies = [
     { name = "nbformat" },
     { name = "numba" },
     { name = "openpyxl" },
-    { name = "pandapower" },
     { name = "pandera" },
     { name = "plotly" },
     { name = "pydantic" },
@@ -3350,6 +3349,12 @@ dependencies = [
     { name = "toop-engine-grid-helpers" },
     { name = "toop-engine-interfaces" },
     { name = "tyro" },
+]
+
+[package.optional-dependencies]
+pandapower = [
+    { name = "lxml" },
+    { name = "pandapower" },
 ]
 
 [package.dev-dependencies]
@@ -3379,10 +3384,11 @@ requires-dist = [
     { name = "beartype", specifier = ">=0.22.0,<0.23.0" },
     { name = "confluent-kafka", specifier = ">=2.10.0,<3.0.0" },
     { name = "lxml", specifier = ">=5.0.0" },
+    { name = "lxml", marker = "extra == 'pandapower'", specifier = ">=5.0.0" },
     { name = "nbformat", specifier = ">=5.10.4,<6.0.0" },
     { name = "numba", specifier = ">=0.65.0,<0.66.0" },
     { name = "openpyxl", specifier = ">=3.1.2,<4.0.0" },
-    { name = "pandapower", specifier = ">=3.4.0,<4.0.0" },
+    { name = "pandapower", marker = "extra == 'pandapower'", specifier = ">=3.4.0" },
     { name = "pandera" },
     { name = "plotly", specifier = ">=3.0.0,<6.0.0" },
     { name = "pydantic", specifier = ">=2.8.2,<3.0.0" },
@@ -3396,6 +3402,7 @@ requires-dist = [
     { name = "toop-engine-interfaces", editable = "../interfaces_pkg" },
     { name = "tyro", specifier = ">=0.8.6,<0.9.0" },
 ]
+provides-extras = ["pandapower"]
 
 [package.metadata.requires-dev]
 dev = [

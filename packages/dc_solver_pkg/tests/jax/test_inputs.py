@@ -59,6 +59,22 @@ def assert_static_information(a: StaticInformation, b: StaticInformation) -> Non
                 assert getattr(b.dynamic_information, key) is not None
                 assert getattr(a.dynamic_information, key) is not None
                 assert a.dynamic_information.nodal_injection_information == b.dynamic_information.nodal_injection_information
+            else:
+                assert getattr(b.dynamic_information, key) is None
+        elif key == "n2_baseline_analysis":
+            if a.dynamic_information.n2_baseline_analysis is not None:
+                assert getattr(b.dynamic_information, key) is not None
+                assert getattr(a.dynamic_information, key) is not None
+                assert a.dynamic_information.n2_baseline_analysis == b.dynamic_information.n2_baseline_analysis
+            else:
+                assert getattr(b.dynamic_information, key) is None
+        elif key == "bb_outage_baseline_analysis":
+            if a.dynamic_information.bb_outage_baseline_analysis is not None:
+                assert getattr(b.dynamic_information, key) is not None
+                assert getattr(a.dynamic_information, key) is not None
+                assert a.dynamic_information.bb_outage_baseline_analysis == b.dynamic_information.bb_outage_baseline_analysis
+            else:
+                assert getattr(b.dynamic_information, key) is None
         else:
             assert jnp.array_equal(
                 getattr(a.dynamic_information, key),

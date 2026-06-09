@@ -434,14 +434,16 @@ def add_name_column_polars(
     LoadflowResultTablePolars
         The updated dataframe with the ids translated to the original names.
     """
+    fallback_name = pl.col(f"{index_level}_name").cast(pl.String).fill_null("").replace(["NaN", "nan"], ["", ""])
+
     result_df = result_df.with_columns(
-        pl.col(index_level)
-        .replace(name_map, default=pl.col(f"{index_level}_name").fill_null(""))
-        .alias(f"{index_level}_name")
+        pl.col(index_level).replace(name_map, default=fallback_name).alias(f"{index_level}_name")
     )
 
     # fill nulls with empty string
-    result_df = result_df.with_columns(pl.col(f"{index_level}_name").fill_null(""))
+    result_df = result_df.with_columns(
+        pl.col(f"{index_level}_name").cast(pl.String).fill_null("").replace(["NaN", "nan"], ["", ""])
+    )
     return result_df
 
 

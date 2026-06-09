@@ -88,10 +88,11 @@ def heuristic_first(
         addition is required for the asset and will have exactly one True entry for each asset if an addition is required.
     """
     first_true: Int[Array, " n_assets"] = jnp.argmax(possible_switching_table, axis=0)
+    asset_indices: Int[Array, " n_assets"] = jnp.arange(requires_addition.shape[0])
 
     return jnp.where(
         requires_addition[None, :],
-        current_switching_table.at[first_true, range(requires_addition.shape[0])].set(True),
+        current_switching_table.at[first_true, asset_indices].set(True),
         current_switching_table,
     )
 
@@ -131,10 +132,11 @@ def heuristic_least_connected_busbar(
     # one possible busbar to connect to and then apply the rest.
     single_busbar_assets: Bool[Array, " n_assets"] = jnp.sum(possible_switching_table, axis=0) == 1
     first_hit: Int[Array, " n_assets"] = jnp.argmax(possible_switching_table, axis=0)
+    asset_indices: Int[Array, " n_assets"] = jnp.arange(requires_addition.shape[0])
 
     current_switching_table = jnp.where(
         single_busbar_assets[None, :],
-        current_switching_table.at[first_hit, range(requires_addition.shape[0])].set(True),
+        current_switching_table.at[first_hit, asset_indices].set(True),
         current_switching_table,
     )
     requires_addition = requires_addition & ~single_busbar_assets
@@ -181,7 +183,7 @@ def heuristic_least_connected_busbar(
     # Now we can update the current switching table with the selected busbar indices
     current_switching_table = jnp.where(
         requires_addition[None, :],
-        current_switching_table.at[selected_busbar_indices, range(requires_addition.shape[0])].set(True),
+        current_switching_table.at[selected_busbar_indices, asset_indices].set(True),
         current_switching_table,
     )
     return current_switching_table

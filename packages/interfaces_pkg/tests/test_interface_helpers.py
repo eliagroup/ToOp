@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import pandas as pd
+import pandera as pa
 import pandera.typing as pat
 import pytest
 from pandera import DataFrameModel, Index
@@ -14,21 +15,21 @@ from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_mo
 
 # Minimal DataFrameModel with columns only
 class SimpleModel(DataFrameModel):
-    a: pat.Series[int]
-    b: pat.Series[float]
+    a: pat.Series[int] = pa.Field()
+    b: pat.Series[float] = pa.Field()
 
 
 # DataFrameModel with a single index
 class IndexModel(DataFrameModel):
-    idx: pat.Index[str]
-    val: pat.Series[int]
+    idx: pat.Index[str] = pa.Field()
+    val: pat.Series[int] = pa.Field()
 
 
 # DataFrameModel with multiple indices
 class MultiIndexModel(DataFrameModel):
-    idx1: pat.Index[str]
-    idx2: pat.Index[int]
-    val: pat.Series[int]
+    idx1: pat.Index[str] = pa.Field()
+    idx2: pat.Index[int] = pa.Field()
+    val: pat.Series[int] = pa.Field()
 
 
 def test_empty_dataframe_from_simple_model():
@@ -65,11 +66,12 @@ def test_empty_dataframe_from_multiindex_model():
 def test_raises_value_error_when_index_field_missing(monkeypatch):
     # Patch __fields__ to not include any index type
     class BrokenModel(DataFrameModel):
-        a: pat.Series[int]
+        a: pat.Series[int] = pa.Field()
 
     schema = BrokenModel.to_schema()
     monkeypatch.setattr(BrokenModel, "__fields__", {"a": (type("Fake", (), {"origin": None})(), None)})
     # Patch schema.index to be an Index instance
     monkeypatch.setattr(schema, "index", Index(int))
+    monkeypatch.setattr(BrokenModel, "to_schema", classmethod(lambda cls: schema))
     with pytest.raises(ValueError, match="No index found in the DataFrameModel"):
         get_empty_dataframe_from_model(BrokenModel)

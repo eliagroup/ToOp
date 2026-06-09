@@ -165,7 +165,7 @@ def test_branch_schema_invalid_node_tuple():
         "node_tuple": [(1, "2")],  # Invalid node_tuple
     }
     df = pd.DataFrame(data)
-    with pytest.raises(SchemaError):
+    with pytest.raises(SchemaError, match="node_tuple"):
         BranchSchema.validate(df)
 
 

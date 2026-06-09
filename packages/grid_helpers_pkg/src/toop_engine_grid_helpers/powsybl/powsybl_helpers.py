@@ -22,6 +22,7 @@ import pandas as pd
 import pypowsybl
 from beartype.typing import Dict, List, Literal, Optional
 from fsspec import AbstractFileSystem
+from pandapower.converter.matpower import to_mpc
 from pypowsybl.network import Network
 from pypowsybl.report import ReportNode
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
@@ -607,7 +608,7 @@ def load_pandapower_net_via_grid2opt_for_powsybl(
     """
     pandapower.runpp(net)
     with tempfile.NamedTemporaryFile(suffix=".mat", delete=True) as tmpfile:
-        _ = pandapower.converter.to_mpc(net, tmpfile.name)
+        _ = to_mpc(net, tmpfile.name)
         loading_params = {
             "matpower.import.ignore-base-voltage": "false",  # change the voltage from per unit to Kv
         }

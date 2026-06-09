@@ -10,9 +10,11 @@
 from enum import Enum
 
 import pandas as pd
-import pandera as pa
+import pandera
+import pandera.pandas as pa
 import pandera.typing as pat
-from beartype.typing import List, Literal, Optional, Tuple, Type, TypeAlias, Union
+from beartype.typing import List, Literal, Optional, Type, TypeAlias, Union
+from pandera.extensions import register_check_method
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
 
@@ -34,6 +36,63 @@ BRANCH_TYPES: TypeAlias = Union[BRANCH_TYPES_POWSYBL, BRANCH_TYPES_PANDAPOWER]
 EDGE_ID: TypeAlias = tuple[int, int]
 
 DUPLICATED_EDGE_SUFFIX: TypeAlias = Literal["_FROM", "_TO"]
+ALLOWED_BRANCH_TYPES: tuple[str, ...] = tuple(
+    branch_type for branch_type_model in BRANCH_TYPES.__args__ for branch_type in branch_type_model.__args__
+)
+
+
+def _register_missing_builtin_pandera_checks() -> None:
+    """Register missing pandas backends for builtin Pandera checks used in this module."""
+    try:
+        isin_dispatcher = pa.Check.get_builtin_check_fn("isin")
+    except Exception:
+        isin_dispatcher = None
+
+    if pd.Series not in getattr(isin_dispatcher, "_function_registry", {}):
+        assert tuple(map(int, pandera.__version__.split(".")[:2])) < (0, 27), (
+            "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
+        )
+
+        @pa.Check.register_builtin_check_fn
+        def isin(data: pd.Series, allowed_values: list[object] | tuple[object, ...]) -> pd.Series:
+            return data.isna() | data.isin(allowed_values)
+
+    try:
+        in_range_dispatcher = pa.Check.get_builtin_check_fn("in_range")
+    except Exception:
+        in_range_dispatcher = None
+
+    if pd.Series not in getattr(in_range_dispatcher, "_function_registry", {}):
+        assert tuple(map(int, pandera.__version__.split(".")[:2])) < (0, 27), (
+            "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
+        )
+
+        @pa.Check.register_builtin_check_fn
+        def in_range(
+            data: pd.Series,
+            min_value: object,
+            max_value: object,
+            include_min: bool = True,
+            include_max: bool = True,
+        ) -> pd.Series:
+            lower_bound = (data >= min_value) if include_min else (data > min_value)
+            upper_bound = (data <= max_value) if include_max else (data < max_value)
+            return data.isna() | (lower_bound & upper_bound)
+
+
+_register_missing_builtin_pandera_checks()
+
+
+def _is_valid_node_tuple(value: object) -> bool:
+    if value is None or pd.isna(value):
+        return True
+    return isinstance(value, tuple) and len(value) == 2 and all(isinstance(item, int) for item in value)
+
+
+@register_check_method(statistics=[])
+def valid_node_tuple(series: pat.Series[object]) -> pat.Series[bool]:
+    """Validate tuple-valued columns that should contain two integer node ids."""
+    return series.map(_is_valid_node_tuple)
 
 
 class SubstationInformation(BaseModel):
@@ -224,7 +283,7 @@ class NodeSchema(pa.DataFrameModel):
     """The int_id of the node, used to connect Assets by their node_id.
     This needs to be a unique int_id for the nodes DataFrame."""
 
-    grid_model_id: pat.Series[str]
+    grid_model_id: pat.Series[str] = pa.Field()
     """The unique ID of the node in the grid model."""
 
     foreign_id: Optional[pat.Series[str]] = pa.Field(coerce=False)
@@ -241,7 +300,7 @@ class NodeSchema(pa.DataFrameModel):
     """The bus_id of the node.
     The bus_id is the refers to the id in the bus-branch topology."""
 
-    system_operator: pat.Series[str]
+    system_operator: pat.Series[str] = pa.Field()
     """The system operator of the node.
     Can be used to categorize the node. For instance to identify border lines."""
 
@@ -266,14 +325,14 @@ class AssetSchema(pa.DataFrameModel):
     This is the parent class for SwitchSchema and BranchSchema and should not be used directly.
     """
 
-    grid_model_id: pat.Series[str]
+    grid_model_id: pat.Series[str] = pa.Field()
     """The unique ID of the node in the grid model."""
 
     foreign_id: Optional[pat.Series[str]] = pa.Field(coerce=False)
     """The unique ID of the node in the foreign model.
     This id is optional is only dragged along. Can for instance used for the DGS model."""
 
-    asset_type: pat.Series[str]
+    asset_type: pat.Series[str] = pa.Field()
     """The type of the asset."""
 
     int_id: pat.Index[int] = pa.Field(check_name=False, description="Index of Dataframe")
@@ -294,18 +353,18 @@ class BranchSchema(AssetSchema):
     A SwitchSchema is a special type of BranchSchema that represents a switch in a network graph.
     """
 
-    from_node: pat.Series[int]
+    from_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch starts."""
 
-    to_node: pat.Series[int]
+    to_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch ends."""
 
-    asset_type: pat.Series[str] = pa.Field(
-        isin=[branch_type for branch_type_model in BRANCH_TYPES.__args__ for branch_type in branch_type_model.__args__]
-    )
+    asset_type: pat.Series[str] = pa.Field(isin=ALLOWED_BRANCH_TYPES)
     """The type of the branch."""
 
-    node_tuple: Optional[pat.Series[Tuple[int, int]]] = pa.Field(default=None, nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[object]] = pa.Field(
+        default=None, nullable=True, description="optional", valid_node_tuple=True
+    )
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
 
@@ -313,21 +372,23 @@ class BranchSchema(AssetSchema):
 class SwitchSchema(AssetSchema):
     """A SwitchSchema is a BranchSchema that represents a switch in a network graph."""
 
-    from_node: pat.Series[int]
+    from_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch starts."""
 
-    to_node: pat.Series[int]
+    to_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch ends."""
 
     asset_type: pat.Series[str] = pa.Field(isin=SWITCH_TYPES.__args__)
     """The type of the switch SWITCH_TYPES."""
 
-    open: pat.Series[bool]
+    open: pat.Series[bool] = pa.Field()
     """The state of the switch.
     True: The switch is open.
     False: The switch is closed."""
 
-    node_tuple: Optional[pat.Series[Tuple[int, int]]] = pa.Field(default=None, nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[object]] = pa.Field(
+        default=None, nullable=True, description="optional", valid_node_tuple=True
+    )
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
 
@@ -339,7 +400,7 @@ class NodeAssetSchema(AssetSchema):
     It can be for instance a transformer or line at the border of the network graph or a generator or load.
     """
 
-    node: pat.Series[int]
+    node: pat.Series[int] = pa.Field()
     """The nodes_index of the node where the asset is located."""
 
 
@@ -352,13 +413,13 @@ class HelperBranchSchema(pa.DataFrameModel):
     Note: The HelperBranch may contain all branches and switches in addition to the helper branches.
     """
 
-    from_node: pat.Series[int]
+    from_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch starts."""
 
-    to_node: pat.Series[int]
+    to_node: pat.Series[int] = pa.Field()
     """The nodes int_id of the node where the branch ends."""
 
-    grid_model_id: pat.Series[str] = pa.Field(isin=[""])
+    grid_model_id: pat.Series[str] = pa.Field(isin=("",))
     """A helper branch does not have a grid_model_id.
     It is set to an empty string, creating all edges with a grid_model_id."""
 
@@ -366,16 +427,16 @@ class HelperBranchSchema(pa.DataFrameModel):
 class SwitchableAssetSchema(pa.DataFrameModel):
     """A SwitchableAssetSchema to collect assets for the AssetTopology model."""
 
-    grid_model_id: pat.Series[str]
+    grid_model_id: pat.Series[str] = pa.Field()
     """The unique ID of the asset in the grid model."""
 
-    name: pat.Series[str]
+    name: pat.Series[str] = pa.Field()
     """The name of the asset."""
 
-    type: pat.Series[str]
+    type: pat.Series[str] = pa.Field()
     """The type of the asset, e.g. LINE, TWO_WINDING_TRANSFORMER, etc."""
 
-    in_service: pat.Series[bool]
+    in_service: pat.Series[bool] = pa.Field()
     """The in_service information of the asset."""
 
 

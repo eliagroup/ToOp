@@ -11,7 +11,6 @@ import equinox as eqx
 import jax
 from beartype.typing import Optional
 from jax import numpy as jnp
-from jax_dataclasses import Static
 from jaxtyping import Array, ArrayLike, Float, Int
 from toop_engine_dc_solver.jax.busbar_outage import perform_non_rel_bb_outages, perform_rel_bb_outage_single_topo
 from toop_engine_dc_solver.jax.multi_outages import MODFMatrix, apply_modf_matrices
@@ -34,7 +33,7 @@ class UnBatchedContingencyAnalysisParams(eqx.Module):
     """
     The branches that are monitored in the contingency analysis.
     """
-    enable_bb_outages: Static[bool] = eqx.field(static=True)
+    enable_bb_outages: bool = eqx.field(static=True)
     """
     Whether to enable busbar outages in the contingency analysis. If True, the
     contingency analysis will include the effects of busbar outages.

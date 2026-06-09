@@ -16,7 +16,6 @@ import equinox as eqx
 import jax
 from beartype.typing import Optional, Protocol, Union
 from jax import numpy as jnp
-from jax_dataclasses import Static
 from jaxtyping import Array, ArrayLike, Bool, Float, Int, PyTree
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
 from toop_engine_interfaces.types import MetricType
@@ -761,7 +760,7 @@ class StaticInformation(eqx.Module):
     dynamic_information: DynamicInformation
     """The dynamic information that is used for the computation"""
 
-    solver_config: Static[SolverConfig] = eqx.field(static=True)
+    solver_config: SolverConfig = eqx.field(static=True)
     """The static configuration that is used for the computation"""
 
     def __hash__(self) -> int:

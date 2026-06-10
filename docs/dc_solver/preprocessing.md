@@ -58,7 +58,6 @@ The [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_t
 - `pad_out_branch_actions` pads the action set to upper bound length.
 - `convert_rel_bb_outage_data` pads and transforms the busbar outage information.
 - `create_static_information` copies all data into the static information dataclass.
-- `unsplit_n2_analysis`, if N-2 is enabled, runs an unsplit N-2 analysis to determine branch limits for N-2.
 
 ## `load_grid()` routine
 

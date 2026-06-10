@@ -20,7 +20,14 @@ from toop_engine_dc_solver.jax import (
 )
 from toop_engine_dc_solver.jax.compute_batch import compute_bsdf_lodf_static_flows
 from toop_engine_dc_solver.jax.topology_computations import convert_action_set_index_to_topo
-from toop_engine_dc_solver.jax.types import ActionIndexComputations, DynamicInformation, SolverConfig, StaticInformation
+from toop_engine_dc_solver.jax.types import (
+    ActionIndexComputations,
+    DynamicInformation,
+    NodalInjOptimResults,
+    NodalInjStartOptions,
+    SolverConfig,
+    StaticInformation,
+)
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import get_islanding_contingency_ids
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import find_bridges
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
@@ -146,6 +153,7 @@ def validate_loadflow_results(
     actions: list[int],
     active_topology_network: Network,
     disconnections: list[int] | None,
+    pst_setpoints: list[int] | None = None,
     timestep: int = 0,
     validation_parameters: Optional[LoadflowValidationParameters] = None,
 ) -> None:
@@ -165,6 +173,9 @@ def validate_loadflow_results(
         The active topology as a powsybl Network object, used to determine which branches are inactive in powsybl
     disconnections : list[int] | None
         The disconnections as indices into the disconnectable branches set
+    pst_setpoints : list[int] | None
+        The PST taps as stored in the original grid model. If given, the same taps are replayed in
+        the solver validation run.
     timestep : int, optional
         The timestep to validate, by default 0
     validation_parameters: Optional[LoadflowValidationParameters] = None,
@@ -189,7 +200,12 @@ def validate_loadflow_results(
     )
 
     n_0_solver, n_1_solver, success_solver = get_solver_results(
-        actions, disconnections, timestep, dynamic_information, solver_config
+        actions,
+        disconnections,
+        pst_setpoints,
+        timestep,
+        dynamic_information,
+        solver_config,
     )
     if not validation_parameters.compare_signs:
         n_0 = np.abs(n_0)
@@ -227,11 +243,18 @@ def validate_loadflow_results(
     # Check happy case
     both_converged = success & success_solver
     if not allclose(n_1[both_converged, :], n_1_solver[both_converged, :]):
-        error = np.abs(n_1[both_converged, :] - n_1_solver[both_converged:])
-        high_diff_cases = case_contingencies[error > validation_parameters.atol]
+        error = np.abs(n_1[both_converged, :] - n_1_solver[both_converged, :])
+        high_diff_cases = [
+            contingency.id
+            for contingency, mismatch in zip(
+                [case_contingencies[i] for i, keep in enumerate(both_converged) if keep],
+                np.any(error > validation_parameters.atol, axis=1),
+                strict=True,
+            )
+            if mismatch
+        ]
         messages.append(
-            f"N-1 for cases: {[contingency.id for contingency in high_diff_cases]} does not match, "
-            f"mean error: {error.mean()}, max error: {error.max()}"
+            f"N-1 for cases: {high_diff_cases} does not match, mean error: {error.mean()}, max error: {error.max()}"
         )
 
     contingency_leads_to_solver_islanding = np.array(
@@ -328,6 +351,7 @@ def assert_shapes(
 def get_solver_results(
     actions: list[int],
     disconnections: list[int] | None,
+    pst_setpoints: list[int] | None,
     timestep: int,
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
@@ -341,6 +365,8 @@ def get_solver_results(
     disconnections : list[int] | None
         The disconnections as indices into the disconnectable branches set. Can be None if no dis
         connections are taken.
+    pst_setpoints : list[int] | None
+        PST taps as stored in the original grid model.
     timestep : int
         The timestep to get the results for.
     dynamic_information : DynamicInformation
@@ -357,6 +383,7 @@ def get_solver_results(
         disconnections = jnp.array(disconnections)
     else:
         disconnections = None
+    nodal_inj_start_options = _build_nodal_inj_start_options(dynamic_information, pst_setpoints, timestep)
     (n_0_solver, n_1_solver), success_solver = run_solver_symmetric(
         topologies=ActionIndexComputations(
             action=jnp.array([actions], dtype=int),
@@ -367,6 +394,7 @@ def get_solver_results(
         dynamic_information=dynamic_information,
         solver_config=solver_config,
         aggregate_output_fn=lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+        nodal_inj_start_options=nodal_inj_start_options,
     )
 
     # Remove the batch and timestep dimensions
@@ -374,3 +402,30 @@ def get_solver_results(
     n_1_solver = n_1_solver[0, timestep]
     success_solver = success_solver[0]
     return n_0_solver, n_1_solver, success_solver
+
+
+def _build_nodal_inj_start_options(
+    dynamic_information: DynamicInformation,
+    pst_setpoints: list[int] | None,
+    timestep: int,
+) -> Optional[NodalInjStartOptions]:
+    """Translate grid-model PST taps into solver-relative tap indices."""
+    if pst_setpoints is None:
+        return None
+
+    nodal_injection_information = dynamic_information.nodal_injection_information
+    if nodal_injection_information is None:
+        raise ValueError("PST setpoints were provided, but the grid has no controllable PST information.")
+
+    pst_setpoints_array = jnp.asarray(pst_setpoints, dtype=int)
+    relative_tap_idx = pst_setpoints_array - nodal_injection_information.grid_model_low_tap
+    pst_tap_idx = jnp.broadcast_to(
+        nodal_injection_information.starting_tap_idx,
+        (1, dynamic_information.n_timesteps, nodal_injection_information.starting_tap_idx.shape[0]),
+    )
+    pst_tap_idx = pst_tap_idx.at[0, timestep].set(relative_tap_idx)
+
+    return NodalInjStartOptions(
+        previous_results=NodalInjOptimResults(pst_tap_idx=pst_tap_idx),
+        precision_percent=jnp.array(0.0),
+    )

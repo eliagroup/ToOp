@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pypowsybl
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from tests.network_data_pickle import load_network_data
+from toop_engine_dc_solver.example_grids import case30_with_psts_powsybl
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
@@ -20,12 +22,14 @@ from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
 from toop_engine_dc_solver.postprocess.validate_loadflow_results import (
     validate_loadflow_results,
 )
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     extract_action_set,
     extract_nminus1_definition,
     load_lf_params,
 )
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
     OUTPUT_FILE_NAMES,
     POSTPROCESSING_PATHS,
@@ -181,3 +185,50 @@ def test_lf_results_for_overlapping_monitored_and_disconnected_branch_data(
         actions=actions,
         disconnections=disconnections,
     )
+
+
+def test_validate_loadflows_with_psts(tmp_path: Path) -> None:
+    case30_with_psts_powsybl(tmp_path)
+
+    _stats, static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(tmp_path)),
+        pandapower=False,
+        lf_params=DISTRIBUTED_SLACK,
+    )
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=1),
+    )
+    nminus1_definition = extract_nminus1_definition(network_data)
+
+    runner = PowsyblRunner(lf_params=load_lf_params(tmp_path / PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
+    runner.load_base_grid(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    runner.store_nminus1_definition(nminus1_definition)
+    runner.store_action_set(extract_action_set(network_data))
+
+    # TODO find out why the - is needed...
+    pst_setpoints = [-1, -2]
+    wrong_pst_setpoints = [-2, -3]
+
+    # Compute loadflows, should match
+    lfs = runner.run_dc_loadflow([], [], pst_setpoints)
+    validate_loadflow_results(
+        static_information=static_information,
+        nminus1_definition=nminus1_definition,
+        loadflows=lfs,
+        actions=[],
+        disconnections=[],
+        pst_setpoints=pst_setpoints,
+        active_topology_network=runner.build_topology_network([], [], pst_setpoints),
+    )
+
+    with pytest.raises(AssertionError):
+        validate_loadflow_results(
+            static_information=static_information,
+            nminus1_definition=nminus1_definition,
+            loadflows=lfs,
+            actions=[],
+            disconnections=[],
+            pst_setpoints=wrong_pst_setpoints,
+            active_topology_network=runner.build_topology_network([], [], pst_setpoints),
+        )

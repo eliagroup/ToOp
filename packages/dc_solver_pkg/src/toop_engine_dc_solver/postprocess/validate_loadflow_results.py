@@ -150,8 +150,8 @@ def validate_loadflow_results(
     static_information: StaticInformation,
     nminus1_definition: Nminus1Definition,
     loadflows: LoadflowResultsPolars,
-    actions: list[int],
     active_topology_network: Network,
+    actions: list[int],
     disconnections: list[int] | None,
     pst_setpoints: list[int] | None = None,
     timestep: int = 0,
@@ -167,10 +167,10 @@ def validate_loadflow_results(
         The nminus1_definition that was used to compute the loadflows.
     loadflows : MultiTimestepLoadflowResults
         The DC loadflow results from the solver
-    actions : list[int]
-        The actions that were taken in the grid
     active_topology_network : Network
         The active topology as a powsybl Network object, used to determine which branches are inactive in powsybl
+    actions : list[int]
+        The actions that were taken in the grid
     disconnections : list[int] | None
         The disconnections as indices into the disconnectable branches set
     pst_setpoints : list[int] | None
@@ -410,6 +410,9 @@ def _build_nodal_inj_start_options(
     nodal_injection_information = dynamic_information.nodal_injection_information
     if nodal_injection_information is None:
         raise ValueError("PST setpoints were provided, but the grid has no controllable PST information.")
+
+    if len(pst_setpoints) != dynamic_information.n_controllable_pst:
+        raise ValueError(f"Number of PST setpoints must be {dynamic_information.n_controllable_pst}")
 
     pst_setpoints_array = jnp.asarray(pst_setpoints, dtype=int)
     relative_tap_idx = pst_setpoints_array - nodal_injection_information.grid_model_low_tap

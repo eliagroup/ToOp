@@ -81,9 +81,9 @@ def _run_and_validate_loadflow_results(
         static_information=static_information,
         nminus1_definition=nminus1_definition,
         loadflows=loadflow_results,
+        active_topology_network=active_topology_network,
         actions=actions,
         disconnections=disconnections,
-        active_topology_network=active_topology_network,
     )
 
 
@@ -96,9 +96,9 @@ def test_validate_loadflow_results_unsplit(preprocessed_powsybl_data_folder: Pat
         static_information=static_information,
         nminus1_definition=nminus1_definition,
         loadflows=unsplit_lfs,
+        active_topology_network=runner.build_topology_network([], []),
         actions=[],
         disconnections=[],
-        active_topology_network=runner.build_topology_network([], []),
     )
 
 
@@ -121,9 +121,9 @@ def test_validate_loadflow_results(preprocessed_powsybl_data_folder: Path) -> No
         static_information=static_information,
         nminus1_definition=nminus1_definition,
         loadflows=lfs,
+        active_topology_network=runner.build_topology_network(actions, disconnections),
         actions=actions,
         disconnections=disconnections,
-        active_topology_network=runner.build_topology_network(actions, disconnections),
     )
 
 
@@ -216,10 +216,10 @@ def test_validate_loadflows_with_psts(tmp_path: Path) -> None:
         static_information=static_information,
         nminus1_definition=nminus1_definition,
         loadflows=lfs,
+        active_topology_network=runner.build_topology_network([], [], pst_setpoints),
         actions=[],
         disconnections=[],
         pst_setpoints=pst_setpoints,
-        active_topology_network=runner.build_topology_network([], [], pst_setpoints),
     )
 
     with pytest.raises(AssertionError):
@@ -227,8 +227,8 @@ def test_validate_loadflows_with_psts(tmp_path: Path) -> None:
             static_information=static_information,
             nminus1_definition=nminus1_definition,
             loadflows=lfs,
+            active_topology_network=runner.build_topology_network([], [], pst_setpoints),
             actions=[],
             disconnections=[],
             pst_setpoints=wrong_pst_setpoints,
-            active_topology_network=runner.build_topology_network([], [], pst_setpoints),
         )

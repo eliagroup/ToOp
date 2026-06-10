@@ -244,15 +244,9 @@ def validate_loadflow_results(
     both_converged = success & success_solver
     if not allclose(n_1[both_converged, :], n_1_solver[both_converged, :]):
         error = np.abs(n_1[both_converged, :] - n_1_solver[both_converged, :])
-        high_diff_cases = [
-            contingency.id
-            for contingency, mismatch in zip(
-                [case_contingencies[i] for i, keep in enumerate(both_converged) if keep],
-                np.any(error > validation_parameters.atol, axis=1),
-                strict=True,
-            )
-            if mismatch
-        ]
+        high_diff_mask = np.any(error > validation_parameters.atol, axis=1)
+        converged_case_ids = [contingency.id for i, contingency in enumerate(case_contingencies) if both_converged[i]]
+        high_diff_cases = [case_id for case_id, mismatch in zip(converged_case_ids, high_diff_mask, strict=True) if mismatch]
         messages.append(
             f"N-1 for cases: {high_diff_cases} does not match, mean error: {error.mean()}, max error: {error.max()}"
         )

@@ -14,6 +14,7 @@ from toop_engine_importer.network_graph.data_classes import NetworkGraphData, Su
 from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
 from toop_engine_importer.network_graph.graph_to_asset_topo import (
     get_asset_bay,
+    get_bay_asset_ids,
     get_busbar_df,
     get_coupler_df,
     get_dv_switch,
@@ -141,6 +142,12 @@ def test_get_switchable_asset(network_graph_for_asset_topoV2_S1: tuple[nx.Graph,
     ]
     res = get_switchable_asset(busbar_connection_info=bus_info, node_assets_df=nodes_asset_df, branches_df=branches_df)
     assert res.to_dict(orient="records") == expected
+
+
+def test_get_bay_asset_ids() -> None:
+    assert get_bay_asset_ids("") == []
+    assert get_bay_asset_ids("L1") == ["L1"]
+    assert get_bay_asset_ids("load1 + load2") == ["load1", "load2"]
 
 
 def test_switching_tables_V2(basic_node_breaker_network_powsybl_grid_v2):

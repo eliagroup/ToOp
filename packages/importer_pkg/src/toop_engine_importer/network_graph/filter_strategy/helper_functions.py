@@ -42,21 +42,24 @@ def set_asset_bay_edge_attr(
             key: busbar_id and
             value: list of node_ids from the asset_node the key (a busbars_helper_node)
     """
-    edge_update_dict = {}
+    edge_update_dict: dict[tuple[int, int], dict[str, str]] = {}
+    edge_bay_ids: dict[tuple[int, int], list[str]] = {}
     content_dict = {
         "bay_weight": WeightValues.over_step.value,
         "coupler_weight": WeightValues.over_step.value,
     }
     for grid_model_id, shortest_path_to_busbar_dict in asset_bay_update_dict.items():
+        bay_asset_ids = [asset_id for asset_id in str(grid_model_id).split(" + ") if asset_id != ""]
         for path in shortest_path_to_busbar_dict.values():
-            # TODO: edge_update_dict.update does not work if one bay has multiple assets
-            # refactor bay_id to list[str]
-            # current behavior: if multiple assets are connected to the same bay,
-            # the bay_id is set to the last asset in the path
-            # set bay_id, bay_weight, coupler_weight
-            edge_update_dict.update({(from_id, to_id): {"bay_id": grid_model_id} for from_id, to_id in pairwise(path)})
+            for from_id, to_id in pairwise(path):
+                edge_id = (from_id, to_id)
+                current_bay_ids = edge_bay_ids.setdefault(edge_id, [])
+                for asset_id in bay_asset_ids:
+                    if asset_id not in current_bay_ids:
+                        current_bay_ids.append(asset_id)
             update_dict = {(s_id, t_id): content_dict for s_id, t_id in pairwise(path)}
             nx.set_edge_attributes(graph, update_dict)
+    edge_update_dict.update({edge_id: {"bay_id": " + ".join(bay_ids)} for edge_id, bay_ids in edge_bay_ids.items()})
     update_edge_connection_info(graph=graph, update_edge_dict=edge_update_dict)
 
 

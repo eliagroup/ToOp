@@ -30,6 +30,13 @@ from toop_engine_interfaces.asset_topology import (
 logger = structlog.get_logger(__name__)
 
 
+def get_bay_asset_ids(bay_id: str) -> list[str]:
+    """Split a serialized bay identifier into the asset ids represented by that bay."""
+    if bay_id == "":
+        return []
+    return bay_id.split(" + ")
+
+
 def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd.DataFrame:
     """Get the busbar from the NetworkGraphData nodes dataframe.
 
@@ -382,7 +389,9 @@ def get_asset_bay_df(
         AssetBay of the specified asset.
     """
     bay_edge_connection_info = {
-        edge_id: edge_info for edge_id, edge_info in edge_connection_info.items() if asset_grid_model_id == edge_info.bay_id
+        edge_id: edge_info
+        for edge_id, edge_info in edge_connection_info.items()
+        if asset_grid_model_id in get_bay_asset_ids(edge_info.bay_id)
     }
     asset_bays_df = switches_df[(switches_df["grid_model_id"].isin(bay_edge_connection_info.keys()))]
     asset_bays_df["direct_busbar_grid_model_id"] = asset_bays_df["grid_model_id"].map(

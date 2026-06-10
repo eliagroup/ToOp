@@ -40,11 +40,11 @@ Asset Topology is essential when stations do not allow free assignment of lines 
   
   ![Example of AssetBay configurations and data issues](src/asset_bay_example.png){width=50%}
 
-  Note: An AssetBay expects that one Asset has its own bay. Combinations where two assets use shared switches are not supported.
+  Note: Multiple assets may reference the same AssetBay description when they share the same physical switches.
     
     ![Example of unsupported AssetBay configuration](src/asset_bay_example_not_supported.png){width=50%}
     
-    *Example: AssetBay configuration with two assets sharing switches (not supported).*
+    *Example: AssetBay configuration with two assets sharing switches.*
 
 - [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint]  
   Represents an asset with a setpoint (e.g., PST or HVDC).

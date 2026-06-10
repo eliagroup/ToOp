@@ -230,7 +230,6 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert list(res.asset_connectivity[1]) == [True, True, True, True, True]
 
 
-@pytest.mark.skip(reason="Known limitation in the current implementation")
 def test_get_station_edge_cases_one_bay_two_assets(asset_topo_edge_cases_node_breaker_grid):
     net = asset_topo_edge_cases_node_breaker_grid
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}

@@ -26,8 +26,6 @@ from toop_engine_dc_solver.jax.types import (
 from toop_engine_dc_solver.jax.utils import argmax_top_k
 
 
-# TODO: PLDR0913 & ARG001 warning -> remove n_sub_relevant
-# Too many arguments in function definition (11 > 10)
 def prepare_result_storage(
     aggregate_output_fn: AggregateOutputProtocol,
     n_timesteps: int,

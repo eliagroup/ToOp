@@ -453,7 +453,6 @@ def test_aggregate_to_metric(mocker) -> None:
     injections = jax.random.randint(keys[5], (n_splits, max_inj_per_sub), 0, 2).astype(bool)
     overload_weight = jax.random.exponential(keys[4], (n_branch,))
     n0_n1_max_diff = jax.random.exponential(keys[5], (n_branch,))
-    n_2_penalty = jnp.array(12.3456)
 
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,

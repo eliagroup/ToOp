@@ -32,12 +32,14 @@ If you want to use Kafka workers instead, read on.
     We will extend the usage guide of this package incrementally. For now, please refer to the example notebooks.
     If you are interested in creating Kafka workers, inspect the interfaces for the Kafka topics and trace their usage.
 
-### Step 1: Import a grid file
+### Step 1: Prepare a processed grid folder
 
-To use the tool, you need to import the grid into your file. This entails two fundamental steps:
+To use the tool, you first create a processed grid folder and then derive the solver artifacts from it. This entails two fundamental steps:
 
-- The [convert_file][toop_engine_importer.pypowsybl_import.preprocessing.convert_file] function, taking an import command. This will prepare masks and perform initial preprocessing tasks in the grid.
-- The [load_grid][toop_engine_dc_solver.preprocess.load_grid] function writes data into the data folder, creating a folder with several artifacts. The most relevant one being the `static_information.hdf5` which holds the data relevant for the DC GPU optimizer.
+- The [convert_file][toop_engine_importer.pypowsybl_import.preprocessing.convert_file] function takes an import command and writes the normalized backend grid file, masks, loadflow parameters, asset topology metadata, importer auxiliary data, and an initial `nminus1_definition.json`.
+- The [load_grid][toop_engine_dc_solver.preprocess.load_grid] function consumes that processed grid folder and writes the solver-facing artifacts, most notably `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and a refreshed `nminus1_definition.json`.
+
+If an `action_set.json` is already present before `load_grid` runs, its `pst_ranges[*].pst_group` values are reused to keep grouped PSTs synchronized. Missing PST group entries fall back to one group per controllable PST.
 
 ### Step 2: Perform an optimization
 

@@ -25,4 +25,8 @@ The Importer package is organized into several focused modules, each addressing 
 
 Main entry point: [`convert_file`][toop_engine_importer.pypowsybl_import.preprocessing.convert_file]
 
+`convert_file` writes the processed grid folder consumed by the DC solver: the normalized backend grid snapshot, masks, loadflow parameters, importer auxiliary data, asset topology metadata, and an initial `nminus1_definition.json`.
+
+The downstream [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] step augments that same folder with `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and the final filtered contingency definition used during optimization.
+
 TODO: add Importer example

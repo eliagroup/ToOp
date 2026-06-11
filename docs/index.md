@@ -11,14 +11,14 @@ Welcome to our ToOp (engine) repository at Elia Group.
 ToOp is short for Topology Optimization and describes the approach to reduce grid congestion by topological actions. Topological actions are non-costly actions that can be applied to the grid to "steer" the electrcitiy flow.
  Our goal is to propose (potentially) new topology strategies to the operators with the goal to lower redispatch costs and carbon emissions.
 
-This repository builds the engine behind the topology optimization product ToOp at Elia Group. ToOp provides tools to perform topology optimization on a grid file including import, DC optimization and AC validation. It also includes the gpu-based DC load flow solver.  At the current stage it considers transmission line switching, busbar splitting and busbar reassignments.
+This repository builds the engine behind the topology optimization product ToOp at Elia Group. ToOp provides tools to perform topology optimization on operational grid data through an importer, a DC optimization stage, and AC validation. It also includes the GPU-based DC load flow solver. At the current stage it considers transmission line switching, busbar splitting, busbar reassignments, and grouped, linear PST tap optimization.
 
 
 
 <img src="./illustrations/TopoActions.jpg" alt="ToOp Features and Roadmap" width="70%">
 
 ## About this repository
-This repo builds the engine behind the topology optimization project ToOp at Elia Group. This provides a tool to perform topology optimization on a grid file including import, DC optimization and AC validation. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2501.17529) for a high level academic introduction.
+This repo builds the engine behind the topology optimization project ToOp at Elia Group. The standard workflow first normalizes a raw grid into a processed grid folder containing the backend grid snapshot, masks, loadflow parameters, topology metadata, and an initial contingency definition. The DC preprocessing stage then adds `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, and the final `nminus1_definition.json` used by the solver, optimizer, and postprocessing. Note that this does NOT provide a GUI or system integration code, you are expected to interact with the module through either python or kafka commands. You can check the [paper](https://arxiv.org/abs/2501.17529) for a high level academic introduction.
 Please check out our [full documentation](https://eliagroup.github.io/ToOp).
 
 
@@ -43,7 +43,7 @@ You can follow our installation guide on our [Contributing page](./contribution_
 
 In order to understand the functionalities of this repo, please have a look at our examples in `notebooks/`.
 There you can find several Jupyter notebooks that explain how to use the engine.
-For example, you can load a grid file and compute the DC loadflow using our GPU-based loadflow solver.
+For example, you can import a grid file, build the preprocessing artifacts, and compute the DC loadflow using our GPU-based loadflow solver.
 Or you can load an example grid and minimise the branch overload by running the topology optimizer.
 
 You can also build the documentation and open it on your web browser by running
@@ -70,7 +70,7 @@ You are expected to interact with the module through either python or kafka comm
 ## High-level architecture
 ![ToOp Features and Roadmap](./illustrations/ToOp_HL_Architecture.svg)
 
-The topology optimizer takes as an input operational grid files (e.g. UCT, CGMES) which are imported by open-source libraries (PowSyBl, pandapower) and pre-processed. The pre-processed files are then optimized in a gpu-native set-up (optimizer + gpu-based load flow solver). The optimal results are stored as a pareto-front, so a set of all solutions that are "Pareto optimal". This means that no other solution exists that improves at least one objective without worsening another one. These results are then validated and filtered using an AC power flow. In the end the results are displayed in a frontend where an end user can review and evaluate the proposed actions. The proposed topological actions can then be exported to other systems.
+The topology optimizer takes as an input operational grid files (e.g. UCT, CGMES) which are imported by open-source libraries (PowSyBl, pandapower) and normalized into a processed grid folder. The importer stage writes the backend grid snapshot together with masks, loadflow parameters, and topology metadata; the DC preprocessing stage adds `static_information.hdf5`, `action_set.json`, and the final contingency definition. The pre-processed files are then optimized in a GPU-native set-up (optimizer + GPU-based load flow solver). The optimal results are stored as a pareto-front, so a set of all solutions that are "Pareto optimal". This means that no other solution exists that improves at least one objective without worsening another one. These results are then validated and filtered using an AC power flow. In the end the results are displayed in a frontend where an end user can review and evaluate the proposed actions. The proposed topological actions can then be exported to other systems.
 
 
 #### Description the GPU-based DC load Flow solver
@@ -87,7 +87,11 @@ If your workflow suits these requirements like it is the case for topology optim
 
 ## Roadmap
 
-Next to some smaller improvements, we currently plan to integrate PST into the optimization loop until Q2. We will work on sharing a more high-level roadmap in the future.
+Next to some smaller improvements, current work focuses on broadening controllable asset support, improving preprocessing fidelity, and hardening the end-to-end optimization workflow:
+- Support of a wider range of asset topologies by refactoring the our abstraction layer
+- Support of optimization of non-linear and/or asymmetric phase-shifting transformers
+
+We will work on sharing a more high-level roadmap in the future.
 
 
 ## Let us work together

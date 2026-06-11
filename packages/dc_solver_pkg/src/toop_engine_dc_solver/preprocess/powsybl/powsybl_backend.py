@@ -18,7 +18,7 @@ import structlog
 from beartype.typing import Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
-from toop_engine_dc_solver.preprocess.parallel_pst_groups import load_or_create_parallel_pst_group_mask
+from toop_engine_dc_solver.preprocess.parallel_pst_groups import load_or_create_parallel_pst_groups
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     BranchModel,
     get_lines,
@@ -483,12 +483,20 @@ class PowsyblBackend(BackendInterface):
         return tap_changers["low_tap"].values.astype(int)
 
     @functools.lru_cache
-    def get_parallel_pst_group_mask(self) -> Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]:
-        """Get the parallel PST groups aligned with the controllable PST arrays."""
-        return load_or_create_parallel_pst_group_mask(
+    def _get_parallel_pst_groups(self) -> tuple[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"], list[str]]:
+        """Get parallel PST grouping metadata aligned with controllable PST arrays."""
+        return load_or_create_parallel_pst_groups(
             filesystem=self.data_folder_dirfs,
             pst_ids=self.get_controllable_phase_shift_ids(),
         )
+
+    def get_parallel_pst_group_mask(self) -> Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]:
+        """Get the parallel PST groups aligned with the controllable PST arrays."""
+        return self._get_parallel_pst_groups()[0]
+
+    def get_parallel_pst_group_ids(self) -> list[str]:
+        """Get the parallel PST group ids aligned with the group mask rows."""
+        return self._get_parallel_pst_groups()[1]
 
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get a mask of relevant nodes"""

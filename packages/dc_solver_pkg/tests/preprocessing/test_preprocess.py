@@ -16,6 +16,7 @@ import pytest
 from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
 from pandapower.pypower.makePTDF import makePTDF
+from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.jax.inputs import (
     load_static_information,
     save_static_information,
@@ -53,6 +54,7 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     compute_separation_set_for_stations,
     convert_multi_outages,
     exclude_bridges_from_outage_masks,
+    exclude_nonlinear_psts_from_controllable,
     filter_disconnectable_branches_nminus2,
     filter_inactive_injections,
     filter_relevant_nodes_branch_count,
@@ -170,6 +172,77 @@ def test_add_nodal_injections_to_network_data(data_folder: str, network_data: Ne
     assert len(network_data.node_names) == len(nodal_injections)
     assert len(network_data.node_types) == len(nodal_injections)
     assert len(network_data.relevant_node_mask) == len(nodal_injections)
+
+
+def test_exclude_nonlinear_psts_from_controllable_clips_parallel_group_ranges(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
+) -> None:
+    """Verify that grouped linear PSTs are clipped to their shared tap domain.
+
+    This uses a fixture with exactly two controllable PSTs. The PST-specific arrays already refer to
+    controllable PST order, so the test only overrides PST-local tap metadata and the single group row.
+    """
+    grid_folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder
+    network_data = load_network_data(grid_folder / "network_data.pkl")
+    assert network_data.controllable_phase_shift_mask.sum() == 2
+
+    network_data = replace(
+        network_data,
+        phase_shift_linearity=np.array([True, True]),
+        phase_shift_low_tap=np.array([0, 1]),
+        phase_shift_starting_tap_idx=np.array([3, 1]),
+        phase_shift_taps=[np.array([0.0, 1.0, 2.0, 3.0]), np.array([10.0, 11.0])],
+        parallel_pst_group_mask=np.array([[True, True]], dtype=bool),
+        parallel_pst_group_ids=["group_1"],
+    )
+
+    updated_network_data = exclude_nonlinear_psts_from_controllable(network_data)
+
+    assert np.array_equal(updated_network_data.phase_shift_low_tap, np.array([1, 1]))
+    assert np.array_equal(updated_network_data.phase_shift_starting_tap_idx, np.array([1, 1]))
+    assert np.array_equal(updated_network_data.phase_shift_taps[0], np.array([1.0, 2.0]))
+    assert np.array_equal(updated_network_data.phase_shift_taps[1], np.array([10.0, 11.0]))
+
+
+def test_exclude_nonlinear_psts_from_controllable_rejects_empty_parallel_group_range(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
+) -> None:
+    """Verify that grouped PSTs fail fast when their tap domains have no shared interval."""
+    grid_folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder
+    network_data = load_network_data(grid_folder / "network_data.pkl")
+    assert network_data.controllable_phase_shift_mask.sum() == 2
+
+    network_data = replace(
+        network_data,
+        phase_shift_linearity=np.array([True, True]),
+        phase_shift_low_tap=np.array([0, 3]),
+        phase_shift_starting_tap_idx=np.array([0, 0]),
+        phase_shift_taps=[np.array([0.0, 1.0]), np.array([10.0, 11.0])],
+        parallel_pst_group_mask=np.array([[True, True]], dtype=bool),
+        parallel_pst_group_ids=["group_1"],
+    )
+
+    with pytest.raises(ValueError, match="no common tap domain"):
+        exclude_nonlinear_psts_from_controllable(network_data)
+
+
+def test_exclude_nonlinear_psts_from_controllable_rejects_mixed_parallel_group_linearity(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_folder: Path,
+) -> None:
+    """Verify that a configured parallel PST group cannot mix linear and non-linear members."""
+    grid_folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_folder
+    network_data = load_network_data(grid_folder / "network_data.pkl")
+    assert network_data.controllable_phase_shift_mask.sum() == 2
+
+    network_data = replace(
+        network_data,
+        phase_shift_linearity=np.array([False, True]),
+        parallel_pst_group_mask=np.array([[True, True]], dtype=bool),
+        parallel_pst_group_ids=["group_1"],
+    )
+
+    with pytest.raises(ValueError, match="cannot mix linear and non-linear"):
+        exclude_nonlinear_psts_from_controllable(network_data)
 
 
 def test_compute_bridging_branches(data_folder: str, network_data: NetworkData) -> None:

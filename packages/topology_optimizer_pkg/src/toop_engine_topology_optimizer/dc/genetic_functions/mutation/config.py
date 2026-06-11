@@ -82,10 +82,21 @@ class NodalInjectionMutationConfig(eqx.Module):
     enable_parallel_pst_group_optim: bool = eqx.field(static=True, default=False)
     """Whether PST mutations should be sampled once per configured parallel group."""
 
-    parallel_pst_group_mask: Optional[Bool[Array, " n_parallel_pst_groups n_controllable_pst"]] = eqx.field(
+    parallel_pst_group_mask: Optional[Bool[Array, " n_parallel_pst_groups n_parallel_pst_group_width"]] = eqx.field(
         static=True, default=None
     )
     """Boolean masks that map each controllable PST to exactly one parallel-optimization group."""
+
+    def __post_init__(self) -> None:
+        """Validate parallel PST grouping metadata only when grouped optimization is enabled."""
+        if not self.enable_parallel_pst_group_optim:
+            return
+
+        if self.parallel_pst_group_mask is None:
+            raise ValueError("parallel_pst_group_mask must be provided when grouped PST optimization is enabled.")
+
+        if self.parallel_pst_group_mask.shape[1] != self.pst_n_taps.shape[0]:
+            raise ValueError("parallel_pst_group_mask must align with pst_n_taps when grouped PST optimization is enabled.")
 
 
 class MutationConfig(eqx.Module):

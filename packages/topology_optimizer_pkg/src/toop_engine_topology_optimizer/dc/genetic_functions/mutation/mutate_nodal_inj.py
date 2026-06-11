@@ -130,6 +130,9 @@ def mutate_nodal_injections(
     batch_size = nodal_inj_info.pst_tap_idx.shape[0]
     n_timesteps = nodal_inj_info.pst_tap_idx.shape[1]
     random_key = jax.random.split(random_key, (batch_size, n_timesteps))
+    parallel_pst_group_mask = nodal_mutation_config.parallel_pst_group_mask
+    if not nodal_mutation_config.enable_parallel_pst_group_optim or parallel_pst_group_mask is None:
+        parallel_pst_group_mask = None
 
     # vmap to mutate the PST taps for each timestep + batch independently
     new_pst_taps = jax.vmap(
@@ -142,7 +145,7 @@ def mutate_nodal_injections(
                 pst_mutation_probability=nodal_mutation_config.pst_mutation_probability,
                 pst_reset_probability=nodal_mutation_config.pst_reset_probability,
                 enable_parallel_pst_group_optim=nodal_mutation_config.enable_parallel_pst_group_optim,
-                parallel_pst_group_mask=nodal_mutation_config.parallel_pst_group_mask,
+                parallel_pst_group_mask=parallel_pst_group_mask,
             )
         )
     )(

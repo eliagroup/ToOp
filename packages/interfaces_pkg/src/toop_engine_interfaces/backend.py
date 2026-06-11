@@ -313,6 +313,10 @@ class BackendInterface(ABC):
         """
         return None
 
+    def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
+        """Get PST group identifiers aligned with rows of get_parallel_pst_group_mask()."""
+        return None
+
     @abstractmethod
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get true if a node is part of the relevant nodes

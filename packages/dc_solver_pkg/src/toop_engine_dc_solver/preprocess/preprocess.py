@@ -20,7 +20,7 @@ from dataclasses import replace
 import numpy as np
 import structlog
 from beartype.typing import Callable, Optional
-from jaxtyping import Bool, Int
+from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.action_set import (
     determine_injection_topology,
     enumerate_branch_actions,
@@ -563,9 +563,15 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
     relevant_phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[kept_pst_branches]
     relevant_phase_shift_low_tap = network_data.phase_shift_low_tap[kept_pst_branches]
     relevant_parallel_pst_group_mask = None
+    relevant_parallel_pst_group_ids = None
     if network_data.parallel_pst_group_mask is not None:
         relevant_parallel_pst_group_mask = network_data.parallel_pst_group_mask[:, kept_pst_branches]
-        relevant_parallel_pst_group_mask = relevant_parallel_pst_group_mask[np.any(relevant_parallel_pst_group_mask, axis=1)]
+        kept_group_rows = np.any(relevant_parallel_pst_group_mask, axis=1)
+        relevant_parallel_pst_group_mask = relevant_parallel_pst_group_mask[kept_group_rows]
+        if network_data.parallel_pst_group_ids is not None:
+            relevant_parallel_pst_group_ids = [
+                group_id for group_id, keep in zip(network_data.parallel_pst_group_ids, kept_group_rows, strict=True) if keep
+            ]
     # PST branches carry a node injection as well, so we need to adjust the injection indices
     pst_node_indices = np.flatnonzero(network_data.controllable_pst_node_mask)
     # Assert that the number of PST branches and nodes is the same
@@ -600,6 +606,7 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         phase_shift_starting_tap_idx=relevant_phase_shift_starting_tap_idx,
         phase_shift_low_tap=relevant_phase_shift_low_tap,
         parallel_pst_group_mask=relevant_parallel_pst_group_mask,
+        parallel_pst_group_ids=relevant_parallel_pst_group_ids,
         controllable_pst_node_mask=kept_controllable_pst_node_mask,
         monitored_branch_mask=network_data.monitored_branch_mask[relevant_branches],
         disconnectable_branch_mask=network_data.disconnectable_branch_mask[relevant_branches],
@@ -1293,6 +1300,7 @@ def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> Netwo
     )
     pst_linearity = network_data.phase_shift_linearity
     parallel_pst_group_mask = network_data.parallel_pst_group_mask
+    parallel_pst_group_ids = network_data.parallel_pst_group_ids
     if parallel_pst_group_mask is not None:
         assert parallel_pst_group_mask.shape[1] == pst_linearity.shape[0], (
             "Parallel PST group mask must align with controllable PST linearity information."
@@ -1303,10 +1311,15 @@ def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> Netwo
         if np.any(mixed_parallel_groups):
             raise ValueError(
                 "Parallel PST groups cannot mix linear and non-linear controllable PSTs when grouped optimization data "
-                "is prepared. Update parallel_psts.csv so each group only contains linear or only non-linear PSTs."
+                "is prepared. Update action_set.json so each group only contains linear or only non-linear PSTs."
             )
         parallel_pst_group_mask = parallel_pst_group_mask[:, pst_linearity]
-        parallel_pst_group_mask = parallel_pst_group_mask[np.any(parallel_pst_group_mask, axis=1)]
+        kept_group_rows = np.any(parallel_pst_group_mask, axis=1)
+        parallel_pst_group_mask = parallel_pst_group_mask[kept_group_rows]
+        if parallel_pst_group_ids is not None:
+            parallel_pst_group_ids = [
+                group_id for group_id, keep in zip(parallel_pst_group_ids, kept_group_rows, strict=True) if keep
+            ]
 
     phase_shift_low_tap = network_data.phase_shift_low_tap[pst_linearity]
     phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[pst_linearity]
@@ -1315,14 +1328,20 @@ def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> Netwo
         for group_idx, group_mask in enumerate(parallel_pst_group_mask):
             if np.sum(group_mask) <= 1:
                 continue
-            group_starting_taps = phase_shift_starting_tap_idx[group_mask]
+            group_starting_taps = phase_shift_low_tap[group_mask] + phase_shift_starting_tap_idx[group_mask]
             if not np.all(group_starting_taps == group_starting_taps[0]):
                 logger.warning(
                     "Parallel PST group members do not share the same starting tap. "
-                    "Grouped optimization will use a shared delta and clip individually.",
+                    "Grouped optimization will use a shared delta after clipping members to the shared tap domain.",
                     group_index=group_idx,
                     starting_taps=group_starting_taps.tolist(),
                 )
+        phase_shift_low_tap, phase_shift_starting_tap_idx, phase_shift_taps = _clip_parallel_pst_group_ranges(
+            parallel_pst_group_mask=parallel_pst_group_mask,
+            phase_shift_low_tap=phase_shift_low_tap,
+            phase_shift_starting_tap_idx=phase_shift_starting_tap_idx,
+            phase_shift_taps=phase_shift_taps,
+        )
 
     controllable_pst_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
     controllable_phase_shift_mask = np.zeros_like(network_data.controllable_phase_shift_mask, dtype=bool)
@@ -1335,7 +1354,65 @@ def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> Netwo
         phase_shift_taps=phase_shift_taps,
         phase_shift_linearity=np.ones_like(phase_shift_low_tap, dtype=bool),
         parallel_pst_group_mask=parallel_pst_group_mask,
+        parallel_pst_group_ids=parallel_pst_group_ids,
     )
+
+
+def _clip_parallel_pst_group_ranges(
+    parallel_pst_group_mask: Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"],
+    phase_shift_low_tap: Int[np.ndarray, " n_controllable_pst"],
+    phase_shift_starting_tap_idx: Int[np.ndarray, " n_controllable_pst"],
+    phase_shift_taps: list[Float[np.ndarray, " n_tap_positions"]],
+) -> tuple[
+    Int[np.ndarray, " n_controllable_pst"],
+    Int[np.ndarray, " n_controllable_pst"],
+    list[Float[np.ndarray, " n_tap_positions"]],
+]:
+    """Clip PST tap domains to the shared interval of each configured parallel group."""
+    clipped_low_tap = phase_shift_low_tap.copy()
+    clipped_starting_tap_idx = phase_shift_starting_tap_idx.copy()
+    clipped_taps = [np.array(taps, copy=True) for taps in phase_shift_taps]
+
+    for group_idx, group_mask in enumerate(parallel_pst_group_mask):
+        group_members = np.flatnonzero(group_mask)
+        if len(group_members) <= 1:
+            continue
+
+        group_low_tap = max(int(clipped_low_tap[pst_idx]) for pst_idx in group_members)
+        group_high_tap = min(int(clipped_low_tap[pst_idx]) + len(clipped_taps[pst_idx]) for pst_idx in group_members)
+        if group_high_tap <= group_low_tap:
+            raise ValueError(
+                "Parallel PST groups must have at least one shared tap position. "
+                f"Group {group_idx} in action_set.json has no common tap domain."
+            )
+
+        for pst_idx in group_members:
+            pst_low_tap = int(clipped_low_tap[pst_idx])
+            pst_high_tap = pst_low_tap + len(clipped_taps[pst_idx])
+            start_tap_abs = pst_low_tap + int(clipped_starting_tap_idx[pst_idx])
+            clipped_start_tap_abs = int(np.clip(start_tap_abs, group_low_tap, group_high_tap - 1))
+
+            if clipped_start_tap_abs != start_tap_abs:
+                logger.warning(
+                    "Parallel PST starting tap lies outside the shared tap domain. Clipping to the group range.",
+                    group_index=group_idx,
+                    pst_index=int(pst_idx),
+                    starting_tap=start_tap_abs,
+                    clipped_starting_tap=clipped_start_tap_abs,
+                    shared_low_tap=group_low_tap,
+                    shared_high_tap=group_high_tap,
+                )
+
+            slice_start = group_low_tap - pst_low_tap
+            slice_end = group_high_tap - pst_low_tap
+            assert 0 <= slice_start < pst_high_tap - pst_low_tap
+            assert slice_start < slice_end <= pst_high_tap - pst_low_tap
+
+            clipped_taps[pst_idx] = clipped_taps[pst_idx][slice_start:slice_end]
+            clipped_low_tap[pst_idx] = group_low_tap
+            clipped_starting_tap_idx[pst_idx] = clipped_start_tap_abs - group_low_tap
+
+    return clipped_low_tap, clipped_starting_tap_idx, clipped_taps
 
 
 def preprocess(  # noqa: PLR0915

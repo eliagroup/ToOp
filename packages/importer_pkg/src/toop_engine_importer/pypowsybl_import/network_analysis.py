@@ -146,7 +146,7 @@ def apply_cb_lists(
     ----------
     network : Network
         The network to modify. Note: The network is modified in place.
-    statistics : ProcessingStatistics
+    statistics : PreProcessingStatistics
         The statistics to fill with the id lists of the black and white list
         Note: The statistics are modified in place.
     white_list_file : str | Path | None
@@ -158,7 +158,7 @@ def apply_cb_lists(
 
     Returns
     -------
-    statistics: ProcessingStatistics
+    statistics: PreProcessingStatistics
         The statistics with the id lists of the black and white list
 
     """
@@ -205,7 +205,7 @@ def apply_cb_lists_cgmes(
 
     Parameters
     ----------
-    statistics : ProcessingStatistics
+    statistics : PreProcessingStatistics
         The statistics to fill with the id lists of the black and white list
         Note: The statistics are modified in place.
     white_list_file : str | Path | None
@@ -217,7 +217,7 @@ def apply_cb_lists_cgmes(
 
     Returns
     -------
-    statistics: ProcessingStatistics
+    statistics: PreProcessingStatistics
         The statistics with the id lists of the black and white list
     """
     if white_list_file is not None:

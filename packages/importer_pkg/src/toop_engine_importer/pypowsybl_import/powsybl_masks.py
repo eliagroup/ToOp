@@ -421,7 +421,6 @@ def update_line_masks(
         hv_line_mask,
         area_codes=importer_parameters.area_settings.nminus1_area,
     )
-    external_border_mask = external_border_mask & ~blacklisted_lines
     line_overload_weight = np.where(
         external_border_mask,
         network_masks.line_overload_weight * importer_parameters.area_settings.border_line_weight,
@@ -476,8 +475,8 @@ def update_trafo_masks(
         The import parameters including nminus1_area, cutoff_voltage and optionally dso_trafo_factors and dso_trafo_weight
     blacklisted_ids: list[str]
         The ids of the branches that are blacklisted.
-        DSO trafos are also excluded from the blacklist. This can go wrong,
-        as the genetic algorithm might decide to push power down do solve the problem.
+        DSO border trafos are excluded from blacklisting.. This can go wrong,
+        as the genetic algorithm might decide to push power down to solve the problem.
 
     Returns
     -------
@@ -535,8 +534,6 @@ def update_trafo_masks(
         network_masks.trafo_overload_weight,
     )
     # Create blacklisted mask based on blacklisted_ids.
-    # Exclude DSO border trafos from the blacklist because we need to consider
-    # the effect of our switching actions on the DSOs.
     blacklisted_trafos = trafos_df.index.isin(blacklisted_ids)
 
     disconnectable_mask = disconnectable_mask & ~blacklisted_trafos

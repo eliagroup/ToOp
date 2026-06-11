@@ -313,7 +313,8 @@ def apply_station_assets(
 
     disconnection_diff = []
     reassignment_diff = []
-    for asset_index, asset in enumerate(station.assets):
+    for asset_index, asset_connection in enumerate(station.asset_connections):
+        asset = asset_connection.asset
         pp_id, asset_type = parse_globally_unique_id(asset.grid_model_id)
         pp_table = get_element_table(asset_type)
         pp_id = int(pp_id)

@@ -193,14 +193,15 @@ def compute_cross_coupler_flows(
         assert len(components) == 2, "The split station must have exactly two sides"
         busbars_a = list(components[0])
 
-        for index, asset in enumerate(station.assets):
+        for index, asset_connection in enumerate(station.asset_connections):
+            asset = asset_connection.asset
             asset_id, asset_type = parse_globally_unique_id(asset.grid_model_id)
             asset_id = int(asset_id)
 
             if station.asset_switching_table[busbars_a, index].any():
                 # The asset is on busbar A, include it
                 if asset.is_branch() is True:
-                    branch_end = station.asset_terminals[index]
+                    branch_end = asset_connection.terminal
                     if branch_end is None:
                         raise ValueError("Branch end must be set in asset topo")
                     from_end = branch_end in ("from", "hv")

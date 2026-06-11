@@ -206,8 +206,8 @@ def get_busbar_map_adjacent_branches(network_data: NetworkData) -> Bool[np.ndarr
         for station_id in network_data.busbar_outage_map.keys():
             # Find the asset topo station id
             station = find_station_by_id(network_data.asset_topology.materialize_stations(), station_id)
-            for asset in station.assets:
-                bb_outage_asset_indices.add(asset.grid_model_id)
+            for asset_connection in station.asset_connections:
+                bb_outage_asset_indices.add(asset_connection.asset.grid_model_id)
 
         busbar_outage_branch_mask = np.array([(id in bb_outage_asset_indices) for id in network_data.branch_ids])
     return busbar_outage_branch_mask

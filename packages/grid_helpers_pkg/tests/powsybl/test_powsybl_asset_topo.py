@@ -478,16 +478,21 @@ def test_assert_station_in_network_asset(case14_data_with_asset_topo: tuple[Path
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     # Add a switchable asset to the station that is not in the grid
-    station = topology.materialize_stations()[0].model_copy(
+    base_station = topology.materialize_stations()[0]
+    station = base_station.model_copy(
         update={
-            "assets": topology.materialize_stations()[0].assets
+            "asset_connections": base_station.asset_connections
             + [
-                topology.materialize_stations()[0].assets[0].model_copy(update={"grid_model_id": "hugawuga"}),
+                base_station.asset_connections[0].model_copy(
+                    update={
+                        "asset": base_station.asset_connections[0].asset.model_copy(update={"grid_model_id": "hugawuga"})
+                    }
+                ),
             ],
             "asset_switching_table": np.concatenate(
                 [
-                    topology.materialize_stations()[0].asset_switching_table,
-                    topology.materialize_stations()[0].asset_switching_table[:, 0:1],
+                    base_station.asset_switching_table,
+                    base_station.asset_switching_table[:, 0:1],
                 ],
                 axis=1,
             ),
@@ -497,10 +502,10 @@ def test_assert_station_in_network_asset(case14_data_with_asset_topo: tuple[Path
         assert_station_in_network(net, station)
 
     # Remove a switchable asset from the station
-    station = topology.materialize_stations()[0].model_copy(
+    station = base_station.model_copy(
         update={
-            "assets": topology.materialize_stations()[0].assets[:-1],
-            "asset_switching_table": topology.materialize_stations()[0].asset_switching_table[:, :-1],
+            "asset_connections": base_station.asset_connections[:-1],
+            "asset_switching_table": base_station.asset_switching_table[:, :-1],
         }
     )
     # Should pass without strict
@@ -519,7 +524,7 @@ def test_convert_bus_breaker_stations_to_asset_topo() -> None:
     for station in stations:
         assert len(station.busbars) == 2
         assert len(station.couplers) == 1
-        for asset_id in station.asset_ids:
+        for asset_id in [asset_connection.asset_id for asset_connection in station.asset_connections]:
             assert any(asset.grid_model_id == asset_id for asset in assets)
 
     for asset in assets:

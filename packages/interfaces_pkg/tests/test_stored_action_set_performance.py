@@ -17,6 +17,7 @@ from toop_engine_interfaces.asset_topology import (
     BusbarCoupler,
     MaterializedStation,
     RawStation,
+    StationAssetConnection,
     SwitchableAsset,
     Topology,
 )
@@ -94,7 +95,6 @@ def _build_large_random_action_set(
                 type=None,
                 name=None,
                 in_service=True,
-                asset_bay_id=None,
             )
             for asset_idx in range(n_assets)
         ]
@@ -109,9 +109,14 @@ def _build_large_random_action_set(
             voltage_level=None,
             busbars=busbars,
             couplers=couplers,
-            asset_ids=[asset.grid_model_id for asset in assets],
-            asset_terminals=[None for _ in assets],
-            asset_bay_ids=[asset.asset_bay_id for asset in assets],
+            asset_connections=[
+                StationAssetConnection.model_construct(
+                    asset_id=asset.grid_model_id,
+                    terminal=None,
+                    asset_bay_id=None,
+                )
+                for asset in assets
+            ],
             asset_switching_table=asset_switching_table,
             asset_connectivity=None,
             model_log=None,

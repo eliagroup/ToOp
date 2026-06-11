@@ -59,7 +59,7 @@ def test_find_asset(case14_data_with_asset_topo: tuple[Path, Topology]) -> None:
     bus_id = station.grid_model_id
     vl_id = net.get_buses().loc[bus_id]["voltage_level_id"]
 
-    for elem in station.assets:
+    for elem in [asset_connection.asset for asset_connection in station.asset_connections]:
         is_branch, connected, direction, bus_breaker_id = find_asset(
             net=net,
             elem_id=elem.grid_model_id,
@@ -82,7 +82,7 @@ def test_find_asset(case14_data_with_asset_topo: tuple[Path, Topology]) -> None:
             assert inj["bus_id"] == bus_id
             assert inj["bus_breaker_bus_id"] == bus_breaker_id
 
-    for elem in topology.materialize_stations()[10].assets:
+    for elem in [asset_connection.asset for asset_connection in topology.materialize_stations()[10].asset_connections]:
         if elem.is_branch():
             with pytest.raises(ValueError, match=f"Branch {elem.grid_model_id} not found in the station"):
                 find_asset(
@@ -106,7 +106,7 @@ def test_apply_single_asset_bus_branch_reassign(case14_data_with_asset_topo: tup
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     base_station = topology.materialize_stations()[0]
-    for asset_index in range(len(base_station.assets)):
+    for asset_index in range(len(base_station.asset_connections)):
         station = base_station.model_copy(deep=True)
         # Reassign the first asset to the second bus
         assert len(station.busbars) == 2
@@ -129,11 +129,12 @@ def test_apply_single_asset_bus_branch_reassign(case14_data_with_asset_topo: tup
         ]
         assert len(new_bus) == 1
         new_bus = new_bus[0]
-        if station.assets[asset_index].is_branch():
-            brh = net.get_branches(all_attributes=True).loc[station.assets[asset_index].grid_model_id]
+        asset = station.asset_connections[asset_index].asset
+        if asset.is_branch():
+            brh = net.get_branches(all_attributes=True).loc[asset.grid_model_id]
             assert brh["bus_breaker_bus1_id"] == new_bus.grid_model_id or brh["bus_breaker_bus2_id"] == new_bus.grid_model_id
         else:
-            inj = net.get_injections(all_attributes=True).loc[station.assets[asset_index].grid_model_id]
+            inj = net.get_injections(all_attributes=True).loc[asset.grid_model_id]
             assert inj["bus_breaker_bus_id"] == new_bus.grid_model_id
 
 
@@ -142,7 +143,7 @@ def test_apply_single_asset_bus_branch_disconnect(case14_data_with_asset_topo: t
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     base_station = topology.materialize_stations()[0]
-    for asset_index in range(len(base_station.assets)):
+    for asset_index in range(len(base_station.asset_connections)):
         station = base_station.model_copy(deep=True)
         # Disconnect the first asset
         assert len(station.busbars) == 2
@@ -155,11 +156,12 @@ def test_apply_single_asset_bus_branch_disconnect(case14_data_with_asset_topo: t
         assert status == "disconnected"
         assert len(reassignments) == 0
 
-        if station.assets[asset_index].is_branch():
-            brh = net.get_branches(all_attributes=True).loc[station.assets[asset_index].grid_model_id]
+        asset = station.asset_connections[asset_index].asset
+        if asset.is_branch():
+            brh = net.get_branches(all_attributes=True).loc[asset.grid_model_id]
             assert not brh["connected1"] and not brh["connected2"]
         else:
-            inj = net.get_injections(all_attributes=True).loc[station.assets[asset_index].grid_model_id]
+            inj = net.get_injections(all_attributes=True).loc[asset.grid_model_id]
             assert not inj["connected"]
 
 
@@ -168,7 +170,7 @@ def test_apply_single_asset_bus_branch_nothing(case14_data_with_asset_topo: tupl
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     base_station = topology.materialize_stations()[0]
-    for asset_index in range(len(base_station.assets)):
+    for asset_index in range(len(base_station.asset_connections)):
         status, reassignments = apply_single_asset_bus_branch(
             net=net,
             station=base_station,

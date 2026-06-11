@@ -97,6 +97,7 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
+    MaterializedAssetConnection,
     MaterializedStation,
     SwitchableAsset,
     Topology,
@@ -909,7 +910,12 @@ def mock_station() -> MaterializedStation:
                 in_service=True,
             ),
         ],
-        assets=[asset1, asset2, asset3, asset4],
+        asset_connections=[
+            MaterializedAssetConnection(asset=asset1),
+            MaterializedAssetConnection(asset=asset2),
+            MaterializedAssetConnection(asset=asset3),
+            MaterializedAssetConnection(asset=asset4),
+        ],
         asset_switching_table=np.array(
             [
                 [True, False, True, False],  # Busbar 0

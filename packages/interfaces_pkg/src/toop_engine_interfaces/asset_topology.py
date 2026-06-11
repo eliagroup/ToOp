@@ -255,9 +255,6 @@ class SwitchableAsset(BaseModel):
     ignored. This shall not be used for elements intentionally disconnected, instead set all zeros
     in the switching table."""
 
-    asset_bay_id: Optional[str] = None
-    """Topology-scoped identifier for the asset bay associated with this asset."""
-
     def is_branch(self) -> Optional[bool]:
         """Return True if the asset is a branch.
 
@@ -271,6 +268,32 @@ class SwitchableAsset(BaseModel):
         if self.type is None:
             return None
         return self.type in get_args(AssetBranchType)
+
+
+class StationAssetConnection(BaseModel):
+    """Station-local association between a switching-table column and a topology asset."""
+
+    asset_id: str
+    """Grid model id of the topology-owned asset referenced by this station-local column."""
+
+    terminal: Optional[BranchEnd] = None
+    """Optional branch terminal metadata for this station-local asset occurrence."""
+
+    asset_bay_id: Optional[str] = None
+    """Optional topology-scoped asset bay identifier for this station-local asset occurrence."""
+
+
+class MaterializedAssetConnection(BaseModel):
+    """Station-local association between a switching-table column and a materialized asset payload."""
+
+    asset: SwitchableAsset
+    """Station-local asset payload aligned with one switching-table column."""
+
+    terminal: Optional[BranchEnd] = None
+    """Optional branch terminal metadata for this station-local asset occurrence."""
+
+    asset_bay: Optional[AssetBay] = None
+    """Optional station-local asset bay payload for this station-local asset occurrence."""
 
 
 class AssetSetpoint(BaseModel):
@@ -521,61 +544,17 @@ class MaterializedStation(_StationStructure):
     station view; they are not intended to define a topology-owned canonical asset list.
     """
 
-    assets: list[SwitchableAsset]
-    """The list of assets at the station.
-
-    The order of this list is the same order as the assets in the asset_switching_table.
-    This list is station-local and switching-table aligned. Topology-owned canonical assets are
-    stored on Topology.assets instead.
-    """
-
-    asset_terminals: list[Optional[BranchEnd]] = Field(default_factory=list)
-    """Station-local branch terminals aligned with ``assets``.
-
-    Each entry describes which terminal of the asset is connected in this station view.
-    """
-
-    asset_bays: list[Optional[AssetBay]] = Field(default_factory=list)
-    """Station-local asset bay payloads aligned with ``assets``.
-
-    Each entry corresponds to the asset at the same index. ``None`` means the asset has no bay.
-    """
+    asset_connections: list[MaterializedAssetConnection]
+    """Station-local asset payloads aligned with the switching tables."""
 
     @model_validator(mode="after")
     def check_asset_shapes(self: "MaterializedStation") -> "MaterializedStation":
         """Check if switching-table-aligned station-local assets match the matrix shapes."""
-        if len(self.asset_terminals) == 0:
-            self.asset_terminals = [None] * len(self.assets)
-        elif len(self.asset_terminals) != len(self.assets):
-            raise ValueError(
-                f"asset_terminals length {len(self.asset_terminals)} does not match assets length {len(self.assets)}"
-                f" Station_id: {self.grid_model_id}, Name: {self.name}"
-            )
-
-        if len(self.asset_bays) == 0:
-            self.asset_bays = [None] * len(self.assets)
-        elif len(self.asset_bays) != len(self.assets):
-            raise ValueError(
-                f"asset_bays length {len(self.asset_bays)} does not match assets length {len(self.assets)}"
-                f" Station_id: {self.grid_model_id}, Name: {self.name}"
-            )
-
-        for index, (asset, asset_bay) in enumerate(zip(self.assets, self.asset_bays, strict=True)):
-            if asset_bay is None:
-                continue
-            if asset.asset_bay_id is None:
-                asset.asset_bay_id = asset_bay.asset_bay_id
-            elif asset.asset_bay_id != asset_bay.asset_bay_id:
-                raise ValueError(
-                    f"asset_bay_id mismatch for asset index {index}: {asset.asset_bay_id} != {asset_bay.asset_bay_id}"
-                    f" Station_id: {self.grid_model_id}, Name: {self.name}"
-                )
-
         _validate_station_switching_tables(
             station_grid_model_id=self.grid_model_id,
             station_name=self.name,
             busbar_count=len(self.busbars),
-            asset_count=len(self.assets),
+            asset_count=len(self.asset_connections),
             asset_switching_table=self.asset_switching_table,
             asset_connectivity=self.asset_connectivity,
         )
@@ -591,7 +570,9 @@ class MaterializedStation(_StationStructure):
     def check_asset_bay(self: "MaterializedStation") -> "MaterializedStation":
         """Check if the asset bay bus is in busbars."""
         busbar_grid_model_id = [busbar.grid_model_id for busbar in self.busbars]
-        for asset, asset_bay in zip(self.assets, self.asset_bays, strict=True):
+        for asset_connection in self.asset_connections:
+            asset = asset_connection.asset
+            asset_bay = asset_connection.asset_bay
             if asset_bay is not None:
                 for busbar_id in asset_bay.sr_switch_grid_model_id.keys():
                     if busbar_id not in busbar_grid_model_id:
@@ -622,9 +603,7 @@ class MaterializedStation(_StationStructure):
             and self.region == other.region
             and self.busbars == other.busbars
             and self.couplers == other.couplers
-            and self.assets == other.assets
-            and self.asset_terminals == other.asset_terminals
-            and self.asset_bays == other.asset_bays
+            and self.asset_connections == other.asset_connections
             and np.array_equal(self.asset_switching_table, other.asset_switching_table)
             and (
                 np.array_equal(self.asset_connectivity, other.asset_connectivity)
@@ -642,37 +621,35 @@ class RawStation(_StationStructure):
     SwitchableAsset payloads.
     """
 
-    asset_ids: list[str]
-    """Asset grid model ids aligned with the switching tables.
+    asset_connections: list[StationAssetConnection]
+    """Station-local asset references aligned with the switching tables."""
 
-    These are station-local references into Topology.assets.
-    """
+    def with_asset_terminals(self, asset_terminals: list[Optional[BranchEnd]]) -> "RawStation":
+        """Return a copy with updated station-local branch terminals."""
+        if len(asset_terminals) != len(self.asset_connections):
+            raise ValueError(
+                f"asset_terminals length {len(asset_terminals)} does not match asset_connections length "
+                f"{len(self.asset_connections)}"
+                f" Station_id: {self.grid_model_id}, Name: {self.name}"
+            )
 
-    asset_terminals: list[Optional[BranchEnd]]
-    """Station-local terminals aligned with the switching tables."""
-
-    asset_bay_ids: list[Optional[str]]
-    """Topology-scoped asset bay identifiers aligned with the switching tables."""
+        return self.model_copy(
+            update={
+                "asset_connections": [
+                    asset_connection.model_copy(update={"terminal": asset_terminal})
+                    for asset_connection, asset_terminal in zip(self.asset_connections, asset_terminals, strict=True)
+                ]
+            }
+        )
 
     @model_validator(mode="after")
     def check_asset_reference_alignment(self: "RawStation") -> "RawStation":
         """Check if station-local asset reference arrays are aligned."""
-        if len(self.asset_terminals) != len(self.asset_ids):
-            raise ValueError(
-                f"asset_terminals length {len(self.asset_terminals)} "
-                f"does not match asset_ids length {len(self.asset_ids)}"
-                f" Station_id: {self.grid_model_id}, Name: {self.name}"
-            )
-        if len(self.asset_bay_ids) != len(self.asset_ids):
-            raise ValueError(
-                f"asset_bay_ids length {len(self.asset_bay_ids)} does not match asset_ids length {len(self.asset_ids)}"
-                f" Station_id: {self.grid_model_id}, Name: {self.name}"
-            )
         _validate_station_switching_tables(
             station_grid_model_id=self.grid_model_id,
             station_name=self.name,
             busbar_count=len(self.busbars),
-            asset_count=len(self.asset_ids),
+            asset_count=len(self.asset_connections),
             asset_switching_table=self.asset_switching_table,
             asset_connectivity=self.asset_connectivity,
         )
@@ -696,9 +673,7 @@ class RawStation(_StationStructure):
             and self.voltage_level == other.voltage_level
             and self.busbars == other.busbars
             and self.couplers == other.couplers
-            and self.asset_ids == other.asset_ids
-            and self.asset_terminals == other.asset_terminals
-            and self.asset_bay_ids == other.asset_bay_ids
+            and self.asset_connections == other.asset_connections
             and np.array_equal(self.asset_switching_table, other.asset_switching_table)
             and (
                 np.array_equal(self.asset_connectivity, other.asset_connectivity)
@@ -782,13 +757,15 @@ class Topology(BaseModel):
         asset_bay_ids = {asset_bay.asset_bay_id for asset_bay in self.asset_bays}
 
         for station in self.raw_stations:
-            for asset_id in station.asset_ids:
+            for asset_connection in station.asset_connections:
+                asset_id = asset_connection.asset_id
                 if asset_id not in asset_ids:
                     raise ValueError(
                         f"Asset grid_model_id {asset_id} referenced by station "
                         f"{station.grid_model_id} does not exist in topology assets"
                     )
-            for asset_bay_id in station.asset_bay_ids:
+            for asset_connection in station.asset_connections:
+                asset_bay_id = asset_connection.asset_bay_id
                 if asset_bay_id is not None and asset_bay_id not in asset_bay_ids:
                     raise ValueError(
                         f"asset_bay_id {asset_bay_id} referenced by station "
@@ -804,23 +781,15 @@ class Topology(BaseModel):
         materialized_stations: list[MaterializedStation] = []
 
         for station in self.raw_stations:
-            station_assets: list[SwitchableAsset] = []
-            for asset_id, _asset_terminal, asset_bay_id in zip(
-                station.asset_ids, station.asset_terminals, station.asset_bay_ids, strict=True
-            ):
-                asset = asset_map[asset_id]
-                station_assets.append(
-                    asset.model_copy(
-                        update={
-                            "asset_bay_id": asset_bay_id,
-                        },
-                        deep=True,
-                    )
-                )
+            station_assets = [
+                asset_map[asset_connection.asset_id].model_copy(deep=True) for asset_connection in station.asset_connections
+            ]
 
             station_asset_bays = [
-                asset_bay_map[asset_bay_id].model_copy(deep=True) if asset_bay_id is not None else None
-                for asset_bay_id in station.asset_bay_ids
+                asset_bay_map[asset_connection.asset_bay_id].model_copy(deep=True)
+                if asset_connection.asset_bay_id is not None
+                else None
+                for asset_connection in station.asset_connections
             ]
 
             materialized_stations.append(
@@ -832,9 +801,19 @@ class Topology(BaseModel):
                     voltage_level=station.voltage_level,
                     busbars=station.busbars,
                     couplers=station.couplers,
-                    assets=station_assets,
-                    asset_terminals=station.asset_terminals,
-                    asset_bays=station_asset_bays,
+                    asset_connections=[
+                        MaterializedAssetConnection(
+                            asset=asset,
+                            terminal=asset_connection.terminal,
+                            asset_bay=asset_bay,
+                        )
+                        for asset, asset_connection, asset_bay in zip(
+                            station_assets,
+                            station.asset_connections,
+                            station_asset_bays,
+                            strict=True,
+                        )
+                    ],
                     asset_switching_table=station.asset_switching_table,
                     asset_connectivity=station.asset_connectivity,
                     model_log=station.model_log,
@@ -859,7 +838,9 @@ class Topology(BaseModel):
         asset_bay_ids: list[str] = []
         seen_ids: set[str] = set()
         for station in self.raw_stations:
-            for asset_id, asset_bay_id in zip(station.asset_ids, station.asset_bay_ids, strict=True):
+            for asset_connection in station.asset_connections:
+                asset_id = asset_connection.asset_id
+                asset_bay_id = asset_connection.asset_bay_id
                 if asset_id != asset_grid_model_id or asset_bay_id is None or asset_bay_id in seen_ids:
                     continue
                 seen_ids.add(asset_bay_id)
@@ -923,27 +904,25 @@ def topology_parts_from_materialized_station(
     """
     assets: list[SwitchableAsset] = []
     asset_bays: list[AssetBay] = []
-    asset_ids: list[str] = []
-    asset_terminals = list(station.asset_terminals)
-    asset_bay_ids: list[Optional[str]] = []
-    for asset, asset_bay in zip(station.assets, station.asset_bays, strict=True):
+    asset_connections: list[StationAssetConnection] = []
+    for asset_connection in station.asset_connections:
+        asset = asset_connection.asset
+        asset_bay = asset_connection.asset_bay
         asset_id = asset.grid_model_id
-        asset_bay_id: Optional[str] = asset.asset_bay_id
+        asset_bay_id: Optional[str] = None
 
         if asset_bay is not None:
             asset_bay_id = asset_bay.asset_bay_id
             asset_bays.append(asset_bay.model_copy(deep=True))
 
-        assets.append(
-            asset.model_copy(
-                update={
-                    "asset_bay_id": None,
-                },
-                deep=True,
+        assets.append(asset.model_copy(deep=True))
+        asset_connections.append(
+            StationAssetConnection(
+                asset_id=asset_id,
+                terminal=asset_connection.terminal,
+                asset_bay_id=asset_bay_id,
             )
         )
-        asset_ids.append(asset_id)
-        asset_bay_ids.append(asset_bay_id)
 
     return (
         RawStation(
@@ -954,9 +933,7 @@ def topology_parts_from_materialized_station(
             voltage_level=station.voltage_level,
             busbars=station.busbars,
             couplers=station.couplers,
-            asset_ids=asset_ids,
-            asset_terminals=asset_terminals,
-            asset_bay_ids=asset_bay_ids,
+            asset_connections=asset_connections,
             asset_switching_table=station.asset_switching_table,
             asset_connectivity=station.asset_connectivity,
             model_log=station.model_log,

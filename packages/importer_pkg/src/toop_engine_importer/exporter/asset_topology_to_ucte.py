@@ -297,7 +297,7 @@ def get_changes_from_switching_table(
     """
     switching_table = station.asset_switching_table
     busbar_name_list = [busbar.grid_model_id for busbar in station.busbars]
-    asset_list = station.assets
+    asset_list = [asset_connection.asset for asset_connection in station.asset_connections]
     change_list = []  # TODO: make a dataclass for this (code style)
     # loop over assets -> by column
     for asset_index, asset_in_table in enumerate(switching_table.T):

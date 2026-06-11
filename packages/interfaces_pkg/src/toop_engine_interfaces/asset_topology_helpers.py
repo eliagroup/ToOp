@@ -144,14 +144,17 @@ def remove_busbar(station: MaterializedStation, grid_model_id: str) -> Materiali
             }
         )
 
-    asset_bays = [filter_sr_keys(asset_bay) for asset_bay in station.asset_bays]
+    asset_connections = [
+        asset_connection.model_copy(update={"asset_bay": filter_sr_keys(asset_connection.asset_bay)})
+        for asset_connection in station.asset_connections
+    ]
 
     # Create a new station object with the modified busbars, couplers, and asset switching table
     new_station = station.model_copy(
         update={
             "busbars": busbars,
             "couplers": couplers,
-            "asset_bays": asset_bays,
+            "asset_connections": asset_connections,
             "asset_switching_table": asset_switching_table,
             "asset_connectivity": asset_connectivity,
         }
@@ -172,22 +175,17 @@ def filter_out_of_service_assets(station: MaterializedStation) -> MaterializedSt
     Station
         The new station object with all out-of-service assets removed.
     """
-    if all(asset.in_service for asset in station.assets):
+    if all(asset_connection.asset.in_service for asset_connection in station.asset_connections):
         return station
 
-    in_service_assets = [asset.in_service for asset in station.assets]
+    in_service_asset_connections = [
+        asset_connection for asset_connection in station.asset_connections if asset_connection.asset.in_service
+    ]
+    in_service_assets = [asset_connection.asset.in_service for asset_connection in station.asset_connections]
 
     return station.model_copy(
         update={
-            "assets": [asset for asset in station.assets if asset.in_service],
-            "asset_terminals": [
-                branch_end
-                for branch_end, in_service in zip(station.asset_terminals, in_service_assets, strict=True)
-                if in_service
-            ],
-            "asset_bays": [
-                asset_bay for asset_bay, in_service in zip(station.asset_bays, in_service_assets, strict=True) if in_service
-            ],
+            "asset_connections": in_service_asset_connections,
             "asset_switching_table": station.asset_switching_table[:, in_service_assets],
             "asset_connectivity": station.asset_connectivity[:, in_service_assets]
             if station.asset_connectivity is not None
@@ -444,20 +442,25 @@ def filter_assets_by_type(
     list[SwitchableAsset]
         The list of removed assets.
     """
-    asset_mask = [(asset.type in assets_allowed) or (allow_none_type and asset.type is None) for asset in station.assets]
+    asset_mask = [
+        (asset_connection.asset.type in assets_allowed) or (allow_none_type and asset_connection.asset.type is None)
+        for asset_connection in station.asset_connections
+    ]
     if all(asset_mask):
         return station, []
 
-    removed_assets = [asset for asset, mask in zip(station.assets, asset_mask, strict=True) if not mask]
-    kept_assets = [asset for asset, mask in zip(station.assets, asset_mask, strict=True) if mask]
+    removed_assets = [
+        asset_connection.asset
+        for asset_connection, mask in zip(station.asset_connections, asset_mask, strict=True)
+        if not mask
+    ]
+    kept_asset_connections = [
+        asset_connection for asset_connection, mask in zip(station.asset_connections, asset_mask, strict=True) if mask
+    ]
 
     new_station = station.model_copy(
         update={
-            "assets": kept_assets,
-            "asset_terminals": [
-                branch_end for branch_end, mask in zip(station.asset_terminals, asset_mask, strict=True) if mask
-            ],
-            "asset_bays": [asset_bay for asset_bay, mask in zip(station.asset_bays, asset_mask, strict=True) if mask],
+            "asset_connections": kept_asset_connections,
             "asset_switching_table": station.asset_switching_table[:, asset_mask],
             "asset_connectivity": station.asset_connectivity[:, asset_mask]
             if station.asset_connectivity is not None
@@ -550,7 +553,7 @@ def fix_multi_connected_without_coupler(
         new_asset_switching_table[bus1_idx, asset_idx] = 0
         diff.append(
             (
-                station.assets[asset_idx],
+                station.asset_connections[asset_idx].asset,
                 station.busbars[bus1_idx],
                 station.busbars[bus2_idx],
             )
@@ -575,7 +578,7 @@ def has_transmission_line_switching(station: MaterializedStation) -> bool:
     bool
         True if the switching table contains transmission line switching, False otherwise.
     """
-    in_service = np.array([asset.in_service for asset in station.assets])
+    in_service = np.array([asset_connection.asset.in_service for asset_connection in station.asset_connections])
     return np.any((station.asset_switching_table.sum(axis=0) == 0) & in_service).item()
 
 
@@ -916,8 +919,10 @@ def map_busbars_and_assets(
 
     # Same for the switchable assets
     asset_mapping = {}
-    for i, asset in enumerate(original_station.assets):
-        for j, other in enumerate(new_station.assets):
+    for i, asset_connection in enumerate(original_station.asset_connections):
+        asset = asset_connection.asset
+        for j, other_connection in enumerate(new_station.asset_connections):
+            other = other_connection.asset
             if asset.grid_model_id == other.grid_model_id:
                 asset_mapping[i] = j
                 break
@@ -973,16 +978,24 @@ def compare_stations(
     a_couplers = set(coupler.grid_model_id for coupler in a.couplers)
     b_couplers = set(coupler.grid_model_id for coupler in b.couplers)
 
-    a_assets = set(asset.grid_model_id for asset in a.assets)
-    b_assets = set(asset.grid_model_id for asset in b.assets)
+    a_assets = set(asset_connection.asset.grid_model_id for asset_connection in a.asset_connections)
+    b_assets = set(asset_connection.asset.grid_model_id for asset_connection in b.asset_connections)
 
     return (
         [coupler for coupler in a.couplers if coupler.grid_model_id not in b_couplers],
         [coupler for coupler in b.couplers if coupler.grid_model_id not in a_couplers],
         [busbar for busbar in a.busbars if busbar.grid_model_id not in b_busbars],
         [busbar for busbar in b.busbars if busbar.grid_model_id not in a_busbars],
-        [asset for asset in a.assets if asset.grid_model_id not in b_assets],
-        [asset for asset in b.assets if asset.grid_model_id not in a_assets],
+        [
+            asset_connection.asset
+            for asset_connection in a.asset_connections
+            if asset_connection.asset.grid_model_id not in b_assets
+        ],
+        [
+            asset_connection.asset
+            for asset_connection in b.asset_connections
+            if asset_connection.asset.grid_model_id not in a_assets
+        ],
     )
 
 
@@ -1074,7 +1087,7 @@ def get_connected_assets(
     busbar_index : int
         The index of the busbar in the switching table.
     topology_assets : Optional[list[SwitchableAsset]]
-        Topology-owned assets used to resolve ``RawStation.asset_ids``. Required when ``station`` is a
+        Topology-owned assets used to resolve ``RawStation.asset_connections``. Required when ``station`` is a
         ``RawStation``.
 
     Returns
@@ -1084,13 +1097,21 @@ def get_connected_assets(
     """
     connected_asset_indices = np.nonzero(station.asset_switching_table[busbar_index])[0]
     if isinstance(station, MaterializedStation):
-        return [station.assets[i] for i in connected_asset_indices if station.assets[i].in_service]
+        return [
+            station.asset_connections[i].asset
+            for i in connected_asset_indices
+            if station.asset_connections[i].asset.in_service
+        ]
 
     if topology_assets is None:
         raise ValueError("topology_assets must be provided when resolving connected assets for a RawStation")
 
     asset_map = {asset.grid_model_id: asset for asset in topology_assets}
-    return [asset_map[station.asset_ids[i]] for i in connected_asset_indices if asset_map[station.asset_ids[i]].in_service]
+    return [
+        asset_map[station.asset_connections[i].asset_id]
+        for i in connected_asset_indices
+        if asset_map[station.asset_connections[i].asset_id].in_service
+    ]
 
 
 def accumulate_diffs(
@@ -1151,9 +1172,9 @@ def station_diff(
     AppliedStation
         The realized station containing the target station and the coupler, reassignment and disconnection diffs
     """
-    assert [s.grid_model_id for s in start_station.assets] == [s.grid_model_id for s in target_station.assets], (
-        "Assets do not match"
-    )
+    assert [s.asset.grid_model_id for s in start_station.asset_connections] == [
+        s.asset.grid_model_id for s in target_station.asset_connections
+    ], "Assets do not match"
     assert [b.grid_model_id for b in start_station.busbars] == [b.grid_model_id for b in target_station.busbars], (
         "Busbars do not match"
     )
@@ -1163,7 +1184,7 @@ def station_diff(
 
     reassignment_diff = []
     disconnection_diff = []
-    for asset_index in range(len(start_station.assets)):
+    for asset_index in range(len(start_station.asset_connections)):
         target_disconnected = ~np.any(target_station.asset_switching_table[:, asset_index])
         start_disconnected = ~np.any(start_station.asset_switching_table[:, asset_index])
 
@@ -1263,29 +1284,32 @@ def order_station_assets(
     list[str]
         A list of asset ids that were ignored, i.e. not present in the asset_ids list
     """
-    new_assets = []
+    new_asset_connections = []
     not_found = []
     old_positions = []
     for asset_id in asset_ids:
         found = False
-        for pos, asset in enumerate(station.assets):
+        for pos, asset_connection in enumerate(station.asset_connections):
+            asset = asset_connection.asset
             if asset.grid_model_id == asset_id:
-                new_assets.append(asset)
+                new_asset_connections.append(asset_connection)
                 old_positions.append(pos)
                 found = True
                 break
         if not found:
             not_found.append(asset_id)
 
-    ignored = [asset.grid_model_id for index, asset in enumerate(station.assets) if index not in old_positions]
+    ignored = [
+        asset_connection.asset.grid_model_id
+        for index, asset_connection in enumerate(station.asset_connections)
+        if index not in old_positions
+    ]
 
     asset_switching_table = station.asset_switching_table[:, old_positions]
     asset_connectivity = station.asset_connectivity[:, old_positions] if station.asset_connectivity is not None else None
     station = station.model_copy(
         update={
-            "assets": new_assets,
-            "asset_terminals": [station.asset_terminals[index] for index in old_positions],
-            "asset_bays": [station.asset_bays[index] for index in old_positions],
+            "asset_connections": new_asset_connections,
             "asset_switching_table": asset_switching_table,
             "asset_connectivity": asset_connectivity,
         }
@@ -1433,14 +1457,17 @@ def fuse_coupler(
 
     new_busbars = [b for i, b in enumerate(station.busbars) if i != busbar_index_to_remove]
     new_couplers = [_replace_int_id(c) for c in station.couplers if c.grid_model_id != coupler_grid_model_id]
-    new_asset_bays = [_replace_sr_keys(asset_bay) for asset_bay in station.asset_bays]
+    new_asset_connections = [
+        asset_connection.model_copy(update={"asset_bay": _replace_sr_keys(asset_connection.asset_bay)})
+        for asset_connection in station.asset_connections
+    ]
 
     station = station.model_copy(
         update={
             "busbars": new_busbars,
             "asset_switching_table": new_switching_table,
             "asset_connectivity": new_connectivity_table,
-            "asset_bays": new_asset_bays,
+            "asset_connections": new_asset_connections,
             "couplers": new_couplers,
         }
     )

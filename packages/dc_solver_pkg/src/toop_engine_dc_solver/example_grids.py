@@ -54,6 +54,7 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
+    MaterializedAssetConnection,
     MaterializedStation,
     SwitchableAsset,
     Topology,
@@ -279,7 +280,7 @@ def random_station_info_backend(
                 open=False,
             ),
         ],
-        assets=switchable_assets,
+        asset_connections=[MaterializedAssetConnection(asset=asset) for asset in switchable_assets],
         asset_switching_table=asset_switching_table,
         asset_connectivity=np.ones_like(asset_switching_table, dtype=bool),
     ), pp_counters

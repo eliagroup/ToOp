@@ -276,16 +276,17 @@ def validate_asset_topology(net: pp.pandapowerNet, topology_model: Topology) -> 
         connection_dict = pp.toolbox.get_connected_elements_dict(net, [s_id])
         del connection_dict["bus"]
         len_connection = len([element for key in connection_dict for element in connection_dict[key]])
-        if len_connection != len(station.assets):
+        if len_connection != len(station.asset_connections):
             logger.warning(
-                f"Station {s_id} has {len(station.assets)} assets but only "
+                f"Station {s_id} has {len(station.asset_connections)} assets but only "
                 + f"{len_connection} connections in the network",
                 **connection_dict,
             )
-            for asset in station.assets:
-                logger.warning(f"Station {s_id} with assets: {asset}", asset=asset)
+            for asset_connection in station.asset_connections:
+                logger.warning(f"Station {s_id} with assets: {asset_connection.asset}", asset=asset_connection.asset)
             raise ValueError(
-                f"Station {s_id} has {len(station.assets)} assets but only " + f"{len_connection} connections in the network"
+                f"Station {s_id} has {len(station.asset_connections)} assets but only "
+                + f"{len_connection} connections in the network"
             )
 
 

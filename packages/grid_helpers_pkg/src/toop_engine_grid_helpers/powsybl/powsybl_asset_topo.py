@@ -21,11 +21,11 @@ from jaxtyping import Bool
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import change_dangling_to_tie, get_voltage_level_with_region
 from toop_engine_interfaces.asset_topology import (
-    AssetBay,
     Busbar,
     BusbarCoupler,
     MaterializedStation,
     RawStation,
+    StationAssetConnection,
     SwitchableAsset,
     Topology,
 )
@@ -127,8 +127,6 @@ def get_list_of_coupler_from_df(coupler_elements: pd.DataFrame) -> list[BusbarCo
 
 def get_list_of_switchable_assets_from_df(
     station_branches: pd.DataFrame,
-    asset_bay_list: Optional[list[AssetBay]] = None,
-    asset_bay_dict: Optional[dict[str, AssetBay]] = None,
 ) -> list[SwitchableAsset]:
     """Get the list of switchable assets from the DataFrame.
 
@@ -137,11 +135,6 @@ def get_list_of_switchable_assets_from_df(
     station_branches: pd.DataFrame
         DataFrame with the switchable assets
         Note: datatype of columns is expected to be the same as in the pydantic model.
-    asset_bay_list: Optional[list[AssetBay]]
-        List of asset bays.
-        Note: The list is expected to have the same length as the station_branches.
-    asset_bay_dict: Optional[dict[str, AssetConnectionPath]]
-        Dictionary of asset bays with the asset grid_model_id as key.
 
     Returns
     -------
@@ -149,13 +142,6 @@ def get_list_of_switchable_assets_from_df(
         List of switchable assets.
     """
     switchable_assets_dict = station_branches.to_dict(orient="records")
-    if asset_bay_list is not None:
-        for index, _ in enumerate(switchable_assets_dict):
-            switchable_assets_dict[index]["asset_bay_id"] = asset_bay_list[index].asset_bay_id
-    elif asset_bay_dict is not None:
-        for index, asset in enumerate(switchable_assets_dict):
-            if asset["grid_model_id"] in asset_bay_dict:
-                switchable_assets_dict[index]["asset_bay_id"] = asset_bay_dict[asset["grid_model_id"]].asset_bay_id
     switchable_assets_list = [SwitchableAsset(**switchable_asset) for switchable_asset in switchable_assets_dict]
 
     return switchable_assets_list
@@ -466,7 +452,7 @@ def get_raw_stations_and_assets(
         )
         assets = get_list_of_switchable_assets_from_df(station_elements)
         for asset in assets:
-            topology_assets.setdefault(asset.grid_model_id, asset.model_copy(update={"asset_bay_id": None}))
+            topology_assets.setdefault(asset.grid_model_id, asset.model_copy(deep=True))
 
         station = RawStation(
             grid_model_id=bus_id,
@@ -475,9 +461,10 @@ def get_raw_stations_and_assets(
             voltage_level=bus_info.nominal_v,
             busbars=get_list_of_busbars_from_df(station_buses),
             couplers=get_list_of_coupler_from_df(coupler_elements),
-            asset_ids=[asset.grid_model_id for asset in assets],
-            asset_terminals=asset_terminals,
-            asset_bay_ids=[None] * len(assets),
+            asset_connections=[
+                StationAssetConnection(asset_id=asset.grid_model_id, terminal=asset_terminal, asset_bay_id=None)
+                for asset, asset_terminal in zip(assets, asset_terminals, strict=True)
+            ],
             asset_switching_table=switching_matrix,
             asset_connectivity=asset_connectivity,
         )
@@ -611,16 +598,17 @@ def get_raw_stations_and_assets_bus_breaker(net: Network) -> tuple[list[RawStati
             switching_table[idx, asset_index] = True
 
         for asset in assets:
-            topology_assets.setdefault(asset.grid_model_id, asset.model_copy(update={"asset_bay_id": None}))
+            topology_assets.setdefault(asset.grid_model_id, asset.model_copy(deep=True))
 
         station = RawStation(
             grid_model_id=bus_id,
             name=bus_row.name,
             busbars=busbars,
             couplers=couplers,
-            asset_ids=[asset.grid_model_id for asset in assets],
-            asset_terminals=asset_terminals,
-            asset_bay_ids=[None] * len(assets),
+            asset_connections=[
+                StationAssetConnection(asset_id=asset.grid_model_id, terminal=asset_terminal, asset_bay_id=None)
+                for asset, asset_terminal in zip(assets, asset_terminals, strict=True)
+            ],
             asset_switching_table=switching_table,
         )
         stations.append(station)
@@ -667,11 +655,12 @@ def assert_station_in_network(  # noqa: C901
 
     bus_breaker_topo = net.get_bus_breaker_topology(buses_df.loc[station.grid_model_id]["voltage_level_id"])
 
-    for asset in station.assets:
+    for asset_connection in station.asset_connections:
+        asset = asset_connection.asset
         if asset.grid_model_id not in bus_breaker_topo.elements.index:
             raise ValueError(f"Asset {asset.grid_model_id} not found in the station elements: {bus_breaker_topo.elements}")
-    if assets_strict and len(bus_breaker_topo.elements) != len(station.assets):
-        raise ValueError(f"Asset count mismatch: {len(bus_breaker_topo.elements)} != {len(station.assets)}")
+    if assets_strict and len(bus_breaker_topo.elements) != len(station.asset_connections):
+        raise ValueError(f"Asset count mismatch: {len(bus_breaker_topo.elements)} != {len(station.asset_connections)}")
 
     for busbar in station.busbars:
         if busbar.grid_model_id not in bus_breaker_topo.buses.index:

@@ -110,8 +110,8 @@ def test_get_asset_switch_diffs_requires_matching_switching_table_shape(basic_no
 
 def test_get_asset_switch_diffs_requires_matching_asset_order(basic_node_breaker_topology):
     station = basic_node_breaker_topology.materialize_stations()[0]
-    reordered_assets = [station.assets[1], station.assets[0], station.assets[2]]
-    changed_station = station.model_copy(update={"assets": reordered_assets})
+    reordered_asset_connections = [station.asset_connections[1], station.asset_connections[0], station.asset_connections[2]]
+    changed_station = station.model_copy(update={"asset_connections": reordered_asset_connections})
 
     with pytest.raises(ValueError, match="Use ActionSet.simplified_starting_topology as input"):
         _get_asset_switch_diffs(

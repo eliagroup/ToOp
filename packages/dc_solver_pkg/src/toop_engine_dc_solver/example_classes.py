@@ -15,6 +15,7 @@ from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
     RawStation,
+    StationAssetConnection,
     SwitchableAsset,
     Topology,
 )
@@ -55,9 +56,11 @@ def get_basic_node_breaker_topology() -> Topology:
                         in_service=True,
                     )
                 ],
-                asset_ids=["L4", "L5", "L8"],
-                asset_terminals=[None, None, None],
-                asset_bay_ids=["VL4_0::L4::bay", "VL4_0::L5::bay", "VL4_0::L8::bay"],
+                asset_connections=[
+                    StationAssetConnection(asset_id="L4", terminal=None, asset_bay_id="VL4_0::L4::bay"),
+                    StationAssetConnection(asset_id="L5", terminal=None, asset_bay_id="VL4_0::L5::bay"),
+                    StationAssetConnection(asset_id="L8", terminal=None, asset_bay_id="VL4_0::L8::bay"),
+                ],
                 asset_switching_table=np.array([[False, False, False], [True, True, False]]),
                 asset_connectivity=np.array([[True, True, True], [True, True, True]]),
             )

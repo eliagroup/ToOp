@@ -16,8 +16,10 @@ from toop_engine_interfaces.asset_topology import (
     AssetBay,
     Busbar,
     BusbarCoupler,
+    MaterializedAssetConnection,
     MaterializedStation,
     RawStation,
+    StationAssetConnection,
     SwitchableAsset,
     Topology,
     build_asset_bay_id,
@@ -35,7 +37,42 @@ from toop_engine_interfaces.asset_topology_helpers import (
 )
 
 
+def materialized_asset_connections(
+    assets: list[SwitchableAsset],
+    terminals: list[str | None] | None = None,
+    asset_bays: list[AssetBay | None] | None = None,
+) -> list[MaterializedAssetConnection]:
+    if terminals is None:
+        terminals = [None] * len(assets)
+    if asset_bays is None:
+        asset_bays = [None] * len(assets)
+    return [
+        MaterializedAssetConnection(asset=asset, terminal=terminal, asset_bay=asset_bay)
+        for asset, terminal, asset_bay in zip(assets, terminals, asset_bays, strict=True)
+    ]
+
+
+def raw_asset_connections(
+    asset_ids: list[str],
+    terminals: list[str | None] | None = None,
+    asset_bay_ids: list[str | None] | None = None,
+) -> list[StationAssetConnection]:
+    if terminals is None:
+        terminals = [None] * len(asset_ids)
+    if asset_bay_ids is None:
+        asset_bay_ids = [None] * len(asset_ids)
+    return [
+        StationAssetConnection(asset_id=asset_id, terminal=terminal, asset_bay_id=asset_bay_id)
+        for asset_id, terminal, asset_bay_id in zip(asset_ids, terminals, asset_bay_ids, strict=True)
+    ]
+
+
 def test_station() -> None:
+    assets = [
+        SwitchableAsset(grid_model_id="line1"),
+        SwitchableAsset(grid_model_id="line2"),
+        SwitchableAsset(grid_model_id="line3"),
+    ]
     station = MaterializedStation(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
@@ -44,11 +81,7 @@ def test_station() -> None:
         couplers=[
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-        ],
+        asset_connections=materialized_asset_connections(assets),
         asset_switching_table=np.array([[True, False, True], [False, True, False]]),
         grid_model_id="station1",
     )
@@ -69,11 +102,7 @@ def test_station() -> None:
                     grid_model_id="coupler1",
                 ),
             ],
-            assets=[
-                SwitchableAsset(grid_model_id="line1"),
-                SwitchableAsset(grid_model_id="line2"),
-                SwitchableAsset(grid_model_id="line3"),
-            ],
+            asset_connections=materialized_asset_connections(assets),
             asset_switching_table=np.array([[True, False, True], [False, True, False]]).T,
             grid_model_id="station1",
         )
@@ -93,11 +122,7 @@ def test_station() -> None:
                     grid_model_id="coupler1",
                 ),
             ],
-            assets=[
-                SwitchableAsset(grid_model_id="line1"),
-                SwitchableAsset(grid_model_id="line2"),
-                SwitchableAsset(grid_model_id="line3"),
-            ],
+            asset_connections=materialized_asset_connections(assets),
             asset_switching_table=np.array([[True, False, True], [False, True, False]]),
             grid_model_id="station1",
         )
@@ -117,11 +142,7 @@ def test_station() -> None:
                     grid_model_id="coupler1",
                 ),
             ],
-            assets=[
-                SwitchableAsset(grid_model_id="line1"),
-                SwitchableAsset(grid_model_id="line2"),
-                SwitchableAsset(grid_model_id="line3"),
-            ],
+            asset_connections=materialized_asset_connections(assets),
             asset_switching_table=np.array([[True, False, True], [False, True, False]]),
             grid_model_id="station1",
         )
@@ -141,11 +162,7 @@ def test_station() -> None:
                     grid_model_id="coupler1",
                 ),
             ],
-            assets=[
-                SwitchableAsset(grid_model_id="line1"),
-                SwitchableAsset(grid_model_id="line2"),
-                SwitchableAsset(grid_model_id="line3"),
-            ],
+            asset_connections=materialized_asset_connections(assets),
             asset_switching_table=np.array([[True, False, True], [False, True, False]]),
             grid_model_id="station1",
         )
@@ -171,12 +188,14 @@ def test_station() -> None:
                     grid_model_id="coupler2",
                 ),
             ],
-            assets=[
-                SwitchableAsset(grid_model_id="line1"),
-                SwitchableAsset(grid_model_id="line2", in_service=False),
-                SwitchableAsset(grid_model_id="line3"),
-                SwitchableAsset(grid_model_id="line4", in_service=False),
-            ],
+            asset_connections=materialized_asset_connections(
+                [
+                    SwitchableAsset(grid_model_id="line1"),
+                    SwitchableAsset(grid_model_id="line2", in_service=False),
+                    SwitchableAsset(grid_model_id="line3"),
+                    SwitchableAsset(grid_model_id="line4", in_service=False),
+                ]
+            ),
             asset_switching_table=np.array(
                 [
                     [True, False, True, True],
@@ -201,11 +220,7 @@ def test_station() -> None:
                     grid_model_id="coupler1",
                 ),
             ],
-            assets=[
-                SwitchableAsset(grid_model_id="line1"),
-                SwitchableAsset(grid_model_id="line2"),
-                SwitchableAsset(grid_model_id="line3"),
-            ],
+            asset_connections=materialized_asset_connections(assets),
             asset_switching_table=np.array([[True, False, True], [False, True, False]]),
             grid_model_id="station1",
         )
@@ -218,11 +233,7 @@ def test_station() -> None:
         couplers=[
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-        ],
+        asset_connections=materialized_asset_connections(assets),
         asset_switching_table=np.array([[True, False, True], [False, True, False]]),
         grid_model_id="bus_id1",
     )
@@ -263,11 +274,7 @@ def test_station() -> None:
                     grid_model_id="coupler1",
                 ),
             ],
-            assets=[
-                SwitchableAsset(grid_model_id="line1"),
-                SwitchableAsset(grid_model_id="line2"),
-                SwitchableAsset(grid_model_id="line3"),
-            ],
+            asset_connections=materialized_asset_connections(assets),
             asset_switching_table=np.array([[True, False, True], [False, True, False]]),
             grid_model_id="bus_id0",
         )
@@ -292,7 +299,7 @@ def test_station_connectivity_tables():
     station = MaterializedStation(
         busbars=busbars,
         couplers=couplers,
-        assets=assets,
+        asset_connections=materialized_asset_connections(assets),
         asset_switching_table=asset_switching_table,
         asset_connectivity=asset_connectivity,
         grid_model_id=grid_model_id,
@@ -306,7 +313,7 @@ def test_station_connectivity_tables():
         station = MaterializedStation(
             busbars=busbars,
             couplers=couplers,
-            assets=assets,
+            asset_connections=materialized_asset_connections(assets),
             asset_switching_table=asset_switching_table,
             asset_connectivity=asset_connectivity,
             grid_model_id=grid_model_id,
@@ -317,7 +324,7 @@ def test_station_connectivity_tables():
     station = MaterializedStation(
         busbars=busbars,
         couplers=couplers,
-        assets=assets,
+        asset_connections=materialized_asset_connections(assets),
         asset_switching_table=asset_switching_table,
         asset_connectivity=asset_connectivity,
         grid_model_id=grid_model_id,
@@ -333,9 +340,7 @@ def test_topology_station_is_split() -> None:
             Busbar(int_id=2, grid_model_id="busbar2", bus_branch_bus_id="bus_id1"),
         ],
         couplers=[],
-        asset_ids=["line1"],
-        asset_terminals=[None],
-        asset_bay_ids=[None],
+        asset_connections=raw_asset_connections(["line1"]),
         asset_switching_table=np.array([[True], [False]]),
     )
     assert not station.is_split()
@@ -367,12 +372,17 @@ def test_schema() -> None:
     assert schema is not None
     assert "busbars" in schema["properties"]
     assert "couplers" in schema["properties"]
-    assert "assets" in schema["properties"]
+    assert "asset_connections" in schema["properties"]
     assert "asset_switching_table" in schema["properties"]
     assert "grid_model_id" in schema["properties"]
 
 
 def test_serialize_station() -> None:
+    assets = [
+        SwitchableAsset(grid_model_id="line1"),
+        SwitchableAsset(grid_model_id="line2"),
+        SwitchableAsset(grid_model_id="line3"),
+    ]
     station = MaterializedStation(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
@@ -381,11 +391,7 @@ def test_serialize_station() -> None:
         couplers=[
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-        ],
+        asset_connections=materialized_asset_connections(assets),
         asset_switching_table=np.array([[True, False, True], [False, True, False]]),
         grid_model_id="station1",
     )
@@ -397,6 +403,11 @@ def test_serialize_station() -> None:
 
 
 def test_load_asset_topology() -> None:
+    station1_assets = [
+        SwitchableAsset(grid_model_id="line1"),
+        SwitchableAsset(grid_model_id="line2"),
+        SwitchableAsset(grid_model_id="line3"),
+    ]
     station1 = MaterializedStation(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
@@ -405,15 +416,16 @@ def test_load_asset_topology() -> None:
         couplers=[
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-        ],
+        asset_connections=materialized_asset_connections(station1_assets),
         asset_switching_table=np.array([[True, False, True], [False, True, False]]),
         grid_model_id="station1",
     )
 
+    station2_assets = [
+        SwitchableAsset(grid_model_id="line4"),
+        SwitchableAsset(grid_model_id="line5"),
+        SwitchableAsset(grid_model_id="line6"),
+    ]
     station2 = MaterializedStation(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar3"),
@@ -422,11 +434,7 @@ def test_load_asset_topology() -> None:
         couplers=[
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler2"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line4"),
-            SwitchableAsset(grid_model_id="line5"),
-            SwitchableAsset(grid_model_id="line6"),
-        ],
+        asset_connections=materialized_asset_connections(station2_assets),
         asset_switching_table=np.array([[True, False, True], [False, True, False]]),
         grid_model_id="station2",
     )
@@ -448,6 +456,18 @@ def test_load_asset_topology() -> None:
 
 
 def test_topology_extracts_assets_and_materializes_stations() -> None:
+    assets = [
+        SwitchableAsset(grid_model_id="line1"),
+        SwitchableAsset(grid_model_id="load1"),
+    ]
+    asset_bays = [
+        AssetBay(
+            asset_bay_id="station1::line1::bay",
+            dv_switch_grid_model_id="dv1",
+            sr_switch_grid_model_id={"busbar1": "sr1"},
+        ),
+        None,
+    ]
     station = MaterializedStation(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
@@ -456,22 +476,7 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
         couplers=[
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
-        assets=[
-            SwitchableAsset(
-                grid_model_id="line1",
-                asset_bay_id="station1::line1::bay",
-            ),
-            SwitchableAsset(grid_model_id="load1"),
-        ],
-        asset_terminals=["from", None],
-        asset_bays=[
-            AssetBay(
-                asset_bay_id="station1::line1::bay",
-                dv_switch_grid_model_id="dv1",
-                sr_switch_grid_model_id={"busbar1": "sr1"},
-            ),
-            None,
-        ],
+        asset_connections=materialized_asset_connections(assets, ["from", None], asset_bays),
         asset_switching_table=np.array([[True, False], [False, True]]),
         grid_model_id="station1",
     )
@@ -490,9 +495,7 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
             grid_model_id="station1",
             busbars=station.busbars,
             couplers=station.couplers,
-            asset_ids=["line1", "load1"],
-            asset_terminals=["from", None],
-            asset_bay_ids=["station1::line1::bay", None],
+            asset_connections=raw_asset_connections(["line1", "load1"], ["from", None], ["station1::line1::bay", None]),
             asset_switching_table=np.array([[True, False], [False, True]]),
         )
     ]
@@ -500,14 +503,7 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
     assert [asset_bay.asset_bay_id for asset_bay in topology.asset_bays] == ["station1::line1::bay"]
 
     materialized_station = topology.materialize_stations()[0]
-    assert materialized_station == station.model_copy(
-        update={
-            "assets": [
-                station.assets[0].model_copy(update={"asset_bay_id": "station1::line1::bay"}),
-                station.assets[1],
-            ]
-        }
-    )
+    assert materialized_station == station
 
 
 def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_two_station_views() -> None:
@@ -518,16 +514,14 @@ def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_tw
         grid_model_id="station_from",
         busbars=[Busbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
-        assets=[asset_from],
-        asset_terminals=["from"],
+        asset_connections=materialized_asset_connections([asset_from], ["from"]),
         asset_switching_table=np.array([[True]]),
     )
     station_to = MaterializedStation(
         grid_model_id="station_to",
         busbars=[Busbar(int_id=1, grid_model_id="busbar2")],
         couplers=[],
-        assets=[asset_to],
-        asset_terminals=["to"],
+        asset_connections=materialized_asset_connections([asset_to], ["to"]),
         asset_switching_table=np.array([[True]]),
     )
 
@@ -541,10 +535,10 @@ def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_tw
     )
 
     assert [asset.grid_model_id for asset in topology.assets] == ["line1"]
-    assert topology.raw_stations[0].asset_ids == ["line1"]
-    assert topology.raw_stations[0].asset_terminals == ["from"]
-    assert topology.raw_stations[1].asset_ids == ["line1"]
-    assert topology.raw_stations[1].asset_terminals == ["to"]
+    assert [connection.asset_id for connection in topology.raw_stations[0].asset_connections] == ["line1"]
+    assert [connection.terminal for connection in topology.raw_stations[0].asset_connections] == ["from"]
+    assert [connection.asset_id for connection in topology.raw_stations[1].asset_connections] == ["line1"]
+    assert [connection.terminal for connection in topology.raw_stations[1].asset_connections] == ["to"]
     assert topology.materialize_stations() == [station_from, station_to]
 
 
@@ -553,42 +547,34 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
         grid_model_id="station_from",
         busbars=[Busbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
-        assets=[
-            SwitchableAsset(
-                grid_model_id="line1",
-                type="line",
-                asset_bay_id=build_asset_bay_id("station_from", "line1"),
-            )
-        ],
-        asset_terminals=["from"],
-        asset_bays=[
-            AssetBay(
-                asset_bay_id=build_asset_bay_id("station_from", "line1"),
-                dv_switch_grid_model_id="dv_from",
-                sr_switch_grid_model_id={"busbar1": "sr_from"},
-            )
-        ],
+        asset_connections=materialized_asset_connections(
+            [SwitchableAsset(grid_model_id="line1", type="line")],
+            ["from"],
+            [
+                AssetBay(
+                    asset_bay_id=build_asset_bay_id("station_from", "line1"),
+                    dv_switch_grid_model_id="dv_from",
+                    sr_switch_grid_model_id={"busbar1": "sr_from"},
+                )
+            ],
+        ),
         asset_switching_table=np.array([[True]]),
     )
     station_to = MaterializedStation(
         grid_model_id="station_to",
         busbars=[Busbar(int_id=1, grid_model_id="busbar2")],
         couplers=[],
-        assets=[
-            SwitchableAsset(
-                grid_model_id="line1",
-                type="line",
-                asset_bay_id=build_asset_bay_id("station_to", "line1"),
-            )
-        ],
-        asset_terminals=["to"],
-        asset_bays=[
-            AssetBay(
-                asset_bay_id=build_asset_bay_id("station_to", "line1"),
-                dv_switch_grid_model_id="dv_to",
-                sr_switch_grid_model_id={"busbar2": "sr_to"},
-            )
-        ],
+        asset_connections=materialized_asset_connections(
+            [SwitchableAsset(grid_model_id="line1", type="line")],
+            ["to"],
+            [
+                AssetBay(
+                    asset_bay_id=build_asset_bay_id("station_to", "line1"),
+                    dv_switch_grid_model_id="dv_to",
+                    sr_switch_grid_model_id={"busbar2": "sr_to"},
+                )
+            ],
+        ),
         asset_switching_table=np.array([[True]]),
     )
 
@@ -605,8 +591,12 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
         "station_from::line1::bay",
         "station_to::line1::bay",
     ]
-    assert topology.raw_stations[0].asset_bay_ids == ["station_from::line1::bay"]
-    assert topology.raw_stations[1].asset_bay_ids == ["station_to::line1::bay"]
+    assert [connection.asset_bay_id for connection in topology.raw_stations[0].asset_connections] == [
+        "station_from::line1::bay"
+    ]
+    assert [connection.asset_bay_id for connection in topology.raw_stations[1].asset_connections] == [
+        "station_to::line1::bay"
+    ]
 
 
 def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_occurrence() -> None:
@@ -614,30 +604,25 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
         grid_model_id="station1",
         busbars=[Busbar(int_id=1, grid_model_id="busbar1")],
         couplers=[],
-        assets=[
-            SwitchableAsset(
-                grid_model_id="line1",
-                type="line",
-                asset_bay_id=build_asset_bay_id("station1", "line1"),
-            ),
-            SwitchableAsset(
-                grid_model_id="line1",
-                type="line",
-                asset_bay_id=build_asset_bay_id("station1", "line1", 1),
-            ),
-        ],
-        asset_bays=[
-            AssetBay(
-                asset_bay_id=build_asset_bay_id("station1", "line1"),
-                dv_switch_grid_model_id="dv1",
-                sr_switch_grid_model_id={"busbar1": "sr1"},
-            ),
-            AssetBay(
-                asset_bay_id=build_asset_bay_id("station1", "line1", 1),
-                dv_switch_grid_model_id="dv2",
-                sr_switch_grid_model_id={"busbar1": "sr2"},
-            ),
-        ],
+        asset_connections=materialized_asset_connections(
+            [
+                SwitchableAsset(grid_model_id="line1", type="line"),
+                SwitchableAsset(grid_model_id="line1", type="line"),
+            ],
+            None,
+            [
+                AssetBay(
+                    asset_bay_id=build_asset_bay_id("station1", "line1"),
+                    dv_switch_grid_model_id="dv1",
+                    sr_switch_grid_model_id={"busbar1": "sr1"},
+                ),
+                AssetBay(
+                    asset_bay_id=build_asset_bay_id("station1", "line1", 1),
+                    dv_switch_grid_model_id="dv2",
+                    sr_switch_grid_model_id={"busbar1": "sr2"},
+                ),
+            ],
+        ),
         asset_switching_table=np.array([[True, True]]),
     )
 
@@ -650,8 +635,11 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
         stations=[station],
     )
 
-    assert topology.raw_stations[0].asset_ids == ["line1", "line1"]
-    assert topology.raw_stations[0].asset_bay_ids == ["station1::line1::bay", "station1::line1::bay::1"]
+    assert [connection.asset_id for connection in topology.raw_stations[0].asset_connections] == ["line1", "line1"]
+    assert [connection.asset_bay_id for connection in topology.raw_stations[0].asset_connections] == [
+        "station1::line1::bay",
+        "station1::line1::bay::1",
+    ]
     assert sorted(asset_bay.asset_bay_id for asset_bay in topology.asset_bays) == [
         "station1::line1::bay",
         "station1::line1::bay::1",
@@ -659,6 +647,12 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
 
 
 def test_filter_out_of_service() -> None:
+    assets = [
+        SwitchableAsset(grid_model_id="line1"),
+        SwitchableAsset(grid_model_id="line2", in_service=False),
+        SwitchableAsset(grid_model_id="line3"),
+        SwitchableAsset(grid_model_id="line4", in_service=False),
+    ]
     station = MaterializedStation(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
@@ -669,12 +663,7 @@ def test_filter_out_of_service() -> None:
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
             BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=True, grid_model_id="coupler2"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2", in_service=False),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4", in_service=False),
-        ],
+        asset_connections=materialized_asset_connections(assets),
         asset_switching_table=np.array(
             [
                 [True, False, True, True],
@@ -688,7 +677,7 @@ def test_filter_out_of_service() -> None:
     station = filter_out_of_service(station)
     assert len(station.busbars) == 2
     assert len(station.couplers) == 1
-    assert len(station.assets) == 2
+    assert len(station.asset_connections) == 2
     assert np.array_equal(station.asset_switching_table, np.array([[True, True], [False, False]]))
 
 
@@ -703,12 +692,14 @@ def test_has_transmission_line_switching() -> None:
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
             BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=True, grid_model_id="coupler2"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2", in_service=False),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4", in_service=False),
-        ],
+        asset_connections=materialized_asset_connections(
+            [
+                SwitchableAsset(grid_model_id="line1"),
+                SwitchableAsset(grid_model_id="line2", in_service=False),
+                SwitchableAsset(grid_model_id="line3"),
+                SwitchableAsset(grid_model_id="line4", in_service=False),
+            ]
+        ),
         asset_switching_table=np.array(
             [
                 [True, False, True, False],
@@ -731,12 +722,14 @@ def test_has_transmission_line_switching() -> None:
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
             BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=True, grid_model_id="coupler2"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4"),
-        ],
+        asset_connections=materialized_asset_connections(
+            [
+                SwitchableAsset(grid_model_id="line1"),
+                SwitchableAsset(grid_model_id="line2"),
+                SwitchableAsset(grid_model_id="line3"),
+                SwitchableAsset(grid_model_id="line4"),
+            ]
+        ),
         asset_switching_table=np.array(
             [
                 [True, False, True, True],
@@ -763,12 +756,14 @@ def test_filter_duplicate_couplers() -> None:
             BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=True, grid_model_id="coupler3"),
             BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=True, grid_model_id="coupler4"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4"),
-        ],
+        asset_connections=materialized_asset_connections(
+            [
+                SwitchableAsset(grid_model_id="line1"),
+                SwitchableAsset(grid_model_id="line2"),
+                SwitchableAsset(grid_model_id="line3"),
+                SwitchableAsset(grid_model_id="line4"),
+            ]
+        ),
         asset_switching_table=np.array(
             [
                 [True, False, True, True],
@@ -803,12 +798,14 @@ def test_filter_disconnected_busbars() -> None:
         couplers=[
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4"),
-        ],
+        asset_connections=materialized_asset_connections(
+            [
+                SwitchableAsset(grid_model_id="line1"),
+                SwitchableAsset(grid_model_id="line2"),
+                SwitchableAsset(grid_model_id="line3"),
+                SwitchableAsset(grid_model_id="line4"),
+            ]
+        ),
         asset_switching_table=np.array(
             [
                 [True, False, True, True],
@@ -822,7 +819,7 @@ def test_filter_disconnected_busbars() -> None:
     station, removed = filter_disconnected_busbars(station)
     assert len(station.busbars) == 2
     assert len(station.couplers) == 1
-    assert len(station.assets) == 4
+    assert len(station.asset_connections) == 4
     assert np.array_equal(
         station.asset_switching_table,
         np.array([[True, False, True, True], [False, True, False, False]]),
@@ -841,12 +838,14 @@ def test_filter_disconnected_busbars_sort_by_asset_count() -> None:
         couplers=[
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4"),
-        ],
+        asset_connections=materialized_asset_connections(
+            [
+                SwitchableAsset(grid_model_id="line1"),
+                SwitchableAsset(grid_model_id="line2"),
+                SwitchableAsset(grid_model_id="line3"),
+                SwitchableAsset(grid_model_id="line4"),
+            ]
+        ),
         asset_switching_table=np.array(
             [
                 [False, False, False, False],
@@ -861,7 +860,7 @@ def test_filter_disconnected_busbars_sort_by_asset_count() -> None:
     assert len(station.busbars) == 1
     assert station.busbars[0].grid_model_id == "busbar3"
     assert len(station.couplers) == 0
-    assert len(station.assets) == 4
+    assert len(station.asset_connections) == 4
     assert np.array_equal(
         station.asset_switching_table,
         np.array([[True, False, True, True]]),
@@ -882,12 +881,14 @@ def test_select_one_for_multi_connected_assets() -> None:
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
             BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1"),  # Connects busbar 1 and 3
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4"),  # Connects busbar 2 and 3
-        ],
+        asset_connections=materialized_asset_connections(
+            [
+                SwitchableAsset(grid_model_id="line1"),
+                SwitchableAsset(grid_model_id="line2"),
+                SwitchableAsset(grid_model_id="line3"),
+                SwitchableAsset(grid_model_id="line4"),
+            ]
+        ),
         asset_switching_table=np.array(
             [
                 [True, False, True, False],
@@ -922,13 +923,15 @@ def test_filter_assets_by_type() -> None:
         couplers=[
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="line1", type="line"),
-            SwitchableAsset(grid_model_id="line2", type="line"),
-            SwitchableAsset(grid_model_id="gen1", type="gen"),
-            SwitchableAsset(grid_model_id="load1", type="load"),
-            SwitchableAsset(grid_model_id="line3", type=None),
-        ],
+        asset_connections=materialized_asset_connections(
+            [
+                SwitchableAsset(grid_model_id="line1", type="line"),
+                SwitchableAsset(grid_model_id="line2", type="line"),
+                SwitchableAsset(grid_model_id="gen1", type="gen"),
+                SwitchableAsset(grid_model_id="load1", type="load"),
+                SwitchableAsset(grid_model_id="line3", type=None),
+            ]
+        ),
         asset_switching_table=np.array(
             [
                 [True, False, True, False, True],
@@ -939,19 +942,19 @@ def test_filter_assets_by_type() -> None:
     )
 
     station_filtered, removed = filter_assets_by_type(station, set(["line", "trafo"]))
-    assert len(station_filtered.assets) == 2
+    assert len(station_filtered.asset_connections) == 2
     assert len(removed) == 3
-    assert station_filtered.assets[0].grid_model_id == "line1"
-    assert station_filtered.assets[1].grid_model_id == "line2"
+    assert station_filtered.asset_connections[0].asset.grid_model_id == "line1"
+    assert station_filtered.asset_connections[1].asset.grid_model_id == "line2"
     assert station_filtered.asset_switching_table.shape == (2, 2)
 
     station_filtered, removed = filter_assets_by_type(station, set(["line", "gen"]), allow_none_type=True)
-    assert len(station_filtered.assets) == 4
+    assert len(station_filtered.asset_connections) == 4
     assert len(removed) == 1
-    assert station_filtered.assets[0].grid_model_id == "line1"
-    assert station_filtered.assets[1].grid_model_id == "line2"
-    assert station_filtered.assets[2].grid_model_id == "gen1"
-    assert station_filtered.assets[3].grid_model_id == "line3"
+    assert station_filtered.asset_connections[0].asset.grid_model_id == "line1"
+    assert station_filtered.asset_connections[1].asset.grid_model_id == "line2"
+    assert station_filtered.asset_connections[2].asset.grid_model_id == "gen1"
+    assert station_filtered.asset_connections[3].asset.grid_model_id == "line3"
 
 
 def test_asset_bay() -> None:
@@ -1017,7 +1020,7 @@ def test_station_bay() -> None:
     ]
     assets = [
         SwitchableAsset(grid_model_id="line1"),
-        SwitchableAsset(grid_model_id="line2", asset_bay_id=path.asset_bay_id),
+        SwitchableAsset(grid_model_id="line2"),
         SwitchableAsset(grid_model_id="line3"),
     ]
     asset_switching_table = np.array([[True, False, True], [False, True, False]])
@@ -1027,8 +1030,7 @@ def test_station_bay() -> None:
     station = MaterializedStation(
         busbars=busbars,
         couplers=couplers,
-        assets=assets,
-        asset_bays=[None, path, None],
+        asset_connections=materialized_asset_connections(assets, asset_bays=[None, path, None]),
         asset_switching_table=asset_switching_table,
         grid_model_id=grid_model_id,
     )
@@ -1043,15 +1045,14 @@ def test_station_bay() -> None:
     )
     assets = [
         SwitchableAsset(grid_model_id="line1"),
-        SwitchableAsset(grid_model_id="line2", asset_bay_id=path_error.asset_bay_id),
+        SwitchableAsset(grid_model_id="line2"),
         SwitchableAsset(grid_model_id="line3"),
     ]
     with pytest.raises(ValidationError, match="busbar_id busbar3 in asset line2 does not exist in busbars"):
         station = MaterializedStation(
             busbars=busbars,
             couplers=couplers,
-            assets=assets,
-            asset_bays=[None, path_error, None],
+            asset_connections=materialized_asset_connections(assets, asset_bays=[None, path_error, None]),
             asset_switching_table=asset_switching_table,
             grid_model_id=grid_model_id,
         )

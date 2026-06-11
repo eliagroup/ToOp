@@ -159,9 +159,9 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     assert not couplers[0].open
     assert couplers[0].in_service
 
-    assets = res.assets
-    asset_bays = res.asset_bays
-    asset_terminals = res.asset_terminals
+    assets = [asset_connection.asset for asset_connection in res.asset_connections]
+    asset_bays = [asset_connection.asset_bay for asset_connection in res.asset_connections]
+    asset_terminals = [asset_connection.terminal for asset_connection in res.asset_connections]
     assert len(assets) == 5
     assert asset_terminals == [None] * len(assets)
     assert assets[0].grid_model_id == "L3"
@@ -234,9 +234,15 @@ def test_get_station_edge_cases_one_bay_two_assets(asset_topo_edge_cases_node_br
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     station_info = SubstationInformation(**station_info)
     res = get_station(net, "VL1_1", station_info)
-    load_assets = [asset for asset in res.assets if "load" in asset.grid_model_id]
+    load_assets = [
+        asset_connection.asset
+        for asset_connection in res.asset_connections
+        if "load" in asset_connection.asset.grid_model_id
+    ]
     load_asset_bays = [
-        asset_bay for asset, asset_bay in zip(res.assets, res.asset_bays, strict=True) if "load" in asset.grid_model_id
+        asset_connection.asset_bay
+        for asset_connection in res.asset_connections
+        if "load" in asset_connection.asset.grid_model_id
     ]
     assert len(load_assets) == 2, "Expected two loads"
     assert load_asset_bays[0] == load_asset_bays[1], "Both loads should be in the same asset bay"
@@ -267,10 +273,10 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
         coupler.busbar_from_id in busbar_int_ids and coupler.busbar_to_id in busbar_int_ids for coupler in res.couplers
     )
     assert len([coupler for coupler in res.couplers if coupler.type == "BREAKER"]) > 0
-    assert res.asset_switching_table.shape == (len(res.busbars), len(res.assets))
-    assert res.asset_connectivity.shape == (len(res.busbars), len(res.assets))
+    assert res.asset_switching_table.shape == (len(res.busbars), len(res.asset_connections))
+    assert res.asset_connectivity.shape == (len(res.busbars), len(res.asset_connections))
 
-    for asset_bay in res.asset_bays:
+    for asset_bay in [asset_connection.asset_bay for asset_connection in res.asset_connections]:
         if asset_bay is None:
             continue
         assert set(asset_bay.sr_switch_grid_model_id) <= busbar_grid_model_ids
@@ -304,11 +310,11 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
         coupler.busbar_from_id in busbar_int_ids and coupler.busbar_to_id in busbar_int_ids for coupler in res.couplers
     )
 
-    assert res.asset_switching_table.shape == (len(res.busbars), len(res.assets))
-    assert res.asset_connectivity.shape == (len(res.busbars), len(res.assets))
+    assert res.asset_switching_table.shape == (len(res.busbars), len(res.asset_connections))
+    assert res.asset_connectivity.shape == (len(res.busbars), len(res.asset_connections))
     assert res.asset_connectivity.any(axis=0).all()
 
-    for asset_bay in res.asset_bays:
+    for asset_bay in [asset_connection.asset_bay for asset_connection in res.asset_connections]:
         if asset_bay is None:
             continue
         assert set(asset_bay.sr_switch_grid_model_id) <= busbar_grid_model_ids

@@ -52,7 +52,12 @@ from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import (
     get_voltage_level_with_region,
 )
 from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
-from toop_engine_interfaces.asset_topology import MaterializedStation, Topology, topology_parts_from_materialized_station
+from toop_engine_interfaces.asset_topology import (
+    MaterializedAssetConnection,
+    MaterializedStation,
+    Topology,
+    topology_parts_from_materialized_station,
+)
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 
 logger = structlog.get_logger(__name__)
@@ -385,9 +390,13 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     asset_switching_table = remove_double_connections(asset_switching_table, substation_id=substation_id)
     busbars = get_list_of_busbars_from_df(busbar_df)
     couplers = get_list_of_coupler_from_df(coupler_df)
-    assets = get_list_of_switchable_assets_from_df(station_branches=switchable_assets_df, asset_bay_dict=asset_bay_dict)
+    assets = get_list_of_switchable_assets_from_df(station_branches=switchable_assets_df)
     remove_suffix_from_switchable_assets(assets)
     asset_bays_by_id = {asset_bay.asset_bay_id: asset_bay for asset_bay in asset_bay_dict.values()}
+    station_asset_bay_ids = [
+        asset_bay_dict[asset_grid_model_id].asset_bay_id if asset_grid_model_id in asset_bay_dict else None
+        for asset_grid_model_id in switchable_assets_df["grid_model_id"].to_list()
+    ]
 
     station = MaterializedStation(
         grid_model_id=bus_id,
@@ -396,8 +405,13 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
         voltage_level=int(station_info.nominal_v),
         busbars=busbars,
         couplers=couplers,
-        assets=assets,
-        asset_bays=[asset_bays_by_id.get(asset.asset_bay_id) for asset in assets],
+        asset_connections=[
+            MaterializedAssetConnection(
+                asset=asset,
+                asset_bay=asset_bays_by_id.get(asset_bay_id) if asset_bay_id is not None else None,
+            )
+            for asset, asset_bay_id in zip(assets, station_asset_bay_ids, strict=True)
+        ],
         asset_switching_table=asset_switching_table,
         asset_connectivity=asset_connectivity,
         busbar_switching_table=busbar_switching_table,

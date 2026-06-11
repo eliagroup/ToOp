@@ -60,7 +60,8 @@ def get_coupler_states_from_busbar_couplers(station_couplers: list[BusbarCoupler
 def get_asset_bay_grid_model_id_list(station: MaterializedStation) -> list[dict[str, str] | None]:
     """Get selector switch ids for each station asset."""
     sr_switch_grid_model_id_list: list[dict[str, str] | None] = []
-    for asset_bay in station.asset_bays:
+    for asset_connection in station.asset_connections:
+        asset_bay = asset_connection.asset_bay
         if asset_bay is None or asset_bay.sr_switch_grid_model_id is None:
             sr_switch_grid_model_id_list.append(None)
         else:
@@ -104,7 +105,7 @@ def get_asset_switch_states_from_station(
                     }
                 )
         elif active_busbars == 0:
-            asset_bay = station.asset_bays[column]
+            asset_bay = station.asset_connections[column].asset_bay
             assert asset_bay is not None
             switch_disconnection_list.append(
                 {
@@ -353,7 +354,7 @@ def apply_single_asset_bus_branch(
     station : Station
         The asset topology station in which the asset at position asset_index will be applied to the powsybl network.
     asset_index : int
-        The index of the asset in the station.assets list.
+        The index of the asset connection in the station switching table.
 
     Returns
     -------
@@ -374,8 +375,9 @@ def apply_single_asset_bus_branch(
     """
     vl_id = net.get_buses(attributes=["voltage_level_id"]).loc[station.grid_model_id]["voltage_level_id"]
 
+    asset = station.asset_connections[asset_index].asset
     is_branch, is_connected, from_side, bus_breaker_id = find_asset(
-        net=net, elem_id=station.assets[asset_index].grid_model_id, voltage_level_id=vl_id, bus_id=station.grid_model_id
+        net=net, elem_id=asset.grid_model_id, voltage_level_id=vl_id, bus_id=station.grid_model_id
     )
 
     switching_column = station.asset_switching_table[:, asset_index]
@@ -396,22 +398,22 @@ def apply_single_asset_bus_branch(
 
     if target_disconnected and is_connected:
         if is_branch:
-            disconnect_branch(net=net, elem_id=station.assets[asset_index].grid_model_id)
+            disconnect_branch(net=net, elem_id=asset.grid_model_id)
         else:
-            disconnect_injection(net=net, elem_id=station.assets[asset_index].grid_model_id)
+            disconnect_injection(net=net, elem_id=asset.grid_model_id)
         return "disconnected", []
     if station.busbars[target_bus_index].grid_model_id != bus_breaker_id:
         if is_branch:
             move_branch(
                 net=net,
-                elem_id=station.assets[asset_index].grid_model_id,
+                elem_id=asset.grid_model_id,
                 bus_breaker_id=station.busbars[target_bus_index].grid_model_id,
                 from_end=from_side,
             )
         else:
             move_injection(
                 net=net,
-                elem_id=station.assets[asset_index].grid_model_id,
+                elem_id=asset.grid_model_id,
                 bus_breaker_id=station.busbars[target_bus_index].grid_model_id,
             )
         reassignments = [(asset_index, target_bus_index, True)]
@@ -489,7 +491,7 @@ def apply_station_bus_branch(net: Network, station: MaterializedStation) -> Appl
     reassignment_diff = []
     coupler_diff = []
 
-    for asset_index in range(len(station.assets)):
+    for asset_index in range(len(station.asset_connections)):
         result, new_reassignments = apply_single_asset_bus_branch(net, station, asset_index)
         if result == "disconnected":
             disconnection_diff.append(asset_index)

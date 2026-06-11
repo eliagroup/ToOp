@@ -15,8 +15,10 @@ from pydantic import ValidationError
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
+    MaterializedAssetConnection,
     MaterializedStation,
     RawStation,
+    StationAssetConnection,
     SwitchableAsset,
     Topology,
 )
@@ -75,9 +77,15 @@ def build_raw_station(
         voltage_level=None,
         busbars=busbars,
         couplers=couplers,
-        asset_ids=asset_ids,
-        asset_terminals=asset_terminals if asset_terminals is not None else [None] * len(asset_ids),
-        asset_bay_ids=asset_bay_ids if asset_bay_ids is not None else [None] * len(asset_ids),
+        asset_connections=[
+            StationAssetConnection(asset_id=asset_id, terminal=asset_terminal, asset_bay_id=asset_bay_id)
+            for asset_id, asset_terminal, asset_bay_id in zip(
+                asset_ids,
+                asset_terminals if asset_terminals is not None else [None] * len(asset_ids),
+                asset_bay_ids if asset_bay_ids is not None else [None] * len(asset_ids),
+                strict=True,
+            )
+        ],
         asset_switching_table=asset_switching_table,
         asset_connectivity=None,
         model_log=None,
@@ -271,7 +279,7 @@ def test_validate_actions_grouped_accepts_grouped_actions():
         voltage_level=None,
         busbars=[],
         couplers=[],
-        assets=[],
+        asset_connections=[],
         asset_switching_table=np.zeros((0, 0), dtype=bool),
         asset_connectivity=None,
         model_log=None,
@@ -292,7 +300,7 @@ def test_validate_actions_grouped_raises_for_non_grouped_actions():
         voltage_level=None,
         busbars=[],
         couplers=[],
-        assets=[],
+        asset_connections=[],
         asset_switching_table=np.zeros((0, 0), dtype=bool),
         asset_connectivity=None,
         model_log=None,
@@ -321,7 +329,6 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
             type=None,
             name=None,
             in_service=True,
-            asset_bay_id=None,
         )
     ]
 
@@ -333,7 +340,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
         voltage_level=None,
         busbars=busbars,
         couplers=[],
-        assets=assets,
+        asset_connections=[MaterializedAssetConnection.model_construct(asset=assets[0], terminal=None, asset_bay=None)],
         asset_switching_table=np.zeros((1, 1), dtype=bool),
         asset_connectivity=None,
         model_log=None,
@@ -341,7 +348,15 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
     station_b = station_a.model_copy(
         update={
             "grid_model_id": "station_b",
-            "assets": [station_a.assets[0].model_copy(update={"grid_model_id": "station_b_asset_0"})],
+            "asset_connections": [
+                station_a.asset_connections[0].model_copy(
+                    update={
+                        "asset": station_a.asset_connections[0].asset.model_copy(
+                            update={"grid_model_id": "station_b_asset_0"}
+                        )
+                    }
+                )
+            ],
         }
     )
 
@@ -358,9 +373,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
                 voltage_level=None,
                 busbars=busbars,
                 couplers=[],
-                asset_ids=["station_a_asset_0"],
-                asset_terminals=[None],
-                asset_bay_ids=[None],
+                asset_connections=[StationAssetConnection(asset_id="station_a_asset_0", terminal=None, asset_bay_id=None)],
                 asset_switching_table=np.zeros((1, 1), dtype=bool),
                 asset_connectivity=None,
                 model_log=None,
@@ -373,15 +386,13 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
                 voltage_level=None,
                 busbars=busbars,
                 couplers=[],
-                asset_ids=["station_b_asset_0"],
-                asset_terminals=[None],
-                asset_bay_ids=[None],
+                asset_connections=[StationAssetConnection(asset_id="station_b_asset_0", terminal=None, asset_bay_id=None)],
                 asset_switching_table=np.zeros((1, 1), dtype=bool),
                 asset_connectivity=None,
                 model_log=None,
             ),
         ],
-        assets=station_a.assets + station_b.assets,
+        assets=[station_a.asset_connections[0].asset, station_b.asset_connections[0].asset],
         asset_setpoints=None,
         timestamp=datetime.now(),
         metrics=None,
@@ -434,7 +445,6 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
                 type=None,
                 name=None,
                 in_service=True,
-                asset_bay_id=None,
             )
             for asset_idx in range(n_assets)
         ]
@@ -473,7 +483,9 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
             voltage_level=None,
             busbars=busbars,
             couplers=starting_couplers,
-            assets=assets,
+            asset_connections=[
+                MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None) for asset in assets
+            ],
             asset_switching_table=starting_switching_table,
             asset_connectivity=None,
             model_log=None,
@@ -566,14 +578,12 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
             type=None,
             name=None,
             in_service=True,
-            asset_bay_id=None,
         ),
         SwitchableAsset.model_construct(
             grid_model_id="station_save_load_asset_2",
             type=None,
             name=None,
             in_service=True,
-            asset_bay_id=None,
         ),
     ]
     asset_switching_table = np.array([[True, False], [False, True]], dtype=bool)
@@ -605,7 +615,9 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
         voltage_level=None,
         busbars=busbars,
         couplers=couplers,
-        assets=assets,
+        asset_connections=[
+            MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None) for asset in assets
+        ],
         asset_switching_table=asset_switching_table,
         asset_connectivity=None,
         model_log=None,
@@ -676,14 +688,12 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
             type=None,
             name=None,
             in_service=True,
-            asset_bay_id=None,
         ),
         SwitchableAsset.model_construct(
             grid_model_id="asset2",
             type=None,
             name=None,
             in_service=True,
-            asset_bay_id=None,
         ),
     ]
     asset_switching_table = np.array([[True, False], [False, True]], dtype=bool)
@@ -715,7 +725,9 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
         voltage_level=None,
         busbars=busbars,
         couplers=couplers,
-        assets=assets,
+        asset_connections=[
+            MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None) for asset in assets
+        ],
         asset_switching_table=asset_switching_table,
         asset_connectivity=None,
         model_log=None,

@@ -33,6 +33,7 @@ from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker impo
 )
 from toop_engine_interfaces.asset_topology import (
     AssetBay,
+    MaterializedAssetConnection,
     MaterializedStation,
     Topology,
     build_asset_bay_id,
@@ -476,9 +477,12 @@ def get_station_from_id(
         voltage_level=voltage_level_float,
         busbars=busbar_list,
         couplers=coupler_list,
-        assets=switchable_assets_list,
-        asset_terminals=asset_terminals,
-        asset_bays=asset_connection_path,
+        asset_connections=[
+            MaterializedAssetConnection(asset=asset, terminal=asset_terminal, asset_bay=asset_bay)
+            for asset, asset_terminal, asset_bay in zip(
+                switchable_assets_list, asset_terminals, asset_connection_path, strict=True
+            )
+        ],
         asset_switching_table=switching_matrix,
     )
 

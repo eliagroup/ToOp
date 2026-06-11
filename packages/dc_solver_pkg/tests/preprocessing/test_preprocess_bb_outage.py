@@ -26,7 +26,7 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     update_network_data_with_non_rel_bb_outages,
 )
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
-from toop_engine_interfaces.asset_topology import Busbar, MaterializedStation, SwitchableAsset
+from toop_engine_interfaces.asset_topology import Busbar, MaterializedAssetConnection, MaterializedStation, SwitchableAsset
 
 
 def test_get_total_injection_along_stub_branch(network_data: NetworkData):
@@ -235,7 +235,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         grid_model_id="node_2",
         busbars=[busbar_0, busbar_1],
         couplers=[],
-        assets=[asset2, asset3, asset4, asset7],
+        asset_connections=[MaterializedAssetConnection(asset=asset) for asset in [asset2, asset3, asset4, asset7]],
         asset_switching_table=np.array(
             [
                 [True, False, True, False],  # Busbar 0
@@ -326,7 +326,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         grid_model_id="node_0",
         busbars=[busbar_0],
         couplers=[],
-        assets=[asset1, asset4, asset5, asset6],
+        asset_connections=[MaterializedAssetConnection(asset=asset) for asset in [asset1, asset4, asset5, asset6]],
         asset_switching_table=np.array(
             [
                 [True, True, True, True],  # Busbar 0
@@ -393,8 +393,8 @@ def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: 
             for branch_index in branch_outages:
                 branch_id = updated_net_data.branch_ids[branch_index]
                 # get asset_index of the branch
-                for asset_index, asset in enumerate(station.assets):
-                    if asset.grid_model_id == branch_id:
+                for asset_index, asset_connection in enumerate(station.asset_connections):
+                    if asset_connection.asset.grid_model_id == branch_id:
                         break
 
                 assert station.asset_switching_table[busbar_index, asset_index], (

@@ -28,6 +28,7 @@ from toop_engine_importer.pypowsybl_import.preprocessing import create_nminus1_d
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     RawStation,
+    StationAssetConnection,
     SwitchableAsset,
     Topology,
 )
@@ -71,9 +72,7 @@ def test_filter_split_stations_from_relevant_subs(basic_node_breaker_network_pow
             Busbar(int_id=1, grid_model_id="bb1", bus_branch_bus_id=buses.index[1]),
         ],
         couplers=[],
-        asset_ids=["asset0"],
-        asset_terminals=[None],
-        asset_bay_ids=[None],
+        asset_connections=[StationAssetConnection(asset_id="asset0", terminal=None, asset_bay_id=None)],
         asset_switching_table=np.array([[True], [False]]),
     )
     regular_station = RawStation(
@@ -81,9 +80,7 @@ def test_filter_split_stations_from_relevant_subs(basic_node_breaker_network_pow
         name="regular",
         busbars=[Busbar(int_id=0, grid_model_id="bb2", bus_branch_bus_id=buses.index[1])],
         couplers=[],
-        asset_ids=["asset1"],
-        asset_terminals=[None],
-        asset_bay_ids=[None],
+        asset_connections=[StationAssetConnection(asset_id="asset1", terminal=None, asset_bay_id=None)],
         asset_switching_table=np.array([[True]]),
     )
     topology_model = Topology(

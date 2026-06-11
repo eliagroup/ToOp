@@ -110,29 +110,37 @@
         ]
       ],
       "model_log": [],
-      "asset_ids": [
-        "L1",
-        "L2",
-        "L6",
-        "L7",
-        "L8",
-        "load1"
-      ],
-      "asset_terminals": [
-        null,
-        null,
-        null,
-        null,
-        null,
-        null
-      ],
-      "asset_bay_ids": [
-        "VL2_0::L1::bay",
-        "VL2_0::L2::bay",
-        "VL2_0::L6::bay",
-        "VL2_0::L7::bay",
-        "VL2_0::L8::bay",
-        "VL2_0::load1::bay"
+      "asset_connections": [
+        {
+          "asset_id": "L1",
+          "terminal": null,
+          "asset_bay_id": "VL2_0::L1::bay"
+        },
+        {
+          "asset_id": "L2",
+          "terminal": null,
+          "asset_bay_id": "VL2_0::L2::bay"
+        },
+        {
+          "asset_id": "L6",
+          "terminal": null,
+          "asset_bay_id": "VL2_0::L6::bay"
+        },
+        {
+          "asset_id": "L7",
+          "terminal": null,
+          "asset_bay_id": "VL2_0::L7::bay"
+        },
+        {
+          "asset_id": "L8",
+          "terminal": null,
+          "asset_bay_id": "VL2_0::L8::bay"
+        },
+        {
+          "asset_id": "load1",
+          "terminal": null,
+          "asset_bay_id": "VL2_0::load1::bay"
+        }
       ]
     },
     {
@@ -268,26 +276,32 @@
         ]
       ],
       "model_log": [],
-      "asset_ids": [
-        "L3",
-        "L6",
-        "L7",
-        "L9",
-        "load2"
-      ],
-      "asset_terminals": [
-        null,
-        null,
-        null,
-        null,
-        null
-      ],
-      "asset_bay_ids": [
-        "VL3_0::L3::bay",
-        "VL3_0::L6::bay",
-        "VL3_0::L7::bay",
-        "VL3_0::L9::bay",
-        "VL3_0::load2::bay"
+      "asset_connections": [
+        {
+          "asset_id": "L3",
+          "terminal": null,
+          "asset_bay_id": "VL3_0::L3::bay"
+        },
+        {
+          "asset_id": "L6",
+          "terminal": null,
+          "asset_bay_id": "VL3_0::L6::bay"
+        },
+        {
+          "asset_id": "L7",
+          "terminal": null,
+          "asset_bay_id": "VL3_0::L7::bay"
+        },
+        {
+          "asset_id": "L9",
+          "terminal": null,
+          "asset_bay_id": "VL3_0::L9::bay"
+        },
+        {
+          "asset_id": "load2",
+          "terminal": null,
+          "asset_bay_id": "VL3_0::load2::bay"
+        }
       ]
     }
   ],

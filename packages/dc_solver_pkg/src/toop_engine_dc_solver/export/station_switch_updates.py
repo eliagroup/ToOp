@@ -159,8 +159,8 @@ def _get_asset_switch_diffs(
         )
 
     changed_busbar_lookup = _get_busbar_lookup(changed_station)
-    changed_asset_ids = [asset.grid_model_id for asset in changed_station.assets]
-    starting_asset_ids = [asset.grid_model_id for asset in starting_station.assets]
+    changed_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in changed_station.asset_connections]
+    starting_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in starting_station.asset_connections]
     if changed_asset_ids != starting_asset_ids:
         raise ValueError(
             "Changed station assets are not ordered like the starting topology for station "
@@ -170,8 +170,9 @@ def _get_asset_switch_diffs(
     switching_xor = np.logical_xor(starting_switching_table, changed_switching_table)
 
     diff_switches: list[dict[str, str | bool]] = []
-    for column, changed_asset in enumerate(changed_station.assets):
-        asset_bay = changed_station.asset_bays[column]
+    for column, changed_asset_connection in enumerate(changed_station.asset_connections):
+        changed_asset = changed_asset_connection.asset
+        asset_bay = changed_asset_connection.asset_bay
         if asset_bay is None:
             continue
         changed_switch_states = changed_switching_table[:, column]

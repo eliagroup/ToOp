@@ -124,9 +124,9 @@ def make_separation_set(
     """
     assert all(busbar.in_service for busbar in station.busbars)
     assert all(coupler.in_service for coupler in station.couplers)
-    assert all(asset.in_service for asset in station.assets)
+    assert all(asset_connection.asset.in_service for asset_connection in station.asset_connections)
     if not len(station.couplers):
-        return (np.zeros((0, 2, len(station.assets)), dtype=bool), np.zeros((0, 0), dtype=bool), [])
+        return (np.zeros((0, 2, len(station.asset_connections)), dtype=bool), np.zeros((0, 0), dtype=bool), [])
     # Go through all possible coupler assignments and find all the configurations in which there are
     # exactly two electrical busbars.
     switching_map = {
@@ -440,13 +440,15 @@ def add_missing_asset_topology_branch_info(
     new_raw_stations = []
     for station in asset_topology.raw_stations:
         new_branch_ends = []
-        for asset_id, branch_end in zip(station.asset_ids, station.asset_terminals, strict=True):
+        for asset_connection in station.asset_connections:
+            asset_id = asset_connection.asset_id
+            branch_end = asset_connection.terminal
             index = branch_id_lookup.get(asset_id, None)
             if index is not None and (overwrite_if_present or branch_end is None):
                 new_branch_ends.append("from" if branch_from_nodes[index] == station.grid_model_id else "to")
             else:
                 new_branch_ends.append(branch_end)
-        new_raw_stations.append(station.model_copy(update={"asset_terminals": new_branch_ends}))
+        new_raw_stations.append(station.with_asset_terminals(new_branch_ends))
 
     return copy_topology_with_updates(
         reference_topology=asset_topology,

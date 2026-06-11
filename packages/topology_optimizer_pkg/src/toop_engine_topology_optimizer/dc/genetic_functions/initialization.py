@@ -372,8 +372,20 @@ def update_single_pair_branch_limit_information(
         solver_config,
         batch_size_bsdf=batch_size,
         batch_size_injection=batch_size,
-        enable_parallel_pst_group_optim=enable_parallel_pst_group_optim,
+        enable_parallel_pst_group_optim=enable_parallel_pst_group_optim if enable_nodal_inj_optim else False,
     )
+    nodal_injection_info = None
+    if dynamic_information.nodal_injection_information is not None:
+        if not enable_nodal_inj_optim:
+            nodal_injection_info = replace(dynamic_information.nodal_injection_information, parallel_pst_group_mask=None)
+        else:
+            nodal_injection_info = replace(
+                dynamic_information.nodal_injection_information,
+                parallel_pst_group_mask=dynamic_information.nodal_injection_information.parallel_pst_group_mask
+                if enable_parallel_pst_group_optim
+                else None,
+            )
+
     updated_dynamic_information = replace(
         dynamic_information,
         branch_limits=replace(
@@ -389,7 +401,7 @@ def update_single_pair_branch_limit_information(
                 else dynamic_information.branch_limits.n0_n1_max_diff
             ),
         ),
-        nodal_injection_information=(dynamic_information.nodal_injection_information if enable_nodal_inj_optim else None),
+        nodal_injection_information=nodal_injection_info,
     )
     return updated_solver_config, updated_dynamic_information
 

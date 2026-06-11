@@ -42,7 +42,7 @@ def canonicalize_parallel_pst_taps(
     nodal_inj_info: NodalInjectionInformation,
 ) -> Int[Array, " batch_size n_timesteps n_controllable_pst"]:
     """Project PST taps onto the configured parallel-group constraint using one shared delta per group."""
-    if nodal_inj_info.parallel_pst_group_mask.size == 0:
+    if nodal_inj_info.parallel_pst_group_mask is None or nodal_inj_info.parallel_pst_group_mask.shape[0] == 0:
         return pst_tap_indices
 
     group_mask = nodal_inj_info.parallel_pst_group_mask.astype(int)

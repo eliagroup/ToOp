@@ -26,9 +26,7 @@ from toop_engine_dc_solver.jax.types import (
 from toop_engine_dc_solver.jax.utils import argmax_top_k
 
 
-# TODO: PLDR0913 & ARG001 warning -> remove n_sub_relevant
-# Too many arguments in function definition (11 > 10)
-def prepare_result_storage(  # noqa: PLR0913
+def prepare_result_storage(
     aggregate_output_fn: AggregateOutputProtocol,
     n_timesteps: int,
     n_branches_monitored: int,
@@ -37,7 +35,6 @@ def prepare_result_storage(  # noqa: PLR0913
     n_disconnections: Optional[int],
     max_branch_per_sub: int,
     max_inj_per_sub: int,
-    nminus2: bool,
     bb_outage: bool,
     size: int,
 ) -> PyTree[Shaped[Array, " size ..."]]:
@@ -64,8 +61,6 @@ def prepare_result_storage(  # noqa: PLR0913
         The maximum number of branches per substation
     max_inj_per_sub:
         The maximum number of injections per substation
-    nminus2: bool
-        Whether the N-2 feature is enabled
     bb_outage: bool
         Whether the BB outage feature is enabled
     size : int
@@ -99,7 +94,6 @@ def prepare_result_storage(  # noqa: PLR0913
         branch_topology=jnp.zeros(topologies_shape, dtype=bool),
         sub_ids=jnp.zeros(sub_ids_shape, dtype=int),
         injection_topology=jnp.zeros(injections_shape, dtype=bool),
-        n_2_penalty=jnp.array(0.0, dtype=float) if nminus2 else None,
         disconnections=jnp.zeros(n_disconnections, dtype=int) if n_disconnections else None,
         bb_outage_penalty=jnp.array(0.0, dtype=float) if bb_outage else None,
     )

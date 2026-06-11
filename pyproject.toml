@@ -82,6 +82,7 @@ dev = [
     "pytest-timeout",
     "pytest-env",
     "pytest-xdist>=3.8.0",
+    "psycopg[binary]>=3.2.9",
     "ipykernel>=6.25.2",
     "jupyter>=1.0.0",
     "nbclient>=0.10.0",

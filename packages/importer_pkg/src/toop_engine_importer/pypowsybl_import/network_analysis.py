@@ -223,7 +223,7 @@ def apply_cb_lists_cgmes(
         The statistics with the id lists of the black and white list
     """
     if white_list_file is not None:
-        raise NotImplementedError("White list is not implemented for CGMES yet.")
+        logger.warning("White list is not implemented for CGMES yet. Ignoring provided white list file.")
     statistics.id_lists["white_list"] = []
     if ignore_list_file is not None:
         with filesystem.open(str(ignore_list_file), "r") as file:

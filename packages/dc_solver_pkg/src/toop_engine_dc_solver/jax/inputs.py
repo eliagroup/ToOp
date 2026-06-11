@@ -32,7 +32,6 @@ from toop_engine_dc_solver.jax.types import (
     BBOutageBaselineAnalysis,
     BranchLimits,
     DynamicInformation,
-    N2BaselineAnalysis,
     NodalInjectionInformation,
     NonRelBBOutageData,
     RelBBOutageData,
@@ -287,19 +286,6 @@ def validate_static_information(
         n_branch,
     )
 
-    if di.n2_baseline_analysis is not None:
-        baseline = di.n2_baseline_analysis
-        n_l1_outages = baseline.l1_branches.shape[0]
-        assert baseline.l1_branches.shape == (n_l1_outages,)
-        assert baseline.tot_stat_blacklisted.shape[0] == n_sub_relevant
-        assert baseline.tot_stat_blacklisted.shape[1] <= max_branch_per_sub
-        assert baseline.n_2_overloads.shape == (n_l1_outages,)
-        assert baseline.n_2_success_count.shape == (n_l1_outages,)
-        assert baseline.more_splits_penalty.shape == ()
-        assert baseline.max_mw_flow.shape == (n_branch_monitored,)
-        if baseline.overload_weight is not None:
-            assert baseline.overload_weight.shape == (n_branch_monitored,)
-
     if di.nodal_injection_information is not None:
         assert jnp.all(di.nodal_injection_information.controllable_pst_indices >= 0)
         assert jnp.all(di.nodal_injection_information.controllable_pst_indices < n_bus)
@@ -530,34 +516,6 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             data=dynamic_information.action_set.action_start_indices,
         )
 
-        if dynamic_information.n2_baseline_analysis is not None:
-            baseline = dynamic_information.n2_baseline_analysis
-            file.create_dataset(
-                "n_2_l1_branches",
-                data=baseline.l1_branches,
-            )
-            file.create_dataset(
-                "n_2_tot_stat_blacklisted",
-                data=baseline.tot_stat_blacklisted,
-            )
-            file.create_dataset(
-                "n_2_overloads",
-                data=baseline.n_2_overloads,
-            )
-            file.create_dataset(
-                "n_2_success_count",
-                data=baseline.n_2_success_count,
-            )
-            file.attrs["n_2_more_splits_penalty"] = baseline.more_splits_penalty.item()
-            file.create_dataset(
-                "n_2_max_mw_flow",
-                data=baseline.max_mw_flow,
-            )
-            if baseline.overload_weight is not None:
-                file.create_dataset(
-                    "n_2_overload_weight",
-                    data=baseline.overload_weight,
-                )
         if dynamic_information.nodal_injection_information is not None:
             nodal_inj_opt = dynamic_information.nodal_injection_information
             file.create_dataset(
@@ -737,7 +695,6 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
 
     with h5py.File(binaryio, mode="r") as file:
         (
-            n2_baseline_analysis_present,
             rel_bb_outage_data_present,
             non_rel_bb_outage_data_present,
             bb_outage_baseline_analysis_present,
@@ -793,7 +750,6 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 relevant_injection_outage_idx=jnp.array(file["relevant_injection_outage_idx"][:]),
                 unsplit_flow=jnp.array(file["unsplit_flow"][:]),
                 branches_monitored=jnp.array(file["branches_monitored"][:]),
-                n2_baseline_analysis=load_n2_baseline_analysis(file, n2_baseline_analysis_present),
                 nodal_injection_information=load_nodal_injection_optimization(file, nodal_injection_optimization_present),
                 non_rel_bb_outage_data=load_non_rel_bb_outage_data(file, non_rel_bb_outage_data_present),
                 bb_outage_baseline_analysis=load_bb_outage_baseline_analysis(file, bb_outage_baseline_analysis_present),
@@ -875,34 +831,6 @@ def load_bb_outage_baseline_analysis(
     return None
 
 
-def load_n2_baseline_analysis(file: h5py.File, n2_baseline_analysis_present: bool) -> N2BaselineAnalysis | None:
-    """Load the N-2 baseline analysis from the hdf5 file if present.
-
-    Parameters
-    ----------
-    file : h5py.File
-        The hdf5 file to load from
-    n2_baseline_analysis_present : bool
-        Whether the N-2 baseline analysis data is present in the file
-
-    Returns
-    -------
-    N2BaselineAnalysis | None
-        The loaded N2BaselineAnalysis or None if not present
-    """
-    if n2_baseline_analysis_present:
-        return N2BaselineAnalysis(
-            l1_branches=jnp.array(file["n_2_l1_branches"][:]),
-            tot_stat_blacklisted=jnp.array(file["n_2_tot_stat_blacklisted"][:]),
-            n_2_overloads=jnp.array(file["n_2_overloads"][:]),
-            n_2_success_count=jnp.array(file["n_2_success_count"][:]),
-            more_splits_penalty=jnp.array(float(file.attrs["n_2_more_splits_penalty"])),
-            max_mw_flow=jnp.array(file["n_2_max_mw_flow"][:]),
-            overload_weight=(jnp.array(file["n_2_overload_weight"][:]) if "n_2_overload_weight" in file else None),
-        )
-    return None
-
-
 def load_nodal_injection_optimization(
     file: h5py.File, nodal_injection_optimization_present: bool
 ) -> NodalInjectionInformation | None:
@@ -938,7 +866,7 @@ def load_nodal_injection_optimization(
     return None
 
 
-def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bool]:
+def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool]:
     """Check the availability of optional data in the hdf5 file.
 
     Parameters
@@ -948,23 +876,13 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bo
 
     Returns
     -------
-    tuple[bool, bool, bool, bool, bool]
+    tuple[bool, bool, bool, bool]
         A tuple of booleans indicating the presence of:
-        - n2_baseline_analysis_present
         - rel_bb_outage_data_present
         - non_rel_bb_outage_data_present
         - bb_outage_baseline_analysis_present
         - nodal_injection_optimization_present
     """
-    n2_baseline_analysis_present = (
-        "n_2_l1_branches" in file
-        and "n_2_tot_stat_blacklisted" in file
-        and "n_2_overloads" in file
-        and "n_2_success_count" in file
-        and "n_2_more_splits_penalty" in file.attrs
-        and "n_2_max_mw_flow" in file
-    )
-
     rel_bb_outage_data_present = (
         "action_set_rel_bb_outage_data_branch_outage_set" in file
         and "action_set_rel_bb_outage_data_nodal_indices" in file
@@ -993,7 +911,6 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool, bo
     )
 
     return (
-        n2_baseline_analysis_present,
         rel_bb_outage_data_present,
         non_rel_bb_outage_data_present,
         bb_outage_baseline_analysis_present,

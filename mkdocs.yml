@@ -122,7 +122,6 @@ nav:
     - dc_solver/intro.md
     - dc_solver/quickstart.md
     - dc_solver/switching_distance.md
-    - dc_solver/nminus2.md
     - dc_solver/preprocessing.md
     - dc_solver/busbar_outage.md
     - dc_solver/install_time.md

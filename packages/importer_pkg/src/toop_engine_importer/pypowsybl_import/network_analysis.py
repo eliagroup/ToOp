@@ -195,6 +195,48 @@ def apply_cb_lists(
     return statistics
 
 
+def apply_cb_lists_cgmes(
+    statistics: PreProcessingStatistics,
+    white_list_file: str | Path | None,
+    ignore_list_file: str | Path | None,
+    filesystem: AbstractFileSystem,
+) -> PreProcessingStatistics:
+    """Run the black or white list to the powsybl network for CGMES.
+
+    Parameters
+    ----------
+    network : Network
+        The network to modify. Note: The network is modified in place.
+    statistics : ProcessingStatistics
+        The statistics to fill with the id lists of the black and white list
+        Note: The statistics are modified in place.
+    white_list_file : str | Path | None
+        The path to the white list file, if None, no white list is applied.
+    ignore_list_file : str | Path | None
+        The path to the ignore list file, if None, no ignore list is applied.
+    filesystem : AbstractFileSystem
+        The filesystem to use to read the files.
+
+    Returns
+    -------
+    statistics: ProcessingStatistics
+        The statistics with the id lists of the black and white list
+    """
+    if white_list_file is not None:
+        raise NotImplementedError("White list is not implemented for CGMES yet.")
+    statistics.id_lists["white_list"] = []
+    if ignore_list_file is not None:
+        with filesystem.open(str(ignore_list_file), "r") as file:
+            ignore_df = pd.read_csv(file, sep=";")
+        statistics.import_result.n_black_list = len(ignore_df)
+        ignore_df = ignore_df[ignore_df["grid_model_id"].notnull()]
+        statistics.id_lists["black_list"] = ignore_df["grid_model_id"].to_list()
+        statistics.import_result.n_black_list_applied = len(ignore_df["grid_model_id"])
+    else:
+        statistics.id_lists["black_list"] = []
+    return statistics
+
+
 def remove_branches_with_same_bus(network: Network) -> None:
     """Remove branches that have the same bus.
 

@@ -227,10 +227,12 @@ def test_exclude_nonlinear_psts_from_controllable_rejects_empty_parallel_group_r
 
 
 def test_exclude_nonlinear_psts_from_controllable_rejects_mixed_parallel_group_linearity(
-    complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_folder: Path,
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
 ) -> None:
-    """Verify that a configured parallel PST group cannot mix linear and non-linear members."""
-    grid_folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_folder
+    """Verify that a configured parallel PST group cannot mix linear and non-linear members.
+
+    We load two linear PSTs but then configure one of them as non-linear to trigger the validation error."""
+    grid_folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder
     network_data = load_network_data(grid_folder / "network_data.pkl")
     assert network_data.controllable_phase_shift_mask.sum() == 2
 

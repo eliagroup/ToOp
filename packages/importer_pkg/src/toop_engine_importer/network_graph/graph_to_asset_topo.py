@@ -99,7 +99,7 @@ def get_coupler_df(
         right_index=True,
         how="left",
     )
-    coupler_df = switches_connected_to_busbars[switches_connected_to_busbars["coupler_type"] != ""]
+    coupler_df = switches_connected_to_busbars[switches_connected_to_busbars["coupler_type"] != ""].copy()
     coupler_df["from_busbar_grid_model_id"] = ""
     coupler_df["to_busbar_grid_model_id"] = ""
     coupler_df["type"] = ""
@@ -384,7 +384,7 @@ def get_asset_bay_df(
     bay_edge_connection_info = {
         edge_id: edge_info for edge_id, edge_info in edge_connection_info.items() if asset_grid_model_id == edge_info.bay_id
     }
-    asset_bays_df = switches_df[(switches_df["grid_model_id"].isin(bay_edge_connection_info.keys()))]
+    asset_bays_df = switches_df[switches_df["grid_model_id"].isin(bay_edge_connection_info.keys())].copy()
     asset_bays_df["direct_busbar_grid_model_id"] = asset_bays_df["grid_model_id"].map(
         lambda grid_model_id: bay_edge_connection_info[grid_model_id].direct_busbar_grid_model_id
     )

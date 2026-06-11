@@ -205,8 +205,6 @@ def apply_cb_lists_cgmes(
 
     Parameters
     ----------
-    network : Network
-        The network to modify. Note: The network is modified in place.
     statistics : ProcessingStatistics
         The statistics to fill with the id lists of the black and white list
         Note: The statistics are modified in place.

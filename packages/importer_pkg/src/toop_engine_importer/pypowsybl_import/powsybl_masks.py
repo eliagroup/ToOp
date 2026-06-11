@@ -475,8 +475,9 @@ def update_trafo_masks(
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
         The import parameters including nminus1_area, cutoff_voltage and optionally dso_trafo_factors and dso_trafo_weight
     blacklisted_ids: list[str]
-        The ids of the branches that are blacklisted. DSO borders are excluded from the blacklist
-        because we need to consider the effect of our switching actions on the DSOs.
+        The ids of the branches that are blacklisted.
+        DSO trafos are also excluded from the blacklist. This can go wrong,
+        as the genetic algorithm might decide to push power down do solve the problem.
 
     Returns
     -------

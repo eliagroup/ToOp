@@ -55,7 +55,7 @@ def mutate_psts(
         mask. If enabled, whole groups of PSTs defined in the parallel_pst_group_mask will be mutated together, meaning
         that the mutation will be the same for all PSTs in a group.
         The pst_mutation_probability and pst_reset_probability will then apply to the groups instead of individual PSTs.
-    parallel_pst_group_mask: Int[Array, " n_parallel_pst_groups n_controllable_pst"] | None
+    parallel_pst_group_mask: Bool[Array, " n_parallel_pst_groups n_controllable_pst"] | None
         A boolean mask defining the parallel PST groups, where True indicates that a PST belongs to a group. The shape of
         the mask should be (n_parallel_pst_groups, n_controllable_pst). Each column should have exactly one True value,
         indicating that each PST belongs to exactly one group. If None or empty, parallel group optimization

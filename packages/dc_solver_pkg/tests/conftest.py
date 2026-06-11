@@ -1330,13 +1330,6 @@ def three_node_pst_example_data_folder(tmp_path_factory: pytest.TempPathFactory)
     return tmp_path
 
 
-@pytest.fixture(scope="function")
-def three_node_pst_network_data(three_node_pst_example_data_folder: Path) -> Path:
-    tmp_path = three_node_pst_example_data_folder
-    network_data = load_network_data(tmp_path / "network_data.pkl")
-    return network_data
-
-
 @pytest.fixture
 def default_nodal_inj_start_options(static_information: StaticInformation):
     """Create default nodal injection start options for tests.

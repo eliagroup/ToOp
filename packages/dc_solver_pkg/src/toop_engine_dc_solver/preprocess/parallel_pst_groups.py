@@ -120,7 +120,7 @@ def _build_pst_group_mapping(pst_groups: list[tuple[str, str]], file_path: str) 
     pst_groups : list[tuple[str, str]]
         List of (pst_id, group_name) tuples parsed from the action set.
     file_path : str
-        Path to the CSV file, used for error messages.
+        Path to the ActionSet (action_set.json) file, used for error messages.
 
     Returns
     -------

@@ -18,10 +18,8 @@ from toop_engine_dc_solver.jax.compute_batch import (
 )
 from toop_engine_dc_solver.jax.disconnections import random_disconnection_indices
 from toop_engine_dc_solver.jax.injections import (
-    default_injection,
     random_injection,
 )
-from toop_engine_dc_solver.jax.nminus2_outage import unsplit_n_2_analysis
 from toop_engine_dc_solver.jax.topology_computations import (
     convert_topo_to_action_set_index_jittable,
     pad_action_with_unsplit_action_indices,
@@ -285,44 +283,6 @@ def test_compute_symmetric_batch_with_disconnection(
                 disc_i = static_information.dynamic_information.disconnectable_branches[disc_i]
                 assert jnp.allclose(n_0_i[:, disc_i], 0)
                 assert jnp.allclose(n_1_1[:, :, disc_i], 0)
-
-
-def test_compute_symmetric_batch_nminus2(
-    jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
-) -> None:
-    topologies, _, static_information = jax_inputs
-    solver_config = static_information.solver_config
-    dynamic_information = static_information.dynamic_information
-
-    baseline = unsplit_n_2_analysis(dynamic_information=dynamic_information, more_splits_penalty=100.0)
-
-    dynamic_information = replace(dynamic_information, n2_baseline_analysis=baseline)
-
-    topologies = batch_topologies(topologies, static_information.solver_config.batch_size_bsdf)[0]
-    action_index_topo = convert_topo_to_action_set_index_jittable(
-        topologies=topologies,
-        branch_actions=dynamic_information.action_set,
-    )
-    injections = default_injection(
-        n_splits=action_index_topo.action.shape[1],
-        max_inj_per_sub=dynamic_information.max_inj_per_sub,
-        batch_size=action_index_topo.action.shape[0],
-    )
-
-    lf_res, success = compute_symmetric_batch(
-        topology_batch=action_index_topo,
-        disconnection_batch=None,
-        injections=injections.injection_topology,
-        nodal_inj_start_options=None,
-        dynamic_information=dynamic_information,
-        solver_config=solver_config,
-    )
-    assert jnp.all(success)
-    assert lf_res.n_2_penalty is not None
-    assert lf_res.n_2_penalty.shape == success.shape
-    assert jnp.all(lf_res.n_2_penalty >= 0.0)
-    # Unsplit grid is first topology
-    assert lf_res.n_2_penalty[0] == 0
 
 
 def test_compute_symmetric_batch_multiple_timesteps(

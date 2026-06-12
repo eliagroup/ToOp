@@ -26,7 +26,6 @@ ConvertToJaxStage: TypeAlias = Literal[
     "convert_rel_bb_outage_data",
     "create_static_information",
     "filter_branch_actions",
-    "unsplit_n2_analysis",
     "bb_outage_baseline_analysis",
     "convert_to_jax_done",
 ]

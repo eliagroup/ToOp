@@ -668,15 +668,6 @@ def get_pst_activated(
     return jnp.sum(tap_changed).astype(float)
 
 
-def get_n_2_penalty(
-    n_2_penalty: Optional[Float[Array, " "]],
-) -> Float[Array, " "]:
-    """Pass the N-2 penalty from the solver or raise if not provided."""
-    if n_2_penalty is None:
-        raise ValueError("No N-2 results returned from solver, can not pass to metric")
-    return n_2_penalty
-
-
 def choose_max_mw_flow(
     branch_limits: BranchLimits,
     metric: MetricType,
@@ -891,8 +882,6 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
             retval = get_number_of_splits(lf_res.branch_topology, lf_res.sub_ids, n_relevant_subs)
         case "disconnected_branches":
             retval = get_number_of_disconnections(lf_res.disconnections, branch_limits.max_mw_flow.shape[0])
-        case "n_2_penalty":
-            retval = get_n_2_penalty(lf_res.n_2_penalty)
         case "bb_outage_penalty":
             retval = get_bb_outage_penalty(lf_res.bb_outage_penalty)
         case "bb_outage_overload":

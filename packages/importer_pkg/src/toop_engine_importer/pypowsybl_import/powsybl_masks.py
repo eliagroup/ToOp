@@ -409,6 +409,9 @@ def update_line_masks(
     disconnectable_mask = control_area_mask & hv_line_mask & is_disconnectable
 
     blacklisted_lines = lines_df.index.isin(blacklisted_ids)
+    outage_mask = outage_mask & ~blacklisted_lines
+    reward_mask = reward_mask & ~blacklisted_lines
+    disconnectable_mask = disconnectable_mask & ~blacklisted_lines
 
     # Identify border lines inside the observed area and outside of it
     external_border_mask, _ = get_border_line_mask(
@@ -470,9 +473,10 @@ def update_trafo_masks(
         The network to get the masks for.
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
         The import parameters including nminus1_area, cutoff_voltage and optionally dso_trafo_factors and dso_trafo_weight
-    blacklisted_ids: list[int]
-        The ids of the branches that are blacklisted. DSO borders are excluded from the blacklist
-        because we need to consider the effect of our switching actions on the DSOs.
+    blacklisted_ids: list[str]
+        The ids of the branches that are blacklisted.
+        DSO border trafos are excluded from blacklisting.. This can go wrong,
+        as the genetic algorithm might decide to push power down to solve the problem.
 
     Returns
     -------
@@ -529,16 +533,19 @@ def update_trafo_masks(
         network_masks.trafo_overload_weight * importer_parameters.area_settings.dso_trafo_weight,
         network_masks.trafo_overload_weight,
     )
-    # Create blacklisted mask based on blacklisted_ids
-    # Exlude DSO border trafos from the blacklist because we need to consider the effect of our switching actions on the DSOs
+    # Create blacklisted mask based on blacklisted_ids.
     blacklisted_trafos = trafos_df.index.isin(blacklisted_ids)
-    backlist_excl_dso = blacklisted_trafos & ~trafo_dso_border
+
+    disconnectable_mask = disconnectable_mask & ~blacklisted_trafos
+    pst_controllable_mask = pst_controllable_mask & ~blacklisted_trafos
+    outage_mask = outage_mask & ~blacklisted_trafos
+    reward_mask = reward_mask & ~blacklisted_trafos
 
     return replace(
         network_masks,
         trafo_for_nminus1=outage_mask,
         trafo_for_reward=reward_mask,
-        trafo_blacklisted=backlist_excl_dso,
+        trafo_blacklisted=blacklisted_trafos,
         trafo_dso_border=trafo_dso_border,
         trafo_overload_weight=trafo_overload_weight,
         trafo_disconnectable=disconnectable_mask,
@@ -550,7 +557,7 @@ def update_bus_masks(
     network_masks: NetworkMasks,
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
-    filesystem: AbstractFileSystem,
+    blacklisted_ids: list[str],
 ) -> NetworkMasks:
     """Update the bus masks for the network.
 
@@ -562,8 +569,8 @@ def update_bus_masks(
         The network to get the masks for.
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters including control_area and cutoff_voltage
-    filesystem: AbstractFileSystem
-        The filesystem to read the ignore list from.
+    blacklisted_ids: list[str]
+        Blacklisted ids that should be excluded from relevant_subs when they match station/voltage-level ids.
 
     Returns
     -------
@@ -595,16 +602,8 @@ def update_bus_masks(
     else:
         raise ValueError(f"Data type {importer_parameters.data_type} is not supported.")
 
-    # apply ignore list
-    if importer_parameters.ignore_list_file is not None:
-        with filesystem.open(str(importer_parameters.ignore_list_file), "r") as file:
-            ignore_df = pd.read_csv(file, sep=";")
-        ignore_subs = ignore_df["grid_model_id"].to_list()
-        # str[:-2], because the bus names have a suffix e.g. "_0" or "_1" added to the station name
-        relevant_subs = np.logical_and(
-            relevant_subs,
-            ~np.isin(substation_ids, ignore_subs),
-        )
+    blacklisted_substations = np.isin(substation_ids, blacklisted_ids)
+    relevant_subs = relevant_subs & ~blacklisted_substations
 
     return replace(
         network_masks,
@@ -616,6 +615,7 @@ def update_tie_and_dangling_line_masks(
     network_masks: NetworkMasks,
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    blacklisted_ids: list[str],
 ) -> NetworkMasks:
     """Update the dangling line and tie line masks in the NetworkMasks for the given network and import parameters.
 
@@ -630,6 +630,8 @@ def update_tie_and_dangling_line_masks(
         The network to get the masks for.
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters including nminus1_area and cutoff_voltage and border_line_weight
+    blacklisted_ids: list[str]
+        The ids that should be excluded from masks.
 
     Returns
     -------
@@ -674,6 +676,14 @@ def update_tie_and_dangling_line_masks(
         network_masks.tie_line_overload_weight,
     )
 
+    blacklisted_dangling = dangling_lines_df.index.isin(blacklisted_ids)
+    blacklisted_tie_lines = tie_line_df.index.isin(blacklisted_ids)
+
+    boundary_line_for_nminus1 = boundary_line_for_nminus1 & ~blacklisted_dangling
+    tie_line_for_nminus1 = tie_line_for_nminus1 & ~blacklisted_tie_lines
+    tie_line_for_reward = tie_line_for_reward & ~blacklisted_tie_lines
+    tie_line_tso_border = tie_line_tso_border & ~blacklisted_tie_lines
+
     return replace(
         network_masks,
         tie_line_for_nminus1=tie_line_for_nminus1,
@@ -688,6 +698,7 @@ def update_load_and_generation_masks(
     network_masks: NetworkMasks,
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    blacklisted_ids: list[str],
 ) -> NetworkMasks:
     """Update the load and generation masks.
 
@@ -699,6 +710,8 @@ def update_load_and_generation_masks(
         The network to get the masks for.
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters including nminus1_area and cutoff_voltage
+    blacklisted_ids: list[str]
+        The ids that should be excluded from masks.
 
     Returns
     -------
@@ -734,6 +747,13 @@ def update_load_and_generation_masks(
     load_nminus1_mask = load_hv_mask & get_mask_for_area_codes(
         load_df, importer_parameters.area_settings.nminus1_area, region_colums[0]
     )
+
+    blacklisted_generators = generators_df.index.isin(blacklisted_ids)
+    blacklisted_loads = load_df.index.isin(blacklisted_ids)
+
+    generator_nminus1_mask = generator_nminus1_mask & ~blacklisted_generators
+    load_nminus1_mask = load_nminus1_mask & ~blacklisted_loads
+
     return replace(
         network_masks,
         generator_for_nminus1=generator_nminus1_mask,
@@ -745,6 +765,7 @@ def update_switch_masks(
     network_masks: NetworkMasks,
     network: Network,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    blacklisted_ids: list[str],
 ) -> NetworkMasks:
     """Update the switch masks.
 
@@ -756,6 +777,8 @@ def update_switch_masks(
         The network to get the masks for.
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters]
         The import parameters including nminus1_area and cutoff_voltage
+    blacklisted_ids: list[str]
+        The ids that should be excluded from masks.
 
     Returns
     -------
@@ -781,6 +804,11 @@ def update_switch_masks(
     # Set reward and outage mask
     outage_mask = nminus1_area_mask & switch_hv_mask
     reward_mask = outage_mask & switch_with_limits
+
+    blacklisted_switches = switch_df.index.isin(blacklisted_ids)
+    outage_mask = outage_mask & ~blacklisted_switches
+    reward_mask = reward_mask & ~blacklisted_switches
+
     return replace(
         network_masks,
         switch_for_nminus1=outage_mask,
@@ -834,10 +862,15 @@ def make_masks(
         importer_parameters,
         blacklisted_ids,
     )
-    network_masks = update_tie_and_dangling_line_masks(network_masks, network, importer_parameters)
-    network_masks = update_load_and_generation_masks(network_masks, network, importer_parameters)
-    network_masks = update_switch_masks(network_masks, network, importer_parameters)
-    network_masks = update_bus_masks(network_masks, network, importer_parameters, filesystem=filesystem)
+    network_masks = update_tie_and_dangling_line_masks(network_masks, network, importer_parameters, blacklisted_ids)
+    network_masks = update_load_and_generation_masks(network_masks, network, importer_parameters, blacklisted_ids)
+    network_masks = update_switch_masks(network_masks, network, importer_parameters, blacklisted_ids)
+    network_masks = update_bus_masks(
+        network_masks,
+        network,
+        importer_parameters,
+        blacklisted_ids,
+    )
     network_masks = update_reward_masks_to_include_border_branches(network_masks, importer_parameters)
     network_masks = remove_slack_from_relevant_subs(network_masks, network, slack_id=slack_id)
 

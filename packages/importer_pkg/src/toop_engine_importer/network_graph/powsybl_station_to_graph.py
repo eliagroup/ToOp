@@ -200,8 +200,8 @@ def get_nodes(
     nodes_df.fillna({"foreign_id": ""}, inplace=True)
     cond = nodes_df["foreign_id"] == ""
     nodes_df.loc[cond, "foreign_id"] = nodes_df.loc[cond, "grid_model_id"]
-    nodes_df.loc[nodes_df["in_service"].isna(), "in_service"] = True
-    nodes_df["in_service"] = nodes_df["in_service"].astype(bool)
+    nodes_df["helper_node"] = nodes_df["helper_node"].astype("boolean").fillna(False).astype(bool)
+    nodes_df["in_service"] = nodes_df["in_service"].astype("boolean").fillna(True).astype(bool)
 
     return NodeSchema.validate(nodes_df)
 
@@ -249,7 +249,9 @@ def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.Series) -> pat.Data
     node_assets_df : pat.DataFrame[NodeAssetSchema]
         The node assets as a DataFrame, with renamed columns for the NetworkGraph
     """
-    node_assets_df = nodes_df[(nodes_df["connectable_type"] != "") & (nodes_df["connectable_type"] != "BUSBAR_SECTION")]
+    node_assets_df = nodes_df[
+        (nodes_df["connectable_type"] != "") & (nodes_df["connectable_type"] != "BUSBAR_SECTION")
+    ].copy()
     node_assets_df["grid_model_id"] = node_assets_df["connectable_id"]
     node_assets_df.reset_index(inplace=True, drop=False)
     node_assets_df["node"] = node_assets_df["node"].astype(int)

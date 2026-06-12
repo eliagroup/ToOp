@@ -634,7 +634,14 @@ def create_loadflow_runner(
     FileNotFoundError
         If the n-1 definition file or action set file is not found in the specified `data_folder`.
     """
-    runner = PowsyblRunner(n_processes=n_processes) if not pandaflow_runner else PandapowerRunner(n_processes=n_processes)
+    if pandaflow_runner:
+        runner = PandapowerRunner(n_processes=n_processes)
+    else:
+        lf_params = load_lf_params_from_fs(
+            DirFileSystem(data_folder),
+            Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]),
+        )
+        runner = PowsyblRunner(n_processes=n_processes, lf_params=lf_params)
     n_minus1_def_path = data_folder / "nminus1_definition.json"
     if n_minus1_def_path.exists():
         logger.info(f"Loading n-1 definition from: {n_minus1_def_path}")

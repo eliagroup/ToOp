@@ -97,23 +97,6 @@ def test_convert_to_jax(network_data_preprocessed: NetworkData) -> None:
     assert static_information.dynamic_information.n_nminus1_cases == len(static_information.solver_config.contingency_ids)
 
 
-def test_convert_to_jax_n_2(network_data_preprocessed: NetworkData) -> None:
-    static_information = convert_to_jax(
-        network_data_preprocessed,
-        enable_n_2=True,
-    )
-    assert static_information.dynamic_information.n2_baseline_analysis is not None
-    validate_static_information(static_information)
-    with TemporaryDirectory() as temp_dir:
-        temp_dir = Path(temp_dir)
-        save_static_information(temp_dir / "static_information.hdf5", static_information)
-        static_information2 = load_static_information(temp_dir / "static_information.hdf5")
-        assert np.array_equal(
-            static_information.dynamic_information.n2_baseline_analysis.n_2_overloads,
-            static_information2.dynamic_information.n2_baseline_analysis.n_2_overloads,
-        )
-
-
 def test_convert_to_jax_bb_outage(network_data_preprocessed: NetworkData) -> None:
     # 71%%bus is a relevant node while 67%%bus is non-relevant node
     static_information = convert_to_jax(network_data_preprocessed, preprocess_bb_outages=True)

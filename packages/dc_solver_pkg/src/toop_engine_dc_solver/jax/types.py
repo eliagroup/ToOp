@@ -85,41 +85,6 @@ class NodalInjectionInformation(eqx.Module):
     in the original grid model."""
 
 
-class N2BaselineAnalysis(eqx.Module):
-    """The output of the N-2 baseline analysis, used to compare the split n-2 analysis against."""
-
-    l1_branches: Int[Array, " n_l1_outages"]
-    """All branches that have been analysed as L1 outages"""
-
-    tot_stat_blacklisted: Int[Array, " n_sub_relevant max_branch_per_sub"]
-    """Branches that could not be outaged because they split the grid already in the unsplit
-    analysis don't need to be considered in the split analysis. This will include all stub lines to
-    relevant substations. These L1 cases are blacklisted. This is a copy of
-    dynamic_information.tot_stat where all the blacklisted cases are set to int_max."""
-
-    n_2_overloads: Float[Array, " n_l1_outages"]
-    """The overload energy for each L1 outage"""
-
-    n_2_success_count: Int[Array, " n_l1_outages"]
-    """How many N-2 cases were successfully computed for each L1 outage"""
-
-    more_splits_penalty: Float[Array, ""]
-    """If a topology causes more non-converging DC loadflows due to splits in the grid than the
-    baseline, a penalty is added to the metrics. I.e. if success_count is lower in the split
-    analysis than in the unsplit, this split penalty is added for every point difference in the
-    success_counts."""
-
-    max_mw_flow: Float[Array, " n_branches_monitored"]
-    """The branch limits used to compute the N-2 overload energy. This is likely a copy of
-    branch_limits.max_mw_flow, however it is less bug-prone to replicate it so the unsplit and split
-    analysis will always use the same limits."""
-
-    overload_weight: Optional[Float[Array, " n_branches_monitored"]]
-    """The overload weights used to compute the N-2 overload energy. This is likely a copy of
-    branch_limits.overload_weight, however it is less bug-prone to replicate it so the unsplit and
-    split analysis will always use the same weights."""
-
-
 class RelBBOutageData(eqx.Module):
     """Holds the relevant busbar outage data."""
 
@@ -618,11 +583,6 @@ class DynamicInformation(eqx.Module):
     branches_monitored: Int[Array, " n_branches_monitored"]
     """The branches that we want to get loadflow results for. In the numpy code this is called
     sel_mon"""
-
-    n2_baseline_analysis: Optional[N2BaselineAnalysis]
-    """If provided, the results of the N-2 baseline analysis to compare against. If this is given,
-    this automatically enables the N-2 analysis feature in the solver, meaning a N-2 analysis will
-    be run on all split substations branches."""
 
     non_rel_bb_outage_data: Optional[NonRelBBOutageData]
     """
@@ -1172,10 +1132,6 @@ class SolverLoadflowResults(eqx.Module):
     """The injection combination that was evaluated for these loadflow results. Returns the array
     over the split substations."""
 
-    n_2_penalty: Optional[Float[Array, " ... "]]
-    """The penalty from n_2_analysis, if an N-2 analysis was performed. This is a single scalar per
-    topology, as aggregation happens inside the N-2 routine to save memory"""
-
     disconnections: Optional[Int[Array, " ... n_disconnections"]]
     """If disconnections are active, this passes in the disconnected branches. Required to compute the
     actual number of disconnections as some of the slots might be filled with int_max."""
@@ -1209,7 +1165,6 @@ class SolverLoadflowResults(eqx.Module):
             branch_topology=self.branch_topology[key],
             sub_ids=self.sub_ids[key],
             injection_topology=self.injection_topology[key],
-            n_2_penalty=(self.n_2_penalty[key] if self.n_2_penalty is not None else None),
             bb_outage_penalty=(self.bb_outage_penalty[key] if self.bb_outage_penalty is not None else None),
             bb_outage_splits=(self.bb_outage_splits[key] if self.bb_outage_splits is not None else None),
             bb_outage_overload=(self.bb_outage_overload[key] if self.bb_outage_overload is not None else None),

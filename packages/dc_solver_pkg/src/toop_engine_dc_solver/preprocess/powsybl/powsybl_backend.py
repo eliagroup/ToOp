@@ -18,7 +18,7 @@ import structlog
 from beartype.typing import Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
-from toop_engine_dc_solver.preprocess.parallel_pst_groups import load_or_create_parallel_pst_groups
+from toop_engine_dc_solver.preprocess.parallel_pst_groups import build_parallel_pst_group_mask
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     BranchModel,
     get_lines,
@@ -187,8 +187,10 @@ class PowsyblBackend(BackendInterface):
         return injections
 
     def _get_mask(
-        self, mask_filename: str, default_value: Union[bool, float], default_shape: int
-    ) -> Bool[np.ndarray, " n_masked_element"] | Float[np.ndarray, " n_masked_element"]:
+        self, mask_filename: str, default_value: Union[bool, float, int], default_shape: int
+    ) -> (
+        Bool[np.ndarray, " n_masked_element"] | Float[np.ndarray, " n_masked_element"] | Int[np.ndarray, " n_masked_element"]
+    ):
         """Load a given mask or return a default mask.
 
         Parameters
@@ -251,6 +253,8 @@ class PowsyblBackend(BackendInterface):
         trafos["pst_controllable"] = (
             self._get_mask(NETWORK_MASK_NAMES["trafo_pst_controllable"], False, n_trafos) & trafos["has_pst_tap"]
         )
+        # Parallel-PST group label per trafo (-1 for non-grouped). Identified during importing.
+        trafos["pst_group"] = self._get_mask(NETWORK_MASK_NAMES["pst_group_masks"], -1, n_trafos)
 
         trafos.sort_values("name", inplace=True)
 
@@ -484,9 +488,16 @@ class PowsyblBackend(BackendInterface):
 
     @functools.lru_cache
     def _get_parallel_pst_groups(self) -> tuple[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"], list[str]]:
-        """Get parallel PST grouping metadata aligned with controllable PST arrays."""
-        return load_or_create_parallel_pst_groups(
-            filesystem=self.data_folder_dirfs,
+        """Get parallel PST grouping metadata aligned with controllable PST arrays.
+
+        The per-trafo group labels are produced during importing (``pst_group_masks``); here they
+        are restricted to the controllable PSTs (in array order) and reshaped into the boolean group
+        mask consumed downstream.
+        """
+        controllable_branches = self._get_branches()[self.get_controllable_phase_shift_mask()]
+        group_labels = controllable_branches["pst_group"].to_numpy(dtype=int)
+        return build_parallel_pst_group_mask(
+            group_labels=group_labels,
             pst_ids=self.get_controllable_phase_shift_ids(),
         )
 

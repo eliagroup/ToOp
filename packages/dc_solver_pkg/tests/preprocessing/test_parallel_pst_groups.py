@@ -5,128 +5,52 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from datetime import datetime
-
 import numpy as np
-from fsspec.implementations.dirfs import DirFileSystem
-from toop_engine_dc_solver.preprocess.parallel_pst_groups import load_or_create_parallel_pst_group_mask
-from toop_engine_interfaces.asset_topology import Topology
-from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
-from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
+import pytest
+from toop_engine_dc_solver.preprocess.parallel_pst_groups import build_parallel_pst_group_mask
 
 
-def _make_action_set(*pst_ranges: PSTRange) -> ActionSet:
-    topology = Topology.model_construct(
-        topology_id="topology",
-        grid_model_file=None,
-        name=None,
-        stations=[],
-        asset_setpoints=None,
-        timestamp=datetime.now(),
-        metrics=None,
-    )
-    return ActionSet.model_construct(
-        starting_topology=topology,
-        simplified_starting_topology=topology,
-        connectable_branches=[],
-        disconnectable_branches=[],
-        pst_ranges=list(pst_ranges),
-        hvdc_ranges=[],
-        local_actions=[],
+def test_build_parallel_pst_group_mask_distinct_labels_yield_identity() -> None:
+    mask, group_ids = build_parallel_pst_group_mask(
+        group_labels=np.array([0, 1, 2]),
+        pst_ids=["PST1", "PST2", "PST3"],
     )
 
-
-def test_load_parallel_pst_group_mask_defaults_to_identity_when_action_set_missing(tmp_path) -> None:
-    filesystem = DirFileSystem(str(tmp_path))
-
-    group_mask = load_or_create_parallel_pst_group_mask(filesystem=filesystem, pst_ids=["PST1", "PST2"])
-
-    assert np.array_equal(group_mask, np.eye(2, dtype=bool))
+    assert np.array_equal(mask, np.eye(3, dtype=bool))
+    assert group_ids == ["PST1", "PST2", "PST3"]
 
 
-def test_load_parallel_pst_group_mask_reads_groups_from_action_set(tmp_path) -> None:
-    filesystem = DirFileSystem(str(tmp_path))
-    action_set = _make_action_set(
-        PSTRange(
-            id="PST1",
-            name="PST1",
-            type="TWO_WINDINGS_TRANSFORMER",
-            kind="branch",
-            starting_tap=0,
-            low_tap=-30,
-            high_tap=31,
-            pst_group="group_a",
-        ),
-        PSTRange(
-            id="PST2",
-            name="PST2",
-            type="TWO_WINDINGS_TRANSFORMER",
-            kind="branch",
-            starting_tap=0,
-            low_tap=-30,
-            high_tap=31,
-            pst_group="group_a",
-        ),
-        PSTRange(
-            id="PST3",
-            name="PST3",
-            type="TWO_WINDINGS_TRANSFORMER",
-            kind="branch",
-            starting_tap=0,
-            low_tap=-20,
-            high_tap=21,
-            pst_group="group_b",
-        ),
+def test_build_parallel_pst_group_mask_shared_label_groups_members() -> None:
+    mask, group_ids = build_parallel_pst_group_mask(
+        group_labels=np.array([0, 0, 1]),
+        pst_ids=["PST1", "PST2", "PST3"],
     )
-    with filesystem.open(PREPROCESSING_PATHS["action_set_file_path"], "w", encoding="utf-8") as file:
-        file.write(action_set.model_dump_json())
 
-    group_mask = load_or_create_parallel_pst_group_mask(filesystem=filesystem, pst_ids=["PST1", "PST2", "PST3"])
+    # PST1 and PST2 share group 0 (row 0, named after the first member); PST3 is its own group.
+    assert np.array_equal(mask, np.array([[True, True, False], [False, False, True]], dtype=bool))
+    assert group_ids == ["PST1", "PST3"]
+    # Each PST belongs to exactly one group.
+    assert np.array_equal(mask.sum(axis=0), np.ones(3, dtype=int))
 
-    expected = np.array([[True, True, False], [False, False, True]], dtype=bool)
-    assert np.array_equal(group_mask, expected)
 
-
-def test_load_parallel_pst_group_mask_defaults_missing_pst_entries(tmp_path) -> None:
-    filesystem = DirFileSystem(str(tmp_path))
-    action_set = _make_action_set(
-        PSTRange(
-            id="PST1",
-            name="PST1",
-            type="TWO_WINDINGS_TRANSFORMER",
-            kind="branch",
-            starting_tap=0,
-            low_tap=-30,
-            high_tap=31,
-            pst_group="group_a",
-        )
+def test_build_parallel_pst_group_mask_sentinel_labels_form_singletons() -> None:
+    mask, group_ids = build_parallel_pst_group_mask(
+        group_labels=np.array([-1, -1, 0]),
+        pst_ids=["PST1", "PST2", "PST3"],
     )
-    with filesystem.open(PREPROCESSING_PATHS["action_set_file_path"], "w", encoding="utf-8") as file:
-        file.write(action_set.model_dump_json())
 
-    group_mask = load_or_create_parallel_pst_group_mask(filesystem=filesystem, pst_ids=["PST1", "PST2"])
-
-    expected = np.array([[True, False], [False, True]], dtype=bool)
-    assert np.array_equal(group_mask, expected)
+    # The -1 sentinel never merges PSTs: each gets its own row.
+    assert np.array_equal(mask, np.eye(3, dtype=bool))
+    assert group_ids == ["PST1", "PST2", "PST3"]
 
 
-def test_load_parallel_pst_group_mask_defaults_and_fills_missing_pst_entries(tmp_path) -> None:
-    filesystem = DirFileSystem(str(tmp_path))
-    action_set = _make_action_set(
-        PSTRange(
-            id="PST1",
-            name="PST1",
-            type="TWO_WINDINGS_TRANSFORMER",
-            kind="branch",
-            starting_tap=0,
-            low_tap=-30,
-            high_tap=31,
-        )
-    )
-    with filesystem.open(PREPROCESSING_PATHS["action_set_file_path"], "w", encoding="utf-8") as file:
-        file.write(action_set.model_dump_json())
+def test_build_parallel_pst_group_mask_empty() -> None:
+    mask, group_ids = build_parallel_pst_group_mask(group_labels=np.array([], dtype=int), pst_ids=[])
 
-    group_mask = load_or_create_parallel_pst_group_mask(filesystem=filesystem, pst_ids=["PST1", "PST2"])
+    assert mask.shape == (0, 0)
+    assert group_ids == []
 
-    expected = np.array([[True, False], [False, True]], dtype=bool)
-    assert np.array_equal(group_mask, expected)
+
+def test_build_parallel_pst_group_mask_rejects_length_mismatch() -> None:
+    with pytest.raises(ValueError, match="entries but"):
+        build_parallel_pst_group_mask(group_labels=np.array([0, 1]), pst_ids=["PST1"])

@@ -12,6 +12,7 @@ Author:  Benjamin Petrick
 Created: 2024-08-13
 """
 
+from collections import defaultdict
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
@@ -22,7 +23,7 @@ import structlog
 from beartype.typing import Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from jaxtyping import Bool
+from jaxtyping import Bool, Int
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.contingency_from_power_factory.contingency_from_file import (
     get_contingencies_from_file,
@@ -104,6 +105,14 @@ class NetworkMasks:
     trafo_pst_controllable: np.ndarray
     """Trafos which are a PST and can be controlled"""
 
+    pst_group_masks: np.ndarray
+    """pst_group_masks.npy (an integer group label per trafo for parallel PST grouping).
+
+    Each entry is the parallel-PST group label of the corresponding trafo: ``-1`` for trafos that
+    are not controllable PSTs, a unique label for a lone controllable PST, and a shared label for
+    controllable PSTs identified as parallel (same bus pair, voltage and tap-changer parameters).
+    """
+
     tie_line_for_reward: np.ndarray
     """tie_line_for_reward.npy (a boolean mask of tie lines that are relevant for the reward)."""
 
@@ -180,6 +189,7 @@ def create_default_network_masks(network: Network) -> NetworkMasks:
         trafo_n0_n1_max_diff_factor=np.ones(len(trafo_df), dtype=float) * -1,
         trafo_dso_border=np.zeros(len(trafo_df), dtype=bool),
         trafo_pst_controllable=np.zeros(len(trafo_df), dtype=bool),
+        pst_group_masks=np.full(len(trafo_df), -1, dtype=int),
         tie_line_for_reward=np.zeros(len(tie_df), dtype=bool),
         tie_line_for_nminus1=np.zeros(len(tie_df), dtype=bool),
         tie_line_overload_weight=np.ones(len(tie_df), dtype=float),
@@ -538,9 +548,11 @@ def update_trafo_masks(
 
     disconnectable_mask = disconnectable_mask & ~blacklisted_trafos
     pst_controllable_mask = pst_controllable_mask & ~blacklisted_trafos
-    # TODO: Use remaining controllable PSTs to build groups of PSTs via identical parameters
-    # and same origin and destination bus
-    # TODO: Don't forget to load/create empty masks
+    # Identify parallel groups among the remaining controllable PSTs (same bus pair, voltage and
+    # tap-changer parameters) so members can be optimized together downstream.
+    pst_group_labels = build_pst_group_labels(
+        network=network, trafos_df=trafos_df, pst_controllable_mask=pst_controllable_mask
+    )
     outage_mask = outage_mask & ~blacklisted_trafos
     reward_mask = reward_mask & ~blacklisted_trafos
 
@@ -553,7 +565,87 @@ def update_trafo_masks(
         trafo_overload_weight=trafo_overload_weight,
         trafo_disconnectable=disconnectable_mask,
         trafo_pst_controllable=pst_controllable_mask,
+        pst_group_masks=pst_group_labels,
     )
+
+
+def build_pst_group_labels(
+    network: Network,
+    trafos_df: pd.DataFrame,
+    pst_controllable_mask: Bool[np.ndarray, " n_trafos"],
+) -> Int[np.ndarray, " n_trafos"]:
+    """Assign a parallel-PST group label to each transformer.
+
+    Two controllable PSTs are considered parallel (share a group) when all of the following hold:
+
+    * they connect the same unordered bus pair (``{bus1_id, bus2_id}``, orientation may be swapped),
+    * they share the same nominal voltage magnitude, and
+    * they have identical phase-tap-changer parameters: the same tap range (low/high/count) and a
+      per-tap ``alpha``/``rho``/``x``/``r`` step table that matches element-wise within a tolerance.
+
+    Parameters
+    ----------
+    network: Network
+        The powsybl network providing the phase-tap-changer data.
+    trafos_df: pd.DataFrame
+        The 2-winding transformer dataframe, indexed by trafo id and including the ``bus1_id``,
+        ``bus2_id`` and ``voltage_level1_id`` columns.
+    pst_controllable_mask: Bool[np.ndarray, " n_trafos"]
+        Boolean mask (aligned with ``trafos_df`` rows) marking controllable PST transformers.
+
+    Returns
+    -------
+    Int[np.ndarray, " n_trafos"]
+        An integer group label per transformer: ``-1`` for trafos that are not controllable PSTs, a
+        unique label for each lone controllable PST and a shared label for parallel PSTs.
+    """
+    labels = np.full(len(trafos_df), -1, dtype=int)
+
+    tap_changers = network.get_phase_tap_changers()
+    # Candidate PSTs are controllable trafos that actually carry a phase tap changer.
+    candidate_mask = pst_controllable_mask & trafos_df.index.isin(tap_changers.index)
+    candidate_positions = np.flatnonzero(candidate_mask)
+    if candidate_positions.size == 0:
+        return labels
+
+    candidate_ids = trafos_df.index[candidate_positions]
+    nominal_v = get_voltage_from_voltage_level_id(network, trafos_df.loc[candidate_ids, "voltage_level1_id"])
+    steps = network.get_phase_tap_changer_steps(attributes=["alpha", "rho", "x", "r"])
+
+    # Bucket candidates by exactly-comparable attributes; the per-tap step tables are then compared
+    # within each (small) bucket using a numerical tolerance.
+    step_tables: dict[str, np.ndarray] = {}
+    buckets: dict[tuple, list[int]] = defaultdict(list)
+    for local_idx, (position, pst_id) in enumerate(zip(candidate_positions, candidate_ids, strict=True)):
+        low_tap = int(tap_changers.at[pst_id, "low_tap"])
+        high_tap = int(tap_changers.at[pst_id, "high_tap"])
+        bus_pair = frozenset({trafos_df.at[pst_id, "bus1_id"], trafos_df.at[pst_id, "bus2_id"]})
+        step_table = steps.loc[pst_id].sort_index().to_numpy(dtype=float)
+        step_tables[pst_id] = step_table
+        bucket_key = (bus_pair, round(float(nominal_v[local_idx]), 6), low_tap, high_tap, step_table.shape[0])
+        buckets[bucket_key].append(position)
+
+    next_label = 0
+    for positions in buckets.values():
+        # Within a bucket all candidates already share bus pair, voltage and tap range. Group those
+        # whose step tables additionally match within tolerance, seeding new groups for the rest.
+        remaining = list(positions)
+        while remaining:
+            seed_position = remaining.pop(0)
+            seed_table = step_tables[trafos_df.index[seed_position]]
+            group_positions = [seed_position]
+            still_remaining = []
+            for other_position in remaining:
+                if np.allclose(seed_table, step_tables[trafos_df.index[other_position]]):
+                    group_positions.append(other_position)
+                else:
+                    still_remaining.append(other_position)
+            remaining = still_remaining
+            for position in group_positions:
+                labels[position] = next_label
+            next_label += 1
+
+    return labels
 
 
 def update_bus_masks(

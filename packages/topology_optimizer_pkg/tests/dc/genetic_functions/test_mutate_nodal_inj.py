@@ -263,7 +263,8 @@ def test_mutate_nodal_injections_ignores_empty_group_mask_when_group_optim_disab
         pst_n_taps=jnp.array([5, 5], dtype=int),
         pst_start_tap_idx=jnp.array([1, 2], dtype=int),
         enable_parallel_pst_group_optim=False,
-        parallel_pst_group_mask=jnp.zeros((0, 0), dtype=bool),
+        # An empty group mask (zero group rows) aligned with the two controllable PSTs.
+        parallel_pst_group_mask=jnp.zeros((0, 2), dtype=bool),
     )
 
     mutated = mutate_nodal_injections(

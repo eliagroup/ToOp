@@ -67,6 +67,7 @@ NETWORK_MASK_NAMES: Final[dict[str, str]] = {
     "trafo_n0_n1_max_diff_factor": "trafo_n0_n1_max_diff_factor.npy",
     "trafo_blacklisted": "trafo_blacklisted.npy",
     "trafo_pst_controllable": "trafo_pst_controllable.npy",
+    "pst_group_masks": "pst_group_masks.npy",
     "trafo3w_for_nminus1": "trafo3w_for_nminus1.npy",
     "trafo3w_for_reward": "trafo3w_for_reward.npy",
     "trafo3w_overload_weight": "trafo3w_overload_weight.npy",

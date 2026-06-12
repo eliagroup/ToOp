@@ -32,6 +32,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     get_globally_unique_id,
     get_globally_unique_id_from_index,
 )
+from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, BranchSide, NodeResultSchema, SwitchResultsSchema
 
 
@@ -338,7 +339,7 @@ def _get_switch_mapped_elements_by_origin_ids(
     sw_els_map: list[tuple[int, str, int]] = []
     buses_map: list[tuple[int, str]] = []
     graph = create_closed_bb_switches_graph(net)
-
+    # TODO: we need to calculate for open too, because in spps we can close  switches and then run cascading
     switch_mask = net.switch.index.isin(switches_ids)
     closed_mask = net.switch.closed
 
@@ -637,6 +638,7 @@ def get_switch_results(
         - apparent power (``s``)
         - metadata columns (``element_name``, ``contingency_name``)
     """
+    # TODO: filter only closed switches
     all_switch_ids = switch_element_mapping["switch_id"].drop_duplicates()
     res_switch = (
         net.res_switch[net.res_switch["p_from_mw"].notna()]
@@ -654,14 +656,16 @@ def get_switch_results(
     if not direct_ids.empty:
         rs = res_switch.loc[direct_ids]
         bus_ids = net.switch.loc[direct_ids, "bus"]
-        vm_kv = net.res_bus.loc[bus_ids.values, "vm_pu"].values * net.bus.loc[bus_ids.values, "vn_kv"].values
+        vm_kv = (
+            net.res_bus.loc[bus_ids.values, "vm_pu"].values * net.bus.loc[bus_ids.values, "vn_kv"].values
+        )  # TODO: we need to calc v_from and v_to
         from_rows = pd.DataFrame(
             {
                 "switch_id": direct_ids.values,
                 "p": rs["p_from_mw"].values,
                 "q": rs["q_from_mvar"].values,
                 "vm": vm_kv,
-                "i": rs["i_ka"].values * 1000,
+                "i": rs["i_ka"].values * 1000,  # calc i_from from p q and v
                 "side": "from",
             }
         )
@@ -671,7 +675,7 @@ def get_switch_results(
                 "p": rs["p_to_mw"].values,
                 "q": rs["q_to_mvar"].values,
                 "vm": vm_kv,
-                "i": rs["i_ka"].values * 1000,
+                "i": rs["i_ka"].values * 1000,  # calc i_to from p q and v
                 "side": "to",
             }
         )
@@ -687,10 +691,10 @@ def get_switch_results(
         calc_results["side"] = None
         parts.append(calc_results)
 
-    if parts:
-        switch_results = pd.concat(parts, ignore_index=True)
-    else:
-        switch_results = pd.DataFrame(columns=["switch_id", "p", "q", "vm", "i", "side"])
+    if not parts:
+        return get_empty_dataframe_from_model(SwitchResultsSchema)
+
+    switch_results = pd.concat(parts, ignore_index=True)
 
     switch_results = _orient_switch_results_to_relay_side(net, switch_results)
     switch_results["element"] = get_globally_unique_id_from_index(switch_results["switch_id"], element_type="switch")

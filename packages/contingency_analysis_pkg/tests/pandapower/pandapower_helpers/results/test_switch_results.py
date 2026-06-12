@@ -943,7 +943,7 @@ def test_get_switch_results_basic_aggregation():
     expected_q = 4.0 + 6.0 + 2.0
     expected_vm = 110.0
     expected_s = np.sqrt(expected_p**2 + expected_q**2)
-    expected_i = expected_s / (np.sqrt(3) * expected_vm)
+    expected_i = expected_s / (np.sqrt(3) * expected_vm) * 1000
 
     assert row["switch_id"] == ids["sw1"]
     assert row["p"] == expected_p
@@ -1259,7 +1259,7 @@ def test_get_switch_results_uses_last_vm_from_node_group():
     assert row["vm"] == 111.0
 
     expected_s = np.sqrt(4.0**2 + 6.0**2)
-    expected_i = expected_s / (np.sqrt(3) * 111.0)
+    expected_i = expected_s / (np.sqrt(3) * 111.0) * 1000
 
     assert np.isclose(row["s"], expected_s)
     assert np.isclose(row["i"], expected_i)

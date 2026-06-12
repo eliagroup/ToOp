@@ -869,9 +869,10 @@ def score_remaining_contingency_batch(
         next_topology_index = 0
 
         def submit(index: int, runner_index: int) -> None:
+            topology_for_scoring = ACOptimTopology(**topologies[index].model_dump())
             future = executor.submit(
                 score_topology_remaining,
-                topologies[index],
+                topology_for_scoring,
                 runner_group[runner_index],
                 metrics_unsplit,
                 scoring_params,

@@ -603,10 +603,11 @@ def validate_update_dict_for_connection_info(
         If the update_dict contains unknown keys for the connection
 
     """
-    if not all([arg in connection_info.__annotations__.keys() for arg in update_dict.keys()]):
+    allowed_keys = connection_info.model_fields.keys()
+    if not all(arg in allowed_keys for arg in update_dict.keys()):
         raise ValueError(
             f"Update dictionary contains unknown keys for {type(connection_info)}."
-            f" Update keys: {update_dict.keys()}. Allowed keys: {connection_info.__annotations__.keys()}"
+            f" Update keys: {update_dict.keys()}. Allowed keys: {allowed_keys}"
         )
     return True
 
@@ -641,8 +642,9 @@ def append_connection_info(
         If the dict or connection info is not is not a list for a given dict key.
     """
     for key, value in update_dict.items():
-        if isinstance(value, list) and isinstance(connection_info.__dict__[key], list):
-            connection_info.__dict__[key] += value
+        current_value = getattr(connection_info, key)
+        if isinstance(value, list) and isinstance(current_value, list):
+            setattr(connection_info, key, current_value + value)
         else:
             raise ValueError(f"The value for key: {key} is not a list.")
     return connection_info

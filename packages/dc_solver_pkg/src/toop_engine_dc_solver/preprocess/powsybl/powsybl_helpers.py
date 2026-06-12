@@ -31,10 +31,10 @@ logger = structlog.get_logger(__name__)
 class BranchModel(DataFrameModel):
     """Schema for the branch data required by the backend."""
 
-    id: Index[str]
+    id: Index[str] = Field()
     x: Series[float] = Field(nullable=True, description="Reactance in pu")
     r: Series[float] = Field(nullable=True, description="Resistance in pu")
-    name: Series[str]
+    name: Series[str] = Field()
     rho: Series[float] = Field(nullable=True, description="Ratio of the rated voltages of the transformer")
     alpha: Series[float] = Field(nullable=True, description="Phase shift angle in degrees")
     has_pst_tap: Series[bool] = Field(

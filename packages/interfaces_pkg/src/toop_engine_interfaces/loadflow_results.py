@@ -21,11 +21,54 @@ The grid holds some information that is referenced in the results:
 from enum import Enum
 
 import pandas as pd
-import pandera as pa
+import pandera
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Optional, Union
 from pandera.typing import DataFrame, Index, Series
 from pydantic import BaseModel, Field
+
+
+def _register_missing_builtin_pandera_checks() -> None:
+    """Register missing pandas backends for builtin Pandera checks used in this module."""
+    try:
+        isin_dispatcher = pa.Check.get_builtin_check_fn("isin")
+    except Exception:
+        isin_dispatcher = None
+
+    if pd.Series not in getattr(isin_dispatcher, "_function_registry", {}):
+        assert tuple(map(int, pandera.__version__.split(".")[:2])) < (0, 27), (
+            "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
+        )
+
+        @pa.Check.register_builtin_check_fn
+        def isin(data: pd.Series, allowed_values: list[object] | tuple[object, ...]) -> pd.Series:
+            return data.isna() | data.isin(allowed_values)
+
+    try:
+        in_range_dispatcher = pa.Check.get_builtin_check_fn("in_range")
+    except Exception:
+        in_range_dispatcher = None
+
+    if pd.Series not in getattr(in_range_dispatcher, "_function_registry", {}):
+        assert tuple(map(int, pandera.__version__.split(".")[:2])) < (0, 27), (
+            "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
+        )
+
+        @pa.Check.register_builtin_check_fn
+        def in_range(
+            data: pd.Series,
+            min_value: object,
+            max_value: object,
+            include_min: bool = True,
+            include_max: bool = True,
+        ) -> pd.Series:
+            lower_bound = (data >= min_value) if include_min else (data > min_value)
+            upper_bound = (data <= max_value) if include_max else (data < max_value)
+            return data.isna() | (lower_bound & upper_bound)
+
+
+_register_missing_builtin_pandera_checks()
 
 
 class BranchSide(Enum):
@@ -106,17 +149,17 @@ class BranchResultSchema(pa.DataFrameModel):
     # TODO Decide if this should be used for injections aswell
     """
 
-    timestep: Index[int]
+    timestep: Index[int] = pa.Field()
     """The timestep of this result. This indexes into the timesteps that were loaded"""
 
-    contingency: Index[str]
+    contingency: Index[str] = pa.Field()
     """The contingency that caused this loadflow. For N-0 results,
     the special CO 'BASECASE' without GridElements is used, if its added."""
 
-    element: Index[str]
+    element: Index[str] = pa.Field()
     """The branch that these loadflow results correspond to"""
 
-    side: Index[int] = pa.Field(isin=[side.value for side in BranchSide])
+    side: Index[int] = pa.Field()
     """The side of the branch that these results correspond to"""
 
     i: Series[float] = pa.Field(nullable=True)
@@ -153,6 +196,12 @@ class BranchResultSchema(pa.DataFrameModel):
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
 
+    @pa.dataframe_check
+    def check_side(cls, dataframe: pd.DataFrame) -> Series[bool]:
+        """Validate branch side values on the multi-index."""
+        side_values = dataframe.index.get_level_values("side")
+        return pd.Series(side_values.isin([side.value for side in BranchSide]), index=dataframe.index)
+
 
 class NodeResultSchema(pa.DataFrameModel):
     """A schema for the node results table.
@@ -161,13 +210,13 @@ class NodeResultSchema(pa.DataFrameModel):
     If no nodes are monitored, this is the empty DataFrame.
     """
 
-    timestep: Index[int]
+    timestep: Index[int] = pa.Field()
     """The timestep of this result. This indexes into the timesteps that were loaded"""
 
-    contingency: Index[str]
+    contingency: Index[str] = pa.Field()
     """The contingency that caused this loadflow. For N-0 results, the special CO 'BASECASE' is used."""
 
-    element: Index[str]
+    element: Index[str] = pa.Field()
     """The node that these loadflow results correspond to"""
 
     vm: Series[float] = pa.Field(nullable=True)
@@ -229,14 +278,14 @@ class ConnectivityResultSchema(pa.DataFrameModel):
     grid element, based on outage group logic.
     """
 
-    contingency: Index[str]
+    contingency: Index[str] = pa.Field()
     """Global unique identifier of the contingency event.
 
     Represents the triggering outage (e.g., line, transformer, generator).
     This is the first level of the MultiIndex.
     """
 
-    element: Index[str]
+    element: Index[str] = pa.Field()
     """Global unique identifier of a grid element affected by the contingency.
 
     Each element listed here belongs to the outage group associated with the
@@ -244,7 +293,7 @@ class ConnectivityResultSchema(pa.DataFrameModel):
     This is the second level of the MultiIndex.
     """
 
-    outage_group_id: str
+    outage_group_id: Series[str] = pa.Field()
     """Identifier of the outage group shared by the contingency and element.
 
     Outage groups represent sets of elements that become de-energized together
@@ -259,13 +308,13 @@ class VADiffResultSchema(pa.DataFrameModel):
     Holds information about the voltage angle difference between busses that could be (re)connected by power switches.
     """
 
-    timestep: Index[int]
+    timestep: Index[int] = pa.Field()
     """The timestep of this result. This indexes into the timesteps that were loaded"""
 
-    contingency: Index[str]
+    contingency: Index[str] = pa.Field()
     """The critical contingency that caused this loadflow. For N-0 results, the special CO 'BASECASE' is used."""
 
-    element: Index[str]
+    element: Index[str] = pa.Field()
     """The element over which the voltage angle difference is computed. Can be either an open switch or any switch or branch
     under N-1. If under N-1, then element and contingency are the same."""
 
@@ -289,13 +338,13 @@ class SwitchResultsSchema(pa.DataFrameModel):
     Holds information about the voltage angle difference between busses that could be (re)connected by power switches.
     """
 
-    timestep: Index[int]
+    timestep: Index[int] = pa.Field()
     """The timestep of this result. This indexes into the timesteps that were loaded"""
 
-    contingency: Index[str]
+    contingency: Index[str] = pa.Field()
     """The critical contingency that caused this loadflow. For N-0 results, the special CO 'BASECASE' is used."""
 
-    element: Index[str]
+    element: Index[str] = pa.Field()
     """The element over which the voltage angle difference is computed. Can be either an open switch or any switch or branch
     under N-1. If under N-1, then element and contingency are the same."""
 
@@ -383,20 +432,20 @@ class RegulatingElementResultSchema(pa.DataFrameModel):
     If no regulating elements are monitored, this is the empty DataFrame.
     """
 
-    timestep: Index[int]
+    timestep: Index[int] = pa.Field()
     """The timestep of this result. This indexes into the timesteps that were loaded"""
 
-    contingency: Index[str]
+    contingency: Index[str] = pa.Field()
     """The critical contingency that caused this loadflow. For N-0 results, the special CO 'BASECASE' is used."""
 
-    element: Index[str]
+    element: Index[str] = pa.Field()
     """The regulating element that these loadflow results correspond to"""
 
-    value: Series[float]
+    value: Series[float] = pa.Field()
     """The value of the regulating element. Depending on the type of the regulating element, this can mean different things.
     """
 
-    regulating_element_type: Series[str] = pa.Field(isin=[side.value for side in RegulatingElementType])
+    regulating_element_type: Series[str] = pa.Field(isin=tuple(item.value for item in RegulatingElementType))
     """The type of the regulating element (generator, regulating transformer, SVC, ...)."""
 
     element_name: Optional[Series[str]] = pa.Field(default="")
@@ -419,13 +468,13 @@ class ConvergedSchema(pa.DataFrameModel):
     If no convergence information is available, this is the empty DataFrame.
     """
 
-    timestep: Index[int]
+    timestep: Index[int] = pa.Field()
     """The timestep of this result. This indexes into the timesteps that were loaded"""
 
-    contingency: Index[str]
+    contingency: Index[str] = pa.Field()
     """The critical contingency that caused this loadflow. For N-0 results, the special CO 'BASECASE' is used."""
 
-    status: Series[str] = pa.Field(isin=[side.value for side in ConvergenceStatus])
+    status: Series[str] = pa.Field(isin=tuple(item.value for item in ConvergenceStatus))
     """Whether the loadflow converged at this timestep/contingency."""
 
     iteration_count: Series[float] = pa.Field(nullable=True)  # float so its nullable
@@ -449,22 +498,22 @@ class SppsResultsSchema(pa.DataFrameModel):
     Use ``json.loads`` to recover the nested structure.
     """
 
-    timestep: Index[int]
+    timestep: Index[int] = pa.Field()
     """Loadflow timestep index for the outage that produced this row."""
 
-    contingency: Index[str]
+    contingency: Index[str] = pa.Field()
     """Globally unique id of the contingency (same value as in other loadflow result tables)."""
 
-    iterations: Series[int]
+    iterations: Series[int] = pa.Field()
     """Number of SpPS iterations that executed (1-based count)."""
 
     activated_schemes_per_iter: Series[str] = pa.Field()
     """JSON string for ``list[list[str]]`` of scheme names that activated per iteration."""
 
-    max_iterations_reached: Series[bool]
+    max_iterations_reached: Series[bool] = pa.Field()
     """Whether the run stopped because the iteration cap was hit while schemes still fired."""
 
-    power_flow_failed: Series[bool]
+    power_flow_failed: Series[bool] = pa.Field()
     """Whether a post-action power flow failed in keep_previous mode."""
 
 
@@ -476,13 +525,13 @@ class CascadeResultSchema(pa.DataFrameModel):
     element/outage group was affected.
     """
 
-    timestep: Index[int]
+    timestep: Index[int] = pa.Field()
     """The timestep of this cascade event."""
 
-    contingency: Index[str]
+    contingency: Index[str] = pa.Field()
     """Globally unique id of the contingency that started the cascade."""
 
-    cascade_number: Index[int]
+    cascade_number: Index[int] = pa.Field()
     """Cascade step number where the event happened."""
 
     element_mrid: Index[str] = pa.Field(nullable=True)
@@ -503,7 +552,7 @@ class CascadeResultSchema(pa.DataFrameModel):
     element_name: Series[str] = pa.Field(nullable=True)
     """Human-readable name of the affected element, if known."""
 
-    cascade_reason: Series[str]
+    cascade_reason: Series[str] = pa.Field()
     """Reason for the cascade event, such as current overload or distance protection."""
 
     loading: Series[float] = pa.Field(nullable=True)

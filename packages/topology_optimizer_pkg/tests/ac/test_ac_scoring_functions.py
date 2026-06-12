@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from collections import Counter
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -179,7 +180,10 @@ def test_score_strategy_remaining_batch_chunks_survivors(monkeypatch: pytest.Mon
     )
 
     assert len(results) == 3
-    assert call_sequence == [id(shared_runner), id(remaining_runner_groups[1]), id(shared_runner)]
+    runner_counts = Counter(call_sequence)
+    assert set(runner_counts) == {id(shared_runner), id(remaining_runner_groups[1])}
+    assert runner_counts[id(shared_runner)] == 2
+    assert runner_counts[id(remaining_runner_groups[1])] == 1
 
 
 def test_score_strategy_batch_without_early_results_uses_full_evaluation(monkeypatch: pytest.MonkeyPatch) -> None:

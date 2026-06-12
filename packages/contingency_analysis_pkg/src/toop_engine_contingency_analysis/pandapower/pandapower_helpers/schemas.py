@@ -10,7 +10,9 @@
 import dataclasses
 
 import pandapower as pp
-import pandera as pa
+import pandas as pd
+import pandera
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
 from pandera.typing import Index, Series
@@ -30,6 +32,31 @@ from toop_engine_interfaces.spps_parameters import (
     SPPS_MEASURE_TYPE_VALUES,
     SppsPowerFlowFailurePolicy,
 )
+
+
+def _register_missing_pandera_checks() -> None:
+    """Register missing pandas backends for builtin Pandera checks used in this module."""
+    try:
+        isin_dispatcher = pa.Check.get_builtin_check_fn("isin")
+    except Exception:
+        isin_dispatcher = None
+
+    if pd.Series in getattr(isin_dispatcher, "_function_registry", {}):
+        return
+
+    assert tuple(map(int, pandera.__version__.split(".")[:2])) < (0, 27), (
+        "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
+    )
+
+    @pa.Check.register_builtin_check_fn
+    def isin(
+        data: pd.Series,
+        allowed_values: list[object] | tuple[object, ...],
+    ) -> pd.Series:
+        return data.isna() | data.isin(allowed_values)
+
+
+_register_missing_pandera_checks()
 
 
 class CascadeConfig(BaseModel):
@@ -98,7 +125,7 @@ class PandapowerMonitoredElementSchema(pa.DataFrameModel):
     table: Series[str] = pa.Field(description="The type of the monitored element, e.g. 'line', 'bus', 'load', etc.")
     table_id: Series[int] = pa.Field(description="The id of the monitored element in the corresponding table.")
     kind: Series[str] = pa.Field(
-        isin=["branch", "bus", "injection", "switch"],
+        isin=("branch", "bus", "injection", "switch"),
         description="The kind of the monitored element, e.g. 'branch', 'bus' etc.",
     )
     name: Series[str] = pa.Field(description="The name of the monitored element, if available.")
@@ -172,7 +199,7 @@ class PandapowerContingencyGroup(BaseModel):
 class SppsConditionsPandapowerSchema(pa.DataFrameModel):
     """Pandera schema for resolved SpPS condition rows (one row per condition)."""
 
-    scheme_name: Series[str]
+    scheme_name: Series[str] = pa.Field()
     """Name of the rule scheme: conditions with the same name are evaluated as one logical group."""
 
     condition_logic: Series[str] = pa.Field(isin=SPPS_CONDITION_LOGIC_VALUES)
@@ -198,7 +225,7 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
     )
     """Threshold value for the condition (empty for state-based checks)."""
 
-    condition_element_table: Series[str]
+    condition_element_table: Series[str] = pa.Field()
     """Pandapower table containing the element to monitor."""
 
     condition_element_table_id: Series[int] = pa.Field(coerce=True)
@@ -217,16 +244,16 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
 class SppsActionsPandapowerSchema(pa.DataFrameModel):
     """Pandera schema for resolved SpPS action rows (one row per action)."""
 
-    scheme_name: Series[str]
+    scheme_name: Series[str] = pa.Field()
     """Name of the rule scheme: actions apply when that scheme's conditions pass per ``condition_logic``."""
 
     measure_type: Series[str] = pa.Field(isin=SPPS_MEASURE_TYPE_VALUES)
     """What is applied when the scheme activates."""
 
-    measure_value: Series[object]
+    measure_value: Series[object] = pa.Field()
     """Target value (number or switch state like 'Open'/'Closed')."""
 
-    measure_element_table: Series[str]
+    measure_element_table: Series[str] = pa.Field()
     """Pandapower table containing the element to control."""
 
     measure_element_table_id: Series[int] = pa.Field(coerce=True)

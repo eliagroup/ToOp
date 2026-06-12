@@ -14,9 +14,33 @@ Author:  Benjamin Petrick
 Created: 2025-05-13
 """
 
-import pandera as pa
+import pandas as pd
+import pandera
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Literal, Optional, TypeAlias
+
+
+def _register_missing_builtin_pandera_checks() -> None:
+    """Register missing pandas backends for builtin Pandera checks used in this module."""
+    try:
+        dispatcher = pa.Check.get_builtin_check_fn("isin")
+    except Exception:
+        dispatcher = None
+
+    if pd.Series in getattr(dispatcher, "_function_registry", {}):
+        return
+
+    assert tuple(map(int, pandera.__version__.split(".")[:2])) < (0, 27), (
+        "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
+    )
+
+    @pa.Check.register_builtin_check_fn
+    def isin(data: pd.Series, allowed_values: list[object] | tuple[object, ...]) -> pd.Series:
+        return data.isna() | data.isin(allowed_values)
+
+
+_register_missing_builtin_pandera_checks()
 
 GridModelTypePowerFactory: TypeAlias = Literal[
     "ElmTr2",
@@ -95,7 +119,9 @@ class ContingencyImportSchemaPowerFactory(pa.DataFrameModel):
     """
 
     power_factory_element_type: Optional[pat.Series[str]] = pa.Field(
-        coerce=True, nullable=True, isin=GridElementType.__args__
+        coerce=True,
+        nullable=True,
+        isin=GridElementType.__args__,
     )
     """The type of the contingency based on the PowerFactory type.
     Gives a hint where to look for the contingency.

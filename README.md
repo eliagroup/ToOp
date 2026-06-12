@@ -10,7 +10,7 @@
 
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/downloads/release/python-3140/)
 <!-- markdown-link-check-enable -->
 
 ## Hello there 👋
@@ -45,8 +45,10 @@ If you want to contribute to this repository, we recommend using VS Code's Devco
 
 For this setup, you need to install:
 1. `uv`
-2. `Microsoft VS Code`
-3. `Docker`
+2. `Python 3.14`
+3. `CMake 3.x` for native installs outside the devcontainer
+4. `Microsoft VS Code`
+5. `Docker`
 
 ### Installation
 

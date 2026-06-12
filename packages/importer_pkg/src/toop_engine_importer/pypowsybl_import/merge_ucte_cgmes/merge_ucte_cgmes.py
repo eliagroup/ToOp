@@ -30,29 +30,29 @@ from typing_extensions import Self
 class TieLineSchema(pa.DataFrameModel):
     """A Schema for net.get_tie_lines()."""
 
-    pairing_key: pat.Index[str]
+    pairing_key: pat.Index[str] = pa.Field()
     """The pairing key of the tie lines."""
 
-    boundary_line1_id: pat.Series[str]
+    boundary_line1_id: pat.Series[str] = pa.Field()
     """The first boundary line id of the tie lines."""
 
-    boundary_line2_id: pat.Series[str]
+    boundary_line2_id: pat.Series[str] = pa.Field()
     """The second boundary line id of the tie lines."""
 
 
 class BoundaryLineSchema(pa.DataFrameModel):
     """A Schema for net.get_boundary_lines."""
 
-    pairing_key: pat.Index[str]
+    pairing_key: pat.Index[str] = pa.Field()
     """The pairing key of the tie lines."""
 
-    connected: pat.Series[bool]
+    connected: pat.Series[bool] = pa.Field()
     """The connection status of the tie lines."""
 
-    paired: pat.Series[bool]
+    paired: pat.Series[bool] = pa.Field()
     """The pairing status of the tie lines."""
 
-    tie_line_id: pat.Series[str]
+    tie_line_id: pat.Series[str] = pa.Field()
     """The tie line id of the tie lines."""
 
 

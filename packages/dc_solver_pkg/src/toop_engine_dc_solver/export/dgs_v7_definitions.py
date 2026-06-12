@@ -10,7 +10,9 @@
 This module only contains needed definitions, currently it focuses on switches.
 """
 
-import pandera as pa
+import pandas as pd
+import pandera
+import pandera.pandas as pa
 import pandera.typing as pat
 from beartype.typing import Literal
 
@@ -51,6 +53,66 @@ DGS_GENERAL_SHEET_CONTENT_FID_CIM = [
     {ID_KEY: "2", DESC_KEY: "Id1", VAL_KEY: "cimRdfId:0"},
     {ID_KEY: "3", DESC_KEY: "IdColumn", VAL_KEY: "FID"},
 ]
+
+
+def _register_missing_builtin_pandera_checks() -> None:  # noqa: C901
+    """Register missing pandas backends for builtin Pandera checks used in this module."""
+    version_tuple = tuple(map(int, pandera.__version__.split(".")[:2]))
+
+    try:
+        equal_to_dispatcher = pa.Check.get_builtin_check_fn("equal_to")
+    except Exception:
+        equal_to_dispatcher = None
+
+    if pd.Series not in getattr(equal_to_dispatcher, "_function_registry", {}):
+        assert version_tuple < (0, 27), (
+            "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
+        )
+
+        @pa.Check.register_builtin_check_fn
+        def equal_to(data: pd.Series, value: object) -> pd.Series:
+            return data.isna() | (data == value)
+
+    try:
+        isin_dispatcher = pa.Check.get_builtin_check_fn("isin")
+    except Exception:
+        isin_dispatcher = None
+
+    if pd.Series not in getattr(isin_dispatcher, "_function_registry", {}):
+        assert version_tuple < (0, 27), (
+            "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
+        )
+
+        @pa.Check.register_builtin_check_fn
+        def isin(data: pd.Series, allowed_values: list[object] | tuple[object, ...]) -> pd.Series:
+            return data.isna() | data.isin(allowed_values)
+
+    try:
+        str_length_dispatcher = pa.Check.get_builtin_check_fn("str_length")
+    except Exception:
+        str_length_dispatcher = None
+
+    if pd.Series not in getattr(str_length_dispatcher, "_function_registry", {}):
+        assert version_tuple < (0, 27), (
+            "Remove the temporary Pandera builtin-check registration once Pandera >= 0.27 is supported."
+        )
+
+        @pa.Check.register_builtin_check_fn
+        def str_length(
+            data: pd.Series,
+            min_value: int | None = None,
+            max_value: int | None = None,
+        ) -> pd.Series:
+            lengths = data.astype(str).str.len()
+            valid = pd.Series(True, index=data.index)
+            if min_value is not None:
+                valid = valid & (data.isna() | (lengths >= min_value))
+            if max_value is not None:
+                valid = valid & (data.isna() | (lengths <= max_value))
+            return valid
+
+
+_register_missing_builtin_pandera_checks()
 
 
 class DgsGeneralSchema(pa.DataFrameModel):

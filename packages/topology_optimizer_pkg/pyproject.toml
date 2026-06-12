@@ -9,12 +9,12 @@ authors = [
     {name = "Leonard Hilfrich", email = "Leonard.Hilfrich@50hertz.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.14,<3.15"
 
 [tool.hatch.metadata.hooks.uv-dynamic-versioning]
 dependencies=[
     "pydantic (>=2.8.2,<3.0.0)",
-    "qdax (>=0.4.0,<0.5.0)",
+    "qdax (>=0.5.0,<0.6.0)",
     "tyro (>=0.8.0,<0.9.0)",
     "average (>=1.0,<2.0)",
     "beartype (>=0.22.0,<0.23.0)",
@@ -23,20 +23,21 @@ dependencies=[
     "seaborn (>=0.13.2,<0.14.0)",
     "optuna (>=3.6.1,<4.0.0)",
     "hydra-core (>=1.3.2,<2.0.0)",
-    "jax (>=0.4.30)",
-    "chex (>=0.1.88,<0.2.0)",
-    "sqlmodel (>=0.0.24,<0.0.25)",
+    "jax (>=0.8.3,<0.9.0)",
+    "chex (>=0.1.91,<0.2.0)",
+    "sqlmodel (>=0.0.38,<0.0.39)",
     "confluent-kafka (>=2.10.0,<3.0.0)",
     "toop_engine_dc_solver=={{ version }}",
     "toop_engine_interfaces=={{ version }}",
     "toop_engine_grid_helpers=={{ version }}",
     "toop_engine_contingency_analysis=={{ version }}",
     "structlog (>=24.4.0,<25.0.0)",
-    "jax-dataclasses (>=1.6.2,<2.0.0)",
+    "flax (>=0.12.6,<0.13.0)",
+    "jax-dataclasses (>=1.6.3,<2.0.0)",
     "polars>=1.33.0",
     "orjson>=3.11.3",
     "werkzeug>=3.1.4",
-    "equinox (>=0.11,<0.12)"
+    "equinox (>=0.13.8,<0.14.0)"
 ]
 
 [build-system]

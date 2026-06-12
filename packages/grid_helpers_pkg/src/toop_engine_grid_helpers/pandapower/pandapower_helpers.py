@@ -18,8 +18,9 @@ import pandas as pd
 from beartype.typing import Iterable, Literal, Optional, Sequence
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Integer
-from pandapower.converter import from_mpc, to_mpc
 from pandapower.converter.cim.cim2pp.from_cim import from_cim
+from pandapower.converter.matpower import from_mpc, to_mpc
+from pandapower.converter.pypower import to_ppc
 from pandapower.converter.ucte.from_ucte import from_ucte
 from pandapower.pypower.idx_brch import SHIFT
 from pandapower.toolbox import get_connected_buses
@@ -50,7 +51,7 @@ def get_phaseshift_mask(
         sum(controllable_mask), the inner arrays have length equal to the number of taps of each PST (varying)
     """
     # Everything that has a shift angle in the PPCI must be regarded as a phase shifter
-    ppci = pp.converter.to_ppc(net, init="flat", calculate_voltage_angles=True)
+    ppci = to_ppc(net, init="flat", calculate_voltage_angles=True)
     has_shift_angle = np.array(ppci["branch"][:, SHIFT] != 0)
 
     # Additionally there are trafos that have a tap_changer_type, but might be set to neutral

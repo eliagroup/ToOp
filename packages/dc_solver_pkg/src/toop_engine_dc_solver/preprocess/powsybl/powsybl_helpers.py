@@ -58,6 +58,9 @@ class BranchModel(DataFrameModel):
     pst_controllable: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch can be controlled by a phase tap changer"
     )
+    pst_group: Series[int] = Field(
+        nullable=True, default=-1, description="Parallel-PST group label (-1 = not a controllable PST / not grouped)"
+    )
     n0_n1_max_diff_factor: Series[float] = Field(
         nullable=True, default=-1.0, description="Maximum difference factor between N-0 and N-1 limits"
     )

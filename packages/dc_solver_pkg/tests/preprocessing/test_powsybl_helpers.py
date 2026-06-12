@@ -14,6 +14,7 @@ import pandas as pd
 import pypowsybl
 import pytest
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
+    add_missing_branch_model_columns,
     get_lines,
     get_network_as_pu,
     get_p_max,
@@ -31,6 +32,29 @@ def test_powsybl_helpers(powsybl_data_folder: Path) -> None:
     assert len(get_tie_lines(net)) == len(net.get_tie_lines())
     assert len(get_trafos(net)) == len(net.get_2_windings_transformers())
     assert len(get_p_max(net)) == len(net.get_branches())
+
+
+def test_add_missing_branch_model_columns() -> None:
+    branches = pd.DataFrame(
+        {"x": [0.1], "r": [0.2], "name": ["branch"]},
+        index=pd.Index(["branch_id"], name="id"),
+    )
+
+    normalized_branches = add_missing_branch_model_columns(branches)
+
+    assert normalized_branches.loc["branch_id", "name"] == "branch"
+    assert pd.isna(normalized_branches.loc["branch_id", "rho"])
+    assert pd.isna(normalized_branches.loc["branch_id", "alpha"])
+    assert bool(normalized_branches.loc["branch_id", "has_pst_tap"]) is False
+    assert bool(normalized_branches.loc["branch_id", "has_pst_linear_tap"]) is False
+    assert bool(normalized_branches.loc["branch_id", "for_reward"]) is False
+    assert bool(normalized_branches.loc["branch_id", "for_nminus1"]) is False
+    assert normalized_branches.loc["branch_id", "overload_weight"] == 1.0
+    assert pd.isna(normalized_branches.loc["branch_id", "p_max_mw"])
+    assert pd.isna(normalized_branches.loc["branch_id", "p_max_mw_n_1"])
+    assert bool(normalized_branches.loc["branch_id", "disconnectable"]) is False
+    assert bool(normalized_branches.loc["branch_id", "pst_controllable"]) is False
+    assert normalized_branches.loc["branch_id", "n0_n1_max_diff_factor"] == -1.0
 
 
 def get_op_lims_for_lines(lines_df: pd.DataFrame) -> pd.DataFrame:
@@ -91,6 +115,37 @@ def test_get_p_max(powsybl_data_folder: Path) -> None:
     expected_p_max_n_1 = 25 * lines_with_voltage_level["nominal_v"] * 1e-3 * math.sqrt(3)
     assert all(p_max_lines["p_max_mw"] == expected_p_max)
     assert all(p_max_lines["p_max_mw_n_1"] == expected_p_max_n_1)
+
+
+def test_get_p_max_uses_operational_limit_side_voltage(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
+) -> None:
+    net = pypowsybl.network.load(
+        complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    )
+
+    branches = net.get_branches(attributes=["voltage_level1_id", "voltage_level2_id"])
+    voltage_levels = net.get_voltage_levels(attributes=["nominal_v"])
+    operational_limits = net.get_operational_limits().reset_index()[["element_id", "side", "name", "value"]]
+    transformer_limits = operational_limits[
+        operational_limits["element_id"].isin(["2W_MV_HV_1", "2W_MV_HV_2", "2W_MV_LV"])
+        & (operational_limits["name"] == "permanent_limit")
+    ].copy()
+
+    transformer_limits["expected_voltage"] = np.where(
+        transformer_limits["side"] == "ONE",
+        voltage_levels.loc[branches.loc[transformer_limits["element_id"], "voltage_level1_id"].values, "nominal_v"].values,
+        voltage_levels.loc[branches.loc[transformer_limits["element_id"], "voltage_level2_id"].values, "nominal_v"].values,
+    )
+    transformer_limits["expected_p_max"] = (
+        transformer_limits["value"] * transformer_limits["expected_voltage"] * 1e-3 * math.sqrt(3)
+    )
+
+    p_max = get_p_max(net)
+
+    for row in transformer_limits.itertuples(index=False):
+        assert p_max.loc[row.element_id, "p_max_mw"] == pytest.approx(row.expected_p_max)
+        assert p_max.loc[row.element_id, "p_max_mw_n_1"] == pytest.approx(row.expected_p_max)
 
 
 def test_get_tie_lines():

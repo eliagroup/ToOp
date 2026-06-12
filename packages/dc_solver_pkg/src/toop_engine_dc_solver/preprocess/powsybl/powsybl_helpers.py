@@ -19,7 +19,7 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import structlog
-from beartype.typing import Optional
+from beartype.typing import Literal, Optional
 from pandera import DataFrameModel, Field
 from pandera.typing import Index, Series
 from pypowsybl.network import Network
@@ -40,6 +40,9 @@ class BranchModel(DataFrameModel):
     has_pst_tap: Series[bool] = Field(
         nullable=True, default=False, description="Whether the transformer has a phase tap changer"
     )
+    has_pst_linear_tap: Series[bool] = Field(
+        nullable=True, default=False, description="Whether the transformer has a linear phase tap changer"
+    )
     for_reward: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch is used for reward calculation"
     )
@@ -59,10 +62,43 @@ class BranchModel(DataFrameModel):
         nullable=True, default=-1.0, description="Maximum difference factor between N-0 and N-1 limits"
     )
 
-    class Config:
-        """Configuration for the BranchModel."""
 
-        add_missing_columns = True
+def add_missing_branch_model_columns(branches: pd.DataFrame) -> pat.DataFrame[BranchModel]:
+    """Add any missing BranchModel columns using schema defaults or null values.
+
+    This function ensures that the input dataframe has all the columns defined in the BranchModel schema.
+    If any columns are missing, they will be added with default values from the schema or NaN if no default is defined.
+    This is used instead of settings add_missing_col on the pandera model, since the latter will not work,
+    if pandera validation is disabled (like it is in production)
+
+    Parameters
+    ----------
+    branches: pd.DataFrame
+        The input dataframe containing branch data, which may be missing some columns defined in the BranchModel schema.
+
+    Returns
+    -------
+    pat.DataFrame[BranchModel]
+        A dataframe that conforms to the BranchModel schema,
+        with all missing columns added and filled with default values or NaN.
+    """
+    branch_template = get_empty_dataframe_from_model(BranchModel).reindex(branches.index)
+    normalized_branches = branches.copy()
+
+    for column_name, (_, field) in BranchModel.__fields__.items():
+        if column_name == branch_template.index.name or column_name in normalized_branches.columns:
+            continue
+
+        default_value = field.default
+        if default_value is None or default_value is ...:
+            default_value = np.nan
+        branch_template[column_name] = default_value
+
+    missing_columns = [
+        column_name for column_name in branch_template.columns if column_name not in normalized_branches.columns
+    ]
+    normalized_branches = pd.concat([normalized_branches, branch_template[missing_columns]], axis=1)
+    return normalized_branches[branch_template.columns]
 
 
 def get_cgmes_ids(merged_net: Network) -> list[str]:
@@ -121,11 +157,16 @@ def get_p_max(net: Network, fillna: float = 99999.0) -> pd.DataFrame:
     branches["from_voltage"] = voltage_levels.loc[branches["voltage_level1_id"].values, "nominal_v"].values
     branches["to_voltage"] = voltage_levels.loc[branches["voltage_level2_id"].values, "nominal_v"].values
 
-    cur_limits = net.get_operational_limits().reset_index()[["element_id", "name", "value"]]
+    cur_limits = net.get_operational_limits().reset_index()[["element_id", "name", "side", "value"]]
     merged_branches = branches.merge(cur_limits, how="left", left_index=True, right_on="element_id")
-    merged_branches["p_limit"] = merged_branches["value"] * merged_branches["to_voltage"] * 1e-3 * math.sqrt(3)
+    merged_branches["limit_voltage"] = np.select(
+        [merged_branches["side"] == "ONE", merged_branches["side"] == "TWO"],
+        [merged_branches["from_voltage"], merged_branches["to_voltage"]],
+        default=np.maximum(merged_branches["from_voltage"], merged_branches["to_voltage"]),
+    )
+    merged_branches["p_limit"] = merged_branches["value"] * merged_branches["limit_voltage"] * 1e-3 * math.sqrt(3)
     # For each limit type and branch, get the max limit
-    grouped_limits = merged_branches.groupby(["name", "element_id"]).p_limit.max().reset_index(0)
+    grouped_limits = merged_branches.groupby(["name", "element_id"]).p_limit.min().reset_index(0)
     # Get permanent n0-limit and whitelisted n1-limit
     branches["permanent_limit"] = grouped_limits[grouped_limits["name"] == "permanent_limit"]["p_limit"]
     branches["permanent_limit"] = branches["permanent_limit"].fillna(fillna)
@@ -192,28 +233,12 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
         net_pu = get_network_as_pu(net)
     trafos_pu = net_pu.get_2_windings_transformers(all_attributes=True)
 
-    phase_tap_changers = pd.merge(
-        left=net.get_phase_tap_changers(),
-        right=net.get_phase_tap_changer_steps(),
-        left_on=["id", "tap"],
-        right_on=["id", "position"],
-        how="left",
-    )
-    phase_tap_changers.columns = [f"{col}_ptap" for col in phase_tap_changers.columns]
-
     trafos = net.get_2_windings_transformers(all_attributes=True)
     trafos_pu = net_pu.get_2_windings_transformers(all_attributes=True)
     trafos["x"] = trafos_pu["x_at_current_tap"]
     trafos["r"] = trafos_pu["r_at_current_tap"]
     trafos["rho"] = trafos_pu["rho"]
     trafos["x"] = trafos["x"] / trafos["rho"]
-    trafos = pd.merge(
-        left=trafos,
-        right=phase_tap_changers,
-        left_index=True,
-        right_index=True,
-        how="left",
-    )
 
     if net._source_format == "UCTE":
         trafos["name"] = trafos.index + ": " + trafos.elementName
@@ -234,10 +259,12 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
             + " ## "
             + (trafos["elementName"] if "elementName" in trafos.keys() else trafos["name"])
         )
-
-    trafos["has_pst_tap"] = ~trafos["low_tap_ptap"].isna() & (trafos["low_tap_ptap"] != trafos["high_tap_ptap"])
-
-    return trafos[["x", "r", "rho", "alpha", "name", "has_pst_tap"]]
+    linear_psts = get_linear_pst(net, mode="dc")
+    trafos["has_pst_linear_tap"] = False
+    trafos["has_pst_tap"] = False
+    trafos.loc[linear_psts.index, "has_pst_linear_tap"] = linear_psts.values
+    trafos.loc[linear_psts.index, "has_pst_tap"] = True
+    return add_missing_branch_model_columns(trafos[["x", "r", "rho", "alpha", "name", "has_pst_linear_tap", "has_pst_tap"]])
 
 
 @pa.check_types
@@ -315,7 +342,7 @@ def get_tie_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFra
             + (tie_lines["elementName_nopu_d2"] if "elementName_nopu_d2" in tie_lines.keys() else tie_lines["name_d2"])
         )
 
-    return tie_lines[["x", "r", "name"]]
+    return add_missing_branch_model_columns(tie_lines[["x", "r", "name"]])
 
 
 @pa.check_types
@@ -365,4 +392,42 @@ def get_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[B
             + " ## "
             + (lines["elementName_nopu"] if "elementName_nopu" in lines.keys() else lines["name"])
         )
-    return lines[["x", "r", "name"]]
+    return add_missing_branch_model_columns(lines[["x", "r", "name"]])
+
+
+def get_linear_pst(net: Network, mode: Literal["ac", "dc"], tol: float = 1e-9) -> pd.Series:
+    """Check if a given branch has a linear phase shift transformer (PST) tap changer.
+
+    A linear PST is defined by the evaluation of x, r, g, b values at different tap positions.
+
+    Parameters
+    ----------
+    net : Network
+        The powsybl network
+    mode : Literal["ac", "dc"]
+        The mode for which to check the linearity of the PST.
+        In "dc" mode, only the reactance (x) is checked.
+        In "ac" mode, the reactance (x), resistance (r), conductance (g) and susceptance (b) are checked.
+    tol : float, optional
+        The tolerance for determining linearity, by default 1e-9.
+    """
+    tap_steps = net.get_phase_tap_changer_steps()
+    if mode == "dc":
+        linear_cols = ["x"]
+    elif mode == "ac":
+        linear_cols = ["r", "x", "g", "b"]
+    else:
+        raise ValueError(f"Invalid mode {mode}. Must be 'ac' or 'dc'.")
+
+    pst_ids = tap_steps.index.get_level_values("id").unique()
+    trafo_linear_pst = pd.Series(True, index=pst_ids)
+
+    for pst_id in pst_ids:
+        pst_info = tap_steps.loc[pst_id]
+        for col in linear_cols:
+            pst_info_col = pst_info[col].values
+            if not np.allclose(pst_info_col, pst_info_col[0], atol=tol):
+                trafo_linear_pst[pst_id] = False
+                break
+
+    return trafo_linear_pst

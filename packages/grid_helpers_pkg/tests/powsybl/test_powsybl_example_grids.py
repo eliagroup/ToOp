@@ -13,6 +13,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl_v2,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     create_complex_substation_layout_grid,
+    parallel_pst_example,
     powsybl_case30_with_psts,
     powsybl_case1354,
     powsybl_case9241,
@@ -90,6 +91,15 @@ def test_powsybl_case1354_converges():
 
 def test_three_node_pst_example_converges():
     net = three_node_pst_example()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
+    assert len(net.get_operational_limits())
+
+
+def test_parallel_pst_example_converges():
+    net = parallel_pst_example()
     result_dc = run_dc(net)
     assert result_dc[0].status_text == "Converged"
     result_ac = run_ac(net)

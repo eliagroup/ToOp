@@ -179,11 +179,14 @@ def get_outage_group_for_contingency(
             etype = element.table
 
             # Convert element into a node ID
-            node_id = elem_node_id("elem", idx, etype)
+            if etype == "bus":
+                node_id = elem_node_id("bus", idx, etype)
+            else:
+                node_id = elem_node_id("elem", idx, etype)
 
             # If the node is not in any component, create a new single-node component
             if node_id not in node_to_component:
-                new_component = {elem_node_id("bus", idx)}
+                new_component = {node_id}
                 connected_components.append(new_component)
                 comp_idx = len(connected_components) - 1
                 node_to_component[node_id] = comp_idx

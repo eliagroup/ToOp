@@ -40,6 +40,7 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
     Topology,
     TopologyPushResult,
 )
+from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_strategy
 
 
 @dataclass
@@ -77,6 +78,9 @@ class OptimizerData:
 
     start_time: float
     """The time the optimization run started"""
+
+    sent_topologies: set[bytes]
+    """A set of strategy hashes that have already been sent to the results topic, to avoid sending duplicates."""
 
 
 def initialize_optimization(
@@ -170,6 +174,7 @@ def initialize_optimization(
         initial_fitness=initial_fitness,
         initial_metrics=initial_metrics,
         start_time=time.time(),
+        sent_topologies=set(),
     )
 
     return optimization_data, static_information_descriptions, initial_topology
@@ -345,21 +350,21 @@ def run_epoch(
     )
 
 
-def extract_results(optimizer_data: OptimizerData) -> TopologyPushResult:
-    """Pull the results from the optimizer.
+def extract_topologies(optimizer_data: OptimizerData) -> list[Topology]:
+    """Extract unique and not sent topologies from the repertoire.
 
-    This should give the current best topologies along with metrics for each topology, where the
-    number of saved topologies is a configuration parameter in the StartOptimizationCommand.
+    Will return a list of topologies that have not been sent to the results topic yet. Also it will update the
+    optimizer data sent set in place to include those topologies.
 
     Parameters
     ----------
     optimizer_data : OptimizerData
-        The data stored for the optimization run
+        The data stored for the optimization run, the sent_topologies set will be updated in place
 
     Returns
     -------
-    TopologyPushResult
-        The current best topologies extracted and in topo-vect form.
+    list[Topology]
+        The topologies to send to the results topic, in message topo format
     """
     # Assuming that contingency_ids stay the same for all timesteps
     contingency_ids = optimizer_data.solver_configs[0].contingency_ids
@@ -375,8 +380,40 @@ def extract_results(optimizer_data: OptimizerData) -> TopologyPushResult:
         grid_model_low_tap=grid_model_low_tap,
     )
 
-    # Convert it to strategies
-    # TODO change once we support multiple timesteps
-    formatted_topologies = [Strategy(timesteps=[topo]) for topo in topologies]
+    # Filter out topologies that have already been sent
+    new_topologies = []
+    new_topology_hashes = []
+    for topo in topologies:
+        topology_hash = hash_strategy(Strategy(timesteps=[topo]))
+        if topology_hash not in optimizer_data.sent_topologies:
+            new_topologies.append(topo)
+            new_topology_hashes.append(topology_hash)
+    optimizer_data.sent_topologies.update(new_topology_hashes)
 
-    return TopologyPushResult(strategies=formatted_topologies, epoch=optimizer_data.jax_data.latest_iteration.max().item())
+    return new_topologies
+
+
+def convert_topologies_to_messages(topologies: list[Topology], epoch: int) -> list[TopologyPushResult]:
+    """Convert a list of topologies in message format to a list of TopologyPushResult.
+
+    Parameters
+    ----------
+    topologies : list[Topology]
+        The topologies in message format
+    epoch : int
+        The epoch number, used to annotate the results
+
+    Returns
+    -------
+    list[TopologyPushResult]
+        The topologies in TopologyPushResult format, ready to be sent to the results topic
+    """
+    topo_messages = []
+    for topo in topologies:
+        topo_message = TopologyPushResult(
+            strategy=Strategy(timesteps=[topo]),
+            epoch=epoch,
+        )
+        topo_messages.append(topo_message)
+
+    return topo_messages

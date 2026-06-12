@@ -329,6 +329,7 @@ def _build_spps_condition_rows(
                 "condition_limit_value": condition.condition_limit_value,
                 "condition_element_table": cond_table,
                 "condition_element_table_id": cond_table_id,
+                "condition_mode": condition.condition_mode.value,
             }
         )
     return rows

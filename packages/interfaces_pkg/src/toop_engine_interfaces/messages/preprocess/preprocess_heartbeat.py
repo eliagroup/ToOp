@@ -26,7 +26,6 @@ ConvertToJaxStage: TypeAlias = Literal[
     "convert_rel_bb_outage_data",
     "create_static_information",
     "filter_branch_actions",
-    "unsplit_n2_analysis",
     "bb_outage_baseline_analysis",
     "convert_to_jax_done",
 ]
@@ -34,6 +33,7 @@ ConvertToJaxStage: TypeAlias = Literal[
 NumpyPreprocessStage: TypeAlias = Literal[
     "preprocess_started",
     "extract_network_data_from_interface",
+    "exclude_nonlinear_psts_from_controllable",
     "filter_relevant_nodes",
     "assert_network_data",
     "compute_ptdf_if_not_given",

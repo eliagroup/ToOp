@@ -59,11 +59,11 @@ class Topology(BaseModel):
     can take all these values. Note that inside the dc optimizer, taps are always starting with 0 and have to be converted
     by adding grid_model_low_tap.
 
-    The list has the length of the number of controllable PSTs in the grid model and the nth entry corresponds to the nth
-    controllable PST in the network data.
+    The list has the length of the number of controllable PSTs in the grid model and the nth entry
+    corresponds to the nth controllable PST in the network data.
 
-    If the PST taps were not optimized, then this is None. Empty list is only allowed if there are no controllable PSTs in
-    the grid model.
+    If the PST taps were not optimized, then this is None.
+    Empty list is only allowed if there are no controllable PSTs in the grid model.
     """
 
     metrics: Metrics
@@ -198,21 +198,11 @@ class TopologyPushResult(BaseModel):
     message_type: Literal["topology_push"] = "topology_push"
     """The result type, don't change this"""
 
-    strategies: list[Strategy]
-    """The strategies to be pushed to the master. Each strategy contains a list of timestep-
-    topologies, one for every timestep that was optimized (i.e. Strategy.timesteps have the
-    same length for all strategies)"""
+    strategy: Strategy
+    """The strategy to be pushed to the master."""
 
     epoch: Optional[int] = None
     """The epoch of the optimization run. Enables plotting the results over time on backend side."""
-
-    @field_validator("strategies", mode="after")
-    @classmethod
-    def strategy_same_length(cls, v: list[Strategy]) -> list[Strategy]:
-        """Ensure that all strategies have the same number of timesteps."""
-        if len(set(len(strategy.timesteps) for strategy in v)) > 1:
-            raise ValueError("All strategies must have the same number of timesteps")
-        return v
 
 
 class OptimizationStoppedResult(BaseModel):

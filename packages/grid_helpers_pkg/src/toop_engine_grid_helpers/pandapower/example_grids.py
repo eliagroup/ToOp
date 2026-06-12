@@ -13,7 +13,7 @@ import pandapower as pp
 from beartype.typing import Union
 
 
-def add_phaseshift_transformer_to_line(
+def add_phaseshift_transformer_to_line_pandapower(
     net: pp.pandapowerNet,
     line_idx: int,
     at_from_bus: bool = True,
@@ -47,6 +47,9 @@ def add_phaseshift_transformer_to_line(
     helper_bus : int
         The index of the newly created helper bus.
     """
+    if tap_max < tap_min:
+        raise ValueError("tap_max must be greater than or equal to tap_min")
+
     # 1) Get the from-bus (and base voltage) of the given line
     from_bus = net.line.at[line_idx, "from_bus"]
     to_bus = net.line.at[line_idx, "to_bus"]
@@ -87,7 +90,8 @@ def add_phaseshift_transformer_to_line(
         tap_max=tap_max,  # max tap position
         tap_step_degree=tap_step_degree,
         tap_pos=0,  # start tap position
-        tap_changer_type=True,
+        tap_changer_type="Ideal",
+        tap_phase_shifter=True,
     )
 
     # 4) “Move” the from-bus connection of the line to the helper bus
@@ -107,9 +111,9 @@ def pandapower_case30_with_psts() -> pp.pandapowerNet:
     net = pp.networks.case30()
     # Add two phase shifters in the middle of the grid and one on the edge to almost separate
     # the grid into two parts, only connected by line 34 if you removed all psts
-    add_phaseshift_transformer_to_line(net, 13, at_from_bus=False, tap_min=-20, tap_max=20, tap_step_degree=1.0)
-    add_phaseshift_transformer_to_line(net, 11, at_from_bus=False)
-    add_phaseshift_transformer_to_line(net, 14, tap_max=40, tap_step_degree=10.0)
+    add_phaseshift_transformer_to_line_pandapower(net, 13, at_from_bus=False, tap_min=-20, tap_max=20, tap_step_degree=1.0)
+    add_phaseshift_transformer_to_line_pandapower(net, 11, at_from_bus=False)
+    add_phaseshift_transformer_to_line_pandapower(net, 14, tap_max=40, tap_step_degree=10.0)
     return net
 
 

@@ -246,7 +246,6 @@ def test_aggregate_to_metric_batched(mocker) -> None:
         branch_topology=branch_topologies,
         sub_ids=sub_ids,
         injection_topology=injections,
-        n_2_penalty=None,
         disconnections=None,
     )
 
@@ -454,7 +453,6 @@ def test_aggregate_to_metric(mocker) -> None:
     injections = jax.random.randint(keys[5], (n_splits, max_inj_per_sub), 0, 2).astype(bool)
     overload_weight = jax.random.exponential(keys[4], (n_branch,))
     n0_n1_max_diff = jax.random.exponential(keys[5], (n_branch,))
-    n_2_penalty = jnp.array(12.3456)
 
     branch_limits = BranchLimits(
         max_mw_flow=max_mw_flow,
@@ -472,7 +470,6 @@ def test_aggregate_to_metric(mocker) -> None:
         branch_topology=branch_topologies,
         sub_ids=sub_ids,
         injection_topology=injections,
-        n_2_penalty=n_2_penalty,
         disconnections=None,
     )
 
@@ -551,9 +548,6 @@ def test_aggregate_to_metric(mocker) -> None:
     ref = get_number_of_splits(branch_topology=branch_topologies, sub_ids=sub_ids, n_relevant_subs=n_subs_rel)
     assert jnp.allclose(res, ref)
 
-    res = aggregate_to_metric(lf_res, branch_limits, reassignment_distance, n_subs_rel, "n_2_penalty")
-    assert res == n_2_penalty
-
     res = aggregate_to_metric(lf_res, branch_limits, reassignment_distance, n_subs_rel, "switching_distance")
     ref = get_switching_distance(branch_action_index, reassignment_distance)
     assert jnp.array_equal(res, ref)
@@ -587,15 +581,6 @@ def test_aggregate_to_metric(mocker) -> None:
 
     res = aggregate_to_metric(lf_res, branch_limits, reassignment_distance, n_subs_rel, "disconnected_branches")
     assert res == 0
-
-    with pytest.raises(ValueError):
-        aggregate_to_metric(
-            lf_res=replace(lf_res, n_2_penalty=None),
-            branch_limits=branch_limits,
-            reassignment_distance=reassignment_distance,
-            n_relevant_subs=n_subs_rel,
-            metric="n_2_penalty",
-        )
 
     with pytest.raises(ValueError):
         aggregate_to_metric(
@@ -1097,7 +1082,6 @@ def test_aggregate_to_metric_pst_activated() -> None:
         sub_ids=sub_ids,
         injection_topology=injections,
         nodal_injections_optimized=NodalInjOptimResults(pst_tap_idx=jnp.array([[1, 0, 3]], dtype=int)),
-        n_2_penalty=None,
         disconnections=None,
         bb_outage_penalty=None,
         bb_outage_overload=None,
@@ -1209,7 +1193,6 @@ def test_aggregate_to_metric_pst_switching_distance() -> None:
         sub_ids=sub_ids,
         injection_topology=injections,
         nodal_injections_optimized=NodalInjOptimResults(pst_tap_idx=jnp.array([[1, 0, 5]], dtype=int)),
-        n_2_penalty=None,
         disconnections=None,
         bb_outage_penalty=None,
         bb_outage_overload=None,

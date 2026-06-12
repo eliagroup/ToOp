@@ -215,8 +215,14 @@ def get_worst_k_contingencies_ac(
 def compute_metrics(
     loadflow_results: LoadflowResultsPolars,
     base_case_id: Optional[str] = None,
-) -> dict[MetricType, float]:
+) -> dict[MetricType, float | None]:
     """Compute the metrics from the loadflow results.
+
+    N-1 overload energy will exclude the base case results if base_case_id is provided,
+    otherwise it will include all contingencies.
+    This method will return None for metrics that cannot be computed due to missing or invalid data. For example,
+    if basecase is provided and is the only contingency, then N-1 metrics will be None
+    since there are no valid N-1 contingencies to compute on.
 
     Parameters
     ----------
@@ -227,15 +233,26 @@ def compute_metrics(
 
     Returns
     -------
-    dict[MetricType, float]
+    dict[MetricType, float | None]
         A dictionary with the computed metrics.
     """
+    n_1_branch_res = (
+        loadflow_results.branch_results.filter(pl.col("contingency") != base_case_id)
+        if base_case_id is not None
+        else loadflow_results.branch_results
+    )
+    n_1_va_diff_res = (
+        loadflow_results.va_diff_results.filter(pl.col("contingency") != base_case_id)
+        if base_case_id is not None
+        else loadflow_results.va_diff_results
+    )
+
     metrics = {
-        "max_flow_n_1": compute_max_load(loadflow_results.branch_results),
-        "overload_energy_n_1": compute_overload_energy(loadflow_results.branch_results, field="p"),
-        "max_va_diff_n_1": compute_max_va_diff(loadflow_results.va_diff_results),
-        "overload_current_n_1": compute_overload_energy(loadflow_results.branch_results, field="i"),
-        "critical_branch_count_n_1": count_critical_branches(loadflow_results.branch_results),
+        "max_flow_n_1": compute_max_load(n_1_branch_res),
+        "overload_energy_n_1": compute_overload_energy(n_1_branch_res, field="p"),
+        "max_va_diff_n_1": compute_max_va_diff(n_1_va_diff_res),
+        "overload_current_n_1": compute_overload_energy(n_1_branch_res, field="i"),
+        "critical_branch_count_n_1": count_critical_branches(n_1_branch_res),
     }
 
     if base_case_id is not None:

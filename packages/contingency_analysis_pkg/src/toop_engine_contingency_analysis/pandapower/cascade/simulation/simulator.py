@@ -114,6 +114,8 @@ class CascadeSimulator:
         branch_results_df: pat.DataFrame[BranchResultSchema],
         switch_results_df: pat.DataFrame[SwitchResultsSchema],
         initial_contingency: PandapowerContingency,
+        basecase_net: pp.pandapowerNet,
+        monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     ) -> list[CascadeEvent]:
         """Run the cascade loop starting from initial load-flow results.
 
@@ -127,6 +129,15 @@ class CascadeSimulator:
             Switch result table from the initial load flow.
         initial_contingency : PandapowerContingency
             Contingency that started this cascade.
+        basecase_net : pp.pandapowerNet
+            Deep-copy of the network after the base-case load flow, before any
+            contingency outages. Forwarded to each inner load-flow step so that
+            SpPS BC-mode conditions are evaluated against the true base-case
+            state rather than the previous cascade step.
+        monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
+            Elements to monitor. Branch and node results produced by each inner
+            load-flow step are filtered to this set before being used for
+            subsequent cascade trigger detection.
 
         Returns
         -------
@@ -161,6 +172,14 @@ class CascadeSimulator:
                 triggers=triggers,
                 step_no=step_no,
             )
+            # Filter events to monitored elements only — unmonitored elements
+            # do not appear in the result log.
+            # NOTE: outages are intentionally NOT filtered here. When a violated
+            # element IS monitored, its outage group may include non-monitored
+            # elements (e.g. a busbar or impedance on the same protection zone).
+            # All elements in that group must still be taken out of service so
+            # the network topology stays consistent for subsequent cascade steps.
+            step_events = self._filter_events_to_monitored(step_events, monitored_elements)
             accumulative_outages_pp.extend(self._to_pandapower_outage_elements(net, outages))
 
             contingency = PandapowerContingency(
@@ -172,6 +191,8 @@ class CascadeSimulator:
                 net=net,
                 contingency=contingency,
                 monitored_breakers=monitored_breakers,
+                basecase_net=basecase_net,
+                monitored_elements=monitored_elements,
             )
             step_events = self._add_spps_activation_info(
                 events=step_events,
@@ -197,6 +218,7 @@ class CascadeSimulator:
             events=events,
             net=net,
             triggers=triggers,
+            monitored_elements=monitored_elements,
         )
 
     def _detect_triggers_from_results(
@@ -385,6 +407,8 @@ class CascadeSimulator:
         net: pp.pandapowerNet,
         contingency: PandapowerContingency,
         monitored_breakers: pat.DataFrame[PandapowerMonitoredElementSchema],
+        basecase_net: pp.pandapowerNet,
+        monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     ) -> CascadeSppsBranchSwitchResults | None:
         """Run one inner cascade load flow after applying accumulated outages.
 
@@ -396,6 +420,15 @@ class CascadeSimulator:
             Accumulated outages to apply.
         monitored_breakers : pat.DataFrame[PandapowerMonitoredElementSchema]
             Breakers monitored for switch result calculation.
+        basecase_net : pp.pandapowerNet
+            Deep-copy of the network after the base-case load flow, before any
+            contingency outages. Passed to SpPS so that BC-mode conditions are
+            evaluated against the true base-case state throughout all cascade
+            steps.
+        monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
+            Full monitored-element table. Branch and node results are filtered
+            to this set after the load flow so that only monitored elements are
+            used for subsequent cascade trigger detection.
 
         Returns
         -------
@@ -415,10 +448,11 @@ class CascadeSimulator:
                 self._spps,
                 switch_element_mapping,
                 timestep=1,
-                basecase_voltage=net.res_bus.vm_pu.copy(),
+                basecase_net=basecase_net,
                 method=self._lf_method,
                 runpp_kwargs=self._runpp_kwargs,
                 min_island_size=self._cfg.min_island_size,
+                monitored_elements=monitored_elements,
             )
         except Exception:
             return None
@@ -486,6 +520,7 @@ class CascadeSimulator:
         events: list[CascadeEvent],
         net: pp.pandapowerNet,
         triggers: CascadeTriggers,
+        monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     ) -> list[CascadeEvent]:
         """Add final events when the cascade reaches its depth limit.
 
@@ -497,6 +532,8 @@ class CascadeSimulator:
             Pandapower network at the final cascade state.
         triggers : CascadeTriggers
             Last triggers that could not be processed because of the limit.
+        monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
+            Only events for elements present in this table are appended.
 
         Returns
         -------
@@ -509,5 +546,32 @@ class CascadeSimulator:
             triggers=triggers,
             step_no=depth_stop_no,
         )
+        depth_events = self._filter_events_to_monitored(depth_events, monitored_elements)
         events.extend(depth_events)
         return events
+
+    @staticmethod
+    def _filter_events_to_monitored(
+        events: list[CascadeEvent],
+        monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
+    ) -> list[CascadeEvent]:
+        """Keep only events whose element is in the monitored-element table.
+
+        Events with ``element_id=None`` (e.g. failed load-flow markers) are
+        always kept because they carry no element identity to filter on.
+
+        Parameters
+        ----------
+        events : list[CascadeEvent]
+            Candidate events from a cascade step.
+        monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
+            Table whose index contains the globally unique IDs of monitored
+            elements.
+
+        Returns
+        -------
+        list[CascadeEvent]
+            Filtered list containing only events for monitored elements.
+        """
+        monitored_ids = set(monitored_elements.index)
+        return [e for e in events if e.element_id is None or e.element_id in monitored_ids]

@@ -10,7 +10,6 @@
 from typing import Any
 
 import pandapower as pp
-import pandapower.topology as top
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
@@ -31,10 +30,9 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.swit
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerMonitoredElementSchema,
     SingleOutageSppsContext,
+    SlackAllocationConfig,
 )
-from toop_engine_grid_helpers.pandapower.bus_lookup import create_bus_lookup_simple
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
-from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_per_island
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus, SwitchResultsSchema
 
@@ -85,15 +83,18 @@ def run_spps_with_branch_switch_results(
     spps: SingleOutageSppsContext,
     switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
     timestep: int,
-    basecase_voltage: pat.Series[float],
+    basecase_net: pp.pandapowerNet,
+    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
     method: Literal["ac", "dc"] = "ac",
     runpp_kwargs: dict[str, Any] | None = None,
     min_island_size: int = 11,
 ) -> CascadeSppsBranchSwitchResults:
     """Run one load flow step and collect results needed by cascade logic.
 
-    This assigns slack buses, runs the outage power flow, and then extracts
-    branch, node, and switch results if the load flow converged.
+    Builds a :class:`SlackAllocationConfig` from *min_island_size* and
+    delegates to :func:`run_outage_power_flow`, which owns all slack-bus
+    assignment (initial PF and SpPS in-loop reassignment).  Extracts branch,
+    node, and switch results when the load flow converged.
 
     Parameters
     ----------
@@ -107,14 +108,20 @@ def run_spps_with_branch_switch_results(
         Mapping used to calculate switch results.
     timestep : int
         Timestep label to write into result tables.
-    basecase_voltage : pat.Series[float]
-        Base voltage values used by node result calculations.
+    basecase_net : pp.pandapowerNet
+        Deep-copy of the network whose ``res_bus.vm_pu`` column holds the
+        reference (pre-step) voltages used by node result calculations.
     method : Literal["ac", "dc"]
         Load-flow method, either ac or dc.
     runpp_kwargs : dict[str, Any] | None
         Extra arguments forwarded to pandapower.
     min_island_size : int
-        Smallest island size that can receive a slack bus.
+        Smallest island size that can receive a slack bus; passed through to
+        :class:`SlackAllocationConfig`.
+    monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
+        Branch and node results are filtered to this set after
+        the load flow. Only monitored branches and nodes are then used for
+        subsequent cascade trigger detection.
 
     Returns
     -------
@@ -122,14 +129,7 @@ def run_spps_with_branch_switch_results(
         Object with convergence status and result tables, or empty result fields
         when the step failed.
     """
-    slack_net_graph = top.create_nxgraph(net)  # TODO: consider caching or create once and then reuse
-    bus_lookup = create_bus_lookup_simple(net)[0]
-    failed_element_uids = {get_globally_unique_id(el.table_id, el.table) for el in contingency.elements}
-    assign_slack_per_island(
-        net=net,
-        net_graph=slack_net_graph,
-        bus_lookup=bus_lookup,
-        elements_ids=list(failed_element_uids),
+    slack_allocation_config = SlackAllocationConfig(
         min_island_size=min_island_size,
     )
 
@@ -139,6 +139,8 @@ def run_spps_with_branch_switch_results(
         method,
         contingency.elements,
         runpp_kwargs=runpp_kwargs,
+        slack_allocation_config=slack_allocation_config,
+        basecase_net=basecase_net,
     )
 
     if convergence_status != ConvergenceStatus.CONVERGED:
@@ -151,7 +153,7 @@ def run_spps_with_branch_switch_results(
         )
 
     branch_results = get_branch_results(net, contingency, timestep)
-    node_results = get_node_result_df(net, contingency, timestep, basecase_voltage)
+    node_results = get_node_result_df(net, contingency, timestep, basecase_net)
     switch_results: pat.DataFrame[SwitchResultsSchema] = get_switch_results(
         net,
         contingency,
@@ -160,6 +162,10 @@ def run_spps_with_branch_switch_results(
         node_results,
         switch_element_mapping,
     )
+
+    monitored_index = monitored_elements.index
+    branch_results = branch_results[branch_results.index.isin(monitored_index, level="element")]
+    node_results = node_results[node_results.index.isin(monitored_index, level="element")]
 
     return CascadeSppsBranchSwitchResults(
         convergence_status=convergence_status,

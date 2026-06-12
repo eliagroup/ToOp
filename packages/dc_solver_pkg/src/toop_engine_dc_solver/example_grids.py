@@ -26,6 +26,8 @@ import pypowsybl
 from beartype.typing import Literal, Optional
 from fsspec.implementations.dirfs import DirFileSystem
 from networkx.algorithms.community import kernighan_lin_bisection
+from toop_engine_dc_solver.preprocess import NetworkData
+from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_grid_helpers.pandapower.example_grids import (
@@ -37,7 +39,9 @@ from toop_engine_grid_helpers.pandapower.example_grids import (
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.example_grids import (
     create_busbar_b_in_ieee,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
     extract_station_info_powsybl,
+    parallel_pst_example,
     powsybl_case30_with_psts,
     powsybl_case1354,
     powsybl_case9241,
@@ -46,6 +50,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
+from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
@@ -57,6 +62,12 @@ from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
+)
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    AreaSettings,
+    CgmesImporterParameters,
+    LimitAdjustmentParameters,
+    PreprocessParameters,
 )
 
 
@@ -692,7 +703,7 @@ def case9241_pandapower(data_folder: Path) -> None:
     # Setting tap_step_degree is required to compute voltage angles but setting
     # both tap_step_percent and degree is disallowed, so setting to NA
     net.trafo.loc[net.trafo.vn_lv_kv == net.trafo.vn_hv_kv, "tap_step_percent"] = tap_step_percent
-    net.trafo.loc[net.trafo.vn_lv_kv == net.trafo.vn_hv_kv, "tap_changer_type"] = True
+    net.trafo.loc[net.trafo.vn_lv_kv == net.trafo.vn_hv_kv, "tap_changer_type"] = "Ideal"
     net.trafo.loc[net.trafo.vn_lv_kv == net.trafo.vn_hv_kv, "tap_neutral"] = tap_neutral
     net.trafo.loc[net.trafo.vn_lv_kv == net.trafo.vn_hv_kv, "tap_pos"] = tap_pos
 
@@ -988,7 +999,7 @@ def case14_pandapower(folder: Path) -> None:
     save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
 
-def case30_with_psts(folder: Path) -> None:
+def case30_with_psts_pandapower(folder: Path) -> None:
     net = pandapower_case30_with_psts_and_weak_branches()
 
     pp.runpp(net)
@@ -1082,3 +1093,100 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+
+
+def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst: np.ndarray | None = None) -> NetworkData:
+    """Create a preprocessed folder for create_complex_grid_battery_hvdc_svc_3w_trafo().
+
+    Runs the importer and preprocessing.
+
+    Parameter:
+    folder: Path
+        The root folder where the data is saved to.
+    linear_pst: np.ndarray | None
+        The linear PST coefficients to use during the creation of the grid.
+    Returns:
+    NetworkData
+        The network data after preprocessing, which can be used for testing the consistency of the preprocessing step
+    """
+    # Connect the out of service line to bring the second PST operational
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=linear_pst, connect_line_out_of_service=True)
+    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+
+    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_file_path)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        data_folder=folder,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    _info, _static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(folder)),
+        pandapower=False,
+    )
+    save_lf_params_to_fs(
+        DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
+
+    return network_data
+
+
+def parallel_pst_data_folder(folder: Path) -> NetworkData:
+    """Create a preprocessed folder for parallel_pst_example().
+
+    Runs the importer and preprocessing.
+
+    Parameter:
+    folder: Path
+        The root folder where the data is saved to.
+    Returns:
+    NetworkData
+        The network data after preprocessing, which can be used for testing the consistency of the preprocessing step
+    """
+    net = parallel_pst_example()
+    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+
+    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_file_path)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        data_folder=folder,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
+    _info, _static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(folder),
+        pandapower=False,
+        status_update_fn=None,
+        parameters=preprocessing_parameters,
+    )
+
+    return network_data

@@ -58,7 +58,7 @@ def get_complex_impedance(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     tuple
         Pair of series-like values: resistance and reactance.
     """
-    v_phase_kv = df["vm"] / np.sqrt(3)
-    z_ohm = v_phase_kv / df["i"]
+    v_phase_v = df["vm"] * 1000 / np.sqrt(3)
+    z_ohm = v_phase_v / df["i"]
     phi_rad = np.arctan2(df["q"], df["p"])
     return z_ohm * np.cos(phi_rad), z_ohm * np.sin(phi_rad)

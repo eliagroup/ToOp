@@ -398,7 +398,7 @@ def _compute_switch_flow_and_injection_results(
        The apparent power ``s`` and current ``i`` are then computed as:
 
        - ``s = sqrt(p**2 + q**2)``
-       - ``i = s / (sqrt(3) * vm)``
+       - ``i = s / (sqrt(3) * vm) * 1000``  (result in A)
 
        Rows with ``vm == 0`` are removed before current calculation.
 
@@ -435,7 +435,7 @@ def _compute_switch_flow_and_injection_results(
         - ``q``: aggregated reactive power
         - ``vm``: voltage magnitude used for current calculation
         - ``s``: apparent power
-        - ``i``: current
+        - ``i``: current in A
     """
     # Branch contribution
     if branch_results.empty:
@@ -467,7 +467,7 @@ def _compute_switch_flow_and_injection_results(
 
     switch_results["s"] = np.sqrt(switch_results["p"] ** 2 + switch_results["q"] ** 2)
     switch_results = switch_results[switch_results["vm"] != 0]
-    switch_results["i"] = switch_results["s"] / (np.sqrt(3) * switch_results["vm"])
+    switch_results["i"] = switch_results["s"] / (np.sqrt(3) * switch_results["vm"]) * 1000
 
     return switch_results
 
@@ -637,11 +637,61 @@ def get_switch_results(
         - apparent power (``s``)
         - metadata columns (``element_name``, ``contingency_name``)
     """
-    switch_results = _compute_switch_flow_and_injection_results(
-        branch_results=branch_results,
-        node_results=node_results,
-        switch_element_mapping=switch_element_mapping,
+    all_switch_ids = switch_element_mapping["switch_id"].drop_duplicates()
+    res_switch = (
+        net.res_switch[net.res_switch["p_from_mw"].notna()]
+        if hasattr(net, "res_switch") and not net.res_switch.empty
+        else pd.DataFrame()
     )
+
+    parts: list[pd.DataFrame] = []
+
+    direct_ids = (
+        all_switch_ids[all_switch_ids.isin(res_switch.index)] if not res_switch.empty else pd.Series([], dtype="int64")
+    )
+    calc_ids = all_switch_ids[~all_switch_ids.isin(res_switch.index)]
+
+    if not direct_ids.empty:
+        rs = res_switch.loc[direct_ids]
+        bus_ids = net.switch.loc[direct_ids, "bus"]
+        vm_kv = net.res_bus.loc[bus_ids.values, "vm_pu"].values * net.bus.loc[bus_ids.values, "vn_kv"].values
+        from_rows = pd.DataFrame(
+            {
+                "switch_id": direct_ids.values,
+                "p": rs["p_from_mw"].values,
+                "q": rs["q_from_mvar"].values,
+                "vm": vm_kv,
+                "i": rs["i_ka"].values * 1000,
+                "side": "from",
+            }
+        )
+        to_rows = pd.DataFrame(
+            {
+                "switch_id": direct_ids.values,
+                "p": rs["p_to_mw"].values,
+                "q": rs["q_to_mvar"].values,
+                "vm": vm_kv,
+                "i": rs["i_ka"].values * 1000,
+                "side": "to",
+            }
+        )
+        parts.extend([from_rows, to_rows])
+
+    if not calc_ids.empty:
+        calc_mapping = switch_element_mapping[switch_element_mapping["switch_id"].isin(calc_ids)]
+        calc_results = _compute_switch_flow_and_injection_results(
+            branch_results=branch_results,
+            node_results=node_results,
+            switch_element_mapping=calc_mapping,
+        )
+        calc_results["side"] = None
+        parts.append(calc_results)
+
+    if parts:
+        switch_results = pd.concat(parts, ignore_index=True)
+    else:
+        switch_results = pd.DataFrame(columns=["switch_id", "p", "q", "vm", "i", "side"])
+
     switch_results = _orient_switch_results_to_relay_side(net, switch_results)
     switch_results["element"] = get_globally_unique_id_from_index(switch_results["switch_id"], element_type="switch")
     switch_results["element_name"] = switch_results["switch_id"].map(net.switch["name"])
@@ -701,6 +751,7 @@ def get_failed_switch_results(
             "i": np.nan,
             "element_name": "",
             "contingency_name": "",
+            "side": None,
         },
     )
 

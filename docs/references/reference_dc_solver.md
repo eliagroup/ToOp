@@ -51,7 +51,6 @@
 ::: toop_engine_dc_solver.jax.inspector
 ::: toop_engine_dc_solver.jax.lodf
 ::: toop_engine_dc_solver.jax.multi_outages
-::: toop_engine_dc_solver.jax.nminus2_outage
 ::: toop_engine_dc_solver.jax.result_storage
 ::: toop_engine_dc_solver.jax.topology_computations
 ::: toop_engine_dc_solver.jax.topology_looper

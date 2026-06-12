@@ -53,7 +53,6 @@ OperationMetric: TypeAlias = Literal[
 OtherMetric: TypeAlias = Literal[
     "n0_n1_delta",
     "cross_coupler_flow",
-    "n_2_penalty",
     "bb_outage_penalty",
     "bb_outage_overload",
     "bb_outage_grid_splits",

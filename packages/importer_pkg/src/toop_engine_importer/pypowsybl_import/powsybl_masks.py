@@ -538,6 +538,9 @@ def update_trafo_masks(
 
     disconnectable_mask = disconnectable_mask & ~blacklisted_trafos
     pst_controllable_mask = pst_controllable_mask & ~blacklisted_trafos
+    # TODO: Use remaining controllable PSTs to build groups of PSTs via identical parameters
+    # and same origin and destination bus
+    # TODO: Don't forget to load/create empty masks
     outage_mask = outage_mask & ~blacklisted_trafos
     reward_mask = reward_mask & ~blacklisted_trafos
 

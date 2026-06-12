@@ -1294,6 +1294,7 @@ def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> Netwo
     """
     if network_data.phase_shift_mask is None or network_data.controllable_phase_shift_mask is None:
         return network_data
+
     logger.info(
         "Excluding nonlinear phase shifters from the controllable mask, "
         "since they cannot be handled correctly in the backend."

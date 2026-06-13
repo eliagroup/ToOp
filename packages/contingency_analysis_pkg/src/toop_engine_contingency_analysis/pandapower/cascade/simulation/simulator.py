@@ -157,9 +157,9 @@ class CascadeSimulator:
         events: list[CascadeEvent] = []
         accumulative_outages_pp: list[PandapowerElements] = []
         # Only relay switches can trip during cascading, so we limit flow computation to them.
-        # kind must be switch_flow for get_switch_mapped_elements to pick them up and compute current.
+        # kind must be "switch" for get_switch_mapped_elements to pick them up and compute current.
         monitored_breakers = monitored_elements[monitored_elements["kind"] == "switch_relay"].copy()
-        monitored_breakers["kind"] = "switch_flow"
+        monitored_breakers["kind"] = "switch"
 
         for step in range(self._cfg.depth_limit):
             step_no = step + 1

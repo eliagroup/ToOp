@@ -66,7 +66,7 @@ class GridElement(BaseModel):
     For powsybl, this is not strictly needed to identify the element however it makes it easier. In that case, type will be
     something like TIE_LINE, LINE, TWO_WINDING_TRANSFORMER, GENERATOR, etc."""
 
-    kind: Literal["branch", "bus", "injection", "switch_angle", "switch_flow", "switch_relay"]
+    kind: Literal["branch", "bus", "injection", "switch_angle", "switch", "switch_relay"]
     """The kind of the element. Usually these are handled differently in the grid modelling software, so it
     can make assembling an N-1 analysis easier if it is known if the element is a branch, bus or injection.
     This could be inferred from the type, however for conveniece it is stored separately.
@@ -78,7 +78,7 @@ class GridElement(BaseModel):
 
     For switches, there are three sub-kinds:
     - ``switch_angle``: an open CB monitored for voltage-angle difference (VA diff results).
-    - ``switch_flow``: a closed CB for which active/reactive power flow and current are computed.
+    - ``switch``: a closed CB for which active/reactive power flow and current are computed.
     - ``switch_relay``: a CB with a protection relay that participates in cascade detection.
     """
 

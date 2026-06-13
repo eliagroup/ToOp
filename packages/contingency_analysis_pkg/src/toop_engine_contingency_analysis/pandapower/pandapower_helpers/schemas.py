@@ -98,7 +98,7 @@ class PandapowerMonitoredElementSchema(pa.DataFrameModel):
     table: Series[str] = pa.Field(description="The type of the monitored element, e.g. 'line', 'bus', 'load', etc.")
     table_id: Series[int] = pa.Field(description="The id of the monitored element in the corresponding table.")
     kind: Series[str] = pa.Field(
-        isin=["branch", "bus", "injection", "switch_angle", "switch_flow", "switch_relay"],
+        isin=["branch", "bus", "injection", "switch_angle", "switch", "switch_relay"],
         description="The kind of the monitored element, e.g. 'branch', 'bus' etc.",
     )
     name: Series[str] = pa.Field(description="The name of the monitored element, if available.")

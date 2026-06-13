@@ -66,7 +66,7 @@ class GridElement(BaseModel):
     For powsybl, this is not strictly needed to identify the element however it makes it easier. In that case, type will be
     something like TIE_LINE, LINE, TWO_WINDING_TRANSFORMER, GENERATOR, etc."""
 
-    kind: Literal["branch", "bus", "injection", "switch"]
+    kind: Literal["branch", "bus", "injection", "switch_angle", "switch_flow", "switch_relay"]
     """The kind of the element. Usually these are handled differently in the grid modelling software, so it
     can make assembling an N-1 analysis easier if it is known if the element is a branch, bus or injection.
     This could be inferred from the type, however for conveniece it is stored separately.
@@ -75,6 +75,11 @@ class GridElement(BaseModel):
     In powsybl in a bus/branch model, there are no busbar sections in powsybl, i.e. net.get_node_breaker_topology does not
     deliver busbar sections. Meaning, the "bus" type refers to the net.get_bus_breaker_topology buses if it's a bus/breaker
     topology bus. If it's a node/breaker topology, then "bus" refers to the busbar section.
+
+    For switches, there are three sub-kinds:
+    - ``switch_angle``: an open CB monitored for voltage-angle difference (VA diff results).
+    - ``switch_flow``: a closed CB for which active/reactive power flow and current are computed.
+    - ``switch_relay``: a CB with a protection relay that participates in cascade detection.
     """
 
 

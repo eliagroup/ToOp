@@ -10,7 +10,6 @@
 from typing import Any
 
 import pandapower as pp
-import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Literal
@@ -32,48 +31,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     SingleOutageSppsContext,
     SlackAllocationConfig,
 )
-from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
-from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus, SwitchResultsSchema
-
-
-def cascade_monitored_breakers_dataframe(
-    net: pp.pandapowerNet,
-    breaker_origin_ids: pd.Series | list[str] | set[str],
-) -> pat.DataFrame[PandapowerMonitoredElementSchema]:
-    """Create the switch monitor table needed inside cascade simulation.
-
-    Parameters
-    ----------
-    net : pp.pandapowerNet
-        Pandapower network containing switches.
-    breaker_origin_ids : pd.Series | list[str] | set[str]
-        External breaker ids that should be monitored.
-
-    Returns
-    -------
-    pat.DataFrame[PandapowerMonitoredElementSchema]
-        Monitored-element table containing the selected circuit breakers.
-    """
-    empty_df = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-    index: list[str] = []
-    rows: list[dict[str, Any]] = []
-    switch_df = net.switch[net.switch.origin_id.isin(breaker_origin_ids)]
-    for idx, row in switch_df.iterrows():
-        sid = int(idx)
-        index.append(get_globally_unique_id(sid, "switch"))
-        rows.append(
-            {
-                "table": "switch",
-                "table_id": sid,
-                "kind": "switch",
-                "name": str(row["name"]) if pd.notna(row.get("name")) else "",
-            }
-        )
-
-    if not rows:
-        return empty_df
-    return pd.concat([empty_df, pd.DataFrame(rows, index=index)])
 
 
 @pa.check_types

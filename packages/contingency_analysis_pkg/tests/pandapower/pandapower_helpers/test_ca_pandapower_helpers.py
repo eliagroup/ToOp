@@ -605,7 +605,7 @@ def test_get_failed_va_diff_results(pandapower_net: pp.pandapowerNet):
         monitored_elements.loc[get_globally_unique_id(i, "switch"), ["table", "table_id", "kind", "name"]] = (
             "switch",
             i,
-            "switch",
+            "switch_angle",
             f"Switch {i}",
         )
     monitored_elements.table_id = monitored_elements.table_id.astype(int)

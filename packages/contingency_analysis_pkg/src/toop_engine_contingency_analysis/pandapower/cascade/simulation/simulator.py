@@ -38,7 +38,6 @@ from toop_engine_contingency_analysis.pandapower.cascade.outage_groups import (
     pandapower_grid_element_from_network_outage,
 )
 from toop_engine_contingency_analysis.pandapower.cascade.simulation.loadflow import (
-    cascade_monitored_breakers_dataframe,
     run_spps_with_branch_switch_results,
 )
 from toop_engine_contingency_analysis.pandapower.outaged_topology import open_outaged_circuit_breakers
@@ -157,10 +156,10 @@ class CascadeSimulator:
 
         events: list[CascadeEvent] = []
         accumulative_outages_pp: list[PandapowerElements] = []
-        monitored_breakers = cascade_monitored_breakers_dataframe(
-            net,
-            self._context.switch_characteristics.breaker_uuid,
-        )
+        # Only relay switches can trip during cascading, so we limit flow computation to them.
+        # kind must be switch_flow for get_switch_mapped_elements to pick them up and compute current.
+        monitored_breakers = monitored_elements[monitored_elements["kind"] == "switch_relay"].copy()
+        monitored_breakers["kind"] = "switch_flow"
 
         for step in range(self._cfg.depth_limit):
             step_no = step + 1

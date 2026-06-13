@@ -149,7 +149,7 @@ def test_va_diff_out_group_trafo():
         monitored_elements.loc[get_globally_unique_id(int(row.Index), "switch"), ["table", "table_id", "kind", "name"]] = (
             "switch",
             row.Index,
-            "switch",
+            "switch_angle",
             row.name,
         )
     monitored_elements.table_id = monitored_elements.table_id.astype(int)
@@ -192,7 +192,7 @@ def test_va_diff_out_group_multiple_els():
         monitored_elements.loc[get_globally_unique_id(int(row.Index), "switch"), ["table", "table_id", "kind", "name"]] = (
             "switch",
             row.Index,
-            "switch",
+            "switch_angle",
             row.name,
         )
     monitored_elements.table_id = monitored_elements.table_id.astype(int)
@@ -246,7 +246,7 @@ def test_get_va_diff_results(pandapower_net: pp.pandapowerNet):
     monitored_elements.loc[get_globally_unique_id(int(switch_id), "switch"), ["table", "table_id", "kind", "name"]] = (
         "switch",
         switch_id,
-        "switch",
+        "switch_angle",
         f"Switch {switch_id}",
     )
     monitored_elements.table_id = monitored_elements.table_id.astype(int)
@@ -322,7 +322,7 @@ def test_get_va_diff_results_multioutage(pandapower_net: pp.pandapowerNet):
     monitored_elements.loc[get_globally_unique_id(int(switch_id), "switch"), ["table", "table_id", "kind", "name"]] = (
         "switch",
         switch_id,
-        "switch",
+        "switch_angle",
         f"Switch {switch_id}",
     )
     monitored_elements.table_id = monitored_elements.table_id.astype(int)
@@ -358,7 +358,7 @@ def test_get_va_diff_results_basecase(pandapower_net: pp.pandapowerNet):
     monitored_elements.loc[get_globally_unique_id(int(switch_id), "switch"), ["table", "table_id", "kind", "name"]] = (
         "switch",
         switch_id,
-        "switch",
+        "switch_angle",
         f"Switch {switch_id}",
     )
 

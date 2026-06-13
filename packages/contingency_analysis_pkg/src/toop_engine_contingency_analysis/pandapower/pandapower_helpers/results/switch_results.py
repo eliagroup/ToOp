@@ -373,6 +373,39 @@ def _get_switch_mapped_elements_by_origin_ids(
     return branch_map_df, bus_map_df
 
 
+def compute_current_a(
+    p: np.ndarray,
+    q: np.ndarray,
+    vm_kv: np.ndarray,
+) -> np.ndarray:
+    """Compute the three-phase current magnitude from apparent power and voltage.
+
+    Derives the current at a measurement point given active power, reactive power,
+    and the local voltage magnitude. The apparent power is first reconstructed from
+    ``p`` and ``q``, then divided by the three-phase voltage base to produce a
+    current in amperes.
+
+    The formula applied is::
+
+        i [A] = sqrt(p**2 + q**2) / (sqrt(3) * vm_kv) * 1000
+
+    Parameters
+    ----------
+    p : np.ndarray
+        Active power in MW.
+    q : np.ndarray
+        Reactive power in Mvar.
+    vm_kv : np.ndarray
+        Voltage magnitude in kV at the measurement point.
+
+    Returns
+    -------
+    np.ndarray
+        Current magnitude in A.
+    """
+    return np.sqrt(p**2 + q**2) / (np.sqrt(3) * vm_kv) * 1000
+
+
 def _compute_switch_flow_and_injection_results(
     branch_results: pat.DataFrame[BranchResultSchema],
     node_results: pat.DataFrame[NodeResultSchema],
@@ -399,7 +432,7 @@ def _compute_switch_flow_and_injection_results(
        The apparent power ``s`` and current ``i`` are then computed as:
 
        - ``s = sqrt(p**2 + q**2)``
-       - ``i = s / (sqrt(3) * vm) * 1000``  (result in A)
+       - ``i`` is computed via :func:`compute_current_a` (result in A)
 
        Rows with ``vm == 0`` are removed before current calculation.
 
@@ -468,7 +501,9 @@ def _compute_switch_flow_and_injection_results(
 
     switch_results["s"] = np.sqrt(switch_results["p"] ** 2 + switch_results["q"] ** 2)
     switch_results = switch_results[switch_results["vm"] != 0]
-    switch_results["i"] = switch_results["s"] / (np.sqrt(3) * switch_results["vm"]) * 1000
+    switch_results["i"] = compute_current_a(
+        switch_results["p"].values, switch_results["q"].values, switch_results["vm"].values
+    )
 
     return switch_results
 
@@ -638,8 +673,9 @@ def get_switch_results(
         - apparent power (``s``)
         - metadata columns (``element_name``, ``contingency_name``)
     """
-    # TODO: filter only closed switches
+    closed_ids = net.switch.index[net.switch["closed"]]
     all_switch_ids = switch_element_mapping["switch_id"].drop_duplicates()
+    all_switch_ids = all_switch_ids[all_switch_ids.isin(closed_ids)]
     res_switch = (
         net.res_switch[net.res_switch["p_from_mw"].notna()]
         if hasattr(net, "res_switch") and not net.res_switch.empty
@@ -655,27 +691,33 @@ def get_switch_results(
 
     if not direct_ids.empty:
         rs = res_switch.loc[direct_ids]
-        bus_ids = net.switch.loc[direct_ids, "bus"]
-        vm_kv = (
-            net.res_bus.loc[bus_ids.values, "vm_pu"].values * net.bus.loc[bus_ids.values, "vn_kv"].values
-        )  # TODO: we need to calc v_from and v_to
+        from_bus_ids = net.switch.loc[direct_ids, "bus"]
+        to_bus_ids = net.switch.loc[direct_ids, "element"]
+        vm_from_kv = net.res_bus.loc[from_bus_ids.values, "vm_pu"].values * net.bus.loc[from_bus_ids.values, "vn_kv"].values
+        vm_to_kv = net.res_bus.loc[to_bus_ids.values, "vm_pu"].values * net.bus.loc[to_bus_ids.values, "vn_kv"].values
+        p_from = rs["p_from_mw"].values
+        q_from = rs["q_from_mvar"].values
+        p_to = rs["p_to_mw"].values
+        q_to = rs["q_to_mvar"].values
+        i_from_a = compute_current_a(p_from, q_from, vm_from_kv)
+        i_to_a = compute_current_a(p_to, q_to, vm_to_kv)
         from_rows = pd.DataFrame(
             {
                 "switch_id": direct_ids.values,
-                "p": rs["p_from_mw"].values,
-                "q": rs["q_from_mvar"].values,
-                "vm": vm_kv,
-                "i": rs["i_ka"].values * 1000,  # calc i_from from p q and v
+                "p": p_from,
+                "q": q_from,
+                "vm": vm_from_kv,
+                "i": i_from_a,
                 "side": "from",
             }
         )
         to_rows = pd.DataFrame(
             {
                 "switch_id": direct_ids.values,
-                "p": rs["p_to_mw"].values,
-                "q": rs["q_to_mvar"].values,
-                "vm": vm_kv,
-                "i": rs["i_ka"].values * 1000,  # calc i_to from p q and v
+                "p": p_to,
+                "q": q_to,
+                "vm": vm_to_kv,
+                "i": i_to_a,
                 "side": "to",
             }
         )

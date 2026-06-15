@@ -26,7 +26,7 @@ logger = structlog.get_logger(__name__)
 
 def node_breaker_updates_to_orao_dict(
     node_breaker_updates: NodeBreakerUpdate,
-) -> dict[str, dict[str, dict[str, str | list[dict[str, str | bool]]]]]:
+) -> dict:
     """Write node-breaker updates into an ORAO-compatible dictionary format.
 
     The format looks like this:
@@ -56,7 +56,7 @@ def node_breaker_updates_to_orao_dict(
 
     Parameters
     ----------
-    node_breaker_updates : NodeBreakerUpdate
+    node_breaker_updates : dict
         The raw switch and PST updates to export.
     """
     switch_actions = [

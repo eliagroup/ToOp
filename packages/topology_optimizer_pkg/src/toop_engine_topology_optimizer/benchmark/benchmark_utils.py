@@ -715,12 +715,12 @@ def save_orao_summary(
     if disconnections is None:
         disconnections = []
 
-    node_breaker_updates = get_node_breaker_updates_from_action_set(
+    updates = get_node_breaker_updates_from_action_set(
         action_set=action_set,
         actions=actions,
         disconnections=disconnections,
     )
-    orao_summary = node_breaker_updates_to_orao_dict(node_breaker_updates)
+    orao_summary = node_breaker_updates_to_orao_dict(updates)
 
     with (output_dir / "orao_summary.json").open("w", encoding="utf-8") as file_handle:
         json.dump(orao_summary, file_handle)

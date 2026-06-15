@@ -32,7 +32,7 @@ from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from omegaconf import DictConfig
 from structlog import DropEvent
-from toop_engine_dc_solver.export.export import get_changing_switches_from_action_set
+from toop_engine_dc_solver.export.export import get_node_breaker_updates_from_action_set
 from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
@@ -690,11 +690,11 @@ def save_orao_summary(
     if disconnections is None:
         disconnections = []
 
-    switch_updates = get_changing_switches_from_action_set(
+    switch_updates = get_node_breaker_updates_from_action_set(
         action_set=action_set,
         actions=actions,
         disconnections=disconnections,
-    )
+    ).switch_updates
     orao_summary = changing_switches_to_orao_dict(switch_updates)
 
     with (output_dir / "orao_summary.json").open("w", encoding="utf-8") as file_handle:

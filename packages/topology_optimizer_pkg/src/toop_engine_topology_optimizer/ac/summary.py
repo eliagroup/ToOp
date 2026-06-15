@@ -15,10 +15,10 @@ import pandera.typing as pat
 import structlog
 from fsspec import AbstractFileSystem
 from sqlmodel import Session, select
-from toop_engine_dc_solver.export.export import get_changing_switches_from_action_set
+from toop_engine_dc_solver.export.export import get_node_breaker_updates_from_action_set
 from toop_engine_interfaces.folder_structure import POSTPROCESSING_PATHS
+from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
 from toop_engine_interfaces.stored_action_set import ActionSet
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
 
@@ -93,11 +93,11 @@ def db_topology_to_changing_switches(
     action_set : ActionSet
         The action set that was applied to the topology, to read up the asset topology for the switched station
     """
-    return get_changing_switches_from_action_set(
+    return get_node_breaker_updates_from_action_set(
         action_set=action_set,
         actions=db_topology.actions,
         disconnections=db_topology.disconnections,
-    )
+    ).switch_updates
 
 
 def export_topology(

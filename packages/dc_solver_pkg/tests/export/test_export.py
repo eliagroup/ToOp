@@ -15,16 +15,16 @@ import pytest
 from tests.network_data_pickle import load_network_data
 from toop_engine_contingency_analysis.pypowsybl import run_contingency_analysis_powsybl
 from toop_engine_dc_solver.export.export import (
-    get_changing_switches_from_action_set,
     get_changing_switches_from_actions,
+    get_node_breaker_updates_from_action_set,
 )
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_topology
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_dc_solver.preprocess.network_data import extract_action_set, extract_nminus1_definition, load_lf_params
 from toop_engine_interfaces.folder_structure import OUTPUT_FILE_NAMES, POSTPROCESSING_PATHS, PREPROCESSING_PATHS
 from toop_engine_interfaces.nminus1_definition import GridElement
-from toop_engine_interfaces.stored_action_set import ActionSet
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
+from toop_engine_interfaces.node_breaker_update import PSTUpdateSchema, SwitchUpdateSchema
+from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
 
 
 def test_get_changing_switches_from_actions_matches_network_diff(
@@ -60,7 +60,7 @@ def test_get_changing_switches_from_actions_matches_network_diff(
     assert result.reset_index(drop=True).equals(expected.reset_index(drop=True))
 
 
-def test_get_changing_switches_from_action_set_matches_expanded_inputs(
+def test_get_node_breaker_updates_from_action_set_matches_expanded_inputs(
     basic_node_breaker_topology,
 ) -> None:
     target_station = basic_node_breaker_topology.stations[0]
@@ -87,11 +87,11 @@ def test_get_changing_switches_from_action_set_matches_expanded_inputs(
         local_actions=[changed_station],
     )
 
-    result = get_changing_switches_from_action_set(
+    result = get_node_breaker_updates_from_action_set(
         action_set=action_set,
         actions=[0],
         disconnections=[0],
-    )
+    ).switch_updates
     expected = get_changing_switches_from_actions(
         changed_stations=[changed_station],
         simplified_starting_topology=starting_topology,
@@ -103,19 +103,64 @@ def test_get_changing_switches_from_action_set_matches_expanded_inputs(
     assert result.reset_index(drop=True).equals(expected.reset_index(drop=True))
 
 
+def test_get_node_breaker_updates_from_action_set_includes_pst_updates(
+    basic_node_breaker_topology,
+) -> None:
+    target_station = basic_node_breaker_topology.stations[0]
+    changed_station = target_station.model_copy(
+        update={
+            "asset_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+        }
+    )
+    starting_topology = basic_node_breaker_topology.model_copy(update={"stations": [target_station]})
+    action_set = ActionSet.model_construct(
+        starting_topology=starting_topology,
+        simplified_starting_topology=starting_topology,
+        connectable_branches=[],
+        disconnectable_branches=[],
+        pst_ranges=[
+            PSTRange.model_construct(
+                id="pst-1",
+                name="pst-1",
+                type="TWO_WINDINGS_TRANSFORMER",
+                kind="pst",
+                low_tap=-30,
+                high_tap=30,
+                starting_tap=0,
+            ),
+        ],
+        hvdc_ranges=[],
+        local_actions=[changed_station],
+    )
+
+    result = get_node_breaker_updates_from_action_set(
+        action_set=action_set,
+        actions=[0],
+        disconnections=[],
+        pst_setpoints=[12],
+    )
+
+    SwitchUpdateSchema.validate(result.switch_updates)
+    PSTUpdateSchema.validate(result.pst_updates)
+    assert result.pst_updates.reset_index(drop=True).to_dict(orient="records") == [{"grid_model_id": "pst-1", "tap": 12}]
+
+
 @pytest.mark.parametrize(
-    ("actions", "disconnections", "expected_message"),
+    ("actions", "disconnections", "pst_setpoints", "expected_message"),
     [
-        ([1], [], "Action index 1 is out of bounds for the action set"),
-        ([-1], [], "Action index -1 is out of bounds for the action set"),
-        ([], [1], "Disconnection index 1 is out of bounds for the action set"),
-        ([], [-1], "Disconnection index -1 is out of bounds for the action set"),
+        ([1], [], None, "Action index 1 is out of bounds for the action set"),
+        ([-1], [], None, "Action index -1 is out of bounds for the action set"),
+        ([], [1], None, "Disconnection index 1 is out of bounds for the action set"),
+        ([], [-1], None, "Disconnection index -1 is out of bounds for the action set"),
+        ([], [], [1, 2], "Number of PST setpoints must match number of controllable PSTs"),
+        ([], [], [999], "PST setpoint out of tap range"),
     ],
 )
-def test_get_changing_switches_from_action_set_validates_indices(
+def test_get_node_breaker_updates_from_action_set_validates_indices(
     basic_node_breaker_topology,
     actions: list[int],
     disconnections: list[int],
+    pst_setpoints: list[int] | None,
     expected_message: str,
 ) -> None:
     action_set = ActionSet.model_construct(
@@ -123,16 +168,27 @@ def test_get_changing_switches_from_action_set_validates_indices(
         simplified_starting_topology=basic_node_breaker_topology,
         connectable_branches=[],
         disconnectable_branches=[GridElement(id="L8", name="", type="LINE", kind="branch")],
-        pst_ranges=[],
+        pst_ranges=[
+            PSTRange.model_construct(
+                id="pst-1",
+                name="pst-1",
+                type="TWO_WINDINGS_TRANSFORMER",
+                kind="pst",
+                low_tap=-30,
+                high_tap=30,
+                starting_tap=0,
+            )
+        ],
         hvdc_ranges=[],
         local_actions=[basic_node_breaker_topology.stations[0]],
     )
 
     with pytest.raises(ValueError, match=expected_message):
-        get_changing_switches_from_action_set(
+        get_node_breaker_updates_from_action_set(
             action_set=action_set,
             actions=actions,
             disconnections=disconnections,
+            pst_setpoints=pst_setpoints,
         )
 
 

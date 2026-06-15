@@ -14,7 +14,7 @@ from toop_engine_dc_solver.export.station_switch_updates import (
     get_changing_switches_from_changed_stations,
 )
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_topology
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
+from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
 
 
 def test_resolve_changed_stations_preserves_topology_order(basic_node_breaker_topology):

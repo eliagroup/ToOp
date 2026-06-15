@@ -25,8 +25,8 @@ from fsspec import AbstractFileSystem
 from toop_engine_interfaces.asset_topology import RealizedTopology
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
 from toop_engine_interfaces.stored_action_set import ActionSet
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 AdditionalActionInfo: TypeAlias = Union[pat.DataFrame[SwitchUpdateSchema], RealizedTopology]
 

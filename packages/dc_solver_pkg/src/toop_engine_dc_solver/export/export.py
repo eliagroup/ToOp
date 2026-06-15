@@ -5,11 +5,11 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""High-level switch update export entrypoints.
+"""High-level node-breaker update export entrypoints.
 
-The main function to use is ``get_changing_switches_from_action_set``, which translates directly from the stored action set
-representation to the switch update schema format. For more fine-grained control, the underlying functions can be used to
-translate from target topologies or lists of changed stations and disconnections.
+The main function to use is ``get_node_breaker_updates_from_action_set``, which translates directly from the stored
+action set representation to the low-level node-breaker update format. For more fine-grained control, the underlying
+functions can be used to translate from target topologies or lists of changed stations and disconnections.
 """
 
 import pandas as pd
@@ -24,8 +24,12 @@ from toop_engine_dc_solver.export.station_switch_updates import (
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
+from toop_engine_interfaces.node_breaker_update import (
+    NodeBreakerUpdate,
+    PSTUpdateSchema,
+    SwitchUpdateSchema,
+)
 from toop_engine_interfaces.stored_action_set import ActionSet
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 logger = structlog.get_logger(__name__)
 
@@ -90,6 +94,60 @@ def _get_disconnections_from_indices(
             raise ValueError(f"Disconnection index {disconnection_index} is out of bounds for the action set")
         disconnected_branches.append(action_set.disconnectable_branches[disconnection_index])
     return disconnected_branches
+
+
+@pa.check_types
+def get_pst_updates_from_setpoints(
+    action_set: ActionSet,
+    pst_setpoints: list[int] | None,
+) -> pat.DataFrame[PSTUpdateSchema]:
+    """Get PST updates from absolute setpoints in stored ActionSet order.
+
+    This is the PST-only export entrypoint for consumers that already know the requested
+    absolute taps and only need the raw node-breaker PST update table.
+
+    Parameters
+    ----------
+    action_set : ActionSet
+        Stored action set containing controllable PST ranges.
+    pst_setpoints : list[int] | None
+        Absolute PST tap positions in ``action_set.pst_ranges`` order, matching the
+        convention accepted by the postprocess runner. If ``None`` or empty, an empty
+        PST update table is returned.
+
+    Returns
+    -------
+    pat.DataFrame[PSTUpdateSchema]
+        PST updates corresponding to ``pst_setpoints``.
+
+    Raises
+    ------
+    ValueError
+        If the number of PST setpoints does not match the number of controllable PSTs.
+    """
+    if pst_setpoints is None or len(pst_setpoints) == 0:
+        return cast(pat.DataFrame[PSTUpdateSchema], get_empty_dataframe_from_model(PSTUpdateSchema))
+
+    if len(pst_setpoints) != len(action_set.pst_ranges):
+        raise ValueError(
+            "Number of PST setpoints must match number of controllable PSTs, "
+            f"got {pst_setpoints} setpoints for {[pst.id for pst in action_set.pst_ranges]} PSTs"
+        )
+
+    for pst_range, pst_setpoint in zip(action_set.pst_ranges, pst_setpoints, strict=True):
+        if pst_setpoint < pst_range.low_tap or pst_setpoint > pst_range.high_tap:
+            raise ValueError(
+                "PST setpoint out of tap range: "
+                f"{pst_setpoint} for {pst_range.id}, expected between {pst_range.low_tap} and {pst_range.high_tap}"
+            )
+
+    pst_updates = pd.DataFrame(
+        {
+            "grid_model_id": [pst.id for pst in action_set.pst_ranges],
+            "tap": list(pst_setpoints),
+        }
+    ).astype({"grid_model_id": str, "tap": int})
+    return cast(pat.DataFrame[PSTUpdateSchema], pst_updates)
 
 
 @pa.check_types
@@ -166,39 +224,49 @@ def get_changing_switches_from_actions(
 
 
 @pa.check_types
-def get_changing_switches_from_action_set(
+def get_node_breaker_updates_from_action_set(
     action_set: ActionSet,
     actions: list[int],
     disconnections: list[int] | None = None,
-) -> pat.DataFrame[SwitchUpdateSchema]:
-    """Get switch updates from stored ActionSet indices.
+    pst_setpoints: list[int] | None = None,
+) -> NodeBreakerUpdate:
+    """Get raw node-breaker updates from stored ActionSet indices.
 
     Parameters
     ----------
     action_set : ActionSet
-        Stored action set containing the simplified starting topology, local actions, and
-        disconnectable branches.
+        Stored action set containing the simplified starting topology, local actions,
+        disconnectable branches, and controllable PST ranges.
     actions : list[int]
         Indices into ``action_set.local_actions`` describing the selected station actions.
     disconnections : list[int] | None, optional
         Indices into ``action_set.disconnectable_branches`` describing explicit branch
         disconnections.
+    pst_setpoints : list[int] | None, optional
+        Absolute PST tap positions in ``action_set.pst_ranges`` order, matching the
+        convention accepted by the postprocess runner.
 
     Returns
     -------
-    pat.DataFrame[SwitchUpdateSchema]
-        Switch update rows representing the requested indexed actions and disconnections.
+    NodeBreakerUpdate
+        Low-level switch and PST updates representing the requested actions.
 
     Raises
     ------
     ValueError
-        If any action or disconnection index is out of bounds.
+        If any action or disconnection index is out of bounds, or the PST setpoint count
+        does not match the controllable PST count.
     """
     changed_stations = _get_changed_stations_from_action_indices(action_set=action_set, actions=actions)
     disconnected_branches = _get_disconnections_from_indices(action_set=action_set, disconnections=disconnections)
-    return get_changing_switches_from_actions(
+    switch_updates = get_changing_switches_from_actions(
         changed_stations=changed_stations,
         simplified_starting_topology=action_set.simplified_starting_topology,
         disconnections=disconnected_branches,
         full_starting_topology=action_set.starting_topology,
+    )
+    pst_updates = get_pst_updates_from_setpoints(action_set=action_set, pst_setpoints=pst_setpoints)
+    return NodeBreakerUpdate(
+        switch_updates=switch_updates,
+        pst_updates=pst_updates,
     )

@@ -18,11 +18,11 @@ import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from pypowsybl.network import Network
 from sqlmodel import Session
-from toop_engine_dc_solver.export.export import get_changing_switches_from_action_set
+from toop_engine_dc_solver.export.export import get_node_breaker_updates_from_action_set
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.folder_structure import POSTPROCESSING_PATHS
+from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs, random_actions
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.ac.summary import (
     changing_switches_to_orao_dict,
@@ -235,11 +235,11 @@ def test_db_topology_to_changing_switches_matches_direct_grid_computation(
         db_topology=db_topology,
         action_set=complex_grid_summary_context.action_set,
     )
-    expected = get_changing_switches_from_action_set(
+    expected = get_node_breaker_updates_from_action_set(
         action_set=complex_grid_summary_context.action_set,
         actions=db_topology.actions,
         disconnections=db_topology.disconnections,
-    )
+    ).switch_updates
 
     SwitchUpdateSchema.validate(result)
     assert not result.empty

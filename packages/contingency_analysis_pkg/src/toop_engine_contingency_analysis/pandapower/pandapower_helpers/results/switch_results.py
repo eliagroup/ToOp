@@ -403,7 +403,8 @@ def compute_current_a(
     np.ndarray
         Current magnitude in A.
     """
-    return np.sqrt(p**2 + q**2) / (np.sqrt(3) * vm_kv) * 1000
+    denom = np.sqrt(3) * np.where(vm_kv == 0, np.nan, vm_kv)
+    return np.sqrt(p**2 + q**2) / denom * 1000
 
 
 def _compute_switch_flow_and_injection_results(

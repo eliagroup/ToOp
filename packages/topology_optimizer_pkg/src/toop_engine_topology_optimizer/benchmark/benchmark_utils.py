@@ -35,6 +35,7 @@ from structlog import DropEvent
 from toop_engine_dc_solver.export.export import get_node_breaker_updates_from_action_set
 from toop_engine_dc_solver.jax.types import StaticInformation
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
+from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import is_bus_branch_grid
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
     PandapowerRunner,
 )
@@ -46,12 +47,7 @@ from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
 )
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
     PowsyblRunner,
-)
-from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
-    apply_disconnections as powsybl_apply_disconnections,
-)
-from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
-    apply_topology as powsybl_apply_topology,
+    apply_node_breaker_updates,
 )
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
@@ -77,7 +73,7 @@ from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.stored_action_set import load_action_set as load_stored_action_set
 from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep
-from toop_engine_topology_optimizer.ac.summary import changing_switches_to_orao_dict
+from toop_engine_topology_optimizer.ac.summary import node_breaker_updates_to_orao_dict
 from toop_engine_topology_optimizer.dc.main import CLIArgs
 from toop_engine_topology_optimizer.dc.main import main as opt_main
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import (
@@ -466,7 +462,12 @@ def apply_topology_and_save(
     is_pandapower_grid: bool = False,
 ) -> pypowsybl.network.Network:
     """
-    Apply a set of topology actions and disconnections to the grid, then saves the modified network to a specified path.
+    Apply topology updates to a grid and save the modified network.
+
+    Pandapower grids continue to use the legacy bus-branch helpers. Powsybl grids,
+    however, must be node-breaker grids and are updated through the canonical
+    ``NodeBreakerUpdate`` representation. Bus-branch powsybl grids are explicitly
+    unsupported in this method.
 
     Parameters
     ----------
@@ -481,28 +482,52 @@ def apply_topology_and_save(
     save_path : Path
         Path where the modified network will be saved.
     is_pandapower_grid : bool, optional
-        Whether the grid is a pandapower grid. Default is False (powsybl grid).
+        Whether the input grid is a pandapower grid.
 
     Returns
     -------
     pypowsybl.network.Network
-        The modified network after applying the topology changes and disconnections.
+        The modified network.
+
+    Raises
+    ------
+    ValueError
+        If the loaded powsybl grid is in bus-branch format.
     """
-    # Load grid
-    base_net = pypowsybl.network.load(grid_path) if not is_pandapower_grid else pandapower.from_json(grid_path)
+    filtered_actions = [action for action in actions if action is not None]
+    filtered_disconnections = [disconnection for disconnection in disconnections if disconnection is not None]
 
-    # Apply topology and disconnections
     if is_pandapower_grid:
-        # Pandapower version returns (net, realized_topology)
-        modified_net, _ = pandapower_apply_topology(net=base_net, actions=actions, action_set=action_set)
-        modified_net = pandapower_apply_disconnections(modified_net, disconnections=disconnections, action_set=action_set)
-    else:
-        # Powsybl version modifies in-place and returns AdditionalActionInfo
-        _ = powsybl_apply_topology(net=base_net, actions=actions, action_set=action_set)
-        powsybl_apply_disconnections(base_net, disconnections=disconnections, action_set=action_set)
-        modified_net = base_net
+        base_net = pandapower.from_json(grid_path)
+        modified_net, _ = pandapower_apply_topology(net=base_net, actions=filtered_actions, action_set=action_set)
+        modified_net = pandapower_apply_disconnections(
+            modified_net,
+            disconnections=filtered_disconnections,
+            action_set=action_set,
+        )
+        modified_net.to_json(save_path)
+        logger.info(f"Saved modified network to {save_path}")
+        return modified_net
 
-    modified_net.save(save_path) if not is_pandapower_grid else modified_net.to_json(save_path)
+    base_net = pypowsybl.network.load(grid_path)
+    relevant_station = None
+    for topology in (action_set.starting_topology, action_set.simplified_starting_topology):
+        if topology is not None and len(topology.stations):
+            relevant_station = topology.stations[0].grid_model_id
+            break
+
+    if is_bus_branch_grid(base_net, relevant_station=relevant_station):
+        raise ValueError("apply_topology_and_save is incompatible with bus-branch powsybl grids")
+
+    node_breaker_updates = get_node_breaker_updates_from_action_set(
+        action_set=action_set,
+        actions=filtered_actions,
+        disconnections=filtered_disconnections,
+    )
+    _ = apply_node_breaker_updates(base_net, node_breaker_updates)
+    modified_net = base_net
+
+    modified_net.save(save_path)
     logger.info(f"Saved modified network to {save_path}")
     return modified_net
 
@@ -690,12 +715,12 @@ def save_orao_summary(
     if disconnections is None:
         disconnections = []
 
-    switch_updates = get_node_breaker_updates_from_action_set(
+    node_breaker_updates = get_node_breaker_updates_from_action_set(
         action_set=action_set,
         actions=actions,
         disconnections=disconnections,
-    ).switch_updates
-    orao_summary = changing_switches_to_orao_dict(switch_updates)
+    )
+    orao_summary = node_breaker_updates_to_orao_dict(node_breaker_updates)
 
     with (output_dir / "orao_summary.json").open("w", encoding="utf-8") as file_handle:
         json.dump(orao_summary, file_handle)

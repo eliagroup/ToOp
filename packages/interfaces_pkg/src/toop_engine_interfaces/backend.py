@@ -306,16 +306,25 @@ class BackendInterface(ABC):
             if is_controllable
         ]
 
+    @abstractmethod
     def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
         """Get a PST group mask aligned with the controllable PST arrays.
 
-        Returns None when no explicit grouping metadata is available.
+        Returns
+        -------
+        Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]
+            The mask for parallel PST groups, or None if no explicit grouping metadata is available.
         """
-        return None
 
+    @abstractmethod
     def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
-        """Get PST group identifiers aligned with rows of get_parallel_pst_group_mask()."""
-        return None
+        """Get PST group identifiers aligned with rows of get_parallel_pst_group_mask().
+
+        Returns
+        -------
+        Optional[list[str]]
+            The identifiers for parallel PST groups, or None if no explicit grouping metadata is available.
+        """
 
     @abstractmethod
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:

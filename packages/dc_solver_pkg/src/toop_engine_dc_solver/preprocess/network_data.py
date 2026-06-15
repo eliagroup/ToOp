@@ -180,7 +180,7 @@ class NetworkData:
     """Mask of branches that would lead to islanding if outaged"""
 
     nodal_injection: Optional[Float[np.ndarray, " n_timestep n_node"]] = None
-    """The injected netto power at each node in the grid for all timesteps"""
+    """The injected net power at each node in the grid for all timesteps"""
 
     ptdf_is_extended: bool = False
     """Flag to show if PTDF was already extended"""

@@ -546,10 +546,11 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 "grid_model_low_tap",
                 data=nodal_inj_opt.grid_model_low_tap,
             )
-            file.create_dataset(
-                "parallel_pst_group_mask",
-                data=nodal_inj_opt.parallel_pst_group_mask,
-            )
+            if solver_config.enable_parallel_pst_group_optim:
+                file.create_dataset(
+                    "parallel_pst_group_mask",
+                    data=nodal_inj_opt.parallel_pst_group_mask,
+                )
 
         for idx, (branches, nodes) in enumerate(
             zip(

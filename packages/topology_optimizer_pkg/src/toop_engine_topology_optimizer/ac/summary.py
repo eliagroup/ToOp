@@ -11,13 +11,12 @@ import base64
 import json
 from pathlib import Path
 
-import pandera.typing as pat
 import structlog
 from fsspec import AbstractFileSystem
 from sqlmodel import Session, select
 from toop_engine_dc_solver.export.export import get_node_breaker_updates_from_action_set
 from toop_engine_interfaces.folder_structure import POSTPROCESSING_PATHS
-from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
+from toop_engine_interfaces.node_breaker_update import NodeBreakerUpdate
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
@@ -25,10 +24,10 @@ from toop_engine_topology_optimizer.interfaces.messages.commons import Framework
 logger = structlog.get_logger(__name__)
 
 
-def changing_switches_to_orao_dict(
-    switch_updates: pat.DataFrame[SwitchUpdateSchema],
+def node_breaker_updates_to_orao_dict(
+    node_breaker_updates: NodeBreakerUpdate,
 ) -> dict[str, dict[str, dict[str, str | list[dict[str, str | bool]]]]]:
-    """Write the changing switches into an orao compatible dictionary format
+    """Write node-breaker updates into an ORAO-compatible dictionary format.
 
     The format looks like this:
     ```
@@ -57,18 +56,30 @@ def changing_switches_to_orao_dict(
 
     Parameters
     ----------
-    switch_updates : pat.DataFrame[SwitchUpdateSchema]
-        The list of switch updates to export.
+    node_breaker_updates : NodeBreakerUpdate
+        The raw switch and PST updates to export.
     """
-    actions = [
+    switch_actions = [
         {
             "type": "SWITCH",
             "id": f"{'Open' if switch_update['open'] else 'Close'} {switch_update['grid_model_id']}",
             "switchId": switch_update["grid_model_id"],
             "open": bool(switch_update["open"]),
         }
-        for switch_update in switch_updates.to_dict(orient="records")
+        for switch_update in node_breaker_updates.switch_updates.to_dict(orient="records")
     ]
+    pst_actions = [
+        {
+            "type": "PHASE_TAP_CHANGER_TAP_POSITION",
+            "id": f"Set {pst_update['grid_model_id']} to {pst_update['tap']}",
+            "transformerId": pst_update["grid_model_id"],
+            "tapPosition": int(pst_update["tap"]),
+            "relativeValue": False,
+            "side": "TWO",
+        }
+        for pst_update in node_breaker_updates.pst_updates.to_dict(orient="records")
+    ]
+    actions = [*switch_actions, *pst_actions]
 
     return {
         "forced-actions": {
@@ -80,24 +91,25 @@ def changing_switches_to_orao_dict(
     }
 
 
-def db_topology_to_changing_switches(
+def db_topology_to_node_breaker_updates(
     db_topology: ACOptimTopology,
     action_set: ActionSet,
-) -> pat.DataFrame[SwitchUpdateSchema]:
-    """Get the list of changing switches from a topology in the database
+) -> NodeBreakerUpdate:
+    """Get raw node-breaker updates from a topology in the database.
 
     Parameters
     ----------
     db_topology : ACOptimTopology
-        The topology to be converted to the ORAO format
+        The topology to be converted to low-level node-breaker updates.
     action_set : ActionSet
-        The action set that was applied to the topology, to read up the asset topology for the switched station
+        The action set that was applied to the topology, to read up the stored action definitions.
     """
     return get_node_breaker_updates_from_action_set(
         action_set=action_set,
         actions=db_topology.actions,
         disconnections=db_topology.disconnections,
-    ).switch_updates
+        pst_setpoints=db_topology.pst_setpoints,
+    )
 
 
 def export_topology(
@@ -125,10 +137,13 @@ def export_topology(
     root_folder : str
         The root folder where the summary should be written to. This is typically the root folder of the processed grid file
     """
-    switch_updates = db_topology_to_changing_switches(db_topology=db_topology, action_set=action_set)
+    node_breaker_updates = db_topology_to_node_breaker_updates(
+        db_topology=db_topology,
+        action_set=action_set,
+    )
 
     # Write orao summary
-    dict_repr = changing_switches_to_orao_dict(switch_updates=switch_updates)
+    dict_repr = node_breaker_updates_to_orao_dict(node_breaker_updates=node_breaker_updates)
     hash_b64 = base64.urlsafe_b64encode(db_topology.strategy_hash).decode("utf-8").rstrip("=")
     summary_path = (
         Path(root_folder) / POSTPROCESSING_PATHS["orao_summary"] / f"{hash_b64}_timestep_{db_topology.timestep}.json"

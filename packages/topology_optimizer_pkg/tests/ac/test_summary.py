@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from pypowsybl.network import Network
@@ -21,13 +22,13 @@ from sqlmodel import Session
 from toop_engine_dc_solver.export.export import get_node_breaker_updates_from_action_set
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.folder_structure import POSTPROCESSING_PATHS
-from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
+from toop_engine_interfaces.node_breaker_update import NodeBreakerUpdate, PSTUpdateSchema, SwitchUpdateSchema
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs, random_actions
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology, create_session
 from toop_engine_topology_optimizer.ac.summary import (
-    changing_switches_to_orao_dict,
-    db_topology_to_changing_switches,
+    db_topology_to_node_breaker_updates,
     export_topology,
+    node_breaker_updates_to_orao_dict,
     write_summary,
 )
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile, OptimizerType
@@ -118,7 +119,10 @@ def _sample_topologies(
             acceptance=True,
         )
         # Keep only topologies that produce a non-empty switch diff on the grid.
-        switch_updates = db_topology_to_changing_switches(db_topology=topology, action_set=action_set)
+        switch_updates = db_topology_to_node_breaker_updates(
+            db_topology=topology,
+            action_set=action_set,
+        ).switch_updates
         if switch_updates.empty:
             continue
 
@@ -195,16 +199,16 @@ def _output_path(grid_root: Path, grid_file: GridFile, topology: ACOptimTopology
     )
 
 
-def test_changing_switches_to_orao_dict_formats_switch_updates(
+def test_node_breaker_updates_to_orao_dict_formats_switch_updates(
     complex_grid_summary_context: SummaryGridContext,
     stored_topologies: StoredTopologyContext,
 ) -> None:
-    switch_updates = db_topology_to_changing_switches(
+    node_breaker_updates = db_topology_to_node_breaker_updates(
         db_topology=stored_topologies.accepted_topologies[0],
         action_set=complex_grid_summary_context.action_set,
     )
 
-    result = changing_switches_to_orao_dict(switch_updates=switch_updates)
+    result = node_breaker_updates_to_orao_dict(node_breaker_updates=node_breaker_updates)
 
     expected_actions = [
         {
@@ -213,7 +217,7 @@ def test_changing_switches_to_orao_dict_formats_switch_updates(
             "switchId": switch_update["grid_model_id"],
             "open": bool(switch_update["open"]),
         }
-        for switch_update in switch_updates.to_dict(orient="records")
+        for switch_update in node_breaker_updates.switch_updates.to_dict(orient="records")
     ]
     assert result == {
         "forced-actions": {
@@ -225,13 +229,46 @@ def test_changing_switches_to_orao_dict_formats_switch_updates(
     }
 
 
-def test_db_topology_to_changing_switches_matches_direct_grid_computation(
+def test_node_breaker_updates_to_orao_dict_includes_pst_updates() -> None:
+    node_breaker_updates = NodeBreakerUpdate(
+        switch_updates=SwitchUpdateSchema.validate(pd.DataFrame([{"grid_model_id": "switch-1", "open": True}])),
+        pst_updates=PSTUpdateSchema.validate(pd.DataFrame([{"grid_model_id": "pst-1", "tap": 12}])),
+    )
+
+    result = node_breaker_updates_to_orao_dict(node_breaker_updates=node_breaker_updates)
+
+    assert result == {
+        "forced-actions": {
+            "preventive-actions-list": {
+                "version": "1.2",
+                "actions": [
+                    {
+                        "type": "SWITCH",
+                        "id": "Open switch-1",
+                        "switchId": "switch-1",
+                        "open": True,
+                    },
+                    {
+                        "type": "PHASE_TAP_CHANGER_TAP_POSITION",
+                        "id": "Set pst-1 to 12",
+                        "transformerId": "pst-1",
+                        "tapPosition": 12,
+                        "relativeValue": False,
+                        "side": "TWO",
+                    },
+                ],
+            }
+        }
+    }
+
+
+def test_db_topology_to_node_breaker_updates_matches_direct_grid_computation(
     complex_grid_summary_context: SummaryGridContext,
     stored_topologies: StoredTopologyContext,
 ) -> None:
     db_topology = stored_topologies.accepted_topologies[0]
 
-    result = db_topology_to_changing_switches(
+    result = db_topology_to_node_breaker_updates(
         db_topology=db_topology,
         action_set=complex_grid_summary_context.action_set,
     )
@@ -239,11 +276,14 @@ def test_db_topology_to_changing_switches_matches_direct_grid_computation(
         action_set=complex_grid_summary_context.action_set,
         actions=db_topology.actions,
         disconnections=db_topology.disconnections,
-    ).switch_updates
+        pst_setpoints=db_topology.pst_setpoints,
+    )
 
-    SwitchUpdateSchema.validate(result)
-    assert not result.empty
-    assert result.reset_index(drop=True).equals(expected.reset_index(drop=True))
+    assert isinstance(result, NodeBreakerUpdate)
+    SwitchUpdateSchema.validate(result.switch_updates)
+    assert not result.switch_updates.empty
+    assert result.switch_updates.reset_index(drop=True).equals(expected.switch_updates.reset_index(drop=True))
+    assert result.pst_updates.reset_index(drop=True).equals(expected.pst_updates.reset_index(drop=True))
 
 
 def test_export_topology_writes_expected_json_for_grid(
@@ -260,7 +300,7 @@ def test_export_topology_writes_expected_json_for_grid(
         root_folder=complex_grid_summary_context.grid_file.grid_folder,
     )
 
-    expected_switch_updates = db_topology_to_changing_switches(
+    expected_node_breaker_updates = db_topology_to_node_breaker_updates(
         db_topology=db_topology,
         action_set=complex_grid_summary_context.action_set,
     )
@@ -271,7 +311,7 @@ def test_export_topology_writes_expected_json_for_grid(
     )
 
     assert output_path.exists()
-    assert json.loads(output_path.read_text()) == changing_switches_to_orao_dict(expected_switch_updates)
+    assert json.loads(output_path.read_text()) == node_breaker_updates_to_orao_dict(expected_node_breaker_updates)
 
 
 def test_write_summary_exports_only_accepted_topologies(
@@ -299,8 +339,8 @@ def test_write_summary_exports_only_accepted_topologies(
         for topology in stored_topologies.accepted_topologies
     ]
     expected_payloads = {
-        path: changing_switches_to_orao_dict(
-            db_topology_to_changing_switches(
+        path: node_breaker_updates_to_orao_dict(
+            db_topology_to_node_breaker_updates(
                 db_topology=topology,
                 action_set=complex_grid_summary_context.action_set,
             )

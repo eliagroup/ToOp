@@ -34,7 +34,7 @@ There are various concepts that are required to grasp in order to make sense of 
 
 The solver can not directly work with grid data in common grid formats (ucte, cgmes, etc). Instead, it needs to load the relevant information for loadflow computations from a backend. Currently, the supported backends are [pandapower](https://pandapower.readthedocs.io/) and [powsybl](https://powsybl.org). Standard usage points [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] at a processed grid folder that already contains the backend grid snapshot, masks, loadflow parameters, topology metadata, and an initial contingency definition. During preprocessing, the solver computes the PTDF matrix and other relevant information, then persists `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, and a refreshed `nminus1_definition.json`.
 
-If `action_set.json` already defines `pst_ranges[*].pst_group`, grouped PSTs are preserved through preprocessing, clipped to their common tap domain, and written back explicitly for downstream tools.
+Parallel PST group optimization is supported only for Powsybl-imported grids. For those grids, grouping metadata is derived during import, exposed to preprocessing, and written to `action_set.json` as `pst_ranges[*].pst_group` for downstream tools.
 
 Read more on the [`preprocessing page`](https://eliagroup.github.io/ToOp/dc_solver/preprocessing/).
 

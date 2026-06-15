@@ -7,4 +7,4 @@ The importer worker is designed to run as one of the components in the ToOp arch
 - Preprocessing through the [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] function to create `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and the final filtered `nminus1_definition.json`.
 - Running an initial loadflow using the contingency_analysis module.
 
-If an `action_set.json` is already present when [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] starts, its `pst_ranges[*].pst_group` values are reused so grouped PSTs stay synchronized through preprocessing and optimization.
+For Powsybl-imported grids, the import step identifies supported parallel PST groups from the grid data. [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] persists those groups in `action_set.json` through `pst_ranges[*].pst_group` so grouped PSTs stay synchronized through solver execution and optimization. Parallel PST group optimization is not supported for the PandaPower backend.

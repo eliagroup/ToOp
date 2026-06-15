@@ -11,7 +11,7 @@ Welcome to our ToOp (engine) repository at Elia Group.
 ToOp is short for Topology Optimization and describes the approach to reduce grid congestion by topological actions. Topological actions are non-costly actions that can be applied to the grid to "steer" the electrcitiy flow.
  Our goal is to propose (potentially) new topology strategies to the operators with the goal to lower redispatch costs and carbon emissions.
 
-This repository builds the engine behind the topology optimization product ToOp at Elia Group. ToOp provides tools to perform topology optimization on operational grid data through an importer, a DC optimization stage, and AC validation. It also includes the GPU-based DC load flow solver. At the current stage it considers transmission line switching, busbar splitting, busbar reassignments, and grouped, linear PST tap optimization.
+This repository builds the engine behind the topology optimization product ToOp at Elia Group. ToOp provides tools to perform topology optimization on operational grid data through an importer, a DC optimization stage, and AC validation. It also includes the GPU-based DC load flow solver. At the current stage it considers transmission line switching, busbar splitting, busbar reassignments, and linear PST tap optimization. For Powsybl-imported grids, we additionally support grouped optimization of PSTs.
 
 
 

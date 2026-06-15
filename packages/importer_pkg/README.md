@@ -4,13 +4,15 @@ The Importer package serves as the gateway for loading power system grid models 
 
 ## Overview
 
-The Importer package provides capabilities for importing grid models from multiple sources and formats. 
+The Importer package provides capabilities for importing grid models from multiple sources and formats.
 It supports grid models from UCTE files, and CGMES standards (currently only PyPowSyBl), converting them into standardized formats suitable for power system analysis and optimization.
 
-At its core, the package leverages two Python libraries as backends: 
+At its core, the package leverages two Python libraries as backends:
 
 1. **PandaPower**
 2. **PyPowSyBl**
+
+**Note:** Parallel PST group identification for grouped PST optimization is supported only on the PyPowSyBl import path, where groups are derived from the imported grid data. The PandaPower import path is not a supported path for parallel PST group optimization.
 
 ## Package Structure
 
@@ -26,6 +28,8 @@ The Importer package is organized into several focused modules, each addressing 
 Main entry point: [`convert_file`][toop_engine_importer.pypowsybl_import.preprocessing.convert_file]
 
 `convert_file` writes the processed grid folder consumed by the DC solver: the normalized backend grid snapshot, masks, loadflow parameters, importer auxiliary data, asset topology metadata, and an initial `nminus1_definition.json`.
+
+For PyPowSyBl-imported grids, `convert_file` also prepares supported parallel PST group metadata from the grid data so downstream solver and optimizer stages can keep grouped PSTs synchronized.
 
 The downstream [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] step augments that same folder with `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and the final filtered contingency definition used during optimization.
 

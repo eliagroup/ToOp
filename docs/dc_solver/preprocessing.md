@@ -3,7 +3,7 @@
 The preprocessing flow is split into three parts:
 - An importing procedure that prepares a processed grid folder from the raw source data. In this repository this is handled by the Importer package through [`convert_file`][toop_engine_importer.pypowsybl_import.preprocessing.convert_file]. It writes the backend-readable grid snapshot together with masks, loadflow parameters, topology metadata, and an initial contingency definition.
 - A [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] routine which extracts DC-loadflow relevant information from a backend and performs various data transformations.
-- A [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine which reformats the data from the Python format used during preprocessing to the format required by the solver. All processing happens in `preprocess`; this function purely reformats. 
+- A [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine which reformats the data from the Python format used during preprocessing to the format required by the solver. All processing happens in `preprocess`; this function purely reformats.
 
 The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] routine combines the latter two steps, runs an initial loadflow, and persists the standard solver artifacts back into the same processed grid folder.
 
@@ -25,18 +25,21 @@ The processed grid folder layout is defined in the [`folder_structure`][toop_eng
 | DC solver | `action_set_diffs.hdf5` | Companion diff representation for the persisted action set. |
 | DC solver | `nminus1_definition.json` | Refreshed contingency definition after preprocessing filters have been applied. |
 
-The same processed grid folder is therefore both an input and an output of [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid]. In particular, `action_set.json` is no longer only a postprocessing artifact: if it already exists when preprocessing starts, the backend reads its PST grouping metadata and preserves it through the preprocessing pipeline.
+The same processed grid folder is therefore both an input and an output of [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid].
 
-## Parallel PST grouping in `action_set.json`
+## Parallel PST grouping
 
-Controllable PSTs are serialized in `ActionSet.pst_ranges`. Each PST range carries a `pst_group` field that defines which PSTs must move together during optimization.
+Parallel PST group optimization is currently supported only for Powsybl-imported grids. The groups are identified from the imported Powsybl grid data before solver preprocessing. PSTs are considered part of the same supported group only when they connect the same voltage magnitude, share the same bus pair regardless of orientation, and have matching tap and phase-shifter parameters.
+
+Controllable PSTs are serialized in `ActionSet.pst_ranges`. Each PST range carries a `pst_group` field that persists the import-derived group used by downstream tooling.
 
 - PSTs with the same `pst_group` are treated as one optimization group.
-- If `action_set.json` is missing, or a controllable PST is absent from it, preprocessing falls back to one group per PST.
-- During preprocessing, grouped PSTs are clipped to their common tap domain before the action set is written back to disk.
-- Mixed linear and non-linear PSTs are rejected and cannot share the same group (We currently do not support optimization of non-linear/asymmetric PSTs).
+- Group members share the same tap delta during solver execution and optimization, then each member is clipped to its own tap domain.
+- Different initial taps inside one group trigger a warning.
+- Mixed linear and non-linear PSTs are not supported in one group when grouped optimization is enabled. We currently do not support optimization of non-linear/asymmetric PSTs.
+- Parallel PST group optimization is not supported for the PandaPower backend.
 
-The persisted `action_set.json` always writes the group explicitly, so downstream tools and subsequent preprocessing runs see the same grouping.
+The persisted `action_set.json` writes the group explicitly, so downstream tools can inspect the grouping selected during import.
 
 ## Backend interface
 
@@ -85,7 +88,7 @@ The [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_t
 
 The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] routine performs the following tasks:
 
-- Instantiate the backend, depending on whether it is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] or [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] grid. The backend reads the normalized grid files, masks, loadflow parameters, and any existing PST grouping metadata from the processed grid folder. (`load_grid_into_loadflow_solver_backend`)
+- Instantiate the backend, depending on whether it is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] or [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] grid. The backend reads the normalized grid files, masks, and loadflow parameters from the processed grid folder. For Powsybl grids, import-derived PST grouping metadata is also exposed to preprocessing. (`load_grid_into_loadflow_solver_backend`)
 - Call the [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] routine.
 - Call the [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine.
 - [`Validate`][toop_engine_dc_solver.jax.inputs.validate_static_information] the resulting static information.

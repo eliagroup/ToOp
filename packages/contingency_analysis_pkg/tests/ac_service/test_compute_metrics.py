@@ -11,9 +11,11 @@ import polars as pl
 import pypowsybl
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
+    count_critical_va_diff_cases,
     compute_max_load,
     compute_metrics,
     compute_overload_energy,
+    count_voltage_jumps,
     count_critical_branches,
     get_worst_k_contingencies_ac,
 )
@@ -50,6 +52,9 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
     assert "overload_current_n_1" in metrics
     assert "critical_branch_count_n_1" in metrics
     assert "critical_branch_count_n_0" in metrics
+    assert "critical_va_diff_count_n_0" in metrics
+    assert "critical_va_diff_count_n_1" in metrics
+    assert "voltage_jump_count_n_1" in metrics
 
     assert metrics["max_flow_n_0"] <= metrics["max_flow_n_1"]
     assert metrics["overload_energy_n_0"] <= metrics["overload_energy_n_1"]
@@ -60,7 +65,9 @@ def test_compute_metrics_pandapower(pandapower_net: pandapower.pandapowerNet):
     assert "max_flow_n_1" in metrics_2
     assert "overload_energy_n_1" in metrics_2
     # assert "max_va_diff_n_1" in metrics_2
+    assert "critical_va_diff_count_n_1" in metrics_2
     assert "overload_current_n_1" in metrics_2
+    assert "voltage_jump_count_n_1" in metrics_2
     assert np.isclose(metrics_2["max_flow_n_1"], metrics["max_flow_n_1"])
     # assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
     assert np.isclose(metrics_2["overload_current_n_1"], metrics["overload_current_n_1"])
@@ -95,6 +102,9 @@ def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Netw
     assert "overload_current_n_1" in metrics
     assert "critical_branch_count_n_1" in metrics
     assert "critical_branch_count_n_0" in metrics
+    assert "critical_va_diff_count_n_0" in metrics
+    assert "critical_va_diff_count_n_1" in metrics
+    assert "voltage_jump_count_n_1" in metrics
 
     assert metrics["max_flow_n_0"] <= metrics["max_flow_n_1"]
     assert metrics["overload_energy_n_0"] <= metrics["overload_energy_n_1"]
@@ -105,7 +115,9 @@ def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Netw
     assert "max_flow_n_1" in metrics_2
     assert "overload_energy_n_1" in metrics_2
     assert "max_va_diff_n_1" in metrics_2
+    assert "critical_va_diff_count_n_1" in metrics_2
     assert "overload_current_n_1" in metrics_2
+    assert "voltage_jump_count_n_1" in metrics_2
     assert np.isclose(metrics_2["max_flow_n_1"], metrics["max_flow_n_1"])
     assert np.isclose(metrics_2["max_va_diff_n_1"], metrics["max_va_diff_n_1"])
     assert np.isclose(metrics_2["overload_current_n_1"], metrics["overload_current_n_1"])
@@ -172,10 +184,18 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
 
     va_diff_results = pl.DataFrame(
         {
-            "timestep": [0, 0],
-            "contingency": ["BASECASE", "cont1"],
-            "element": ["branch1", "branch1"],
-            "va_diff": [9.0, 1.0],
+            "timestep": [0, 0, 0, 0, 1],
+            "contingency": ["BASECASE", "cont1", "cont1", "cont2", "cont3"],
+            "element": ["branch1", "branch1", "branch2", "branch1", "branch1"],
+            "va_diff": [9.0, 1.0, 7.0, 4.0, 8.0],
+        }
+    ).lazy()
+    node_results = pl.DataFrame(
+        {
+            "timestep": [0, 0, 0, 0],
+            "contingency": ["BASECASE", "BASECASE", "cont1", "cont1"],
+            "element": ["node1", "node2", "node1", "node2"],
+            "vm": [100.0, 100.0, 105.0, 105.1],
         }
     ).lazy()
 
@@ -183,25 +203,85 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
         job_id="test_job",
         branch_results=branch_results,
         va_diff_results=va_diff_results,
-        node_results=pl.LazyFrame(),
+        node_results=node_results,
         regulating_element_results=pl.LazyFrame(),
         converged=pl.LazyFrame(),
     )
 
     metrics_without_basecase_filter = compute_metrics(loadflow_results)
-    metrics_with_basecase_filter = compute_metrics(loadflow_results, base_case_id="BASECASE")
+    metrics_with_basecase_filter = compute_metrics(
+        loadflow_results, base_case_id="BASECASE", critical_va_diff_threshold=5.0
+    )
     n_1_only_branch_results = branch_results.filter(pl.col("contingency") != "BASECASE")
 
     expected_overload_energy_n_1 = compute_overload_energy(n_1_only_branch_results, field="p")
     expected_overload_current_n_1 = compute_overload_energy(n_1_only_branch_results, field="i")
     expected_max_flow_n_1 = compute_max_load(n_1_only_branch_results)
     expected_critical_branch_count_n_1 = count_critical_branches(n_1_only_branch_results)
+    expected_voltage_jump_count_n_1 = count_voltage_jumps(node_results, base_case_id="BASECASE")
+    expected_critical_va_diff_count_n_1 = count_critical_va_diff_cases(
+        va_diff_results.filter(pl.col("contingency") != "BASECASE"), critical_threshold=5.0
+    )
 
     assert np.isclose(metrics_with_basecase_filter["overload_energy_n_1"], expected_overload_energy_n_1)
     assert np.isclose(metrics_with_basecase_filter["overload_current_n_1"], expected_overload_current_n_1)
     assert np.isclose(metrics_with_basecase_filter["max_flow_n_1"], expected_max_flow_n_1)
     assert metrics_with_basecase_filter["critical_branch_count_n_1"] == expected_critical_branch_count_n_1
+    assert metrics_with_basecase_filter["voltage_jump_count_n_1"] == expected_voltage_jump_count_n_1
+    assert metrics_with_basecase_filter["critical_va_diff_count_n_1"] == 2
+    assert metrics_with_basecase_filter["critical_va_diff_count_n_1"] == expected_critical_va_diff_count_n_1
     assert metrics_without_basecase_filter["overload_energy_n_1"] > metrics_with_basecase_filter["overload_energy_n_1"]
     expected_basecase_power_overload_per_branch = basecase_power - abs(basecase_power / basecase_loading_factor)
     assert np.isclose(metrics_with_basecase_filter["overload_energy_n_0"], 2 * expected_basecase_power_overload_per_branch)
-    assert np.isclose(metrics_with_basecase_filter["max_va_diff_n_1"], 1.0)
+    assert np.isclose(metrics_with_basecase_filter["max_va_diff_n_1"], 8.0)
+    assert metrics_with_basecase_filter["critical_va_diff_count_n_0"] == 1
+    assert metrics_with_basecase_filter["voltage_jump_count_n_1"] == 1
+
+
+def test_count_voltage_jumps_returns_none_without_node_deviation_column() -> None:
+    assert count_voltage_jumps(pl.LazyFrame(), base_case_id="BASECASE") is None
+
+
+def test_count_critical_va_diff_cases_uses_configurable_threshold() -> None:
+    va_diff_results = pl.DataFrame(
+        {
+            "timestep": [0, 0, 0, 1, 1],
+            "contingency": ["cont1", "cont1", "cont2", "cont1", "cont2"],
+            "element": ["branch1", "branch2", "branch1", "branch1", "branch1"],
+            "va_diff": [-4.0, -6.0, 5.0, -9.0, 3.0],
+        }
+    ).lazy()
+
+    assert count_critical_va_diff_cases(va_diff_results, critical_threshold=5.0) == 2
+    assert count_critical_va_diff_cases(va_diff_results, critical_threshold=8.0) == 1
+
+
+def test_compute_metrics_passes_configurable_va_diff_threshold(
+    branch_results_df_fast_failing_polars: pl.LazyFrame,
+) -> None:
+    basecase_branch_results = (
+        branch_results_df_fast_failing_polars.filter(pl.col("timestep") == 0)
+        .filter(pl.col("contingency") == "cont1")
+        .limit(1)
+        .with_columns(contingency=pl.lit("BASECASE"))
+    )
+    loadflow_results = LoadflowResultsPolars(
+        job_id="test_job",
+        branch_results=pl.concat([branch_results_df_fast_failing_polars, basecase_branch_results], how="vertical"),
+        va_diff_results=pl.DataFrame(
+            {
+                "timestep": [0, 0, 0],
+                "contingency": ["BASECASE", "cont1", "cont2"],
+                "element": ["branch1", "branch1", "branch1"],
+                "va_diff": [9.0, 6.0, 4.0],
+            }
+        ).lazy(),
+        node_results=pl.LazyFrame(),
+        regulating_element_results=pl.LazyFrame(),
+        converged=pl.LazyFrame(),
+    )
+
+    metrics = compute_metrics(loadflow_results, base_case_id="BASECASE", critical_va_diff_threshold=5.0)
+
+    assert metrics["critical_va_diff_count_n_0"] == 1
+    assert metrics["critical_va_diff_count_n_1"] == 1

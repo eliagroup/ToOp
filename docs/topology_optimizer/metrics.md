@@ -70,6 +70,10 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **max_va_diff_n_0** / **max_va_diff_n_1**: Maximum voltage angle difference across any branch. AC analysis only.
 
+- **critical_va_diff_count_n_0** / **critical_va_diff_count_n_1**: Number of `(timestep, element)` groups whose maximum voltage angle difference across contingencies exceeds a configurable threshold. AC analysis only.
+
+- **voltage_jump_count_n_1**: Number of bus voltages, that jumped by more than X % between their N0-voltage and their N1-voltage
+
 - **overload_current_n_0** / **overload_current_n_1**: Total overload measured in amperes (current) rather than MW. While this can be computed in DC, currently only the AC version supports this.
 
 - **non_converging_loadflows**: The number of loadflow cases (N-0 or N-1) that did not converge. In the DC optimizer, this value is always 0 as either the entire loadflow converges or the solver returns a separate success flag which invalidates all other returns. On AC this is not the case, so this metric is useful to track.

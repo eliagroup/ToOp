@@ -22,6 +22,10 @@ def test_acga_parameters_default():
     assert params.reject_convergence_threshold == 1.0
     assert params.reject_overload_threshold == 0.95
     assert params.reject_critical_branch_threshold == 1.1
+    assert params.reject_voltage_jump_threshold == 1.1
+    assert params.reject_critical_va_diff_threshold == 1.1
+    assert params.critical_voltage_jump_percent == 5.0
+    assert params.max_allowed_va_diff == 0.0
     # Probabilities sum to one
 
 
@@ -48,6 +52,10 @@ def test_acga_parameters_filter_strategy():
         reject_convergence_threshold=0.6,
         reject_overload_threshold=0.9,
         reject_critical_branch_threshold=0.8,
+        reject_voltage_jump_threshold=0.7,
+        reject_critical_va_diff_threshold=0.85,
+        critical_voltage_jump_percent=7.5,
+        max_allowed_va_diff=12.0,
         filter_strategy=filter_strat,
     )
     assert params.runtime_seconds == 60

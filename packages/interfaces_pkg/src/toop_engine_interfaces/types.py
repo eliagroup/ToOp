@@ -60,8 +60,11 @@ OtherMetric: TypeAlias = Literal[
     "max_va_across_coupler",
     "max_va_diff_n_0",
     "max_va_diff_n_1",
+    "critical_va_diff_count_n_0",
+    "critical_va_diff_count_n_1",
     "overload_current_n_0",
     "overload_current_n_1",
+    "voltage_jump_count_n_1",
     "non_converging_loadflows",
     # TODO: FIXME: remove fitness_dc when "Topology" is refactored and accepts different stages like "dc", "dc+" and "ac"
     "fitness_dc",

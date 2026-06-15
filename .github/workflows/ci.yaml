@@ -141,7 +141,7 @@ jobs:
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
 
       - name: License Header Check
-        uses: B1NARY-GR0UP/nwa@de997f652a66feac9b4dc819bdf80671985b50d0
+        uses: B1NARY-GR0UP/nwa@3e1823c61ba2818a156c77b4eedc7905d6a8557c
         with:
           version: latest # (optional) version of nwa to use; default: latest
           cmd: check # (optional) command to execute; options: `check`, `add`, `update`, `remove`; default: check

@@ -148,6 +148,7 @@ def extract_monitored_elements_with_cgmes_id(
     pandapower_monitored_elements = pandapower_monitored_elements.reindex([element.id for element in monitored_elements])
     pandapower_monitored_elements["name"] = [element.name for element in monitored_elements]
     pandapower_monitored_elements["kind"] = [element.kind for element in monitored_elements]
+    pandapower_monitored_elements["monitored_attributes"] = [element.monitored_attributes for element in monitored_elements]
     pandapower_monitored_elements["table"] = cgmes_ids["table"]
     pandapower_monitored_elements["table_id"] = cgmes_ids["table_id"].astype(int)
     pandapower_monitored_elements.dropna(subset=["table", "table_id"], inplace=True)
@@ -200,6 +201,7 @@ def extract_monitored_elements_with_unique_pandapower_id(
                 "table_id": pp_id,
                 "kind": element.kind,
                 "name": element.name or "",
+                "monitored_attributes": element.monitored_attributes,
             }
         )
 

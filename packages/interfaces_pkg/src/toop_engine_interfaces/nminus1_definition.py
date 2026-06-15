@@ -20,7 +20,7 @@ from pathlib import Path
 from beartype.typing import Literal, Optional, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs, save_pydantic_model_fs
 from toop_engine_interfaces.spps_parameters import (
     SppsConditionCheckType,
@@ -45,6 +45,12 @@ from toop_engine_interfaces.spps_parameters import (
 # - ucte:
 #     The UCTE ids of the elements. Currently only supported for powsybl grids.
 POWSYBL_SUPPORTED_ID_TYPES = Literal["powsybl", "cgmes", "ucte"]
+
+_DEFAULT_MONITORED_ATTRIBUTES: dict[str, list[str]] = {
+    "branch": ["p", "q", "i", "loading"],
+    "bus": ["p", "q", "vm", "va", "vm_basecase_deviation", "vm_loading"],
+    "switch": ["p", "q", "vm", "va", "i", "protection"],
+}
 PANDAPOWER_SUPPORTED_ID_TYPES = Literal["unique_pandapower", "cgmes"]
 ELEMENT_ID_TYPES = Literal[PANDAPOWER_SUPPORTED_ID_TYPES, POWSYBL_SUPPORTED_ID_TYPES]
 
@@ -66,7 +72,7 @@ class GridElement(BaseModel):
     For powsybl, this is not strictly needed to identify the element however it makes it easier. In that case, type will be
     something like TIE_LINE, LINE, TWO_WINDING_TRANSFORMER, GENERATOR, etc."""
 
-    kind: Literal["branch", "bus", "injection", "switch_angle", "switch", "switch_relay"]
+    kind: Literal["branch", "bus", "injection", "switch"]
     """The kind of the element. Usually these are handled differently in the grid modelling software, so it
     can make assembling an N-1 analysis easier if it is known if the element is a branch, bus or injection.
     This could be inferred from the type, however for conveniece it is stored separately.
@@ -75,12 +81,43 @@ class GridElement(BaseModel):
     In powsybl in a bus/branch model, there are no busbar sections in powsybl, i.e. net.get_node_breaker_topology does not
     deliver busbar sections. Meaning, the "bus" type refers to the net.get_bus_breaker_topology buses if it's a bus/breaker
     topology bus. If it's a node/breaker topology, then "bus" refers to the busbar section.
-
-    For switches, there are three sub-kinds:
-    - ``switch_angle``: an open CB monitored for voltage-angle difference (VA diff results).
-    - ``switch``: a closed CB for which active/reactive power flow and current are computed.
-    - ``switch_relay``: a CB with a protection relay that participates in cascade detection.
     """
+
+    monitored_attributes: Optional[list[str]] = None
+    """Which physical quantities to monitor for this element. ``None`` applies the per-kind default listed below.
+    Pass an explicit list to override the default, or ``[]`` to disable monitoring entirely.
+
+    **branch** — default: ``["p", "q", "i", "loading"]``
+
+    - ``p``: active power flow (MW)
+    - ``q``: reactive power flow (Mvar)
+    - ``i``: current magnitude (A or p.u.)
+    - ``loading``: branch loading as a percentage of its thermal limit
+
+    **bus** — default: ``["p", "q", "vm", "va", "vm_basecase_deviation", "vm_loading"]``
+
+    - ``p``: active power injection at the bus (MW)
+    - ``q``: reactive power injection at the bus (Mvar)
+    - ``vm``: voltage magnitude (p.u.)
+    - ``va``: voltage angle (degrees)
+    - ``vm_basecase_deviation``: deviation of voltage magnitude from the base-case value (p.u.)
+    - ``vm_loading``: voltage magnitude expressed as a percentage of its operational limit
+
+    **switch** — default: ``["p", "q", "vm", "va", "i", "protection"]``
+
+    - ``p``: active power flow through the switch (MW)
+    - ``q``: reactive power flow through the switch (Mvar)
+    - ``vm``: voltage magnitude on the switch buses (p.u.)
+    - ``va``: voltage-angle difference across the open switch (degrees); used for reclosing assessment
+    - ``i``: current through the switch (A or p.u.)
+    - ``protection``: the switch carries a protection relay and participates in cascade-tripping simulation
+    """
+
+    @model_validator(mode="after")
+    def _apply_default_monitored_attributes(self) -> "GridElement":
+        if self.monitored_attributes is None:
+            self.monitored_attributes = _DEFAULT_MONITORED_ATTRIBUTES.get(self.kind, [])
+        return self
 
 
 class Contingency(BaseModel):

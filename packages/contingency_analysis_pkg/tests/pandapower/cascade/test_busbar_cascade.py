@@ -134,10 +134,7 @@ def _build_nminus1_definition(net: pp.pandapowerNet) -> Nminus1Definition:
     monitored_elements = (
         [GridElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
         + [GridElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
-        + [
-            GridElement(id=row.global_id, type="switch", kind="switch_relay", name=row.name)
-            for row in net.switch.itertuples()
-        ]
+        + [GridElement(id=row.global_id, type="switch", kind="switch", name=row.name) for row in net.switch.itertuples()]
     )
     # Use origin_id as contingency id so that cascade_results contingency index == origin_id
     contingencies = [Contingency(id="BASECASE", name="BASECASE", elements=[])]

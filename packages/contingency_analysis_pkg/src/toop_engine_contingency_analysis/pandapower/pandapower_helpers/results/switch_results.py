@@ -572,7 +572,7 @@ def get_switch_mapped_elements(
     net : pp.pandapowerNet
         Pandapower network containing buses, switches, and branch elements.
     monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
-        Table of monitored elements. Only rows with ``kind == "switch"`` or ``kind == "switch_relay"`` are used.
+        Table of monitored elements. Only rows where ``"p" in monitored_attributes`` are used.
     side : Literal["bus", "element"]
         Defines from which side of the switch the traversal starts:
 
@@ -591,7 +591,9 @@ def get_switch_mapped_elements(
         - a branch-like element with a defined ``side``
         - a bus (with ``side = NaN``)
     """
-    monitored_switches = monitored_elements.query("kind in ('switch', 'switch_relay')")["table_id"].to_list()
+    monitored_switches = monitored_elements[monitored_elements["monitored_attributes"].apply(lambda x: "p" in x)][
+        "table_id"
+    ].to_list()
 
     branch_map_df, bus_map_df = _get_switch_mapped_elements_by_origin_ids(net, monitored_switches, side)
 

@@ -146,12 +146,14 @@ def test_va_diff_out_group_trafo():
     monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
 
     for row in net.switch.itertuples():
-        monitored_elements.loc[get_globally_unique_id(int(row.Index), "switch"), ["table", "table_id", "kind", "name"]] = (
+        key = get_globally_unique_id(int(row.Index), "switch")
+        monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
             "switch",
             row.Index,
-            "switch_angle",
+            "switch",
             row.name,
         )
+        monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
     monitored_elements.table_id = monitored_elements.table_id.astype(int)
     monitored_elements.name = monitored_elements.name.astype(str)
 
@@ -189,12 +191,14 @@ def test_va_diff_out_group_multiple_els():
     monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
 
     for row in net.switch.itertuples():
-        monitored_elements.loc[get_globally_unique_id(int(row.Index), "switch"), ["table", "table_id", "kind", "name"]] = (
+        key = get_globally_unique_id(int(row.Index), "switch")
+        monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
             "switch",
             row.Index,
-            "switch_angle",
+            "switch",
             row.name,
         )
+        monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
     monitored_elements.table_id = monitored_elements.table_id.astype(int)
     monitored_elements.name = monitored_elements.name.astype(str)
 
@@ -243,12 +247,14 @@ def test_get_va_diff_results(pandapower_net: pp.pandapowerNet):
     # create a switch
     switch_id = pp.create_switch(net=pandapower_net, bus=0, element=1, et="b", closed=False, name="Switch 0", type="CB")
 
-    monitored_elements.loc[get_globally_unique_id(int(switch_id), "switch"), ["table", "table_id", "kind", "name"]] = (
+    key = get_globally_unique_id(int(switch_id), "switch")
+    monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
         "switch",
         switch_id,
-        "switch_angle",
+        "switch",
         f"Switch {switch_id}",
     )
+    monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
     monitored_elements.table_id = monitored_elements.table_id.astype(int)
     monitored_elements.name = monitored_elements.name.astype(str)
 
@@ -319,12 +325,14 @@ def test_get_va_diff_results_multioutage(pandapower_net: pp.pandapowerNet):
     # create a switch
     switch_id = pp.create_switch(net=pandapower_net, bus=0, element=1, et="b", closed=False, name="Switch 0", type="CB")
 
-    monitored_elements.loc[get_globally_unique_id(int(switch_id), "switch"), ["table", "table_id", "kind", "name"]] = (
+    key = get_globally_unique_id(int(switch_id), "switch")
+    monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
         "switch",
         switch_id,
-        "switch_angle",
+        "switch",
         f"Switch {switch_id}",
     )
+    monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
     monitored_elements.table_id = monitored_elements.table_id.astype(int)
     monitored_elements.name = monitored_elements.name.astype(str)
 
@@ -355,12 +363,14 @@ def test_get_va_diff_results_basecase(pandapower_net: pp.pandapowerNet):
     # create a switch
     switch_id = pp.create_switch(net=pandapower_net, bus=0, element=1, et="b", closed=False, name="Switch 0", type="CB")
 
-    monitored_elements.loc[get_globally_unique_id(int(switch_id), "switch"), ["table", "table_id", "kind", "name"]] = (
+    key = get_globally_unique_id(int(switch_id), "switch")
+    monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
         "switch",
         switch_id,
-        "switch_angle",
+        "switch",
         f"Switch {switch_id}",
     )
+    monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
 
     monitored_elements.table_id = monitored_elements.table_id.astype(int)
     monitored_elements.name = monitored_elements.name.astype(str)

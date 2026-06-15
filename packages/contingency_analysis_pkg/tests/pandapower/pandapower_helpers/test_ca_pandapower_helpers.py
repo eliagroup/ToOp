@@ -602,12 +602,14 @@ def test_get_failed_va_diff_results(pandapower_net: pp.pandapowerNet):
     timestep = 0
     monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
     for i in range(3):
-        monitored_elements.loc[get_globally_unique_id(i, "switch"), ["table", "table_id", "kind", "name"]] = (
+        key = get_globally_unique_id(i, "switch")
+        monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
             "switch",
             i,
-            "switch_angle",
+            "switch",
             f"Switch {i}",
         )
+        monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
     monitored_elements.table_id = monitored_elements.table_id.astype(int)
     monitored_elements.name = monitored_elements.name.astype(str)
 

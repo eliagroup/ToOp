@@ -41,16 +41,32 @@ If you want to get started with the engine, we highly recommend checking out our
 
 ### Prerequisites
 
-If you want to contribute to this repository, we recommend using VS Code's Devcontainer Environment. This allows the developers to use the same environment to develop in.
+We use `uv` for dependency management.
+You can follow their [installation guide](https://docs.astral.sh/uv/getting-started/installation/):
 
-For this setup, you need to install:
-1. `uv`
-2. `Microsoft VS Code`
-3. `Docker`
+1. Install on Linux/Mac via `curl -LsSf https://astral.sh/uv/install.sh | sh`
+2. or if you have `pipx` via `pipx install uv`.
 
-### Installation
+If you want to contribute to this repository, follow the guide on our [Contributing page](./CONTRIBUTING.md#local-development-setup).
 
-You can follow our installation guide on our [Contributing page](./CONTRIBUTING.md#local-development-setup).
+### Installation (without contributing)
+
+You need to install our software via source by cloning this repository
+```bash
+  git clone https://github.com/eliagroup/ToOp.git
+  cd ToOp
+```
+and installing dependencies
+```bash
+  uv sync --all-groups
+```
+
+If you plan to run this software on GPU-accelerated hardware, you may additionally install `jax` with CUDA support by running
+```bash
+  uv pip install jax[cuda12]
+```
+
+**Note:** We currently do not publish our package on PyPI. If you use `uv` for your own project and want to use `ToOp`, you can add it as a local dependency to your `pyproject.toml`, pointing to the cloned repository.
 
 ### Usage
 
@@ -61,7 +77,6 @@ Or you can load an example grid and minimise the branch overload by running the 
 
 You can also build the documentation and open it on your web browser by running
 ```bash
-uv sync --all-groups
 uv run mkdocs serve
 ```
 
@@ -71,11 +86,11 @@ uv run mkdocs serve
 ### Useful resources
 The following resources may be helpful to grasp the key concepts:
 
-- [Quickstart](./docs/quickstart.md): Grasp the basics and follow along examples. The first one take you through a DC loadflow computation using the [DC Solver package](./docs/dc_solver/intro.md).
+- [Quickstart](./docs/quickstart.md): Grasp the basics and follow along examples. The first one takes you through a DC loadflow computation using the [DC Solver package](./docs/dc_solver/intro.md).
 - [Usage](./docs/usage.md): Learn about the two different ways to use this software, either via python or kafka.
 - [Topology Optimizer](./docs/topology_optimizer/intro.md): Understand the key concepts behind the topology optimizer.
-- [Presentation ToOp](https://www.youtube.com/watch?v=XteDpNsX75A)  @ LF Energy 2025
-- [Presentation ToOp](https://lfenergy.org/lf-energy-summit-recap-and-video-a-gpu-native-approach-on-tackling-grid-topology-optimization/) @ LF Energy 2024
+- [Presentation@LF Energy 2025](https://www.youtube.com/watch?v=XteDpNsX75A)
+- [Presentation@LF Energy 2024](https://lfenergy.org/lf-energy-summit-recap-and-video-a-gpu-native-approach-on-tackling-grid-topology-optimization/)
 
 **Note**: This project does not provide a GUI or system integration code.
 You are expected to interact with the module through either python or kafka commands. This might come in the future if there is an interest from the community.

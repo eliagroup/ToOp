@@ -340,11 +340,9 @@ def _get_switch_mapped_elements_by_origin_ids(
     sw_els_map: list[tuple[int, str, int]] = []
     buses_map: list[tuple[int, str]] = []
     graph = create_closed_bb_switches_graph(net)
-    # TODO: we need to calculate for open too, because in spps we can close  switches and then run cascading
+    #  we need to calculate for open too, because in spps we can close switches and then run cascading
     switch_mask = net.switch.index.isin(switches_ids)
-    closed_mask = net.switch.closed
-
-    switches = net.switch.loc[switch_mask & closed_mask]
+    switches = net.switch.loc[switch_mask]
     if switches.empty:
         return (
             pd.DataFrame(columns=["switch_id", "element", "side"]),
@@ -573,7 +571,8 @@ def get_switch_mapped_elements(
     net : pp.pandapowerNet
         Pandapower network containing buses, switches, and branch elements.
     monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
-        Table of monitored elements. Only rows where ``flow`` is ``True`` are included.
+        Table of monitored elements. Only switches whose ``monitoring_scope`` includes
+        :attr:`SwitchMonitoringScope.FLOW` are included.
     side : Literal["bus", "element"]
         Defines from which side of the switch the traversal starts:
 

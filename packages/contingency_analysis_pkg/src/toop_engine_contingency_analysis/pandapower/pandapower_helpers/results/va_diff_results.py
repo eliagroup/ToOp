@@ -33,6 +33,7 @@ from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_mo
 from toop_engine_interfaces.loadflow_results import (
     VADiffResultSchema,
 )
+from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
 
 
 def _get_bus_va_series(net: pandapowerNet) -> pd.Series:
@@ -1423,9 +1424,9 @@ def get_va_diff_results(
 
     va_diff_by_switch = _combine_switch_va_diffs(va_diff_both, va_diff_one_side, va_diff_pst)
 
-    monitored_switch_ids = monitored_elements[monitored_elements["monitored_attributes"].apply(lambda x: "va" in x)][
-        "table_id"
-    ]
+    monitored_switch_ids = monitored_elements[
+        monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.ANGLE in s)
+    ]["table_id"]
     va_diff_by_switch = va_diff_by_switch[va_diff_by_switch.index.isin(monitored_switch_ids)]
     out = _format_switch_va_diff_output(va_diff_by_switch, timestep, contingency)
 
@@ -1462,7 +1463,7 @@ def get_failed_va_diff_results(
         This will return NaN for all elements that were monitored and the contingency.
     """
     monitored_switches = monitored_elements[
-        monitored_elements["monitored_attributes"].apply(lambda x: "va" in x)
+        monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.ANGLE in s)
     ].index.to_list()
     all_power_switches = {}
     for va_diff_info in contingency.va_diff_info:

@@ -51,6 +51,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     SingleOutageSppsContext,
 )
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, ConvergenceStatus, SwitchResultsSchema
+from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
 
 
 class CascadeSimulator:
@@ -158,7 +159,7 @@ class CascadeSimulator:
         accumulative_outages_pp: list[PandapowerElements] = []
         # Only protection switches can trip during cascading, so we limit flow computation to them.
         monitored_breakers = monitored_elements[
-            monitored_elements["monitored_attributes"].apply(lambda x: "protection" in x)
+            monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.PROTECTION in s)
         ]
 
         for step in range(self._cfg.depth_limit):

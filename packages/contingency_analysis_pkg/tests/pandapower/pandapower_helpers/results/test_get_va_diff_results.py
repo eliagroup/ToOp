@@ -18,6 +18,7 @@ from toop_engine_contingency_analysis.pandapower import (
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import VADiffInfo
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
 
 
 def create_test_net_for_va_diff_with_trafo():
@@ -143,19 +144,20 @@ def test_va_diff_out_group_trafo():
         elements=[],
     )
     timestep = 1
-    monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-
-    for row in net.switch.itertuples():
-        key = get_globally_unique_id(int(row.Index), "switch")
-        monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
-            "switch",
-            row.Index,
-            "switch",
-            row.name,
-        )
-        monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
-    monitored_elements.table_id = monitored_elements.table_id.astype(int)
-    monitored_elements.name = monitored_elements.name.astype(str)
+    rows = [
+        {
+            "table": "switch",
+            "table_id": int(row.Index),
+            "kind": "switch",
+            "name": row.name,
+            "monitoring_scope": frozenset(SwitchMonitoringScope),
+        }
+        for row in net.switch.itertuples()
+    ]
+    indices = [get_globally_unique_id(int(row.Index), "switch") for row in net.switch.itertuples()]
+    monitored_elements = pd.concat(
+        [get_empty_dataframe_from_model(PandapowerMonitoredElementSchema), pd.DataFrame(rows, index=indices)]
+    )
 
     pp.runpp(net)
 
@@ -188,19 +190,20 @@ def test_va_diff_out_group_multiple_els():
         elements=[],
     )
     timestep = 1
-    monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-
-    for row in net.switch.itertuples():
-        key = get_globally_unique_id(int(row.Index), "switch")
-        monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
-            "switch",
-            row.Index,
-            "switch",
-            row.name,
-        )
-        monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
-    monitored_elements.table_id = monitored_elements.table_id.astype(int)
-    monitored_elements.name = monitored_elements.name.astype(str)
+    rows = [
+        {
+            "table": "switch",
+            "table_id": int(row.Index),
+            "kind": "switch",
+            "name": row.name,
+            "monitoring_scope": frozenset(SwitchMonitoringScope),
+        }
+        for row in net.switch.itertuples()
+    ]
+    indices = [get_globally_unique_id(int(row.Index), "switch") for row in net.switch.itertuples()]
+    monitored_elements = pd.concat(
+        [get_empty_dataframe_from_model(PandapowerMonitoredElementSchema), pd.DataFrame(rows, index=indices)]
+    )
 
     pp.runpp(net)
 
@@ -242,21 +245,27 @@ def test_get_va_diff_results(pandapower_net: pp.pandapowerNet):
         va_diff_info=[va_diff_info],
     )
     timestep = 1
-    monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-
     # create a switch
     switch_id = pp.create_switch(net=pandapower_net, bus=0, element=1, et="b", closed=False, name="Switch 0", type="CB")
 
     key = get_globally_unique_id(int(switch_id), "switch")
-    monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
-        "switch",
-        switch_id,
-        "switch",
-        f"Switch {switch_id}",
+    monitored_elements = pd.concat(
+        [
+            get_empty_dataframe_from_model(PandapowerMonitoredElementSchema),
+            pd.DataFrame(
+                [
+                    {
+                        "table": "switch",
+                        "table_id": int(switch_id),
+                        "kind": "switch",
+                        "name": f"Switch {switch_id}",
+                        "monitoring_scope": frozenset(SwitchMonitoringScope),
+                    }
+                ],
+                index=[key],
+            ),
+        ]
     )
-    monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
-    monitored_elements.table_id = monitored_elements.table_id.astype(int)
-    monitored_elements.name = monitored_elements.name.astype(str)
 
     outage_net = deepcopy(pandapower_net)
     outage_net.line.loc[outaged_line_id, "in_service"] = False  # Simulate an outage for the branch
@@ -267,7 +276,7 @@ def test_get_va_diff_results(pandapower_net: pp.pandapowerNet):
     assert all(va_diff_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(va_diff_df.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
     assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist(), (
-        "Element IDs should match monitored elements + the outaged line"
+        "Element IDs should match monitored elements"
     )
     assert va_diff_df.va_diff.tolist() == [
         outage_net.res_bus.loc[0].va_degree - outage_net.res_bus.loc[1].va_degree,
@@ -278,7 +287,7 @@ def test_get_va_diff_results(pandapower_net: pp.pandapowerNet):
     contingency.va_diff_info[0].power_switches_from = {"PW_SWITCH_ID1": "PW_SWITCH_NAME1"}
     va_diff_df = get_va_diff_results(outage_net, timestep, monitored_elements, contingency)
     assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist(), (
-        "Element IDs should match monitored elements. No line switches since there arent any"
+        "Element IDs should match monitored elements"
     )
     assert va_diff_df.va_diff.tolist() == [
         outage_net.res_bus.loc[0].va_degree - outage_net.res_bus.loc[1].va_degree,
@@ -288,7 +297,7 @@ def test_get_va_diff_results(pandapower_net: pp.pandapowerNet):
     contingency.va_diff_info = []
     va_diff_df = get_va_diff_results(outage_net, timestep, monitored_elements, contingency)
     assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist(), (
-        "Element IDs should match monitored elements. No line switches since there arent any"
+        "Element IDs should match monitored elements"
     )
     assert va_diff_df.va_diff.tolist() == [
         outage_net.res_bus.loc[0].va_degree - outage_net.res_bus.loc[1].va_degree,
@@ -320,21 +329,28 @@ def test_get_va_diff_results_multioutage(pandapower_net: pp.pandapowerNet):
         va_diff_info=[va_diff_info_1, va_diff_info_2],
     )
     timestep = 1
-    monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
 
     # create a switch
     switch_id = pp.create_switch(net=pandapower_net, bus=0, element=1, et="b", closed=False, name="Switch 0", type="CB")
 
     key = get_globally_unique_id(int(switch_id), "switch")
-    monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
-        "switch",
-        switch_id,
-        "switch",
-        f"Switch {switch_id}",
+    monitored_elements = pd.concat(
+        [
+            get_empty_dataframe_from_model(PandapowerMonitoredElementSchema),
+            pd.DataFrame(
+                [
+                    {
+                        "table": "switch",
+                        "table_id": int(switch_id),
+                        "kind": "switch",
+                        "name": f"Switch {switch_id}",
+                        "monitoring_scope": frozenset(SwitchMonitoringScope),
+                    }
+                ],
+                index=[key],
+            ),
+        ]
     )
-    monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
-    monitored_elements.table_id = monitored_elements.table_id.astype(int)
-    monitored_elements.name = monitored_elements.name.astype(str)
 
     outage_net = deepcopy(pandapower_net)
     outage_net.line.loc[lines.index[:2], "in_service"] = False  # Simulate an outage for the branch
@@ -345,7 +361,7 @@ def test_get_va_diff_results_multioutage(pandapower_net: pp.pandapowerNet):
     assert all(va_diff_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(va_diff_df.index.get_level_values("contingency") == contingency.unique_id), "Contingency ID should match"
     assert va_diff_df.index.get_level_values("element").tolist() == monitored_elements.index.tolist(), (
-        "Element IDs should match monitored elements + the outaged line"
+        "Element IDs should match monitored elements"
     )
     assert va_diff_df.va_diff.tolist() == [
         outage_net.res_bus.loc[0].va_degree - outage_net.res_bus.loc[1].va_degree,
@@ -359,21 +375,27 @@ def test_get_va_diff_results_basecase(pandapower_net: pp.pandapowerNet):
         elements=[],
     )
     timestep = 0
-    monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
     # create a switch
     switch_id = pp.create_switch(net=pandapower_net, bus=0, element=1, et="b", closed=False, name="Switch 0", type="CB")
 
     key = get_globally_unique_id(int(switch_id), "switch")
-    monitored_elements.loc[key, ["table", "table_id", "kind", "name"]] = (
-        "switch",
-        switch_id,
-        "switch",
-        f"Switch {switch_id}",
+    monitored_elements = pd.concat(
+        [
+            get_empty_dataframe_from_model(PandapowerMonitoredElementSchema),
+            pd.DataFrame(
+                [
+                    {
+                        "table": "switch",
+                        "table_id": int(switch_id),
+                        "kind": "switch",
+                        "name": f"Switch {switch_id}",
+                        "monitoring_scope": frozenset(SwitchMonitoringScope),
+                    }
+                ],
+                index=[key],
+            ),
+        ]
     )
-    monitored_elements.at[key, "monitored_attributes"] = ["p", "q", "vm", "va", "i", "protection"]
-
-    monitored_elements.table_id = monitored_elements.table_id.astype(int)
-    monitored_elements.name = monitored_elements.name.astype(str)
 
     pp.runpp(pandapower_net)
 

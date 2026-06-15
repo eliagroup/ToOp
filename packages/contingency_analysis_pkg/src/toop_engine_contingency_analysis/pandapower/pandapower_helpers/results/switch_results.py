@@ -34,6 +34,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
 )
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, BranchSide, NodeResultSchema, SwitchResultsSchema
+from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
 
 
 class SwitchElementMappingSchema(pa.DataFrameModel):
@@ -572,7 +573,7 @@ def get_switch_mapped_elements(
     net : pp.pandapowerNet
         Pandapower network containing buses, switches, and branch elements.
     monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
-        Table of monitored elements. Only rows where ``"p" in monitored_attributes`` are used.
+        Table of monitored elements. Only rows where ``flow`` is ``True`` are included.
     side : Literal["bus", "element"]
         Defines from which side of the switch the traversal starts:
 
@@ -591,9 +592,9 @@ def get_switch_mapped_elements(
         - a branch-like element with a defined ``side``
         - a bus (with ``side = NaN``)
     """
-    monitored_switches = monitored_elements[monitored_elements["monitored_attributes"].apply(lambda x: "p" in x)][
-        "table_id"
-    ].to_list()
+    monitored_switches = monitored_elements[
+        monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.FLOW in s)
+    ]["table_id"].to_list()
 
     branch_map_df, bus_map_df = _get_switch_mapped_elements_by_origin_ids(net, monitored_switches, side)
 

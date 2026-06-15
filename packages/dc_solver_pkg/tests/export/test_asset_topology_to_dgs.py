@@ -37,7 +37,7 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     get_diff_switch_states,
 )
 from toop_engine_interfaces.asset_topology import BusbarCoupler
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
+from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
 
 
 def test_get_dgs_general_schema():

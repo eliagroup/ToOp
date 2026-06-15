@@ -14,7 +14,7 @@ import structlog
 from beartype.typing import cast
 from toop_engine_interfaces.asset_topology import AssetBay, Station, Topology
 from toop_engine_interfaces.nminus1_definition import GridElement
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
+from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
 
 logger = structlog.get_logger(__name__)
 

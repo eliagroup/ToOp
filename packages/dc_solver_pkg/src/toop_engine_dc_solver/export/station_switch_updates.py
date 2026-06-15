@@ -19,7 +19,7 @@ from beartype.typing import cast
 from jaxtyping import Bool
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
+from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
 
 
 def _get_busbar_lookup(station: Station) -> dict[int, str]:

@@ -15,7 +15,7 @@ from toop_engine_dc_solver.export.disconnection_switch_updates import (
 from toop_engine_dc_solver.export.export import get_changing_switches_from_actions
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_topology
 from toop_engine_interfaces.nminus1_definition import GridElement
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
+from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
 
 
 def test_get_disconnected_asset_ids_returns_asset_bays_by_disconnection_id(basic_node_breaker_topology) -> None:

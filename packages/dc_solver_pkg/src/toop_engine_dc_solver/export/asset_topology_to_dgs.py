@@ -28,7 +28,7 @@ from toop_engine_dc_solver.export.dgs_v7_definitions import (
     DgsElmCoupSchema,
     DgsGeneralSchema,
 )
-from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
+from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
 
 
 class ForeignIdSchema(pa.DataFrameModel):

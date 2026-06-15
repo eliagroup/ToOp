@@ -1424,9 +1424,12 @@ def get_va_diff_results(
 
     va_diff_by_switch = _combine_switch_va_diffs(va_diff_both, va_diff_one_side, va_diff_pst)
 
-    monitored_switch_ids = monitored_elements[
-        monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.ANGLE in s)
-    ]["table_id"]
+    if monitored_elements.empty:
+        monitored_switch_ids = []
+    else:
+        monitored_switch_ids = monitored_elements[
+            monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.ANGLE in s)
+        ]["table_id"]
     va_diff_by_switch = va_diff_by_switch[va_diff_by_switch.index.isin(monitored_switch_ids)]
     out = _format_switch_va_diff_output(va_diff_by_switch, timestep, contingency)
 
@@ -1462,9 +1465,12 @@ def get_failed_va_diff_results(
         The voltage angle difference results for the given network and contingency when the loadflow failed.
         This will return NaN for all elements that were monitored and the contingency.
     """
-    monitored_switches = monitored_elements[
-        monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.ANGLE in s)
-    ].index.to_list()
+    if monitored_elements.empty:
+        monitored_switches = []
+    else:
+        monitored_switches = monitored_elements[
+            monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.ANGLE in s)
+        ].index.to_list()
     all_power_switches = {}
     for va_diff_info in contingency.va_diff_info:
         all_power_switches.update(va_diff_info.power_switches_from)

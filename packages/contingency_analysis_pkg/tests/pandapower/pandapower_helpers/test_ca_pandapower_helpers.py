@@ -652,7 +652,7 @@ def test_get_failed_va_diff_results(pandapower_net: pp.pandapowerNet):
         elements=[PandapowerElements(unique_id=get_globally_unique_id(1, "trafo3w"), table_id=1, table="trafo3w", name="")],
     )
     failed_va_diff = get_failed_va_diff_results(timestep, no_monitored_switch_elements, contingency)
-    assert failed_va_diff_df.va_diff.isna().all(), "Trafo3w outage elements should be nan for now"
+    assert failed_va_diff.empty, "Trafo3w outages without monitored switches should return no VA-diff results"
 
 
 def test_get_regulating_element_results():

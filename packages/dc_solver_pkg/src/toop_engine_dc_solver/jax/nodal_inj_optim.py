@@ -17,7 +17,6 @@ from toop_engine_dc_solver.jax.types import (
     NodalInjectionInformation,
     NodalInjOptimResults,
     NodalInjStartOptions,
-    SolverConfig,
     TopologyResults,
 )
 
@@ -35,23 +34,6 @@ def make_start_options(
         previous_results=old_res,
         precision_percent=jnp.array(1.0),  # TODO
     )
-
-
-def canonicalize_parallel_pst_taps(
-    pst_tap_indices: Int[Array, " batch_size n_timesteps n_controllable_pst"],
-    nodal_inj_info: NodalInjectionInformation,
-) -> Int[Array, " batch_size n_timesteps n_controllable_pst"]:
-    """Project PST taps onto the configured parallel-group constraint using one shared delta per group."""
-    if nodal_inj_info.parallel_pst_group_mask is None or nodal_inj_info.parallel_pst_group_mask.shape[0] == 0:
-        return pst_tap_indices
-
-    group_mask = nodal_inj_info.parallel_pst_group_mask.astype(int)
-    representative_indices = jnp.argmax(group_mask, axis=1)
-    representative_start_taps = nodal_inj_info.starting_tap_idx[representative_indices]
-    group_deltas = pst_tap_indices[..., representative_indices] - representative_start_taps
-    pst_deltas = jnp.einsum("gp,...g->...p", group_mask, group_deltas)
-    canonical_taps = nodal_inj_info.starting_tap_idx + pst_deltas
-    return jnp.clip(canonical_taps, a_min=0, a_max=nodal_inj_info.pst_n_taps - 1)
 
 
 def apply_pst_taps(
@@ -131,7 +113,6 @@ def nodal_inj_optimization(
     topo_res: TopologyResults,
     start_options: NodalInjStartOptions,
     dynamic_information: DynamicInformation,
-    solver_config: SolverConfig,
 ) -> tuple[
     Float[Array, " batch_size n_timesteps n_branches"],
     Float[Array, " batch_size n_timesteps n_outages n_branches_monitored"],
@@ -154,8 +135,6 @@ def nodal_inj_optimization(
         Contains previous PST tap results to apply
     dynamic_information : DynamicInformation
         Contains PST information and grid data
-    solver_config : SolverConfig
-        Solver configuration
 
     Returns
     -------
@@ -171,10 +150,9 @@ def nodal_inj_optimization(
 
     # Get PST tap indices from start options (shape: batch_size x n_timesteps x n_controllable_pst)
     pst_tap_indices = start_options.previous_results.pst_tap_idx
-    if pst_tap_indices.ndim == 2:
-        pst_tap_indices = pst_tap_indices[None, :, :]
-    if solver_config.enable_parallel_pst_group_optim:
-        pst_tap_indices = canonicalize_parallel_pst_taps(pst_tap_indices=pst_tap_indices, nodal_inj_info=nodal_inj_info)
+    # TODO: This should not be necessary
+    # if pst_tap_indices.ndim == 2:
+    #   pst_tap_indices = pst_tap_indices[None, :, :]
 
     n_0_updated = apply_pst_taps(
         n_0=n_0,

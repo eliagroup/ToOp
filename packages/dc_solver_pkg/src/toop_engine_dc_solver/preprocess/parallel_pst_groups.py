@@ -7,21 +7,21 @@
 
 """Helpers for building parallel PST group masks from per-PST group labels.
 
-The group membership itself is identified during importing (see ``pst_group_masks`` in
+The group membership itself is identified during importing (see ``pst_group_labels`` in
 ``powsybl_masks.py``); this module only reshapes the per-PST integer labels into the boolean group
 mask consumed by the preprocessing and optimization stages.
 """
 
 import numpy as np
-from beartype.typing import Sequence
+from beartype.typing import Optional, Sequence
 from jaxtyping import Bool, Int
 
 
-def build_parallel_pst_group_mask(
+def build_2d_pst_group_mask_and_labels(
     group_labels: Int[np.ndarray, " n_controllable_pst"],
-    pst_ids: Sequence[str | int],
-) -> tuple[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"], list[str]]:
-    """Build the parallel PST group mask and group ids from per-PST group labels.
+    pst_id_list: Sequence[str | int],
+) -> tuple[Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]], Optional[list[str]]]:
+    """Build the parallel PST group mask (matrix) and provide group ids aligned with the matrix rows.
 
     PSTs that share a (non-negative) label belong to the same parallel group. The sentinel ``-1``
     marks an ungrouped PST, which is given its own singleton group, so the default with no parallel
@@ -30,23 +30,25 @@ def build_parallel_pst_group_mask(
     Parameters
     ----------
     group_labels : Int[np.ndarray, " n_controllable_pst"]
-        Integer group label for each controllable PST, aligned with ``pst_ids``.
-    pst_ids : Sequence[str | int]
+        Integer group label for each controllable PST, aligned with ``pst_id_list``.
+    pst_id_list : Sequence[str | int]
         Ordered controllable PST ids the output mask aligns with.
 
     Returns
     -------
-    tuple[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"], list[str]]
-        A boolean group mask with one row per distinct group (in first-seen order), where each
-        column has exactly one ``True``, and a list of group identifiers (the first member's PST id
-        per row).
+    tuple[Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]], Optional[list[str]]]
+        1. A boolean group mask with one row per distinct group (in first-seen order), where each
+         column has exactly one ``True`` value indicating the group membership of the corresponding PST.
+         The column order is aligned with the input ``pst_id_list``. Returns None if there are no controllable PSTs.
+        2. A list of group identifiers (the first member's PST id per row). Returns None if there are no controllable PSTs.
     """
-    pst_id_list = [str(pst_id) for pst_id in pst_ids]
+    pst_id_list = [str(pst_id) for pst_id in pst_id_list]
     n_psts = len(pst_id_list)
     if group_labels.shape[0] != n_psts:
         raise ValueError(f"group_labels has {group_labels.shape[0]} entries but {n_psts} controllable PST ids were given.")
     if n_psts == 0:
-        return np.zeros((0, 0), dtype=bool), []
+        # TODO: Group mask could also be None
+        return None, None
 
     rows = np.zeros(n_psts, dtype=int)
     row_by_label: dict[int, int] = {}
@@ -62,9 +64,9 @@ def build_parallel_pst_group_mask(
         else:
             row_by_label[label] = next_row
             rows[pst_index] = next_row
-        group_ids.append(pst_id_list[pst_index])
+        group_ids.append(str(pst_id_list[pst_index]))
         next_row += 1
 
-    parallel_pst_group_mask = np.zeros((next_row, n_psts), dtype=bool)
+    parallel_pst_group_mask = np.zeros((len(group_ids), n_psts), dtype=bool)
     parallel_pst_group_mask[rows, np.arange(n_psts)] = True
     return parallel_pst_group_mask, group_ids

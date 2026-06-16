@@ -1276,11 +1276,12 @@ def compute_separation_set_for_stations(
     )
 
 
-def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> NetworkData:
-    """Exclude nonlinear phase shifters from the controllable phase shifter mask.
+def verify_equal_starting_tap_in_pst_group(network_data: NetworkData) -> bool:
+    """Warn if not all phase shifters in a parallel PST group share the same starting tap.
 
-    This is necessary because nonlinear phase shifters cannot be handled correctly in the backend
-    at this moment.
+    Different starting taps lead to different updates for the same tap step, which can lead to unexpected behavior.
+    We allow different starting taps within a group, but we want to make sure the user is aware of this fact
+    when they are not the same.
 
     Parameters
     ----------
@@ -1289,63 +1290,37 @@ def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> Netwo
 
     Returns
     -------
-    NetworkData
-        The network data with the nonlinear phase shifters excluded from the controllable mask
+    bool
+        True if the phase shifters in each parallel PST group share the same starting tap, False otherwise
     """
-    if network_data.phase_shift_mask is None or network_data.controllable_phase_shift_mask is None:
-        return network_data
+    if network_data.controllable_phase_shift_mask is None:
+        return True
 
-    logger.info(
-        "Excluding nonlinear phase shifters from the controllable mask, "
-        "since they cannot be handled correctly in the backend."
-    )
-    pst_linearity = network_data.phase_shift_linearity
     parallel_pst_group_mask = network_data.parallel_pst_group_mask
+    if parallel_pst_group_mask is None:
+        return True
+
+    phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx
     parallel_pst_group_ids = network_data.parallel_pst_group_ids
-    if parallel_pst_group_mask is not None:
-        assert parallel_pst_group_mask.shape[1] == pst_linearity.shape[0], (
-            "Parallel PST group mask must align with controllable PST linearity information."
+    if parallel_pst_group_ids is None:  # Defensive if parallel PST group ids are not given
+        logger.warning(
+            "Parallel PST group mask is given but parallel PST group ids are not given. "
+            "Assuming that the groups are ordered according to the order of the phase shifters.",
+            parallel_pst_group_mask=parallel_pst_group_mask,
         )
-        # Parallel PSTs are grouped at import time only when they share identical tap-changer
-        # parameters, so a group is necessarily all-linear or all-nonlinear; nonlinear groups drop
-        # out entirely below when their members leave the controllable set.
-        parallel_pst_group_mask = parallel_pst_group_mask[:, pst_linearity]
-        kept_group_rows = np.any(parallel_pst_group_mask, axis=1)
-        parallel_pst_group_mask = parallel_pst_group_mask[kept_group_rows]
-        if parallel_pst_group_ids is not None:
-            parallel_pst_group_ids = [
-                group_id for group_id, keep in zip(parallel_pst_group_ids, kept_group_rows, strict=True) if keep
-            ]
-
-    phase_shift_low_tap = network_data.phase_shift_low_tap[pst_linearity]
-    phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[pst_linearity]
-    phase_shift_taps = [taps for taps, linear in zip(network_data.phase_shift_taps, pst_linearity, strict=True) if linear]
-    if parallel_pst_group_mask is not None:
-        for group_idx, group_mask in enumerate(parallel_pst_group_mask):
-            if np.sum(group_mask) <= 1:
-                continue
-            group_starting_taps = phase_shift_low_tap[group_mask] + phase_shift_starting_tap_idx[group_mask]
-            if not np.all(group_starting_taps == group_starting_taps[0]):
-                logger.warning(
-                    "Parallel PST group members do not share the same starting tap. "
-                    "Grouped optimization applies a shared tap delta, then clips each member to its own tap domain.",
-                    group_index=group_idx,
-                    starting_taps=group_starting_taps.tolist(),
-                )
-
-    controllable_pst_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
-    controllable_phase_shift_mask = np.zeros_like(network_data.controllable_phase_shift_mask, dtype=bool)
-    controllable_phase_shift_mask[controllable_pst_indices[pst_linearity]] = True
-    return replace(
-        network_data,
-        controllable_phase_shift_mask=controllable_phase_shift_mask,
-        phase_shift_low_tap=phase_shift_low_tap,
-        phase_shift_starting_tap_idx=phase_shift_starting_tap_idx,
-        phase_shift_taps=phase_shift_taps,
-        phase_shift_linearity=np.ones_like(phase_shift_low_tap, dtype=bool),
-        parallel_pst_group_mask=parallel_pst_group_mask,
-        parallel_pst_group_ids=parallel_pst_group_ids,
-    )
+        parallel_pst_group_ids = np.arange(parallel_pst_group_mask.shape[0])
+    for group_idx, group_mask in enumerate(parallel_pst_group_mask):
+        if np.sum(group_mask) <= 1:
+            continue
+        group_starting_taps = phase_shift_starting_tap_idx[group_mask]
+        if not np.all(group_starting_taps == group_starting_taps[0]):
+            logger.warning(
+                "Parallel PST group members do not share the same starting tap. "
+                "Though members share the same tap step table, starting at different taps leads to different updates ",
+                parallel_pst_group_ids=parallel_pst_group_ids[group_idx],
+                starting_taps=group_starting_taps.tolist(),
+            )
+    return True
 
 
 def preprocess(  # noqa: PLR0915
@@ -1380,8 +1355,8 @@ def preprocess(  # noqa: PLR0915
     logging_fn("extract_network_data_from_interface", None)
     network_data = extract_network_data_from_interface(interface)
 
-    logging_fn("exclude_nonlinear_psts_from_controllable", None)
-    network_data = exclude_nonlinear_psts_from_controllable(network_data)
+    logging_fn("verify_equal_starting_tap_in_pst_group", None)
+    assert verify_equal_starting_tap_in_pst_group(network_data)
 
     logging_fn("compute_bridging_branches", None)
     network_data = compute_bridging_branches(network_data)

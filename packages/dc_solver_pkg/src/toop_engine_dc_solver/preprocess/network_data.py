@@ -311,10 +311,12 @@ class NetworkData:
     nodes will be included. The ones that refer to a controllable PST will be mentioned in this mask."""
 
     parallel_pst_group_mask: Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]] = None
-    """Boolean masks describing groups of parallel controllable PSTs aligned with PST arrays."""
+    """Boolean masks describing groups of parallel controllable PSTs aligned with PST arrays. If there are no controllable
+    PSTs, this will be None."""
 
     parallel_pst_group_ids: Optional[list[str]] = None
-    """Optional identifiers aligned one-to-one with rows of parallel_pst_group_mask.
+    """Optional identifiers aligned one-to-one with rows of parallel_pst_group_mask. If there are no controllable
+    PSTs, this will be None.
 
     This is per parallel PST group, not per controllable PST member. If present, its length must match
     `parallel_pst_group_mask.shape[0]`.

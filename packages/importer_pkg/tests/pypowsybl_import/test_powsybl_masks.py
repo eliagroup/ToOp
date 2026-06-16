@@ -56,9 +56,9 @@ def test_create_default_network_masks():
     assert isinstance(masks.load_for_nminus1, np.ndarray)
     assert isinstance(masks.switch_for_nminus1, np.ndarray)
     assert isinstance(masks.switch_for_reward, np.ndarray)
-    assert isinstance(masks.pst_group_masks, np.ndarray)
+    assert isinstance(masks.pst_group_labels, np.ndarray)
     # Default group labels are -1 (no parallel-PST grouping identified yet).
-    assert np.all(masks.pst_group_masks == -1)
+    assert np.all(masks.pst_group_labels == -1)
 
 
 def test_validate_network_masks(ucte_importer_parameters: UcteImporterParameters):
@@ -857,7 +857,9 @@ def test_build_pst_group_labels_groups_parallel_psts():
     trafos = net.get_2_windings_transformers(attributes=["bus1_id", "bus2_id", "voltage_level1_id", "voltage_level2_id"])
     pst_controllable_mask = trafos.index.isin(net.get_phase_tap_changers().index)
 
-    labels = powsybl_masks.build_pst_group_labels(network=net, trafos_df=trafos, pst_controllable_mask=pst_controllable_mask)
+    labels = powsybl_masks.filter_and_group_linear_psts(
+        network=net, trafos_df=trafos, pst_controllable_mask=pst_controllable_mask
+    )
 
     label_by_id = dict(zip(trafos.index, labels, strict=True))
     # PST1 and PST2 connect the same bus pair with identical tap-changer parameters -> same group.
@@ -874,7 +876,9 @@ def test_build_pst_group_labels_marks_non_controllable_as_ungrouped():
     # Only PST1 is controllable; the parallel PST2 and the distinct PST3 are excluded.
     pst_controllable_mask = np.asarray(trafos.index == "PST1")
 
-    labels = powsybl_masks.build_pst_group_labels(network=net, trafos_df=trafos, pst_controllable_mask=pst_controllable_mask)
+    labels = powsybl_masks.filter_and_group_linear_psts(
+        network=net, trafos_df=trafos, pst_controllable_mask=pst_controllable_mask
+    )
 
     label_by_id = dict(zip(trafos.index, labels, strict=True))
     assert label_by_id["PST1"] >= 0

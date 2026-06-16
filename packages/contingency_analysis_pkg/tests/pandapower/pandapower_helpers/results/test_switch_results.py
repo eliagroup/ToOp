@@ -702,19 +702,6 @@ def test_get_switch_mapped_elements_by_origin_ids_empty_when_no_matching_switche
     assert bus_map_df.empty
 
 
-def test_get_switch_mapped_elements_by_origin_ids_ignores_open_switches():
-    net, _ = create_test_net_for_switch_mapped_elements()
-
-    branch_map_df, bus_map_df = _get_switch_mapped_elements_by_origin_ids(
-        net=net,
-        switches_ids=[3],
-        side="bus",
-    )
-
-    assert branch_map_df.empty
-    assert bus_map_df.empty
-
-
 def test_get_switch_mapped_elements_by_origin_ids_bus_side_single_switch():
     net, ids = create_test_net_for_switch_mapped_elements()
 

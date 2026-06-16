@@ -18,7 +18,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     ParallelConfig,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
 def build_cascade_test_net():
@@ -180,9 +180,12 @@ class TestCascades(unittest.TestCase):
         net.switch["global_id"] = net.switch.index.map(lambda imp_id: get_globally_unique_id(imp_id, "switch"))
 
         monitored_elements = (
-            [GridElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
-            + [GridElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
-            + [GridElement(id=row.global_id, type="switch", kind="switch", name=row.name) for row in net.switch.itertuples()]
+            [MonitoredElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
+            + [MonitoredElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
+            + [
+                MonitoredElement(id=row.global_id, type="switch", kind="switch", name=row.name)
+                for row in net.switch.itertuples()
+            ]
         )
         # Use origin_id as contingency id so cascade_results contingency index == origin_id
         contingencies = [
@@ -312,12 +315,15 @@ class TestCascades(unittest.TestCase):
         unmonitored_line_names = {"l4", "l7"}
         monitored_elements = (
             [
-                GridElement(id=row.global_id, type="line", kind="branch", name=row.name)
+                MonitoredElement(id=row.global_id, type="line", kind="branch", name=row.name)
                 for row in net.line.itertuples()
                 if row.name not in unmonitored_line_names
             ]
-            + [GridElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
-            + [GridElement(id=row.global_id, type="switch", kind="switch", name=row.name) for row in net.switch.itertuples()]
+            + [MonitoredElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
+            + [
+                MonitoredElement(id=row.global_id, type="switch", kind="switch", name=row.name)
+                for row in net.switch.itertuples()
+            ]
         )
 
         contingencies = [

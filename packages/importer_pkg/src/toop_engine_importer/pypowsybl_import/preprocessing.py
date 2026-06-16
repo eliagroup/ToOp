@@ -57,7 +57,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
 )
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 logger = structlog.get_logger(__name__)
 
@@ -124,7 +124,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
     lines = network.get_lines(attributes=["name"])
     monitored_lines = [
-        GridElement(id=idx, name=row["name"], type="LINE", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="LINE", kind="branch")
         for idx, row in lines[network_masks.line_for_reward].iterrows()
     ]
     outaged_lines = [
@@ -135,7 +135,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
     trafos = network.get_2_windings_transformers(attributes=["name"])
     is_trafo2w = ~trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
     monitored_trafos = [
-        GridElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         for idx, row in trafos[is_trafo2w & network_masks.trafo_for_reward].iterrows()
     ]
     outaged_trafos = [
@@ -153,7 +153,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         trafos.name = trafos.name.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
 
     monitored_trafo3w = [
-        GridElement(id=idx, name=row["name"], type="THREE_WINDINGS_TRANSFORMER", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="THREE_WINDINGS_TRANSFORMER", kind="branch")
         for idx, row in trafos[is_trafo3w & network_masks.trafo_for_reward].drop_duplicates().iterrows()
     ]
     outaged_trafo3w = [
@@ -167,7 +167,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
     tie_lines = network.get_tie_lines(attributes=["name"])
     monitored_tie_lines = [
-        GridElement(id=idx, name=row["name"], type="TIE_LINE", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="TIE_LINE", kind="branch")
         for idx, row in tie_lines[network_masks.tie_line_for_reward].iterrows()
     ]
     outaged_tie_lines = [
@@ -207,7 +207,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
     switches = network.get_switches(attributes=["name"])
     monitored_switches = [
-        GridElement(id=idx, name=row["name"], type="SWITCH", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="SWITCH", kind="branch")
         for idx, row in switches[network_masks.switch_for_reward].iterrows()
     ]
     outaged_switches = [
@@ -219,12 +219,12 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
     relevant_bus_ids = buses.index[network_masks.relevant_subs].to_list()
     busbar_sections = network.get_busbar_sections(attributes=["name", "bus_id"])
     monitored_busbars = [
-        GridElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")
+        MonitoredElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")
         for idx, row in busbar_sections[busbar_sections.index.isin(relevant_bus_ids)].iterrows()
     ]
     busbreaker_buses = network.get_bus_breaker_view_buses(attributes=["name", "bus_id"])
     monitored_busbreakers = [
-        GridElement(id=idx, name=row["name"], type="BUS_BREAKER_BUS", kind="bus")
+        MonitoredElement(id=idx, name=row["name"], type="BUS_BREAKER_BUS", kind="bus")
         for idx, row in busbreaker_buses[busbreaker_buses.index.isin(relevant_bus_ids)].iterrows()
     ]
 

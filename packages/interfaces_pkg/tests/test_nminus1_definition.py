@@ -9,6 +9,7 @@ import pytest
 from toop_engine_interfaces.nminus1_definition import (
     Contingency,
     GridElement,
+    MonitoredElement,
     Nminus1Definition,
     load_nminus1_definition,
     save_nminus1_definition,
@@ -32,9 +33,9 @@ def example_nminus1_definition():
     ]
 
     monitored_elements = [
-        GridElement(id="branch1", type="line", kind="branch"),
-        GridElement(id="branch2", type="line", kind="branch"),
-        GridElement(id="bus1", type="bus", kind="bus"),
+        MonitoredElement(id="branch1", type="line", kind="branch"),
+        MonitoredElement(id="branch2", type="line", kind="branch"),
+        MonitoredElement(id="bus1", type="bus", kind="bus"),
     ]
 
     return Nminus1Definition(

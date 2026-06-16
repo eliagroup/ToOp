@@ -29,7 +29,7 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     extract_branch_results,
     extract_solver_matrices,
 )
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
 def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
@@ -189,7 +189,7 @@ def test_run_contingency_analysis_powsybl_not_converging_basecase() -> None:
 
     nminus1_def_1 = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in net.get_branches().iterrows()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
@@ -208,7 +208,7 @@ def test_extract_branch_results_disconnected():
     net.disconnect(net.get_branches().index[0])
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in net.get_branches().iterrows()
         ],
         contingencies=[
@@ -238,7 +238,7 @@ def test_extract_solver_matrices():
     net = pypowsybl.network.create_ieee14()
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in net.get_branches().iterrows()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])]
@@ -280,7 +280,7 @@ def test_extract_solver_matrices_disconnected():
     net.disconnect(net.get_branches().index[0])
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in net.get_branches().iterrows()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])]
@@ -318,7 +318,7 @@ def test_extract_branch_results_disconnected():
     net.disconnect(net.get_branches().index[0])
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in net.get_branches().iterrows()
         ],
         contingencies=[
@@ -348,7 +348,7 @@ def test_extract_solver_matrices():
     net = pypowsybl.network.create_ieee14()
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in net.get_branches().iterrows()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])]
@@ -390,7 +390,7 @@ def test_extract_solver_matrices_disconnected():
     net.disconnect(net.get_branches().index[0])
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in net.get_branches().iterrows()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])]
@@ -427,7 +427,7 @@ def test_convert_polars_loadflow_results_to_pandas():
     net = pypowsybl.network.create_ieee14()
     nminus1_def_1 = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in net.get_branches().iterrows()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
@@ -435,7 +435,7 @@ def test_convert_polars_loadflow_results_to_pandas():
 
     nminus1_def_2 = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in net.get_branches().iterrows()
         ],
         contingencies=[

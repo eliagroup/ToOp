@@ -259,9 +259,7 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
             + " ## "
             + (trafos["elementName"] if "elementName" in trafos.keys() else trafos["name"])
         )
-    return add_missing_branch_model_columns(
-        trafos[["x", "r", "rho", "alpha", "name", "has_pst_tap", "pst_group", "pst_controllable"]]
-    )
+    return add_missing_branch_model_columns(trafos[["x", "r", "rho", "alpha", "name"]])
 
 
 @pa.check_types

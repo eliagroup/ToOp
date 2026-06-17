@@ -280,10 +280,10 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
     phase_shift_indices = np.flatnonzero(phase_shift_mask)
     number_of_phase_shifters = phase_shift_indices.shape[0]
 
-    # We want to find out for each controllable PST which injection it is connected to
-    controllable_psts = np.flatnonzero(network_data.controllable_phase_shift_mask[phase_shift_mask])
+    # We want to find out for each phase-shifter (that includes controllable ones) which injection it is connected to
+    controllable_psts_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
     controllable_pst_node_mask = np.zeros((number_of_phase_shifters + len(network_data.node_ids),), dtype=bool)
-    controllable_pst_node_mask[controllable_psts] = True
+    controllable_pst_node_mask[controllable_psts_indices] = True
 
     # Add nodal injections to the phase shifters
     phase_shift_names = [network_data.branch_names[i] for i in phase_shift_indices]

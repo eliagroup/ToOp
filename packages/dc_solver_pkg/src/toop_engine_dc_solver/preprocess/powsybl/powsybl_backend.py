@@ -503,11 +503,11 @@ class PowsyblBackend(BackendInterface):
             pst_id_list=self.get_controllable_phase_shift_ids(),
         )
 
-    def get_parallel_pst_group_mask(self) -> Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]:
+    def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
         """Get the parallel PST groups aligned with the controllable PST arrays."""
         return self._get_parallel_pst_groups()[0]
 
-    def get_parallel_pst_group_ids(self) -> list[str]:
+    def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
         """Get the parallel PST group ids aligned with the group mask rows."""
         return self._get_parallel_pst_groups()[1]
 

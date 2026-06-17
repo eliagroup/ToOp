@@ -43,8 +43,8 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 
 
-def test_get_branches(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     n_branches = len(backend.get_branch_ids())
     n_timesteps = 1
@@ -80,8 +80,8 @@ def test_get_branches(powsybl_data_folder: Path) -> None:
     assert np.all(np.isfinite(ac_dc_diff))
 
 
-def test_get_nodes(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_nodes(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     busses = backend.net.get_buses()
     n_connected_nodes = sum(busses.connected_component == 0)
@@ -96,8 +96,8 @@ def test_get_nodes(powsybl_data_folder: Path) -> None:
     assert backend.get_cross_coupler_limits().shape == (n_connected_nodes,)
 
 
-def test_get_injections(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_injections(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     n_injections = len(backend.get_injection_ids())
     n_timesteps = 1
@@ -110,8 +110,8 @@ def test_get_injections(powsybl_data_folder: Path) -> None:
     assert backend.get_outaged_injection_mask().shape == (n_injections,)
 
 
-def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_ptdf_matrix(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     net = backend.net
     loadflow_ref = net.get_branches()["p1"].loc[backend.get_branch_ids()].values
@@ -153,8 +153,8 @@ def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
     assert np.allclose(ac_loadflow, -ac_loadflow_ref)
 
 
-def test_extract_network_data(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     network_data = preprocess(backend)
     assert network_data.ptdf.size > 0
@@ -216,13 +216,15 @@ def test_lodf(preprocessed_powsybl_data_folder: Path) -> None:
     assert np.allclose(n_1_loadflow, -n_1[outage_idx])
 
 
-def test_injection_outages_match(preprocessed_powsybl_data_folder: Path) -> None:
-    net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
-    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+def test_injection_outages_match(preprocessed_powsybl_case57_folder_xiidm: Path) -> None:
+    net = pypowsybl.network.load(preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    network_data = load_network_data(preprocessed_powsybl_case57_folder_xiidm / "network_data.pkl")
+    lf_params = load_lf_params(
+        preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["loadflow_parameters_file_path"]
+    )
 
     static_information = load_static_information(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
+        preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["static_information_file_path"]
     )
     dynamic_information = static_information.dynamic_information
 
@@ -259,12 +261,14 @@ def test_injection_outages_match(preprocessed_powsybl_data_folder: Path) -> None
         )
 
 
-def test_loadflows_match(preprocessed_powsybl_data_folder: Path) -> None:
-    net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
-    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+def test_loadflows_match(preprocessed_powsybl_case57_folder_xiidm: Path) -> None:
+    net = pypowsybl.network.load(preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    network_data = load_network_data(preprocessed_powsybl_case57_folder_xiidm / "network_data.pkl")
+    lf_params = load_lf_params(
+        preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["loadflow_parameters_file_path"]
+    )
     static_information = load_static_information(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
+        preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["static_information_file_path"]
     )
 
     (n_0, n_1), success = run_solver_symmetric(
@@ -305,13 +309,15 @@ def test_loadflows_match(preprocessed_powsybl_data_folder: Path) -> None:
 
 
 def test_loadflows_match_bat_hvdc_shunt_svc(complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path) -> None:
-    preprocessed_powsybl_data_folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder
-    net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    preprocessed_powsybl_case57_folder_xiidm = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder
+    net = pypowsybl.network.load(preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
-    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
-    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    network_data = load_network_data(preprocessed_powsybl_case57_folder_xiidm / "network_data.pkl")
+    lf_params = load_lf_params(
+        preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["loadflow_parameters_file_path"]
+    )
     static_information = load_static_information(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
+        preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["static_information_file_path"]
     )
 
     (n_0, n_1), success = run_solver_symmetric(
@@ -353,13 +359,15 @@ def test_loadflows_match_bat_hvdc_shunt_svc(complex_grid_battery_hvdc_svc_3w_tra
 
 
 def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
-    preprocessed_powsybl_data_folder = basic_ucte_data_folder
-    net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
+    preprocessed_powsybl_case57_folder_xiidm = basic_ucte_data_folder
+    net = pypowsybl.network.load(preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    network_data = load_network_data(preprocessed_powsybl_case57_folder_xiidm / "network_data.pkl")
     static_information = load_static_information(
-        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
+        preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["static_information_file_path"]
     )
-    lf_params = load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    lf_params = load_lf_params(
+        preprocessed_powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["loadflow_parameters_file_path"]
+    )
 
     (n_0, n_1), success = run_solver_symmetric(
         topologies=default_topology(static_information.solver_config),
@@ -399,8 +407,8 @@ def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
     assert np.allclose(-n_1, n_1_ref)
 
 
-def test_globally_unique_ids(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_globally_unique_ids(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
 
     assert len(backend.get_branch_ids()) == len(set(backend.get_branch_ids()))

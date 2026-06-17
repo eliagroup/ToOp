@@ -51,6 +51,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
+from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
@@ -561,6 +562,25 @@ def case57_data_powsybl(folder: Path) -> None:
     save_lf_params_to_fs(
         DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+
+
+def case57_data_powsybl_xiidm(folder: Path) -> None:
+    """Load a powsybl xiidm grid and save importing masks to the given folder path."""
+    net = pypowsybl.network.load(folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    pypowsybl.loadflow.run_ac(net, DISTRIBUTED_SLACK)
+    dir_system = DirFileSystem(folder)
+    save_lf_params_to_fs(DISTRIBUTED_SLACK, dir_system, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
+
+    network_masks = make_masks(
+        network=net,
+        slack_id=net.get_buses().index[0],
+        importer_parameters=CgmesImporterParameters(
+            area_settings=AreaSettings(control_area=[""], view_area=[""], nminus1_area=[""], cutoff_voltage=1),
+            data_folder=folder,
+            grid_model_file=Path(folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        ),
+    )
+    save_masks_to_filesystem(network_masks, folder, dir_system)
 
 
 def case57_non_converging(folder: Path) -> None:

@@ -103,10 +103,10 @@ class NetworkMasks:
     Currently only used during importing and not part of the PowsyblBackend"""
 
     trafo_has_pst_tap: np.ndarray
-    """trafo_has_pst_tap.npy (a boolean mask of transformers that have a PST tap)"""
+    """trafo_has_pst_tap.npy (a boolean mask of transformers within the control area that have a PST tap)"""
 
     trafo_pst_controllable: np.ndarray
-    """trafo_pst_controllable.npy (a boolean mask of transformers that are a PST and can be controlled)"""
+    """trafo_pst_controllable.npy (a boolean mask of transformers that are a PST and can be controlled, i.e. are linear)."""
 
     pst_group_labels: np.ndarray
     """pst_group_labels.npy (an integer group label per trafo for parallel PST grouping).
@@ -627,11 +627,11 @@ def filter_and_group_linear_psts(
         low_tap = int(tap_changers.at[pst_id, "low_tap"])
         high_tap = int(tap_changers.at[pst_id, "high_tap"])
         bus_pair = frozenset({trafos_df.at[pst_id, "bus1_id"], trafos_df.at[pst_id, "bus2_id"]})
-        step_table = steps.loc[pst_id].sort_index().to_numpy(dtype=float)
+        step_table = steps.loc[pst_id].sort_index()
         if _is_nonlinear_pst(step_table):
             continue
         trafo_pst_controllable[position] = True
-        step_tables[pst_id] = step_table
+        step_tables[pst_id] = step_table.to_numpy(dtype=float)
         bucket_key = (bus_pair, round(float(nominal_v[local_idx]), 6), low_tap, high_tap, step_table.shape[0])
         buckets[bucket_key].append(position)
 
@@ -1311,6 +1311,6 @@ def _is_nonlinear_pst(step_table: pd.DataFrame) -> bool:
         True if the step table indicates a nonlinear PST, False otherwise.
     """
     for column in ["rho", "x", "r", "g", "b"]:
-        if column in step_table.dtype.names and not np.allclose(step_table[column], step_table[column][0]):
+        if column in step_table.columns and not np.allclose(step_table[column], step_table[column].iloc[0]):
             return True
     return False

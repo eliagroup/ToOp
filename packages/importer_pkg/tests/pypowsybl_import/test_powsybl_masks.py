@@ -648,7 +648,7 @@ def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: Uct
     )
     assert np.array_equal(
         network_masks.trafo_pst_controllable,
-        np.array([False, False, True, False, False, False]),
+        np.array([False, False, False, False, False, False]),
     )
 
     ucte_importer_parameters.area_settings.nminus1_area = ["D8"]
@@ -855,13 +855,15 @@ def test_build_pst_group_labels_groups_parallel_psts():
     """Parallel PSTs (same bus pair, voltage and tap-changer parameters) share a group label."""
     net = parallel_pst_example()
     trafos = net.get_2_windings_transformers(attributes=["bus1_id", "bus2_id", "voltage_level1_id", "voltage_level2_id"])
-    pst_controllable_mask = trafos.index.isin(net.get_phase_tap_changers().index)
+    control_area_hv_trafo_mask = trafos.index.isin(net.get_phase_tap_changers().index)
 
-    labels = powsybl_masks.filter_and_group_linear_psts(
-        network=net, trafos_df=trafos, pst_controllable_mask=pst_controllable_mask
+    trafo_has_pst_tap, trafo_pst_controllable, pst_group_labels = powsybl_masks.filter_and_group_linear_psts(
+        network=net, trafos_df=trafos, control_area_hv_trafo_mask=control_area_hv_trafo_mask
     )
 
-    label_by_id = dict(zip(trafos.index, labels, strict=True))
+    assert trafo_has_pst_tap.sum() == 3
+    assert trafo_pst_controllable.sum() == 3
+    label_by_id = dict(zip(trafos.index, pst_group_labels, strict=True))
     # PST1 and PST2 connect the same bus pair with identical tap-changer parameters -> same group.
     assert label_by_id["PST1"] == label_by_id["PST2"]
     # PST3 connects a different bus pair with a different tap range -> its own group.
@@ -874,13 +876,15 @@ def test_build_pst_group_labels_marks_non_controllable_as_ungrouped():
     net = parallel_pst_example()
     trafos = net.get_2_windings_transformers(attributes=["bus1_id", "bus2_id", "voltage_level1_id", "voltage_level2_id"])
     # Only PST1 is controllable; the parallel PST2 and the distinct PST3 are excluded.
-    pst_controllable_mask = np.asarray(trafos.index == "PST1")
+    control_area_hv_trafo_mask = np.asarray(trafos.index == "PST1")
 
-    labels = powsybl_masks.filter_and_group_linear_psts(
-        network=net, trafos_df=trafos, pst_controllable_mask=pst_controllable_mask
+    trafo_has_pst_tap, trafo_pst_controllable, pst_group_labels = powsybl_masks.filter_and_group_linear_psts(
+        network=net, trafos_df=trafos, control_area_hv_trafo_mask=control_area_hv_trafo_mask
     )
 
-    label_by_id = dict(zip(trafos.index, labels, strict=True))
+    assert trafo_has_pst_tap.sum() == 1
+    assert trafo_pst_controllable.sum() == 1
+    label_by_id = dict(zip(trafos.index, pst_group_labels, strict=True))
     assert label_by_id["PST1"] >= 0
     assert label_by_id["PST2"] == -1
     assert label_by_id["PST3"] == -1

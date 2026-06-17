@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import unittest
+from copy import deepcopy
 from unittest import mock
 
 import numpy as np
@@ -484,7 +485,7 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
             branch_results_df=get_empty_dataframe_from_model(BranchResultSchema),
             switch_results_df=switch_results_df,
             initial_contingency=PandapowerContingency(unique_id="c1", name="c1", elements=[]),
-            basecase_net=net.copy(),
+            basecase_net=deepcopy(net),
             monitored_elements=monitored_elements,
         )
 

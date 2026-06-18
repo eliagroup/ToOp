@@ -580,7 +580,8 @@ def case57_data_powsybl_xiidm(folder: Path) -> None:
             grid_model_file=Path(folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         ),
     )
-    save_masks_to_filesystem(network_masks, folder, dir_system)
+    save_masks_to_filesystem(network_masks, Path("."), dir_system)
+    extract_station_info_powsybl(net, folder)
 
 
 def case57_non_converging(folder: Path) -> None:

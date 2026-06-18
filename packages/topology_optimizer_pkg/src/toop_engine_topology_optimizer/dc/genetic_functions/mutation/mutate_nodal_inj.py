@@ -69,7 +69,7 @@ def mutate_psts(
     # Sample number of PSTs to adjust from a n_controllable_pst-dimensional uniform distribution
     key, key_mutate, key_reset = jax.random.split(random_key, 3)
 
-    if enable_parallel_pst_group_optim and parallel_pst_group_mask is not None:
+    if enable_parallel_pst_group_optim:
         n_parallel_groups = parallel_pst_group_mask.shape[0]
         group_indices_to_mutate = jax.random.bernoulli(key=key, p=pst_mutation_probability, shape=(n_parallel_groups,))
         mutation_samples = jax.random.normal(key_mutate, shape=(n_parallel_groups,)) * pst_mutation_sigma
@@ -131,8 +131,6 @@ def mutate_nodal_injections(
     n_timesteps = nodal_inj_info.pst_tap_idx.shape[1]
     random_key = jax.random.split(random_key, (batch_size, n_timesteps))
     parallel_pst_group_mask = nodal_mutation_config.parallel_pst_group_mask
-    if not nodal_mutation_config.enable_parallel_pst_group_optim or parallel_pst_group_mask is None:
-        parallel_pst_group_mask = None
 
     # vmap to mutate the PST taps for each timestep + batch independently
     new_pst_taps = jax.vmap(

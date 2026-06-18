@@ -1113,10 +1113,14 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
     trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
+    trafo_has_pst_tap = np.array([True, True], dtype=bool)
+    trafo_pst_linear = np.array([True, True], dtype=bool)
+    trafo_mask_groups = np.array([0, 1], dtype=int)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_has_pst_tap"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_linear"], trafo_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_has_pst_tap"], trafo_has_pst_tap)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_linear"], trafo_pst_linear)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["pst_group_labels"], trafo_mask_groups)
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(

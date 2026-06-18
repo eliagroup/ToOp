@@ -479,7 +479,7 @@ class PowsyblBackend(BackendInterface):
 
         for pst_id in self._get_branches()[self.get_controllable_phase_shift_mask()].index:
             taps_df = steps.loc[pst_id].sort_index()
-            taps = -np.squeeze(taps_df.values)
+            taps = -taps_df["alpha"].to_numpy()
             shift_taps.append(taps)
         return shift_taps
 

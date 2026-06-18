@@ -533,7 +533,7 @@ def validate_network_data(network_data: NetworkData) -> None:
 
     assert network_data.ptdf.shape == (n_branch, n_nodes)
     assert network_data.psdf.shape[0] == n_branch
-    assert network_data.slack > 0 and network_data.slack < n_nodes
+    assert network_data.slack >= 0 and network_data.slack < n_nodes
     assert network_data.relevant_node_mask.shape == (n_nodes,)
     assert network_data.max_mw_flows.shape == (n_timestep, n_branch)
     assert network_data.max_mw_flows_n_1.shape == (n_timestep, n_branch)

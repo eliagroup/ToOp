@@ -410,7 +410,7 @@ class PandaPowerBackend(BackendInterface):
         try:
             controllable_pst_mask = load_numpy_filesystem(
                 filesystem=self.data_folder_dirfs,
-                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_has_pst_tap"]),
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_pst_linear"]),
             )
         except FileNotFoundError:
             controllable_pst_mask = np.zeros(len(self.net.trafo), dtype=bool)

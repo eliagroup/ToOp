@@ -19,7 +19,7 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import structlog
-from beartype.typing import Optional
+from beartype.typing import Literal, Optional
 from pandera import DataFrameModel, Field
 from pandera.typing import Index, Series
 from pypowsybl.network import Network
@@ -259,7 +259,12 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
             + " ## "
             + (trafos["elementName"] if "elementName" in trafos.keys() else trafos["name"])
         )
-    return add_missing_branch_model_columns(trafos[["x", "r", "rho", "alpha", "name"]])
+    linear_psts = get_linear_pst(net, mode="dc")
+    trafos["pst_linear"] = False
+    trafos["has_pst_tap"] = False
+    trafos.loc[linear_psts.index, "pst_linear"] = linear_psts.values
+    trafos.loc[linear_psts.index, "has_pst_tap"] = True
+    return add_missing_branch_model_columns(trafos[["x", "r", "rho", "alpha", "name", "pst_linear", "has_pst_tap"]])
 
 
 @pa.check_types
@@ -388,3 +393,27 @@ def get_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[B
             + (lines["elementName_nopu"] if "elementName_nopu" in lines.keys() else lines["name"])
         )
     return add_missing_branch_model_columns(lines[["x", "r", "name"]])
+
+
+def get_linear_pst(net: Network, mode: Literal["ac", "dc"], tol: float = 1e-9) -> pd.Series:
+    """Check if a given branch has a linear phase shift transformer (PST) tap changer."""
+    tap_steps = net.get_phase_tap_changer_steps()
+    if mode == "dc":
+        linear_cols = ["x"]
+    elif mode == "ac":
+        linear_cols = ["r", "x", "g", "b"]
+    else:
+        raise ValueError(f"Invalid mode {mode}. Must be 'ac' or 'dc'.")
+
+    pst_ids = tap_steps.index.get_level_values("id").unique()
+    trafo_linear_pst = pd.Series(True, index=pst_ids)
+
+    for pst_id in pst_ids:
+        pst_info = tap_steps.loc[pst_id]
+        for col in linear_cols:
+            pst_info_col = pst_info[col].values
+            if not np.allclose(pst_info_col, pst_info_col[0], atol=tol):
+                trafo_linear_pst[pst_id] = False
+                break
+
+    return trafo_linear_pst

@@ -712,7 +712,7 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             starting_tap=start + low,  # Convert from index to absolute grid model tap position
             low_tap=low,
             high_tap=low + len(taps),
-            pst_group=_get_parallel_pst_group_id(network_data=network_data, pst_idx=pst_idx, branch_idx=index),
+            pst_group=_get_parallel_pst_group_id(network_data=network_data, pst_idx=pst_idx, branch_idx=int(index)),
         )
         for pst_idx, (index, start, low, taps) in enumerate(
             zip(
@@ -738,7 +738,7 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
     )
 
 
-def _get_parallel_pst_group_id(network_data: NetworkData, pst_idx: Int, branch_idx: Int) -> str:
+def _get_parallel_pst_group_id(network_data: NetworkData, pst_idx: int, branch_idx: int) -> str:
     """Return the persisted PST group id for one controllable PST.
 
     If no parallel PST group information is available, or if the PST does not belong to any

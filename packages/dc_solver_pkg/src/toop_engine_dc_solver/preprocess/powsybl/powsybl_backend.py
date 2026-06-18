@@ -214,6 +214,18 @@ class PowsyblBackend(BackendInterface):
         except FileNotFoundError:
             return np.full(default_shape, default_value)
 
+
+    def _get_mask_or_default(
+        self, mask_filename: str, default_mask: Bool[np.ndarray, " n_masked_element"] | Int[np.ndarray, " n_masked_element"]
+    ) -> Bool[np.ndarray, " n_masked_element"] | Int[np.ndarray, " n_masked_element"]:
+        """Load a mask file or return a provided default mask."""
+        try:
+            return load_numpy_filesystem(
+                filesystem=self.data_folder_dirfs, file_path=str(self._get_masks_path() / mask_filename)
+            )
+        except FileNotFoundError:
+            return default_mask
+
     @functools.lru_cache
     def _get_lines(self) -> pat.DataFrame[BranchModel]:
         """Add N-1 and observation masks to the lines"""
@@ -251,10 +263,14 @@ class PowsyblBackend(BackendInterface):
         trafos["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["trafo_overload_weight"], 1.0, n_trafos)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
         trafos["n0_n1_max_diff_factor"] = self._get_mask(NETWORK_MASK_NAMES["trafo_n0_n1_max_diff_factor"], -1.0, n_trafos)
-        trafos["pst_linear"] = self._get_mask(NETWORK_MASK_NAMES["trafo_pst_linear"], False, n_trafos)
-        trafos["has_pst_tap"] = self._get_mask(NETWORK_MASK_NAMES["trafo_has_pst_tap"], False, n_trafos)
+        default_has_pst_tap = trafos["has_pst_tap"].to_numpy(dtype=bool)
+        default_pst_linear = trafos["pst_linear"].to_numpy(dtype=bool)
+        default_pst_group = np.full(n_trafos, -1, dtype=int)
+        default_pst_group[default_pst_linear] = np.arange(np.sum(default_pst_linear))
+        trafos["has_pst_tap"] = self._get_mask_or_default(NETWORK_MASK_NAMES["trafo_has_pst_tap"], default_has_pst_tap)
+        trafos["pst_linear"] = self._get_mask_or_default(NETWORK_MASK_NAMES["trafo_pst_linear"], default_pst_linear)
         # Parallel-PST group label per trafo (-1 for non-grouped). Identified during importing.
-        trafos["pst_group"] = self._get_mask(NETWORK_MASK_NAMES["pst_group_labels"], -1, n_trafos)
+        trafos["pst_group"] = self._get_mask_or_default(NETWORK_MASK_NAMES["pst_group_labels"], default_pst_group)
 
         return trafos
 
@@ -446,10 +462,9 @@ class PowsyblBackend(BackendInterface):
         """Get a mask of branches that can have a phase shift"""
         return self._get_branches()["has_pst_tap"].values
 
-    # TODO: Current feature creates same result as `get_phase_shift_mask`, but kept for now.
     def get_controllable_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of controllable PSTs"""
-        return self._get_branches()["has_pst_tap"].values
+        return self._get_branches()["pst_linear"].values
 
     def get_phase_shift_linearity(self) -> Bool[np.ndarray, " n_controllable_psts"]:
         """Get the linearity of the phase shift for each controllable PST.

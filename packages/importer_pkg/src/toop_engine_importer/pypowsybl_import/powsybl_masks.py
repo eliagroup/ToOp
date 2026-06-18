@@ -25,6 +25,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Int
 from pypowsybl.network.impl.network import Network
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import sort_powsybl_element_frame_by_id
 from toop_engine_importer.contingency_from_power_factory.contingency_from_file import (
     get_contingencies_from_file,
     match_contingencies,
@@ -168,7 +169,7 @@ def create_default_network_masks(network: Network) -> NetworkMasks:
     # Only loading the index is much faster, if we only care for the size
     bus_df = network.get_buses(attributes=[])
     lines_df = network.get_lines(attributes=[])
-    trafo_df = network.get_2_windings_transformers(attributes=[])
+    trafo_df = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=[]))
     tie_df = network.get_tie_lines(attributes=[])
     dangling_df = network.get_boundary_lines(attributes=[])
     generator_df = network.get_generators(attributes=[])
@@ -497,8 +498,8 @@ def update_trafo_masks(
     network_masks: NetworkMasks
         The updated network mask object including the trafo masks.
     """
-    trafos_df = network.get_2_windings_transformers(
-        attributes=["bus1_id", "bus2_id", "voltage_level1_id", "voltage_level2_id"]
+    trafos_df = sort_powsybl_element_frame_by_id(
+        network.get_2_windings_transformers(attributes=["bus1_id", "bus2_id", "voltage_level1_id", "voltage_level2_id"])
     )
 
     # Identify relevant parameters for the trafo masks
@@ -1181,7 +1182,9 @@ def update_masks_from_power_factory_contingency_list_file(
         network_masks = replace(
             network_masks,
             line_for_nminus1=network.get_lines().index.isin(grid_model_ids),
-            trafo_for_nminus1=network.get_2_windings_transformers().index.isin(grid_model_ids),
+            trafo_for_nminus1=sort_powsybl_element_frame_by_id(network.get_2_windings_transformers()).index.isin(
+                grid_model_ids
+            ),
             generator_for_nminus1=generator_nminus1_mask,
             load_for_nminus1=load_nminus1_mask,
             switch_for_nminus1=network.get_switches().index.isin(grid_model_ids),
@@ -1240,7 +1243,7 @@ def update_masks_from_contingency_list_file(
     line_for_nminus1 = lines.index.isin(contingency_ids)
     line_for_reward = lines.index.isin(monitored_ids)
 
-    trafos = network.get_2_windings_transformers(attributes=[])
+    trafos = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=[]))
     # Replace the appendage of the 3w->2w conversion to get the original trafo ids
     trafo_orig_ids = trafos.index.str.replace("-Leg[123]$", "", regex=True)
     trafo_for_nminus1 = trafo_orig_ids.isin(contingency_ids)

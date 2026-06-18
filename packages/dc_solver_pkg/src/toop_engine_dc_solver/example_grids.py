@@ -49,7 +49,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     three_node_pst_example,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs, sort_powsybl_element_frame_by_id
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology import (
@@ -1065,11 +1065,12 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
 
-    trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
-    trafo_has_pst_tap = np.zeros(len(net.get_2_windings_transformers()), dtype=bool)
-    trafo_has_pst_tap[-2:] = True
-    trafo_mask_groups = np.full(len(net.get_2_windings_transformers()), -1, dtype=int)
-    trafo_mask_groups[-2:] = np.array([0, 1])
+    trafos = sort_powsybl_element_frame_by_id(net.get_2_windings_transformers())
+    pst_ids = net.get_phase_tap_changers().index
+    trafo_mask = np.ones(len(trafos), dtype=bool)
+    trafo_has_pst_tap = trafos.index.isin(pst_ids)
+    trafo_mask_groups = np.full(len(trafos), -1, dtype=int)
+    trafo_mask_groups[trafo_has_pst_tap] = np.arange(np.sum(trafo_has_pst_tap))
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_has_pst_tap"], trafo_has_pst_tap)

@@ -28,7 +28,7 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_trafos,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, sort_powsybl_element_frame_by_id
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
@@ -241,9 +241,9 @@ class PowsyblBackend(BackendInterface):
         trafos = get_trafos(self.net, self.net_pu)
         if trafos.empty:
             return trafos
+        trafos = sort_powsybl_element_frame_by_id(trafos)
 
         n_trafos = len(trafos)
-        trafos.sort_index(inplace=True)
 
         # Add N-1 and observation masks
         trafos["for_reward"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_reward"], False, n_trafos)

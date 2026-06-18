@@ -27,7 +27,7 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_tie_lines,
     get_trafos,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, sort_powsybl_element_frame_by_id
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.backend import BackendInterface
@@ -101,7 +101,7 @@ class PowsyblBackend(BackendInterface):
         )
 
         if lf_params is None:
-            lf_params = DISTRIBUTED_SLACK
+            lf_params = CGMES_DISTRIBUTED_SLACK
         self.lf_params = lf_params
         ac_results, *_ = pp.loadflow.run_ac(net, lf_params)
         if ac_results.status != pp.loadflow.ComponentStatus.CONVERGED:
@@ -213,7 +213,6 @@ class PowsyblBackend(BackendInterface):
             )
         except FileNotFoundError:
             return np.full(default_shape, default_value)
-
 
     def _get_mask_or_default(
         self, mask_filename: str, default_mask: Bool[np.ndarray, " n_masked_element"] | Int[np.ndarray, " n_masked_element"]

@@ -92,7 +92,11 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     case14_matching_asset_topo_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    CGMES_DISTRIBUTED_SLACK,
+    SINGLE_SLACK,
+    UCTE_DISTRIBUTED_SLACK,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import (
@@ -600,10 +604,10 @@ def _preprocessed_powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path_fac
     # Extract data from the backend, run preprocessing
     fs_dir = DirFileSystem(str(_powsybl_case57_folder))
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
-    backend = PowsyblBackend(fs_dir, DISTRIBUTED_SLACK)
+    backend = PowsyblBackend(fs_dir, CGMES_DISTRIBUTED_SLACK)
     network_data = preprocess(backend)
     save_network_data(temp_network_data_file_path, network_data)
     static_information = convert_to_jax(network_data, preprocess_bb_outages=False)
@@ -675,7 +679,7 @@ def _node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPat
     tmp_path = tmp_path_factory.mktemp("node_breaker_grid_preprocessed")
     node_breaker_folder_powsybl(tmp_path)
     filesystem_dir = DirFileSystem(str(tmp_path))
-    stats, static_information, network_data = load_grid(filesystem_dir, lf_params=DISTRIBUTED_SLACK)
+    stats, static_information, network_data = load_grid(filesystem_dir, lf_params=CGMES_DISTRIBUTED_SLACK)
     save_network_data(tmp_path / "network_data.pkl", network_data)
     assert stats.n_relevant_subs > 0
 
@@ -1370,12 +1374,13 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
         The path to the UCTE file to load.
     """
     net = pypowsybl.network.load(ucte_file)
-    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_dc(net, UCTE_DISTRIBUTED_SLACK)
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        UCTE_DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
     output_path_grid = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    output_path_lf_parameters = folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"]
     output_path_grid.parent.mkdir(parents=True, exist_ok=True)
     net.save(output_path_grid)
     output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
@@ -1383,6 +1388,7 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
 
     importer_parameters = UcteImporterParameters(
         grid_model_file=output_path_grid,
+        loadflow_parameters_file=output_path_lf_parameters,
         data_folder=folder,
         area_settings=AreaSettings(
             cutoff_voltage=1,
@@ -1403,7 +1409,6 @@ def create_ucte_data_folder(folder: Path, ucte_file: Path) -> None:
         pandapower=False,
         status_update_fn=None,
         parameters=preprocessing_parameters,
-        lf_params=DISTRIBUTED_SLACK,
+        lf_params=UCTE_DISTRIBUTED_SLACK,
     )
     save_network_data(folder / "network_data.pkl", network_data)
-    save_lf_params_to_fs(DISTRIBUTED_SLACK, filesystem_dir, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))

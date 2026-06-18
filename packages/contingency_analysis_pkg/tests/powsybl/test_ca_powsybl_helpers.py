@@ -31,7 +31,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     translate_nminus1_for_powsybl,
     update_basename,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResultSchema, VADiffResultSchema
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
@@ -1022,16 +1022,16 @@ def test_translate_element_names():
 def test_set_target_values_to_lf_values_incl_distributed_slack_dc(
     powsybl_bus_breaker_net: pypowsybl.network.Network,
 ) -> None:
-    pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
     generators_before = powsybl_bus_breaker_net.get_generators()
     assert not np.all(generators_before.p == generators_before.target_p), (
         "Make sure the initial target values are different from the loadflow values. Otherwise this test is useless."
     )
 
     powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(
-        powsybl_bus_breaker_net, "dc", DISTRIBUTED_SLACK
+        powsybl_bus_breaker_net, "dc", CGMES_DISTRIBUTED_SLACK
     )
-    lf_result = pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, DISTRIBUTED_SLACK)
+    lf_result = pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
     assert lf_result[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED, (
         "Loadflow did not converge after setting the target values."
     )
@@ -1048,7 +1048,7 @@ def test_set_target_values_to_lf_values_incl_distributed_slack_dc(
 def test_set_target_values_to_lf_values_incl_distributed_slack_ac(
     powsybl_bus_breaker_net: pypowsybl.network.Network,
 ) -> None:
-    pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
     generators_before = powsybl_bus_breaker_net.get_generators(all_attributes=True)
     assert not np.all(generators_before.p == generators_before.target_p), (
         "Make sure the initial p-target values are different from the loadflow values. Otherwise this test is useless."
@@ -1058,9 +1058,9 @@ def test_set_target_values_to_lf_values_incl_distributed_slack_ac(
     )
 
     powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(
-        powsybl_bus_breaker_net, "ac", DISTRIBUTED_SLACK
+        powsybl_bus_breaker_net, "ac", CGMES_DISTRIBUTED_SLACK
     )
-    lf_result = pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, DISTRIBUTED_SLACK)
+    lf_result = pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
     assert lf_result[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED, (
         "Loadflow did not converge after setting the target values."
     )

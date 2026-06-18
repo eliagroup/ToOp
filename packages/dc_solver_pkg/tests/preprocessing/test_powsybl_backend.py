@@ -35,7 +35,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
@@ -145,7 +145,7 @@ def test_ptdf_matrix(powsybl_case57_folder_xiidm: Path) -> None:
     # different sign convention in pypowsybl loadflow results
     assert np.allclose(loadflow, -loadflow_ref)
 
-    pypowsybl.loadflow.run_ac(net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(net, CGMES_DISTRIBUTED_SLACK)
     ac_loadflow_ref = net.get_branches()["p1"].loc[backend.get_branch_ids()].values
 
     # different sign convention in pypowsybl loadflow results

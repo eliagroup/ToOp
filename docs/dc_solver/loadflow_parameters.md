@@ -2,9 +2,9 @@
 The loadflow parameters influence the convergence and the results of the loadflow engine.
 Detailed information about the possible settings can be found here: [Powsybl Docs](https://powsybl.readthedocs.io/projects/powsybl-open-loadflow/en/stable/loadflow/parameters.html) or [Openloadflow Docs](https://powsybl.readthedocs.io/_/downloads/powsybl-open-loadflow/en/latest/pdf/).
 
-During the import, we try two set of parameters, that can be found here:
+During the import, a path to predefined parameters can be set on the import parameters. Otherwise we try two set of parameters, that can be found here:
 **['Default'][toop_engine_grid_helpers.powsybl.loadflow_parameters.POWSYBL_LOADFLOW_PARAM_PF]**
-**['Backup'][toop_engine_grid_helpers.powsybl.loadflow_parameters.DISTRIBUTED_SLACK]**
+**['Backup'][toop_engine_grid_helpers.powsybl.loadflow_parameters.CGMES_DISTRIBUTED_SLACK]**
 
 Both use a distributed slack, since this leads to smaller mismatches between AC and DC Loadflow.
 

@@ -91,7 +91,11 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     case14_matching_asset_topo_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK, UCTE_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
+    CGMES_DISTRIBUTED_SLACK,
+    SINGLE_SLACK,
+    UCTE_DISTRIBUTED_SLACK,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import (

@@ -813,25 +813,8 @@ def perform_ac_analysis(
     n_assessed_topos = min(ac_validation_cfg.get("k_best_topos", 1), len(best_topos))
     logger.info(f"Performing AC analysis on the top {n_assessed_topos} topologies...")
 
-    unsplit_runner = create_loadflow_runner(
-        data_folder, grid_path, n_processes=ac_validation_cfg.get("n_processes", 1), pandaflow_runner=pandapower_runner
-    )
-    unsplit_loadflow_results = unsplit_runner.run_ac_loadflow([], [])
-    unsplit_action_info = unsplit_runner.get_last_action_info()
-    unsplit_metrics = save_ac_metrics_summary(
-        runner=unsplit_runner,
-        topology_path=optimisation_run_path,
-        loadflow_results=unsplit_loadflow_results,
-        actions=[],
-        disconnections=[],
-        additional_info=unsplit_action_info,
-        dc_info={
-            "actions": [],
-            "disconnections": [],
-            "fitness": res.get("initial_fitness"),
-            "metrics": res.get("initial_metrics", {}),
-        },
-        output_file_name="unsplit_ac_metrics.json",
+    unsplit_metrics = run_unsplit_ac_analysis(
+        data_folder, optimisation_run_path, ac_validation_cfg, pandapower_runner, grid_path, res
     )
 
     topology_paths = []
@@ -895,6 +878,66 @@ def perform_ac_analysis(
         logger.info(f"Best AC fitness {best_ac_fitness} found in folder: {best_ac_topology_path}")
     logger.info("AC validation completed.")
     return topology_paths
+
+
+def run_unsplit_ac_analysis(
+    data_folder: Path,
+    optimisation_run_path: Path,
+    ac_validation_cfg: DictConfig,
+    pandapower_runner: bool,
+    grid_path: Path,
+    res: dict,
+) -> Metrics:
+    """Run AC loadflow analysis on the unsplit (base) topology and save the metrics summary.
+
+    This function performs AC loadflow analysis on the original, unsplit topology
+    (i.e., without any modifications from the optimization stage)
+    and saves the resulting metrics summary to a JSON file.
+    The results are stored in the specified `optimisation_run_path` directory.
+
+    Parameters
+    ----------
+    data_folder : Path
+        Path to the folder containing the input grid data (e.g., 'grid.xiidm').
+    optimisation_run_path : Path
+        Path to the optimizer snapshot directory where the unsplit AC metrics summary will be saved.
+    ac_validation_cfg : DictConfig
+        Configuration dictionary for AC validation, including:
+        - 'n_processes': int, number of processes to use for loadflow analysis.
+    pandapower_runner : bool
+        Whether to use a PandapowerRunner for loadflow analysis. Default is False (PowsyblRunner).
+    grid_path : Path
+        The path to the base grid file to be loaded for unsplit AC analysis.
+    res : dict
+        The result dictionary from the optimization stage, containing initial fitness and metrics for the unsplit topology.
+
+    Returns
+    -------
+    Metrics
+        The computed AC metrics for the unsplit topology.
+    """
+    unsplit_runner = create_loadflow_runner(
+        data_folder, grid_path, n_processes=ac_validation_cfg.get("n_processes", 1), pandaflow_runner=pandapower_runner
+    )
+    unsplit_loadflow_results = unsplit_runner.run_ac_loadflow([], [])
+    unsplit_action_info = unsplit_runner.get_last_action_info()
+    unsplit_metrics = save_ac_metrics_summary(
+        runner=unsplit_runner,
+        topology_path=optimisation_run_path,
+        loadflow_results=unsplit_loadflow_results,
+        actions=[],
+        disconnections=[],
+        additional_info=unsplit_action_info,
+        dc_info={
+            "actions": [],
+            "disconnections": [],
+            "fitness": res.get("initial_fitness"),
+            "metrics": res.get("initial_metrics", {}),
+        },
+        output_file_name="unsplit_ac_metrics.json",
+    )
+
+    return unsplit_metrics
 
 
 def get_run_dir(optimizer_snapshot_dir: Path) -> Path:

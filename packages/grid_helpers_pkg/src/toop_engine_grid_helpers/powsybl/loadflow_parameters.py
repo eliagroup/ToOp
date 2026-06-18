@@ -24,7 +24,7 @@ OPENLOADFLOW_PARAM_PF = {
     "useActiveLimits": "false",  # unclear whether it is only used for slack
     "minPlausibleTargetVoltage": "0.893",
     "maxPlausibleTargetVoltage": "1.105",
-    "referenceBusSelectionMode": "GENERATOR_REFERENCE_PRIORITY"
+    "referenceBusSelectionMode": "GENERATOR_REFERENCE_PRIORITY",
 }
 
 POWSYBL_LOADFLOW_PARAM_PF = Parameters(
@@ -70,7 +70,7 @@ UCTE_DISTRIBUTED_SLACK = Parameters(
     voltage_init_mode=VoltageInitMode.DC_VALUES,
     provider_parameters={
         "slackDistributionFailureBehavior": "LEAVE_ON_SLACK_BUS",
-        "referenceBusSelectionMode": "FIRST_SLACK"
+        "referenceBusSelectionMode": "FIRST_SLACK",
     },
     dc_use_transformer_ratio=True,
     write_slack_bus=True,

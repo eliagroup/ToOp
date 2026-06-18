@@ -34,7 +34,12 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     POWSYBL_LOADFLOW_PARAM_PF,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_topology
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs, load_powsybl_from_fs, save_lf_params_to_fs, save_powsybl_to_fs
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
+    load_lf_params_from_fs,
+    load_powsybl_from_fs,
+    save_lf_params_to_fs,
+    save_powsybl_to_fs,
+)
 from toop_engine_importer.network_graph import powsybl_station_to_graph
 from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
@@ -360,7 +365,6 @@ def convert_file(
         file_path=grid_file_path,
     )
 
-
     # Reload Network because powsybl likes to change order during save
     network = load_powsybl_from_fs(
         filesystem=processed_gridfile_fs,
@@ -382,9 +386,7 @@ def convert_file(
     # get N-1 masks
     status_update_fn("get_masks", "Creating Network Masks")
     slack_id = network.get_extension("slackTerminal").iloc[0].bus_id
-    network_masks = get_network_masks(
-        network, slack_id, importer_parameters, statistics, filesystem=unprocessed_gridfile_fs
-    )
+    network_masks = get_network_masks(network, slack_id, importer_parameters, statistics, filesystem=unprocessed_gridfile_fs)
     save_masks_to_filesystem(
         data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
     )
@@ -430,6 +432,7 @@ def convert_file(
 
     return statistics.import_result
 
+
 def get_slack_ids(network: Network) -> list[str] | None:
     """Get the slack bus ids from the network.
 
@@ -448,8 +451,9 @@ def get_slack_ids(network: Network) -> list[str] | None:
         # in this case it will pick the most connected
         return None
     gens = network.get_generators(attributes=["bus_id"])
-    slack_ids = gens[gens!=""].bus_id.to_list()
+    slack_ids = gens[gens != ""].bus_id.to_list()
     return slack_ids
+
 
 def find_converging_loadflow_params(
     importer_parameters: BaseImporterParameters, network: Network
@@ -473,7 +477,7 @@ def find_converging_loadflow_params(
     """
     lf_params_list = [POWSYBL_LOADFLOW_PARAM_PF, CGMES_DISTRIBUTED_SLACK]
     voltage_methods = [VoltageInitMode.PREVIOUS_VALUES, VoltageInitMode.DC_VALUES, VoltageInitMode.UNIFORM_VALUES]
-    
+
     for lf_params_base, voltage_method in product(lf_params_list, voltage_methods):
         lf_params = deepcopy(lf_params_base)
         lf_params.provider_parameters = deepcopy(lf_params_base.provider_parameters)

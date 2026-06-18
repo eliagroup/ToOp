@@ -178,7 +178,9 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
     folder = tmp_path_factory.mktemp("case30")
     case30_with_psts_powsybl(folder)
     filesystem_dir = DirFileSystem(str(folder))
-    _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK)
+    _, static_information, _ = load_grid(
+        data_folder_dirfs=filesystem_dir, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
+    )
     validate_static_information(static_information)
     assert static_information.dynamic_information.nodal_injection_information.shift_degree_max.shape == (2,)
 

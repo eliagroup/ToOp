@@ -314,7 +314,7 @@ class NetworkData:
     """Boolean masks describing groups of parallel controllable PSTs aligned with PST arrays. If there are no controllable
     PSTs, this will be None."""
 
-    parallel_pst_group_ids: Optional[list[str]] = None
+    parallel_pst_group_ids: Optional[Sequence[str]] = None
     """Optional identifiers aligned one-to-one with rows of parallel_pst_group_mask. If there are no controllable
     PSTs, this will be None.
 

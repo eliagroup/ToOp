@@ -105,15 +105,15 @@ class NetworkMasks:
     trafo_has_pst_tap: np.ndarray
     """trafo_has_pst_tap.npy (a boolean mask of transformers within the control area that have a PST tap)"""
 
-    trafo_pst_controllable: np.ndarray
-    """trafo_pst_controllable.npy (a boolean mask of transformers that are a PST and can be controlled, i.e. are linear)."""
+    trafo_pst_linear: np.ndarray
+    """trafo_pst_linear.npy (a boolean mask of transformers within the control area that are linear PSTs)."""
 
     pst_group_labels: np.ndarray
     """pst_group_labels.npy (an integer group label per trafo for parallel PST grouping).
 
     Each entry is the parallel-PST group label of the corresponding trafo: ``-1`` for trafos that
-    are not controllable PSTs, a unique label for a lone controllable PST, and a shared label for
-    controllable PSTs identified as parallel (same bus pair, voltage and tap-changer parameters).
+    are not PSTs, a unique label for a lone PST, and a shared label for PSTs identified as parallel
+    (same bus pair, voltage and tap-changer parameters).
     """
 
     tie_line_for_reward: np.ndarray
@@ -192,7 +192,7 @@ def create_default_network_masks(network: Network) -> NetworkMasks:
         trafo_n0_n1_max_diff_factor=np.ones(len(trafo_df), dtype=float) * -1,
         trafo_dso_border=np.zeros(len(trafo_df), dtype=bool),
         trafo_has_pst_tap=np.zeros(len(trafo_df), dtype=bool),
-        trafo_pst_controllable=np.zeros(len(trafo_df), dtype=bool),
+        trafo_pst_linear=np.zeros(len(trafo_df), dtype=bool),
         pst_group_labels=np.full(len(trafo_df), -1, dtype=int),
         tie_line_for_reward=np.zeros(len(tie_df), dtype=bool),
         tie_line_for_nminus1=np.zeros(len(tie_df), dtype=bool),
@@ -554,7 +554,7 @@ def update_trafo_masks(
     control_area_hv_trafo_mask = control_area_hv_trafo_mask & ~blacklisted_trafos
     # Filter for linear PSTs, which are the only ones we can currently optimize over.
     # Create groups for the parallel PSTs among them, which can be used downstream.
-    trafo_has_pst_tap, trafo_pst_controllable, pst_group_labels = filter_and_group_linear_psts(
+    trafo_has_pst_tap, trafo_pst_linear, pst_group_labels = filter_and_group_linear_psts(
         network, trafos_df, control_area_hv_trafo_mask
     )
     outage_mask = outage_mask & ~blacklisted_trafos
@@ -569,7 +569,7 @@ def update_trafo_masks(
         trafo_overload_weight=trafo_overload_weight,
         trafo_disconnectable=disconnectable_mask,
         trafo_has_pst_tap=trafo_has_pst_tap,
-        trafo_pst_controllable=trafo_pst_controllable,
+        trafo_pst_linear=trafo_pst_linear,
         pst_group_labels=pst_group_labels,
     )
 
@@ -579,9 +579,9 @@ def filter_and_group_linear_psts(
     trafos_df: pd.DataFrame,
     control_area_hv_trafo_mask: Bool[np.ndarray, " n_trafos"],
 ) -> tuple[Bool[np.ndarray, " n_trafos"], Bool[np.ndarray, " n_trafos"], Int[np.ndarray, " n_trafos"]]:
-    """Filter transformers for all tap changers, for controllable (linear) subset, and identify parallel PST groups.
+    """Filter transformers for all tap changers, for linear subset, and identify parallel PST groups.
 
-    Two controllable PSTs are considered parallel (share a group) when all of the following hold:
+    Two PSTs are considered parallel (share a group) when all of the following hold:
 
     * they connect the same unordered bus pair (``{bus1_id, bus2_id}``, orientation may be swapped),
     * they share the same nominal voltage magnitude (which is checked implicitly via the bus pair), and
@@ -600,11 +600,15 @@ def filter_and_group_linear_psts(
 
     Returns
     -------
-    Int[np.ndarray, " n_trafos"]
-        An integer group label per transformer: ``-1`` for trafos that are not controllable PSTs, a
-        unique label for each lone controllable PST and a shared label for parallel PSTs.
+    trafo_has_pst_tap: Bool[np.ndarray, " n_trafos"]
+        Boolean mask marking transformers that have a phase tap changer and are in the control area.
+    trafo_pst_linear: Bool[np.ndarray, " n_trafos"]
+        Boolean mask marking transformers that have a linear phase tap changer and are in the control area.
+    pst_group_labels: Int[np.ndarray, " n_trafos"]
+        Integer array of parallel PST group labels, aligned with ``trafos_df`` rows. Each group of parallel PSTs shares a
+        unique positive integer label. Non-PSTs are labeled with ``-1``.
     """
-    trafo_pst_controllable = np.zeros(len(trafos_df), dtype=bool)
+    trafo_pst_linear = np.zeros(len(trafos_df), dtype=bool)
     pst_group_labels = np.full(len(trafos_df), -1, dtype=int)
 
     tap_changers = network.get_phase_tap_changers()
@@ -612,7 +616,7 @@ def filter_and_group_linear_psts(
     trafo_has_pst_tap = control_area_hv_trafo_mask & trafos_df.index.isin(tap_changers.index)
     trafo_has_pst_tap_index = np.flatnonzero(trafo_has_pst_tap)
     if trafo_has_pst_tap_index.size == 0:
-        return trafo_has_pst_tap, trafo_pst_controllable, pst_group_labels
+        return trafo_has_pst_tap, trafo_pst_linear, pst_group_labels
 
     trafo_has_pst_tap_ids = trafos_df.index[trafo_has_pst_tap_index]
     nominal_v = get_voltage_from_voltage_level_id(network, trafos_df.loc[trafo_has_pst_tap_ids, "voltage_level1_id"])
@@ -628,11 +632,16 @@ def filter_and_group_linear_psts(
         high_tap = int(tap_changers.at[pst_id, "high_tap"])
         bus_pair = frozenset({trafos_df.at[pst_id, "bus1_id"], trafos_df.at[pst_id, "bus2_id"]})
         step_table = steps.loc[pst_id].sort_index()
-        if _is_nonlinear_pst(step_table):
-            continue
-        trafo_pst_controllable[position] = True
+        trafo_pst_linear[position] = _is_linear_pst(step_table)
         step_tables[pst_id] = step_table.to_numpy(dtype=float)
-        bucket_key = (bus_pair, round(float(nominal_v[local_idx]), 6), low_tap, high_tap, step_table.shape[0])
+        bucket_key = (
+            bus_pair,
+            round(float(nominal_v[local_idx]), 6),
+            low_tap,
+            high_tap,
+            step_table.shape[0],
+            trafo_pst_linear[position],
+        )
         buckets[bucket_key].append(position)
 
     next_label = 0
@@ -655,7 +664,7 @@ def filter_and_group_linear_psts(
                 pst_group_labels[position] = next_label
             next_label += 1
 
-    return trafo_has_pst_tap, trafo_pst_controllable, pst_group_labels
+    return trafo_has_pst_tap, trafo_pst_linear, pst_group_labels
 
 
 def update_bus_masks(
@@ -1294,8 +1303,8 @@ def _is_disconnectable(network: Network, grid_model_id: list[str]) -> np.ndarray
     return disconnectable
 
 
-def _is_nonlinear_pst(step_table: pd.DataFrame) -> bool:
-    """Check Powsybl's phase tap changer step table of a transformer for nonlinear behavior.
+def _is_linear_pst(step_table: pd.DataFrame) -> bool:
+    """Check Powsybl's phase tap changer step table of a transformer for linear behavior.
 
     This check is done by checking if `rho`, `x, `r, `g`, or `b` columns have at least two different values
     at different tap positions.
@@ -1308,9 +1317,9 @@ def _is_nonlinear_pst(step_table: pd.DataFrame) -> bool:
     Returns
     -------
     bool
-        True if the step table indicates a nonlinear PST, False otherwise.
+        True if the step table indicates a linear PST, False otherwise.
     """
     for column in ["rho", "x", "r", "g", "b"]:
         if column in step_table.columns and not np.allclose(step_table[column], step_table[column].iloc[0]):
-            return True
-    return False
+            return False
+    return True

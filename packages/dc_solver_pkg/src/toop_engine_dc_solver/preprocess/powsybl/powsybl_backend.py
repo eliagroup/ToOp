@@ -250,7 +250,7 @@ class PowsyblBackend(BackendInterface):
         trafos["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["trafo_overload_weight"], 1.0, n_trafos)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
         trafos["n0_n1_max_diff_factor"] = self._get_mask(NETWORK_MASK_NAMES["trafo_n0_n1_max_diff_factor"], -1.0, n_trafos)
-        trafos["pst_controllable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_pst_controllable"], False, n_trafos)
+        trafos["pst_linear"] = self._get_mask(NETWORK_MASK_NAMES["trafo_pst_linear"], False, n_trafos)
         trafos["has_pst_tap"] = self._get_mask(NETWORK_MASK_NAMES["trafo_has_pst_tap"], False, n_trafos)
         # Parallel-PST group label per trafo (-1 for non-grouped). Identified during importing.
         trafos["pst_group"] = self._get_mask(NETWORK_MASK_NAMES["pst_group_labels"], -1, n_trafos)
@@ -447,19 +447,20 @@ class PowsyblBackend(BackendInterface):
         """Get a mask of branches that can have a phase shift"""
         return self._get_branches()["has_pst_tap"].values
 
+    # TODO: Current feature creates same result as `get_phase_shift_mask`, but kept for now.
     def get_controllable_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of controllable PSTs"""
-        return self._get_branches()["pst_controllable"].values
+        return self._get_branches()["has_pst_tap"].values
 
     def get_phase_shift_linearity(self) -> Bool[np.ndarray, " n_controllable_psts"]:
         """Get the linearity of the phase shift for each controllable PST.
 
         i.e. whether the shift angle is linear to the tap position
         """
-        return self._get_branches()[self.get_controllable_phase_shift_mask()]["pst_controllable"].values
+        return self._get_branches()[self.get_controllable_phase_shift_mask()]["pst_linear"].values
 
     def get_phase_shift_taps(self) -> list[Float[np.ndarray, " n_controllable_psts"]]:
-        """Get a list of taps for each pst"""
+        """Get a list of taps for each controllable PST"""
         shift_taps = []
         steps = self.net.get_phase_tap_changer_steps(attributes=["alpha"])
 
@@ -508,7 +509,10 @@ class PowsyblBackend(BackendInterface):
         return self._get_parallel_pst_groups()[0]
 
     def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
-        """Get the parallel PST group ids aligned with the group mask rows."""
+        """Get the parallel PST group ids aligned with the group mask rows.
+
+        The group ids are derived from the branch names of the first PST (first-seen order) in the group.
+        """
         return self._get_parallel_pst_groups()[1]
 
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:

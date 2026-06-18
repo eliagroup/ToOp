@@ -280,10 +280,10 @@ def combine_phaseshift_and_injection(network_data: NetworkData) -> NetworkData:
     phase_shift_indices = np.flatnonzero(phase_shift_mask)
     number_of_phase_shifters = phase_shift_indices.shape[0]
 
-    # We want to find out for each phase-shifter (that includes controllable ones) which injection it is connected to
-    controllable_psts_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
+    # We want to find out for each controllable PST which injection it is connected to
+    controllable_psts = np.flatnonzero(network_data.controllable_phase_shift_mask[phase_shift_mask])
     controllable_pst_node_mask = np.zeros((number_of_phase_shifters + len(network_data.node_ids),), dtype=bool)
-    controllable_pst_node_mask[controllable_psts_indices] = True
+    controllable_pst_node_mask[controllable_psts] = True
 
     # Add nodal injections to the phase shifters
     phase_shift_names = [network_data.branch_names[i] for i in phase_shift_indices]
@@ -1276,12 +1276,11 @@ def compute_separation_set_for_stations(
     )
 
 
-def verify_equal_starting_tap_in_pst_group(network_data: NetworkData) -> bool:
-    """Warn if not all phase shifters in a parallel PST group share the same starting tap.
+def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> NetworkData:
+    """Exclude nonlinear phase shifters from the controllable phase shifters and paralle grouping.
 
-    Different starting taps lead to different updates for the same tap step, which can lead to unexpected behavior.
-    We allow different starting taps within a group, but we want to make sure the user is aware of this fact
-    when they are not the same.
+    This is necessary because nonlinear phase shifters cannot be optimized correctly in the backend
+    at this moment.
 
     Parameters
     ----------
@@ -1290,37 +1289,57 @@ def verify_equal_starting_tap_in_pst_group(network_data: NetworkData) -> bool:
 
     Returns
     -------
-    bool
-        True if the phase shifters in each parallel PST group share the same starting tap, False otherwise
+    NetworkData
+        The network data with the nonlinear phase shifters excluded from the controllable mask
     """
-    if network_data.controllable_phase_shift_mask is None:
-        return True
+    if network_data.phase_shift_mask is None or network_data.controllable_phase_shift_mask is None:
+        return network_data
 
-    parallel_pst_group_mask = network_data.parallel_pst_group_mask
-    if parallel_pst_group_mask is None:
-        return True
-
-    phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx
-    parallel_pst_group_ids = network_data.parallel_pst_group_ids
-    if parallel_pst_group_ids is None:  # Defensive if parallel PST group ids are not given
+    if not np.all(network_data.phase_shift_linearity):
         logger.warning(
-            "Parallel PST group mask is given but parallel PST group ids are not given. "
-            "Assuming that the groups are ordered according to the order of the phase shifters.",
-            parallel_pst_group_mask=parallel_pst_group_mask,
+            "Excluding nonlinear phase shifters from the controllable mask, "
+            "since they cannot be handled correctly in the backend."
         )
-        parallel_pst_group_ids = np.arange(parallel_pst_group_mask.shape[0])
-    for group_idx, group_mask in enumerate(parallel_pst_group_mask):
-        if np.sum(group_mask) <= 1:
-            continue
-        group_starting_taps = phase_shift_starting_tap_idx[group_mask]
-        if not np.all(group_starting_taps == group_starting_taps[0]):
-            logger.warning(
-                "Parallel PST group members do not share the same starting tap. "
-                "Though members share the same tap step table, starting at different taps leads to different updates ",
-                parallel_pst_group_ids=parallel_pst_group_ids[group_idx],
-                starting_taps=group_starting_taps.tolist(),
-            )
-    return True
+
+    pst_linearity = network_data.phase_shift_linearity
+    phase_shift_low_tap = network_data.phase_shift_low_tap[pst_linearity]
+    phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[pst_linearity]
+    phase_shift_taps = [taps for taps, linear in zip(network_data.phase_shift_taps, pst_linearity, strict=True) if linear]
+
+    controllable_pst_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
+    controllable_phase_shift_mask = np.zeros_like(network_data.controllable_phase_shift_mask, dtype=bool)
+    controllable_phase_shift_mask[controllable_pst_indices[pst_linearity]] = True
+
+    # Filter groups to linear controllable PSTs and check if the members of the groups share the same starting tap,
+    # otherwise log a warning since this can lead to unexpected behavior in the backend.
+    parallel_pst_group_mask = network_data.parallel_pst_group_mask
+    parallel_pst_group_ids = network_data.parallel_pst_group_ids
+    if parallel_pst_group_mask is not None and parallel_pst_group_ids is not None:
+        # Reduce dimension to linear PSTs
+        parallel_pst_group_mask = parallel_pst_group_mask[pst_linearity][:, pst_linearity]
+        parallel_pst_group_ids = [id for id, linear in zip(parallel_pst_group_ids, pst_linearity, strict=True) if linear]
+        for group_idx, group_mask in enumerate(parallel_pst_group_mask):
+            if np.sum(group_mask) <= 1:
+                continue
+            group_starting_taps = phase_shift_starting_tap_idx[group_mask]
+            if not np.all(group_starting_taps == group_starting_taps[0]):
+                logger.warning(
+                    "Parallel PST group members do not share the same starting tap. "
+                    "Though members share the same tap step table, starting at different taps leads to different updates ",
+                    parallel_pst_group_ids=parallel_pst_group_ids[group_idx],
+                    starting_taps=group_starting_taps.tolist(),
+                )
+
+    return replace(
+        network_data,
+        controllable_phase_shift_mask=controllable_phase_shift_mask,
+        phase_shift_low_tap=phase_shift_low_tap,
+        phase_shift_starting_tap_idx=phase_shift_starting_tap_idx,
+        phase_shift_taps=phase_shift_taps,
+        phase_shift_linearity=np.ones_like(phase_shift_low_tap, dtype=bool),  # All remaining PSTs are linear
+        parallel_pst_group_mask=parallel_pst_group_mask,
+        parallel_pst_group_ids=parallel_pst_group_ids,
+    )
 
 
 def preprocess(  # noqa: PLR0915
@@ -1355,8 +1374,8 @@ def preprocess(  # noqa: PLR0915
     logging_fn("extract_network_data_from_interface", None)
     network_data = extract_network_data_from_interface(interface)
 
-    logging_fn("verify_equal_starting_tap_in_pst_group", None)
-    assert verify_equal_starting_tap_in_pst_group(network_data)
+    logging_fn("exclude_nonlinear_psts_from_controllable", None)
+    network_data = exclude_nonlinear_psts_from_controllable(network_data)
 
     logging_fn("compute_bridging_branches", None)
     network_data = compute_bridging_branches(network_data)

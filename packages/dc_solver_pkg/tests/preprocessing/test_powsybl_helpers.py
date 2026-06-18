@@ -52,7 +52,7 @@ def test_add_missing_branch_model_columns() -> None:
     assert pd.isna(normalized_branches.loc["branch_id", "p_max_mw"])
     assert pd.isna(normalized_branches.loc["branch_id", "p_max_mw_n_1"])
     assert bool(normalized_branches.loc["branch_id", "disconnectable"]) is False
-    assert bool(normalized_branches.loc["branch_id", "pst_controllable"]) is False
+    assert bool(normalized_branches.loc["branch_id", "pst_linear"]) is False
     # pst_group must be a recognized BranchModel column so it survives normalization (incl. the
     # empty-trafo path) and reaches _get_branches; non-PST branches default to -1.
     assert "pst_group" in normalized_branches.columns

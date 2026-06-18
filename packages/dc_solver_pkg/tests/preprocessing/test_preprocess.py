@@ -55,6 +55,7 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     compute_separation_set_for_stations,
     convert_multi_outages,
     exclude_bridges_from_outage_masks,
+    exclude_nonlinear_psts_from_controllable,
     filter_disconnectable_branches_nminus2,
     filter_inactive_injections,
     filter_relevant_nodes_branch_count,
@@ -64,7 +65,6 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     reduce_branch_dimension,
     reduce_node_dimension,
     simplify_asset_topology,
-    verify_equal_starting_tap_in_pst_group,
 )
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import get_busbar_map_adjacent_branches
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
@@ -175,7 +175,7 @@ def test_add_nodal_injections_to_network_data(data_folder: str, network_data: Ne
     assert len(network_data.relevant_node_mask) == len(nodal_injections)
 
 
-def test_verify_equal_starting_tap_in_pst_group_keeps_member_tap_domains(
+def test_exclude_nonlinear_psts_from_controllable_keeps_member_tap_domains(
     complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
 ) -> None:
     """Grouped linear PSTs keep their own (identical) tap domains; differing start taps only warn.
@@ -199,7 +199,7 @@ def test_verify_equal_starting_tap_in_pst_group_keeps_member_tap_domains(
     )
 
     with structlog.testing.capture_logs() as cap_logs:
-        assert verify_equal_starting_tap_in_pst_group(network_data)
+        network_data = exclude_nonlinear_psts_from_controllable(network_data)
 
     assert np.array_equal(network_data.phase_shift_low_tap, np.array([0, 0]))
     assert np.array_equal(network_data.phase_shift_starting_tap_idx, np.array([3, 1]))
@@ -208,7 +208,7 @@ def test_verify_equal_starting_tap_in_pst_group_keeps_member_tap_domains(
     assert any("do not share the same starting tap" in entry["event"] for entry in cap_logs)
 
 
-def test_verify_equal_starting_tap_in_pst_group_drops_nonlinear_group_member(
+def test_exclude_nonlinear_psts_from_controllable_drops_nonlinear_group_member(
     complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
 ) -> None:
     """A non-linear member is dropped from a group rather than rejected.
@@ -227,7 +227,7 @@ def test_verify_equal_starting_tap_in_pst_group_drops_nonlinear_group_member(
         parallel_pst_group_ids=["group_1"],
     )
 
-    assert verify_equal_starting_tap_in_pst_group(network_data)
+    network_data = exclude_nonlinear_psts_from_controllable(network_data)
 
     assert network_data.controllable_phase_shift_mask.sum() == 1
     assert np.array_equal(network_data.parallel_pst_group_mask, np.array([[True]], dtype=bool))

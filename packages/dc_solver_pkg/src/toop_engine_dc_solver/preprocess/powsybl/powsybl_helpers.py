@@ -52,7 +52,7 @@ class BranchModel(DataFrameModel):
         nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'N-1')"
     )
     disconnectable: Series[bool] = Field(nullable=True, default=False, description="Whether the branch can be disconnected")
-    pst_controllable: Series[bool] = Field(
+    pst_linear: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch can be controlled by a linear phase tap changer"
     )
     pst_group: Series[int] = Field(

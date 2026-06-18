@@ -24,8 +24,7 @@ def build_2d_pst_group_mask_and_labels(
     """Build the parallel PST group mask (matrix) and provide group ids aligned with the matrix rows.
 
     PSTs that share a (non-negative) label belong to the same parallel group. The sentinel ``-1``
-    marks an ungrouped PST, which is given its own singleton group, so the default with no parallel
-    PSTs reduces to one group per PST.
+    marks normal transformers and should not occur in the input.
 
     Parameters
     ----------
@@ -42,6 +41,9 @@ def build_2d_pst_group_mask_and_labels(
          The column order is aligned with the input ``pst_id_list``. Returns None if there are no controllable PSTs.
         2. A list of group identifiers (the first member's PST id per row). Returns None if there are no controllable PSTs.
     """
+    if -1 in group_labels:
+        raise ValueError("Import error: Controllable PSTs include normal transformers")
+
     pst_id_list = [str(pst_id) for pst_id in pst_id_list]
     n_psts = len(pst_id_list)
     if group_labels.shape[0] != n_psts:

@@ -35,7 +35,7 @@ def test_build_parallel_pst_group_mask_shared_label_groups_members() -> None:
 
 def test_build_parallel_pst_group_mask_sentinel_labels_form_singletons() -> None:
     mask, group_ids = build_2d_pst_group_mask_and_labels(
-        group_labels=np.array([-1, -1, 0]),
+        group_labels=np.array([0, 1, 2]),
         pst_id_list=["PST1", "PST2", "PST3"],
     )
 

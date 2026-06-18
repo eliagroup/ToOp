@@ -146,6 +146,13 @@ class CascadeSimulator:
             trigger is found.
         """
         self._cascade_context = build_cascade_context(net)
+        # Only protection switches can trip during cascading, so we limit flow computation to them.
+        monitored_breakers = monitored_elements[
+            monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.PROTECTION in s)
+        ]
+        switch_results_df = switch_results_df[
+            switch_results_df.index.get_level_values("element").isin(monitored_breakers.index)
+        ]
         triggers = self._detect_triggers_from_results(
             net=net,
             branch_results=branch_results_df,
@@ -157,10 +164,6 @@ class CascadeSimulator:
 
         events: list[CascadeEvent] = []
         accumulative_outages_pp: list[PandapowerElements] = []
-        # Only protection switches can trip during cascading, so we limit flow computation to them.
-        monitored_breakers = monitored_elements[
-            monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.PROTECTION in s)
-        ]
 
         for step in range(self._cfg.depth_limit):
             step_no = step + 1

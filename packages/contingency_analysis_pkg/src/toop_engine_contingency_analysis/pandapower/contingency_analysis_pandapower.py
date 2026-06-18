@@ -8,6 +8,7 @@
 """Compute the N-1 AC/DC power flow for the pandapower network."""
 
 import json
+import logging
 import math
 import uuid
 from copy import deepcopy
@@ -77,6 +78,8 @@ from toop_engine_interfaces.loadflow_results import (
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+
+logger = logging.getLogger(__name__)
 
 
 def _scrub_enums_for_json(obj: object) -> object:
@@ -684,8 +687,8 @@ def _run_base_case_loadflow(
         else:
             pp.runpp(net, **runpp_kwargs)
 
-    except pp.LoadflowNotConverged:
-        pass
+    except (pp.LoadflowNotConverged, pp.ControllerNotConverged) as exc:
+        logger.warning("Base-case load flow did not converge; continuing with stale res_* tables: %s", exc)
 
 
 def build_connectivity_df(groups: list[PandapowerContingencyGroup]) -> pat.DataFrame[ConnectivityResultSchema]:

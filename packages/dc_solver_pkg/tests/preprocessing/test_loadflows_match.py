@@ -45,6 +45,229 @@ from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
 
+from copy import deepcopy
+from pathlib import Path
+import shutil
+
+import jax.numpy as jnp
+import numpy as np
+import pandapower as pp
+import pytest
+from fsspec.implementations.dirfs import DirFileSystem
+from jax_dataclasses import replace
+from pandapower.pypower.idx_brch import PF
+from tests.network_data_pickle import load_network_data
+from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
+from toop_engine_dc_solver.jax.injections import default_injection
+from toop_engine_dc_solver.jax.inputs import load_static_information
+from toop_engine_dc_solver.jax.topology_computations import (
+    convert_topo_sel_sorted,
+    convert_topo_to_action_set_index,
+    default_topology,
+)
+from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
+from toop_engine_dc_solver.jax.types import ActionIndexComputations
+from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
+    compute_n_1_dc,
+)
+from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
+from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, load_grid
+from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
+    find_n_minus_2_safe_branches,
+)
+from toop_engine_dc_solver.preprocess.network_data import extract_action_set, extract_nminus1_definition
+from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
+from toop_engine_dc_solver.preprocess.preprocess import preprocess
+from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
+    check_for_splits,
+    get_pandapower_branch_loadflow_results_sequence,
+    get_pandapower_loadflow_results_in_ppc,
+    get_pandapower_loadflow_results_injection,
+)
+from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_id
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_interfaces.folder_structure import (
+    CHRONICS_FILE_NAMES,
+    PREPROCESSING_PATHS,
+)
+from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
+
+
+ACTION_COMPARISON_BATCH_SIZE = 100
+
+
+def _select_asset_covering_action_indices(action_set) -> list[int]:
+    starting_station_by_id = {
+        station.grid_model_id: station for station in action_set.simplified_starting_topology.stations
+    }
+    selected_action_indices: list[int] = []
+    action_idx = 0
+
+    while action_idx < len(action_set.local_actions):
+        station_id = action_set.local_actions[action_idx].grid_model_id
+        station_start = action_idx
+        while action_idx < len(action_set.local_actions) and action_set.local_actions[action_idx].grid_model_id == station_id:
+            action_idx += 1
+        station_end = action_idx
+
+        starting_station = starting_station_by_id[station_id]
+        station_actions = action_set.local_actions[station_start:station_end]
+        changed_asset_masks = [
+            np.any(station.asset_switching_table != starting_station.asset_switching_table, axis=0)
+            for station in station_actions
+        ]
+        covered_by_any_action = np.any(changed_asset_masks, axis=0)
+        uncovered_assets = set(np.flatnonzero(covered_by_any_action).tolist())
+        chosen_station_actions: set[int] = set()
+
+        while uncovered_assets:
+            best_action_offset = None
+            best_covered_assets: set[int] = set()
+            for offset, changed_assets in enumerate(changed_asset_masks):
+                if offset in chosen_station_actions:
+                    continue
+                covered_assets = set(np.flatnonzero(changed_assets).tolist()) & uncovered_assets
+                if len(covered_assets) > len(best_covered_assets):
+                    best_action_offset = offset
+                    best_covered_assets = covered_assets
+
+            if best_action_offset is None or not best_covered_assets:
+                break
+
+            chosen_station_actions.add(best_action_offset)
+            selected_action_indices.append(station_start + best_action_offset)
+            uncovered_assets -= best_covered_assets
+
+    return selected_action_indices
+
+
+def test_grid_loadflow_uptodate(data_folder: Path) -> None:
+    grid_file_path = data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]
+    net = pp.from_json(grid_file_path)
+    net_copy = deepcopy(net)
+    pp.rundcpp(net_copy)
+    assert np.allclose(net.res_bus.p_mw.values, net_copy.res_bus.p_mw.values)
+    assert np.allclose(net.res_line.p_from_mw, net_copy.res_line.p_from_mw)
+
+
+def test_n_0_results(data_folder: Path, preprocessed_data_folder: Path) -> None:
+    filesystem_dir = DirFileSystem(str(data_folder))
+    backend = PandaPowerBackend(filesystem_dir)
+    pp.rundcpp(backend.net)
+
+    abs_backend_loadflow = np.abs(backend.net._ppc["internal"]["branch"][backend.get_monitored_branch_mask(), PF].real)
+
+    static_information = load_static_information(
+        preprocessed_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
+    )
+    lf_res, success = compute_symmetric_batch(
+        default_topology(static_information.solver_config),
+        None,
+        None,
+        nodal_inj_start_options=None,
+        dynamic_information=static_information.dynamic_information,
+        solver_config=static_information.solver_config,
+    )
+    assert np.all(success)
+    n_0 = lf_res.n_0_matrix
+
+    assert np.allclose(abs_backend_loadflow, np.abs(n_0), rtol=1e-3, atol=1e-3)
+    # Two batch dimensions, time and batch
+    assert abs_backend_loadflow.shape == n_0[0, 0, :].shape
+
+@pytest.fixture
+def specific_grid_folder() -> Path:
+    return Path("/Users/leonardhilfrich/libraries/ToOp-6/data/IT12/2025-02-20T1030Z_1D_50Hertz")
+
+
+@pytest.mark.timeout(1000)
+def test_powsybl_all_action_dc_loadflows_match_runner(specific_grid_folder: Path) -> None:
+    powsybl_data_folder = specific_grid_folder
+    assert isinstance(powsybl_data_folder, Path)
+    _, static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(powsybl_data_folder)),
+        parameters=PreprocessParameters(),
+        lf_params=CGMES_DISTRIBUTED_SLACK,
+    )
+
+    action_set = extract_action_set(network_data)
+    nminus1_definition = extract_nminus1_definition(network_data)
+
+    runner = PowsyblRunner(lf_params=CGMES_DISTRIBUTED_SLACK)
+    runner.load_base_grid(powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    runner.store_action_set(action_set)
+    runner.store_nminus1_definition(nminus1_definition)
+    failing_actions: list[str] = []
+    selected_action_indices = _select_asset_covering_action_indices(action_set)
+
+    for batch_start in range(0, len(selected_action_indices), ACTION_COMPARISON_BATCH_SIZE):
+        batch_stop = min(batch_start + ACTION_COMPARISON_BATCH_SIZE, len(selected_action_indices))
+        batch_action_index_list = selected_action_indices[batch_start:batch_stop]
+        batch_action_indices = jnp.asarray(batch_action_index_list, dtype=int)
+        actions = ActionIndexComputations(
+            action=batch_action_indices[:, None],
+            pad_mask=jnp.ones((batch_stop - batch_start,), dtype=bool),
+        )
+
+        (n_0_solver, n_1_solver), success = run_solver_symmetric(
+            topologies=actions,
+            disconnections=None,
+            injections=None,
+            dynamic_information=static_information.dynamic_information,
+            solver_config=static_information.solver_config,
+            aggregate_output_fn=lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+        )
+        if not np.all(success):
+            failed_solver_offsets = np.flatnonzero(~np.all(np.asarray(success), axis=1))
+            failing_actions.extend(
+                f"action {batch_action_index_list[offset]}: solver failed for one or more contingencies"
+                for offset in failed_solver_offsets
+            )
+            continue
+
+        for batch_offset, action_idx in enumerate(batch_action_index_list):
+            runner_result = runner.run_dc_loadflow([action_idx], [])
+            n_0_runner, n_1_runner, runner_success = extract_solver_matrices_polars(
+                runner_result, nminus1_definition, 0
+            )
+            if not np.all(runner_success):
+                failing_actions.append(f"action {action_idx}: runner failed for one or more contingencies")
+                continue
+
+            n_0_expected = np.abs(np.asarray(n_0_solver[batch_offset, 0]))
+            n_1_expected = np.abs(np.asarray(n_1_solver[batch_offset, 0]))
+            n_0_actual = np.abs(n_0_runner)
+            n_1_actual = np.abs(n_1_runner)
+
+            if n_0_expected.shape != n_0_actual.shape:
+                failing_actions.append(
+                    f"action {action_idx}: N-0 shape mismatch solver={n_0_expected.shape} runner={n_0_actual.shape}"
+                )
+                continue
+            if n_1_expected.shape != n_1_actual.shape:
+                failing_actions.append(
+                    f"action {action_idx}: N-1 shape mismatch solver={n_1_expected.shape} runner={n_1_actual.shape}"
+                )
+                continue
+
+            n_0_matches = np.allclose(n_0_expected, n_0_actual)
+            n_1_matches = np.allclose(n_1_expected, n_1_actual)
+            if not n_0_matches or not n_1_matches:
+                failure_parts = []
+                if not n_0_matches:
+                    n_0_diff = np.abs(n_0_expected - n_0_actual)
+                    failure_parts.append(
+                        f"N-0 max_diff={float(np.max(n_0_diff)):.6g} mean_diff={float(np.mean(n_0_diff)):.6g}"
+                    )
+                if not n_1_matches:
+                    n_1_diff = np.abs(n_1_expected - n_1_actual)
+                    failure_parts.append(
+                        f"N-1 max_diff={float(np.max(n_1_diff)):.6g} mean_diff={float(np.mean(n_1_diff)):.6g}"
+                    )
+                failing_actions.append(f"action {action_idx}: {'; '.join(failure_parts)}")
+
+    assert not failing_actions, "Failing actions:\n" + "\n".join(failing_actions)
 
 def test_grid_loadflow_uptodate(data_folder: Path) -> None:
     grid_file_path = data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"]

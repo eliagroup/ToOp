@@ -218,6 +218,11 @@ class BaseImporterParameters(BaseModel):
     relevant_station_rules: RelevantStationRules = RelevantStationRules()
     """Rules to determine whether a substation is relevant or not."""
 
+    loadflow_parameters_file: Optional[Path] = None
+    """The path to the loadflow parameters file if present.
+    This file should contain the loadflow parameters in the format defined by the data_type.
+    """
+
 
 class UcteImporterParameters(BaseImporterParameters):
     """Parameters that are required to import the data from a UCTE file.

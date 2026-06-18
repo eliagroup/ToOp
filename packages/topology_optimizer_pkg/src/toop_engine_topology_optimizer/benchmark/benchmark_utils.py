@@ -76,7 +76,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import Static
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 from toop_engine_interfaces.stored_action_set import ActionSet
 from toop_engine_interfaces.stored_action_set import load_action_set as load_stored_action_set
-from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep
+from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep, evaluate_acceptance
 from toop_engine_topology_optimizer.ac.summary import changing_switches_to_orao_dict
 from toop_engine_topology_optimizer.dc.main import CLIArgs
 from toop_engine_topology_optimizer.dc.main import main as opt_main
@@ -818,7 +818,7 @@ def perform_ac_analysis(
     )
     unsplit_loadflow_results = unsplit_runner.run_ac_loadflow([], [])
     unsplit_action_info = unsplit_runner.get_last_action_info()
-    save_ac_metrics_summary(
+    unsplit_metrics = save_ac_metrics_summary(
         runner=unsplit_runner,
         topology_path=optimisation_run_path,
         loadflow_results=unsplit_loadflow_results,
@@ -841,7 +841,7 @@ def perform_ac_analysis(
         topology_path = optimisation_run_path / f"topology_{topology_index}"
         topology_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Topology stored in: {topology_path}")
-
+        logger.info(f"DC Fitness of topology: {best_topos[topology_index]['metrics']['fitness']}")
         actions = best_topos[topology_index].get("actions") or []
         disconnections = best_topos[topology_index].get("disconnections") or []
 
@@ -869,6 +869,9 @@ def perform_ac_analysis(
             additional_info=ac_action_info,
             dc_info=best_topos[topology_index],
         )
+        accepted = evaluate_acceptance(metrics_split=ac_metrics, metrics_unsplit=unsplit_metrics)
+        logger.info(f"Accepted Topology: {accepted}. Fitness: {ac_metrics.fitness}")
+
         if best_ac_fitness is None or ac_metrics.fitness < best_ac_fitness:
             best_ac_fitness = ac_metrics.fitness
             best_ac_topology_path = topology_path

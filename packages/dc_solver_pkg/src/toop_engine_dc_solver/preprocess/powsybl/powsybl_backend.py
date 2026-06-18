@@ -26,7 +26,7 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_tie_lines,
     get_trafos,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.backend import BackendInterface
@@ -100,7 +100,7 @@ class PowsyblBackend(BackendInterface):
         )
 
         if lf_params is None:
-            lf_params = DISTRIBUTED_SLACK
+            lf_params = CGMES_DISTRIBUTED_SLACK
         self.lf_params = lf_params
         ac_results, *_ = pp.loadflow.run_ac(net, lf_params)
         if ac_results.status != pp.loadflow.ComponentStatus.CONVERGED:

@@ -865,7 +865,10 @@ def get_node_results(
     # Calculate the values
     if method == "ac":
         has_vm = node_results["vm"].notna().values
-        node_results.loc[has_vm, "vm"] = node_results.loc[has_vm, "vm"].values * node_results.loc[has_vm, "nominal_v"].values
+        has_pu_vm = has_vm & (np.abs(node_results["vm"].values) <= (node_results["nominal_v"].values * 0.1))
+        node_results.loc[has_pu_vm, "vm"] = (
+            node_results.loc[has_pu_vm, "vm"].values * node_results.loc[has_pu_vm, "nominal_v"].values
+        )
     elif method == "dc":
         has_va = node_results["va"].notna().values
         node_results.loc[has_va, "vm"] = node_results.loc[has_va, "nominal_v"]

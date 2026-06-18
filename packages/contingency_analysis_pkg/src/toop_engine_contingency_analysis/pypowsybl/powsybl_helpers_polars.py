@@ -109,7 +109,12 @@ def get_node_results_polars(
 
     # Calculate the values
     if method == "ac":
-        node_results = node_results.with_columns((pl.col("vm") * pl.col("nominal_v")).alias("vm"))
+        node_results = node_results.with_columns(
+            pl.when(pl.col("vm").abs() <= (pl.col("nominal_v") * 0.1))
+            .then(pl.col("vm") * pl.col("nominal_v"))
+            .otherwise(pl.col("vm"))
+            .alias("vm")
+        )
     elif method == "dc":
         node_results = node_results.with_columns(
             pl.when(pl.col("va").is_not_null())
@@ -311,9 +316,16 @@ def get_va_diff_results_polars(
 
     iteration_va_diff = iteration_va_diff.with_columns(timestep=pl.lit(timestep).cast(pl.Int64))
     # Map busbar sections where there are any. For the rest use the bus_breaker_bus_id from the results (here the bus id)
-    bus_results = bus_results.join(
-        bus_map.select("id", "bus_breaker_bus_id"), left_on=["bus_id"], right_on=["id"], how="left"
-    )  # m:1 join
+    bus_map_for_join = bus_map.select(
+        pl.col("id").cast(pl.String),
+        pl.col("bus_breaker_bus_id").cast(pl.String),
+    )
+    bus_results = bus_results.with_columns(
+        pl.col("contingency_id").cast(pl.String),
+        pl.col("bus_id").cast(pl.String),
+    )
+    bus_results = bus_results.join(bus_map_for_join, left_on=["bus_id"], right_on=["id"], how="left")  # m:1 join
+    bus_results = bus_results.with_columns(pl.coalesce("bus_breaker_bus_id", "bus_id").alias("bus_breaker_bus_id"))
 
     # get the voltage angles for both buses in the va_diff definition
     iteration_va_diff = iteration_va_diff.join(

@@ -126,6 +126,76 @@ def test_get_va_diff_results():
     assert va_results.filter(pl.col("element") == "element_2")["va_diff"][0] == -180.0
 
 
+def test_get_va_diff_results_all_null_bus_and_contingency_ids() -> None:
+    blank_va_diff_basecase = pl.LazyFrame(
+        {
+            "contingency": ["", ""],
+            "element": ["element_1", "element_2"],
+            "bus_breaker_bus1_id": ["bus_1", "bus_2"],
+            "bus_breaker_bus2_id": ["bus_2", "bus_1"],
+        }
+    )
+    bus_results_basecase = pl.LazyFrame(
+        {
+            "contingency_id": [None, None],
+            "operator_strategy_id": ["", ""],
+            "voltage_level_id": ["placeholder", "placeholder"],
+            "bus_id": [None, None],
+            "v_mag": [None, None],
+            "v_angle": [None, None],
+        }
+    )
+    bus_map = pl.LazyFrame({"id": ["bus_1", "bus_2"], "bus_breaker_bus_id": ["bus_1", "bus_2"]})
+
+    va_results = get_va_diff_results_polars(
+        bus_results_basecase,
+        [],
+        va_diff_with_buses=blank_va_diff_basecase,
+        bus_map=bus_map,
+        timestep=0,
+    ).collect()
+
+    VADiffResultSchemaPolars.validate(va_results)
+    assert va_results.height == 2
+    assert va_results["va_diff"].is_null().sum() == 2
+
+
+def test_get_node_results_polars_keeps_absolute_ac_voltage() -> None:
+    bus_results = pl.LazyFrame(
+        {
+            "contingency_id": ["contingency_1", "contingency_1"],
+            "operator_strategy_id": ["", ""],
+            "voltage_level_id": ["VL_1", "VL_1"],
+            "bus_id": ["bus_1", "bus_2"],
+            "v_mag": [224.4, 224.8],
+            "v_angle": [-1.2, -0.4],
+        }
+    )
+    voltage_levels = pl.LazyFrame(
+        {
+            "id": ["VL_1"],
+            "nominal_v": [225.0],
+            "high_voltage_limit": [245.0],
+            "low_voltage_limit": [205.0],
+        }
+    )
+    monitored_buses = ["bus_1", "bus_2"]
+    busmap = pl.LazyFrame({"id": monitored_buses, "bus_breaker_bus_id": monitored_buses})
+
+    node_results = get_node_results_polars(
+        bus_results,
+        monitored_buses,
+        busmap,
+        voltage_levels,
+        failed_outages=[],
+        timestep=0,
+        method="ac",
+    ).collect()
+
+    assert node_results.filter(pl.col("element") == "bus_1").select("vm").item() == 224.4
+    assert node_results.filter(pl.col("element") == "bus_2").select("vm").item() == 224.8
+
+
 def test_get_branch_results():
     ca_branch_results = pl.LazyFrame(
         {

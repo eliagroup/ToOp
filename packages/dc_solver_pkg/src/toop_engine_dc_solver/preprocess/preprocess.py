@@ -1314,20 +1314,27 @@ def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> Netwo
     # otherwise log a warning since this can lead to unexpected behavior in the backend.
     parallel_pst_group_mask = network_data.parallel_pst_group_mask
     parallel_pst_group_ids = network_data.parallel_pst_group_ids
-    if parallel_pst_group_mask is not None and parallel_pst_group_ids is not None:
+    if parallel_pst_group_mask is not None:
         # Reduce dimension to linear PSTs
-        parallel_pst_group_mask = parallel_pst_group_mask[pst_linearity][:, pst_linearity]
-        parallel_pst_group_ids = [id for id, linear in zip(parallel_pst_group_ids, pst_linearity, strict=True) if linear]
+        parallel_pst_group_mask = parallel_pst_group_mask[:, pst_linearity]
+        kept_group_rows = np.any(parallel_pst_group_mask, axis=1)
+        parallel_pst_group_mask = parallel_pst_group_mask[kept_group_rows]
+        if parallel_pst_group_ids is not None:
+            parallel_pst_group_ids = [
+                group_id for group_id, keep in zip(parallel_pst_group_ids, kept_group_rows, strict=True) if keep
+            ]
         for group_idx, group_mask in enumerate(parallel_pst_group_mask):
             if np.sum(group_mask) <= 1:
                 continue
             group_starting_taps = phase_shift_starting_tap_idx[group_mask]
             if not np.all(group_starting_taps == group_starting_taps[0]):
+                log_fields = {"starting_taps": group_starting_taps.tolist()}
+                if parallel_pst_group_ids is not None:
+                    log_fields["parallel_pst_group_ids"] = parallel_pst_group_ids[group_idx]
                 logger.warning(
                     "Parallel PST group members do not share the same starting tap. "
                     "Though members share the same tap step table, starting at different taps leads to different updates ",
-                    parallel_pst_group_ids=parallel_pst_group_ids[group_idx],
-                    starting_taps=group_starting_taps.tolist(),
+                    **log_fields,
                 )
 
     return replace(

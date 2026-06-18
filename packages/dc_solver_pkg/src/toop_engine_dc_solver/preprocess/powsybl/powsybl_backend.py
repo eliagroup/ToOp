@@ -227,7 +227,7 @@ class PowsyblBackend(BackendInterface):
         lines["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["line_for_nminus1"], False, n_lines)
         lines["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["line_overload_weight"], 1.0, n_lines)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
-        lines.sort_values("name", inplace=True)
+        lines.sort_index(inplace=True)
 
         return lines
 
@@ -243,6 +243,7 @@ class PowsyblBackend(BackendInterface):
             return trafos
 
         n_trafos = len(trafos)
+        trafos.sort_index(inplace=True)
 
         # Add N-1 and observation masks
         trafos["for_reward"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_reward"], False, n_trafos)
@@ -254,8 +255,6 @@ class PowsyblBackend(BackendInterface):
         trafos["has_pst_tap"] = self._get_mask(NETWORK_MASK_NAMES["trafo_has_pst_tap"], False, n_trafos)
         # Parallel-PST group label per trafo (-1 for non-grouped). Identified during importing.
         trafos["pst_group"] = self._get_mask(NETWORK_MASK_NAMES["pst_group_labels"], -1, n_trafos)
-
-        trafos.sort_values("name", inplace=True)
 
         return trafos
 
@@ -272,7 +271,7 @@ class PowsyblBackend(BackendInterface):
         tie_lines["overload_weight"] = np.ones(n_tie_lines)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)
 
-        tie_lines.sort_values("name", inplace=True)
+        tie_lines.sort_index(inplace=True)
 
         return tie_lines
 

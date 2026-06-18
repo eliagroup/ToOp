@@ -43,8 +43,8 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 
 
-def test_get_branches(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     n_branches = len(backend.get_branch_ids())
     n_timesteps = 1
@@ -80,8 +80,8 @@ def test_get_branches(powsybl_data_folder: Path) -> None:
     assert np.all(np.isfinite(ac_dc_diff))
 
 
-def test_get_nodes(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_nodes(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     busses = backend.net.get_buses()
     n_connected_nodes = sum(busses.connected_component == 0)
@@ -96,8 +96,8 @@ def test_get_nodes(powsybl_data_folder: Path) -> None:
     assert backend.get_cross_coupler_limits().shape == (n_connected_nodes,)
 
 
-def test_get_injections(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_injections(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     n_injections = len(backend.get_injection_ids())
     n_timesteps = 1
@@ -110,8 +110,8 @@ def test_get_injections(powsybl_data_folder: Path) -> None:
     assert backend.get_outaged_injection_mask().shape == (n_injections,)
 
 
-def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_ptdf_matrix(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     net = backend.net
     loadflow_ref = net.get_branches()["p1"].loc[backend.get_branch_ids()].values
@@ -153,8 +153,8 @@ def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
     assert np.allclose(ac_loadflow, -ac_loadflow_ref)
 
 
-def test_extract_network_data(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     network_data = preprocess(backend)
     assert network_data.ptdf.size > 0
@@ -399,8 +399,8 @@ def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
     assert np.allclose(-n_1, n_1_ref)
 
 
-def test_globally_unique_ids(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_globally_unique_ids(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
 
     assert len(backend.get_branch_ids()) == len(set(backend.get_branch_ids()))

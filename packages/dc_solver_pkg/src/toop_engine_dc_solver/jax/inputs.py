@@ -439,6 +439,7 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
         file.attrs["enable_bb_outages"] = solver_config.enable_bb_outages
         file.attrs["bb_outage_as_nminus1"] = solver_config.bb_outage_as_nminus1
         file.attrs["clip_bb_outage_penalty"] = solver_config.clip_bb_outage_penalty
+        file.attrs["enable_parallel_pst_group_optim"] = solver_config.enable_parallel_pst_group_optim
         file.create_dataset("susceptance", data=dynamic_information.susceptance)
         file.create_dataset("relevant_injections", data=dynamic_information.relevant_injections)
         file.create_dataset(
@@ -545,6 +546,11 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 "grid_model_low_tap",
                 data=nodal_inj_opt.grid_model_low_tap,
             )
+            if solver_config.enable_parallel_pst_group_optim:
+                file.create_dataset(
+                    "parallel_pst_group_mask",
+                    data=nodal_inj_opt.parallel_pst_group_mask,
+                )
 
         for idx, (branches, nodes) in enumerate(
             zip(
@@ -766,6 +772,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 enable_bb_outages=bool(file.attrs.get("enable_bb_outages", False)),
                 bb_outage_as_nminus1=bool(file.attrs.get("bb_outage_as_nminus1", True)),
                 clip_bb_outage_penalty=bool(file.attrs.get("clip_bb_outage_penalty", False)),
+                enable_parallel_pst_group_optim=bool(file.attrs.get("enable_parallel_pst_group_optim", False)),
                 contingency_ids=file["contingency_ids"].asstr()[:].tolist(),
             ),
         )
@@ -851,6 +858,11 @@ def load_nodal_injection_optimization(
             pst_tap_values=jnp.array(file["pst_tap_values"][:]),
             starting_tap_idx=jnp.array(file["starting_tap_idx"][:]),
             grid_model_low_tap=jnp.array(file["grid_model_low_tap"][:]),
+            parallel_pst_group_mask=(
+                jnp.array(file["parallel_pst_group_mask"][:])
+                if "parallel_pst_group_mask" in file
+                else jnp.eye(file["pst_n_taps"].shape[0], dtype=bool)
+            ),
         )
     return None
 

@@ -18,6 +18,7 @@ import structlog
 from beartype.typing import Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
+from toop_engine_dc_solver.preprocess.parallel_pst_groups import build_2d_pst_group_mask_and_labels
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     BranchModel,
     get_lines,
@@ -27,7 +28,7 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_trafos,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, sort_powsybl_element_frame_by_id
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
@@ -186,8 +187,10 @@ class PowsyblBackend(BackendInterface):
         return injections
 
     def _get_mask(
-        self, mask_filename: str, default_value: Union[bool, float], default_shape: int
-    ) -> Bool[np.ndarray, " n_masked_element"] | Float[np.ndarray, " n_masked_element"]:
+        self, mask_filename: str, default_value: Union[bool, float, int], default_shape: int
+    ) -> (
+        Bool[np.ndarray, " n_masked_element"] | Float[np.ndarray, " n_masked_element"] | Int[np.ndarray, " n_masked_element"]
+    ):
         """Load a given mask or return a default mask.
 
         Parameters
@@ -224,7 +227,7 @@ class PowsyblBackend(BackendInterface):
         lines["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["line_for_nminus1"], False, n_lines)
         lines["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["line_overload_weight"], 1.0, n_lines)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
-        lines.sort_values("name", inplace=True)
+        lines.sort_index(inplace=True)
 
         return lines
 
@@ -238,6 +241,7 @@ class PowsyblBackend(BackendInterface):
         trafos = get_trafos(self.net, self.net_pu)
         if trafos.empty:
             return trafos
+        trafos = sort_powsybl_element_frame_by_id(trafos)
 
         n_trafos = len(trafos)
 
@@ -247,11 +251,10 @@ class PowsyblBackend(BackendInterface):
         trafos["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["trafo_overload_weight"], 1.0, n_trafos)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
         trafos["n0_n1_max_diff_factor"] = self._get_mask(NETWORK_MASK_NAMES["trafo_n0_n1_max_diff_factor"], -1.0, n_trafos)
-        trafos["pst_controllable"] = (
-            self._get_mask(NETWORK_MASK_NAMES["trafo_pst_controllable"], False, n_trafos) & trafos["has_pst_tap"]
-        )
-
-        trafos.sort_values("name", inplace=True)
+        trafos["pst_linear"] = self._get_mask(NETWORK_MASK_NAMES["trafo_pst_linear"], False, n_trafos)
+        trafos["has_pst_tap"] = self._get_mask(NETWORK_MASK_NAMES["trafo_has_pst_tap"], False, n_trafos)
+        # Parallel-PST group label per trafo (-1 for non-grouped). Identified during importing.
+        trafos["pst_group"] = self._get_mask(NETWORK_MASK_NAMES["pst_group_labels"], -1, n_trafos)
 
         return trafos
 
@@ -268,7 +271,7 @@ class PowsyblBackend(BackendInterface):
         tie_lines["overload_weight"] = np.ones(n_tie_lines)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)
 
-        tie_lines.sort_values("name", inplace=True)
+        tie_lines.sort_index(inplace=True)
 
         return tie_lines
 
@@ -443,19 +446,20 @@ class PowsyblBackend(BackendInterface):
         """Get a mask of branches that can have a phase shift"""
         return self._get_branches()["has_pst_tap"].values
 
+    # TODO: Current feature creates same result as `get_phase_shift_mask`, but kept for now.
     def get_controllable_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of controllable PSTs"""
-        return self._get_branches()["pst_controllable"].values
+        return self._get_branches()["has_pst_tap"].values
 
     def get_phase_shift_linearity(self) -> Bool[np.ndarray, " n_controllable_psts"]:
         """Get the linearity of the phase shift for each controllable PST.
 
         i.e. whether the shift angle is linear to the tap position
         """
-        return self._get_branches()[self.get_controllable_phase_shift_mask()]["has_pst_linear_tap"].values
+        return self._get_branches()[self.get_controllable_phase_shift_mask()]["pst_linear"].values
 
     def get_phase_shift_taps(self) -> list[Float[np.ndarray, " n_controllable_psts"]]:
-        """Get a list of taps for each pst"""
+        """Get a list of taps for each controllable PST"""
         shift_taps = []
         steps = self.net.get_phase_tap_changer_steps(attributes=["alpha"])
 
@@ -480,6 +484,35 @@ class PowsyblBackend(BackendInterface):
         psts = self._get_branches()[self.get_controllable_phase_shift_mask()].index
         tap_changers = self.net.get_phase_tap_changers().loc[psts]
         return tap_changers["low_tap"].values.astype(int)
+
+    @functools.lru_cache
+    def _get_parallel_pst_groups(self) -> tuple[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"], list[str]]:
+        """Get parallel PST grouping metadata aligned with controllable PST arrays.
+
+        The parallel PSTs and their group labels are identified during importing and stored per PST (branch):
+          1. BranchModel.``pst_controllable``
+          2. BranchModel.``pst_group``
+        Use the masks to create a 2-d boolean array with rows as parallel PST groups and columns as controllable PSTs, where
+        True indicates that a PST belongs to a group. The order of the columns is aligned with the order of controllable PSTs
+        in get_controllable_phase_shift_mask(), so that the resulting 2-d array can be used as a mask consumed downstream.
+        """
+        controllable_branches = self._get_branches()[self.get_controllable_phase_shift_mask()]
+        group_labels = controllable_branches["pst_group"].to_numpy(dtype=int)
+        return build_2d_pst_group_mask_and_labels(
+            group_labels=group_labels,
+            pst_id_list=self.get_controllable_phase_shift_ids(),
+        )
+
+    def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
+        """Get the parallel PST groups aligned with the controllable PST arrays."""
+        return self._get_parallel_pst_groups()[0]
+
+    def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
+        """Get the parallel PST group ids aligned with the group mask rows.
+
+        The group ids are derived from the branch names of the first PST (first-seen order) in the group.
+        """
+        return self._get_parallel_pst_groups()[1]
 
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get a mask of relevant nodes"""

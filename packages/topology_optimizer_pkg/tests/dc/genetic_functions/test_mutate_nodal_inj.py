@@ -7,7 +7,12 @@
 
 import jax
 import jax.numpy as jnp
-from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_nodal_inj import mutate_psts
+from toop_engine_dc_solver.jax.types import NodalInjOptimResults
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.config import NodalInjectionMutationConfig
+from toop_engine_topology_optimizer.dc.genetic_functions.mutation.mutate_nodal_inj import (
+    mutate_nodal_injections,
+    mutate_psts,
+)
 
 
 def test_mutate_psts() -> None:
@@ -218,3 +223,54 @@ def test_resetting_psts() -> None:
     assert jnp.any(difference > 0)
     assert jnp.any(difference == 0)
     assert jnp.any(mutated_pst_taps == pst_starting_taps)
+
+
+def test_grouped_mutate_psts_keeps_parallel_members_equal() -> None:
+    random_key = jax.random.PRNGKey(1234)
+    pst_taps = jnp.array([5, 5, 9, 9])
+    pst_starting_taps = jnp.array([5, 5, 9, 9])
+    pst_n_taps = jnp.array([20, 20, 20, 20])
+    parallel_pst_group_mask = jnp.array(
+        [
+            [True, True, False, False],
+            [False, False, True, True],
+        ],
+        dtype=bool,
+    )
+
+    mutated_pst_taps = mutate_psts(
+        random_key=random_key,
+        pst_taps=pst_taps,
+        pst_n_taps=pst_n_taps,
+        pst_starting_taps=pst_starting_taps,
+        pst_mutation_sigma=3.0,
+        pst_mutation_probability=1.0,
+        pst_reset_probability=0.0,
+        enable_parallel_pst_group_optim=True,
+        parallel_pst_group_mask=parallel_pst_group_mask,
+    )
+
+    assert mutated_pst_taps[0] == mutated_pst_taps[1]
+    assert mutated_pst_taps[2] == mutated_pst_taps[3]
+
+
+def test_mutate_nodal_injections_ignores_empty_group_mask_when_group_optim_disabled() -> None:
+    nodal_inj_info = NodalInjOptimResults(pst_tap_idx=jnp.array([[[1, 2]]], dtype=int))
+    mutation_config = NodalInjectionMutationConfig(
+        pst_mutation_sigma=0.0,
+        pst_mutation_probability=0.0,
+        pst_reset_probability=0.0,
+        pst_n_taps=jnp.array([5, 5], dtype=int),
+        pst_start_tap_idx=jnp.array([1, 2], dtype=int),
+        enable_parallel_pst_group_optim=False,
+        # An empty group mask (zero group rows) aligned with the two controllable PSTs.
+        parallel_pst_group_mask=jnp.zeros((0, 2), dtype=bool),
+    )
+
+    mutated = mutate_nodal_injections(
+        random_key=jax.random.PRNGKey(0),
+        nodal_inj_info=nodal_inj_info,
+        nodal_mutation_config=mutation_config,
+    )
+
+    assert mutated == nodal_inj_info

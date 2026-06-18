@@ -218,6 +218,26 @@ class PandaPowerBackend(BackendInterface):
 
         return int(slack_bus)
 
+    def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
+        """Get a PST group mask aligned with the controllable PST arrays.
+
+        Returns
+        -------
+        Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]
+            The mask for parallel PST groups, or None if no explicit grouping metadata is available.
+        """
+        return None
+
+    def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
+        """Get PST group identifiers aligned with rows of get_parallel_pst_group_mask().
+
+        Returns
+        -------
+        Optional[list[str]]
+            The identifiers for parallel PST groups, or None if no explicit grouping metadata is available.
+        """
+        return None
+
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get the relevant nodes mask
 
@@ -390,7 +410,7 @@ class PandaPowerBackend(BackendInterface):
         try:
             controllable_pst_mask = load_numpy_filesystem(
                 filesystem=self.data_folder_dirfs,
-                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_pst_controllable"]),
+                file_path=str(self._get_masks_path() / NETWORK_MASK_NAMES["trafo_has_pst_tap"]),
             )
         except FileNotFoundError:
             controllable_pst_mask = np.zeros(len(self.net.trafo), dtype=bool)

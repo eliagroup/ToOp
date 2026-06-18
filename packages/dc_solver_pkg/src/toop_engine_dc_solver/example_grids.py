@@ -1069,12 +1069,14 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     pst_ids = net.get_phase_tap_changers().index
     trafo_mask = np.ones(len(trafos), dtype=bool)
     trafo_has_pst_tap = trafos.index.isin(pst_ids)
+    trafo_pst_linear = np.zeros(len(trafos), dtype=bool)
+    trafo_pst_linear[-2:] = True
     trafo_mask_groups = np.full(len(trafos), -1, dtype=int)
     trafo_mask_groups[trafo_has_pst_tap] = np.arange(np.sum(trafo_has_pst_tap))
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_has_pst_tap"], trafo_has_pst_tap)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_linear"], trafo_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_linear"], trafo_pst_linear)
     np.save(output_path_masks / NETWORK_MASK_NAMES["pst_group_labels"], trafo_mask_groups)
 
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)

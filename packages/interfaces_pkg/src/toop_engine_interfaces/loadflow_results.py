@@ -334,6 +334,16 @@ class SwitchResultsSchema(pa.DataFrameModel):
     """The name of the contingency, if available. This is not used for the loadflow computation,
     but can be used for display purposes. If no name is available, this should be set to an empty string.
     """
+    side: Series[str] = pa.Field(nullable=True)
+    """The measurement side of the switch result.
+
+    - ``"from"``: values measured at the from-bus terminal (taken from ``net.res_switch``).
+    - ``"to"``: values measured at the to-bus terminal (taken from ``net.res_switch``).
+    - ``null``: result was computed by aggregating branch flows and node injections.
+      Switches modelled without impedance have identical electrical conditions on both
+      terminals (no voltage drop, no power loss across the switch), so a single
+      aggregated value is sufficient and no side distinction is needed.
+    """
 
 
 class SwitchElementMappingSchema(pa.DataFrameModel):

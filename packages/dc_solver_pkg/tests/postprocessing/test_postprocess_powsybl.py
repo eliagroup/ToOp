@@ -57,7 +57,13 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     extract_solver_matrices_polars,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition, load_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    load_nminus1_definition,
+)
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
 
 
@@ -472,7 +478,7 @@ def test_powsybl_runner_reuses_branch_limit_cache_for_contingency_only_updates(
 
     runner.store_nminus1_definition(
         Nminus1Definition(
-            monitored_elements=[GridElement(id="line_a", kind="branch", type="LINE")],
+            monitored_elements=[MonitoredElement(id="line_a", kind="branch", type="LINE")],
             contingencies=[Contingency(id="BASECASE", elements=[])],
             id_type="powsybl",
         )
@@ -483,7 +489,7 @@ def test_powsybl_runner_reuses_branch_limit_cache_for_contingency_only_updates(
 
     runner.store_nminus1_definition(
         Nminus1Definition(
-            monitored_elements=[GridElement(id="line_a", kind="branch", type="LINE")],
+            monitored_elements=[MonitoredElement(id="line_a", kind="branch", type="LINE")],
             contingencies=[Contingency(id="BASECASE", elements=[]), Contingency(id="other", elements=[])],
             id_type="powsybl",
         )
@@ -497,7 +503,7 @@ def test_powsybl_runner_reuses_branch_limit_cache_for_contingency_only_updates(
 
     runner.store_nminus1_definition(
         Nminus1Definition(
-            monitored_elements=[GridElement(id="line_b", kind="branch", type="LINE")],
+            monitored_elements=[MonitoredElement(id="line_b", kind="branch", type="LINE")],
             contingencies=[Contingency(id="BASECASE", elements=[])],
             id_type="powsybl",
         )

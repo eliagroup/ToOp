@@ -34,7 +34,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResultSchema, VADiffResultSchema
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
 def test_powsybl_n_1_definition_slice():
@@ -151,9 +151,9 @@ def test_translate_monitored_elements_to_powsybl(powsybl_bus_breaker_net: pypows
     switches = powsybl_bus_breaker_net.get_switches()
     buses = powsybl_bus_breaker_net.get_bus_breaker_view_buses()
 
-    branch_elements = [GridElement(id=id, type=row.type, kind="branch") for id, row in branches.iterrows()]
-    switch_elements = [GridElement(id=id, type=row.kind, kind="switch") for id, row in switches.iterrows()]
-    bus_elements = [GridElement(id=id, type="bus", kind="bus") for id, _row in buses.iterrows()]
+    branch_elements = [MonitoredElement(id=id, type=row.type, kind="branch") for id, row in branches.iterrows()]
+    switch_elements = [MonitoredElement(id=id, type=row.kind, kind="switch") for id, row in switches.iterrows()]
+    bus_elements = [MonitoredElement(id=id, type="bus", kind="bus") for id, _row in buses.iterrows()]
     contingencies = [Contingency(id=elem.id, name=elem.id, elements=[elem]) for elem in branch_elements]
 
     # Test branches
@@ -253,7 +253,7 @@ def test_translate_monitored_elements_to_powsybl(powsybl_bus_breaker_net: pypows
     # Test non existing elements
     nminus1_definition = Nminus1Definition(
         contingencies=[],
-        monitored_elements=[GridElement(id="I do not exist", type="branch", kind="branch")],
+        monitored_elements=[MonitoredElement(id="I do not exist", type="branch", kind="branch")],
         id_type="powsybl",
     )
     monitored_elements, element_map, missing_elements = translate_monitored_elements_to_powsybl(
@@ -458,11 +458,11 @@ def test_translate_nminus1_for_powsybl(powsybl_bus_breaker_net: pypowsybl.networ
     ]
 
     monitored_branches = [
-        GridElement(id=index, name=row.name, kind="branch", type=row.type) for index, row in branches.iterrows()
+        MonitoredElement(id=index, name=row.name, kind="branch", type=row.type) for index, row in branches.iterrows()
     ]
-    monitored_buses = [GridElement(id=index, name=row.name, kind="bus", type="bus") for index, row in buses.iterrows()]
+    monitored_buses = [MonitoredElement(id=index, name=row.name, kind="bus", type="bus") for index, row in buses.iterrows()]
     monitored_switches = [
-        GridElement(id=index, name=row.name, kind="switch", type=row.kind) for index, row in switches.iterrows()
+        MonitoredElement(id=index, name=row.name, kind="switch", type=row.kind) for index, row in switches.iterrows()
     ]
 
     nminus1_def = Nminus1Definition(
@@ -528,7 +528,7 @@ def test_translate_nminus1_for_powsybl(powsybl_bus_breaker_net: pypowsybl.networ
 def test_translate_nminus1_for_powsybl_split_helpers(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in powsybl_bus_breaker_net.get_branches().iloc[:4].iterrows()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
@@ -560,7 +560,7 @@ def test_translate_nminus1_for_powsybl_with_branch_limit_cache(
 ) -> None:
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in powsybl_bus_breaker_net.get_branches().iloc[:4].iterrows()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],

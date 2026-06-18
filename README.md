@@ -141,7 +141,9 @@ Distributed under MPL 2.0. See [LICENSE](./LICENSE).
 
 ## Citation
 
+<!-- markdown-link-check-disable -->
 If you use our work in scientific research, please cite [our paper on load flow solving](https://doi.org/10.1109/PowerTech59965.2025.11180422) or [our paper on the optimizer architecture](https://arxiv.org/abs/2605.10128), depending what parts of the repository you use.
+<!-- markdown-link-check-enable -->
 
 ---
 

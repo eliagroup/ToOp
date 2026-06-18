@@ -37,7 +37,6 @@ from toop_engine_dc_solver.jax.inputs import (
     save_static_information_fs,
     validate_static_information,
 )
-from toop_engine_dc_solver.jax.nminus2_outage import unsplit_n_2_analysis
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import (
     BBOutageBaselineAnalysis,
@@ -62,7 +61,7 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
@@ -123,8 +122,6 @@ def convert_to_jax(  # noqa: PLR0913
         "underload_energy_n_1",
     ] = "overload_energy_n_1",
     distributed: bool = False,
-    enable_n_2: bool = False,
-    n_2_more_splits_penalty: float = 1000.0,
     preprocess_bb_outages: bool = False,
     ac_dc_interpolation: float = 0.0,
     logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
@@ -162,11 +159,6 @@ def convert_to_jax(  # noqa: PLR0913
         The metric to use for the aggregation, see aggregate_to_metric for more details
     distributed: bool, optional
         Whether to use the distributed version of the solver
-    enable_n_2: bool, optional
-        Whether to enable the N-2 analysis feature
-    n_2_more_splits_penalty: float, optional
-        How to penalize additional splits in N-2 that were not there in the unsplit grid. Will be
-        added to the overload energy penalty.
     preprocess_bb_outages: bool, optional
         Whether busbar outage data should be converted and stored in the static information.
     ac_dc_interpolation: float, optional
@@ -284,7 +276,6 @@ def convert_to_jax(  # noqa: PLR0913
                 ac_dc_interpolation=ac_dc_interpolation,
             ),
             branches_monitored=branches_monitored,
-            n2_baseline_analysis=None,
             non_rel_bb_outage_data=convert_non_rel_bb_outage(network_data) if preprocess_bb_outages else None,
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
@@ -321,19 +312,6 @@ def convert_to_jax(  # noqa: PLR0913
         ),
     )
 
-    if enable_n_2:
-        logging_fn("unsplit_n2_analysis", None)
-        n_2_baseline = unsplit_n_2_analysis(
-            dynamic_information=static_information.dynamic_information,
-            more_splits_penalty=n_2_more_splits_penalty,
-        )
-        static_information = replace(
-            static_information,
-            dynamic_information=replace(
-                static_information.dynamic_information,
-                n2_baseline_analysis=n_2_baseline,
-            ),
-        )
     if preprocess_bb_outages:
         # A comparison of the overload energy of the unsplit grid with the overload energy of the split grid
         # after busbar outages is required. Therefore, we need to store the baseline loadflows after busbar outages
@@ -676,7 +654,7 @@ def load_grid(
     if parameters is None:
         parameters = PreprocessParameters()
     if lf_params is None and not pandapower:
-        lf_params = DISTRIBUTED_SLACK
+        lf_params = CGMES_DISTRIBUTED_SLACK
     elif lf_params is None and pandapower:
         lf_params = {}
 
@@ -694,8 +672,6 @@ def load_grid(
     static_information = convert_to_jax(
         network_data=network_data,
         logging_fn=status_update_fn,
-        enable_n_2=parameters.enable_n_2,
-        n_2_more_splits_penalty=parameters.n_2_more_splits_penalty,
         preprocess_bb_outages=parameters.preprocess_bb_outages,
         ac_dc_interpolation=parameters.ac_dc_interpolation,
     )

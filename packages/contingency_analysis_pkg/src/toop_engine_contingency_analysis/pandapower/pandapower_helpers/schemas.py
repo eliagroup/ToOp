@@ -102,6 +102,10 @@ class PandapowerMonitoredElementSchema(pa.DataFrameModel):
         description="The kind of the monitored element, e.g. 'branch', 'bus' etc.",
     )
     name: Series[str] = pa.Field(description="The name of the monitored element, if available.")
+    monitoring_scope: Series[object] = pa.Field(
+        nullable=True,
+        description=("Frozenset of SwitchMonitoringScope values for switch elements. None for non-switch elements."),
+    )
 
 
 class PandapowerElements(BaseModel):

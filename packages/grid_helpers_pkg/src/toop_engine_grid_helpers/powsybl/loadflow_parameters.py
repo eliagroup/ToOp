@@ -24,6 +24,7 @@ OPENLOADFLOW_PARAM_PF = {
     "useActiveLimits": "false",  # unclear whether it is only used for slack
     "minPlausibleTargetVoltage": "0.893",
     "maxPlausibleTargetVoltage": "1.105",
+    "referenceBusSelectionMode": "GENERATOR_REFERENCE_PRIORITY",
 }
 
 POWSYBL_LOADFLOW_PARAM_PF = Parameters(
@@ -36,10 +37,10 @@ POWSYBL_LOADFLOW_PARAM_PF = Parameters(
     phase_shifter_regulation_on=False,
     provider_parameters=OPENLOADFLOW_PARAM_PF,
     read_slack_bus=True,
-    shunt_compensator_voltage_control_on=False,
-    transformer_voltage_control_on=False,
+    shunt_compensator_voltage_control_on=True,
+    transformer_voltage_control_on=True,
     use_reactive_limits=True,
-    twt_split_shunt_admittance=False,
+    twt_split_shunt_admittance=True,
     voltage_init_mode=VoltageInitMode.PREVIOUS_VALUES,  # VoltageInitMode
     write_slack_bus=True,
 )
@@ -51,12 +52,29 @@ SDL_PARAM = pypowsybl.network.SldParameters(
 
 # for network area diagram svg generation
 NAD_PARAM = pypowsybl.network.NadParameters(edge_info_along_edge=True, substation_description_displayed=True)
-DISTRIBUTED_SLACK = Parameters(
+CGMES_DISTRIBUTED_SLACK = Parameters(
     distributed_slack=True,
     balance_type=BalanceType.PROPORTIONAL_TO_GENERATION_P,
     voltage_init_mode=VoltageInitMode.DC_VALUES,
-    provider_parameters={"slackDistributionFailureBehavior": "LEAVE_ON_SLACK_BUS"},
+    provider_parameters={
+        "slackDistributionFailureBehavior": "LEAVE_ON_SLACK_BUS",
+        "referenceBusSelectionMode": "GENERATOR_REFERENCE_PRIORITY",
+    },
     dc_use_transformer_ratio=True,
+    write_slack_bus=True,
+    read_slack_bus=True,
+)
+UCTE_DISTRIBUTED_SLACK = Parameters(
+    distributed_slack=True,
+    balance_type=BalanceType.PROPORTIONAL_TO_GENERATION_P,
+    voltage_init_mode=VoltageInitMode.DC_VALUES,
+    provider_parameters={
+        "slackDistributionFailureBehavior": "LEAVE_ON_SLACK_BUS",
+        "referenceBusSelectionMode": "FIRST_SLACK",
+    },
+    dc_use_transformer_ratio=True,
+    write_slack_bus=True,
+    read_slack_bus=True,
 )
 SINGLE_SLACK = Parameters(distributed_slack=False, dc_use_transformer_ratio=True)
 UNIFORM_SINGLE_SLACK = Parameters(

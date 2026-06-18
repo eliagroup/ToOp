@@ -39,6 +39,7 @@ from toop_engine_dc_solver.example_grids import (
 )
 from toop_engine_dc_solver.jax.types import ActionSet, StaticInformation
 from toop_engine_dc_solver.preprocess import load_grid
+from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS

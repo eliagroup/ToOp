@@ -58,7 +58,7 @@ CGMES_DISTRIBUTED_SLACK = Parameters(
     voltage_init_mode=VoltageInitMode.DC_VALUES,
     provider_parameters={
         "slackDistributionFailureBehavior": "LEAVE_ON_SLACK_BUS",
-        "referenceBusSelectionMode": "GENERATOR_REFERENCE_PRIORITY"
+        "referenceBusSelectionMode": "GENERATOR_REFERENCE_PRIORITY",
     },
     dc_use_transformer_ratio=True,
     write_slack_bus=True,

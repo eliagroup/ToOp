@@ -868,7 +868,9 @@ def test_get_node_results_ac():
             vm_result = node_results.loc[(timestep, contingency, bus_id), "vm"]
             orig_vm = row["v_mag"]
             nominal_v = voltage_levels.loc["VL_1", "nominal_v"]
-            expected_vm = orig_vm * nominal_v if not np.isnan(orig_vm) else np.nan
+            expected_vm = np.nan
+            if not np.isnan(orig_vm):
+                expected_vm = orig_vm * nominal_v if abs(orig_vm) <= nominal_v * 0.1 else orig_vm
             assert vm_result == expected_vm or (np.isnan(vm_result) and np.isnan(expected_vm)), (
                 f"Voltage magnitude for {bus_id} in {contingency} in {method} should match"
             )

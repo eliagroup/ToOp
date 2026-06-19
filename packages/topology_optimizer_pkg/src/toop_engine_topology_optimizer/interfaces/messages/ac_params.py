@@ -79,7 +79,7 @@ class ACGAParameters(BaseModel):
     critical_voltage_jump_percent: float = 5.0
     """Voltage jumps larger than this percentage are counted as critical in the AC metrics."""
 
-    max_allowed_va_diff: float = 0.0
+    critical_va_diff_degree: float = 20.0
     """Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics."""
 
     early_stop_validation: bool = True

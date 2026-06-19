@@ -108,14 +108,8 @@ def get_node_results_polars(
     node_results = node_results.rename({"v_mag": "vm", "v_angle": "va"})
 
     # Calculate the values
-    if method == "ac":
-        node_results = node_results.with_columns(
-            pl.when(pl.col("vm").abs() <= (pl.col("nominal_v") * 0.1))
-            .then(pl.col("vm") * pl.col("nominal_v"))
-            .otherwise(pl.col("vm"))
-            .alias("vm")
-        )
-    elif method == "dc":
+
+    if method == "dc":
         node_results = node_results.with_columns(
             pl.when(pl.col("va").is_not_null())
             .then(pl.col("nominal_v"))  # fill vm with nominal v if va is present

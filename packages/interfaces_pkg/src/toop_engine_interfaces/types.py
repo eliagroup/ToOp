@@ -56,7 +56,6 @@ OtherMetric: TypeAlias = Literal[
     "bb_outage_penalty",
     "bb_outage_overload",
     "bb_outage_grid_splits",
-    "max_va_across_coupler",
     "max_va_diff_n_0",
     "max_va_diff_n_1",
     "critical_va_diff_count_n_0",

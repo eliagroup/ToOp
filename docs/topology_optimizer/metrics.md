@@ -66,8 +66,6 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **bb_outage_grid_splits**: Number of grid splits (islands) created during busbar outage scenarios. These bb cases did not compute anything sensible, if this number is high check the bb outage preprocessing. Ideally it should be 0 at all times.
 
-- **max_va_across_coupler**: Maximum voltage angle difference across couplers in split substations. Only applicable in AC analysis.
-
 - **max_va_diff_n_0** / **max_va_diff_n_1**: Maximum absolute voltage angle difference across any branch. AC analysis only.
 
 - **critical_va_diff_count_n_0** / **critical_va_diff_count_n_1**: Number of `(timestep, element)` groups whose maximum absolute voltage angle difference across contingencies exceeds a configurable threshold. AC analysis only.

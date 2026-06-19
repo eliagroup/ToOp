@@ -32,7 +32,13 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import VADif
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchSide
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    SwitchMonitoringScope,
+)
 
 
 @pytest.fixture
@@ -46,7 +52,7 @@ def n_1_definition_unique_pp_id(pandapower_net: pp.pandapowerNet) -> Nminus1Defi
         for id in pandapower_net.line.index
     ]
     monitored_elements = [
-        GridElement(id=get_globally_unique_id(id, "line"), type="line", name="id", kind="branch")
+        MonitoredElement(id=get_globally_unique_id(id, "line"), type="line", name="id", kind="branch")
         for id in pandapower_net.line.index
     ]
     nminus1_definition = Nminus1Definition(
@@ -66,11 +72,11 @@ def n_1_definition_impedance(pandapower_net_with_impedance: pp.pandapowerNet) ->
         for id in pandapower_net_with_impedance.line.index
     ]
     monitored_elements = [
-        GridElement(id=get_globally_unique_id(id, "line"), type="line", name="id", kind="branch")
+        MonitoredElement(id=get_globally_unique_id(id, "line"), type="line", name="id", kind="branch")
         for id in pandapower_net_with_impedance.line.index
     ]
     monitored_elements += [
-        GridElement(id=get_globally_unique_id(id, "impedance"), type="impedance", name="id", kind="branch")
+        MonitoredElement(id=get_globally_unique_id(id, "impedance"), type="impedance", name="id", kind="branch")
         for id in pandapower_net_with_impedance.impedance.index
     ]
     nminus1_definition = Nminus1Definition(
@@ -115,11 +121,12 @@ def test_panda_power_n_minus_1_definition():
 
 def test_translate_monitored_elements(pandapower_net: pp.pandapowerNet):
     monitored_elements = [
-        GridElement(id=get_globally_unique_id(id, "line"), type="line", name="id", kind="branch")
+        MonitoredElement(id=get_globally_unique_id(id, "line"), type="line", name="id", kind="branch")
         for id in pandapower_net.line.index
     ]
     non_existent_lines = [
-        GridElement(id=f"non_existent_line_{i}", type="line", name=f"non_existent_line_{i}", kind="branch") for i in range(5)
+        MonitoredElement(id=f"non_existent_line_{i}", type="line", name=f"non_existent_line_{i}", kind="branch")
+        for i in range(5)
     ]
 
     translated_elements, missing_elements, _duplicated_ids = translate_monitored_elements(
@@ -434,17 +441,12 @@ def test_get_branch_results_no_monitored(pandapower_net: pp.pandapowerNet):
 @pytest.fixture
 def monitored_buses(pandapower_net: pp.pandapowerNet) -> pat.DataFrame[PandapowerMonitoredElementSchema]:
     buses = pandapower_net.bus
-    monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-    for node_id, row in buses.iterrows():
-        monitored_elements.loc[get_globally_unique_id(node_id, "bus"), ["table", "table_id", "kind", "name"]] = (
-            "bus",
-            node_id,
-            "bus",
-            row.name,
-        )
-    monitored_elements.table_id = monitored_elements.table_id.astype(int)
-    monitored_elements.name = monitored_elements.name.astype(str)
-    return monitored_elements
+    rows = [
+        {"table": "bus", "table_id": node_id, "kind": "bus", "name": row.name, "monitoring_scope": None}
+        for node_id, row in buses.iterrows()
+    ]
+    indices = [get_globally_unique_id(node_id, "bus") for node_id in buses.index]
+    return pd.concat([get_empty_dataframe_from_model(PandapowerMonitoredElementSchema), pd.DataFrame(rows, index=indices)])
 
 
 def test_get_node_results(
@@ -600,16 +602,20 @@ def test_get_convergence_df():
 def test_get_failed_va_diff_results(pandapower_net: pp.pandapowerNet):
     contingency = PandapowerContingency(unique_id="contingency_1", name="contingency_1_name", elements=[], va_diff_info=[])
     timestep = 0
-    monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-    for i in range(3):
-        monitored_elements.loc[get_globally_unique_id(i, "switch"), ["table", "table_id", "kind", "name"]] = (
-            "switch",
-            i,
-            "switch",
-            f"Switch {i}",
-        )
-    monitored_elements.table_id = monitored_elements.table_id.astype(int)
-    monitored_elements.name = monitored_elements.name.astype(str)
+    rows = [
+        {
+            "table": "switch",
+            "table_id": i,
+            "kind": "switch",
+            "name": f"Switch {i}",
+            "monitoring_scope": frozenset(SwitchMonitoringScope),
+        }
+        for i in range(3)
+    ]
+    indices = [get_globally_unique_id(i, "switch") for i in range(3)]
+    monitored_elements = pd.concat(
+        [get_empty_dataframe_from_model(PandapowerMonitoredElementSchema), pd.DataFrame(rows, index=indices)]
+    )
 
     failed_va_diff_df = get_failed_va_diff_results(timestep, monitored_elements, contingency)
     assert isinstance(failed_va_diff_df, pd.DataFrame), "The result should be a DataFrame"
@@ -646,19 +652,18 @@ def test_get_failed_va_diff_results(pandapower_net: pp.pandapowerNet):
         elements=[PandapowerElements(unique_id=get_globally_unique_id(1, "trafo3w"), table_id=1, table="trafo3w", name="")],
     )
     failed_va_diff = get_failed_va_diff_results(timestep, no_monitored_switch_elements, contingency)
-    assert failed_va_diff_df.va_diff.isna().all(), "Trafo3w outage elements should be nan for now"
+    assert failed_va_diff.empty, "Trafo3w outages without monitored switches should return no VA-diff results"
 
 
 def test_get_regulating_element_results():
-    monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-    for i in range(3):
-        monitored_elements.loc[get_globally_unique_id(i, "regulating_element"), ["table", "table_id", "kind", "name"]] = (
-            "line",
-            i,
-            "branch",
-            f"Regulating Element {i}",
-        )
-    monitored_elements.table_id = monitored_elements.table_id.astype(int)
+    rows = [
+        {"table": "line", "table_id": i, "kind": "branch", "name": f"Regulating Element {i}", "monitoring_scope": None}
+        for i in range(3)
+    ]
+    indices = [get_globally_unique_id(i, "regulating_element") for i in range(3)]
+    monitored_elements = pd.concat(
+        [get_empty_dataframe_from_model(PandapowerMonitoredElementSchema), pd.DataFrame(rows, index=indices)]
+    )
     single_contingency = PandapowerContingency(
         unique_id="contingency_1",
         name="contingency_1_name",
@@ -773,9 +778,9 @@ def test_extract_contingencies_with_cgmes_id(pandapower_net: pp.pandapowerNet):
 
 def test_extract_monitored_elements_with_cgmes_id(pandapower_net: pp.pandapowerNet):
     monitored_elements = [
-        GridElement(id="line_1", name="Line 1", type="line", kind="branch"),
-        GridElement(id="trafo_1", name="Trafo 1", type="trafo", kind="branch"),
-        GridElement(id="bus_1", name="Bus 1", type="bus", kind="bus"),
+        MonitoredElement(id="line_1", name="Line 1", type="line", kind="branch"),
+        MonitoredElement(id="trafo_1", name="Trafo 1", type="trafo", kind="branch"),
+        MonitoredElement(id="bus_1", name="Bus 1", type="bus", kind="bus"),
     ]
 
     translated_monitored_elements, missing_elements, duplicated_ids = extract_monitored_elements_with_cgmes_id(

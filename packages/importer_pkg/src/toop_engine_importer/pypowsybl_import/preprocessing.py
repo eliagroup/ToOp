@@ -30,11 +30,16 @@ from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    DISTRIBUTED_SLACK,
+    CGMES_DISTRIBUTED_SLACK,
     POWSYBL_LOADFLOW_PARAM_PF,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_topology
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, save_lf_params_to_fs, save_powsybl_to_fs
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
+    load_lf_params_from_fs,
+    load_powsybl_from_fs,
+    save_lf_params_to_fs,
+    save_powsybl_to_fs,
+)
 from toop_engine_importer.network_graph import powsybl_station_to_graph
 from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
@@ -57,7 +62,7 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 from toop_engine_interfaces.messages.preprocess.preprocess_results import (
     ImportResult,
 )
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 logger = structlog.get_logger(__name__)
 
@@ -124,7 +129,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
     lines = network.get_lines(attributes=["name"])
     monitored_lines = [
-        GridElement(id=idx, name=row["name"], type="LINE", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="LINE", kind="branch")
         for idx, row in lines[network_masks.line_for_reward].iterrows()
     ]
     outaged_lines = [
@@ -135,7 +140,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
     trafos = network.get_2_windings_transformers(attributes=["name"])
     is_trafo2w = ~trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
     monitored_trafos = [
-        GridElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         for idx, row in trafos[is_trafo2w & network_masks.trafo_for_reward].iterrows()
     ]
     outaged_trafos = [
@@ -153,7 +158,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         trafos.name = trafos.name.str.replace(CONVERTED_TRAFO3W_ENDING, "", regex=True)
 
     monitored_trafo3w = [
-        GridElement(id=idx, name=row["name"], type="THREE_WINDINGS_TRANSFORMER", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="THREE_WINDINGS_TRANSFORMER", kind="branch")
         for idx, row in trafos[is_trafo3w & network_masks.trafo_for_reward].drop_duplicates().iterrows()
     ]
     outaged_trafo3w = [
@@ -167,7 +172,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
     tie_lines = network.get_tie_lines(attributes=["name"])
     monitored_tie_lines = [
-        GridElement(id=idx, name=row["name"], type="TIE_LINE", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="TIE_LINE", kind="branch")
         for idx, row in tie_lines[network_masks.tie_line_for_reward].iterrows()
     ]
     outaged_tie_lines = [
@@ -207,7 +212,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
 
     switches = network.get_switches(attributes=["name"])
     monitored_switches = [
-        GridElement(id=idx, name=row["name"], type="SWITCH", kind="branch")
+        MonitoredElement(id=idx, name=row["name"], type="SWITCH", kind="branch")
         for idx, row in switches[network_masks.switch_for_reward].iterrows()
     ]
     outaged_switches = [
@@ -219,12 +224,12 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
     relevant_bus_ids = buses.index[network_masks.relevant_subs].to_list()
     busbar_sections = network.get_busbar_sections(attributes=["name", "bus_id"])
     monitored_busbars = [
-        GridElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")
+        MonitoredElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")
         for idx, row in busbar_sections[busbar_sections.index.isin(relevant_bus_ids)].iterrows()
     ]
     busbreaker_buses = network.get_bus_breaker_view_buses(attributes=["name", "bus_id"])
     monitored_busbreakers = [
-        GridElement(id=idx, name=row["name"], type="BUS_BREAKER_BUS", kind="bus")
+        MonitoredElement(id=idx, name=row["name"], type="BUS_BREAKER_BUS", kind="bus")
         for idx, row in busbreaker_buses[busbreaker_buses.index.isin(relevant_bus_ids)].iterrows()
     ]
 
@@ -322,7 +327,6 @@ def convert_file(
     # Iterate over Loadflow parameters and voltage initialization methods to find a converging loadflow.
     # This is necessary because some grid files do not converge with the
     # default loadflow parameters and voltage initialization method.
-    lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
 
     statistics = PreProcessingStatistics(
         import_result=ImportResult(data_folder=importer_parameters.data_folder, grid_type=importer_parameters.data_type),
@@ -361,23 +365,28 @@ def convert_file(
         file_path=grid_file_path,
     )
 
-    save_lf_params_to_fs(
-        lf_params=lf_params,
-        filesystem=processed_gridfile_fs,
-        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
-    )
-
     # Reload Network because powsybl likes to change order during save
     network = load_powsybl_from_fs(
         filesystem=processed_gridfile_fs,
         file_path=grid_file_path,
     )
-
+    if importer_parameters.loadflow_parameters_file:
+        lf_params = load_lf_params_from_fs(
+            filesystem=unprocessed_gridfile_fs,
+            file_path=importer_parameters.loadflow_parameters_file,
+        )
+        main_result, *_ = pypowsybl.loadflow.run_ac(network, parameters=lf_params)
+    else:
+        lf_params, main_result = find_converging_loadflow_params(importer_parameters, network)
+    save_lf_params_to_fs(
+        lf_params=lf_params,
+        filesystem=processed_gridfile_fs,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"],
+    )
     # get N-1 masks
     status_update_fn("get_masks", "Creating Network Masks")
-    network_masks = get_network_masks(
-        network, main_result.reference_bus_id, importer_parameters, statistics, filesystem=unprocessed_gridfile_fs
-    )
+    slack_id = network.get_extension("slackTerminal").iloc[0].bus_id
+    network_masks = get_network_masks(network, slack_id, importer_parameters, statistics, filesystem=unprocessed_gridfile_fs)
     save_masks_to_filesystem(
         data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
     )
@@ -424,6 +433,28 @@ def convert_file(
     return statistics.import_result
 
 
+def get_slack_ids(network: Network) -> list[str] | None:
+    """Get the slack bus ids from the network.
+
+    Parameters
+    ----------
+    network: Network
+        The network to get the slack bus ids from.
+
+    Returns
+    -------
+    list[str] | None
+        The list of slack bus ids.
+    """
+    gen_ids_by_prio = network.get_extensions("referencePriorities").sort_values(by="priority").index
+    if gen_ids_by_prio.empty:
+        # in this case it will pick the most connected
+        return None
+    gens = network.get_generators(attributes=["bus_id"])
+    slack_ids = gens[gens != ""].bus_id.to_list()
+    return slack_ids
+
+
 def find_converging_loadflow_params(
     importer_parameters: BaseImporterParameters, network: Network
 ) -> tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]:
@@ -444,8 +475,9 @@ def find_converging_loadflow_params(
     Tuple[pypowsybl.loadflow.Parameters, pypowsybl.loadflow.ComponentResult]
         The loadflow parameters that converged and the result of the loadflow with those parameters.
     """
-    lf_params_list = [POWSYBL_LOADFLOW_PARAM_PF, DISTRIBUTED_SLACK]
+    lf_params_list = [POWSYBL_LOADFLOW_PARAM_PF, CGMES_DISTRIBUTED_SLACK]
     voltage_methods = [VoltageInitMode.PREVIOUS_VALUES, VoltageInitMode.DC_VALUES, VoltageInitMode.UNIFORM_VALUES]
+
     for lf_params_base, voltage_method in product(lf_params_list, voltage_methods):
         lf_params = deepcopy(lf_params_base)
         lf_params.provider_parameters = deepcopy(lf_params_base.provider_parameters)
@@ -463,7 +495,7 @@ def find_converging_loadflow_params(
                 "Loadflow did not converge with any voltage initialization method. "
                 "Please check the grid file and the loadflow parameters."
             )
-        lf_params = DISTRIBUTED_SLACK
+        lf_params = CGMES_DISTRIBUTED_SLACK
         logger.warning(
             "Loadflow did not converge with any voltage initialization method. "
             "Continuing with the DISTRIBUTED SLACK params but the loadflow results should be treated with caution."

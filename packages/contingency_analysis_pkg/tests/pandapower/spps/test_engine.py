@@ -361,13 +361,107 @@ def test_run_spps_no_activation_when_condition_false(pandapower_net: pp.pandapow
     assert result.activated_schemes_per_iter == []
 
 
-def test_run_spps_raises_on_initial_pf_failure() -> None:
-    net = pp.create_empty_network()
-    basecase_net = pp.create_empty_network()
-    conditions = _validate_conditions(pd.DataFrame([_cond_row(table_id=0)]))
+def test_run_spps_raises_on_initial_pf_failure(pandapower_net: pp.pandapowerNet) -> None:
+    net = deepcopy(pandapower_net)
+    basecase_net = deepcopy(pandapower_net)
+    lid = int(net.line.index[0])
+    conditions = _validate_conditions(pd.DataFrame([_cond_row(table_id=lid)]))
     actions = _validate_actions(pd.DataFrame([_act_row()]))
-    with pytest.raises(Exception):
-        run_spps(net, conditions, actions, set(), basecase_net, method="dc", max_iterations=2, runpp_kwargs={})
+
+    with mock.patch(
+        "toop_engine_contingency_analysis.pandapower.spps.engine._run_power_flow",
+        side_effect=pp.LoadflowNotConverged,
+    ):
+        with pytest.raises(SppsPowerFlowError, match="Initial power flow failed"):
+            run_spps(
+                net,
+                conditions,
+                actions,
+                set(),
+                basecase_net,
+                method="dc",
+                max_iterations=2,
+                runpp_kwargs={},
+                on_power_flow_error=SppsPowerFlowFailurePolicy.RAISE,
+            )
+
+
+def test_run_spps_initial_pf_failure_keep_previous_returns_failed_result(pandapower_net: pp.pandapowerNet) -> None:
+    net = deepcopy(pandapower_net)
+    basecase_net = deepcopy(pandapower_net)
+    lid = int(net.line.index[0])
+    conditions = _validate_conditions(pd.DataFrame([_cond_row(table_id=lid)]))
+    actions = _validate_actions(pd.DataFrame([_act_row()]))
+
+    with mock.patch(
+        "toop_engine_contingency_analysis.pandapower.spps.engine._run_power_flow",
+        side_effect=pp.LoadflowNotConverged,
+    ):
+        result = run_spps(
+            net,
+            conditions,
+            actions,
+            set(),
+            basecase_net,
+            method="dc",
+            max_iterations=2,
+            runpp_kwargs={},
+            on_power_flow_error=SppsPowerFlowFailurePolicy.KEEP_PREVIOUS,
+        )
+    assert result.power_flow_failed is True
+    assert result.iterations == 0
+    assert result.activated_schemes_per_iter == []
+
+
+def test_run_spps_initial_pf_controller_not_converged_raises_with_raise_policy(pandapower_net: pp.pandapowerNet) -> None:
+    net = deepcopy(pandapower_net)
+    basecase_net = deepcopy(pandapower_net)
+    lid = int(net.line.index[0])
+    conditions = _validate_conditions(pd.DataFrame([_cond_row(table_id=lid)]))
+    actions = _validate_actions(pd.DataFrame([_act_row()]))
+
+    with mock.patch(
+        "toop_engine_contingency_analysis.pandapower.spps.engine._run_power_flow",
+        side_effect=pp.ControllerNotConverged,
+    ):
+        with pytest.raises(SppsPowerFlowError, match="Initial power flow failed"):
+            run_spps(
+                net,
+                conditions,
+                actions,
+                set(),
+                basecase_net,
+                method="dc",
+                max_iterations=2,
+                runpp_kwargs={},
+                on_power_flow_error=SppsPowerFlowFailurePolicy.RAISE,
+            )
+
+
+def test_run_spps_initial_pf_controller_not_converged_returns_failed_result(pandapower_net: pp.pandapowerNet) -> None:
+    net = deepcopy(pandapower_net)
+    basecase_net = deepcopy(pandapower_net)
+    lid = int(net.line.index[0])
+    conditions = _validate_conditions(pd.DataFrame([_cond_row(table_id=lid)]))
+    actions = _validate_actions(pd.DataFrame([_act_row()]))
+
+    with mock.patch(
+        "toop_engine_contingency_analysis.pandapower.spps.engine._run_power_flow",
+        side_effect=pp.ControllerNotConverged,
+    ):
+        result = run_spps(
+            net,
+            conditions,
+            actions,
+            set(),
+            basecase_net,
+            method="dc",
+            max_iterations=2,
+            runpp_kwargs={},
+            on_power_flow_error=SppsPowerFlowFailurePolicy.KEEP_PREVIOUS,
+        )
+    assert result.power_flow_failed is True
+    assert result.iterations == 0
 
 
 def test_run_spps_max_iterations_exhausted_raises(pandapower_net: pp.pandapowerNet) -> None:

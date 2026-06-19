@@ -37,7 +37,7 @@ from toop_engine_dc_solver.preprocess.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     preprocess_bb_outages,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.stored_action_set import load_action_set
 
@@ -95,23 +95,6 @@ def test_convert_to_jax(network_data_preprocessed: NetworkData) -> None:
     static_information = convert_to_jax(network_data_preprocessed)
     validate_static_information(static_information)
     assert static_information.dynamic_information.n_nminus1_cases == len(static_information.solver_config.contingency_ids)
-
-
-def test_convert_to_jax_n_2(network_data_preprocessed: NetworkData) -> None:
-    static_information = convert_to_jax(
-        network_data_preprocessed,
-        enable_n_2=True,
-    )
-    assert static_information.dynamic_information.n2_baseline_analysis is not None
-    validate_static_information(static_information)
-    with TemporaryDirectory() as temp_dir:
-        temp_dir = Path(temp_dir)
-        save_static_information(temp_dir / "static_information.hdf5", static_information)
-        static_information2 = load_static_information(temp_dir / "static_information.hdf5")
-        assert np.array_equal(
-            static_information.dynamic_information.n2_baseline_analysis.n_2_overloads,
-            static_information2.dynamic_information.n2_baseline_analysis.n_2_overloads,
-        )
 
 
 def test_convert_to_jax_bb_outage(network_data_preprocessed: NetworkData) -> None:
@@ -195,7 +178,9 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
     folder = tmp_path_factory.mktemp("case30")
     case30_with_psts_powsybl(folder)
     filesystem_dir = DirFileSystem(str(folder))
-    _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=False, lf_params=DISTRIBUTED_SLACK)
+    _, static_information, _ = load_grid(
+        data_folder_dirfs=filesystem_dir, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
+    )
     validate_static_information(static_information)
     assert static_information.dynamic_information.nodal_injection_information.shift_degree_max.shape == (2,)
 

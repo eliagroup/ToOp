@@ -32,7 +32,9 @@ from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     get_globally_unique_id,
     get_globally_unique_id_from_index,
 )
+from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, BranchSide, NodeResultSchema, SwitchResultsSchema
+from toop_engine_interfaces.nminus1_definition import SwitchMonitoringScope
 
 
 class SwitchElementMappingSchema(pa.DataFrameModel):
@@ -338,11 +340,9 @@ def _get_switch_mapped_elements_by_origin_ids(
     sw_els_map: list[tuple[int, str, int]] = []
     buses_map: list[tuple[int, str]] = []
     graph = create_closed_bb_switches_graph(net)
-
+    #  we need to calculate for open too, because in spps we can close switches and then run cascading
     switch_mask = net.switch.index.isin(switches_ids)
-    closed_mask = net.switch.closed
-
-    switches = net.switch.loc[switch_mask & closed_mask]
+    switches = net.switch.loc[switch_mask]
     if switches.empty:
         return (
             pd.DataFrame(columns=["switch_id", "element", "side"]),
@@ -372,6 +372,40 @@ def _get_switch_mapped_elements_by_origin_ids(
     return branch_map_df, bus_map_df
 
 
+def compute_current_a(
+    p: np.ndarray,
+    q: np.ndarray,
+    vm_kv: np.ndarray,
+) -> np.ndarray:
+    """Compute the three-phase current magnitude from apparent power and voltage.
+
+    Derives the current at a measurement point given active power, reactive power,
+    and the local voltage magnitude. The apparent power is first reconstructed from
+    ``p`` and ``q``, then divided by the three-phase voltage base to produce a
+    current in amperes.
+
+    The formula applied is::
+
+        i [A] = sqrt(p**2 + q**2) / (sqrt(3) * vm_kv) * 1000
+
+    Parameters
+    ----------
+    p : np.ndarray
+        Active power in MW.
+    q : np.ndarray
+        Reactive power in Mvar.
+    vm_kv : np.ndarray
+        Voltage magnitude in kV at the measurement point.
+
+    Returns
+    -------
+    np.ndarray
+        Current magnitude in A.
+    """
+    denom = np.sqrt(3) * np.where(vm_kv == 0, np.nan, vm_kv)
+    return np.sqrt(p**2 + q**2) / denom * 1000
+
+
 def _compute_switch_flow_and_injection_results(
     branch_results: pat.DataFrame[BranchResultSchema],
     node_results: pat.DataFrame[NodeResultSchema],
@@ -398,7 +432,7 @@ def _compute_switch_flow_and_injection_results(
        The apparent power ``s`` and current ``i`` are then computed as:
 
        - ``s = sqrt(p**2 + q**2)``
-       - ``i = s / (sqrt(3) * vm)``
+       - ``i`` is computed via :func:`compute_current_a` (result in A)
 
        Rows with ``vm == 0`` are removed before current calculation.
 
@@ -435,7 +469,7 @@ def _compute_switch_flow_and_injection_results(
         - ``q``: aggregated reactive power
         - ``vm``: voltage magnitude used for current calculation
         - ``s``: apparent power
-        - ``i``: current
+        - ``i``: current in A
     """
     # Branch contribution
     if branch_results.empty:
@@ -467,7 +501,9 @@ def _compute_switch_flow_and_injection_results(
 
     switch_results["s"] = np.sqrt(switch_results["p"] ** 2 + switch_results["q"] ** 2)
     switch_results = switch_results[switch_results["vm"] != 0]
-    switch_results["i"] = switch_results["s"] / (np.sqrt(3) * switch_results["vm"])
+    switch_results["i"] = compute_current_a(
+        switch_results["p"].values, switch_results["q"].values, switch_results["vm"].values
+    )
 
     return switch_results
 
@@ -535,7 +571,8 @@ def get_switch_mapped_elements(
     net : pp.pandapowerNet
         Pandapower network containing buses, switches, and branch elements.
     monitored_elements : pat.DataFrame[PandapowerMonitoredElementSchema]
-        Table of monitored elements. Only rows with ``kind == "switch"`` are used.
+        Table of monitored elements. Only switches whose ``monitoring_scope`` includes
+        :attr:`SwitchMonitoringScope.FLOW` are included.
     side : Literal["bus", "element"]
         Defines from which side of the switch the traversal starts:
 
@@ -554,7 +591,9 @@ def get_switch_mapped_elements(
         - a branch-like element with a defined ``side``
         - a bus (with ``side = NaN``)
     """
-    monitored_switches = monitored_elements.query("kind == 'switch'")["table_id"].to_list()
+    monitored_switches = monitored_elements[
+        monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.FLOW in s)
+    ]["table_id"].to_list()
 
     branch_map_df, bus_map_df = _get_switch_mapped_elements_by_origin_ids(net, monitored_switches, side)
 
@@ -637,11 +676,71 @@ def get_switch_results(
         - apparent power (``s``)
         - metadata columns (``element_name``, ``contingency_name``)
     """
-    switch_results = _compute_switch_flow_and_injection_results(
-        branch_results=branch_results,
-        node_results=node_results,
-        switch_element_mapping=switch_element_mapping,
+    closed_ids = net.switch.index[net.switch["closed"]]
+    all_switch_ids = switch_element_mapping["switch_id"].drop_duplicates()
+    all_switch_ids = all_switch_ids[all_switch_ids.isin(closed_ids)]
+    res_switch = (
+        net.res_switch[net.res_switch["p_from_mw"].notna()]
+        if hasattr(net, "res_switch") and not net.res_switch.empty
+        else pd.DataFrame()
     )
+
+    parts: list[pd.DataFrame] = []
+
+    direct_ids = (
+        all_switch_ids[all_switch_ids.isin(res_switch.index)] if not res_switch.empty else pd.Series([], dtype="int64")
+    )
+    calc_ids = all_switch_ids[~all_switch_ids.isin(res_switch.index)]
+
+    if not direct_ids.empty:
+        rs = res_switch.loc[direct_ids]
+        from_bus_ids = net.switch.loc[direct_ids, "bus"]
+        to_bus_ids = net.switch.loc[direct_ids, "element"]
+        vm_from_kv = net.res_bus.loc[from_bus_ids.values, "vm_pu"].values * net.bus.loc[from_bus_ids.values, "vn_kv"].values
+        vm_to_kv = net.res_bus.loc[to_bus_ids.values, "vm_pu"].values * net.bus.loc[to_bus_ids.values, "vn_kv"].values
+        p_from = rs["p_from_mw"].values
+        q_from = rs["q_from_mvar"].values
+        p_to = rs["p_to_mw"].values
+        q_to = rs["q_to_mvar"].values
+        i_from_a = compute_current_a(p_from, q_from, vm_from_kv)
+        i_to_a = compute_current_a(p_to, q_to, vm_to_kv)
+        from_rows = pd.DataFrame(
+            {
+                "switch_id": direct_ids.values,
+                "p": p_from,
+                "q": q_from,
+                "vm": vm_from_kv,
+                "i": i_from_a,
+                "side": "from",
+            }
+        )
+        to_rows = pd.DataFrame(
+            {
+                "switch_id": direct_ids.values,
+                "p": p_to,
+                "q": q_to,
+                "vm": vm_to_kv,
+                "i": i_to_a,
+                "side": "to",
+            }
+        )
+        parts.extend([from_rows, to_rows])
+
+    if not calc_ids.empty:
+        calc_mapping = switch_element_mapping[switch_element_mapping["switch_id"].isin(calc_ids)]
+        calc_results = _compute_switch_flow_and_injection_results(
+            branch_results=branch_results,
+            node_results=node_results,
+            switch_element_mapping=calc_mapping,
+        )
+        calc_results["side"] = None
+        parts.append(calc_results)
+
+    if not parts:
+        return get_empty_dataframe_from_model(SwitchResultsSchema)
+
+    switch_results = pd.concat(parts, ignore_index=True)
+
     switch_results = _orient_switch_results_to_relay_side(net, switch_results)
     switch_results["element"] = get_globally_unique_id_from_index(switch_results["switch_id"], element_type="switch")
     switch_results["element_name"] = switch_results["switch_id"].map(net.switch["name"])
@@ -701,6 +800,7 @@ def get_failed_switch_results(
             "i": np.nan,
             "element_name": "",
             "contingency_name": "",
+            "side": None,
         },
     )
 

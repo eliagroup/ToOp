@@ -29,7 +29,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     extract_nminus1_definition,
     load_lf_params,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
     OUTPUT_FILE_NAMES,
     POSTPROCESSING_PATHS,
@@ -193,7 +193,7 @@ def test_validate_loadflows_with_psts(tmp_path: Path) -> None:
     _stats, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(tmp_path)),
         pandapower=False,
-        lf_params=DISTRIBUTED_SLACK,
+        lf_params=CGMES_DISTRIBUTED_SLACK,
     )
     static_information = replace(
         static_information,

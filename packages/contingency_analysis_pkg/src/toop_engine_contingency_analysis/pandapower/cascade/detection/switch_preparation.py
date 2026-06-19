@@ -51,14 +51,21 @@ def get_complex_impedance(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     Parameters
     ----------
     df : pd.DataFrame
-        Switch result table with voltage, current, active power, and reactive power.
+        Switch result table with the following columns:
+
+        - ``vm``: voltage magnitude in kV.
+        - ``i``: current magnitude in A. Rows with ``i == 0`` produce NaN.
+        - ``p``: active power in MW (used to determine the impedance angle).
+        - ``q``: reactive power in Mvar (used to determine the impedance angle).
 
     Returns
     -------
-    tuple
-        Pair of series-like values: resistance and reactance.
+    tuple[pd.Series, pd.Series]
+        Pair ``(r, x)`` where resistance ``r`` and reactance ``x`` are both in Ohm.
+        NaN is returned for rows where ``i == 0``.
     """
-    v_phase_kv = df["vm"] / np.sqrt(3)
-    z_ohm = v_phase_kv / df["i"]
+    v_phase_v = df["vm"] * 1000 / np.sqrt(3)
+    i = df["i"].replace(0, np.nan)
+    z_ohm = v_phase_v / i
     phi_rad = np.arctan2(df["q"], df["p"])
     return z_ohm * np.cos(phi_rad), z_ohm * np.sin(phi_rad)

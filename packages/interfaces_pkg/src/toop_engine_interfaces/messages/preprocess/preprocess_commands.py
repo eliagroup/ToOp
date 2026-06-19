@@ -218,6 +218,11 @@ class BaseImporterParameters(BaseModel):
     relevant_station_rules: RelevantStationRules = RelevantStationRules()
     """Rules to determine whether a substation is relevant or not."""
 
+    loadflow_parameters_file: Optional[Path] = None
+    """The path to the loadflow parameters file if present.
+    This file should contain the loadflow parameters in the format defined by the data_type.
+    """
+
 
 class UcteImporterParameters(BaseImporterParameters):
     """Parameters that are required to import the data from a UCTE file.
@@ -342,13 +347,6 @@ class PreprocessParameters(BaseModel):
 
     ac_dc_interpolation: float = 0.0
     """Whether to use the DC loadflow as the base loadflow (0) or the AC loadflow (1). Can also be anything in between."""
-
-    enable_n_2: bool = False
-    """Whether to enable N-2 analysis"""
-
-    n_2_more_splits_penalty: float = 2000.0
-    """How to penalize additional splits in N-2 that were not there in the unsplit grid. Will be
-    added to the overload energy penalty."""
 
     preprocess_bb_outages: bool = False
     """Whether to preprocess and persist busbar outage data into the grid file.

@@ -4,7 +4,7 @@ The preprocessing process is split into three parts:
 - An importing procedure that prepares the grid data—this is specific to the data source and power system modelling framework. The code for this is not hosted in this repository, but in the importer repo.
 
 - A [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] routine which extracts DC-loadflow relevant information from a backend and performs various data transformations.
-- A [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine which reformats the data from the Python format used during preprocessing to the format required by the solver. All processing happens in `preprocess`; this function purely reformats. The only exception is currently the N-2 unsplit analysis.
+- A [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine which reformats the data from the Python format used during preprocessing to the format required by the solver. All processing happens in `preprocess`; this function purely reformats. 
 
 The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] routine combines the two and runs an initial loadflow. This routine serves as a top-level entrypoint for preprocessing.
 
@@ -58,7 +58,6 @@ The [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_t
 - `pad_out_branch_actions` pads the action set to upper bound length.
 - `convert_rel_bb_outage_data` pads and transforms the busbar outage information.
 - `create_static_information` copies all data into the static information dataclass.
-- `unsplit_n2_analysis`, if N-2 is enabled, runs an unsplit N-2 analysis to determine branch limits for N-2.
 
 ## `load_grid()` routine
 

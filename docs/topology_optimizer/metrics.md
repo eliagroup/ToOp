@@ -68,11 +68,11 @@ These metrics measure operational aspects of the topology rather than electrical
 
 - **max_va_across_coupler**: Maximum voltage angle difference across couplers in split substations. Only applicable in AC analysis.
 
-- **max_va_diff_n_0** / **max_va_diff_n_1**: Maximum voltage angle difference across any branch. AC analysis only.
+- **max_va_diff_n_0** / **max_va_diff_n_1**: Maximum absolute voltage angle difference across any branch. AC analysis only.
 
-- **critical_va_diff_count_n_0** / **critical_va_diff_count_n_1**: Number of `(timestep, element)` groups whose maximum voltage angle difference across contingencies exceeds a configurable threshold. AC analysis only.
+- **critical_va_diff_count_n_0** / **critical_va_diff_count_n_1**: Number of `(timestep, element)` groups whose maximum absolute voltage angle difference across contingencies exceeds a configurable threshold. AC analysis only.
 
-- **voltage_jump_count_n_1**: Number of bus voltages, that jumped by more than X % between their N0-voltage and their N1-voltage
+- **voltage_jump_count_n_1**: Number of bus voltages that jumped by more than X% between their N-0 voltage and their N-1 voltage. AC analysis only.
 
 - **overload_current_n_0** / **overload_current_n_1**: Total overload measured in amperes (current) rather than MW. While this can be computed in DC, currently only the AC version supports this.
 

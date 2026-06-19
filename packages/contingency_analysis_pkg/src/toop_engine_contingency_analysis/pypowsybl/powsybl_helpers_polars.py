@@ -344,7 +344,9 @@ def get_va_diff_results_polars(
     iteration_va_diff = iteration_va_diff.rename({"v_angle": "v_angle_2"})
 
     # Calculate the voltage angle difference
-    iteration_va_diff = iteration_va_diff.with_columns((pl.col("v_angle_1") - pl.col("v_angle_2")).alias("va_diff"))
+    iteration_va_diff = iteration_va_diff.with_columns(
+        (pl.col("v_angle_1") - pl.col("v_angle_2")).cast(pl.Float64).alias("va_diff")
+    )
 
     # drop duplicates
     iteration_va_diff = iteration_va_diff.unique()

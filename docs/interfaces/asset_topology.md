@@ -54,7 +54,7 @@ Asset Topology is essential when stations do not allow free assignment of lines 
 - [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint]  
   Represents an asset with a setpoint (e.g., PST or HVDC).
 
-- [`RealizedStation`][toop_engine_interfaces.asset_topology.RealizedStation]  
+- [`AppliedStation`][toop_engine_interfaces.asset_topology.AppliedStation]  
   Contains a station and the changes made to it.
 
 - [`RealizedTopology`][toop_engine_interfaces.asset_topology.RealizedTopology]  

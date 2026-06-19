@@ -302,8 +302,8 @@ def test_get_changes_from_switching_table(ucte_asset_topology, caplog):
     result = get_changes_from_switching_table(station)
     assert result == expected
 
-    topology_stations[0].asset_switching_table[0][3] = False
-    topology_stations[0].asset_switching_table[1][3] = True
+    topology_stations[0].branch_switching_table[0][2] = False
+    topology_stations[0].branch_switching_table[1][2] = True
     station = topology_stations[0]
     expected = [
         {
@@ -317,15 +317,15 @@ def test_get_changes_from_switching_table(ucte_asset_topology, caplog):
     assert result == expected
 
     # Test case where asset is connected to multiple busbars (should raise ValueError)
-    topology_stations[0].asset_switching_table[0][3] = True
-    topology_stations[0].asset_switching_table[1][3] = True
+    topology_stations[0].branch_switching_table[0][2] = True
+    topology_stations[0].branch_switching_table[1][2] = True
     station = topology_stations[0]
     with pytest.raises(ValueError):
         get_changes_from_switching_table(station)
 
     # test case disconnected asset
-    topology_stations[0].asset_switching_table[0][3] = False
-    topology_stations[0].asset_switching_table[1][3] = False
+    topology_stations[0].branch_switching_table[0][2] = False
+    topology_stations[0].branch_switching_table[1][2] = False
     station = topology_stations[0]
     expected = [
         {
@@ -339,18 +339,20 @@ def test_get_changes_from_switching_table(ucte_asset_topology, caplog):
     assert result == expected
 
     # test where an asset is connected to two busbars within a station an is now reassigned
-    topology_stations[0].asset_switching_table[0][3] = False
-    topology_stations[0].asset_switching_table[1][3] = True
-    topology_stations[0].busbars.append(Busbar(grid_model_id="D8SU1_13", type=None, name="", int_id=0, in_service=True))
-    topology_stations[0].assets[3].grid_model_id = "D8SU1_11 D8SU1_13 1"
+    topology_stations[0].branch_switching_table[0][2] = False
+    topology_stations[0].branch_switching_table[1][2] = True
+    topology_stations[0].busbars.append(
+        Busbar(grid_model_id="D8SU1_13", busbar_type=None, name="", int_id=0, in_service=True)
+    )
+    topology_stations[0].branch_connections[2].asset.grid_model_id = "D8SU1_11 D8SU1_13 1"
     station = topology_stations[0]
     with pytest.raises(ValueError):
         get_changes_from_switching_table(station)
 
     # Test case where busbar connection is not found
-    topology_stations[0].asset_switching_table[0][3] = False
-    topology_stations[0].asset_switching_table[1][3] = True
-    topology_stations[0].assets[3].grid_model_id = "NOT_A_VALID_ID"
+    topology_stations[0].branch_switching_table[0][2] = False
+    topology_stations[0].branch_switching_table[1][2] = True
+    topology_stations[0].branch_connections[2].asset.grid_model_id = "NOT_A_VALID_ID"
     station = topology_stations[0]
     with pytest.raises(ValueError):
         get_changes_from_switching_table(station)
@@ -552,11 +554,11 @@ def test_asset_topo_to_uct(ucte_asset_topology, ucte_file):
 
         # Test case where asset is reassigned
         # test trafo
-        topology_stations[0].asset_switching_table[0][3] = False
-        topology_stations[0].asset_switching_table[1][3] = True
+        topology_stations[0].branch_switching_table[0][2] = False
+        topology_stations[0].branch_switching_table[1][2] = True
         # test line
-        topology_stations[0].asset_switching_table[0][4] = True
-        topology_stations[0].asset_switching_table[1][4] = False
+        topology_stations[0].branch_switching_table[0][3] = True
+        topology_stations[0].branch_switching_table[1][3] = False
         # test coupler
         topology_stations[0].couplers[0].open = True
 
@@ -565,7 +567,7 @@ def test_asset_topo_to_uct(ucte_asset_topology, ucte_file):
         preamble, nodes, lines, trafos, trafo_reg, postamble = parse_ucte(input_uct_contents)
         # test order change of line
         # original grid id: "D2SU1_31 D2SU1_31 2"
-        topology_stations[0].assets[1].grid_model_id = "D8SU1_12 D7SU1_11 1"
+        topology_stations[0].branch_connections[1].asset.grid_model_id = "D8SU1_12 D7SU1_11 1"
         lines.iloc[4, 2] = "1"
         lines.iloc[4, 0] = "D8SU1_11"
         lines.iloc[4, 1] = "D7SU2_11"

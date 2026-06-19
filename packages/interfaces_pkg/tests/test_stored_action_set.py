@@ -13,8 +13,10 @@ import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from pydantic import ValidationError
 from toop_engine_interfaces.asset_topology import (
+    BranchAsset,
     Busbar,
     BusbarCoupler,
+    InjectionAsset,
     MaterializedAssetConnection,
     MaterializedStation,
     RawStation,
@@ -42,6 +44,8 @@ def build_raw_station(
     couplers: list[BusbarCoupler],
     asset_ids: list[str],
     asset_switching_table: np.ndarray,
+    injection_asset_ids: list[str] | None = None,
+    injection_switching_table: np.ndarray | None = None,
     asset_terminals: list[str | None] | None = None,
     asset_bay_ids: list[str | None] | None = None,
 ) -> RawStation:
@@ -69,6 +73,13 @@ def build_raw_station(
     RawStation
         Raw station representation suitable for topology construction in tests.
     """
+    resolved_injection_asset_ids = injection_asset_ids if injection_asset_ids is not None else []
+    resolved_injection_switching_table = (
+        injection_switching_table
+        if injection_switching_table is not None
+        else np.zeros((len(busbars), len(resolved_injection_asset_ids)), dtype=bool)
+    )
+
     return RawStation(
         grid_model_id=grid_model_id,
         name=None,
@@ -77,7 +88,7 @@ def build_raw_station(
         voltage_level=None,
         busbars=busbars,
         couplers=couplers,
-        asset_connections=[
+        branch_connections=[
             StationAssetConnection(asset_id=asset_id, terminal=asset_terminal, asset_bay_id=asset_bay_id)
             for asset_id, asset_terminal, asset_bay_id in zip(
                 asset_ids,
@@ -86,8 +97,53 @@ def build_raw_station(
                 strict=True,
             )
         ],
-        asset_switching_table=asset_switching_table,
-        asset_connectivity=None,
+        injection_connections=[
+            StationAssetConnection(asset_id=asset_id, terminal=None, asset_bay_id=None)
+            for asset_id in resolved_injection_asset_ids
+        ],
+        branch_switching_table=asset_switching_table,
+        injection_switching_table=resolved_injection_switching_table,
+        branch_connectivity=None,
+        injection_connectivity=None,
+        model_log=None,
+    )
+
+
+def build_materialized_station(
+    grid_model_id: str,
+    busbars: list[Busbar],
+    couplers: list[BusbarCoupler],
+    assets: list[SwitchableAsset],
+    asset_switching_table: np.ndarray,
+    injection_assets: list[SwitchableAsset] | None = None,
+    injection_switching_table: np.ndarray | None = None,
+) -> MaterializedStation:
+    """Build a materialized station using split branch/injection fields."""
+    resolved_injection_assets = injection_assets if injection_assets is not None else []
+    resolved_injection_switching_table = (
+        injection_switching_table
+        if injection_switching_table is not None
+        else np.zeros((len(busbars), len(resolved_injection_assets)), dtype=bool)
+    )
+    return MaterializedStation.model_construct(
+        grid_model_id=grid_model_id,
+        name=None,
+        type=None,
+        region=None,
+        voltage_level=None,
+        busbars=busbars,
+        couplers=couplers,
+        branch_connections=[
+            MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None) for asset in assets
+        ],
+        injection_connections=[
+            MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None)
+            for asset in resolved_injection_assets
+        ],
+        branch_switching_table=asset_switching_table,
+        injection_switching_table=resolved_injection_switching_table,
+        branch_connectivity=None,
+        injection_connectivity=None,
         model_log=None,
     )
 
@@ -174,12 +230,18 @@ def test_store_and_load_station_diff_io_random_roundtrip(tmp_path: Path):
         n_actions = int(rng.integers(1, 8))
         n_couplers = int(rng.integers(1, 6))
         n_busbars = int(rng.integers(1, 6))
-        n_assets = int(rng.integers(1, 10))
+        n_branch_assets = int(rng.integers(1, 10))
+        n_injection_assets = int(rng.integers(0, 6))
         station_diffs.append(
             StationDiffArray(
                 grid_model_id=f"station_{station_idx}",
                 coupler_open=rng.integers(0, 2, size=(n_actions, n_couplers), dtype=np.uint8).astype(bool),
-                switching_table=rng.integers(0, 2, size=(n_actions, n_busbars, n_assets), dtype=np.uint8).astype(bool),
+                branch_switching_table=rng.integers(
+                    0, 2, size=(n_actions, n_busbars, n_branch_assets), dtype=np.uint8
+                ).astype(bool),
+                injection_switching_table=rng.integers(
+                    0, 2, size=(n_actions, n_busbars, n_injection_assets), dtype=np.uint8
+                ).astype(bool),
             )
         )
 
@@ -194,9 +256,11 @@ def test_store_and_load_station_diff_io_random_roundtrip(tmp_path: Path):
         result = loaded_by_id[original.grid_model_id]
         assert result.grid_model_id == original.grid_model_id
         assert result.coupler_open.dtype == bool
-        assert result.switching_table.dtype == bool
+        assert result.branch_switching_table.dtype == bool
+        assert result.injection_switching_table.dtype == bool
         assert np.array_equal(result.coupler_open, original.coupler_open)
-        assert np.array_equal(result.switching_table, original.switching_table)
+        assert np.array_equal(result.branch_switching_table, original.branch_switching_table)
+        assert np.array_equal(result.injection_switching_table, original.injection_switching_table)
 
 
 def test_store_and_load_station_diff_io_empty_list(tmp_path: Path):
@@ -211,7 +275,8 @@ def test_station_diff_array_raises_for_mismatched_action_count() -> None:
         StationDiffArray(
             grid_model_id="station_1",
             coupler_open=np.zeros((5, 1), dtype=bool),
-            switching_table=np.zeros((10, 2, 7), dtype=bool),
+            branch_switching_table=np.zeros((10, 2, 7), dtype=bool),
+            injection_switching_table=np.zeros((10, 2, 0), dtype=bool),
         )
 
 
@@ -221,12 +286,14 @@ def test_store_and_load_station_diff_io_supports_different_station_action_counts
         StationDiffArray(
             grid_model_id="station_1",
             coupler_open=np.zeros((5, 1), dtype=bool),
-            switching_table=np.zeros((5, 2, 7), dtype=bool),
+            branch_switching_table=np.zeros((5, 2, 7), dtype=bool),
+            injection_switching_table=np.zeros((5, 2, 1), dtype=bool),
         ),
         StationDiffArray(
             grid_model_id="station_2",
             coupler_open=np.zeros((10, 2), dtype=bool),
-            switching_table=np.zeros((10, 3, 4), dtype=bool),
+            branch_switching_table=np.zeros((10, 3, 4), dtype=bool),
+            injection_switching_table=np.zeros((10, 3, 2), dtype=bool),
         ),
     ]
 
@@ -237,7 +304,8 @@ def test_store_and_load_station_diff_io_supports_different_station_action_counts
         ("station_1", (5, 1)),
         ("station_2", (10, 2)),
     ]
-    assert [station_diff.switching_table.shape for station_diff in loaded] == [(5, 2, 7), (10, 3, 4)]
+    assert [station_diff.branch_switching_table.shape for station_diff in loaded] == [(5, 2, 7), (10, 3, 4)]
+    assert [station_diff.injection_switching_table.shape for station_diff in loaded] == [(5, 2, 1), (10, 3, 2)]
 
 
 def test_store_and_load_station_diff_io_preserves_station_order(tmp_path: Path) -> None:
@@ -246,17 +314,20 @@ def test_store_and_load_station_diff_io_preserves_station_order(tmp_path: Path) 
         StationDiffArray(
             grid_model_id="station_10",
             coupler_open=np.zeros((1, 1), dtype=bool),
-            switching_table=np.zeros((1, 1, 1), dtype=bool),
+            branch_switching_table=np.zeros((1, 1, 1), dtype=bool),
+            injection_switching_table=np.zeros((1, 1, 0), dtype=bool),
         ),
         StationDiffArray(
             grid_model_id="station_2",
             coupler_open=np.zeros((1, 1), dtype=bool),
-            switching_table=np.zeros((1, 1, 1), dtype=bool),
+            branch_switching_table=np.zeros((1, 1, 1), dtype=bool),
+            injection_switching_table=np.zeros((1, 1, 0), dtype=bool),
         ),
         StationDiffArray(
             grid_model_id="station_1",
             coupler_open=np.zeros((1, 1), dtype=bool),
-            switching_table=np.zeros((1, 1, 1), dtype=bool),
+            branch_switching_table=np.zeros((1, 1, 1), dtype=bool),
+            injection_switching_table=np.zeros((1, 1, 0), dtype=bool),
         ),
     ]
 
@@ -279,9 +350,12 @@ def test_validate_actions_grouped_accepts_grouped_actions():
         voltage_level=None,
         busbars=[],
         couplers=[],
-        asset_connections=[],
-        asset_switching_table=np.zeros((0, 0), dtype=bool),
-        asset_connectivity=None,
+        branch_connections=[],
+        injection_connections=[],
+        branch_switching_table=np.zeros((0, 0), dtype=bool),
+        injection_switching_table=np.zeros((0, 0), dtype=bool),
+        branch_connectivity=None,
+        injection_connectivity=None,
         model_log=None,
     )
     station_s2 = station_s1.model_copy(update={"grid_model_id": "s2"})
@@ -300,9 +374,12 @@ def test_validate_actions_grouped_raises_for_non_grouped_actions():
         voltage_level=None,
         busbars=[],
         couplers=[],
-        asset_connections=[],
-        asset_switching_table=np.zeros((0, 0), dtype=bool),
-        asset_connectivity=None,
+        branch_connections=[],
+        injection_connections=[],
+        branch_switching_table=np.zeros((0, 0), dtype=bool),
+        injection_switching_table=np.zeros((0, 0), dtype=bool),
+        branch_connectivity=None,
+        injection_connectivity=None,
         model_log=None,
     )
     station_s2 = station_s1.model_copy(update={"grid_model_id": "s2"})
@@ -340,18 +417,21 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
         voltage_level=None,
         busbars=busbars,
         couplers=[],
-        asset_connections=[MaterializedAssetConnection.model_construct(asset=assets[0], terminal=None, asset_bay=None)],
-        asset_switching_table=np.zeros((1, 1), dtype=bool),
-        asset_connectivity=None,
+        branch_connections=[MaterializedAssetConnection.model_construct(asset=assets[0], terminal=None, asset_bay=None)],
+        injection_connections=[],
+        branch_switching_table=np.zeros((1, 1), dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+        branch_connectivity=None,
+        injection_connectivity=None,
         model_log=None,
     )
     station_b = station_a.model_copy(
         update={
             "grid_model_id": "station_b",
-            "asset_connections": [
-                station_a.asset_connections[0].model_copy(
+            "branch_connections": [
+                station_a.branch_connections[0].model_copy(
                     update={
-                        "asset": station_a.asset_connections[0].asset.model_copy(
+                        "asset": station_a.branch_connections[0].asset.model_copy(
                             update={"grid_model_id": "station_b_asset_0"}
                         )
                     }
@@ -373,9 +453,12 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
                 voltage_level=None,
                 busbars=busbars,
                 couplers=[],
-                asset_connections=[StationAssetConnection(asset_id="station_a_asset_0", terminal=None, asset_bay_id=None)],
-                asset_switching_table=np.zeros((1, 1), dtype=bool),
-                asset_connectivity=None,
+                branch_connections=[StationAssetConnection(asset_id="station_a_asset_0", terminal=None, asset_bay_id=None)],
+                injection_connections=[],
+                branch_switching_table=np.zeros((1, 1), dtype=bool),
+                injection_switching_table=np.zeros((1, 0), dtype=bool),
+                branch_connectivity=None,
+                injection_connectivity=None,
                 model_log=None,
             ),
             RawStation(
@@ -386,13 +469,17 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
                 voltage_level=None,
                 busbars=busbars,
                 couplers=[],
-                asset_connections=[StationAssetConnection(asset_id="station_b_asset_0", terminal=None, asset_bay_id=None)],
-                asset_switching_table=np.zeros((1, 1), dtype=bool),
-                asset_connectivity=None,
+                branch_connections=[StationAssetConnection(asset_id="station_b_asset_0", terminal=None, asset_bay_id=None)],
+                injection_connections=[],
+                branch_switching_table=np.zeros((1, 1), dtype=bool),
+                injection_switching_table=np.zeros((1, 0), dtype=bool),
+                branch_connectivity=None,
+                injection_connectivity=None,
                 model_log=None,
             ),
         ],
-        assets=[station_a.asset_connections[0].asset, station_b.asset_connections[0].asset],
+        branch_assets=[station_a.branch_connections[0].asset, station_b.branch_connections[0].asset],
+        injection_assets=[],
         asset_setpoints=None,
         timestamp=datetime.now(),
         metrics=None,
@@ -417,6 +504,7 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
     starting_stations: list[MaterializedStation] = []
     starting_raw_stations: list[RawStation] = []
     starting_assets: list[SwitchableAsset] = []
+    starting_injection_assets: list[SwitchableAsset] = []
     actions: list[MaterializedStation] = []
     expected_by_station: dict[str, list[MaterializedStation]] = {}
 
@@ -424,7 +512,8 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
     for station_idx in range(n_stations):
         grid_model_id = f"station_{station_idx}"
         n_busbars = int(rng.integers(2, 5))
-        n_assets = int(rng.integers(1, 7))
+        n_branch_assets = int(rng.integers(1, 7))
+        n_injection_assets = int(rng.integers(0, 4))
         n_couplers = int(rng.integers(1, 6))
         n_actions = int(rng.integers(1, 6))
 
@@ -439,14 +528,23 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
             )
             for busbar_idx in range(n_busbars)
         ]
-        assets = [
-            SwitchableAsset.model_construct(
+        branch_assets = [
+            BranchAsset.model_construct(
                 grid_model_id=f"{grid_model_id}_asset_{asset_idx}",
                 type=None,
                 name=None,
                 in_service=True,
             )
-            for asset_idx in range(n_assets)
+            for asset_idx in range(n_branch_assets)
+        ]
+        injection_assets = [
+            InjectionAsset.model_construct(
+                grid_model_id=f"{grid_model_id}_inj_{asset_idx}",
+                type=None,
+                name=None,
+                in_service=True,
+            )
+            for asset_idx in range(n_injection_assets)
         ]
 
         starting_couplers = [
@@ -463,32 +561,32 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
             for coupler_idx in range(n_couplers)
         ]
 
-        starting_switching_table = rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool)
+        starting_branch_switching_table = rng.integers(0, 2, size=(n_busbars, n_branch_assets), dtype=np.uint8).astype(bool)
+        starting_injection_switching_table = rng.integers(0, 2, size=(n_busbars, n_injection_assets), dtype=np.uint8).astype(
+            bool
+        )
         starting_raw_stations.append(
             build_raw_station(
                 grid_model_id,
                 busbars,
                 starting_couplers,
-                [asset.grid_model_id for asset in assets],
-                starting_switching_table,
+                [asset.grid_model_id for asset in branch_assets],
+                starting_branch_switching_table,
+                injection_asset_ids=[asset.grid_model_id for asset in injection_assets],
+                injection_switching_table=starting_injection_switching_table,
             )
         )
-        starting_assets.extend(assets)
+        starting_assets.extend(branch_assets)
+        starting_injection_assets.extend(injection_assets)
 
-        starting_station = MaterializedStation.model_construct(
+        starting_station = build_materialized_station(
             grid_model_id=grid_model_id,
-            name=None,
-            type=None,
-            region=None,
-            voltage_level=None,
             busbars=busbars,
             couplers=starting_couplers,
-            asset_connections=[
-                MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None) for asset in assets
-            ],
-            asset_switching_table=starting_switching_table,
-            asset_connectivity=None,
-            model_log=None,
+            assets=branch_assets,
+            asset_switching_table=starting_branch_switching_table,
+            injection_assets=injection_assets,
+            injection_switching_table=starting_injection_switching_table,
         )
         starting_stations.append(starting_station)
 
@@ -497,12 +595,14 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
             couplers = [
                 coupler.model_copy(update={"open": bool(rng.integers(0, 2))}) for coupler in starting_station.couplers
             ]
-            switching_table = rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool)
+            branch_switching_table = rng.integers(0, 2, size=(n_busbars, n_branch_assets), dtype=np.uint8).astype(bool)
+            injection_switching_table = rng.integers(0, 2, size=(n_busbars, n_injection_assets), dtype=np.uint8).astype(bool)
             station_actions.append(
                 starting_station.model_copy(
                     update={
                         "couplers": couplers,
-                        "asset_switching_table": switching_table,
+                        "branch_switching_table": branch_switching_table,
+                        "injection_switching_table": injection_switching_table,
                     }
                 )
             )
@@ -515,7 +615,8 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
         grid_model_file=None,
         name=None,
         raw_stations=starting_raw_stations,
-        assets=starting_assets,
+        branch_assets=starting_assets,
+        injection_assets=starting_injection_assets,
         asset_setpoints=None,
         timestamp=datetime.now(),
         metrics=None,
@@ -538,7 +639,8 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
             expected_coupler_open = [coupler.open for coupler in expected_action.couplers]
             result_coupler_open = [coupler.open for coupler in result_action.couplers]
             assert result_coupler_open == expected_coupler_open
-            assert np.array_equal(result_action.asset_switching_table, expected_action.asset_switching_table)
+            assert np.array_equal(result_action.branch_switching_table, expected_action.branch_switching_table)
+            assert np.array_equal(result_action.injection_switching_table, expected_action.injection_switching_table)
 
 
 def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
@@ -601,26 +703,19 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
                 asset_switching_table,
             )
         ],
-        assets=assets,
+        branch_assets=assets,
+        injection_assets=[],
         asset_setpoints=None,
         timestamp=datetime.now(),
         metrics=None,
     )
 
-    starting_station = MaterializedStation.model_construct(
+    starting_station = build_materialized_station(
         grid_model_id="station_x",
-        name=None,
-        type=None,
-        region=None,
-        voltage_level=None,
         busbars=busbars,
         couplers=couplers,
-        asset_connections=[
-            MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None) for asset in assets
-        ],
+        assets=assets,
         asset_switching_table=asset_switching_table,
-        asset_connectivity=None,
-        model_log=None,
     )
 
     valid_action = starting_station.model_copy(
@@ -628,18 +723,29 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
             "couplers": [
                 starting_station.couplers[0].model_copy(update={"open": True}),
             ],
-            "asset_switching_table": np.array([[False, True], [True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, True], [True, False]], dtype=bool),
         }
     )
 
-    invalid_action = starting_station.model_copy(
-        update={
+    invalid_action_payload = starting_station.model_dump(mode="python", round_trip=True)
+    invalid_action_payload.update(
+        {
             "couplers": [
-                starting_station.couplers[0].model_copy(update={"busbar_from_id": 99}),
+                BusbarCoupler.model_construct(
+                    grid_model_id=starting_station.couplers[0].grid_model_id,
+                    type=starting_station.couplers[0].coupler_type,
+                    name=starting_station.couplers[0].name,
+                    busbar_from_id=99,
+                    busbar_to_id=starting_station.couplers[0].busbar_to_id,
+                    open=starting_station.couplers[0].open,
+                    in_service=starting_station.couplers[0].in_service,
+                    asset_bay=starting_station.couplers[0].asset_bay,
+                )
             ],
-            "asset_switching_table": np.array([[True, True], [False, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, True], [False, False]], dtype=bool),
         }
     )
+    invalid_action = MaterializedStation.model_construct(**invalid_action_payload)
 
     actions = [valid_action, invalid_action]
 
@@ -711,32 +817,25 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
                 asset_switching_table,
             )
         ],
-        assets=assets,
+        branch_assets=assets,
+        injection_assets=[],
         asset_setpoints=None,
         timestamp=datetime.now(),
         metrics=None,
     )
 
-    starting_station = MaterializedStation.model_construct(
+    starting_station = build_materialized_station(
         grid_model_id="station1",
-        name=None,
-        type=None,
-        region=None,
-        voltage_level=None,
         busbars=busbars,
         couplers=couplers,
-        asset_connections=[
-            MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None) for asset in assets
-        ],
+        assets=assets,
         asset_switching_table=asset_switching_table,
-        asset_connectivity=None,
-        model_log=None,
     )
 
     local_action = starting_station.model_copy(
         update={
             "couplers": [starting_station.couplers[0].model_copy(update={"open": True})],
-            "asset_switching_table": np.array([[False, True], [True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, True], [True, False]], dtype=bool),
         }
     )
     action_set = ActionSet.model_construct(
@@ -763,6 +862,6 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
     assert loaded_action.grid_model_id == local_action.grid_model_id
     assert [c.open for c in loaded_action.couplers] == [c.open for c in local_action.couplers]
     assert np.array_equal(
-        np.asarray(loaded_action.asset_switching_table),
-        np.asarray(local_action.asset_switching_table),
+        np.asarray(loaded_action.branch_switching_table),
+        np.asarray(local_action.branch_switching_table),
     )

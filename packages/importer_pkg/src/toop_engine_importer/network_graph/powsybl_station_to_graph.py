@@ -19,7 +19,6 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_all_element_names,
     get_list_of_busbars_from_df,
     get_list_of_coupler_from_df,
-    get_list_of_switchable_assets_from_df,
 )
 from toop_engine_importer.network_graph.data_classes import (
     HelperBranchSchema,
@@ -53,9 +52,11 @@ from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import (
 )
 from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
 from toop_engine_interfaces.asset_topology import (
+    AssetBay,
     MaterializedAssetConnection,
     MaterializedStation,
     Topology,
+    normalize_switchable_asset_payload,
     topology_parts_from_materialized_station,
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
@@ -96,6 +97,153 @@ def _expand_busbars_connected_via_switches(
         frontier.update(new_busbar_ids)
 
     return selected_busbar_ids
+
+
+def _get_station_busbar_view(
+    graph: nx.Graph,
+    graph_data: NetworkGraphData,
+    bus_id: str,
+    substation_id: str,
+) -> tuple[pd.DataFrame, set[str], dict[str, object]]:
+    """Build the station-local busbar view and matching connection metadata.
+
+    Parameters
+    ----------
+    graph : nx.Graph
+        Graph representation of the node-breaker topology.
+    graph_data : NetworkGraphData
+        Graph data containing the station nodes used to derive busbars.
+    bus_id : str
+        Bus-branch bus identifier for the station view to build.
+    substation_id : str
+        Substation name used when deriving station-local busbars.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, set[str], dict[str, object]]
+        The filtered busbar DataFrame with reassigned local integer ids, the selected
+        busbar ids, and the busbar connection info restricted to that station view.
+    """
+    busbar_df = get_busbar_df(nodes_df=graph_data.nodes, substation_id=substation_id)
+    seed_busbar_ids = set(busbar_df.loc[busbar_df["bus_branch_bus_id"] == bus_id, "grid_model_id"])
+    full_busbar_connection_info = get_busbar_connection_info(graph=graph)
+    selected_busbar_ids = _expand_busbars_connected_via_switches(
+        seed_busbar_ids=seed_busbar_ids,
+        full_busbar_connection_info=full_busbar_connection_info,
+        allowed_busbar_ids=set(busbar_df["grid_model_id"]),
+    )
+    busbar_df = busbar_df[busbar_df["grid_model_id"].isin(selected_busbar_ids)].copy().reset_index(drop=True)
+    busbar_df["int_id"] = busbar_df.index
+    if busbar_df.empty:
+        raise ValueError(f"No busbars found for bus_id {bus_id} in substation {substation_id}")
+
+    selected_busbar_ids = set(busbar_df["grid_model_id"])
+    busbar_connection_info = {
+        busbar_grid_model_id: connection_info
+        for busbar_grid_model_id, connection_info in full_busbar_connection_info.items()
+        if busbar_grid_model_id in selected_busbar_ids
+    }
+    return busbar_df, selected_busbar_ids, busbar_connection_info
+
+
+def _get_station_asset_bays(
+    switches_df: pd.DataFrame,
+    switchable_assets_df: pd.DataFrame,
+    busbar_df: pd.DataFrame,
+    edge_connection_info: dict[str, object],
+    substation_id: str,
+    selected_busbar_ids: set[str],
+) -> tuple[dict[str, AssetBay], list[str]]:
+    """Build station-local asset bays filtered to the selected busbar view.
+
+    Parameters
+    ----------
+    switches_df : pd.DataFrame
+        Switch rows for the station topology.
+    switchable_assets_df : pd.DataFrame
+        Asset rows aligned with the station-local switching table.
+    busbar_df : pd.DataFrame
+        Filtered station-local busbar view.
+    edge_connection_info : dict[str, object]
+        Edge metadata used by ``get_asset_bay(...)`` to derive bay paths.
+    substation_id : str
+        Substation identifier owning the station-local asset bays.
+    selected_busbar_ids : set[str]
+        Busbar ids kept in the station-local busbar view.
+
+    Returns
+    -------
+    tuple[dict[str, AssetBay], list[str]]
+        Asset bays keyed by asset grid model id and the collected station log messages.
+    """
+    station_logs: list[str] = []
+    asset_bays_by_asset_id: dict[str, AssetBay] = {}
+    for asset_grid_model_id in switchable_assets_df["grid_model_id"].to_list():
+        asset_bay, logs = get_asset_bay(
+            switches_df,
+            station_grid_model_id=substation_id,
+            asset_grid_model_id=asset_grid_model_id,
+            busbar_df=busbar_df,
+            edge_connection_info=edge_connection_info,
+        )
+        station_logs.extend(logs)
+        if asset_bay is None:
+            continue
+
+        station_local_sr_switches = {
+            busbar_grid_model_id: switch_grid_model_id
+            for busbar_grid_model_id, switch_grid_model_id in asset_bay.sr_switch_grid_model_id.items()
+            if busbar_grid_model_id in selected_busbar_ids
+        }
+        if len(station_local_sr_switches) == 0:
+            continue
+
+        asset_bays_by_asset_id[asset_grid_model_id] = asset_bay.model_copy(
+            update={"sr_switch_grid_model_id": station_local_sr_switches},
+            deep=True,
+        )
+
+    return asset_bays_by_asset_id, station_logs
+
+
+def _get_station_asset_connections(
+    switchable_assets_df: pd.DataFrame,
+    asset_bays_by_asset_id: dict[str, AssetBay],
+) -> tuple[list[MaterializedAssetConnection], list[MaterializedAssetConnection], list[bool]]:
+    """Materialize branch and injection connections aligned with station tables.
+
+    Parameters
+    ----------
+    switchable_assets_df : pd.DataFrame
+        Asset rows aligned with the station-local switching table.
+    asset_bays_by_asset_id : dict[str, AssetBay]
+        Station-local asset bays keyed by asset grid model id.
+
+    Returns
+    -------
+    tuple[list[MaterializedAssetConnection], list[MaterializedAssetConnection], list[bool]]
+        Branch connections, injection connections, and the branch mask aligned with
+        ``switchable_assets_df``.
+    """
+    assets = [
+        normalize_switchable_asset_payload(asset_payload) for asset_payload in switchable_assets_df.to_dict(orient="records")
+    ]
+    remove_suffix_from_switchable_assets(assets)
+
+    branch_mask = [asset.is_branch() is not False for asset in assets]
+    branch_connections: list[MaterializedAssetConnection] = []
+    injection_connections: list[MaterializedAssetConnection] = []
+    for asset, is_branch in zip(assets, branch_mask, strict=True):
+        connection = MaterializedAssetConnection(
+            asset=asset,
+            asset_bay=asset_bays_by_asset_id.get(asset.grid_model_id),
+        )
+        if is_branch:
+            branch_connections.append(connection)
+        else:
+            injection_connections.append(connection)
+
+    return branch_connections, injection_connections, branch_mask
 
 
 def node_breaker_topology_to_graph_data(net: Network, substation_info: SubstationInformation) -> NetworkGraphData:
@@ -324,19 +472,12 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     graph_data = node_breaker_topology_to_graph_data(network, substation_info=station_info)
     graph = get_node_breaker_topology_graph(graph_data)
 
-    busbar_df = get_busbar_df(nodes_df=graph_data.nodes, substation_id=substation_id)
-    seed_busbar_ids = set(busbar_df.loc[busbar_df["bus_branch_bus_id"] == bus_id, "grid_model_id"])
-    full_busbar_connection_info = get_busbar_connection_info(graph=graph)
-    selected_busbar_ids = _expand_busbars_connected_via_switches(
-        seed_busbar_ids=seed_busbar_ids,
-        full_busbar_connection_info=full_busbar_connection_info,
-        allowed_busbar_ids=set(busbar_df["grid_model_id"]),
+    busbar_df, selected_busbar_ids, busbar_connection_info = _get_station_busbar_view(
+        graph=graph,
+        graph_data=graph_data,
+        bus_id=bus_id,
+        substation_id=substation_id,
     )
-    busbar_df = busbar_df[busbar_df["grid_model_id"].isin(selected_busbar_ids)].copy().reset_index(drop=True)
-    busbar_df["int_id"] = busbar_df.index
-    if busbar_df.empty:
-        raise ValueError(f"No busbars found for bus_id {bus_id} in substation {substation_id}")
-    selected_busbar_ids = set(busbar_df["grid_model_id"])
 
     coupler_df = get_coupler_df(
         switches_df=graph_data.switches, busbar_df=busbar_df, substation_id=substation_id, graph=graph
@@ -345,11 +486,6 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     if not coupler_df.empty:
         coupler_df[["busbar_from_id", "busbar_to_id"]] = coupler_df[["busbar_from_id", "busbar_to_id"]].astype(int)
 
-    busbar_connection_info = {
-        busbar_grid_model_id: connection_info
-        for busbar_grid_model_id, connection_info in full_busbar_connection_info.items()
-        if busbar_grid_model_id in selected_busbar_ids
-    }
     edge_connection_info = get_edge_connection_info(graph=graph)
     switchable_assets_df = get_switchable_asset(busbar_connection_info, graph_data.node_assets, graph_data.branches)
     connected_asset_ids = {
@@ -361,27 +497,14 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
         drop=True
     )
 
-    asset_bay_dict = {}
-    for asset_grid_model_id in switchable_assets_df["grid_model_id"].to_list():
-        asset_bay, logs = get_asset_bay(
-            graph_data.switches,
-            station_grid_model_id=substation_id,
-            asset_grid_model_id=asset_grid_model_id,
-            busbar_df=busbar_df,
-            edge_connection_info=edge_connection_info,
-        )
-        station_logs.extend(logs)
-        if asset_bay is None:
-            continue
-        station_local_sr_switches = {
-            busbar_grid_model_id: switch_grid_model_id
-            for busbar_grid_model_id, switch_grid_model_id in asset_bay.sr_switch_grid_model_id.items()
-            if busbar_grid_model_id in selected_busbar_ids
-        }
-        if len(station_local_sr_switches) == 0:
-            continue
-        asset_bay = asset_bay.model_copy(update={"sr_switch_grid_model_id": station_local_sr_switches}, deep=True)
-        asset_bay_dict[asset_grid_model_id] = asset_bay
+    asset_bays_by_asset_id, station_logs = _get_station_asset_bays(
+        switches_df=graph_data.switches,
+        switchable_assets_df=switchable_assets_df,
+        busbar_df=busbar_df,
+        edge_connection_info=edge_connection_info,
+        substation_id=substation_id,
+        selected_busbar_ids=selected_busbar_ids,
+    )
 
     asset_connectivity, asset_switching_table, busbar_connectivity, busbar_switching_table = get_station_connection_tables(
         busbar_connection_info, busbar_df=busbar_df, switchable_assets_df=switchable_assets_df
@@ -390,13 +513,10 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     asset_switching_table = remove_double_connections(asset_switching_table, substation_id=substation_id)
     busbars = get_list_of_busbars_from_df(busbar_df)
     couplers = get_list_of_coupler_from_df(coupler_df)
-    assets = get_list_of_switchable_assets_from_df(station_branches=switchable_assets_df)
-    remove_suffix_from_switchable_assets(assets)
-    asset_bays_by_id = {asset_bay.asset_bay_id: asset_bay for asset_bay in asset_bay_dict.values()}
-    station_asset_bay_ids = [
-        asset_bay_dict[asset_grid_model_id].asset_bay_id if asset_grid_model_id in asset_bay_dict else None
-        for asset_grid_model_id in switchable_assets_df["grid_model_id"].to_list()
-    ]
+    branch_connections, injection_connections, branch_mask = _get_station_asset_connections(
+        switchable_assets_df=switchable_assets_df,
+        asset_bays_by_asset_id=asset_bays_by_asset_id,
+    )
 
     station = MaterializedStation(
         grid_model_id=bus_id,
@@ -405,15 +525,12 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
         voltage_level=int(station_info.nominal_v),
         busbars=busbars,
         couplers=couplers,
-        asset_connections=[
-            MaterializedAssetConnection(
-                asset=asset,
-                asset_bay=asset_bays_by_id.get(asset_bay_id) if asset_bay_id is not None else None,
-            )
-            for asset, asset_bay_id in zip(assets, station_asset_bay_ids, strict=True)
-        ],
-        asset_switching_table=asset_switching_table,
-        asset_connectivity=asset_connectivity,
+        branch_connections=branch_connections,
+        injection_connections=injection_connections,
+        branch_switching_table=asset_switching_table[:, branch_mask],
+        injection_switching_table=asset_switching_table[:, [not is_branch for is_branch in branch_mask]],
+        branch_connectivity=asset_connectivity[:, branch_mask],
+        injection_connectivity=asset_connectivity[:, [not is_branch for is_branch in branch_mask]],
         busbar_switching_table=busbar_switching_table,
         busbar_connectivity=busbar_connectivity,
         model_log=station_logs,
@@ -539,11 +656,15 @@ def get_topology(network: Network, network_masks: NetworkMasks, importer_paramet
             elif existing_asset_bay != asset_bay:
                 raise ValueError(f"Conflicting topology asset bay payload for asset_bay_id {asset_bay.asset_bay_id}")
 
+    topology_assets_list = list(topology_assets.values())
+    branch_assets = [asset for asset in topology_assets_list if asset.is_branch() is not False]
+    injection_assets = [asset for asset in topology_assets_list if asset.is_branch() is False]
     return Topology(
         topology_id=topology_id,
         grid_model_file=grid_model_file,
         raw_stations=topology_stations,
-        assets=list(topology_assets.values()),
+        branch_assets=branch_assets,
+        injection_assets=injection_assets,
         asset_bays=list(topology_asset_bays.values()),
         timestamp=timestamp,
     )

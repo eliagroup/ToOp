@@ -72,22 +72,27 @@ def test_filter_split_stations_from_relevant_subs(basic_node_breaker_network_pow
             Busbar(int_id=1, grid_model_id="bb1", bus_branch_bus_id=buses.index[1]),
         ],
         couplers=[],
-        asset_connections=[StationAssetConnection(asset_id="asset0", terminal=None, asset_bay_id=None)],
-        asset_switching_table=np.array([[True], [False]]),
+        branch_connections=[StationAssetConnection(asset_id="asset0", terminal=None, asset_bay_id=None)],
+        injection_connections=[],
+        branch_switching_table=np.array([[True], [False]]),
+        injection_switching_table=np.zeros((2, 0), dtype=bool),
     )
     regular_station = RawStation(
         grid_model_id=buses.index[1],
         name="regular",
         busbars=[Busbar(int_id=0, grid_model_id="bb2", bus_branch_bus_id=buses.index[1])],
         couplers=[],
-        asset_connections=[StationAssetConnection(asset_id="asset1", terminal=None, asset_bay_id=None)],
-        asset_switching_table=np.array([[True]]),
+        branch_connections=[StationAssetConnection(asset_id="asset1", terminal=None, asset_bay_id=None)],
+        injection_connections=[],
+        branch_switching_table=np.array([[True]]),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
     )
     topology_model = Topology(
         topology_id="topology",
         grid_model_file="grid.xiidm",
         raw_stations=[split_station, regular_station],
-        assets=[SwitchableAsset(grid_model_id="asset0"), SwitchableAsset(grid_model_id="asset1")],
+        branch_assets=[SwitchableAsset(grid_model_id="asset0"), SwitchableAsset(grid_model_id="asset1")],
+        injection_assets=[],
         timestamp=datetime.now(),
     )
 

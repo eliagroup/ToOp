@@ -52,11 +52,12 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLA
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import (
+    BranchAsset,
     Busbar,
     BusbarCoupler,
+    InjectionAsset,
     MaterializedAssetConnection,
     MaterializedStation,
-    SwitchableAsset,
     Topology,
     topology_from_materialized_stations,
 )
@@ -193,12 +194,11 @@ def random_station_info_backend(
     ):
         if branch_node == node_idx:
             switchable_assets.append(
-                SwitchableAsset(
+                BranchAsset(
                     grid_model_id=branch_id,
-                    type=branch_type,
+                    asset_type=branch_type,
                     name=branch_name,
                     in_service=True,
-                    branch_end="from",
                 )
             )
 
@@ -211,12 +211,11 @@ def random_station_info_backend(
     ):
         if branch_node == node_idx:
             switchable_assets.append(
-                SwitchableAsset(
+                BranchAsset(
                     grid_model_id=branch_id,
-                    type=branch_type,
+                    asset_type=branch_type,
                     name=branch_name,
                     in_service=True,
-                    branch_end="to",
                 )
             )
 
@@ -229,18 +228,26 @@ def random_station_info_backend(
     ):
         if injection_node == node_idx:
             switchable_assets.append(
-                SwitchableAsset(
+                InjectionAsset(
                     grid_model_id=injection_id,
-                    type=injection_type,
+                    asset_type=injection_type,
                     name=injection_name,
                     in_service=True,
                 )
             )
 
-    asset_switching_table = np.zeros((2, len(switchable_assets)), dtype=bool)
-    is_on_a = np.random.rand(len(switchable_assets)) > 0.5
-    asset_switching_table[0, is_on_a] = True
-    asset_switching_table[1, ~is_on_a] = True
+    branch_assets = [asset for asset in switchable_assets if isinstance(asset, BranchAsset)]
+    injection_assets = [asset for asset in switchable_assets if isinstance(asset, InjectionAsset)]
+
+    branch_switching_table = np.zeros((2, len(branch_assets)), dtype=bool)
+    branch_is_on_a = np.random.rand(len(branch_assets)) > 0.5
+    branch_switching_table[0, branch_is_on_a] = True
+    branch_switching_table[1, ~branch_is_on_a] = True
+
+    injection_switching_table = np.zeros((2, len(injection_assets)), dtype=bool)
+    injection_is_on_a = np.random.rand(len(injection_assets)) > 0.5
+    injection_switching_table[0, injection_is_on_a] = True
+    injection_switching_table[1, ~injection_is_on_a] = True
 
     global_id = backend.get_node_ids()[node_idx]
     if pp_counters is not None:
@@ -280,9 +287,12 @@ def random_station_info_backend(
                 open=False,
             ),
         ],
-        asset_connections=[MaterializedAssetConnection(asset=asset) for asset in switchable_assets],
-        asset_switching_table=asset_switching_table,
-        asset_connectivity=np.ones_like(asset_switching_table, dtype=bool),
+        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in branch_assets],
+        injection_connections=[MaterializedAssetConnection(asset=asset) for asset in injection_assets],
+        branch_switching_table=branch_switching_table,
+        injection_switching_table=injection_switching_table,
+        branch_connectivity=np.ones_like(branch_switching_table, dtype=bool),
+        injection_connectivity=np.ones_like(injection_switching_table, dtype=bool),
     ), pp_counters
 
 

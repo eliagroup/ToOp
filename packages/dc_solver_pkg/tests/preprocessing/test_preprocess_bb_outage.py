@@ -26,7 +26,21 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     update_network_data_with_non_rel_bb_outages,
 )
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
-from toop_engine_interfaces.asset_topology import Busbar, MaterializedAssetConnection, MaterializedStation, SwitchableAsset
+from toop_engine_interfaces.asset_topology import (
+    BranchAsset,
+    Busbar,
+    InjectionAsset,
+    MaterializedAssetConnection,
+    MaterializedStation,
+)
+
+
+def _combined_asset_connections(station: MaterializedStation) -> list[MaterializedAssetConnection]:
+    return [*station.branch_connections, *station.injection_connections]
+
+
+def _combined_asset_switching_table(station: MaterializedStation) -> np.ndarray:
+    return np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1)
 
 
 def test_get_total_injection_along_stub_branch(network_data: NetworkData):
@@ -72,9 +86,9 @@ def test_get_total_injection_along_stub_branch(network_data: NetworkData):
 
 def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     # Create mock SwitchableAsset objects
-    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, type="line")
-    asset2 = SwitchableAsset(grid_model_id="branch_12", in_service=False, type="line")
-    asset3 = SwitchableAsset(grid_model_id="branch_23", in_service=True, type="line")
+    asset1 = BranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    asset2 = BranchAsset(grid_model_id="branch_12", in_service=False, asset_type="line")
+    asset3 = BranchAsset(grid_model_id="branch_23", in_service=True, asset_type="line")
     # asset4 = SwitchableAsset(
     #     grid_model_id="branch_02", in_service=True, branch_end="from"
     # )
@@ -84,10 +98,10 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     # asset6 = SwitchableAsset(
     #     grid_model_id="injection_node_0", in_service=True, branch_end=None
     # )
-    asset7 = SwitchableAsset(
+    asset7 = InjectionAsset(
         grid_model_id="injection_node_2",
         in_service=True,
-        type="GENERATOR",
+        asset_type="GENERATOR",
     )
     # asset8 = SwitchableAsset(
     #     grid_model_id="injection_node_1", in_service=True, branch_end=None
@@ -177,20 +191,20 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
 
 def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     # Create mock SwitchableAsset objects
-    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, type="line")
-    asset2 = SwitchableAsset(grid_model_id="branch_12", in_service=False, type="line")
-    asset3 = SwitchableAsset(grid_model_id="branch_23", in_service=True, type="line")
-    asset4 = SwitchableAsset(grid_model_id="branch_02", in_service=True, type="line")
-    asset5 = SwitchableAsset(grid_model_id="branch_03", in_service=True, type="line")
-    asset6 = SwitchableAsset(
+    asset1 = BranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    asset2 = BranchAsset(grid_model_id="branch_12", in_service=False, asset_type="line")
+    asset3 = BranchAsset(grid_model_id="branch_23", in_service=True, asset_type="line")
+    asset4 = BranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
+    asset5 = BranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
+    asset6 = InjectionAsset(
         grid_model_id="injection_node_0",
         in_service=True,
-        type="GENERATOR",
+        asset_type="GENERATOR",
     )
-    asset7 = SwitchableAsset(
+    asset7 = InjectionAsset(
         grid_model_id="injection_node_2",
         in_service=True,
-        type="GENERATOR",
+        asset_type="GENERATOR",
     )
     # asset8 = SwitchableAsset(
     #     grid_model_id="injection_node_1", in_service=True, branch_end=None
@@ -235,11 +249,19 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         grid_model_id="node_2",
         busbars=[busbar_0, busbar_1],
         couplers=[],
-        asset_connections=[MaterializedAssetConnection(asset=asset) for asset in [asset2, asset3, asset4, asset7]],
-        asset_switching_table=np.array(
+        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in [asset2, asset3, asset4]],
+        injection_connections=[MaterializedAssetConnection(asset=asset7)],
+        branch_switching_table=np.array(
             [
-                [True, False, True, False],  # Busbar 0
-                [False, True, False, True],  # Busbar 1
+                [True, False, True],  # Busbar 0
+                [False, True, False],  # Busbar 1
+            ],
+            dtype=bool,
+        ),
+        injection_switching_table=np.array(
+            [
+                [False],
+                [True],
             ],
             dtype=bool,
         ),
@@ -326,10 +348,17 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         grid_model_id="node_0",
         busbars=[busbar_0],
         couplers=[],
-        asset_connections=[MaterializedAssetConnection(asset=asset) for asset in [asset1, asset4, asset5, asset6]],
-        asset_switching_table=np.array(
+        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in [asset1, asset4, asset5]],
+        injection_connections=[MaterializedAssetConnection(asset=asset6)],
+        branch_switching_table=np.array(
             [
-                [True, True, True, True],  # Busbar 0
+                [True, True, True],  # Busbar 0
+            ],
+            dtype=bool,
+        ),
+        injection_switching_table=np.array(
+            [
+                [True],
             ],
             dtype=bool,
         ),
@@ -393,11 +422,11 @@ def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: 
             for branch_index in branch_outages:
                 branch_id = updated_net_data.branch_ids[branch_index]
                 # get asset_index of the branch
-                for asset_index, asset_connection in enumerate(station.asset_connections):
+                for asset_index, asset_connection in enumerate(_combined_asset_connections(station)):
                     if asset_connection.asset.grid_model_id == branch_id:
                         break
 
-                assert station.asset_switching_table[busbar_index, asset_index], (
+                assert _combined_asset_switching_table(station)[busbar_index, asset_index], (
                     f"Branch {branch_id} is not connected to busbar {busbar_id}"
                 )
 
@@ -508,13 +537,14 @@ def test_get_modified_stations(network_data_preprocessed: NetworkData):
         if not action.any():
             res.append(
                 np.all(
-                    modified_stations_br[1][action_index].asset_switching_table == monitored_station.asset_switching_table
+                    _combined_asset_switching_table(modified_stations_br[1][action_index])
+                    == _combined_asset_switching_table(monitored_station)
                 )
             )
         else:
             res.append(
                 np.all(
-                    modified_stations_br[1][action_index].asset_switching_table[:, 0 : len(action)] == action, axis=1
+                    modified_stations_br[1][action_index].branch_switching_table[:, 0 : len(action)] == action, axis=1
                 ).any()
             )
     assert np.sum(res) == len(modified_stations_br[1]), (
@@ -522,10 +552,7 @@ def test_get_modified_stations(network_data_preprocessed: NetworkData):
     )
     assert np.all(
         [
-            np.all(
-                modified_stations_br[1][i].asset_switching_table[:, len(branch_actions_all_rel_sub[1][i]) :]
-                == monitored_station.asset_switching_table[:, len(branch_actions_all_rel_sub[1][i]) :]
-            )
+            np.all(modified_stations_br[1][i].injection_switching_table == monitored_station.injection_switching_table)
             for i in range(len(modified_stations_br[1]))
         ]
     ), (

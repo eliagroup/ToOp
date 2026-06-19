@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Collects some common helper functions for asset topology manipulation."""
+"""Common helper functions for asset topology manipulation."""
 
 import itertools
 from numbers import Integral
@@ -21,8 +21,8 @@ from toop_engine_interfaces.asset_topology import (
     AssetBay,
     Busbar,
     BusbarCoupler,
+    MaterializedAssetConnection,
     MaterializedStation,
-    RawStation,
     RealizedTopology,
     SwitchableAsset,
     Topology,
@@ -39,18 +39,18 @@ def electrical_components(station: MaterializedStation, min_num_assets: int = 1)
 
     Parameters
     ----------
-    station : Station
-        The station object to analyze.
+    station : MaterializedStation
+        Station to analyze.
     min_num_assets : int, optional
-        The minimum number of assets connected to a component to be considered a valid component, by default 1
+        Minimum number of connected assets required for a component to be kept.
 
     Returns
     -------
     list[list[int]]
-        A list of lists, where each inner list contains the indices of the busbars in the component indexing into the list
-        of all busbars in the station.
+        Busbar index groups, where each inner list references positions in
+        `station.busbars`.
     """
-    n_connections_per_bus = station.asset_switching_table.sum(axis=1)
+    n_connections_per_bus = station.branch_switching_table.sum(axis=1) + station.injection_switching_table.sum(axis=1)
 
     int_id_mapper = {busbar.int_id: i for i, busbar in enumerate(station.busbars)}
 
@@ -76,15 +76,15 @@ def electrical_components(station: MaterializedStation, min_num_assets: int = 1)
 
 
 def number_of_splits(station: MaterializedStation) -> int:
-    """Compute the number of electrical components that are present in a station.
+    """Compute the number of electrical components in a station.
 
     A set of busbars is considered a separate electrical component if it is not connected through a
     closed coupler to other busbars and there are at least two assets connected to the component.
 
     Parameters
     ----------
-    station : Station
-        The station object to analyze.
+    station : MaterializedStation
+        Station to analyze.
 
     Returns
     -------
@@ -109,15 +109,15 @@ def remove_busbar(station: MaterializedStation, grid_model_id: str) -> Materiali
 
     Parameters
     ----------
-    station : Station
-        The station object to modify.
+    station : MaterializedStation
+        Station to modify.
     grid_model_id : str
-        The grid_model_id of the busbar to remove.
+        Grid model identifier of the busbar to remove.
 
     Returns
     -------
-    Station
-        The modified station object with the busbar removed.
+    MaterializedStation
+        Copy of `station` with the busbar removed.
     """
     # Store the index and int_id of the dropped busbar
     index = [b.grid_model_id for b in station.busbars].index(grid_model_id)
@@ -125,13 +125,28 @@ def remove_busbar(station: MaterializedStation, grid_model_id: str) -> Materiali
 
     busbars = [b for b in station.busbars if b.grid_model_id != grid_model_id]
     couplers = [c for c in station.couplers if int_id not in (c.busbar_from_id, c.busbar_to_id)]
-    asset_switching_table = np.delete(station.asset_switching_table, index, axis=0)
-    asset_connectivity = (
-        np.delete(station.asset_connectivity, index, axis=0) if station.asset_connectivity is not None else None
+    branch_switching_table = np.delete(station.branch_switching_table, index, axis=0)
+    injection_switching_table = np.delete(station.injection_switching_table, index, axis=0)
+    branch_connectivity = (
+        np.delete(station.branch_connectivity, index, axis=0) if station.branch_connectivity is not None else None
+    )
+    injection_connectivity = (
+        np.delete(station.injection_connectivity, index, axis=0) if station.injection_connectivity is not None else None
     )
 
     def filter_sr_keys(asset_bay: Optional[AssetBay]) -> Optional[AssetBay]:
-        """Filter out the sr keys from the asset bay."""
+        """Drop SR switch references to the removed busbar.
+
+        Parameters
+        ----------
+        asset_bay : Optional[AssetBay]
+            Asset bay whose SR switch references should be filtered.
+
+        Returns
+        -------
+        Optional[AssetBay]
+            Updated asset bay without references to the removed busbar.
+        """
         if asset_bay is None:
             return None
         return asset_bay.model_copy(
@@ -144,9 +159,13 @@ def remove_busbar(station: MaterializedStation, grid_model_id: str) -> Materiali
             }
         )
 
-    asset_connections = [
+    branch_connections = [
         asset_connection.model_copy(update={"asset_bay": filter_sr_keys(asset_connection.asset_bay)})
-        for asset_connection in station.asset_connections
+        for asset_connection in station.branch_connections
+    ]
+    injection_connections = [
+        asset_connection.model_copy(update={"asset_bay": filter_sr_keys(asset_connection.asset_bay)})
+        for asset_connection in station.injection_connections
     ]
 
     # Create a new station object with the modified busbars, couplers, and asset switching table
@@ -154,9 +173,12 @@ def remove_busbar(station: MaterializedStation, grid_model_id: str) -> Materiali
         update={
             "busbars": busbars,
             "couplers": couplers,
-            "asset_connections": asset_connections,
-            "asset_switching_table": asset_switching_table,
-            "asset_connectivity": asset_connectivity,
+            "branch_connections": branch_connections,
+            "injection_connections": injection_connections,
+            "branch_switching_table": branch_switching_table,
+            "injection_switching_table": injection_switching_table,
+            "branch_connectivity": branch_connectivity,
+            "injection_connectivity": injection_connectivity,
         }
     )
     return new_station
@@ -167,29 +189,44 @@ def filter_out_of_service_assets(station: MaterializedStation) -> MaterializedSt
 
     Parameters
     ----------
-    station : Station
-        The station object to filter.
+    station : MaterializedStation
+        Station to filter.
 
     Returns
     -------
-    Station
-        The new station object with all out-of-service assets removed.
+    MaterializedStation
+        Copy of `station` without out-of-service asset connections.
     """
-    if all(asset_connection.asset.in_service for asset_connection in station.asset_connections):
+    if all(asset_connection.asset.in_service for asset_connection in station.branch_connections) and all(
+        asset_connection.asset.in_service for asset_connection in station.injection_connections
+    ):
         return station
 
-    in_service_asset_connections = [
-        asset_connection for asset_connection in station.asset_connections if asset_connection.asset.in_service
+    branch_mask = [asset_connection.asset.in_service for asset_connection in station.branch_connections]
+    injection_mask = [asset_connection.asset.in_service for asset_connection in station.injection_connections]
+    branch_connections = [
+        asset_connection
+        for asset_connection, in_service in zip(station.branch_connections, branch_mask, strict=True)
+        if in_service
     ]
-    in_service_assets = [asset_connection.asset.in_service for asset_connection in station.asset_connections]
+    injection_connections = [
+        asset_connection
+        for asset_connection, in_service in zip(station.injection_connections, injection_mask, strict=True)
+        if in_service
+    ]
 
     return station.model_copy(
         update={
-            "asset_connections": in_service_asset_connections,
-            "asset_switching_table": station.asset_switching_table[:, in_service_assets],
-            "asset_connectivity": station.asset_connectivity[:, in_service_assets]
-            if station.asset_connectivity is not None
-            else None,
+            "branch_connections": branch_connections,
+            "injection_connections": injection_connections,
+            "branch_switching_table": station.branch_switching_table[:, branch_mask],
+            "injection_switching_table": station.injection_switching_table[:, injection_mask],
+            "branch_connectivity": (
+                station.branch_connectivity[:, branch_mask] if station.branch_connectivity is not None else None
+            ),
+            "injection_connectivity": (
+                station.injection_connectivity[:, injection_mask] if station.injection_connectivity is not None else None
+            ),
         }
     )
 
@@ -199,13 +236,13 @@ def filter_out_of_service_busbars(station: MaterializedStation) -> MaterializedS
 
     Parameters
     ----------
-    station : Station
-        The station object to filter.
+    station : MaterializedStation
+        Station to filter.
 
     Returns
     -------
-    Station
-        The new station object with all out-of-service busbars removed.
+    MaterializedStation
+        Copy of `station` without out-of-service busbars.
     """
     deleted_busbar_ids = [busbar.grid_model_id for busbar in station.busbars if not busbar.in_service]
 
@@ -220,13 +257,13 @@ def filter_out_of_service_couplers(station: MaterializedStation) -> Materialized
 
     Parameters
     ----------
-    station : Station
-        The station object to filter.
+    station : MaterializedStation
+        Station to filter.
 
     Returns
     -------
-    Station
-        The new station object with all out-of-service couplers removed.
+    MaterializedStation
+        Copy of `station` without out-of-service couplers.
     """
     if all(coupler.in_service for coupler in station.couplers):
         return station
@@ -248,13 +285,13 @@ def filter_out_of_service(station: MaterializedStation) -> MaterializedStation:
 
     Parameters
     ----------
-    station : Station
-        The station object to filter.
+    station : MaterializedStation
+        Station to filter.
 
     Returns
     -------
-    Station
-        The new station object with all out-of-service assets removed.
+    MaterializedStation
+        Copy of `station` without out-of-service assets, busbars, or couplers.
     """
     station = filter_out_of_service_couplers(station)
     station = filter_out_of_service_assets(station)
@@ -269,25 +306,24 @@ def filter_out_of_service(station: MaterializedStation) -> MaterializedStation:
 def filter_duplicate_couplers(
     station: MaterializedStation, retain_type_hierarchy: Optional[list[str]] = None
 ) -> tuple[MaterializedStation, list[BusbarCoupler]]:
-    """Filter out duplicate couplers
+    """Filter out duplicate couplers.
 
-    Two couplers are considered duplicates if they connect the same busbars, regardless of their
-    order. If a duplicate coupler is found, only the first one is kept.
+    Two couplers are duplicates if they connect the same busbar pair, regardless of order.
 
     Parameters
     ----------
-    station : Station
-        The station object to filter.
+    station : MaterializedStation
+        Station to filter.
     retain_type_hierarchy : Optional[list[str]], optional
-        If provided, not the first coupler is kept but the one with the highest type in the hierarchy list. Highest means
-        that the type is the first in the list. If not provided, the first coupler is kept, by default None
+        Optional priority order for retained coupler types. Earlier entries have
+        higher priority.
 
     Returns
     -------
-    Station
-        The new station object with duplicate couplers removed.
+    MaterializedStation
+        Station with duplicate couplers removed.
     list[BusbarCoupler]
-        The list of removed couplers.
+        Removed duplicate couplers.
     """
     # A dict with the coupler representation as key and a list of indices of the couplers
     coupler_dict: dict[tuple[int, int], list[int]] = {}
@@ -310,7 +346,9 @@ def filter_duplicate_couplers(
             sorted_couplers = sorted(
                 (station.couplers[i] for i in index),
                 key=lambda c: (
-                    retain_type_hierarchy.index(c.type) if c.type in retain_type_hierarchy else len(retain_type_hierarchy)
+                    retain_type_hierarchy.index(c.coupler_type)
+                    if c.coupler_type in retain_type_hierarchy
+                    else len(retain_type_hierarchy)
                 ),
             )
         # Keep the first coupler and remove the others
@@ -346,24 +384,23 @@ def filter_disconnected_busbars(
 
     Parameters
     ----------
-    station : Station
-        The station object potentially with disconnected busbars.
+    station : MaterializedStation
+        Station that may contain disconnected busbars.
     respect_coupler_open : bool, optional
-        If True, only closed couplers are considered connected, if False, all couplers are
-        considered connected, by default False
+        If `True`, only closed couplers contribute to connectivity.
 
     Returns
     -------
-    Station
-        The new station object with disconnected busbars removed.
+    MaterializedStation
+        Station with disconnected busbars removed.
     list[Busbar]
-        The list of removed busbars.
+        Removed busbars.
     """
     couplers = [
         coupler for coupler in station.couplers if (not respect_coupler_open or not coupler.open) and coupler.in_service
     ]
     graph = nx.Graph()
-    num_assets_per_busbar = station.asset_switching_table.sum(axis=1)
+    num_assets_per_busbar = station.branch_switching_table.sum(axis=1) + station.injection_switching_table.sum(axis=1)
     graph.add_nodes_from(
         [
             (busbar.int_id, {"num_assets": num_assets})
@@ -388,19 +425,19 @@ def filter_disconnected_busbars(
 
 
 def reindex_busbars(station: MaterializedStation) -> MaterializedStation:
-    """Reindex the int-ids of the busbars in the station
+    """Reindex the int-ids of the busbars in the station.
 
     This might be necessary after filder_disconnected_busbars or filter_out_of_service have been called.
 
     Parameters
     ----------
-    station : Station
-        The station object with possible inconsistent busbar ids.
+    station : MaterializedStation
+        Station with potentially non-contiguous busbar ids.
 
     Returns
     -------
-    Station
-        The new station object with reindexed busbars, where int-ids are continuous and start at 0.
+    MaterializedStation
+        Copy of `station` with contiguous busbar `int_id` values starting at 0.
     """
     busbar_mapping = {busbar.int_id: i for i, busbar in enumerate(station.busbars)}
     new_busbars = [busbar.model_copy(update={"int_id": i}) for i, busbar in enumerate(station.busbars)]
@@ -422,49 +459,69 @@ def reindex_busbars(station: MaterializedStation) -> MaterializedStation:
 def filter_assets_by_type(
     station: MaterializedStation, assets_allowed: set[str], allow_none_type: bool = False
 ) -> tuple[MaterializedStation, list[SwitchableAsset]]:
-    """Filter assets by type
+    """Filter assets by type.
 
     Removes all assets that have a type which is not in the set of allowed types.
 
     Parameters
     ----------
-    station : Station
-        The station object to filter.
+    station : MaterializedStation
+        Station to filter.
     assets_allowed : set[str]
-        The set of asset types that are allowed.
+        Allowed asset types.
     allow_none_type : bool, optional
-        If True, assets without a type are allowed, by default False
+        If `True`, assets without an `asset_type` are retained.
 
     Returns
     -------
-    Station
-        The new station object with assets of the wrong type removed.
+    MaterializedStation
+        Station with disallowed assets removed.
     list[SwitchableAsset]
-        The list of removed assets.
+        Removed assets.
     """
-    asset_mask = [
-        (asset_connection.asset.type in assets_allowed) or (allow_none_type and asset_connection.asset.type is None)
-        for asset_connection in station.asset_connections
+    branch_mask = [
+        (asset_connection.asset.asset_type in assets_allowed)
+        or (allow_none_type and asset_connection.asset.asset_type is None)
+        for asset_connection in station.branch_connections
     ]
-    if all(asset_mask):
+    injection_mask = [
+        (asset_connection.asset.asset_type in assets_allowed)
+        or (allow_none_type and asset_connection.asset.asset_type is None)
+        for asset_connection in station.injection_connections
+    ]
+    if all(branch_mask) and all(injection_mask):
         return station, []
 
     removed_assets = [
         asset_connection.asset
-        for asset_connection, mask in zip(station.asset_connections, asset_mask, strict=True)
+        for asset_connection, mask in zip(station.branch_connections, branch_mask, strict=True)
+        if not mask
+    ] + [
+        asset_connection.asset
+        for asset_connection, mask in zip(station.injection_connections, injection_mask, strict=True)
         if not mask
     ]
-    kept_asset_connections = [
-        asset_connection for asset_connection, mask in zip(station.asset_connections, asset_mask, strict=True) if mask
+    branch_connections = [
+        asset_connection for asset_connection, mask in zip(station.branch_connections, branch_mask, strict=True) if mask
+    ]
+    injection_connections = [
+        asset_connection
+        for asset_connection, mask in zip(station.injection_connections, injection_mask, strict=True)
+        if mask
     ]
 
     new_station = station.model_copy(
         update={
-            "asset_connections": kept_asset_connections,
-            "asset_switching_table": station.asset_switching_table[:, asset_mask],
-            "asset_connectivity": station.asset_connectivity[:, asset_mask]
-            if station.asset_connectivity is not None
-            else None,
+            "branch_connections": branch_connections,
+            "injection_connections": injection_connections,
+            "branch_switching_table": station.branch_switching_table[:, branch_mask],
+            "injection_switching_table": station.injection_switching_table[:, injection_mask],
+            "branch_connectivity": (
+                station.branch_connectivity[:, branch_mask] if station.branch_connectivity is not None else None
+            ),
+            "injection_connectivity": (
+                station.injection_connectivity[:, injection_mask] if station.injection_connectivity is not None else None
+            ),
         }
     )
     return new_station, removed_assets
@@ -473,52 +530,60 @@ def filter_assets_by_type(
 def find_multi_connected_without_coupler(
     station: MaterializedStation,
 ) -> list[tuple[Integral, Integral, Integral]]:
-    """Find assets bridging multiple busbars without a coupler in between
+    """Find assets that bridge multiple busbars without an intervening coupler.
 
-    These cases can cause a bug in the downstream functions
+    These cases can cause problems in downstream processing.
 
     Parameters
     ----------
-    station : Station
-        The station object to check.
+    station : MaterializedStation
+        Station to inspect.
 
     Returns
     -------
     list[tuple[Integral, Integral, Integral]]
-        A list of tuples containing the index of the multi-connected asset and the indices of the
-        two busbars it is bridging.
-        Only returns bridges that don't have a coupler in between.
-        The first busbar index will always be lower than the second, hence a routine which always
-        removes the first doesn't run into double removals if an asset appears multiple times.
+        Tuples of `(asset_index, lower_busbar_index, upper_busbar_index)` for
+        multi-connected assets that bridge busbars without a coupler.
     """
     multi_connected_without_coupler = []
-    for asset_idx in np.flatnonzero(station.asset_switching_table.sum(axis=0) > 1):
-        busbars_bridged = np.flatnonzero(station.asset_switching_table[:, asset_idx]).tolist()
-        for bus1_idx, bus2_idx in itertools.combinations(busbars_bridged, 2):
-            # bus1_idx shall always be the smaller of the two
-            if bus1_idx > bus2_idx:
-                smaller_bus_idx, larger_bus_idx = bus2_idx, bus1_idx
-            else:
-                smaller_bus_idx, larger_bus_idx = bus1_idx, bus2_idx
 
-            if not any(
-                (
-                    coupler.busbar_from_id == station.busbars[smaller_bus_idx].int_id
-                    and coupler.busbar_to_id == station.busbars[larger_bus_idx].int_id
-                )
-                or (
-                    coupler.busbar_from_id == station.busbars[larger_bus_idx].int_id
-                    and coupler.busbar_to_id == station.busbars[smaller_bus_idx].int_id
-                )
-                for coupler in station.couplers
-            ):
-                multi_connected_without_coupler.append(
+    def _append_multi_connected(asset_table: np.ndarray, asset_index_offset: int) -> None:
+        """Collect multi-busbar asset bridges that have no coupler between them.
+
+        Parameters
+        ----------
+        asset_table : np.ndarray
+            Switching table to inspect.
+        asset_index_offset : int
+            Offset used to map local asset indices to station-wide asset indices.
+        """
+        for local_asset_idx in np.flatnonzero(asset_table.sum(axis=0) > 1):
+            busbars_bridged = np.flatnonzero(asset_table[:, local_asset_idx]).tolist()
+            for bus1_idx, bus2_idx in itertools.combinations(busbars_bridged, 2):
+                smaller_bus_idx = min(bus1_idx, bus2_idx)
+                larger_bus_idx = max(bus1_idx, bus2_idx)
+
+                if not any(
                     (
-                        asset_idx,
-                        smaller_bus_idx,
-                        larger_bus_idx,
+                        coupler.busbar_from_id == station.busbars[smaller_bus_idx].int_id
+                        and coupler.busbar_to_id == station.busbars[larger_bus_idx].int_id
                     )
-                )
+                    or (
+                        coupler.busbar_from_id == station.busbars[larger_bus_idx].int_id
+                        and coupler.busbar_to_id == station.busbars[smaller_bus_idx].int_id
+                    )
+                    for coupler in station.couplers
+                ):
+                    multi_connected_without_coupler.append(
+                        (
+                            int(local_asset_idx + asset_index_offset),
+                            smaller_bus_idx,
+                            larger_bus_idx,
+                        )
+                    )
+
+    _append_multi_connected(station.branch_switching_table, 0)
+    _append_multi_connected(station.injection_switching_table, len(station.branch_connections))
 
     return multi_connected_without_coupler
 
@@ -526,80 +591,104 @@ def find_multi_connected_without_coupler(
 def fix_multi_connected_without_coupler(
     station: MaterializedStation,
 ) -> tuple[MaterializedStation, list[tuple[SwitchableAsset, Busbar, Busbar]]]:
-    """Remove one connection for multi-connected assets without a coupler in between
+    """Remove one connection for unsupported multi-connected assets.
 
     Will always remove the connection to the busbar with the lower index.
 
     Parameters
     ----------
-    station : Station
-        The station object to fix
+    station : MaterializedStation
+        Station to fix.
 
     Returns
     -------
-    Station
-        The new station object with the multi-connected assets fixed.
+    MaterializedStation
+        Station with unsupported multi-connected assets reduced to one busbar.
     list[tuple[SwitchableAsset, Busbar, Busbar]]
-        A list of tuples containing the previously multi-connected assets and the busbars they were
-        connected to. The first busbar in the tuple is the one that was disconnected.
+        Tuples of the affected asset and the two busbars it previously bridged.
     """
     multi_connected_without_coupler = find_multi_connected_without_coupler(station)
     if not multi_connected_without_coupler:
         return station, []
 
-    new_asset_switching_table = np.copy(station.asset_switching_table)
+    branch_switching_table = np.copy(station.branch_switching_table)
+    injection_switching_table = np.copy(station.injection_switching_table)
     diff = []
+    n_branch = len(station.branch_connections)
     for asset_idx, bus1_idx, bus2_idx in multi_connected_without_coupler:
-        new_asset_switching_table[bus1_idx, asset_idx] = 0
+        if asset_idx < n_branch:
+            branch_switching_table[bus1_idx, asset_idx] = 0
+            asset = station.branch_connections[asset_idx].asset
+        else:
+            injection_idx = asset_idx - n_branch
+            injection_switching_table[bus1_idx, injection_idx] = 0
+            asset = station.injection_connections[injection_idx].asset
         diff.append(
             (
-                station.asset_connections[asset_idx].asset,
+                asset,
                 station.busbars[bus1_idx],
                 station.busbars[bus2_idx],
             )
         )
 
-    return station.model_copy(update={"asset_switching_table": new_asset_switching_table}), diff
+    return station.model_copy(
+        update={
+            "branch_connections": station.branch_connections,
+            "injection_connections": station.injection_connections,
+            "branch_switching_table": branch_switching_table,
+            "injection_switching_table": injection_switching_table,
+            "branch_connectivity": station.branch_connectivity,
+            "injection_connectivity": station.injection_connectivity,
+        }
+    ), diff
 
 
 def has_transmission_line_switching(station: MaterializedStation) -> bool:
-    """Check if the switching table contains transmission line switching
+    """Check if the switching table contains transmission line switching.
 
     Transmission line switching is defined as disconnecting an asset from all busbars on purpose as
     a remedial action. Out-of-service assets are not considered irrespective of the switching table.
 
     Parameters
     ----------
-    station : Station
-        The station object to check.
+    station : MaterializedStation
+        Station to inspect.
 
     Returns
     -------
     bool
         True if the switching table contains transmission line switching, False otherwise.
     """
-    in_service = np.array([asset_connection.asset.in_service for asset_connection in station.asset_connections])
-    return np.any((station.asset_switching_table.sum(axis=0) == 0) & in_service).item()
+    branch_in_service = np.array(
+        [asset_connection.asset.in_service for asset_connection in station.branch_connections], dtype=bool
+    )
+    injection_in_service = np.array(
+        [asset_connection.asset.in_service for asset_connection in station.injection_connections], dtype=bool
+    )
+    return bool(
+        np.any((station.branch_switching_table.sum(axis=0) == 0) & branch_in_service)
+        or np.any((station.injection_switching_table.sum(axis=0) == 0) & injection_in_service)
+    )
 
 
 def find_busbars_for_coupler(busbars: list[Busbar], coupler: BusbarCoupler) -> tuple[Busbar, Busbar]:
-    """Find the from and two busbars for a coupler
+    """Find the from-side and to-side busbars for a coupler.
 
-    Finds based on the int_id of the busbars.
+    Matching is based on busbar `int_id` values.
 
     Parameters
     ----------
     busbars : list[Busbar]
-        The list of busbars to search in
+        Busbars to search.
     coupler : BusbarCoupler
-        The coupler to search for
+        Coupler whose endpoints should be resolved.
 
     Returns
     -------
     Busbar
-        The from busbar
+        From-side busbar.
     Busbar
-        The to busbar
+        To-side busbar.
 
     Raises
     ------
@@ -620,32 +709,27 @@ def merge_couplers(
     new: list[BusbarCoupler],
     busbar_mapping: dict[int, int],
 ) -> tuple[list[BusbarCoupler], list[BusbarCoupler]]:
-    """Merge an updated list of couplers into the original list
+    """Merge an updated list of couplers into the original list.
 
-    Due to preprocessing actions, the new list might contain a subset of the original couplers.
-    Especially duplicate couplers were removed, so if the original list contains duplicates, both
-    couplers need to be switched. It assumes that the busbar ids are mapped through the busbar
-    mapping
-
-    If the new list contains duplicates, the couplers are counted as open if all duplicates are open
-    and as closed otherwise
+    The processed list may be a subset of the original list because preprocessing can remove
+    duplicate couplers. If the processed list still contains duplicates, the merged state is open
+    only if all duplicates are open.
 
     Parameters
     ----------
     original : list[BusbarCoupler]
-        The original list of couplers of the unprocessed station
+        Original couplers from the unprocessed station.
     new : list[BusbarCoupler]
-        The new list of couplers of the processed station after applying the topology
+        Couplers from the processed station.
     busbar_mapping : dict[int, int]
-        The mapping from the original busbar indices to the new busbar indices
+        Mapping from original busbar ids to the processed station busbar ids.
 
     Returns
     -------
     list[BusbarCoupler]
-        The updated list of couplers
+        Updated couplers.
     list[BusbarCoupler]
-        The coupler diff in this station, i.e. which couplers have been switched. Stores the
-        new state of the couplers, i.e. which state the coupler has been switched to
+        Couplers whose open state changed.
     """
     # Store the couplers in a dict for easier access
     target_state = {}
@@ -678,33 +762,28 @@ def merge_stations(
     new: list[MaterializedStation],
     missing_station_behavior: Literal["append", "raise"] = "append",
 ) -> tuple[list[MaterializedStation], list[tuple[str, BusbarCoupler]], list[tuple[str, int, int, bool]]]:
-    """Merge a list of changed stations into a list of original stations
+    """Merge a list of changed stations into a list of original stations.
 
-    All stations with a grid_model_id that is present in the new list will be updated using
-    merge_station. The coupler+reassignment diffs will be concatenated. If a new station is not
-    present in the original list, it will be appended to the end of the list if
-    missing_station_behavior is "append".
+    Stations with matching `grid_model_id` values are merged with `merge_station`.
+    Coupler and reassignment diffs are concatenated across all stations.
 
     Parameters
     ----------
-    original : list[Station]
-        The original list of stations
-    new : list[Station]
-        The list of changed stations
+    original : list[MaterializedStation]
+        Original stations.
+    new : list[MaterializedStation]
+        Updated stations to merge into `original`.
     missing_station_behavior : Literal["append", "raise"], optional
-        What to do if a station is not found in the original list, by default "append"
+        Behavior when a station exists only in `new`.
 
     Returns
     -------
-    list[Station]
-        The updated list of stations
+    list[MaterializedStation]
+        Merged station list.
     list[tuple[str, BusbarCoupler]]
-        The coupler diff that has been switched, consisting of tuples with the station grid_model_id
-        and the coupler that has been switched
+        Coupler diffs as `(station_id, coupler)` tuples.
     list[tuple[str, int, int, bool]]
-        The reassignment diff that has been switched, consisting of tuples with the station grid_model_id,
-        the asset index that was affected, which busbar index was affected and whether the asset was
-        connected (True) or disconnected (False) to that bus
+        Asset reassignment diffs as `(station_id, asset_index, busbar_index, connected)` tuples.
     """
     new_stations_found = []
     updated_station_list = []
@@ -744,38 +823,33 @@ def merge_stations(
 def merge_station(
     original: MaterializedStation, new: MaterializedStation
 ) -> tuple[MaterializedStation, list[BusbarCoupler], list[tuple[int, int, bool]]]:
-    """Merge all the changes from the new station into the original station
+    """Merge all the changes from the new station into the original station.
 
-    This will overwrite all assets, couplers and busbars in the original station with the ones from
-    the new station if the couplers are also found in the new station. Things that are not found in
-    the new station will be left untouched. Assets that are in the new station but not in the
-    original will also be left untouched.
+    Matching assets, couplers, and busbars are updated from `new` when they can be mapped back
+    onto `original`. Elements that cannot be matched are left unchanged.
 
     If all in-service elements of original are also in new, then the returned substation will be
     electrically equivalent to the new substation. If this is not the case, the returned substation
     has all possible changes applied, but there are cases in which this is not electrically
     equivalent to the new substation.
 
-    You can use asset_topology_helpers.compare_stations to check which elements are different
-    in the two stations and infer the differences.
+    Use `compare_stations` to inspect structural differences between both stations.
 
     Parameters
     ----------
-    original : Station
-        The original station that should be modified
-    new : Station
-        The new station that contains the changes that should be merged into the original station
+    original : MaterializedStation
+        Original station to update.
+    new : MaterializedStation
+        Station that provides the target changes.
 
     Returns
     -------
-    Station
-        The modified original station, with all the changes from the new station merged in
+    MaterializedStation
+        Copy of `original` with all mergeable changes from `new` applied.
     list[BusbarCoupler]
-        The coupler diff that has been switched
+        Couplers whose open state changed.
     list[tuple[int, int, bool]]
-        The asset diff that has been switched. Each tuple contains the asset index that was
-        affected, which busbar index was affected and whether the asset was connected (True) or
-        disconnected (False) to that bus
+        Asset switching diff as `(asset_index, busbar_index, connected)` tuples.
     """
     if original == new:
         return original, [], []
@@ -785,14 +859,22 @@ def merge_station(
     busbar_mapping = {}
     busbar_int_id_mapping = {}
     max_busbar_id = max(busbar.int_id for busbar in new.busbars)
-    asset_mapping, new_couplers, coupler_diff = map_busbars_and_assets(
+    branch_asset_mapping, injection_asset_mapping, new_couplers, coupler_diff = map_busbars_and_assets(
         original, new, busbar_mapping, busbar_int_id_mapping, max_busbar_id
     )
 
     # Loop through the switching table and copy the values over for which there is a mapping
-    new_asset_switching_table = original.asset_switching_table.copy()
+    new_branch_switching_table = original.branch_switching_table.copy()
+    new_injection_switching_table = original.injection_switching_table.copy()
     station, asset_diff = update_asset_switching_table(
-        original, new, busbar_mapping, asset_mapping, new_couplers, new_asset_switching_table
+        original,
+        new,
+        busbar_mapping,
+        branch_asset_mapping,
+        injection_asset_mapping,
+        new_couplers,
+        new_branch_switching_table,
+        new_injection_switching_table,
     )
     return station, coupler_diff, asset_diff
 
@@ -801,66 +883,88 @@ def update_asset_switching_table(
     original_station: MaterializedStation,
     new_station: MaterializedStation,
     busbar_mapping: dict[int, int],
-    asset_mapping: dict[int, int],
+    branch_asset_mapping: dict[int, int],
+    injection_asset_mapping: dict[int, int],
     new_couplers: list[BusbarCoupler],
-    new_asset_switching_table: np.ndarray,
+    new_branch_switching_table: np.ndarray,
+    new_injection_switching_table: np.ndarray,
 ) -> tuple[MaterializedStation, list[tuple[int, int, bool]]]:
-    """Update the asset switching table of the original station with the values from the new station.
+    """Update switching tables and couplers using a mapped target station.
 
-    This is a separate function to reduce the complexity of merge_station.
-    It also updates the couplers in the original station with the new couplers.
+    This helper copies branch and injection switching states from `new_station` into
+    `original_station` for all mapped busbars and assets. It also replaces the
+    coupler list with `new_couplers` and records the resulting switching diff.
 
     Parameters
     ----------
-    original_station : Station
-        The original station that should be modified
-    new_station : Station
-        The new station that contains the changes that should be merged into the original station
+    original_station : MaterializedStation
+        Original station that receives the mapped switching updates.
+    new_station : MaterializedStation
+        Station that provides the target switching states.
     busbar_mapping : dict[int, int]
-        The mapping from the original busbar indices to the new busbar indices
-    asset_mapping : dict[int, int]
-        The mapping from the original asset indices to the new asset indices
+        Mapping from original busbar indices to busbar indices in `new_station`.
+    branch_asset_mapping : dict[int, int]
+        Mapping from original branch connection indices to branch indices in `new_station`.
+    injection_asset_mapping : dict[int, int]
+        Mapping from original injection connection indices to injection indices in `new_station`.
     new_couplers : list[BusbarCoupler]
-        The new list of couplers that should be merged into the original station
-    new_asset_switching_table : np.ndarray
-        The new asset switching table that should be updated with the values from the new station. This
-        is modified in place and returned as part of the new station object.
+        Couplers to store on the returned station.
+    new_branch_switching_table : np.ndarray
+        Branch switching table buffer for the returned station. Modified in place.
+    new_injection_switching_table : np.ndarray
+        Injection switching table buffer for the returned station. Modified in place.
 
     Returns
     -------
-    Station
-        The modified original station, with the updated asset switching table and couplers
+    MaterializedStation
+        Copy of `original_station` with updated switching tables and couplers.
     list[tuple[int, int, bool]]
-        The asset diff that has been switched. Each tuple contains the asset index that was
-        affected, which busbar index was affected and whether the asset was connected (True) or
-        disconnected (False) to that bus
+        Switching diff as `(asset_index, busbar_index, connected)` tuples.
     """
     asset_diff = []
-    for busbar_idx in range(original_station.asset_switching_table.shape[0]):
-        if busbar_idx in busbar_mapping:
-            mapped_busbar_idx = busbar_mapping[busbar_idx]
-            for asset_idx in range(original_station.asset_switching_table.shape[1]):
-                if asset_idx in asset_mapping:
-                    mapped_asset_idx = asset_mapping[asset_idx]
+    for busbar_idx, mapped_busbar_idx in busbar_mapping.items():
+        for branch_idx, mapped_branch_idx in branch_asset_mapping.items():
+            if (
+                new_branch_switching_table[busbar_idx, branch_idx]
+                != new_station.branch_switching_table[mapped_busbar_idx, mapped_branch_idx]
+            ):
+                asset_diff.append(
+                    (
+                        branch_idx,
+                        busbar_idx,
+                        bool(new_station.branch_switching_table[mapped_busbar_idx, mapped_branch_idx]),
+                    )
+                )
+                new_branch_switching_table[busbar_idx, branch_idx] = new_station.branch_switching_table[
+                    mapped_busbar_idx, mapped_branch_idx
+                ]
 
-                    if (
-                        new_asset_switching_table[busbar_idx, asset_idx]
-                        != new_station.asset_switching_table[mapped_busbar_idx, mapped_asset_idx]
-                    ):
-                        asset_diff.append(
-                            (
-                                asset_idx,
-                                busbar_idx,
-                                bool(new_station.asset_switching_table[mapped_busbar_idx, mapped_asset_idx]),
-                            )
-                        )
-
-                        new_asset_switching_table[busbar_idx, asset_idx] = new_station.asset_switching_table[
-                            mapped_busbar_idx, mapped_asset_idx
-                        ]
+        for injection_idx, mapped_injection_idx in injection_asset_mapping.items():
+            if (
+                new_injection_switching_table[busbar_idx, injection_idx]
+                != new_station.injection_switching_table[mapped_busbar_idx, mapped_injection_idx]
+            ):
+                asset_diff.append(
+                    (
+                        injection_idx + len(original_station.branch_connections),
+                        busbar_idx,
+                        bool(new_station.injection_switching_table[mapped_busbar_idx, mapped_injection_idx]),
+                    )
+                )
+                new_injection_switching_table[busbar_idx, injection_idx] = new_station.injection_switching_table[
+                    mapped_busbar_idx, mapped_injection_idx
+                ]
 
     original_station = original_station.model_copy(
-        update={"couplers": new_couplers, "asset_switching_table": new_asset_switching_table}
+        update={
+            "couplers": new_couplers,
+            "branch_connections": original_station.branch_connections,
+            "injection_connections": original_station.injection_connections,
+            "branch_switching_table": new_branch_switching_table,
+            "injection_switching_table": new_injection_switching_table,
+            "branch_connectivity": original_station.branch_connectivity,
+            "injection_connectivity": original_station.injection_connectivity,
+        }
     )
     return original_station, asset_diff
 
@@ -871,67 +975,104 @@ def map_busbars_and_assets(
     busbar_mapping: dict[int, int],
     busbar_int_id_mapping: dict[int, int],
     max_busbar_id: int,
-) -> tuple[dict[int, int], list[BusbarCoupler], list[BusbarCoupler]]:
-    """Find a mapping from old busbars to new busbars and from old assets to new assets
+) -> tuple[dict[int, int], dict[int, int], list[BusbarCoupler], list[BusbarCoupler]]:
+    """Build busbar and asset mappings between two materialized stations.
 
-    This is a separate function to reduce the complexity of merge_station.
-    It also merges the couplers and returns the new couplers and the coupler diff.
+    This helper matches busbars and asset connections by `grid_model_id`, updates the
+    provided busbar mapping dictionaries in place, and prepares merged coupler state
+    for `merge_station`.
 
     Parameters
     ----------
-    original_station : Station
-        The original station that should be modified
-    new_station : Station
-        The new station that contains the changes that should be merged into the original station
+    original_station : MaterializedStation
+        Original station whose busbars and asset connections should be matched.
+    new_station : MaterializedStation
+        Target station that provides the reference busbars, assets, and couplers.
     busbar_mapping : dict[int, int]
-        The mapping from the original busbar indices to the new busbar indices. This is modified in place and
-        returned as part of the new station object.
+        Mapping from original busbar indices to busbar indices in `new_station`.
+        Modified in place.
     busbar_int_id_mapping : dict[int, int]
-        The mapping from the original busbar int_ids to the new busbar int_ids. This is modified in place and
-        returned as part of the new station object.
+        Mapping from original busbar `int_id` values to corresponding `int_id` values
+        in `new_station`. Missing busbars are assigned synthetic ids beyond
+        `max_busbar_id`. Modified in place.
     max_busbar_id : int
-        The maximum busbar int_id in the new station.
-        This is used to assign new int_ids to busbars that are in the original station but not in the new station,
-        to avoid conflicts with existing busbars in the new station.
+        Maximum busbar `int_id` present in `new_station`.
 
     Returns
     -------
     dict[int, int]
-        The mapping from the original asset indices to the new asset indices. This is modified in place
-        and returned as part of the new station object.
+        Mapping from original branch connection indices to branch indices in `new_station`.
+    dict[int, int]
+        Mapping from original injection connection indices to injection indices in `new_station`.
     list[BusbarCoupler]
-        The new list of couplers that should be merged into the original station
+        Coupler list to apply to the original station.
     list[BusbarCoupler]
-        The coupler diff in this station, i.e. which couplers have been switched. Stores the
-        new state of the couplers, i.e. which state the coupler has been switched to
+        Couplers whose open state changes during the merge.
     """
-    for i, busbar in enumerate(original_station.busbars):
-        found = False
-        for j, other in enumerate(new_station.busbars):
-            if busbar.grid_model_id == other.grid_model_id:
-                busbar_mapping[i] = j
-                busbar_int_id_mapping[busbar.int_id] = other.int_id
-                found = True
-                break
-        if not found:
+
+    def _build_index_by_grid_model_id(elements: list[Union[Busbar, SwitchableAsset]]) -> dict[str, int]:
+        """Map each element grid model id to its position in the input list.
+
+        Parameters
+        ----------
+        elements : list[Union[Busbar, SwitchableAsset]]
+            Elements that expose a `grid_model_id` attribute.
+
+        Returns
+        -------
+        dict[str, int]
+            Mapping from `grid_model_id` to element position.
+        """
+        return {element.grid_model_id: index for index, element in enumerate(elements)}
+
+    def _map_asset_connections(
+        original_connections: list[MaterializedAssetConnection],
+        new_connections: list[MaterializedAssetConnection],
+    ) -> dict[int, int]:
+        """Map original asset connection indices to matching target connection indices.
+
+        Parameters
+        ----------
+        original_connections : list[MaterializedAssetConnection]
+            Original asset connections to map.
+        new_connections : list[MaterializedAssetConnection]
+            Target asset connections that define the mapped indices.
+
+        Returns
+        -------
+        dict[int, int]
+            Mapping from original connection index to target connection index.
+        """
+        new_asset_indices = _build_index_by_grid_model_id([asset_connection.asset for asset_connection in new_connections])
+        return {
+            index: new_asset_indices[asset_connection.asset.grid_model_id]
+            for index, asset_connection in enumerate(original_connections)
+            if asset_connection.asset.grid_model_id in new_asset_indices
+        }
+
+    new_busbar_indices = _build_index_by_grid_model_id(new_station.busbars)
+    new_busbar_int_ids = {busbar.grid_model_id: busbar.int_id for busbar in new_station.busbars}
+    for index, busbar in enumerate(original_station.busbars):
+        mapped_busbar_index = new_busbar_indices.get(busbar.grid_model_id)
+        if mapped_busbar_index is None:
             # Make sure to not accidentally map to an existing busbar
             busbar_int_id_mapping[busbar.int_id] = busbar.int_id + max_busbar_id + 1
+            continue
 
-    # Same for the switchable assets
-    asset_mapping = {}
-    for i, asset_connection in enumerate(original_station.asset_connections):
-        asset = asset_connection.asset
-        for j, other_connection in enumerate(new_station.asset_connections):
-            other = other_connection.asset
-            if asset.grid_model_id == other.grid_model_id:
-                asset_mapping[i] = j
-                break
+        busbar_mapping[index] = mapped_busbar_index
+        busbar_int_id_mapping[busbar.int_id] = new_busbar_int_ids[busbar.grid_model_id]
+
+    branch_asset_mapping = _map_asset_connections(original_station.branch_connections, new_station.branch_connections)
+    injection_asset_mapping = _map_asset_connections(
+        original_station.injection_connections,
+        new_station.injection_connections,
+    )
 
     # Merge couplers
     new_couplers, coupler_diff = merge_couplers(
         original_station.couplers, new_station.couplers, busbar_mapping=busbar_int_id_mapping
     )
-    return asset_mapping, new_couplers, coupler_diff
+    return branch_asset_mapping, injection_asset_mapping, new_couplers, coupler_diff
 
 
 def compare_stations(
@@ -944,7 +1085,7 @@ def compare_stations(
     list[SwitchableAsset],
     list[SwitchableAsset],
 ]:
-    """Compare two stations and return the missing elements
+    """Compare two stations and return the missing elements.
 
     It uses grid_model_ids to compare the assets, busbars and couplers. It does not consider
     different switching states or coupler states, but just checks if all the elements are also in
@@ -952,25 +1093,25 @@ def compare_stations(
 
     Parameters
     ----------
-    a : Station
-        The first station to compare.
-    b : Station
-        The second station to compare.
+    a : MaterializedStation
+        First station to compare.
+    b : MaterializedStation
+        Second station to compare.
 
     Returns
     -------
     list[BusbarCoupler]
-        The couplers that are in a but not in b.
+        Couplers present in `a` but not in `b`.
     list[BusbarCoupler]
-        The couplers that are in b but not in a.
+        Couplers present in `b` but not in `a`.
     list[Busbar]
-        The busbars that are in a but not in b.
+        Busbars present in `a` but not in `b`.
     list[Busbar]
-        The busbars that are in b but not in a.
+        Busbars present in `b` but not in `a`.
     list[SwitchableAsset]
-        The assets that are in a but not in b.
+        Assets present in `a` but not in `b`.
     list[SwitchableAsset]
-        The assets that are in b but not in a.
+        Assets present in `b` but not in `a`.
     """
     a_busbars = set(busbar.grid_model_id for busbar in a.busbars)
     b_busbars = set(busbar.grid_model_id for busbar in b.busbars)
@@ -978,8 +1119,14 @@ def compare_stations(
     a_couplers = set(coupler.grid_model_id for coupler in a.couplers)
     b_couplers = set(coupler.grid_model_id for coupler in b.couplers)
 
-    a_assets = set(asset_connection.asset.grid_model_id for asset_connection in a.asset_connections)
-    b_assets = set(asset_connection.asset.grid_model_id for asset_connection in b.asset_connections)
+    a_assets = {
+        *(asset_connection.asset.grid_model_id for asset_connection in a.branch_connections),
+        *(asset_connection.asset.grid_model_id for asset_connection in a.injection_connections),
+    }
+    b_assets = {
+        *(asset_connection.asset.grid_model_id for asset_connection in b.branch_connections),
+        *(asset_connection.asset.grid_model_id for asset_connection in b.injection_connections),
+    }
 
     return (
         [coupler for coupler in a.couplers if coupler.grid_model_id not in b_couplers],
@@ -987,14 +1134,28 @@ def compare_stations(
         [busbar for busbar in a.busbars if busbar.grid_model_id not in b_busbars],
         [busbar for busbar in b.busbars if busbar.grid_model_id not in a_busbars],
         [
-            asset_connection.asset
-            for asset_connection in a.asset_connections
-            if asset_connection.asset.grid_model_id not in b_assets
+            *(
+                asset_connection.asset
+                for asset_connection in a.branch_connections
+                if asset_connection.asset.grid_model_id not in b_assets
+            ),
+            *(
+                asset_connection.asset
+                for asset_connection in a.injection_connections
+                if asset_connection.asset.grid_model_id not in b_assets
+            ),
         ],
         [
-            asset_connection.asset
-            for asset_connection in b.asset_connections
-            if asset_connection.asset.grid_model_id not in a_assets
+            *(
+                asset_connection.asset
+                for asset_connection in b.branch_connections
+                if asset_connection.asset.grid_model_id not in a_assets
+            ),
+            *(
+                asset_connection.asset
+                for asset_connection in b.injection_connections
+                if asset_connection.asset.grid_model_id not in a_assets
+            ),
         ],
     )
 
@@ -1008,9 +1169,9 @@ def load_asset_topology_fs(
     Parameters
     ----------
     filesystem : AbstractFileSystem
-        The file system to use to load the asset topology.
+        File system to load from.
     file_path : Union[str, Path]
-        The path to the file containing the asset topology in json format.
+        Path to the JSON file containing the topology.
 
     Returns
     -------
@@ -1025,17 +1186,17 @@ def load_asset_topology_fs(
 
 
 def load_asset_topology(filename: Union[str, Path]) -> Topology:
-    """Load an asset topology from a file
+    """Load an asset topology from a file.
 
     Parameters
     ----------
     filename : Union[str, Path]
-        The filename to load the asset topology from
+        File name to load the topology from.
 
     Returns
     -------
     Topology
-        The loaded asset topology
+        Loaded topology.
     """
     return load_asset_topology_fs(
         filesystem=LocalFileSystem(),
@@ -1044,74 +1205,32 @@ def load_asset_topology(filename: Union[str, Path]) -> Topology:
 
 
 def save_asset_topology_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], asset_topology: Topology) -> None:
-    """Save an asset topology to a file system
+    """Save an asset topology to a file system.
 
     Parameters
     ----------
     filesystem : AbstractFileSystem
-        The file system to save the asset topology to
+        File system to save to.
     filename : Union[str, Path]
-        The filename to save the asset topology to
-    asset_topology: Topology
-        The asset topology to save
+        File name to save the topology to.
+    asset_topology : Topology
+        Topology to save.
     """
     with filesystem.open(str(filename), "w", encoding="utf-8") as file:
         file.write(asset_topology.model_dump_json(indent=2))
 
 
 def save_asset_topology(filename: Union[str, Path], asset_topology: Topology) -> None:
-    """Save an asset topology to a file
+    """Save an asset topology to a file.
 
     Parameters
     ----------
     filename : Union[str, Path]
-        The filename to save the asset topology to
-    asset_topology: Topology
-        The asset topology to save
+        File name to save the topology to.
+    asset_topology : Topology
+        Topology to save.
     """
     save_asset_topology_fs(LocalFileSystem(), filename, asset_topology)
-
-
-def get_connected_assets(
-    station: Union[MaterializedStation, RawStation],
-    busbar_index: int,
-    topology_assets: Optional[list[SwitchableAsset]] = None,
-) -> list[SwitchableAsset]:
-    """
-    Get the assets connected to a specific busbar in a station.
-
-    Parameters
-    ----------
-    station : MaterializedStation | RawStation
-        The station object containing the switching table and assets.
-    busbar_index : int
-        The index of the busbar in the switching table.
-    topology_assets : Optional[list[SwitchableAsset]]
-        Topology-owned assets used to resolve ``RawStation.asset_connections``. Required when ``station`` is a
-        ``RawStation``.
-
-    Returns
-    -------
-    list of SwitchableAsset
-        A list of assets connected to the specified busbar.
-    """
-    connected_asset_indices = np.nonzero(station.asset_switching_table[busbar_index])[0]
-    if isinstance(station, MaterializedStation):
-        return [
-            station.asset_connections[i].asset
-            for i in connected_asset_indices
-            if station.asset_connections[i].asset.in_service
-        ]
-
-    if topology_assets is None:
-        raise ValueError("topology_assets must be provided when resolving connected assets for a RawStation")
-
-    asset_map = {asset.grid_model_id: asset for asset in topology_assets}
-    return [
-        asset_map[station.asset_connections[i].asset_id]
-        for i in connected_asset_indices
-        if asset_map[station.asset_connections[i].asset_id].in_service
-    ]
 
 
 def accumulate_diffs(
@@ -1119,43 +1238,64 @@ def accumulate_diffs(
 ) -> tuple[
     list[tuple[str, BusbarCoupler]],
     list[tuple[str, int, int, bool]],
+    list[tuple[str, int, int, bool]],
+    list[tuple[str, int]],
     list[tuple[str, int]],
 ]:
-    """Accumulate the diffs of the realized stations into the format of realized topology
+    """Accumulate the diffs of the realized stations into the format of realized topology.
 
     Parameters
     ----------
     realized_stations : list[AppliedStation]
-        The realized stations to accumulate
+        Realized stations to accumulate.
 
     Returns
     -------
     list[tuple[str, BusbarCoupler]]
-        The accumulated coupler diff
+        Accumulated coupler diff.
     list[tuple[str, int, int, bool]]
-        The accumulated reassignment diff
+        Accumulated branch reassignment diff.
+    list[tuple[str, int, int, bool]]
+        Accumulated injection reassignment diff.
     list[tuple[str, int]]
-        The accumulated disconnection diff
+        Accumulated branch disconnection diff.
+    list[tuple[str, int]]
+        Accumulated injection disconnection diff.
     """
     coupler_diff = []
-    reassignment_diff = []
-    disconnection_diff = []
+    branch_reassignment_diff = []
+    injection_reassignment_diff = []
+    branch_disconnection_diff = []
+    injection_disconnection_diff = []
     for station in realized_stations:
         s_id = station.station.grid_model_id
         coupler_diff.extend([(s_id, coupler) for coupler in station.coupler_diff])
-        reassignment_diff.extend(
-            [(s_id, asset_idx, bus_idx, connected) for (asset_idx, bus_idx, connected) in station.reassignment_diff]
+        branch_reassignment_diff.extend(
+            [(s_id, asset_idx, bus_idx, connected) for (asset_idx, bus_idx, connected) in station.branch_reassignment_diff]
         )
-        disconnection_diff.extend([(s_id, asset_idx) for asset_idx in station.disconnection_diff])
+        injection_reassignment_diff.extend(
+            [
+                (s_id, asset_idx, bus_idx, connected)
+                for (asset_idx, bus_idx, connected) in station.injection_reassignment_diff
+            ]
+        )
+        branch_disconnection_diff.extend([(s_id, asset_idx) for asset_idx in station.branch_disconnection_diff])
+        injection_disconnection_diff.extend([(s_id, asset_idx) for asset_idx in station.injection_disconnection_diff])
 
-    return coupler_diff, reassignment_diff, disconnection_diff
+    return (
+        coupler_diff,
+        branch_reassignment_diff,
+        injection_reassignment_diff,
+        branch_disconnection_diff,
+        injection_disconnection_diff,
+    )
 
 
 def station_diff(
     start_station: MaterializedStation,
     target_station: MaterializedStation,
 ) -> AppliedStation:
-    """Compute the diff between two stations
+    """Compute the diff between two stations.
 
     The same station must be described by both inputs, i.e. the assets, busbars and couplers (except for their open state)
     must be the same.
@@ -1163,18 +1303,21 @@ def station_diff(
     Parameters
     ----------
     start_station : MaterializedStation
-        The starting station from which to start the diff
+        Starting station.
     target_station : MaterializedStation
-        The ending station to which the diff shall lead when applied to the starting station
+        Target station.
 
     Returns
     -------
     AppliedStation
-        The realized station containing the target station and the coupler, reassignment and disconnection diffs
+        Realized station containing the target station and all derived diffs.
     """
-    assert [s.asset.grid_model_id for s in start_station.asset_connections] == [
-        s.asset.grid_model_id for s in target_station.asset_connections
-    ], "Assets do not match"
+    assert [s.asset.grid_model_id for s in start_station.branch_connections] == [
+        s.asset.grid_model_id for s in target_station.branch_connections
+    ], "Branch assets do not match"
+    assert [s.asset.grid_model_id for s in start_station.injection_connections] == [
+        s.asset.grid_model_id for s in target_station.injection_connections
+    ], "Injection assets do not match"
     assert [b.grid_model_id for b in start_station.busbars] == [b.grid_model_id for b in target_station.busbars], (
         "Busbars do not match"
     )
@@ -1182,36 +1325,64 @@ def station_diff(
         "Couplers do not match"
     )
 
-    reassignment_diff = []
-    disconnection_diff = []
-    for asset_index in range(len(start_station.asset_connections)):
-        target_disconnected = ~np.any(target_station.asset_switching_table[:, asset_index])
-        start_disconnected = ~np.any(start_station.asset_switching_table[:, asset_index])
+    def _table_diff(
+        start_table: np.ndarray,
+        target_table: np.ndarray,
+        asset_kind: str,
+    ) -> tuple[list[tuple[int, int, bool]], list[int]]:
+        """Compute reassignment and disconnection diffs for one asset table.
 
-        if start_disconnected and not target_disconnected:
-            raise NotImplementedError(
-                "Reconnections are not supported yet, there is no diff for that"
-                + f" (asset {asset_index} in station {start_station.grid_model_id})"
-            )
+        Parameters
+        ----------
+        start_table : np.ndarray
+            Initial switching table.
+        target_table : np.ndarray
+            Target switching table.
+        asset_kind : str
+            Asset kind used in error messages.
 
-        if target_disconnected and not start_disconnected:
-            # if the asset is connected in the target station but disconnected in the starting station
-            # we need to add it to the diff
-            disconnection_diff.append(asset_index)
+        Returns
+        -------
+        list[tuple[int, int, bool]]
+            Reassignment diff as `(asset_index, busbar_index, connected)` tuples.
+        list[int]
+            Asset indices that become disconnected.
+        """
+        reassignment_diff_local: list[tuple[int, int, bool]] = []
+        disconnection_diff_local: list[int] = []
+        for asset_index in range(start_table.shape[1]):
+            target_disconnected = ~np.any(target_table[:, asset_index])
+            start_disconnected = ~np.any(start_table[:, asset_index])
 
-        # No reassignment diff if the asset is disconnected
-        if target_disconnected:
-            continue
+            if start_disconnected and not target_disconnected:
+                raise NotImplementedError(
+                    "Reconnections are not supported yet, there is no diff for that"
+                    + f" ({asset_kind} {asset_index} in station {start_station.grid_model_id})"
+                )
 
-        xor_diff = np.logical_xor(
-            start_station.asset_switching_table[:, asset_index],
-            target_station.asset_switching_table[:, asset_index],
-        )
-        for busbar_index in np.flatnonzero(xor_diff):
-            # If the start and end switching entries differ, add it to the reassignment diff
-            reassignment_diff.append(
-                (asset_index, busbar_index, target_station.asset_switching_table[busbar_index, asset_index])
-            )
+            if target_disconnected and not start_disconnected:
+                disconnection_diff_local.append(int(asset_index))
+
+            if target_disconnected:
+                continue
+
+            xor_diff = np.logical_xor(start_table[:, asset_index], target_table[:, asset_index])
+            for busbar_index in np.flatnonzero(xor_diff):
+                reassignment_diff_local.append(
+                    (int(asset_index), int(busbar_index), bool(target_table[busbar_index, asset_index]))
+                )
+        return reassignment_diff_local, disconnection_diff_local
+
+    branch_reassignment_diff, branch_disconnection_diff = _table_diff(
+        start_station.branch_switching_table,
+        target_station.branch_switching_table,
+        "branch",
+    )
+    injection_reassignment_diff, injection_disconnection_diff = _table_diff(
+        start_station.injection_switching_table,
+        target_station.injection_switching_table,
+        "injection",
+    )
 
     coupler_diff = []
     for start_coupler, target_coupler in zip(start_station.couplers, target_station.couplers, strict=True):
@@ -1221,8 +1392,10 @@ def station_diff(
     return AppliedStation(
         station=target_station,
         coupler_diff=coupler_diff,
-        reassignment_diff=reassignment_diff,
-        disconnection_diff=disconnection_diff,
+        branch_reassignment_diff=branch_reassignment_diff,
+        injection_reassignment_diff=injection_reassignment_diff,
+        branch_disconnection_diff=branch_disconnection_diff,
+        injection_disconnection_diff=injection_disconnection_diff,
     )
 
 
@@ -1230,20 +1403,19 @@ def topology_diff(
     start_topo: Topology,
     target_topo: Topology,
 ) -> RealizedTopology:
-    """Compute the difference between two topologies
+    """Compute the difference between two topologies.
 
     Parameters
     ----------
     start_topo : Topology
-        The starting topology
+        Starting topology.
     target_topo : Topology
-        The targeted topology.
+        Target topology.
 
     Returns
     -------
     RealizedTopology
-        The realized topology containing the target topology and the coupler, reassignment and disconnection diffs that lead
-        from the starting topology to the target topology.
+        Realized topology containing the target topology and all diffs from the start topology.
     """
     realized_stations = [
         station_diff(start_station, target_station)
@@ -1251,67 +1423,96 @@ def topology_diff(
             start_topo.materialize_stations(), target_topo.materialize_stations(), strict=True
         )
     ]
-    coupler_diff, reassignment_diff, disconnection_diff = accumulate_diffs(realized_stations)
+    (
+        coupler_diff,
+        branch_reassignment_diff,
+        injection_reassignment_diff,
+        branch_disconnection_diff,
+        injection_disconnection_diff,
+    ) = accumulate_diffs(realized_stations)
     return RealizedTopology(
         topology=target_topo,
         coupler_diff=coupler_diff,
-        reassignment_diff=reassignment_diff,
-        disconnection_diff=disconnection_diff,
+        branch_reassignment_diff=branch_reassignment_diff,
+        injection_reassignment_diff=injection_reassignment_diff,
+        branch_disconnection_diff=branch_disconnection_diff,
+        injection_disconnection_diff=injection_disconnection_diff,
     )
 
 
 def order_station_assets(
     station: MaterializedStation, asset_ids: list[str]
 ) -> tuple[MaterializedStation, list[str], list[str]]:
-    """Orders the assets in a station according to a list of asset ids.
+    """Order station assets according to a list of asset ids.
 
-    If an asset is not found in the station, it will be added to the not_found list.
-    If an asset is not present in the asset_ids list, it will be dropped from the station.
+    Asset ids not present in the station are reported in `not_found`.
+    Assets omitted from `asset_ids` are dropped and reported in `ignored`.
 
     Parameters
     ----------
-    station : Station
-        The station to order.
+    station : MaterializedStation
+        Station to reorder.
     asset_ids : list[str]
-        A list of asset ids. The assets will be ordered according to the grid_model_id.
+        Asset ids in the desired order.
 
     Returns
     -------
-    Station
-        The ordered station
+    MaterializedStation
+        Station with reordered assets.
     list[str]
-        A list of asset ids that were not found in the station
+        Asset ids that were not found in the station.
     list[str]
-        A list of asset ids that were ignored, i.e. not present in the asset_ids list
+        Asset ids ignored because they were not present in `asset_ids`.
     """
-    new_asset_connections = []
+    branch_lookup = {
+        asset_connection.asset.grid_model_id: (index, asset_connection)
+        for index, asset_connection in enumerate(station.branch_connections)
+    }
+    injection_lookup = {
+        asset_connection.asset.grid_model_id: (index, asset_connection)
+        for index, asset_connection in enumerate(station.injection_connections)
+    }
+    new_branch_connections = []
+    new_injection_connections = []
     not_found = []
-    old_positions = []
+    branch_positions = []
+    injection_positions = []
     for asset_id in asset_ids:
-        found = False
-        for pos, asset_connection in enumerate(station.asset_connections):
-            asset = asset_connection.asset
-            if asset.grid_model_id == asset_id:
-                new_asset_connections.append(asset_connection)
-                old_positions.append(pos)
-                found = True
-                break
-        if not found:
+        if asset_id in branch_lookup:
+            pos, asset_connection = branch_lookup[asset_id]
+            new_branch_connections.append(asset_connection)
+            branch_positions.append(pos)
+        elif asset_id in injection_lookup:
+            pos, asset_connection = injection_lookup[asset_id]
+            new_injection_connections.append(asset_connection)
+            injection_positions.append(pos)
+        else:
             not_found.append(asset_id)
 
     ignored = [
         asset_connection.asset.grid_model_id
-        for index, asset_connection in enumerate(station.asset_connections)
-        if index not in old_positions
+        for index, asset_connection in enumerate(station.branch_connections)
+        if index not in branch_positions
+    ] + [
+        asset_connection.asset.grid_model_id
+        for index, asset_connection in enumerate(station.injection_connections)
+        if index not in injection_positions
     ]
 
-    asset_switching_table = station.asset_switching_table[:, old_positions]
-    asset_connectivity = station.asset_connectivity[:, old_positions] if station.asset_connectivity is not None else None
     station = station.model_copy(
         update={
-            "asset_connections": new_asset_connections,
-            "asset_switching_table": asset_switching_table,
-            "asset_connectivity": asset_connectivity,
+            "branch_connections": new_branch_connections,
+            "injection_connections": new_injection_connections,
+            "branch_switching_table": station.branch_switching_table[:, branch_positions],
+            "injection_switching_table": station.injection_switching_table[:, injection_positions],
+            "branch_connectivity": (
+                station.branch_connectivity[:, branch_positions] if station.branch_connectivity is not None else None
+            ),
+            "injection_connectivity": (
+                station.injection_connectivity[:, injection_positions]
+                if station.injection_connectivity is not None
+                else None
+            ),
         }
     )
     MaterializedStation.model_validate(station)
@@ -1319,24 +1520,24 @@ def order_station_assets(
 
 
 def order_topology(topology: Topology, station_ids: list[str]) -> tuple[Topology, list[str]]:
-    """Orders the stations in a topology according to a list of ids.
+    """Order topology stations according to a list of ids.
 
-    If a station is not found in the topology, it will be added to the not_found list.
-    If a station is not present in the station_ids list, it will be dropped.
+    Station ids not present in the topology are reported in `not_found`.
+    Stations omitted from `station_ids` are dropped.
 
     Parameters
     ----------
     topology : Topology
-        The topology to order.
+        Topology to reorder.
     station_ids : list[str]
-        A list of station ids. The stations will be ordered according to the grid_model_id.
+        Station ids in the desired order.
 
     Returns
     -------
     Topology
-        The ordered topology
+        Topology with reordered stations.
     list[str]
-        A list of station ids that were not found in the topology
+        Station ids that were not found in the topology.
     """
     new_stations = []
     not_found = []
@@ -1350,8 +1551,226 @@ def order_topology(topology: Topology, station_ids: list[str]) -> tuple[Topology
         if not found:
             not_found.append(relevant_node)
 
-    topology = copy_topology_with_updates(topology, new_stations, topology.assets, topology.asset_bays)
+    topology = copy_topology_with_updates(
+        topology,
+        new_stations,
+        topology.asset_bays,
+        branch_assets=topology.branch_assets,
+        injection_assets=topology.injection_assets,
+    )
     return topology, not_found
+
+
+def _coupler_connects_same_busbars(coupler: BusbarCoupler, other_coupler: BusbarCoupler) -> bool:
+    """Return whether two couplers connect the same busbar pair.
+
+    Parameters
+    ----------
+    coupler : BusbarCoupler
+        Reference coupler.
+    other_coupler : BusbarCoupler
+        Coupler to compare against `coupler`.
+
+    Returns
+    -------
+    bool
+        `True` if both couplers connect the same busbar pair.
+    """
+    return (
+        other_coupler.busbar_from_id == coupler.busbar_from_id and other_coupler.busbar_to_id == coupler.busbar_to_id
+    ) or (other_coupler.busbar_to_id == coupler.busbar_from_id and other_coupler.busbar_from_id == coupler.busbar_to_id)
+
+
+def _validate_coupler_can_be_fused(station: MaterializedStation, coupler: BusbarCoupler) -> None:
+    """Raise if the coupler has a parallel coupler on the same busbar pair.
+
+    Parameters
+    ----------
+    station : MaterializedStation
+        Station containing the coupler.
+    coupler : BusbarCoupler
+        Coupler that should be fused.
+
+    Raises
+    ------
+    ValueError
+        If more than one coupler connects the same busbar pair.
+    """
+    parallel_couplers = [
+        other_coupler for other_coupler in station.couplers if _coupler_connects_same_busbars(coupler, other_coupler)
+    ]
+    if len(parallel_couplers) > 1:
+        raise ValueError(
+            f"Coupler {coupler.grid_model_id} has parallel couplers in station {station.grid_model_id}, "
+            "cannot fuse parallel couplers with the same busbars"
+        )
+
+
+def _resolve_fused_busbars(
+    station: MaterializedStation,
+    coupler: BusbarCoupler,
+    copy_info_from: bool,
+) -> tuple[int, int, int, int, Busbar, Busbar]:
+    """Resolve busbar indices and busbar objects used during coupler fusion.
+
+    Parameters
+    ----------
+    station : MaterializedStation
+        Station containing the coupler.
+    coupler : BusbarCoupler
+        Coupler whose adjacent busbars should be resolved.
+    copy_info_from : bool
+        Whether metadata should be kept from the from-side busbar.
+
+    Returns
+    -------
+    int
+        From-side busbar index.
+    int
+        To-side busbar index.
+    int
+        Kept busbar index.
+    int
+        Removed busbar index.
+    Busbar
+        Kept busbar.
+    Busbar
+        Removed busbar.
+    """
+    busbar_from, busbar_to = find_busbars_for_coupler(station.busbars, coupler)
+    busbar_index_by_int_id = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
+    busbar_from_index = busbar_index_by_int_id[busbar_from.int_id]
+    busbar_to_index = busbar_index_by_int_id[busbar_to.int_id]
+    keep_busbar_index = busbar_from_index if copy_info_from else busbar_to_index
+    remove_busbar_index = busbar_to_index if copy_info_from else busbar_from_index
+    keep_busbar = station.busbars[keep_busbar_index]
+    remove_busbar = station.busbars[remove_busbar_index]
+    return busbar_from_index, busbar_to_index, keep_busbar_index, remove_busbar_index, keep_busbar, remove_busbar
+
+
+def _merge_and_delete_fused_busbar_row(
+    table: Optional[np.ndarray],
+    busbar_from_index: int,
+    busbar_to_index: int,
+    keep_busbar_index: int,
+    remove_busbar_index: int,
+) -> Optional[np.ndarray]:
+    """Merge fused busbar rows and delete the removed busbar row.
+
+    Parameters
+    ----------
+    table : Optional[np.ndarray]
+        Switching or connectivity table to update.
+    busbar_from_index : int
+        From-side busbar index.
+    busbar_to_index : int
+        To-side busbar index.
+    keep_busbar_index : int
+        Busbar index that should remain in the table.
+    remove_busbar_index : int
+        Busbar index that should be removed from the table.
+
+    Returns
+    -------
+    Optional[np.ndarray]
+        Updated table, or `None` if the input table is `None`.
+    """
+    if table is None:
+        return None
+    merged_table = np.copy(table)
+    merged_table[keep_busbar_index] = merged_table[busbar_from_index] | merged_table[busbar_to_index]
+    return np.delete(merged_table, remove_busbar_index, axis=0)
+
+
+def _replace_sr_keys_for_fused_busbar(
+    asset_bay: Optional[AssetBay],
+    keep_busbar: Busbar,
+    remove_busbar: Busbar,
+) -> Optional[AssetBay]:
+    """Rewrite SR switch busbar keys from the removed busbar to the kept one.
+
+    Parameters
+    ----------
+    asset_bay : Optional[AssetBay]
+        Asset bay whose SR switch mapping should be updated.
+    keep_busbar : Busbar
+        Busbar that remains after fusion.
+    remove_busbar : Busbar
+        Busbar that is removed during fusion.
+
+    Returns
+    -------
+    Optional[AssetBay]
+        Updated asset bay, or `None` if no asset bay is present.
+    """
+    if asset_bay is None:
+        return None
+
+    new_sr_switch_grid_model_id = {}
+    for key, foreign_id in asset_bay.sr_switch_grid_model_id.items():
+        if key == remove_busbar.grid_model_id and keep_busbar.grid_model_id in asset_bay.sr_switch_grid_model_id:
+            continue
+        mapped_key = keep_busbar.grid_model_id if key == remove_busbar.grid_model_id else key
+        new_sr_switch_grid_model_id[mapped_key] = foreign_id
+
+    return asset_bay.model_copy(update={"sr_switch_grid_model_id": new_sr_switch_grid_model_id})
+
+
+def _update_asset_bays_for_fused_busbar(
+    asset_connections: list[MaterializedAssetConnection],
+    keep_busbar: Busbar,
+    remove_busbar: Busbar,
+) -> list[MaterializedAssetConnection]:
+    """Apply the fused-busbar SR key rewrite to each asset connection.
+
+    Parameters
+    ----------
+    asset_connections : list[MaterializedAssetConnection]
+        Asset connections to update.
+    keep_busbar : Busbar
+        Busbar that remains after fusion.
+    remove_busbar : Busbar
+        Busbar that is removed during fusion.
+
+    Returns
+    -------
+    list[MaterializedAssetConnection]
+        Updated asset connections.
+    """
+    return [
+        asset_connection.model_copy(
+            update={"asset_bay": _replace_sr_keys_for_fused_busbar(asset_connection.asset_bay, keep_busbar, remove_busbar)}
+        )
+        for asset_connection in asset_connections
+    ]
+
+
+def _replace_coupler_busbar_id_for_fusion(
+    coupler: BusbarCoupler,
+    keep_busbar: Busbar,
+    remove_busbar: Busbar,
+) -> BusbarCoupler:
+    """Rewrite coupler endpoints that still reference the removed busbar.
+
+    Parameters
+    ----------
+    coupler : BusbarCoupler
+        Coupler to update.
+    keep_busbar : Busbar
+        Busbar that remains after fusion.
+    remove_busbar : Busbar
+        Busbar that is removed during fusion.
+
+    Returns
+    -------
+    BusbarCoupler
+        Updated coupler with rewritten endpoints when needed.
+    """
+    if coupler.busbar_from_id == remove_busbar.int_id:
+        return coupler.model_copy(update={"busbar_from_id": keep_busbar.int_id})
+    if coupler.busbar_to_id == remove_busbar.int_id:
+        return coupler.model_copy(update={"busbar_to_id": keep_busbar.int_id})
+    return coupler
 
 
 def fuse_coupler(
@@ -1359,115 +1778,88 @@ def fuse_coupler(
     coupler_grid_model_id: str,
     copy_info_from: bool = True,
 ) -> MaterializedStation:
-    """Fuses a coupler by merging the adjacent busbars into one busbar.
+    """Fuse a coupler by merging its adjacent busbars.
 
     Parameters
     ----------
-    station : Station
-        The station with the coupler to fuse. Assumes that the coupler is in the station. The open/closed state of the
-        coupler is disregarded, i.e. the coupler will be fused regardless of its state.
+    station : MaterializedStation
+        Station containing the coupler to fuse. The coupler open state is ignored.
     coupler_grid_model_id : str
-        The grid_model_id of the coupler to fuse
+        Grid model identifier of the coupler to fuse.
     copy_info_from : bool, optional
-        Whether the new busbar retains the information (grid_model_id, etc) of the busbar on the from side of the coupler,
-        by default True. If False, the busbar on the to side of the coupler is used.
+        If `True`, keep metadata from the busbar on the coupler's from-side.
+        If `False`, keep metadata from the to-side busbar.
 
     Returns
     -------
-    Station
-        The station with the coupler fused. The coupler is removed and the busbars are merged.
+    MaterializedStation
+        Station with the coupler removed and both busbars merged.
+
+    Raises
+    ------
+    ValueError
+        If the coupler is missing or if parallel couplers connect the same busbar pair.
     """
     coupler = next((c for c in station.couplers if c.grid_model_id == coupler_grid_model_id), None)
     if coupler is None:
         raise ValueError(f"Coupler {coupler_grid_model_id} not found in station {station.grid_model_id}")
 
-    busbar_from_index = next((index for index, b in enumerate(station.busbars) if b.int_id == coupler.busbar_from_id), None)
-    busbar_to_index = next((index for index, b in enumerate(station.busbars) if b.int_id == coupler.busbar_to_id), None)
+    _validate_coupler_can_be_fused(station, coupler)
+    busbar_from_index, busbar_to_index, keep_busbar_index, remove_busbar_index, keep_busbar, remove_busbar = (
+        _resolve_fused_busbars(station, coupler, copy_info_from)
+    )
 
-    assert busbar_from_index is not None, f"Busbar {coupler.busbar_from_id} not found in station {station.grid_model_id}"
-    assert busbar_to_index is not None, f"Busbar {coupler.busbar_to_id} not found in station {station.grid_model_id}"
+    new_branch_switching_table = _merge_and_delete_fused_busbar_row(
+        station.branch_switching_table,
+        busbar_from_index,
+        busbar_to_index,
+        keep_busbar_index,
+        remove_busbar_index,
+    )
+    new_injection_switching_table = _merge_and_delete_fused_busbar_row(
+        station.injection_switching_table,
+        busbar_from_index,
+        busbar_to_index,
+        keep_busbar_index,
+        remove_busbar_index,
+    )
+    new_branch_connectivity = _merge_and_delete_fused_busbar_row(
+        station.branch_connectivity,
+        busbar_from_index,
+        busbar_to_index,
+        keep_busbar_index,
+        remove_busbar_index,
+    )
+    new_injection_connectivity = _merge_and_delete_fused_busbar_row(
+        station.injection_connectivity,
+        busbar_from_index,
+        busbar_to_index,
+        keep_busbar_index,
+        remove_busbar_index,
+    )
 
-    if (
-        len(
-            [
-                c
-                for c in station.couplers
-                if (c.busbar_from_id == coupler.busbar_from_id and c.busbar_to_id == coupler.busbar_to_id)
-                or (c.busbar_to_id == coupler.busbar_from_id and c.busbar_from_id == coupler.busbar_to_id)
-            ]
-        )
-        > 1
-    ):
-        raise ValueError(
-            f"Coupler {coupler_grid_model_id} has parallel couplers in station {station.grid_model_id}, "
-            "cannot fuse parallel couplers with the same busbars"
-        )
-
-    switching_row = station.asset_switching_table[busbar_from_index] | station.asset_switching_table[busbar_to_index]
-    connectivity_row = station.asset_connectivity[busbar_from_index] | station.asset_connectivity[busbar_to_index]
-
-    # Remove either the from or the to busbar
-    busbar_index_to_remove = busbar_to_index if copy_info_from else busbar_from_index
-    busbar_index_to_keep = busbar_from_index if copy_info_from else busbar_to_index
-
-    new_switching_table = np.copy(station.asset_switching_table)
-    new_switching_table[busbar_index_to_keep] = switching_row
-    new_switching_table = np.delete(new_switching_table, busbar_index_to_remove, axis=0)
-
-    if station.asset_connectivity is not None:
-        new_connectivity_table = np.copy(station.asset_connectivity)
-        new_connectivity_table[busbar_index_to_keep] = connectivity_row
-        new_connectivity_table = np.delete(new_connectivity_table, busbar_index_to_remove, axis=0)
-    else:
-        new_connectivity_table = None
-
-    busbar_to_remove = station.busbars[busbar_index_to_remove]
-    busbar_to_keep = station.busbars[busbar_index_to_keep]
-
-    def _replace_sr_keys(asset_bay: Optional[AssetBay]) -> Optional[AssetBay]:
-        """Update the sr switch asset bay if it is connected to the removed busbar."""
-        if asset_bay is None:
-            return None
-        if (
-            busbar_to_remove.grid_model_id in asset_bay.sr_switch_grid_model_id.keys()
-            and busbar_to_keep.grid_model_id in asset_bay.sr_switch_grid_model_id.keys()
-        ):
-            # If both busbars are present, we need to remove the one that is not kept
-            new_sr_switch_grid_model_id = {
-                key: foreign_id
-                for (key, foreign_id) in asset_bay.sr_switch_grid_model_id.items()
-                if key != busbar_to_remove.grid_model_id
-            }
-        else:
-            # If the target busbar is not present, we change the key
-            new_sr_switch_grid_model_id = {
-                (busbar_to_keep.grid_model_id if key == busbar_to_remove.grid_model_id else key): foreign_id
-                for (key, foreign_id) in asset_bay.sr_switch_grid_model_id.items()
-            }
-
-        return asset_bay.model_copy(update={"sr_switch_grid_model_id": new_sr_switch_grid_model_id})
-
-    def _replace_int_id(coupler: BusbarCoupler) -> BusbarCoupler:
-        """Update coupler int-ids that are pointing to the removed busbar."""
-        if coupler.busbar_from_id == busbar_to_remove.int_id:
-            return coupler.model_copy(update={"busbar_from_id": busbar_to_keep.int_id})
-        if coupler.busbar_to_id == busbar_to_remove.int_id:
-            return coupler.model_copy(update={"busbar_to_id": busbar_to_keep.int_id})
-        return coupler
-
-    new_busbars = [b for i, b in enumerate(station.busbars) if i != busbar_index_to_remove]
-    new_couplers = [_replace_int_id(c) for c in station.couplers if c.grid_model_id != coupler_grid_model_id]
-    new_asset_connections = [
-        asset_connection.model_copy(update={"asset_bay": _replace_sr_keys(asset_connection.asset_bay)})
-        for asset_connection in station.asset_connections
+    new_busbars = [busbar for index, busbar in enumerate(station.busbars) if index != remove_busbar_index]
+    new_couplers = [
+        _replace_coupler_busbar_id_for_fusion(other_coupler, keep_busbar, remove_busbar)
+        for other_coupler in station.couplers
+        if other_coupler.grid_model_id != coupler_grid_model_id
     ]
+    new_branch_connections = _update_asset_bays_for_fused_busbar(station.branch_connections, keep_busbar, remove_busbar)
+    new_injection_connections = _update_asset_bays_for_fused_busbar(
+        station.injection_connections,
+        keep_busbar,
+        remove_busbar,
+    )
 
     station = station.model_copy(
         update={
             "busbars": new_busbars,
-            "asset_switching_table": new_switching_table,
-            "asset_connectivity": new_connectivity_table,
-            "asset_connections": new_asset_connections,
+            "branch_connections": new_branch_connections,
+            "injection_connections": new_injection_connections,
+            "branch_switching_table": new_branch_switching_table,
+            "injection_switching_table": new_injection_switching_table,
+            "branch_connectivity": new_branch_connectivity,
+            "injection_connectivity": new_injection_connectivity,
             "couplers": new_couplers,
         }
     )
@@ -1480,31 +1872,33 @@ def fuse_all_couplers_with_type(
     coupler_type: str,
     copy_info_from: bool = True,
 ) -> tuple[MaterializedStation, list[BusbarCoupler]]:
-    """Fuses all couplers of a specific type in a station.
+    """Fuse all couplers of a given type in a station.
 
-    This will also filter all duplicate couplers, as there might be an edge case in which a triangle of busbars is not
-    properly merged otherwise.
+    Duplicate couplers are filtered after each fusion step so chained merges do not
+    leave residual parallel couplers between already fused busbars.
 
     Parameters
     ----------
-    station : Station
-        The station with the couplers to fuse
+    station : MaterializedStation
+        Station containing the couplers to fuse.
     coupler_type : str
-        The type of coupler to fuse, will match the coupler.type attribute. If coupler.type is None, it will never match.
+        Coupler type to match against `coupler.coupler_type`.
     copy_info_from : bool, optional
-        Whether the new busbar retains the information (grid_model_id, etc) of the busbar on the from side of the coupler,
-        by default True. If False, the busbar on the to side of the coupler is used.
+        If `True`, keep metadata from the from-side busbar for each fusion.
+        If `False`, keep metadata from the to-side busbar.
 
     Returns
     -------
-    Station
-        The station with the couplers fused that matched the type. The couplers are removed and the busbars are merged.
+    MaterializedStation
+        Station after all matching couplers have been fused.
     list[BusbarCoupler]
-        The couplers that were fused or removed due to being parallel and are no longer present in the station.
+        Couplers removed either by fusion or duplicate filtering.
     """
     fused_couplers = []
     while True:
-        coupler = next((c for c in station.couplers if (c.type is not None and c.type == coupler_type)), None)
+        coupler = next(
+            (c for c in station.couplers if (c.coupler_type is not None and c.coupler_type == coupler_type)), None
+        )
         if coupler is None:
             break
 
@@ -1525,20 +1919,20 @@ def find_station_by_id(stations: list[MaterializedStation], station_id: str) -> 
 
     Parameters
     ----------
-    stations : list[Station]
-        The list of stations to search in.
+    stations : list[MaterializedStation]
+        Stations to search.
     station_id : str
-        The grid_model_id of the station to find.
+        Grid model identifier of the station to find.
 
     Returns
     -------
-    Station
-        The station with the given grid_model_id.
+    MaterializedStation
+        Matching station.
 
     Raises
     ------
     ValueError
-        If the station is not found in the list.
+        If no station with the requested identifier is present.
     """
     for station in stations:
         if station.grid_model_id == station_id:

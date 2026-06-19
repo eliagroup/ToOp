@@ -15,8 +15,6 @@ import numpy as np
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
-from beartype.typing import cast
-from jaxtyping import Bool
 from toop_engine_interfaces.asset_topology import MaterializedStation, Topology
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
@@ -121,6 +119,169 @@ def _get_coupler_switch_diffs(
     return diff_switches
 
 
+def _get_branch_switch_diffs(
+    changed_station: MaterializedStation,
+    starting_station: MaterializedStation,
+    fail_on_disconnect: bool = False,
+) -> list[dict[str, str | bool]]:
+    """Collect branch selector and breaker switch changes between two station states.
+
+    Parameters
+    ----------
+    changed_station : MaterializedStation
+        Station describing the target branch-to-busbar assignments.
+    starting_station : MaterializedStation
+        Station describing the reference branch assignments. The branch connection
+        array must stay in the same order as ``changed_station``.
+    fail_on_disconnect : bool, default=False
+        Whether to raise when a changed branch becomes fully disconnected instead
+        of emitting a breaker-opening update.
+
+    Returns
+    -------
+    list[dict[str, str | bool]]
+        Switch update records derived from ``branch_connections`` and
+        ``branch_switching_table``. A changed branch column can produce selector
+        switch updates for busbar reassignments and, when the branch becomes
+        fully disconnected, one breaker update via the asset-bay disconnecting
+        switch.
+
+    Raises
+    ------
+    ValueError
+        If the branch switching tables are structurally incompatible, the branch
+        order does not match, or a disconnect is detected while
+        ``fail_on_disconnect`` is true.
+    """
+    if changed_station.branch_switching_table.shape != starting_station.branch_switching_table.shape:
+        raise ValueError(
+            "Changed station asset switching table shape does not match starting topology for station "
+            f"{changed_station.grid_model_id}."
+        )
+
+    changed_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in changed_station.branch_connections]
+    starting_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in starting_station.branch_connections]
+    if changed_asset_ids != starting_asset_ids:
+        raise ValueError(
+            "Changed station assets are not ordered like the starting topology for station "
+            f"{changed_station.grid_model_id}. Use ActionSet.simplified_starting_topology as input."
+        )
+
+    changed_busbar_lookup = _get_busbar_lookup(changed_station)
+    switching_xor = np.logical_xor(starting_station.branch_switching_table, changed_station.branch_switching_table)
+    diff_switches: list[dict[str, str | bool]] = []
+
+    for column, changed_asset_connection in enumerate(changed_station.branch_connections):
+        asset_bay = changed_asset_connection.asset_bay
+        if asset_bay is None:
+            continue
+        changed_switch_states = changed_station.branch_switching_table[:, column]
+        starting_switch_states = starting_station.branch_switching_table[:, column]
+        changed_rows = np.flatnonzero(switching_xor[:, column])
+        changed_active = int(changed_switch_states.sum())
+        starting_active = int(starting_switch_states.sum())
+
+        if changed_active == 0:
+            if starting_active > 0:
+                if fail_on_disconnect:
+                    raise ValueError(
+                        f"Station action in station {changed_station.grid_model_id} would disconnect "
+                        f"asset {changed_asset_connection.asset.grid_model_id}."
+                    )
+                diff_switches.append({"grid_model_id": asset_bay.dv_switch_grid_model_id, "open": True})
+            continue
+
+        for row in changed_rows:
+            busbar_id = changed_busbar_lookup[int(row)]
+            switch_id = asset_bay.sr_switch_grid_model_id[busbar_id]
+            diff_switches.append({"grid_model_id": switch_id, "open": not bool(changed_switch_states[row])})
+
+    return diff_switches
+
+
+def _get_injection_switch_diffs(
+    changed_station: MaterializedStation,
+    starting_station: MaterializedStation,
+    fail_on_disconnect: bool = False,
+) -> list[dict[str, str | bool]]:
+    """Collect injection selector and breaker switch changes between two station states.
+
+    Parameters
+    ----------
+    changed_station : MaterializedStation
+        Station describing the target injection-to-busbar assignments.
+    starting_station : MaterializedStation
+        Station describing the reference injection assignments. The injection
+        connection array must stay in the same order as ``changed_station``.
+    fail_on_disconnect : bool, default=False
+        Whether to raise when a changed injection becomes fully disconnected
+        instead of emitting a breaker-opening update.
+
+    Returns
+    -------
+    list[dict[str, str | bool]]
+        Switch update records derived from ``injection_connections`` and
+        ``injection_switching_table``. This mirrors
+        ``_get_branch_switch_diffs`` for the injection-side station tables.
+
+    Raises
+    ------
+    ValueError
+        If the injection switching tables are structurally incompatible, the
+        injection order does not match, or a disconnect is detected while
+        ``fail_on_disconnect`` is true.
+    """
+    if changed_station.injection_switching_table.shape != starting_station.injection_switching_table.shape:
+        raise ValueError(
+            "Changed station asset switching table shape does not match starting topology for station "
+            f"{changed_station.grid_model_id}."
+        )
+
+    changed_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in changed_station.injection_connections]
+    starting_asset_ids = [
+        asset_connection.asset.grid_model_id for asset_connection in starting_station.injection_connections
+    ]
+    if changed_asset_ids != starting_asset_ids:
+        raise ValueError(
+            "Changed station assets are not ordered like the starting topology for station "
+            f"{changed_station.grid_model_id}. Use ActionSet.simplified_starting_topology as input."
+        )
+
+    changed_busbar_lookup = _get_busbar_lookup(changed_station)
+    switching_xor = np.logical_xor(
+        starting_station.injection_switching_table,
+        changed_station.injection_switching_table,
+    )
+    diff_switches: list[dict[str, str | bool]] = []
+
+    for column, changed_asset_connection in enumerate(changed_station.injection_connections):
+        asset_bay = changed_asset_connection.asset_bay
+        if asset_bay is None:
+            continue
+        changed_switch_states = changed_station.injection_switching_table[:, column]
+        starting_switch_states = starting_station.injection_switching_table[:, column]
+        changed_rows = np.flatnonzero(switching_xor[:, column])
+        changed_active = int(changed_switch_states.sum())
+        starting_active = int(starting_switch_states.sum())
+
+        if changed_active == 0:
+            if starting_active > 0:
+                if fail_on_disconnect:
+                    raise ValueError(
+                        f"Station action in station {changed_station.grid_model_id} would disconnect "
+                        f"asset {changed_asset_connection.asset.grid_model_id}."
+                    )
+                diff_switches.append({"grid_model_id": asset_bay.dv_switch_grid_model_id, "open": True})
+            continue
+
+        for row in changed_rows:
+            busbar_id = changed_busbar_lookup[int(row)]
+            switch_id = asset_bay.sr_switch_grid_model_id[busbar_id]
+            diff_switches.append({"grid_model_id": switch_id, "open": not bool(changed_switch_states[row])})
+
+    return diff_switches
+
+
 def _get_asset_switch_diffs(
     changed_station: MaterializedStation,
     starting_station: MaterializedStation,
@@ -130,76 +291,40 @@ def _get_asset_switch_diffs(
 
     Parameters
     ----------
-    changed_station : Station
-        Station describing the target asset-to-busbar assignments.
-    starting_station : Station
-        Station describing the reference asset-to-busbar assignments. The station assets must be
-        in the same order as ``changed_station``. This is the ordering contract provided by
-        ``ActionSet.simplified_starting_topology``.
-    fail_on_disconnect: bool
-        Fundamentally, the stations should never disconnect an element. If this is detected, we can either raise
-        or open the breaker. If fail_on_disconnect is true, a ValueError will be raised
+    changed_station : MaterializedStation
+        Station describing the target branch/injection-to-busbar assignments.
+    starting_station : MaterializedStation
+        Station describing the reference branch/injection assignments. The branch and injection
+        connection arrays must each stay in the same order as ``changed_station``. This is the
+        ordering contract provided by ``ActionSet.simplified_starting_topology``.
+    fail_on_disconnect : bool, default=False
+        Fundamentally, the stations should never disconnect an element. If this is detected, the
+        helper can either raise or emit a breaker-opening update. If ``fail_on_disconnect`` is
+        true, a ``ValueError`` is raised instead.
 
     Returns
     -------
     list[dict[str, str | bool]]
-        Switch update records for selector and breaker switches whose state changes.
+        Switch update records for selector and breaker switches whose state changes across both the
+        branch and injection station tables.
 
     Raises
     ------
     ValueError
         If the station switching tables are structurally incompatible or asset order does not match.
     """
-    changed_switching_table = _get_station_switching_table(changed_station)
-    starting_switching_table = _get_station_switching_table(starting_station)
-    if changed_switching_table.shape != starting_switching_table.shape:
-        raise ValueError(
-            "Changed station asset switching table shape does not match starting topology for station "
-            f"{changed_station.grid_model_id}."
-        )
-
-    changed_busbar_lookup = _get_busbar_lookup(changed_station)
-    changed_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in changed_station.asset_connections]
-    starting_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in starting_station.asset_connections]
-    if changed_asset_ids != starting_asset_ids:
-        raise ValueError(
-            "Changed station assets are not ordered like the starting topology for station "
-            f"{changed_station.grid_model_id}. Use ActionSet.simplified_starting_topology as input."
-        )
-
-    switching_xor = np.logical_xor(starting_switching_table, changed_switching_table)
-
-    diff_switches: list[dict[str, str | bool]] = []
-    for column, changed_asset_connection in enumerate(changed_station.asset_connections):
-        changed_asset = changed_asset_connection.asset
-        asset_bay = changed_asset_connection.asset_bay
-        if asset_bay is None:
-            continue
-        changed_switch_states = changed_switching_table[:, column]
-        starting_switch_states = starting_switching_table[:, column]
-        changed_rows = np.flatnonzero(switching_xor[:, column])
-        changed_active = int(changed_switch_states.sum())
-        starting_active = int(starting_switch_states.sum())
-
-        if changed_active == 0:
-            breaker_id = asset_bay.dv_switch_grid_model_id
-            # The asset was disconnected by disconnecting all entries in the switching table. This can only be represented
-            # through a breaker-open if there was at least one active busbar connection in the starting state.
-            if starting_active > 0:
-                if fail_on_disconnect:
-                    raise ValueError(
-                        f"Station action in station {changed_station.grid_model_id} would disconnect "
-                        f"asset {changed_asset.grid_model_id}."
-                    )
-                diff_switches.append({"grid_model_id": breaker_id, "open": True})
-            continue
-
-        for row in changed_rows:
-            busbar_id = changed_busbar_lookup[int(row)]
-            switch_id = asset_bay.sr_switch_grid_model_id[busbar_id]
-            diff_switches.append({"grid_model_id": switch_id, "open": not bool(changed_switch_states[row])})
-
-    return diff_switches
+    return [
+        *_get_branch_switch_diffs(
+            changed_station=changed_station,
+            starting_station=starting_station,
+            fail_on_disconnect=fail_on_disconnect,
+        ),
+        *_get_injection_switch_diffs(
+            changed_station=changed_station,
+            starting_station=starting_station,
+            fail_on_disconnect=fail_on_disconnect,
+        ),
+    ]
 
 
 def _get_switch_updates_from_station_ids(
@@ -241,23 +366,7 @@ def _get_switch_updates_from_station_ids(
     if diff_switch_df.empty:
         diff_switch_df = get_empty_dataframe_from_model(SwitchUpdateSchema)
     diff_switch_df = diff_switch_df.astype({"grid_model_id": str, "open": bool})
-    return cast(pat.DataFrame[SwitchUpdateSchema], diff_switch_df)
-
-
-def _get_station_switching_table(station: MaterializedStation) -> Bool[np.ndarray, " n_busbar n_asset"]:
-    """Return the station switching table as a boolean numpy array.
-
-    Parameters
-    ----------
-    station : Station
-        Station whose switching table should be normalized to a boolean ndarray.
-
-    Returns
-    -------
-    Bool[np.ndarray, " n_busbar n_asset"]
-        Boolean switching table indexed by busbar and asset.
-    """
-    return np.asarray(station.asset_switching_table, dtype=bool)
+    return diff_switch_df
 
 
 @pa.check_types
@@ -268,16 +377,19 @@ def get_changing_switches_from_changed_stations(
     """Get changed switches by comparing changed stations to the starting topology.
 
     This is intended for changed stations originating from ``ActionSet.local_actions`` where only
-    coupler open states and the asset switching table differ from the starting topology.
+    coupler open states and the split station switching tables differ from the starting topology.
+    In the split topology model that means ``branch_switching_table`` and
+    ``injection_switching_table`` are compared independently and then merged into one switch-update
+    table.
 
     Parameters
     ----------
-    changed_stations : list[Station]
+    changed_stations : list[MaterializedStation]
         Stations describing the target state for the affected substations.
     starting_topology : Topology
         Starting topology containing the reference state for all stations. This is expected to be
-        ``ActionSet.simplified_starting_topology`` so that station asset ordering matches the
-        ordering used by ``ActionSet.local_actions``.
+        ``ActionSet.simplified_starting_topology`` so that both branch and injection connection
+        ordering match the ordering used by ``ActionSet.local_actions``.
 
 
     Returns

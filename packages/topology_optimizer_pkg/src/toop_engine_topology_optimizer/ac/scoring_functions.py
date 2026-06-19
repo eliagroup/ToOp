@@ -166,7 +166,7 @@ def extract_switching_distance(additional_info: AdditionalActionInfo) -> int:
         The switching distance, or 0 if not available
     """
     if isinstance(additional_info, RealizedTopology):
-        return len(additional_info.reassignment_diff)
+        return len(additional_info.branch_reassignment_diff) + len(additional_info.injection_reassignment_diff)
     if isinstance(additional_info, pd.DataFrame):
         return len(additional_info)
     raise ValueError("Unknown format for additional info")

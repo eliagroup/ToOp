@@ -298,7 +298,7 @@ def test_get_station_from_id(pp_network_w_switches):
     assert isinstance(result, MaterializedStation)
     assert result.grid_model_id == r"0%%bus"
     assert result.name == "Double Busbar 1"
-    assert result.type is None
+    assert result.station_type is None
     assert result.voltage_level == 380.0
     assert len(result.busbars) == 2
 

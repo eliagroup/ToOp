@@ -205,7 +205,13 @@ def preprocess_net_step2(network: pp.pandapowerNet, topology_model: Topology) ->
         raw_stations.append(
             station.model_copy(update={"grid_model_id": f"{new_id}{SEPARATOR}{station.grid_model_id.split(SEPARATOR)[1]}"})
         )
-    return copy_topology_with_updates(topology_model, raw_stations, topology_model.assets, topology_model.asset_bays)
+    return copy_topology_with_updates(
+        topology_model,
+        raw_stations,
+        topology_model.asset_bays,
+        branch_assets=topology_model.branch_assets,
+        injection_assets=topology_model.injection_assets,
+    )
 
 
 def fuse_cross_coupler(
@@ -273,19 +279,20 @@ def validate_asset_topology(net: pp.pandapowerNet, topology_model: Topology) -> 
     """
     for station in topology_model.materialize_stations():
         s_id = int(station.grid_model_id.split(r"%%")[0])
+        station_connections = [*station.branch_connections, *station.injection_connections]
         connection_dict = pp.toolbox.get_connected_elements_dict(net, [s_id])
         del connection_dict["bus"]
         len_connection = len([element for key in connection_dict for element in connection_dict[key]])
-        if len_connection != len(station.asset_connections):
+        if len_connection != len(station_connections):
             logger.warning(
-                f"Station {s_id} has {len(station.asset_connections)} assets but only "
+                f"Station {s_id} has {len(station_connections)} assets but only "
                 + f"{len_connection} connections in the network",
                 **connection_dict,
             )
-            for asset_connection in station.asset_connections:
+            for asset_connection in station_connections:
                 logger.warning(f"Station {s_id} with assets: {asset_connection.asset}", asset=asset_connection.asset)
             raise ValueError(
-                f"Station {s_id} has {len(station.asset_connections)} assets but only "
+                f"Station {s_id} has {len(station_connections)} assets but only "
                 + f"{len_connection} connections in the network"
             )
 

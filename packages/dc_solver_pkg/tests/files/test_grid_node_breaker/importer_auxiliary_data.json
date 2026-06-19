@@ -201,10 +201,11 @@
             "L8",
             "L9",
             "L10"
-        ]
+        ],
+        "trafo_disconnectable": []
     },
     "import_result": {
-        "data_folder": "/workspaces/AICoE_HPC_RL_Grid_Model_Importing/notebooks/../data/20240113/pst-export/test_ucte_powsybl_example",
+        "data_folder": "../data/test_grid_node_breaker/grid",
         "n_relevant_subs": 2,
         "n_low_impedance_lines": 0,
         "n_branch_across_switch": 0,
@@ -226,35 +227,42 @@
         "n_white_list_applied": 0,
         "n_black_list": 0,
         "n_black_list_applied": 0,
-        "grid_type": "ucte"
+        "grid_type": "cgmes"
     },
     "border_current": {},
     "network_changes": {},
     "import_parameter": {
         "area_settings": {
             "control_area": [
-                "BE"
+                ""
             ],
             "view_area": [
-                "BE"
+                ""
             ],
             "nminus1_area": [
-                "BE"
+                ""
             ],
-            "cutoff_voltage": 150,
-            "cross_border_limits_n0": null,
-            "cross_border_limits_n1": null,
+            "cutoff_voltage": 10,
             "dso_trafo_factors": null,
             "dso_trafo_weight": 1.0,
             "border_line_factors": null,
             "border_line_weight": 1.0
         },
-        "data_folder": "/workspaces/AICoE_HPC_RL_Grid_Model_Importing/notebooks/../data/20240113/pst-export/test_ucte_powsybl_example",
-        "grid_model_file": "/workspaces/AICoE_HPC_RL_Grid_Model_Importing/data/Test_Grid_asset_topo/test_ucte_powsybl_example.xiidm",
+        "fail_on_non_convergence": true,
+        "data_folder": "../data/test_grid_node_breaker/grid",
+        "grid_model_file": "../data/test_grid_node_breaker/grid.xiidm",
         "data_type": "cgmes",
-        "white_list_file": "/workspaces/AICoE_HPC_RL_Grid_Model_Importing/notebooks/../data/20240113/BlackWhiteListen/CB_White-Liste.csv",
-        "black_list_file": "/workspaces/AICoE_HPC_RL_Grid_Model_Importing/notebooks/../data/20240113/BlackWhiteListen/CB_Black-Liste.csv",
+        "white_list_file": null,
+        "black_list_file": null,
         "ignore_list_file": null,
-        "contingency_list_file": null
+        "select_by_voltage_level_id_list": null,
+        "ingress_id": null,
+        "contingency_list_file": null,
+        "schema_format": null,
+        "relevant_station_rules": {
+            "min_busbars": 2,
+            "min_connected_branches": 4,
+            "min_connected_elements": 4
+        }
     }
 }

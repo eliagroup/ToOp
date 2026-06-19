@@ -51,7 +51,6 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     extract_busbar_outage_data,
     get_busbar_branches_map,
     get_busbar_index,
-    get_connected_assets,
     get_rel_non_rel_sub_bb_maps,
     get_total_injection_along_stub_branch,
     logger,
@@ -105,7 +104,7 @@ def test_perform_outage_single_busbar(
         for station in network_data_preprocessed.asset_topology.materialize_stations():
             if station_id == station.grid_model_id:
                 for index, busbar in enumerate(station.busbars):
-                    connected_assets = get_connected_assets(station, index)
+                    connected_assets = station.get_connected_assets(index)
                     connected_branches = [asset.grid_model_id for asset in connected_assets if asset.is_branch()]
                     connected_branches = [
                         network_data_preprocessed.branch_ids.index(branch_id) for branch_id in connected_branches
@@ -201,7 +200,7 @@ def test_perform_outage_single_busbar_with_disconnections(
         for station in network_data_preprocessed.asset_topology.materialize_stations():
             if station_id == station.grid_model_id:
                 for index, busbar in enumerate(station.busbars):
-                    connected_assets = get_connected_assets(station, index)
+                    connected_assets = station.get_connected_assets(index)
                     connected_branches = [asset.grid_model_id for asset in connected_assets if asset.is_branch()]
                     connected_branches = [
                         network_data_preprocessed.branch_ids.index(branch_id) for branch_id in connected_branches
@@ -329,7 +328,10 @@ def test_perform_rel_bb_outage_single_topo_with_no_inj_reassignments(
         connected_branches_flow = rel_busbar_branches_flows[outage_index]
 
         assert jnp.allclose(abs(connected_branches_flow.sum(axis=1)), abs(power_at_node), atol=1e-03), (
-            "Kirchoff's current law should be satisfied"
+            "Kirchoff's current law should be satisfied: "
+            f"outage_index={outage_index}, nodal_index_bb={nodal_index_bb}, "
+            f"sumflow={abs(connected_branches_flow.sum(axis=1))}, power_at_node={abs(power_at_node)}, "
+            f"connected_branches_flow={connected_branches_flow}"
         )
 
     validate_zero_flows(lfs, success, busbar_data["busbar_br_outage_map"])
@@ -339,8 +341,10 @@ def get_busbar_injection_map(
     station: MaterializedStation, network: NetworkData
 ) -> dict[str, Float[np.ndarray, " n_timestep"]]:
     busbar_injection_map = {}
+    topology = network.simplified_asset_topology or network.asset_topology
+    topology_assets = [*topology.branch_assets, *topology.injection_assets]
     for i, bb in enumerate(station.busbars):
-        connected_assets = get_connected_assets(station, i)
+        connected_assets = station.get_connected_assets(i, topology_assets=topology_assets)
         injection: Float[np.ndarray, " n_timestep"] = np.zeros(network.nodal_injection.shape[0], float)
 
         for asset in connected_assets:
@@ -457,8 +461,9 @@ def correct_power_flow_directions(lfs, network_data_preprocessed: NetworkData):
     branches_at_nodes = network_data_preprocessed.branches_at_nodes
     lfs_corrrected_directions = []
     for lfs_instance in lfs:
+        power_flow_line = lfs_instance
         for local_branches, local_branches_dir in zip(branches_at_nodes, branch_dir):
-            power_flow_line = lfs_instance.at[:, local_branches].multiply(np.where(local_branches_dir == 1, -1, 1))
+            power_flow_line = power_flow_line.at[:, local_branches].multiply(np.where(local_branches_dir == 1, -1, 1))
         lfs_corrrected_directions.append(power_flow_line)
     return lfs_corrrected_directions
 
@@ -500,7 +505,7 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
             if bb.grid_model_id not in non_rel_bb_outage_map[station.grid_model_id]:
                 continue
             bb_index = get_busbar_index(station, bb.grid_model_id)
-            connected_assets = get_connected_assets(station, bb_index)
+            connected_assets = station.get_connected_assets(bb_index)
             connected_asset_ids = [asset.grid_model_id for asset in connected_assets]
             connected_branch_indices = [
                 network_data.branch_ids.index(asset.grid_model_id) for asset in connected_assets if asset.is_branch()
@@ -590,7 +595,7 @@ def test_compare_loadflows_rel_bb_outage(
                 continue
             copy_net = copy.deepcopy(net)
             bb_index = get_busbar_index(modified_station, bb.grid_model_id)
-            connected_assets = get_connected_assets(modified_station, bb_index)
+            connected_assets = modified_station.get_connected_assets(bb_index)
             connected_asset_ids = [asset.grid_model_id for asset in connected_assets]
             connected_branch_indices = [
                 network_data_test_grid.branch_ids.index(asset.grid_model_id)

@@ -13,6 +13,8 @@ import pypowsybl
 import pytest
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl, create_busbar_b_in_ieee
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
+    _get_branch_station_assets_from_df,
+    _get_injection_station_assets_from_df,
     assert_station_in_network,
     get_all_element_names,
     get_asset_info_from_topology,
@@ -21,7 +23,6 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_coupler_info_from_topology,
     get_list_of_busbars_from_df,
     get_list_of_coupler_from_df,
-    get_list_of_switchable_assets_from_df,
     get_name_of_station_elements,
     get_raw_stations_and_assets_bus_breaker,
     get_relevant_network_data,
@@ -29,10 +30,11 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_topology,
 )
 from toop_engine_interfaces.asset_topology import (
+    BranchAsset,
     Busbar,
     BusbarCoupler,
+    InjectionAsset,
     RawStation,
-    SwitchableAsset,
     Topology,
 )
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -87,7 +89,7 @@ def test_get_list_of_coupler_from_df():
         data={
             "grid_model_id": ["coupler1", "coupler2"],
             "bus_int_id": [1, 2],
-            "type": ["type1", "type2"],
+            "coupler_type": ["type1", "type2"],
             "name": ["name1", "name2"],
             "busbar_from_id": [1, 2],
             "busbar_to_id": [2, 3],
@@ -98,7 +100,7 @@ def test_get_list_of_coupler_from_df():
     expected_coupler_list = [
         BusbarCoupler(
             grid_model_id="coupler1",
-            type="type1",
+            coupler_type="type1",
             name="name1",
             busbar_from_id=1,
             busbar_to_id=2,
@@ -107,7 +109,7 @@ def test_get_list_of_coupler_from_df():
         ),
         BusbarCoupler(
             grid_model_id="coupler2",
-            type="type2",
+            coupler_type="type2",
             name="name2",
             busbar_from_id=2,
             busbar_to_id=3,
@@ -119,34 +121,71 @@ def test_get_list_of_coupler_from_df():
     assert coupler_list == expected_coupler_list
 
 
-def test_get_list_of_switchable_assets_from_df():
+def test_get_branch_and_injection_station_assets_from_df(monkeypatch: pytest.MonkeyPatch):
     asset_elements = pd.DataFrame(
         data={
-            "grid_model_id": ["asset1", "asset2"],
-            "bus_int_id": [1, 2],
-            "type": ["TIE_LINE", "LINE"],
-            "name": ["name1", "name2"],
-            "in_service": [True, True],
+            "grid_model_id": ["asset1", "asset2", "asset3"],
+            "asset_type": ["TIE_LINE", "LINE", "LOAD"],
+            "name": ["name1", "name2", "name3"],
+            "in_service": [True, True, True],
         }
     )
-    expected_asset_list = [
-        SwitchableAsset(
+    asset_terminals = ["from", "to", None]
+    switching_matrix = np.array(
+        [
+            [True, False, False],
+            [False, True, True],
+        ],
+        dtype=bool,
+    )
+    asset_connectivity = np.ones_like(switching_matrix, dtype=bool)
+
+    expected_branch_assets = [
+        BranchAsset(
             grid_model_id="asset1",
-            type="TIE_LINE",
+            asset_type="TIE_LINE",
             name="name1",
-            bus_int_id=1,
             in_service=True,
         ),
-        SwitchableAsset(
+        BranchAsset(
             grid_model_id="asset2",
-            type="LINE",
+            asset_type="LINE",
             name="name2",
-            bus_int_id=2,
             in_service=True,
         ),
     ]
-    asset_list = get_list_of_switchable_assets_from_df(asset_elements)
-    assert asset_list == expected_asset_list
+    expected_injection_assets = [
+        InjectionAsset(
+            grid_model_id="asset3",
+            asset_type="LOAD",
+            name="name3",
+            in_service=True,
+        )
+    ]
+
+    branch_assets, branch_terminals, branch_switching_table, branch_connectivity = _get_branch_station_assets_from_df(
+        asset_elements,
+        asset_terminals,
+        switching_matrix,
+        asset_connectivity,
+    )
+    injection_assets, injection_terminals, injection_switching_table, injection_connectivity = (
+        _get_injection_station_assets_from_df(
+            asset_elements,
+            asset_terminals,
+            switching_matrix,
+            asset_connectivity,
+        )
+    )
+
+    assert branch_assets == expected_branch_assets
+    assert injection_assets == expected_injection_assets
+    assert branch_terminals == ["from", "to"]
+    assert injection_terminals == [None]
+    assert np.array_equal(branch_switching_table, switching_matrix[:, :2])
+    assert np.array_equal(injection_switching_table, switching_matrix[:, 2:])
+    assert np.array_equal(branch_connectivity, asset_connectivity[:, :2])
+    assert np.array_equal(injection_connectivity, asset_connectivity[:, 2:])
 
 
 def test_get_list_of_busbars_from_df():
@@ -154,7 +193,7 @@ def test_get_list_of_busbars_from_df():
         data={
             "grid_model_id": ["busbar1", "busbar2"],
             "int_id": [1, 2],
-            "type": ["type1", "type2"],
+            "busbar_type": ["type1", "type2"],
             "name": ["name1", "name2"],
             "in_service": [True, True],
         }
@@ -163,14 +202,14 @@ def test_get_list_of_busbars_from_df():
         Busbar(
             grid_model_id="busbar1",
             int_id=1,
-            type="type1",
+            busbar_type="type1",
             name="name1",
             in_service=True,
         ),
         Busbar(
             grid_model_id="busbar2",
             int_id=2,
-            type="type2",
+            busbar_type="type2",
             name="name2",
             in_service=True,
         ),
@@ -234,7 +273,7 @@ def test_get_asset_info_from_topology():
         index=[0, 1],
         data={
             "grid_model_id": ["line1", "tie_line1"],
-            "type": ["LINE", "TIE_LINE"],
+            "asset_type": ["LINE", "TIE_LINE"],
             "name": ["line_name", "tie"],
             "in_service": [True, True],
         },
@@ -276,7 +315,7 @@ def test_get_coupler_info_from_topology():
             "busbar_from_id": [0, 0],
             "busbar_to_id": [1, 1],
             "open": [True, True],
-            "type": ["BREAKER", "DISCONNECTOR"],
+            "coupler_type": ["BREAKER", "DISCONNECTOR"],
             "name": ["break_1", "disco_1"],
             "in_service": [True, True],
         },
@@ -437,19 +476,27 @@ def test_assert_station_in_network_coupler(case14_data_with_asset_topo: tuple[Pa
 def test_assert_station_in_network_busbar(case14_data_with_asset_topo: tuple[Path, Topology]) -> None:
     grid_path, topology = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    base_station = topology.materialize_stations()[0]
 
     # Add a busbar to the station that is not in the grid
-    station = topology.materialize_stations()[0].model_copy(
+    station = base_station.model_copy(
         update={
             "busbars": [
-                topology.materialize_stations()[0].busbars[0],
-                topology.materialize_stations()[0].busbars[1],
-                topology.materialize_stations()[0].busbars[0].model_copy(update={"grid_model_id": "hugawuga", "int_id": 3}),
+                base_station.busbars[0],
+                base_station.busbars[1],
+                base_station.busbars[0].model_copy(update={"grid_model_id": "hugawuga", "int_id": 3}),
             ],
-            "asset_switching_table": np.concatenate(
+            "branch_switching_table": np.concatenate(
                 [
-                    topology.materialize_stations()[0].asset_switching_table,
-                    topology.materialize_stations()[0].asset_switching_table[0:1],
+                    base_station.branch_switching_table,
+                    base_station.branch_switching_table[0:1],
+                ],
+                axis=0,
+            ),
+            "injection_switching_table": np.concatenate(
+                [
+                    base_station.injection_switching_table,
+                    base_station.injection_switching_table[0:1],
                 ],
                 axis=0,
             ),
@@ -459,13 +506,21 @@ def test_assert_station_in_network_busbar(case14_data_with_asset_topo: tuple[Pat
         assert_station_in_network(net, station)
 
     # Remove a busbar from the station
-    station = topology.materialize_stations()[0].model_copy(
-        update={
-            "busbars": [
-                topology.materialize_stations()[0].busbars[0],
-            ],
-            "asset_switching_table": topology.materialize_stations()[0].asset_switching_table[0:1],
-        }
+    station = type(base_station).model_construct(
+        grid_model_id=base_station.grid_model_id,
+        name=base_station.name,
+        station_type=base_station.station_type,
+        region=base_station.region,
+        voltage_level=base_station.voltage_level,
+        busbars=[base_station.busbars[0]],
+        couplers=base_station.couplers,
+        branch_connections=base_station.branch_connections,
+        injection_connections=base_station.injection_connections,
+        branch_switching_table=base_station.branch_switching_table[0:1],
+        injection_switching_table=base_station.injection_switching_table[0:1],
+        branch_connectivity=None,
+        injection_connectivity=None,
+        model_log=base_station.model_log,
     )
     # Should pass without strict
     assert_station_in_network(net, station, busbars_strict=False)
@@ -479,35 +534,68 @@ def test_assert_station_in_network_asset(case14_data_with_asset_topo: tuple[Path
 
     # Add a switchable asset to the station that is not in the grid
     base_station = topology.materialize_stations()[0]
-    station = base_station.model_copy(
-        update={
-            "asset_connections": base_station.asset_connections
-            + [
-                base_station.asset_connections[0].model_copy(
-                    update={
-                        "asset": base_station.asset_connections[0].asset.model_copy(update={"grid_model_id": "hugawuga"})
-                    }
-                ),
-            ],
-            "asset_switching_table": np.concatenate(
-                [
-                    base_station.asset_switching_table,
-                    base_station.asset_switching_table[:, 0:1],
+    if base_station.branch_connections:
+        station = base_station.model_copy(
+            update={
+                "branch_connections": base_station.branch_connections
+                + [
+                    base_station.branch_connections[0].model_copy(
+                        update={
+                            "asset": base_station.branch_connections[0].asset.model_copy(
+                                update={"grid_model_id": "hugawuga"}
+                            )
+                        }
+                    ),
                 ],
-                axis=1,
-            ),
-        }
-    )
+                "branch_switching_table": np.concatenate(
+                    [
+                        base_station.branch_switching_table,
+                        base_station.branch_switching_table[:, 0:1],
+                    ],
+                    axis=1,
+                ),
+            }
+        )
+    else:
+        station = base_station.model_copy(
+            update={
+                "injection_connections": base_station.injection_connections
+                + [
+                    base_station.injection_connections[0].model_copy(
+                        update={
+                            "asset": base_station.injection_connections[0].asset.model_copy(
+                                update={"grid_model_id": "hugawuga"}
+                            )
+                        }
+                    ),
+                ],
+                "injection_switching_table": np.concatenate(
+                    [
+                        base_station.injection_switching_table,
+                        base_station.injection_switching_table[:, 0:1],
+                    ],
+                    axis=1,
+                ),
+            }
+        )
     with pytest.raises(ValueError, match="Asset hugawuga not found in the station elements"):
         assert_station_in_network(net, station)
 
     # Remove a switchable asset from the station
-    station = base_station.model_copy(
-        update={
-            "asset_connections": base_station.asset_connections[:-1],
-            "asset_switching_table": base_station.asset_switching_table[:, :-1],
-        }
-    )
+    if base_station.branch_connections:
+        station = base_station.model_copy(
+            update={
+                "branch_connections": base_station.branch_connections[:-1],
+                "branch_switching_table": base_station.branch_switching_table[:, :-1],
+            }
+        )
+    else:
+        station = base_station.model_copy(
+            update={
+                "injection_connections": base_station.injection_connections[:-1],
+                "injection_switching_table": base_station.injection_switching_table[:, :-1],
+            }
+        )
     # Should pass without strict
     assert_station_in_network(net, station, assets_strict=False)
     with pytest.raises(ValueError, match="Asset count mismatch"):
@@ -518,17 +606,20 @@ def test_convert_bus_breaker_stations_to_asset_topo() -> None:
     net = pypowsybl.network.create_ieee30()
     create_busbar_b_in_ieee(net)
 
-    stations, assets = get_raw_stations_and_assets_bus_breaker(net)
+    stations, branch_assets, injection_assets = get_raw_stations_and_assets_bus_breaker(net)
+    assets = [*branch_assets, *injection_assets]
     assert len(stations) == 30
 
     for station in stations:
         assert len(station.busbars) == 2
         assert len(station.couplers) == 1
-        for asset_id in [asset_connection.asset_id for asset_connection in station.asset_connections]:
+        for asset_id in [
+            asset_connection.asset_id for asset_connection in [*station.branch_connections, *station.injection_connections]
+        ]:
             assert any(asset.grid_model_id == asset_id for asset in assets)
 
-    for asset in assets:
-        if asset.is_branch():
-            assert asset.grid_model_id in net.get_branches().index
-        else:
-            assert asset.grid_model_id in net.get_injections().index
+    for asset in branch_assets:
+        assert asset.grid_model_id in net.get_branches().index
+
+    for asset in injection_assets:
+        assert asset.grid_model_id in net.get_injections().index

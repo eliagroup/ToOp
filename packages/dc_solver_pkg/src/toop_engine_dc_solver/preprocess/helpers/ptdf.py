@@ -19,6 +19,7 @@ def compute_ptdf(
     to_node: Int[np.ndarray, " n_branch"],
     susceptances: Float[np.ndarray, " n_branch"],
     slack_bus: int,
+    branch_flow_susceptances: Optional[Float[np.ndarray, " n_branch"]] = None,
 ) -> Float[np.ndarray, " n_branch n_node"]:
     """Calculate the PTDF (Power Transfer Distiribution Factors).
 
@@ -37,9 +38,12 @@ def compute_ptdf(
         The to-nodes vector. Changes if the topology changes, e.g. the to-bus
         of a branch can be set to the second bus of a substation.
     susceptances : Float[np.ndarray, " n_branch"]
-        Vector with the susceptances for the branches.
+        Vector with the susceptances used in the nodal angle solve.
     slack_bus: int
         The slack bus of the grid. Cannot be distributed for the bsdf formulation to work
+    branch_flow_susceptances : Optional[Float[np.ndarray, " n_branch"]]
+        Optional branch coefficients used when mapping bus angles to branch flows. If not given,
+        the nodal susceptances are used for both the nodal solve and the branch-flow rows.
     number_of_busses: int
         How many busbars are in the system-> How many nodes in the ptdf
 
@@ -50,6 +54,8 @@ def compute_ptdf(
     """
     number_of_busses = int(np.max(np.concatenate([from_node, to_node]))) + 1
     number_of_branches = int(from_node.shape[0])
+    if branch_flow_susceptances is None:
+        branch_flow_susceptances = susceptances
 
     # use bus 1 for voltage angle reference
     noref = np.arange(1, number_of_busses)
@@ -58,7 +64,12 @@ def compute_ptdf(
 
     ptdf = np.zeros((number_of_branches, number_of_busses))
     node_node_susceptance, branch_node_susceptance, *_ = get_susceptance_matrices(
-        from_node, to_node, susceptances, number_of_branches, number_of_busses
+        from_node,
+        to_node,
+        susceptances,
+        number_of_branches,
+        number_of_busses,
+        branch_flow_susceptances=branch_flow_susceptances,
     )
     ptdf[:, noslack] = spsolve(
         node_node_susceptance[np.ix_(noslack, noref)].T,
@@ -77,6 +88,7 @@ def get_susceptance_matrices(
     susceptances: Float[np.ndarray, " n_branch"],
     number_of_branches: int,
     number_of_busses: int,
+    branch_flow_susceptances: Optional[Float[np.ndarray, " n_branch"]] = None,
 ) -> tuple[spmatrix, spmatrix]:
     """Build the B matrices necessary for DC power flow and PTDF calculation.
 
@@ -96,11 +108,14 @@ def get_susceptance_matrices(
         The to-nodes vector. Changes if the topology changes, e.g. the to-bus
         of a branch can be set to the second bus of a substation.
     susceptances : Float[np.ndarray, " n_branch"]
-        Vector with the susceptances for the branches.
+        Vector with the susceptances used in the nodal angle solve.
     number_of_branches: int
         How many branches are in the system
     number_of_busses: int
         How many busbars are in the system
+    branch_flow_susceptances : Optional[Float[np.ndarray, " n_branch"]]
+        Optional branch coefficients used for the branch-to-node flow matrix. If not given,
+        the nodal susceptances are used.
 
     Returns
     -------
@@ -109,14 +124,19 @@ def get_susceptance_matrices(
     branch_node_susceptance: Float[np.ndarray, " n_branch n_node"]
         BranchxNode Matrix allowing for the calculation of the power flow
     """
+    if branch_flow_susceptances is None:
+        branch_flow_susceptances = susceptances
+
     # build connection matrix Cft = Cf - Ct for line and from - to busses
     connectivity_matrix = get_connectivity_matrix(from_node, to_node, number_of_branches, number_of_busses)
 
-    # Build branch-to-node susceptance matrix
-    branch_node_susceptance = csc_matrix(connectivity_matrix.multiply(susceptances[:, np.newaxis]))
+    nodal_branch_node_susceptance = csc_matrix(connectivity_matrix.multiply(susceptances[:, np.newaxis]))
+
+    # Build branch-to-node susceptance matrix used to map bus angles to branch flows.
+    branch_node_susceptance = csc_matrix(connectivity_matrix.multiply(branch_flow_susceptances[:, np.newaxis]))
 
     # build node_node_susceptance
-    node_node_susceptance = connectivity_matrix.T * branch_node_susceptance
+    node_node_susceptance = connectivity_matrix.T * nodal_branch_node_susceptance
     return node_node_susceptance, branch_node_susceptance
 
 

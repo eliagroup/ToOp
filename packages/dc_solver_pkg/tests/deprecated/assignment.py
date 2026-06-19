@@ -250,7 +250,7 @@ def realize_single_station_assignment(
             busbar_a,
             busbar_b,
             asset_index=asset_i,
-            asset_connectivity=station.asset_connectivity,
+            asset_connectivity=np.concatenate([station.branch_connectivity, station.injection_connectivity], axis=1),
         )
 
         # break when the branch action is not feasible

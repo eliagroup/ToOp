@@ -33,9 +33,10 @@ def test_apply_station(case14_data_folder: Path) -> None:
     assert len(apply_diff.switches_created) == 1
     assert len(apply_diff.busbars_deleted) == 0
     assert len(apply_diff.switches_deleted) == 0
-    assert len(realized_station.disconnection_diff) == 0
+    assert len(realized_station.branch_disconnection_diff) == 0
+    assert len(realized_station.injection_disconnection_diff) == 0
     assert len(realized_station.coupler_diff) == 0
-    assert len(realized_station.reassignment_diff)
+    assert len(realized_station.branch_reassignment_diff) + len(realized_station.injection_reassignment_diff)
 
 
 def test_apply_station_existing_buses(case14_data_folder: Path) -> None:
@@ -56,9 +57,10 @@ def test_apply_station_existing_buses(case14_data_folder: Path) -> None:
     assert len(apply_diff.switches_created) == 0
     assert len(apply_diff.busbars_deleted) == 0
     assert len(apply_diff.switches_deleted) == 0
-    assert len(realized_station.disconnection_diff) == 0
+    assert len(realized_station.branch_disconnection_diff) == 0
+    assert len(realized_station.injection_disconnection_diff) == 0
     assert len(realized_station.coupler_diff) == 1
-    assert len(realized_station.reassignment_diff)
+    assert len(realized_station.branch_reassignment_diff) + len(realized_station.injection_reassignment_diff)
 
 
 def test_apply_station_extra_busbar(case14_data_folder: Path) -> None:
@@ -81,9 +83,9 @@ def test_apply_station_extra_busbar(case14_data_folder: Path) -> None:
     assert len(apply_diff.switches_created) == 0
     assert apply_diff.busbars_deleted == [16]
     assert apply_diff.switches_deleted == [2]
-    assert len(realized_station.disconnection_diff) == 0
+    assert len(realized_station.branch_disconnection_diff) == 0
+    assert len(realized_station.injection_disconnection_diff) == 0
     assert len(realized_station.coupler_diff) == 1
-    assert len(realized_station.reassignment_diff)
 
 
 def test_apply_topology(case14_data_folder: Path) -> None:
@@ -100,7 +102,8 @@ def test_apply_topology(case14_data_folder: Path) -> None:
         assert len(local_apply_diff.busbars_deleted) == 0
         assert len(local_apply_diff.switches_deleted) == 0
 
-    assert len(realized_topology.disconnection_diff) == 0
+    assert len(realized_topology.branch_disconnection_diff) == 0
+    assert len(realized_topology.injection_disconnection_diff) == 0
     assert len(realized_topology.coupler_diff) == 0
-    assert len(realized_topology.reassignment_diff)
+    assert len(realized_topology.branch_reassignment_diff) + len(realized_topology.injection_reassignment_diff)
     assert realized_topology.topology == asset_topo

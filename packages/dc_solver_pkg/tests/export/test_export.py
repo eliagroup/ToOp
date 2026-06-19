@@ -46,8 +46,9 @@ def build_test_topology(reference_topology: Topology, raw_stations: list[RawStat
     return copy_topology_with_updates(
         reference_topology=reference_topology,
         raw_stations=raw_stations,
-        assets=reference_topology.assets,
         asset_bays=reference_topology.asset_bays,
+        branch_assets=reference_topology.branch_assets,
+        injection_assets=reference_topology.injection_assets,
     )
 
 

@@ -12,11 +12,11 @@ import datetime
 import numpy as np
 from toop_engine_interfaces.asset_topology import (
     AssetBay,
+    BranchAsset,
     Busbar,
     BusbarCoupler,
     RawStation,
     StationAssetConnection,
-    SwitchableAsset,
     Topology,
 )
 
@@ -56,20 +56,24 @@ def get_basic_node_breaker_topology() -> Topology:
                         in_service=True,
                     )
                 ],
-                asset_connections=[
+                branch_connections=[
                     StationAssetConnection(asset_id="L4", terminal=None, asset_bay_id="VL4_0::L4::bay"),
                     StationAssetConnection(asset_id="L5", terminal=None, asset_bay_id="VL4_0::L5::bay"),
                     StationAssetConnection(asset_id="L8", terminal=None, asset_bay_id="VL4_0::L8::bay"),
                 ],
-                asset_switching_table=np.array([[False, False, False], [True, True, False]]),
-                asset_connectivity=np.array([[True, True, True], [True, True, True]]),
+                injection_connections=[],
+                branch_switching_table=np.array([[False, False, False], [True, True, False]], dtype=bool),
+                injection_switching_table=np.zeros((2, 0), dtype=bool),
+                branch_connectivity=np.array([[True, True, True], [True, True, True]], dtype=bool),
+                injection_connectivity=np.zeros((2, 0), dtype=bool),
             )
         ],
-        assets=[
-            SwitchableAsset(grid_model_id="L4", type="LINE", name="", in_service=True),
-            SwitchableAsset(grid_model_id="L5", type="LINE", name="", in_service=True),
-            SwitchableAsset(grid_model_id="L8", type="LINE", name="", in_service=True),
+        branch_assets=[
+            BranchAsset(grid_model_id="L4", type="LINE", name="", in_service=True),
+            BranchAsset(grid_model_id="L5", type="LINE", name="", in_service=True),
+            BranchAsset(grid_model_id="L8", type="LINE", name="", in_service=True),
         ],
+        injection_assets=[],
         asset_bays=[
             AssetBay(
                 asset_bay_id="VL4_0::L4::bay",

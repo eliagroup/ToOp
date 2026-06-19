@@ -40,7 +40,6 @@ from toop_engine_dc_solver.preprocess.helpers.ptdf import (
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import min_hamming_distance_matrix
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, get_relevant_stations
 from toop_engine_interfaces.asset_topology import RawStation
-from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)
@@ -675,8 +674,11 @@ def determine_injection_topology_sub(
         bba_connected_injection_ids = [
             asset.grid_model_id
             for bb_index in busbar_a_mapping
-            for asset in get_connected_assets(station, bb_index, network_data.simplified_asset_topology.assets)
-            if not asset.is_branch()
+            for asset in station.get_connected_assets(
+                bb_index,
+                topology_assets=network_data.simplified_asset_topology.injection_assets,
+                asset_scope="injection",
+            )
         ]
         bba_connected_injection_idxs = [
             np.argmax(local_injection_idxs == network_data.injection_ids.index(injection_id))

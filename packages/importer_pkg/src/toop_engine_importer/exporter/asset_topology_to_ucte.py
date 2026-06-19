@@ -17,6 +17,7 @@ Note: this module currently ignores generator and load reassignments.
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import structlog
 from beartype.typing import Optional, Union
@@ -295,14 +296,17 @@ def get_changes_from_switching_table(
         List of tuples with asset name, initial_busbar and final_busbar
         Note: initial_busbar and final_busbar can both be None if asset is disconnected
     """
-    switching_table = station.asset_switching_table
+    switching_table = np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1)
     busbar_name_list = [busbar.grid_model_id for busbar in station.busbars]
-    asset_list = [asset_connection.asset for asset_connection in station.asset_connections]
+    asset_list = [
+        *(asset_connection.asset for asset_connection in station.branch_connections),
+        *(asset_connection.asset for asset_connection in station.injection_connections),
+    ]
     change_list = []  # TODO: make a dataclass for this (code style)
     # loop over assets -> by column
     for asset_index, asset_in_table in enumerate(switching_table.T):
         asset_name = asset_list[asset_index].grid_model_id
-        asset_type = asset_list[asset_index].type
+        asset_type = asset_list[asset_index].asset_type
         if asset_in_table.sum() > 1:
             raise ValueError(
                 f"Asset {asset_list[asset_index].grid_model_id} is connected to multiple"

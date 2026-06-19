@@ -13,9 +13,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pandera
-import pandera.typing as pat
 import pytest
-from beartype.typing import cast
 from toop_engine_dc_solver.export.asset_topology_to_dgs import (
     ForeignIdSchema,
     get_dgs_general_schema,
@@ -29,7 +27,6 @@ from toop_engine_dc_solver.export.dgs_v7_definitions import (
     DgsElmCoupSchema,
 )
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
-    get_asset_bay_grid_model_id_list,
     get_asset_switch_states_from_station,
     get_busbar_lookup,
     get_changing_switches_from_topology,
@@ -76,14 +73,13 @@ def test_dgs_list_to_xlsx(tmp_path):
         ]
     )
     DgsElmCoupSchema.validate(dgs_df)
-    typed_dgs_df = cast(pat.DataFrame[DgsElmCoupSchema], dgs_df)
     file_name = os.path.join(tmp_path, "test_dgs.xlsx")
     assert not os.path.exists(file_name)
     sheet_name = "ElmCoup"
     general_info = DGS_GENERAL_SHEET_CONTENT_FID
     general_df = get_dgs_general_schema(general_info=general_info, cim=False)
     switch_dgs_schema_to_xlsx(
-        switch_dgs_schema=typed_dgs_df,
+        switch_dgs_schema=dgs_df,
         file_name=file_name,
         sheet_name=sheet_name,
         df_general=general_df,
@@ -101,7 +97,7 @@ def test_dgs_list_to_xlsx(tmp_path):
     # default general info
     file_name = os.path.join(tmp_path, "test2_dgs.xlsx")
     switch_dgs_schema_to_xlsx(
-        switch_dgs_schema=typed_dgs_df,
+        switch_dgs_schema=dgs_df,
         file_name=file_name,
         sheet_name=sheet_name,
         df_general=general_df,
@@ -127,7 +123,7 @@ def test_get_coupler_states_from_busbar_couplers():
     mock_coupler_2.open = False
     mock_coupler_2.in_service = True
 
-    busbar_couplers = cast(list[BusbarCoupler], [mock_coupler_1, mock_coupler_2])
+    busbar_couplers = [mock_coupler_1, mock_coupler_2]
 
     result = get_coupler_states_from_busbar_couplers(busbar_couplers)
 
@@ -156,7 +152,7 @@ def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
     # test empty disconnection
     station = station.model_copy(
         update={
-            "asset_switching_table": np.array([[False, False, False], [True, True, True]]),
+            "branch_switching_table": np.array([[False, False, False], [True, True, True]]),
         }
     )
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
@@ -178,7 +174,7 @@ def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
     assert switch_reassignment_df.to_dict(orient="records") == expected_reassignment
 
     # test empty reassignment
-    station = station.model_copy(update={"asset_switching_table": np.array([[False, False, False], [False, False, False]])})
+    station = station.model_copy(update={"branch_switching_table": np.array([[False, False, False], [False, False, False]])})
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
     expected_disconnection = [
         {"grid_model_id": "L42_BREAKER", "open": True},
@@ -191,7 +187,10 @@ def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
 
 def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
     station = deepcopy(basic_node_breaker_topology.materialize_stations()[0])
-    asset_bay_sr_fid_list = get_asset_bay_grid_model_id_list(station)
+    asset_bay_sr_fid_list = [
+        *(asset_connection.get_sr_switch() for asset_connection in station.branch_connections),
+        *(asset_connection.get_sr_switch() for asset_connection in station.injection_connections),
+    ]
     expected = [
         {"BBS4_1": "L42_DISCONNECTOR_3_0", "BBS4_2": "L42_DISCONNECTOR_3_1"},
         {"BBS4_1": "L52_DISCONNECTOR_5_0", "BBS4_2": "L52_DISCONNECTOR_5_1"},
@@ -201,14 +200,17 @@ def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
 
     station = station.model_copy(
         update={
-            "asset_connections": [
-                station.asset_connections[0],
-                station.asset_connections[1].model_copy(update={"asset_bay": None}),
-                station.asset_connections[2],
+            "branch_connections": [
+                station.branch_connections[0],
+                station.branch_connections[1].model_copy(update={"asset_bay": None}),
+                station.branch_connections[2],
             ]
         }
     )
-    asset_bay_sr_fid_list = get_asset_bay_grid_model_id_list(station)
+    asset_bay_sr_fid_list = [
+        *(asset_connection.get_sr_switch() for asset_connection in station.branch_connections),
+        *(asset_connection.get_sr_switch() for asset_connection in station.injection_connections),
+    ]
     expected = [
         {"BBS4_1": "L42_DISCONNECTOR_3_0", "BBS4_2": "L42_DISCONNECTOR_3_1"},
         None,
@@ -228,10 +230,7 @@ def test_station_helpers_build_switch_update_schema(basic_node_breaker_topology)
     station = basic_node_breaker_topology.materialize_stations()[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
-    switch_update_schema = cast(
-        pat.DataFrame[SwitchUpdateSchema],
-        pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True),
-    )
+    switch_update_schema = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
     expected = pd.DataFrame(
         [
             {"grid_model_id": "VL4_BREAKER", "open": True},
@@ -250,10 +249,7 @@ def test_get_diff_switch_states(basic_node_breaker_grid_v1, basic_node_breaker_t
     station = basic_node_breaker_topology.materialize_stations()[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
-    switch_update_schema = cast(
-        pat.DataFrame[SwitchUpdateSchema],
-        pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True),
-    )
+    switch_update_schema = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
     diff_switch_states = get_diff_switch_states(network=net, switch_df=switch_update_schema)
     SwitchUpdateSchema.validate(diff_switch_states)
     expected = [
@@ -284,15 +280,12 @@ def test_switch_update_schema_to_dgs(basic_node_breaker_grid_v1, basic_node_brea
     station = basic_node_breaker_topology.materialize_stations()[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
-    switch_update_schema = cast(
-        pat.DataFrame[SwitchUpdateSchema],
-        pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True),
-    )
+    switch_update_schema = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
     foreign_ids = deepcopy(switch_update_schema)
     foreign_ids["foreign_id"] = foreign_ids["grid_model_id"] + "_foreign_id"
     foreign_ids.drop(columns=["open"], inplace=True)
     ForeignIdSchema.validate(foreign_ids)
-    typed_foreign_ids = cast(pat.DataFrame[ForeignIdSchema], foreign_ids)
+    typed_foreign_ids = foreign_ids
     dgs_df = switch_update_schema_to_dgs(switch_update_schema, typed_foreign_ids, cim=False)
 
     # check if dgs switch states are correct
@@ -327,11 +320,10 @@ def test_switch_dgs_schema_to_bytes_io(tmp_path):
         ]
     )
     DgsElmCoupSchema.validate(dgs_df)
-    typed_dgs_df = cast(pat.DataFrame[DgsElmCoupSchema], dgs_df)
     general_df = get_dgs_general_schema(cim=False)
 
     # Call the function
-    output = switch_dgs_schema_to_bytes_io(typed_dgs_df, general_df, sheet_name="ElmCoup")
+    output = switch_dgs_schema_to_bytes_io(dgs_df, general_df, sheet_name="ElmCoup")
 
     # Check that output is a BytesIO and not empty
     assert isinstance(output, io.BytesIO)

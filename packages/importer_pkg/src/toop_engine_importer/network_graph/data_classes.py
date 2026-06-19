@@ -372,7 +372,7 @@ class SwitchableAssetSchema(pa.DataFrameModel):
     name: pat.Series[str]
     """The name of the asset."""
 
-    type: pat.Series[str]
+    asset_type: pat.Series[str]
     """The type of the asset, e.g. LINE, TWO_WINDING_TRANSFORMER, etc."""
 
     in_service: pat.Series[bool]

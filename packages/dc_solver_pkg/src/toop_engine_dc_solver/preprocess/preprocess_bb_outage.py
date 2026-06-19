@@ -19,10 +19,33 @@ from toop_engine_dc_solver.preprocess.network_data import (
     OutageData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology import MaterializedStation, RawStation, SwitchableAsset
-from toop_engine_interfaces.asset_topology_helpers import find_station_by_id, get_connected_assets
+from toop_engine_interfaces.asset_topology import (
+    BranchAsset,
+    InjectionAsset,
+    MaterializedStation,
+    RawStation,
+    SwitchableAsset,
+)
+from toop_engine_interfaces.asset_topology_helpers import find_station_by_id
 
 logger = structlog.get_logger(__name__)
+
+
+def _topology_assets(network_data: NetworkData) -> list[SwitchableAsset]:
+    """Get the list of assets in the topology.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        The network data containing the asset topology.
+
+    Returns
+    -------
+    list[SwitchableAsset]
+        A list of switchable assets in the topology.
+    """
+    topology = network_data.simplified_asset_topology or network_data.asset_topology
+    return [*topology.branch_assets, *topology.injection_assets]
 
 
 def get_total_injection_along_stub_branch(
@@ -147,7 +170,7 @@ def extract_outage_index_injection_from_asset(
     branch_index_to_outage = None
 
     if asset.in_service:
-        if asset.is_branch():
+        if isinstance(asset, BranchAsset):
             # Branch is a line or a trafo
             try:
                 branch_index = network.branch_ids.index(asset.grid_model_id)
@@ -168,7 +191,7 @@ def extract_outage_index_injection_from_asset(
                         branch_index, nodal_index_for_busbar, network
                     )
                     stub_power_map[key] = nodal_injection_to_outage
-        else:
+        elif isinstance(asset, InjectionAsset):
             # Branch is an injection
             try:
                 injection_index = network.injection_ids.index(asset.grid_model_id)
@@ -206,7 +229,7 @@ def get_busbar_map_adjacent_branches(network_data: NetworkData) -> Bool[np.ndarr
         for station_id in network_data.busbar_outage_map.keys():
             # Find the asset topo station id
             station = find_station_by_id(network_data.asset_topology.materialize_stations(), station_id)
-            for asset_connection in station.asset_connections:
+            for asset_connection in station.branch_connections:
                 bb_outage_asset_indices.add(asset_connection.asset.grid_model_id)
 
         busbar_outage_branch_mask = np.array([(id in bb_outage_asset_indices) for id in network_data.branch_ids])
@@ -238,9 +261,16 @@ def get_busbar_branches_map(station: MaterializedStation, network_data: NetworkD
     - The branch indices are determined based on their position in the `network_data.branch_ids` list.
     """
     busbar_branches_map = {}
+    topology_assets = _topology_assets(network_data)
     for bb_index, bb in enumerate(station.busbars):
-        connected_assets = get_connected_assets(station, bb_index)
-        connected_branches = [asset.grid_model_id for asset in connected_assets if asset.is_branch() and asset.in_service]
+        connected_branches = [
+            asset.grid_model_id
+            for asset in station.get_connected_assets(
+                bb_index,
+                topology_assets=topology_assets,
+                asset_scope="branch",
+            )
+        ]
         connected_branches = [network_data.branch_ids.index(branch_id) for branch_id in connected_branches]
         busbar_branches_map[bb.grid_model_id] = connected_branches
     return busbar_branches_map
@@ -329,7 +359,10 @@ def extract_busbar_outage_data(
     assert station.busbars[busbar_index].in_service, f"Busbar {busbar_id} is not in service. Cannot outage it."
 
     connected_branches_to_outage = []
-    connected_assets = get_connected_assets(station, busbar_index)
+    connected_assets = station.get_connected_assets(
+        busbar_index,
+        topology_assets=_topology_assets(network),
+    )
     node_indices_to_outage = np.nonzero(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
 
     # Determine the nodal_index of the physical busbar.

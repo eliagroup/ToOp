@@ -37,8 +37,9 @@ def build_test_topology(reference_topology: Topology, raw_stations: list[RawStat
     return copy_topology_with_updates(
         reference_topology=reference_topology,
         raw_stations=raw_stations,
-        assets=reference_topology.assets,
         asset_bays=reference_topology.asset_bays,
+        branch_assets=reference_topology.branch_assets,
+        injection_assets=reference_topology.injection_assets,
     )
 
 
@@ -91,14 +92,14 @@ def test_get_changing_switches_from_disconnections_matches_network_diff(
     starting_station = target_station.model_copy(
         update={
             "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     target_raw_station = basic_node_breaker_topology.raw_stations[0]
     starting_raw_station = target_raw_station.model_copy(
         update={
             "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_raw_station.couplers],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     target_topology = build_test_topology(basic_node_breaker_topology, [target_raw_station])
@@ -122,13 +123,13 @@ def test_get_changing_switches_from_actions_warns_on_overlapping_switch_updates(
     target_station = basic_node_breaker_topology.materialize_stations()[0]
     changed_station = target_station.model_copy(
         update={
-            "asset_switching_table": np.array([[False, False, False], [True, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, False, False], [True, True, False]], dtype=bool),
         }
     )
     starting_station = target_station.model_copy(
         update={
             "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     starting_raw_station = basic_node_breaker_topology.raw_stations[0].model_copy(
@@ -137,7 +138,7 @@ def test_get_changing_switches_from_actions_warns_on_overlapping_switch_updates(
                 coupler.model_copy(update={"open": False})
                 for coupler in basic_node_breaker_topology.raw_stations[0].couplers
             ],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     starting_topology = build_test_topology(basic_node_breaker_topology, [starting_raw_station])

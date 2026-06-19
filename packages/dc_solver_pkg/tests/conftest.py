@@ -95,11 +95,11 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLA
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import (
+    BranchAsset,
     Busbar,
     BusbarCoupler,
     MaterializedAssetConnection,
     MaterializedStation,
-    SwitchableAsset,
     Topology,
 )
 from toop_engine_interfaces.asset_topology_helpers import load_asset_topology
@@ -843,10 +843,10 @@ def basic_node_breaker_topology() -> Topology:
 
 @pytest.fixture(scope="session")
 def mock_station() -> MaterializedStation:
-    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, type="line")
-    asset2 = SwitchableAsset(grid_model_id="branch_02", in_service=True, type="line")
-    asset3 = SwitchableAsset(grid_model_id="branch_03", in_service=True, type="line")
-    asset4 = SwitchableAsset(grid_model_id="branch_04", in_service=True, type="line")
+    asset1 = BranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    asset2 = BranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
+    asset3 = BranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
+    asset4 = BranchAsset(grid_model_id="branch_04", in_service=True, asset_type="line")
 
     # Create mock Busbar objects
     busbar_0 = Busbar(grid_model_id="busbar_0", int_id=1)
@@ -866,7 +866,7 @@ def mock_station() -> MaterializedStation:
         couplers=[
             BusbarCoupler(
                 grid_model_id="VL4_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL4_BREAKER",
                 busbar_from_id=1,
                 busbar_to_id=2,
@@ -875,7 +875,7 @@ def mock_station() -> MaterializedStation:
             ),
             BusbarCoupler(
                 grid_model_id="VL5_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL5_BREAKER",
                 busbar_from_id=2,
                 busbar_to_id=3,
@@ -884,7 +884,7 @@ def mock_station() -> MaterializedStation:
             ),
             BusbarCoupler(
                 grid_model_id="VL6_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL6_BREAKER",
                 busbar_from_id=3,
                 busbar_to_id=4,
@@ -893,7 +893,7 @@ def mock_station() -> MaterializedStation:
             ),
             BusbarCoupler(
                 grid_model_id="VL7_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL7_BREAKER",
                 busbar_from_id=4,
                 busbar_to_id=5,
@@ -902,7 +902,7 @@ def mock_station() -> MaterializedStation:
             ),
             BusbarCoupler(
                 grid_model_id="VL9_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL9_BREAKER",
                 busbar_from_id=1,
                 busbar_to_id=3,
@@ -910,13 +910,14 @@ def mock_station() -> MaterializedStation:
                 in_service=True,
             ),
         ],
-        asset_connections=[
+        branch_connections=[
             MaterializedAssetConnection(asset=asset1),
             MaterializedAssetConnection(asset=asset2),
             MaterializedAssetConnection(asset=asset3),
             MaterializedAssetConnection(asset=asset4),
         ],
-        asset_switching_table=np.array(
+        injection_connections=[],
+        branch_switching_table=np.array(
             [
                 [True, False, True, False],  # Busbar 0
                 [False, True, False, False],  # Busbar 1
@@ -926,6 +927,7 @@ def mock_station() -> MaterializedStation:
             ],
             dtype=bool,
         ),
+        injection_switching_table=np.zeros((5, 0), dtype=bool),
     )
     return station
 

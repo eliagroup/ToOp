@@ -427,16 +427,20 @@ def realise_ba_to_physical_topo_per_station_jax(
     local_branch_action_set = local_branch_action_set[1:]
 
     n_branches = local_branch_action_set.shape[1]
-    # Currently we ignore injection assets which are at the end of the separation set due to the sorting within the
-    # simplification process for the station.
     separation_set = separation_set[:, :, :n_branches]
-    asset_switching_table = station.asset_switching_table[:, :n_branches]
-    asset_connectivity = (
-        station.asset_connectivity[:, :n_branches]
-        if station.asset_connectivity is not None
-        else np.ones_like(asset_switching_table, dtype=bool)
-    )
 
+    branch_switching_table = np.asarray(station.branch_switching_table, dtype=bool)
+    branch_connectivity = (
+        station.branch_connectivity
+        if station.branch_connectivity is not None
+        else np.ones_like(station.branch_switching_table, dtype=bool)
+    )
+    assert branch_switching_table.shape[1] == local_branch_action_set.shape[1], (
+        "The number of branches in the station must match the number of branches in the local action set."
+    )
+    assert branch_connectivity.shape[1] == local_branch_action_set.shape[1], (
+        "The number of branches in the station must match the number of branches in the local action set."
+    )
     # Map over the local action set and compute a switching table for each action
     with jax.default_device(jax.devices("cpu")[0]):
         (
@@ -452,8 +456,8 @@ def realise_ba_to_physical_topo_per_station_jax(
             separation_set=jnp.array(separation_set, dtype=bool),
             coupler_states=jnp.array(coupler_states, dtype=bool),
             busbar_mapping=jnp.array(busbar_b_array, dtype=bool),
-            current_switching_table=jnp.array(asset_switching_table, dtype=bool),
-            asset_connectivity=jnp.array(asset_connectivity, dtype=bool),
+            current_switching_table=jnp.array(branch_switching_table, dtype=bool),
+            asset_connectivity=jnp.array(branch_connectivity, dtype=bool),
             batch_size=batch_size,
             choice_heuristic=choice_heuristic,
         )
@@ -481,9 +485,7 @@ def realise_ba_to_physical_topo_per_station_jax(
     realised_stations = [
         station.model_copy(
             update={
-                "asset_switching_table": np.concatenate(
-                    [action_switching, station.asset_switching_table[:, n_branches:]], axis=1
-                ),
+                "branch_switching_table": action_switching,
                 "couplers": [
                     coupler.model_copy(update={"open": bool(open)})
                     for coupler, open in zip(station.couplers, action_coupler_states, strict=True)

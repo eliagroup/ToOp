@@ -660,7 +660,7 @@ def create_busbar_b_in_ieee(net: pypowsybl.network.Network) -> None:
 
 
 def extract_station_info_powsybl(net: Network, base_folder: Path) -> None:
-    raw_stations, topology_assets = get_raw_stations_and_assets_bus_breaker(net)
+    raw_stations, branch_assets, injection_assets = get_raw_stations_and_assets_bus_breaker(net)
     target = base_folder / PREPROCESSING_PATHS["asset_topology_file_path"]
     target.parent.mkdir(parents=True, exist_ok=True)
     save_asset_topology(
@@ -668,7 +668,8 @@ def extract_station_info_powsybl(net: Network, base_folder: Path) -> None:
         Topology(
             topology_id="extracted_topology",
             raw_stations=raw_stations,
-            assets=topology_assets,
+            branch_assets=branch_assets,
+            injection_assets=injection_assets,
             asset_bays=[],
             timestamp=datetime.datetime.now(),
         ),

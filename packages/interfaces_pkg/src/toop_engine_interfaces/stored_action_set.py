@@ -147,27 +147,51 @@ class StationDiffArray(BaseModel):
     station.couplers in length and order and the entries correspond to open (True) and closed (False). The n_actions
     dimension provides an entry per action in the action set."""
 
-    switching_table: Bool[np.ndarray, " _n_actions _n_busbars _n_assets"]
-    """The switching table of the station. The array dimensions n_busbars and n_assets are equivalent to the
-    switching table in the station, """
+    branch_switching_table: Bool[np.ndarray, " _n_actions _n_busbars _n_branch_assets"]
+    """Branch switching tables for the station actions.
+
+    The busbar and branch-asset dimensions match ``station.branch_switching_table``.
+    """
+
+    injection_switching_table: Bool[np.ndarray, " _n_actions _n_busbars _n_injection_assets"]
+    """Injection switching tables for the station actions.
+
+    The busbar and injection-asset dimensions match ``station.injection_switching_table``.
+    """
 
     @model_validator(mode="after")
     def _validate_station_diff_arrays(self) -> "StationDiffArray":
         """Validate stored station diff array shapes.
 
         Different stations can legitimately have different action counts, so the relevant invariant is
-        local to each station diff: coupler_open and switching_table must agree on their first
-        dimension per station. However, the beartype checker invokes the checks in such a way that a global instantiation of
-        dimension values was happening, raising. Hence, we check the shapes manually here.
+        local to each station diff: coupler_open, branch_switching_table, and injection_switching_table
+        must agree on their first dimension per station. The two switching tables must also agree on
+        their busbar dimension. However, the beartype checker invokes the checks in such a way that a
+        global instantiation of dimension values was happening, raising. Hence, we check the shapes
+        manually here.
         """
         if self.coupler_open.ndim != 2:
             raise ValueError("coupler_open must be a 2D array of shape (n_actions, n_couplers)")
-        if self.switching_table.ndim != 3:
-            raise ValueError("switching_table must be a 3D array of shape (n_actions, n_busbars, n_assets)")
-        if self.coupler_open.shape[0] != self.switching_table.shape[0]:
+        if self.branch_switching_table.ndim != 3:
+            raise ValueError("branch_switching_table must be a 3D array of shape (n_actions, n_busbars, n_branch_assets)")
+        if self.injection_switching_table.ndim != 3:
             raise ValueError(
-                "coupler_open and switching_table must have the same n_actions dimension, got "
-                f"{self.coupler_open.shape[0]} and {self.switching_table.shape[0]}"
+                "injection_switching_table must be a 3D array of shape (n_actions, n_busbars, n_injection_assets)"
+            )
+        if self.coupler_open.shape[0] != self.branch_switching_table.shape[0]:
+            raise ValueError(
+                "coupler_open and branch_switching_table must have the same n_actions dimension, got "
+                f"{self.coupler_open.shape[0]} and {self.branch_switching_table.shape[0]}"
+            )
+        if self.coupler_open.shape[0] != self.injection_switching_table.shape[0]:
+            raise ValueError(
+                "coupler_open and injection_switching_table must have the same n_actions dimension, got "
+                f"{self.coupler_open.shape[0]} and {self.injection_switching_table.shape[0]}"
+            )
+        if self.branch_switching_table.shape[1] != self.injection_switching_table.shape[1]:
+            raise ValueError(
+                "branch_switching_table and injection_switching_table must have the same n_busbars dimension, got "
+                f"{self.branch_switching_table.shape[1]} and {self.injection_switching_table.shape[1]}"
             )
         return self
 
@@ -221,7 +245,8 @@ def _validate_station_diff_hypothesis(starting_station: MaterializedStation, act
 
     def normalize_station(station: MaterializedStation) -> dict[str, object]:
         station_data = station.model_dump(mode="json")
-        station_data.pop("asset_switching_table", None)
+        station_data.pop("branch_switching_table", None)
+        station_data.pop("injection_switching_table", None)
         for coupler in station_data.get("couplers", []):
             if isinstance(coupler, dict):
                 coupler.pop("open", None)
@@ -229,7 +254,7 @@ def _validate_station_diff_hypothesis(starting_station: MaterializedStation, act
 
     if normalize_station(action) != normalize_station(starting_station):
         raise ValueError(
-            f"Action station {action.grid_model_id} changed fields other than coupler open states and asset switching table."
+            f"Action station {action.grid_model_id} changed fields other than coupler open states and switching tables."
         )
 
 
@@ -260,7 +285,8 @@ def store_station_diff_fs(
         for station_diff in station_diffs:
             group = file.create_group(station_diff.grid_model_id)
             group.create_dataset("coupler_open", data=station_diff.coupler_open)
-            group.create_dataset("switching_table", data=station_diff.switching_table)
+            group.create_dataset("branch_switching_table", data=station_diff.branch_switching_table)
+            group.create_dataset("injection_switching_table", data=station_diff.injection_switching_table)
     bytes_io.seek(0)
     with filesystem.open(str(diff_file_path), "wb") as file:
         file.write(bytes_io.getbuffer())
@@ -294,9 +320,13 @@ def _load_station_diff_io(binaryio: io.IOBase) -> list[StationDiffArray]:
         for grid_model_id in station_order:
             group = file[grid_model_id]
             coupler_open = group["coupler_open"][:]
-            switching_table = group["switching_table"][:]
+            branch_switching_table = group["branch_switching_table"][:]
+            injection_switching_table = group["injection_switching_table"][:]
             station_diff = StationDiffArray(
-                grid_model_id=grid_model_id, coupler_open=coupler_open, switching_table=switching_table
+                grid_model_id=grid_model_id,
+                coupler_open=coupler_open,
+                branch_switching_table=branch_switching_table,
+                injection_switching_table=injection_switching_table,
             )
             station_diffs.append(station_diff)
     return station_diffs
@@ -336,7 +366,7 @@ def expand_single_station_diff_to_actions(
     ----------
     starting_station : Station
         The station as it looks in the starting topology. All fields from the station will be copied except for the
-        coupler states and switching table, which will be overwritten by the station diff.
+        coupler states and switching tables, which will be overwritten by the station diff.
     station_diff : StationDiffArray
         The station diff to expand.
 
@@ -352,12 +382,14 @@ def expand_single_station_diff_to_actions(
             coupler.model_copy(update={"open": bool(coupler_open)})
             for coupler, coupler_open in zip(starting_station.couplers, coupler_array, strict=True)
         ]
-        switching_table = station_diff.switching_table[i]
+        branch_switching_table = station_diff.branch_switching_table[i]
+        injection_switching_table = station_diff.injection_switching_table[i]
 
         action = starting_station.model_copy(
             update={
                 "couplers": couplers,
-                "asset_switching_table": switching_table,
+                "branch_switching_table": branch_switching_table,
+                "injection_switching_table": injection_switching_table,
             },
         )
         actions.append(action)
@@ -374,7 +406,7 @@ def expand_station_diffs(starting_topology: Topology, station_diffs: list[Statio
     starting_topology : Topology
         The topology as it looks in the starting topology. The station diffs will be matched to the stations in the topology
         based on their grid_model_id and all fields from the station will be copied except for the coupler states and
-        switching table, which will be overwritten by the station diff.
+        switching tables, which will be overwritten by the station diff.
     station_diffs : list[StationDiffArray]
         The station diffs to expand.
 
@@ -407,7 +439,7 @@ def compress_actions_to_station_diffs(
     ----------
     starting_topology : Topology
         The topology as it looks in the starting topology. The stations will be matched to the stations in the topology
-        based on their grid_model_id and the coupler states and switching table will be compared to the ones in the topology
+        based on their grid_model_id and the coupler states and switching tables will be compared to the ones in the topology
         to create the station diffs.
         Note that this should be the simplified starting topology if simplifications have been applies, as they will also be
         present in all stations in the action set.
@@ -429,7 +461,7 @@ def compress_actions_to_station_diffs(
         If the actions are not grouped by station
     ValueError
         If validate_diff_hypothesis is True and the change between actions for the same station regards fields other than the
-        coupler states and switching table.
+        coupler states and switching tables.
     """
     grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.materialize_stations()}
     station_diffs = {}
@@ -439,22 +471,31 @@ def compress_actions_to_station_diffs(
         starting_station = grid_model_id_to_station[grid_model_id]
 
         coupler_open = []
-        switching_table = []
+        branch_switching_tables = []
+        injection_switching_tables = []
         for action in group:
             assert len(action.couplers) == len(starting_station.couplers), (
                 "Number of couplers in action station does not match starting station."
             )
-            assert action.asset_switching_table.shape == starting_station.asset_switching_table.shape, (
-                "Switching table shape in action station does not match starting station."
+            assert action.branch_switching_table.shape == starting_station.branch_switching_table.shape, (
+                "Branch switching table shape in action station does not match starting station."
+            )
+            assert action.injection_switching_table.shape == starting_station.injection_switching_table.shape, (
+                "Injection switching table shape in action station does not match starting station."
             )
             if validate_diff_hypothesis:
                 _validate_station_diff_hypothesis(starting_station=starting_station, action=action)
             coupler_open.append([coupler.open for coupler in action.couplers])
-            switching_table.append(action.asset_switching_table)
+            branch_switching_tables.append(action.branch_switching_table)
+            injection_switching_tables.append(action.injection_switching_table)
         coupler_open_array = np.array(coupler_open).astype(bool)
-        switching_table_array = np.array(switching_table).astype(bool)
+        branch_switching_table_array = np.array(branch_switching_tables).astype(bool)
+        injection_switching_table_array = np.array(injection_switching_tables).astype(bool)
         station_diff = StationDiffArray(
-            grid_model_id=grid_model_id, coupler_open=coupler_open_array, switching_table=switching_table_array
+            grid_model_id=grid_model_id,
+            coupler_open=coupler_open_array,
+            branch_switching_table=branch_switching_table_array,
+            injection_switching_table=injection_switching_table_array,
         )
         if station_diff.grid_model_id in station_diffs:
             raise ValueError(f"Duplicate station diff for grid_model_id {grid_model_id}, actions were not in order.")

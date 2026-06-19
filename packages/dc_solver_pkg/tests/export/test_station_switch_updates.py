@@ -7,6 +7,7 @@
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 from toop_engine_dc_solver.export.station_switch_updates import (
     _get_asset_switch_diffs,
     _get_coupler_switch_diffs,
@@ -36,8 +37,9 @@ def build_test_topology(reference_topology: Topology, raw_stations: list[RawStat
     return copy_topology_with_updates(
         reference_topology=reference_topology,
         raw_stations=raw_stations,
-        assets=reference_topology.assets,
         asset_bays=reference_topology.asset_bays,
+        branch_assets=reference_topology.branch_assets,
+        injection_assets=reference_topology.injection_assets,
     )
 
 
@@ -73,12 +75,12 @@ def test_get_asset_switch_diffs(basic_node_breaker_topology):
     target_station = basic_node_breaker_topology.materialize_stations()[0]
     starting_station = target_station.model_copy(
         update={
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     changed_station = target_station.model_copy(
         update={
-            "asset_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
         }
     )
 
@@ -95,23 +97,22 @@ def test_get_asset_switch_diffs(basic_node_breaker_topology):
 
 def test_get_asset_switch_diffs_requires_matching_switching_table_shape(basic_node_breaker_topology):
     station = basic_node_breaker_topology.materialize_stations()[0]
-    changed_station = station.model_copy(
-        update={
-            "asset_switching_table": np.array([[False, False, True]], dtype=bool),
-        }
-    )
-
-    with pytest.raises(ValueError, match="asset switching table shape does not match"):
-        _get_asset_switch_diffs(
-            changed_station=changed_station,
-            starting_station=station,
+    with pytest.raises(ValidationError, match="branch_switching_table shape"):
+        station.model_copy(
+            update={
+                "branch_switching_table": np.array([[False, False, True]], dtype=bool),
+            }
         )
 
 
 def test_get_asset_switch_diffs_requires_matching_asset_order(basic_node_breaker_topology):
     station = basic_node_breaker_topology.materialize_stations()[0]
-    reordered_asset_connections = [station.asset_connections[1], station.asset_connections[0], station.asset_connections[2]]
-    changed_station = station.model_copy(update={"asset_connections": reordered_asset_connections})
+    reordered_asset_connections = [
+        station.branch_connections[1],
+        station.branch_connections[0],
+        station.branch_connections[2],
+    ]
+    changed_station = station.model_copy(update={"branch_connections": reordered_asset_connections})
 
     with pytest.raises(ValueError, match="Use ActionSet.simplified_starting_topology as input"):
         _get_asset_switch_diffs(
@@ -124,12 +125,12 @@ def test_get_asset_switch_diffs_allows_multiple_active_busbars(basic_node_breake
     station = basic_node_breaker_topology.materialize_stations()[0]
     starting_station = station.model_copy(
         update={
-            "asset_switching_table": np.array([[True, False, False], [True, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, False], [True, True, False]], dtype=bool),
         }
     )
     changed_station = station.model_copy(
         update={
-            "asset_switching_table": np.array([[True, False, False], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, False], [False, True, False]], dtype=bool),
         }
     )
 
@@ -150,13 +151,13 @@ def test_get_changing_switches_from_changed_stations_matches_network_diff(
     starting_station = station.model_copy(
         update={
             "couplers": [coupler.model_copy(update={"open": False}) for coupler in station.couplers],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     changed_station = starting_station.model_copy(
         update={
             "couplers": [coupler.model_copy(update={"open": True}) for coupler in starting_station.couplers],
-            "asset_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
         }
     )
     target_raw_station = basic_node_breaker_topology.raw_stations[0].model_copy(
@@ -164,7 +165,7 @@ def test_get_changing_switches_from_changed_stations_matches_network_diff(
             "couplers": [
                 coupler.model_copy(update={"open": True}) for coupler in basic_node_breaker_topology.raw_stations[0].couplers
             ],
-            "asset_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
         }
     )
     starting_raw_station = basic_node_breaker_topology.raw_stations[0].model_copy(
@@ -173,7 +174,7 @@ def test_get_changing_switches_from_changed_stations_matches_network_diff(
                 coupler.model_copy(update={"open": False})
                 for coupler in basic_node_breaker_topology.raw_stations[0].couplers
             ],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     target_topology = build_test_topology(basic_node_breaker_topology, [target_raw_station])

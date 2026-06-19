@@ -136,11 +136,11 @@ def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> A
         return None
 
     stations = [action_set.local_actions[action] for action in actions]
-    changed_stations_topo = topology_from_materialized_stations(action_set.starting_topology, stations)
-
     if is_node_breaker_grid(net, stations[0].grid_model_id):
+        changed_stations_topo = topology_from_materialized_stations(action_set.starting_topology, stations)
         additional_info = apply_node_breaker_topology(net, changed_stations_topo)
     else:
+        changed_stations_topo = topology_from_materialized_stations(action_set.simplified_starting_topology, stations)
         additional_info = apply_topology_bus_branch(net, changed_stations_topo)
 
     return additional_info
@@ -266,25 +266,24 @@ def compute_cross_coupler_flows(
 
         p_sum = 0.0
         q_sum = 0.0
-        for index, asset_connection in enumerate(station.asset_connections):
-            asset = asset_connection.asset
-            if station.asset_switching_table[busbars_a, index].any():
-                # The asset is on busbar A, include it
-                if asset.is_branch() is True:
-                    branch_end = asset_connection.terminal
-                    if branch_end is None:
-                        raise ValueError("Branch end is None")
-                    from_end = branch_end in ("from", "hv")
-                    p, q = extract_single_branch_loadflow_result(branch_res, asset.grid_model_id, from_end)
-                    p_sum += p
-                    q_sum += q
-                elif asset.is_branch() is False:
-                    p, q = extract_single_injection_loadflow_result(
-                        injection_res,
-                        asset.grid_model_id,
-                    )
-                    p_sum += p
-                    q_sum += q
+        for index, asset_connection in enumerate(station.branch_connections):
+            if station.branch_switching_table[busbars_a, index].any():
+                branch_end = asset_connection.terminal
+                if branch_end is None:
+                    raise ValueError("Branch end is None")
+                from_end = branch_end in ("from", "hv")
+                p, q = extract_single_branch_loadflow_result(branch_res, asset_connection.asset.grid_model_id, from_end)
+                p_sum += p
+                q_sum += q
+
+        for index, asset_connection in enumerate(station.injection_connections):
+            if station.injection_switching_table[busbars_a, index].any():
+                p, q = extract_single_injection_loadflow_result(
+                    injection_res,
+                    asset_connection.asset.grid_model_id,
+                )
+                p_sum += p
+                q_sum += q
 
         active_power.append(p_sum)
         reactive_power.append(q_sum)

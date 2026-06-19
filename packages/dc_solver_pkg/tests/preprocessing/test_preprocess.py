@@ -599,8 +599,9 @@ def test_enumerate_station_realisations_no_coupler(
         asset_topology=copy_topology_with_updates(
             reference_topology=network_data_filled.asset_topology,
             raw_stations=raw_stations,
-            assets=network_data_filled.asset_topology.assets,
             asset_bays=network_data_filled.asset_topology.asset_bays,
+            branch_assets=network_data_filled.asset_topology.branch_assets,
+            injection_assets=network_data_filled.asset_topology.injection_assets,
         ),
     )
     network_data = filter_relevant_nodes_branch_count(network_data)
@@ -627,7 +628,10 @@ def test_simplify_asset_topology(
         MaterializedStation.model_validate(station)
         branch_ids = [network_data.branch_ids[i] for i in network_data.branches_at_nodes[rel_node_index]]
         inj_ids = [network_data.injection_ids[i] for i in network_data.injection_idx_at_nodes[rel_node_index]]
-        asset_ids = [a.grid_model_id for a in station.assets]
+        asset_ids = [
+            *(asset_connection.asset.grid_model_id for asset_connection in station.branch_connections),
+            *(asset_connection.asset.grid_model_id for asset_connection in station.injection_connections),
+        ]
         assert branch_ids == asset_ids[: len(branch_ids)]
         assert inj_ids == asset_ids[len(branch_ids) :]
 
@@ -890,7 +894,10 @@ def test_preprocess(data_folder: str, tmp_path: str) -> None:
         MaterializedStation.model_validate(station)
         branch_ids = [network_data.branch_ids[i] for i in network_data.branches_at_nodes[rel_node_index]]
         inj_ids = [network_data.injection_ids[i] for i in network_data.injection_idx_at_nodes[rel_node_index]]
-        asset_ids = [a.grid_model_id for a in station.assets]
+        asset_ids = [
+            *(asset_connection.asset.grid_model_id for asset_connection in station.branch_connections),
+            *(asset_connection.asset.grid_model_id for asset_connection in station.injection_connections),
+        ]
         assert branch_ids == asset_ids[: len(branch_ids)]
         assert inj_ids == asset_ids[len(branch_ids) :]
 

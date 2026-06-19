@@ -16,7 +16,6 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import structlog
-from beartype.typing import cast
 from toop_engine_dc_solver.export.disconnection_switch_updates import get_changing_switches_from_disconnections
 from toop_engine_dc_solver.export.station_switch_updates import (
     get_changing_switches_from_changed_stations,
@@ -162,7 +161,7 @@ def get_changing_switches_from_actions(
     if combined_switch_updates.empty:
         combined_switch_updates = get_empty_dataframe_from_model(SwitchUpdateSchema)
     combined_switch_updates = combined_switch_updates.astype({"grid_model_id": str, "open": bool})
-    return cast(pat.DataFrame[SwitchUpdateSchema], combined_switch_updates)
+    return combined_switch_updates
 
 
 @pa.check_types

@@ -20,7 +20,6 @@ from toop_engine_dc_solver.preprocess.network_data import (
     get_relevant_stations,
 )
 from toop_engine_interfaces.asset_topology import RawStation
-from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 
@@ -129,10 +128,12 @@ def get_injections_on_physical_bb(
     Float[np.ndarray, " n_timesteps"]
         The total connected injections in MW for the specified busbar index over all timesteps.
     """
-    connected_assets = get_connected_assets(sub, busbar_index, network_data.simplified_asset_topology.assets)
-    connected_injection_ids = [
-        asset.grid_model_id for asset in connected_assets if asset.in_service and not asset.is_branch()
-    ]
+    connected_assets = sub.get_connected_assets(
+        busbar_index,
+        topology_assets=network_data.simplified_asset_topology.injection_assets,
+        asset_scope="injection",
+    )
+    connected_injection_ids = [asset.grid_model_id for asset in connected_assets if asset.in_service]
 
     # Certain IDs in the connected_injection_ids may not be present in the network_data.injection_ids.
     # TODO: FInd out why?

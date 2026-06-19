@@ -7,15 +7,26 @@
 
 """Contains the data models for the asset topology."""
 
+from copy import deepcopy
 from datetime import datetime
 from enum import Enum
 
 import numpy as np
-from beartype.typing import Any, Literal, Optional, TypeAlias, Union, get_args
+from beartype.typing import Any, Collection, Literal, Optional, TypeAlias, Union, get_args
 from numpydantic import NDArray, Shape
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 StationSwitchingArray: TypeAlias = NDArray[Shape["* n_bus, * n_asset"], np.bool_]
+
+
+def _merged_round_trip_payload(model: BaseModel, update: Optional[dict[str, Any]], *, deep: bool = False) -> dict[str, Any]:
+    """Merge model field values and requested updates for revalidation-aware model_copy overrides."""
+    payload = {field_name: getattr(model, field_name) for field_name in type(model).model_fields}
+    if deep:
+        payload = deepcopy(payload)
+    if update:
+        payload.update(update)
+    return payload
 
 
 class PowsyblSwitchValues(Enum):
@@ -35,6 +46,7 @@ AssetBranchTypePandapower: TypeAlias = Literal[
     "trafo3w_mv",
     "trafo3w_hv",
     "impedance",
+    "xward",
 ]
 AssetBranchTypePowsybl: TypeAlias = Literal[
     "LINE",
@@ -52,7 +64,6 @@ AssetInjectionTypePandapower: TypeAlias = Literal[
     "ward",
     "ward_load",
     "ward_shunt",
-    "xward",
     "xward_load",
     "xward_shunt",
     "dcline_from",
@@ -78,7 +89,7 @@ class Busbar(BaseModel):
     """ The unique identifier of the busbar.
     Corresponds to the busbar's id in the grid model."""
 
-    type: Optional[str] = None
+    busbar_type: Optional[str] = None
     """ The type of the busbar, might be useful for finding the busbar later on """
 
     name: Optional[str] = None
@@ -194,7 +205,7 @@ class BusbarCoupler(BaseModel):
     """ The unique identifier of the coupler.
     Corresponds to the coupler's id in the grid model."""
 
-    type: Optional[str] = None
+    coupler_type: Optional[str] = None
     """ The type of the coupler, might be useful for finding the coupler later on """
 
     name: Optional[str] = None
@@ -243,7 +254,7 @@ class SwitchableAsset(BaseModel):
     """ The unique identifier of the asset.
     Corresponds to the asset's id in the grid model."""
 
-    type: Optional[AssetType] = None
+    asset_type: Optional[AssetType] = None
     """ The type of the asset. These refer loosely to the types in the pandapower/powsybl grid
     models. If set, this can be used to disambiguate branches from injections """
 
@@ -265,9 +276,45 @@ class SwitchableAsset(BaseModel):
         bool
             True if the asset is a branch, False if it is an injection.
         """
-        if self.type is None:
+        if self.asset_type is None:
             return None
-        return self.type in get_args(AssetBranchType)
+        return self.asset_type in get_args(AssetBranchType)
+
+
+class BranchAsset(SwitchableAsset):
+    """Switchable asset representing a branch-type element."""
+
+    asset_type: Optional[AssetBranchType] = None
+
+    def is_branch(self) -> Optional[bool]:
+        """Return branch semantics for branch assets."""
+        return None if self.asset_type is None else True
+
+
+class InjectionAsset(SwitchableAsset):
+    """Switchable asset representing an injection-type element."""
+
+    asset_type: Optional[AssetInjectionType] = None
+
+    def is_branch(self) -> Optional[bool]:
+        """Return branch semantics for injection assets."""
+        return None if self.asset_type is None else False
+
+
+def normalize_switchable_asset_payload(asset: dict[str, Any]) -> SwitchableAsset:
+    """Normalize an asset payload to the matching branch or injection subclass when possible."""
+    if isinstance(asset, (BranchAsset, InjectionAsset)):
+        return asset
+
+    asset_data = asset.model_dump() if isinstance(asset, SwitchableAsset) else dict(asset)
+    if "asset_type" not in asset_data and "type" in asset_data:
+        asset_data["asset_type"] = asset_data.pop("type")
+    asset_type = asset_data.get("asset_type")
+    if asset_type in get_args(AssetBranchType):
+        return BranchAsset(**asset_data)
+    if asset_type in get_args(AssetInjectionType):
+        return InjectionAsset(**asset_data)
+    return SwitchableAsset(**asset_data)
 
 
 class StationAssetConnection(BaseModel):
@@ -295,6 +342,12 @@ class MaterializedAssetConnection(BaseModel):
     asset_bay: Optional[AssetBay] = None
     """Optional station-local asset bay payload for this station-local asset occurrence."""
 
+    def get_sr_switch(self) -> Optional[dict[str, str]]:
+        """Return the sr_switch_grid_model_id dict from the asset bay if it exists."""
+        if self.asset_bay is not None:
+            return self.asset_bay.sr_switch_grid_model_id
+        return None
+
 
 class AssetSetpoint(BaseModel):
     """Asset data describing a single asset with a setpoint.
@@ -308,7 +361,7 @@ class AssetSetpoint(BaseModel):
     """ The unique identifier of the asset.
     Corresponds to the asset's id in the grid model."""
 
-    type: Optional[str] = None
+    asset_type: Optional[str] = None
     """ The type of the asset, might be useful for finding the asset later on """
 
     name: Optional[str] = None
@@ -325,6 +378,7 @@ def _validate_station_switching_tables(
     asset_count: int,
     asset_switching_table: np.ndarray,
     asset_connectivity: Optional[np.ndarray],
+    asset_kind: str,
 ) -> None:
     """Validate switching-table shapes against the station dimensions.
 
@@ -342,6 +396,8 @@ def _validate_station_switching_tables(
         Current station switching table.
     asset_connectivity : Optional[np.ndarray]
         Optional connectivity mask describing physically allowed assignments.
+    asset_kind: str
+        The kind of asset being validated, used in error messages (e.g. "branch" or "injection").
 
     Returns
     -------
@@ -355,15 +411,15 @@ def _validate_station_switching_tables(
     """
     if asset_switching_table.shape != (busbar_count, asset_count):
         raise ValueError(
-            f"asset_switching_table shape {asset_switching_table.shape} does not match busbars "
-            f"{busbar_count} and assets {asset_count}"
+            f"{asset_kind}_switching_table shape {asset_switching_table.shape} does not match busbars "
+            f"{busbar_count} and {asset_kind} assets {asset_count}"
             f" Station_id: {station_grid_model_id}, Name: {station_name}"
         )
 
     if asset_connectivity is not None and asset_connectivity.shape != (busbar_count, asset_count):
         raise ValueError(
-            f"asset_connectivity shape {asset_connectivity.shape} does not match busbars "
-            f"{busbar_count} and assets {asset_count}"
+            f"{asset_kind}_connectivity shape {asset_connectivity.shape} does not match busbars "
+            f"{busbar_count} and {asset_kind} assets {asset_count}"
             f" Station_id: {station_grid_model_id}, Name: {station_name}"
         )
 
@@ -373,6 +429,7 @@ def _validate_station_physical_assignments(
     station_name: Optional[str],
     asset_switching_table: np.ndarray,
     asset_connectivity: Optional[np.ndarray],
+    asset_kind: str,
 ) -> None:
     """Validate that all current assignments are physically allowed.
 
@@ -386,6 +443,8 @@ def _validate_station_physical_assignments(
         Current station switching table.
     asset_connectivity : Optional[np.ndarray]
         Optional connectivity mask describing physically allowed assignments.
+    asset_kind: str
+        The kind of asset being validated, used in error messages (e.g. "branch" or "injection").
 
     Returns
     -------
@@ -400,7 +459,7 @@ def _validate_station_physical_assignments(
     if asset_connectivity is not None:
         if np.logical_and(asset_switching_table, np.logical_not(asset_connectivity)).any():
             raise ValueError(
-                f"Not all current assignments are physically allowed "
+                f"Not all current {asset_kind} assignments are physically allowed "
                 f"Station_id: {station_grid_model_id}, Name: {station_name}"
             )
 
@@ -424,7 +483,7 @@ class _StationStructure(BaseModel):
     name: Optional[str] = None
     """The name of the station."""
 
-    type: Optional[str] = None
+    station_type: Optional[str] = None
     """The type of the station."""
 
     region: Optional[str] = None
@@ -439,8 +498,8 @@ class _StationStructure(BaseModel):
     couplers: list[BusbarCoupler]
     """The list of couplers at the station."""
 
-    asset_switching_table: StationSwitchingArray
-    """Holds the switching of each asset to each busbar, shape (n_bus, n_asset).
+    branch_switching_table: StationSwitchingArray
+    """Holds the switching of each branch asset to each busbar, shape (n_bus, n_branch_asset).
 
     An entry is true if the asset is connected to the busbar.
     Note: An asset can be connected to multiple busbars, in which case a closed coupler is assumed
@@ -453,12 +512,14 @@ class _StationStructure(BaseModel):
     in_service for intentional disconnections.
     """
 
-    asset_connectivity: Optional[StationSwitchingArray] = None
-    """Holds the all possible layouts of the asset_switching_table, shape (n_bus, n_asset).
+    injection_switching_table: StationSwitchingArray
+    """Holds the switching of each injection asset to each busbar, shape (n_bus, n_injection_asset)."""
 
-    An entry is true if it is possible to connect an asset to the busbar.
-    If None, it is assumed that all branches can be connected to all busbars.
-    """
+    branch_connectivity: Optional[StationSwitchingArray] = None
+    """Holds all physically possible branch layouts, shape (n_bus, n_branch_asset)."""
+
+    injection_connectivity: Optional[StationSwitchingArray] = None
+    """Holds all physically possible injection layouts, shape (n_bus, n_injection_asset)."""
 
     model_log: Optional[list[str]] = None
     """Holds log messages from the model creation process.
@@ -466,6 +527,20 @@ class _StationStructure(BaseModel):
     This can be used to store information about the model creation process, e.g. warnings or errors.
     A potential use case is to inform the user about data quality issues e.g. missing the Asset Bay switches.
     """
+
+    @field_validator(
+        "branch_switching_table",
+        "injection_switching_table",
+        "branch_connectivity",
+        "injection_connectivity",
+        mode="before",
+    )
+    @classmethod
+    def normalize_station_tables(cls, v: Optional[Collection]) -> Optional[np.ndarray]:
+        """Normalize split station tables to boolean numpy arrays."""
+        if v is None:
+            return None
+        return np.asarray(v, dtype=bool)
 
     @field_validator("busbars")
     @classmethod
@@ -544,8 +619,11 @@ class MaterializedStation(_StationStructure):
     station view; they are not intended to define a topology-owned canonical asset list.
     """
 
-    asset_connections: list[MaterializedAssetConnection]
-    """Station-local asset payloads aligned with the switching tables."""
+    branch_connections: list[MaterializedAssetConnection] = Field(default_factory=list)
+    """Station-local branch payloads aligned with ``branch_switching_table``."""
+
+    injection_connections: list[MaterializedAssetConnection] = Field(default_factory=list)
+    """Station-local injection payloads aligned with ``injection_switching_table``."""
 
     @model_validator(mode="after")
     def check_asset_shapes(self: "MaterializedStation") -> "MaterializedStation":
@@ -554,15 +632,33 @@ class MaterializedStation(_StationStructure):
             station_grid_model_id=self.grid_model_id,
             station_name=self.name,
             busbar_count=len(self.busbars),
-            asset_count=len(self.asset_connections),
-            asset_switching_table=self.asset_switching_table,
-            asset_connectivity=self.asset_connectivity,
+            asset_count=len(self.branch_connections),
+            asset_switching_table=self.branch_switching_table,
+            asset_connectivity=self.branch_connectivity,
+            asset_kind="branch",
         )
         _validate_station_physical_assignments(
             station_grid_model_id=self.grid_model_id,
             station_name=self.name,
-            asset_switching_table=self.asset_switching_table,
-            asset_connectivity=self.asset_connectivity,
+            asset_switching_table=self.branch_switching_table,
+            asset_connectivity=self.branch_connectivity,
+            asset_kind="branch",
+        )
+        _validate_station_switching_tables(
+            station_grid_model_id=self.grid_model_id,
+            station_name=self.name,
+            busbar_count=len(self.busbars),
+            asset_count=len(self.injection_connections),
+            asset_switching_table=self.injection_switching_table,
+            asset_connectivity=self.injection_connectivity,
+            asset_kind="injection",
+        )
+        _validate_station_physical_assignments(
+            station_grid_model_id=self.grid_model_id,
+            station_name=self.name,
+            asset_switching_table=self.injection_switching_table,
+            asset_connectivity=self.injection_connectivity,
+            asset_kind="injection",
         )
         return self
 
@@ -570,7 +666,7 @@ class MaterializedStation(_StationStructure):
     def check_asset_bay(self: "MaterializedStation") -> "MaterializedStation":
         """Check if the asset bay bus is in busbars."""
         busbar_grid_model_id = [busbar.grid_model_id for busbar in self.busbars]
-        for asset_connection in self.asset_connections:
+        for asset_connection in [*self.branch_connections, *self.injection_connections]:
             asset = asset_connection.asset
             asset_bay = asset_connection.asset_bay
             if asset_bay is not None:
@@ -603,14 +699,74 @@ class MaterializedStation(_StationStructure):
             and self.region == other.region
             and self.busbars == other.busbars
             and self.couplers == other.couplers
-            and self.asset_connections == other.asset_connections
-            and np.array_equal(self.asset_switching_table, other.asset_switching_table)
+            and self.branch_connections == other.branch_connections
+            and self.injection_connections == other.injection_connections
+            and np.array_equal(self.branch_switching_table, other.branch_switching_table)
+            and np.array_equal(self.injection_switching_table, other.injection_switching_table)
             and (
-                np.array_equal(self.asset_connectivity, other.asset_connectivity)
-                if (self.asset_connectivity is not None and other.asset_connectivity is not None)
-                else self.asset_connectivity == other.asset_connectivity
+                np.array_equal(self.branch_connectivity, other.branch_connectivity)
+                if (self.branch_connectivity is not None and other.branch_connectivity is not None)
+                else self.branch_connectivity == other.branch_connectivity
+            )
+            and (
+                np.array_equal(self.injection_connectivity, other.injection_connectivity)
+                if (self.injection_connectivity is not None and other.injection_connectivity is not None)
+                else self.injection_connectivity == other.injection_connectivity
             )
         )
+
+    def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "MaterializedStation":
+        """Copy and revalidate the station."""
+        payload = _merged_round_trip_payload(self, update, deep=deep)
+        return type(self).model_validate(payload)
+
+    def get_connected_assets(
+        self,
+        busbar_index: int,
+        topology_assets: Optional[list[SwitchableAsset]] = None,
+        asset_scope: Literal["all", "branch", "injection"] = "all",
+    ) -> list[SwitchableAsset]:
+        """Return in-service assets connected to one busbar.
+
+        Parameters
+        ----------
+        busbar_index : int
+            Row index into the station switching tables.
+        topology_assets : Optional[list[SwitchableAsset]]
+            Ignored for materialized stations because payloads are embedded locally.
+        asset_scope : Literal["all", "branch", "injection"]
+            Restrict the lookup to branch or injection connections.
+
+        Returns
+        -------
+        list[SwitchableAsset]
+            Connected in-service assets for the requested busbar and scope.
+        """
+        del topology_assets
+        if asset_scope == "branch":
+            return [
+                asset_connection.asset
+                for asset_connection, is_connected in zip(
+                    self.branch_connections,
+                    self.branch_switching_table[busbar_index],
+                    strict=True,
+                )
+                if is_connected and asset_connection.asset.in_service
+            ]
+        if asset_scope == "injection":
+            return [
+                asset_connection.asset
+                for asset_connection, is_connected in zip(
+                    self.injection_connections,
+                    self.injection_switching_table[busbar_index],
+                    strict=True,
+                )
+                if is_connected and asset_connection.asset.in_service
+            ]
+        return [
+            *self.get_connected_assets(busbar_index, asset_scope="branch"),
+            *self.get_connected_assets(busbar_index, asset_scope="injection"),
+        ]
 
 
 class RawStation(_StationStructure):
@@ -621,23 +777,26 @@ class RawStation(_StationStructure):
     SwitchableAsset payloads.
     """
 
-    asset_connections: list[StationAssetConnection]
-    """Station-local asset references aligned with the switching tables."""
+    branch_connections: list[StationAssetConnection] = Field(default_factory=list)
+    """Station-local branch references aligned with ``branch_switching_table``."""
+
+    injection_connections: list[StationAssetConnection] = Field(default_factory=list)
+    """Station-local injection references aligned with ``injection_switching_table``."""
 
     def with_asset_terminals(self, asset_terminals: list[Optional[BranchEnd]]) -> "RawStation":
-        """Return a copy with updated station-local branch terminals."""
-        if len(asset_terminals) != len(self.asset_connections):
+        """Return a copy with updated branch terminals."""
+        if len(asset_terminals) != len(self.branch_connections):
             raise ValueError(
-                f"asset_terminals length {len(asset_terminals)} does not match asset_connections length "
-                f"{len(self.asset_connections)}"
+                f"asset_terminals length {len(asset_terminals)} does not match branch_connections length "
+                f"{len(self.branch_connections)}"
                 f" Station_id: {self.grid_model_id}, Name: {self.name}"
             )
 
         return self.model_copy(
             update={
-                "asset_connections": [
+                "branch_connections": [
                     asset_connection.model_copy(update={"terminal": asset_terminal})
-                    for asset_connection, asset_terminal in zip(self.asset_connections, asset_terminals, strict=True)
+                    for asset_connection, asset_terminal in zip(self.branch_connections, asset_terminals, strict=True)
                 ]
             }
         )
@@ -649,15 +808,33 @@ class RawStation(_StationStructure):
             station_grid_model_id=self.grid_model_id,
             station_name=self.name,
             busbar_count=len(self.busbars),
-            asset_count=len(self.asset_connections),
-            asset_switching_table=self.asset_switching_table,
-            asset_connectivity=self.asset_connectivity,
+            asset_count=len(self.branch_connections),
+            asset_switching_table=self.branch_switching_table,
+            asset_connectivity=self.branch_connectivity,
+            asset_kind="branch",
         )
         _validate_station_physical_assignments(
             station_grid_model_id=self.grid_model_id,
             station_name=self.name,
-            asset_switching_table=self.asset_switching_table,
-            asset_connectivity=self.asset_connectivity,
+            asset_switching_table=self.branch_switching_table,
+            asset_connectivity=self.branch_connectivity,
+            asset_kind="branch",
+        )
+        _validate_station_switching_tables(
+            station_grid_model_id=self.grid_model_id,
+            station_name=self.name,
+            busbar_count=len(self.busbars),
+            asset_count=len(self.injection_connections),
+            asset_switching_table=self.injection_switching_table,
+            asset_connectivity=self.injection_connectivity,
+            asset_kind="injection",
+        )
+        _validate_station_physical_assignments(
+            station_grid_model_id=self.grid_model_id,
+            station_name=self.name,
+            asset_switching_table=self.injection_switching_table,
+            asset_connectivity=self.injection_connectivity,
+            asset_kind="injection",
         )
         return self
 
@@ -668,20 +845,88 @@ class RawStation(_StationStructure):
         return (
             self.grid_model_id == other.grid_model_id
             and self.name == other.name
-            and self.type == other.type
+            and self.station_type == other.station_type
             and self.region == other.region
             and self.voltage_level == other.voltage_level
             and self.busbars == other.busbars
             and self.couplers == other.couplers
-            and self.asset_connections == other.asset_connections
-            and np.array_equal(self.asset_switching_table, other.asset_switching_table)
+            and self.branch_connections == other.branch_connections
+            and self.injection_connections == other.injection_connections
+            and np.array_equal(self.branch_switching_table, other.branch_switching_table)
+            and np.array_equal(self.injection_switching_table, other.injection_switching_table)
             and (
-                np.array_equal(self.asset_connectivity, other.asset_connectivity)
-                if (self.asset_connectivity is not None and other.asset_connectivity is not None)
-                else self.asset_connectivity == other.asset_connectivity
+                np.array_equal(self.branch_connectivity, other.branch_connectivity)
+                if (self.branch_connectivity is not None and other.branch_connectivity is not None)
+                else self.branch_connectivity == other.branch_connectivity
+            )
+            and (
+                np.array_equal(self.injection_connectivity, other.injection_connectivity)
+                if (self.injection_connectivity is not None and other.injection_connectivity is not None)
+                else self.injection_connectivity == other.injection_connectivity
             )
             and self.model_log == other.model_log
         )
+
+    def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "RawStation":
+        """Copy and revalidate the station."""
+        payload = _merged_round_trip_payload(self, update, deep=deep)
+        return type(self).model_validate(payload)
+
+    def get_connected_assets(
+        self,
+        busbar_index: int,
+        topology_assets: Optional[list[SwitchableAsset]] = None,
+        asset_scope: Literal["all", "branch", "injection"] = "all",
+    ) -> list[SwitchableAsset]:
+        """Return in-service topology assets connected to one busbar.
+
+        Parameters
+        ----------
+        busbar_index : int
+            Row index into the station switching tables.
+        topology_assets : Optional[list[SwitchableAsset]]
+            Topology-owned assets used to resolve raw station asset references.
+        asset_scope : Literal["all", "branch", "injection"]
+            Restrict the lookup to branch or injection connections.
+
+        Returns
+        -------
+        list[SwitchableAsset]
+            Connected in-service assets for the requested busbar and scope.
+
+        Raises
+        ------
+        ValueError
+            If topology assets are missing for a raw station lookup.
+        """
+        if topology_assets is None:
+            raise ValueError("topology_assets must be provided when resolving connected assets for a RawStation")
+
+        asset_map = {asset.grid_model_id: asset for asset in topology_assets}
+        if asset_scope == "branch":
+            return [
+                asset_map[asset_connection.asset_id]
+                for asset_connection, is_connected in zip(
+                    self.branch_connections,
+                    self.branch_switching_table[busbar_index],
+                    strict=True,
+                )
+                if is_connected and asset_map[asset_connection.asset_id].in_service
+            ]
+        if asset_scope == "injection":
+            return [
+                asset_map[asset_connection.asset_id]
+                for asset_connection, is_connected in zip(
+                    self.injection_connections,
+                    self.injection_switching_table[busbar_index],
+                    strict=True,
+                )
+                if is_connected and asset_map[asset_connection.asset_id].in_service
+            ]
+        return [
+            *self.get_connected_assets(busbar_index, topology_assets=topology_assets, asset_scope="branch"),
+            *self.get_connected_assets(busbar_index, topology_assets=topology_assets, asset_scope="injection"),
+        ]
 
 
 class Topology(BaseModel):
@@ -709,8 +954,11 @@ class Topology(BaseModel):
     Each raw station represents one bus-branch bus view of a splitable station.
     """
 
-    assets: list[SwitchableAsset] = Field(default_factory=list)
-    """The topology-owned canonical asset payloads.
+    branch_assets: list[SwitchableAsset] = Field(default_factory=list)
+    """The topology-owned canonical branch payloads."""
+
+    injection_assets: list[SwitchableAsset] = Field(default_factory=list)
+    """The topology-owned canonical injection payloads.
 
     Station-local branch-end and asset-bay assignment data are stored on raw_stations instead of on
     these canonical payloads.
@@ -730,13 +978,26 @@ class Topology(BaseModel):
     metrics: Optional[dict[str, float]] = None
     """ The metrics of the topology. """
 
-    @field_validator("assets")
+    @field_validator("branch_assets")
     @classmethod
-    def check_asset_ids_unique(cls, v: list[SwitchableAsset]) -> list[SwitchableAsset]:
-        """Check if all topology assets have unique grid model ids."""
+    def check_branch_asset_ids_unique(cls, v: list[SwitchableAsset]) -> list[SwitchableAsset]:
+        """Check if all topology branch assets have unique grid model ids."""
         asset_ids = [asset.grid_model_id for asset in v]
         if len(asset_ids) != len(set(asset_ids)):
-            raise ValueError("grid_model_id must be unique for topology assets")
+            raise ValueError("grid_model_id must be unique for topology branch assets")
+        if any(asset.is_branch() is False for asset in v):
+            raise ValueError("branch_assets must not contain injection assets")
+        return v
+
+    @field_validator("injection_assets")
+    @classmethod
+    def check_injection_asset_ids_unique(cls, v: list[SwitchableAsset]) -> list[SwitchableAsset]:
+        """Check if all topology injection assets have unique grid model ids."""
+        asset_ids = [asset.grid_model_id for asset in v]
+        if len(asset_ids) != len(set(asset_ids)):
+            raise ValueError("grid_model_id must be unique for topology injection assets")
+        if any(asset.is_branch() is True for asset in v):
+            raise ValueError("injection_assets must not contain branch assets")
         return v
 
     @field_validator("asset_bays")
@@ -753,18 +1014,26 @@ class Topology(BaseModel):
     @model_validator(mode="after")
     def check_station_asset_references(self: "Topology") -> "Topology":
         """Check if all station asset references exist in the topology-owned collections."""
-        asset_ids = {asset.grid_model_id for asset in self.assets}
+        branch_asset_ids = {asset.grid_model_id for asset in self.branch_assets}
+        injection_asset_ids = {asset.grid_model_id for asset in self.injection_assets}
         asset_bay_ids = {asset_bay.asset_bay_id for asset_bay in self.asset_bays}
 
         for station in self.raw_stations:
-            for asset_connection in station.asset_connections:
+            for asset_connection in station.branch_connections:
                 asset_id = asset_connection.asset_id
-                if asset_id not in asset_ids:
+                if asset_id not in branch_asset_ids:
                     raise ValueError(
-                        f"Asset grid_model_id {asset_id} referenced by station "
+                        f"Branch asset grid_model_id {asset_id} referenced by station "
                         f"{station.grid_model_id} does not exist in topology assets"
                     )
-            for asset_connection in station.asset_connections:
+            for asset_connection in station.injection_connections:
+                asset_id = asset_connection.asset_id
+                if asset_id not in injection_asset_ids:
+                    raise ValueError(
+                        f"Injection asset grid_model_id {asset_id} referenced by station "
+                        f"{station.grid_model_id} does not exist in topology assets"
+                    )
+            for asset_connection in [*station.branch_connections, *station.injection_connections]:
                 asset_bay_id = asset_connection.asset_bay_id
                 if asset_bay_id is not None and asset_bay_id not in asset_bay_ids:
                     raise ValueError(
@@ -776,46 +1045,73 @@ class Topology(BaseModel):
 
     def materialize_stations(self) -> list[MaterializedStation]:
         """Materialize station-local asset payloads from topology-owned assets and asset bays."""
-        asset_map = {asset.grid_model_id: asset for asset in self.assets}
+        branch_asset_map = {asset.grid_model_id: asset for asset in self.branch_assets}
+        injection_asset_map = {asset.grid_model_id: asset for asset in self.injection_assets}
         asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in self.asset_bays}
         materialized_stations: list[MaterializedStation] = []
 
         for station in self.raw_stations:
-            station_assets = [
-                asset_map[asset_connection.asset_id].model_copy(deep=True) for asset_connection in station.asset_connections
+            station_branch_assets = [
+                branch_asset_map[asset_connection.asset_id].model_copy(deep=True)
+                for asset_connection in station.branch_connections
+            ]
+            station_injection_assets = [
+                injection_asset_map[asset_connection.asset_id].model_copy(deep=True)
+                for asset_connection in station.injection_connections
             ]
 
-            station_asset_bays = [
+            station_branch_asset_bays = [
                 asset_bay_map[asset_connection.asset_bay_id].model_copy(deep=True)
                 if asset_connection.asset_bay_id is not None
                 else None
-                for asset_connection in station.asset_connections
+                for asset_connection in station.branch_connections
+            ]
+            station_injection_asset_bays = [
+                asset_bay_map[asset_connection.asset_bay_id].model_copy(deep=True)
+                if asset_connection.asset_bay_id is not None
+                else None
+                for asset_connection in station.injection_connections
             ]
 
             materialized_stations.append(
                 MaterializedStation(
                     grid_model_id=station.grid_model_id,
                     name=station.name,
-                    type=station.type,
+                    station_type=station.station_type,
                     region=station.region,
                     voltage_level=station.voltage_level,
                     busbars=station.busbars,
                     couplers=station.couplers,
-                    asset_connections=[
+                    branch_connections=[
                         MaterializedAssetConnection(
                             asset=asset,
                             terminal=asset_connection.terminal,
                             asset_bay=asset_bay,
                         )
                         for asset, asset_connection, asset_bay in zip(
-                            station_assets,
-                            station.asset_connections,
-                            station_asset_bays,
+                            station_branch_assets,
+                            station.branch_connections,
+                            station_branch_asset_bays,
                             strict=True,
                         )
                     ],
-                    asset_switching_table=station.asset_switching_table,
-                    asset_connectivity=station.asset_connectivity,
+                    injection_connections=[
+                        MaterializedAssetConnection(
+                            asset=asset,
+                            terminal=asset_connection.terminal,
+                            asset_bay=asset_bay,
+                        )
+                        for asset, asset_connection, asset_bay in zip(
+                            station_injection_assets,
+                            station.injection_connections,
+                            station_injection_asset_bays,
+                            strict=True,
+                        )
+                    ],
+                    branch_switching_table=station.branch_switching_table,
+                    injection_switching_table=station.injection_switching_table,
+                    branch_connectivity=station.branch_connectivity,
+                    injection_connectivity=station.injection_connectivity,
                     model_log=station.model_log,
                 )
             )
@@ -838,7 +1134,7 @@ class Topology(BaseModel):
         asset_bay_ids: list[str] = []
         seen_ids: set[str] = set()
         for station in self.raw_stations:
-            for asset_connection in station.asset_connections:
+            for asset_connection in [*station.branch_connections, *station.injection_connections]:
                 asset_id = asset_connection.asset_id
                 asset_bay_id = asset_connection.asset_bay_id
                 if asset_id != asset_grid_model_id or asset_bay_id is None or asset_bay_id in seen_ids:
@@ -862,6 +1158,11 @@ class Topology(BaseModel):
         """
         asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in self.asset_bays}
         return [asset_bay_map[asset_bay_id] for asset_bay_id in self.get_asset_bay_ids_for_asset(asset_grid_model_id)]
+
+    def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "Topology":
+        """Copy and revalidate the topology."""
+        payload = _merged_round_trip_payload(self, update, deep=deep)
+        return type(self).model_validate(payload)
 
 
 def build_asset_bay_id(station_grid_model_id: str, asset_grid_model_id: str, occurrence_index: int = 0) -> str:
@@ -902,11 +1203,13 @@ def topology_parts_from_materialized_station(
     tuple[RawStation, list[SwitchableAsset], list[AssetBay]]
         Raw station record plus topology-owned assets and asset bays derived from the station.
     """
-    assets: list[SwitchableAsset] = []
+    branch_assets: list[SwitchableAsset] = []
+    injection_assets: list[SwitchableAsset] = []
     asset_bays: list[AssetBay] = []
-    asset_connections: list[StationAssetConnection] = []
-    for asset_connection in station.asset_connections:
-        asset = asset_connection.asset
+    branch_connections: list[StationAssetConnection] = []
+    injection_connections: list[StationAssetConnection] = []
+    for asset_connection in station.branch_connections:
+        asset = normalize_switchable_asset_payload(asset_connection.asset.model_dump(round_trip=True))
         asset_bay = asset_connection.asset_bay
         asset_id = asset.grid_model_id
         asset_bay_id: Optional[str] = None
@@ -915,8 +1218,26 @@ def topology_parts_from_materialized_station(
             asset_bay_id = asset_bay.asset_bay_id
             asset_bays.append(asset_bay.model_copy(deep=True))
 
-        assets.append(asset.model_copy(deep=True))
-        asset_connections.append(
+        branch_assets.append(asset.model_copy(deep=True))
+        branch_connections.append(
+            StationAssetConnection(
+                asset_id=asset_id,
+                terminal=asset_connection.terminal,
+                asset_bay_id=asset_bay_id,
+            )
+        )
+
+    for asset_connection in station.injection_connections:
+        asset = normalize_switchable_asset_payload(asset_connection.asset.model_dump(round_trip=True))
+        asset_bay = asset_connection.asset_bay
+        asset_id = asset.grid_model_id
+        asset_bay_id = asset_bay.asset_bay_id if asset_bay is not None else None
+
+        if asset_bay is not None:
+            asset_bays.append(asset_bay.model_copy(deep=True))
+
+        injection_assets.append(asset.model_copy(deep=True))
+        injection_connections.append(
             StationAssetConnection(
                 asset_id=asset_id,
                 terminal=asset_connection.terminal,
@@ -928,17 +1249,20 @@ def topology_parts_from_materialized_station(
         RawStation(
             grid_model_id=station.grid_model_id,
             name=station.name,
-            type=station.type,
+            station_type=station.station_type,
             region=station.region,
             voltage_level=station.voltage_level,
             busbars=station.busbars,
             couplers=station.couplers,
-            asset_connections=asset_connections,
-            asset_switching_table=station.asset_switching_table,
-            asset_connectivity=station.asset_connectivity,
+            branch_connections=branch_connections,
+            injection_connections=injection_connections,
+            branch_switching_table=station.branch_switching_table,
+            injection_switching_table=station.injection_switching_table,
+            branch_connectivity=station.branch_connectivity,
+            injection_connectivity=station.injection_connectivity,
             model_log=station.model_log,
         ),
-        assets,
+        [*branch_assets, *injection_assets],
         asset_bays,
     )
 
@@ -959,13 +1283,15 @@ def topology_from_materialized_stations(reference_topology: Topology, stations: 
         Topology containing raw stations and topology-owned payloads derived from ``stations``.
     """
     topology_stations: list[RawStation] = []
-    topology_assets: dict[str, SwitchableAsset] = {}
+    topology_branch_assets: dict[str, SwitchableAsset] = {}
+    topology_injection_assets: dict[str, SwitchableAsset] = {}
     topology_asset_bays: dict[str, AssetBay] = {}
 
     for station in stations:
         topology_station, station_assets, station_asset_bays = topology_parts_from_materialized_station(station)
         topology_stations.append(topology_station)
         for asset in station_assets:
+            topology_assets = topology_branch_assets if asset.is_branch() is not False else topology_injection_assets
             existing_asset = topology_assets.get(asset.grid_model_id)
             if existing_asset is None:
                 topology_assets[asset.grid_model_id] = asset
@@ -983,7 +1309,8 @@ def topology_from_materialized_stations(reference_topology: Topology, stations: 
         grid_model_file=reference_topology.grid_model_file,
         name=reference_topology.name,
         raw_stations=topology_stations,
-        assets=list(topology_assets.values()),
+        branch_assets=list(topology_branch_assets.values()),
+        injection_assets=list(topology_injection_assets.values()),
         asset_bays=list(topology_asset_bays.values()),
         asset_setpoints=reference_topology.asset_setpoints,
         timestamp=reference_topology.timestamp,
@@ -994,8 +1321,10 @@ def topology_from_materialized_stations(reference_topology: Topology, stations: 
 def copy_topology_with_updates(
     reference_topology: Topology,
     raw_stations: list[RawStation],
-    assets: list[SwitchableAsset],
     asset_bays: list[AssetBay],
+    *,
+    branch_assets: Optional[list[SwitchableAsset]] = None,
+    injection_assets: Optional[list[SwitchableAsset]] = None,
 ) -> Topology:
     """Create a validated topology copy with updated payloads.
 
@@ -1005,22 +1334,28 @@ def copy_topology_with_updates(
         Reference topology providing shared metadata.
     raw_stations : list[RawStation]
         Raw stations to set on the copied topology.
-    assets : list[SwitchableAsset]
-        Topology-owned assets to set on the copied topology.
     asset_bays : list[AssetBay]
         Topology-owned asset bays to set on the copied topology.
+    branch_assets : Optional[list[SwitchableAsset]], optional
+        Topology-owned branch assets to set on the copied topology.
+    injection_assets : Optional[list[SwitchableAsset]], optional
+        Topology-owned injection assets to set on the copied topology.
 
     Returns
     -------
     Topology
         Validated topology copy with updated topology-owned payloads.
     """
+    resolved_branch_assets = branch_assets if branch_assets is not None else reference_topology.branch_assets
+    resolved_injection_assets = injection_assets if injection_assets is not None else reference_topology.injection_assets
+
     return Topology(
         topology_id=reference_topology.topology_id,
         grid_model_file=reference_topology.grid_model_file,
         name=reference_topology.name,
         raw_stations=raw_stations,
-        assets=assets,
+        branch_assets=resolved_branch_assets,
+        injection_assets=resolved_injection_assets,
         asset_bays=asset_bays,
         asset_setpoints=reference_topology.asset_setpoints,
         timestamp=reference_topology.timestamp,
@@ -1057,7 +1392,7 @@ class Strategy(BaseModel):
 
 
 class AppliedStation(BaseModel):
-    """A realized station, including the new station and the changes made to the original station"""
+    """A realized station, including the new station and the changes made to the original station."""
 
     station: MaterializedStation
     """The realized asset station object"""
@@ -1065,15 +1400,17 @@ class AppliedStation(BaseModel):
     coupler_diff: list[BusbarCoupler]
     """A list of couplers that have been switched."""
 
-    reassignment_diff: list[tuple[int, int, bool]]
-    """A list of reassignments that have been made. Each tuple contains the asset index that was
-    affected (not the asset grid_model_id but the index into the asset_switching_table), the busbar
-    index (again the index into the switching table) and whether the asset was connected (True) or
-    disconnected (False) to that busbar."""
+    branch_reassignment_diff: list[tuple[int, int, bool]]
+    """Branch reassignments as ``(branch_index, busbar_index, connected)`` tuples."""
 
-    disconnection_diff: list[int]
-    """A list of disconnections that have been made. Each tuple contains the asset index that was
-    disconnected."""
+    injection_reassignment_diff: list[tuple[int, int, bool]]
+    """Injection reassignments as ``(injection_index, busbar_index, connected)`` tuples."""
+
+    branch_disconnection_diff: list[int]
+    """Branch indices that were disconnected."""
+
+    injection_disconnection_diff: list[int]
+    """Injection indices that were disconnected."""
 
 
 class RealizedTopology(BaseModel):
@@ -1091,12 +1428,14 @@ class RealizedTopology(BaseModel):
     """A list of couplers that have been switched. Each tuple contains the station grid_model_id
     and the coupler that was switched."""
 
-    reassignment_diff: list[tuple[str, int, int, bool]]
-    """A list of reassignments that have been made. Each tuple contains the station grid_model_id,
-    the asset index that was affected (not the asset grid_model_id but the index into the
-    asset_switching_table), the busbar index (again the index into the switching table) and whether the
-    asset was connected (True) or disconnected (False) to that busbar."""
+    branch_reassignment_diff: list[tuple[str, int, int, bool]]
+    """Branch reassignments as ``(station_id, branch_index, busbar_index, connected)`` tuples."""
 
-    disconnection_diff: list[tuple[str, int]]
-    """A list of disconnections that have been made. Each tuple contains the station grid_model_id
-    and the asset index that was disconnected. This can also include non-relevant stations."""
+    injection_reassignment_diff: list[tuple[str, int, int, bool]]
+    """Injection reassignments as ``(station_id, injection_index, busbar_index, connected)`` tuples."""
+
+    branch_disconnection_diff: list[tuple[str, int]]
+    """Branch disconnections as ``(station_id, branch_index)`` tuples."""
+
+    injection_disconnection_diff: list[tuple[str, int]]
+    """Injection disconnections as ``(station_id, injection_index)`` tuples."""

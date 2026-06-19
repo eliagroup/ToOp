@@ -11,12 +11,12 @@ import polars as pl
 import pypowsybl
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
-    count_critical_va_diff_cases,
     compute_max_load,
     compute_metrics,
     compute_overload_energy,
-    count_voltage_jumps,
     count_critical_branches,
+    count_critical_va_diff_cases,
+    count_voltage_jumps,
     get_worst_k_contingencies_ac,
 )
 from toop_engine_contingency_analysis.pandapower import get_full_nminus1_definition_pandapower
@@ -209,9 +209,7 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
     )
 
     metrics_without_basecase_filter = compute_metrics(loadflow_results)
-    metrics_with_basecase_filter = compute_metrics(
-        loadflow_results, base_case_id="BASECASE", critical_va_diff_threshold=5.0
-    )
+    metrics_with_basecase_filter = compute_metrics(loadflow_results, base_case_id="BASECASE", critical_va_diff_threshold=5.0)
     n_1_only_branch_results = branch_results.filter(pl.col("contingency") != "BASECASE")
 
     expected_overload_energy_n_1 = compute_overload_energy(n_1_only_branch_results, field="p")

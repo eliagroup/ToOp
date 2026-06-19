@@ -18,6 +18,8 @@ import structlog
 from beartype.typing import Collection, Optional
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
     compute_metrics as compute_metrics_lfs,
+)
+from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
     count_voltage_jumps,
 )
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo

@@ -29,6 +29,8 @@ from toop_engine_interfaces.loadflow_results_polars import (
     LoadflowResultsPolars,
     NodeResultSchemaPolars,
     RegulatingElementResultSchemaPolars,
+    SppsResultsSchemaPolars,
+    SwitchResultsSchemaPolars,
     VADiffResultSchemaPolars,
 )
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
@@ -82,6 +84,12 @@ def save_loadflow_results_polars(
     if loadflows.cascade_results is not None:
         with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
             loadflows.cascade_results.sink_parquet(f)
+    if loadflows.switch_results is not None:
+        with fs.open(file_path + "/switch_results.parquet", "wb") as f:
+            loadflows.switch_results.sink_parquet(f)
+    if loadflows.spps_results is not None:
+        with fs.open(file_path + "/spps_results.parquet", "wb") as f:
+            loadflows.spps_results.sink_parquet(f)
 
     return StoredLoadflowReference(
         relative_path=str(file_path),
@@ -130,6 +138,16 @@ def load_loadflow_results_polars(
             cascade_results = pl.scan_parquet(f)
     else:
         cascade_results = None
+    if fs.exists(file_path + "/switch_results.parquet"):
+        with fs.open(file_path + "/switch_results.parquet", "rb") as f:
+            switch_results = pl.scan_parquet(f)
+    else:
+        switch_results = None
+    if fs.exists(file_path + "/spps_results.parquet"):
+        with fs.open(file_path + "/spps_results.parquet", "rb") as f:
+            spps_results = pl.scan_parquet(f)
+    else:
+        spps_results = None
 
     if validate:
         return LoadflowResultsPolars(
@@ -140,6 +158,8 @@ def load_loadflow_results_polars(
             converged=ConvergedSchemaPolars.validate(converged),
             va_diff_results=VADiffResultSchemaPolars.validate(va_diff_results),
             cascade_results=(CascadeResultSchemaPolars.validate(cascade_results) if cascade_results is not None else None),
+            switch_results=(SwitchResultsSchemaPolars.validate(switch_results) if switch_results is not None else None),
+            spps_results=(SppsResultsSchemaPolars.validate(spps_results) if spps_results is not None else None),
             warnings=warnings,
         )
 
@@ -151,6 +171,8 @@ def load_loadflow_results_polars(
         converged=converged,
         va_diff_results=va_diff_results,
         cascade_results=cascade_results,
+        switch_results=switch_results,
+        spps_results=spps_results,
         warnings=warnings,
     )
 

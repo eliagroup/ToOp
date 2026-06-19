@@ -1214,8 +1214,8 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
             keep_mask.append(True)
         except ValueError as e:
             logger.warning(
-                f"Station {station.grid_model_id}/{station.name} could not be simplified due to "
-                f"error {e}, removing it from the relevant nodes."
+                f"Station {station.grid_model_id}/{station.name} could not be simplified "
+                f"because {e}, removing it from the relevant nodes."
             )
             simplified_station = station
             keep_mask.append(False)

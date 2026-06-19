@@ -46,7 +46,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     load_lf_params,
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
     OUTPUT_FILE_NAMES,
     POSTPROCESSING_PATHS,
@@ -57,7 +57,13 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     extract_solver_matrices_polars,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition, load_nminus1_definition
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    load_nminus1_definition,
+)
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set
 
 
@@ -259,7 +265,7 @@ def test_change_pst_matches_loadflows(
     nminus1_definition = extract_nminus1_definition(network_data)
 
     pypowsybl.loadflow.run_dc(net)
-    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", DISTRIBUTED_SLACK)
+    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", CGMES_DISTRIBUTED_SLACK)
     n_0_no_pst_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
 
     runner.store_nminus1_definition(nminus1_definition)
@@ -327,7 +333,7 @@ def test_change_pst_matches_loadflows(
     pst_indices = [pst.id for pst in action_set.pst_ranges]
 
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", DISTRIBUTED_SLACK)
+    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", CGMES_DISTRIBUTED_SLACK)
     net.update_phase_tap_changers(id=pst_indices, tap=(abs_taps).tolist())
     pypowsybl.loadflow.run_dc(net)
     n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
@@ -472,7 +478,7 @@ def test_powsybl_runner_reuses_branch_limit_cache_for_contingency_only_updates(
 
     runner.store_nminus1_definition(
         Nminus1Definition(
-            monitored_elements=[GridElement(id="line_a", kind="branch", type="LINE")],
+            monitored_elements=[MonitoredElement(id="line_a", kind="branch", type="LINE")],
             contingencies=[Contingency(id="BASECASE", elements=[])],
             id_type="powsybl",
         )
@@ -483,7 +489,7 @@ def test_powsybl_runner_reuses_branch_limit_cache_for_contingency_only_updates(
 
     runner.store_nminus1_definition(
         Nminus1Definition(
-            monitored_elements=[GridElement(id="line_a", kind="branch", type="LINE")],
+            monitored_elements=[MonitoredElement(id="line_a", kind="branch", type="LINE")],
             contingencies=[Contingency(id="BASECASE", elements=[]), Contingency(id="other", elements=[])],
             id_type="powsybl",
         )
@@ -497,7 +503,7 @@ def test_powsybl_runner_reuses_branch_limit_cache_for_contingency_only_updates(
 
     runner.store_nminus1_definition(
         Nminus1Definition(
-            monitored_elements=[GridElement(id="line_b", kind="branch", type="LINE")],
+            monitored_elements=[MonitoredElement(id="line_b", kind="branch", type="LINE")],
             contingencies=[Contingency(id="BASECASE", elements=[])],
             id_type="powsybl",
         )
@@ -527,7 +533,7 @@ def test_compute_cross_coupler_flows(preprocessed_powsybl_data_folder: Path) -> 
         res = json.load(f)
     actions = res["best_topos"][0]["actions"]
 
-    cross_coupler_p_ref, _, success = compute_cross_coupler_flows(net, actions, action_set, DISTRIBUTED_SLACK, "dc")
+    cross_coupler_p_ref, _, success = compute_cross_coupler_flows(net, actions, action_set, CGMES_DISTRIBUTED_SLACK, "dc")
     assert np.all(success)
     assert cross_coupler_p_ref.shape == (len(actions),)
 
@@ -632,8 +638,8 @@ def test_compute_n_1_ac(data_folder_fixture: str, request) -> None:
     monitored_branches = [elem.id for elem in nminus1_definition.monitored_elements if elem.kind == "branch"]
     original_branches = net.get_branches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id", "bus1_id", "bus2_id"])
 
-    n0_res, *_ = pypowsybl.loadflow.run_ac(net, DISTRIBUTED_SLACK)
-    lf_params = deepcopy(DISTRIBUTED_SLACK)
+    n0_res, *_ = pypowsybl.loadflow.run_ac(net, CGMES_DISTRIBUTED_SLACK)
+    lf_params = deepcopy(CGMES_DISTRIBUTED_SLACK)
     # Fix the slack to always use the same bus as in the base case
     lf_params.read_slack_bus = False
     lf_params.provider_parameters["slackBusSelectionMode"] = "NAME"

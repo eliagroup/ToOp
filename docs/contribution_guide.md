@@ -4,38 +4,32 @@ Thank you for your interest in contributing to ToOp! This guide will help you un
 
 ## Local Development Setup
 
-We provide a [Development Container](https://containers.dev/) configuration that sets up a complete development environment with all dependencies and tools pre-configured.
-
-### Prerequisites
-
-- [Docker](https://www.docker.com/get-started) installed and running
-- [VS Code](https://code.visualstudio.com/) with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+Furthermore, we recommend the use of Visual Studio Code as you IDE including its Python Extension for an integrated test environment.
+If you want to run all tests locally, you also need `Docker`.
 
 ### Getting Started
 
-1. **Clone the repository**:
-   ```bash
+Clone the repository
+```bash
    git clone https://github.com/eliagroup/ToOp.git
    cd ToOp
-   ```
+```
+and install dependencies by running
+```bash
+  uv sync --all-groups
+```
 
-2. **Open in Dev Container**:
-   - Open the repository in VS Code
-   - When prompted, click "Reopen in Container" or use `Ctrl+Shift+P` → "Dev Containers: Reopen in Container"
-   - Wait for the container to build and configure (first time may take several minutes)
+### Test installation
 
-### What's Included
-
-The devcontainer automatically provides:
-
-- **Python environment** with all dependencies installed via `uv sync`
-- **Pre-commit hooks** automatically installed and configured
-- **VS Code extensions** for Python, Jupyter, Azure tools, and code quality
-- **Docker-in-Docker** for containerized workflows
-- **Git configuration** with safe directory setup
-- **Testing suite** based on `pytest` with VS Code testing integration.
-   - Run all tests: `uv run pytest` (this may take some time)
-   - Run some test: `uv run pytest packages/<package_name>_pkg/tests`
+VS Code should automatically detect all tests on the Test tab.
+Alternatively, you can run all tests via the terminal by running
+```bash
+   uv run pytest
+```
+or the test of some package via
+```bash
+   uv run pytest packages/<package_name>_pkg/tests
+```
 
 ## Contributing via Pull Requests
 

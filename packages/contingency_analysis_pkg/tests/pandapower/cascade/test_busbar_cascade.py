@@ -18,7 +18,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     ParallelConfig,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
 def create_net():
@@ -132,9 +132,12 @@ def _cascade_results_to_events(cascade_results: pd.DataFrame) -> list[dict]:
 
 def _build_nminus1_definition(net: pp.pandapowerNet) -> Nminus1Definition:
     monitored_elements = (
-        [GridElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
-        + [GridElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
-        + [GridElement(id=row.global_id, type="switch", kind="switch", name=row.name) for row in net.switch.itertuples()]
+        [MonitoredElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
+        + [MonitoredElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
+        + [
+            MonitoredElement(id=row.global_id, type="switch", kind="switch", name=row.name)
+            for row in net.switch.itertuples()
+        ]
     )
     # Use origin_id as contingency id so that cascade_results contingency index == origin_id
     contingencies = [Contingency(id="BASECASE", name="BASECASE", elements=[])]

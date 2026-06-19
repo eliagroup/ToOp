@@ -37,7 +37,7 @@ from toop_engine_interfaces.nminus1_definition import (
     ELEMENT_ID_TYPES,
     PANDAPOWER_SUPPORTED_ID_TYPES,
     Contingency,
-    GridElement,
+    MonitoredElement,
     Nminus1Definition,
     SppsRule,
 )
@@ -230,15 +230,17 @@ def translate_contingencies(
 
 
 def translate_monitored_elements(
-    net: pandapowerNet, monitored_elements: list[GridElement], id_type: PANDAPOWER_SUPPORTED_ID_TYPES = "unique_pandapower"
-) -> tuple[pat.DataFrame[PandapowerMonitoredElementSchema], list[GridElement], list[str]]:
+    net: pandapowerNet,
+    monitored_elements: list[MonitoredElement],
+    id_type: PANDAPOWER_SUPPORTED_ID_TYPES = "unique_pandapower",
+) -> tuple[pat.DataFrame[PandapowerMonitoredElementSchema], list[MonitoredElement], list[str]]:
     """Translate the monitored elements to a format that can be used in Pandapower.
 
     Parameters
     ----------
     net : pandapowerNet
         The pandapower network to use for the translation. This is used to get buses etc.
-    monitored_elements : list[GridElement]
+    monitored_elements : list[MonitoredElement]
         The list of monitored elements to translate.
     id_type: ELEMENT_ID_TYPES = "unique_pandapower"
         The type of ids to use for the monitored elements. Currently only "unique_pandapower" and "cgmes" is supported.
@@ -248,7 +250,7 @@ def translate_monitored_elements(
     -------
     pat.DataFrame[PandapowerMonitoredElementSchema]
         A pandas DataFrame containing the monitored elements with their globally unique ids, table, table_id, kind and name.
-    list[GridElement]
+    list[MonitoredElement]
         A list of monitored elements that were not found in the network.
     list[str]
         A list of ids that were not unique in the grid. This is only relevant for cgmes ids.

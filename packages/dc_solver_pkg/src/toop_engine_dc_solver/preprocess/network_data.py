@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparat
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.asset_topology import MaterializedStation, RawStation, Topology
 from toop_engine_interfaces.backend import BackendInterface
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
 
 
@@ -723,7 +723,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         The N-1 definition extracted from the network data.
     """
     monitored_branches = [
-        GridElement(id=branch_id, name=branch_name, type=branch_type, kind="branch")
+        MonitoredElement(id=branch_id, name=branch_name, type=branch_type, kind="branch")
         for (branch_id, branch_type, branch_name, monitored) in zip(
             network_data.branch_ids,
             network_data.branch_types,
@@ -738,14 +738,14 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         network_data.simplified_asset_topology if network_data.simplified_asset_topology else network_data.asset_topology
     )
     monitored_nodes = [
-        GridElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
-        for station in asset_topology.materialize_stations()
+        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.type, kind="bus")
+        for station in asset_topology.stations
         for busbar in station.busbars
     ]
 
     monitored_switches = [
-        GridElement(id=switch.grid_model_id, name=switch.name or "", type=switch.coupler_type, kind="switch")
-        for station in asset_topology.materialize_stations()
+        MonitoredElement(id=switch.grid_model_id, name=switch.name or "", type=switch.type, kind="switch")
+        for station in asset_topology.stations
         for switch in station.couplers
     ]
 

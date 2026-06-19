@@ -19,7 +19,7 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     save_loadflow_results,
     select_timestep,
 )
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
 def test_save_and_load_loadflow_results(tmp_path):
@@ -45,7 +45,7 @@ def test_extract_branch_results():
     res = get_loadflow_results_example(job_id="test_job", timestep=0, size=50, contingencies=contingencies)
     contingencies = res.branch_results.reset_index()["contingency"].unique().tolist()
     monitored_branches = res.branch_results.reset_index()["element"].unique().tolist()
-    monitored_elements = [GridElement(id=elem, name=elem, kind="branch", type="line") for elem in monitored_branches]
+    monitored_elements = [MonitoredElement(id=elem, name=elem, kind="branch", type="line") for elem in monitored_branches]
     _, matrix = extract_branch_results(
         branch_results=res.branch_results,
         basecase="BASECASE",
@@ -109,7 +109,7 @@ def test_extract_solver_matrices():
         for cont in contingencies[1:]
     ]
     n1_contingencies.insert(0, Contingency(id="BASECASE", elements=[]))
-    n1_monitored_elements = [GridElement(id=elem, name=elem, kind="branch", type="line") for elem in monitored_elements]
+    n1_monitored_elements = [MonitoredElement(id=elem, name=elem, kind="branch", type="line") for elem in monitored_elements]
     nminus1_def = Nminus1Definition(
         monitored_elements=n1_monitored_elements,
         contingencies=n1_contingencies,

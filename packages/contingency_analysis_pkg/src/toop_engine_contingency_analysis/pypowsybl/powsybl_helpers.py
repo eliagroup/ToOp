@@ -40,6 +40,7 @@ from toop_engine_interfaces.nminus1_definition import (
     POWSYBL_SUPPORTED_ID_TYPES,
     Contingency,
     GridElement,
+    MonitoredElement,
     Nminus1Definition,
 )
 from typing_extensions import TypedDict
@@ -1138,28 +1139,28 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
         The complete N-1 definition for the given Powsybl network.
     """
     lines = [
-        GridElement(id=id, name=getattr(row, "name", ""), type="LINE", kind="branch")
+        MonitoredElement(id=id, name=getattr(row, "name", ""), type="LINE", kind="branch")
         for id, row in net.get_lines(attributes=["name"]).iterrows()
     ]
     trafo2w = [
-        GridElement(id=id, name=getattr(row, "name", ""), type="TWO_WINDINGS_TRANSFORMER", kind="branch")
+        MonitoredElement(id=id, name=getattr(row, "name", ""), type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         for id, row in net.get_2_windings_transformers(attributes=["name"]).iterrows()
     ]
     trafos3w = [
-        GridElement(id=id, name=getattr(row, "name", ""), type="THREE_WINDINGS_TRANSFORMER", kind="branch")
+        MonitoredElement(id=id, name=getattr(row, "name", ""), type="THREE_WINDINGS_TRANSFORMER", kind="branch")
         for id, row in net.get_3_windings_transformers(attributes=["name"]).iterrows()
     ]
 
     branch_elements = [*lines, *trafo2w, *trafos3w]
 
     switches = [
-        GridElement(id=id, name=getattr(row, "name", ""), type="SWITCH", kind="switch")
+        MonitoredElement(id=id, name=getattr(row, "name", ""), type="SWITCH", kind="switch")
         for id, row in net.get_switches(attributes=["name"]).iterrows()
     ]
     buses = net.get_busbar_sections(attributes=[])
     if buses.empty:
         buses = net.get_bus_breaker_view_buses(attributes=[])
-    buses = [GridElement(id=id, name=getattr(row, "name", ""), type="BUS", kind="bus") for id, row in buses.iterrows()]
+    buses = [MonitoredElement(id=id, name=getattr(row, "name", ""), type="BUS", kind="bus") for id, row in buses.iterrows()]
     monitored_elements = [*branch_elements, *switches, *buses]
 
     generators = [

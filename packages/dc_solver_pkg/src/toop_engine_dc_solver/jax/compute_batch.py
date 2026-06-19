@@ -34,7 +34,6 @@ from toop_engine_dc_solver.jax.injections import (
 )
 from toop_engine_dc_solver.jax.lodf import calc_lodf_matrix, get_failure_cases_to_zero
 from toop_engine_dc_solver.jax.multi_outages import build_modf_matrices
-from toop_engine_dc_solver.jax.nminus2_outage import split_n_2_analysis_batched
 from toop_engine_dc_solver.jax.nodal_inj_optim import nodal_inj_optimization
 from toop_engine_dc_solver.jax.topology_computations import (
     convert_action_set_index_to_topo,
@@ -474,21 +473,6 @@ def compute_symmetric_batch(
     if topo_res.failure_cases_to_zero is not None:
         n_1 = jnp.where(topo_res.failure_cases_to_zero[:, None, :, None], 0, n_1)
 
-    n_2_penalty = None
-    if dynamic_information.n2_baseline_analysis is not None:
-        n_2_penalty = split_n_2_analysis_batched(
-            has_splits=bitvector_topology.topologies.any(axis=-1),
-            sub_ids=sub_ids,
-            disconnections=disconnection_batch if has_disconnections else None,
-            nodal_injections=nodal_injections,
-            ptdf=topo_res.ptdf,
-            from_node=topo_res.from_node,
-            to_node=topo_res.to_node,
-            l2_outages=dynamic_information.branches_to_fail,
-            baseline=dynamic_information.n2_baseline_analysis,
-            branches_monitored=dynamic_information.branches_monitored,
-        )
-
     bb_outage_as_penalty = solver_config.enable_bb_outages and not solver_config.bb_outage_as_nminus1
     bb_outage_penalty = None
     if bb_outage_as_penalty:
@@ -518,7 +502,6 @@ def compute_symmetric_batch(
             branch_topology=bitvector_topology.topologies,
             sub_ids=sub_ids,
             injection_topology=injections,
-            n_2_penalty=n_2_penalty,
             disconnections=disconnection_batch,
             bb_outage_penalty=bb_outage_penalty,
             bb_outage_overload=overload if bb_outage_as_penalty else None,

@@ -6,19 +6,35 @@
 # Mozilla Public License, version 2.0
 
 import unittest
+from copy import deepcopy
+from unittest import mock
 
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import pandera as pa
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
-from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeReasonType
+from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeReasonType, CascadeTriggers
+from toop_engine_contingency_analysis.pandapower.cascade.simulation.simulator import CascadeSimulator
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     CascadeConfig,
     ContingencyAnalysisConfig,
+    PandapowerContingency,
     ParallelConfig,
+    SingleOutageSppsContext,
+    SppsActionsPandapowerSchema,
+    SppsConditionsPandapowerSchema,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
+from toop_engine_interfaces.loadflow_results import BranchResultSchema, SwitchResultsSchema
+from toop_engine_interfaces.nminus1_definition import (
+    Contingency,
+    GridElement,
+    MonitoredElement,
+    Nminus1Definition,
+    SwitchMonitoringScope,
+)
 
 
 def build_cascade_test_net():
@@ -180,9 +196,12 @@ class TestCascades(unittest.TestCase):
         net.switch["global_id"] = net.switch.index.map(lambda imp_id: get_globally_unique_id(imp_id, "switch"))
 
         monitored_elements = (
-            [GridElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
-            + [GridElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
-            + [GridElement(id=row.global_id, type="switch", kind="switch", name=row.name) for row in net.switch.itertuples()]
+            [MonitoredElement(id=row.global_id, type="line", kind="branch", name=row.name) for row in net.line.itertuples()]
+            + [MonitoredElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
+            + [
+                MonitoredElement(id=row.global_id, type="switch", kind="switch", name=row.name)
+                for row in net.switch.itertuples()
+            ]
         )
         # Use origin_id as contingency id so cascade_results contingency index == origin_id
         contingencies = [
@@ -257,3 +276,220 @@ class TestCascades(unittest.TestCase):
             },
         ]
         assert cascade_events == expected
+
+    def test_cascade_stops_when_step2_elements_not_monitored(self):
+        """Cascade event log stops after step 1 when step-2 triggers are on non-monitored elements.
+
+        Setup
+        -----
+        Same network and line limits as ``test_cascade_with_2_trips``.  The
+        contingency (l1 trip) would normally produce a 2-step cascade:
+
+          step 1 — l2 trips (current overload)
+          step 2 — l4 trips (distance protection) + l7 trips (current overload)
+
+        Here l4 and l7 are **excluded** from ``monitored_elements``.
+
+        Why no step-2 events appear
+        ---------------------------
+        Current overload (l7):
+            Branch results fed to ``_detect_triggers_from_results`` are
+            pre-filtered to monitored elements.  l7 is absent, so the overload
+            detector never sees it as triggered.
+
+        Distance protection (l4 via sw3):
+            Switch results are not filtered — sw3 still fires and its outage
+            group (which includes l4) is fully applied to the network.
+            However, l4 is not monitored so the resulting event is suppressed
+            by ``_filter_events_to_monitored`` and does not appear in the log.
+
+        Outages are intentionally not filtered: when a monitored switch trips,
+        all elements in its outage group must be taken out of service to keep
+        the topology consistent, even if those elements are not monitored.
+        """
+        net = build_cascade_test_net()
+        net.line.loc[0, "max_i_ka"] = 0.3
+        net.line.loc[1, "max_i_ka"] = 0.3
+        net.line.loc[2, "max_i_ka"] = 0.6
+        net.line.loc[3, "max_i_ka"] = 0.4
+        net.line.loc[4, "max_i_ka"] = 0.6
+
+        cascade_cfg = CascadeConfig(
+            depth_limit=3,
+            current_loading_threshold=1.5,
+            min_island_size=2,
+            cascade_log_elements=["line", "switch"],
+            basecase_distance_protection_factor=2,
+            contingency_distance_protection_factor=2,
+        )
+        net.line["global_id"] = net.line.index.map(lambda imp_id: get_globally_unique_id(imp_id, "line"))
+        net.bus["global_id"] = net.bus.index.map(lambda imp_id: get_globally_unique_id(imp_id, "bus"))
+        net.switch["global_id"] = net.switch.index.map(lambda imp_id: get_globally_unique_id(imp_id, "switch"))
+
+        # l4 (idx 6, origin_id="line:l4") and l7 (idx 5, origin_id="line:l7")
+        # are intentionally excluded — they are the step-2 cascade triggers.
+        unmonitored_line_names = {"l4", "l7"}
+        monitored_elements = (
+            [
+                MonitoredElement(id=row.global_id, type="line", kind="branch", name=row.name)
+                for row in net.line.itertuples()
+                if row.name not in unmonitored_line_names
+            ]
+            + [MonitoredElement(id=row.global_id, type="bus", kind="bus", name=row.name) for row in net.bus.itertuples()]
+            + [
+                MonitoredElement(id=row.global_id, type="switch", kind="switch", name=row.name)
+                for row in net.switch.itertuples()
+            ]
+        )
+
+        contingencies = [
+            Contingency(id="BASECASE", name="BASECASE", elements=[]),
+            Contingency(
+                id="line:l1",
+                name="l1",
+                elements=[GridElement(id="0%%line", type="line", kind="branch")],
+            ),
+        ]
+        nminus1_def = Nminus1Definition(
+            monitored_elements=monitored_elements,
+            contingencies=contingencies,
+        )
+        cfg = ContingencyAnalysisConfig(
+            method="ac",
+            min_island_size=2,
+            cascade=cascade_cfg,
+            parallel=ParallelConfig(n_processes=1, batch_size=None),
+            runpp_kwargs={"lightsim2grid": False, "enforce_q_lims": True},
+        )
+
+        lf_results = run_contingency_analysis_pandapower(
+            net=net,
+            n_minus_1_definition=nminus1_def,
+            job_id="test",
+            timestep=0,
+            cfg=cfg,
+        )
+
+        all_cascade_events = _cascade_results_to_events(lf_results.cascade_results)
+        cascade_events = [e for e in all_cascade_events if e["contingency_name"] == "l1"]
+
+        # Only the step-1 event (l2 current overload) must appear.
+        # l4 and l7 are not monitored, so their step-2 events are suppressed.
+        assert len(cascade_events) == 1
+        assert cascade_events[0] == {
+            "cascade_number": 1,
+            "cascade_reason": CascadeReasonType.CASCADE_REASON_CURRENT,
+            "contingency_mrid": "line:l1",
+            "contingency_name": "l1",
+            "distance_protection_severity": None,
+            "element_mrid": "line:l2",
+            "element_name": "l2",
+        }
+
+
+# ---------------------------------------------------------------------------
+# CascadeSimulator.simulate — switch_results_df filtered to monitored_breakers
+# ---------------------------------------------------------------------------
+
+
+def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
+    """switch_results_df passed to _detect_triggers_from_results only contains PROTECTION-scoped switches."""
+    protection_uid = get_globally_unique_id(0, "switch")
+    flow_only_uid = get_globally_unique_id(1, "switch")
+
+    monitored_elements = pd.DataFrame(
+        [
+            {
+                "unique_id": protection_uid,
+                "table": "switch",
+                "table_id": 0,
+                "kind": "switch",
+                "name": "",
+                "monitoring_scope": frozenset({SwitchMonitoringScope.PROTECTION}),
+            },
+            {
+                "unique_id": flow_only_uid,
+                "table": "switch",
+                "table_id": 1,
+                "kind": "switch",
+                "name": "",
+                "monitoring_scope": frozenset({SwitchMonitoringScope.FLOW}),
+            },
+        ]
+    ).set_index("unique_id")
+
+    switch_results_df = pd.DataFrame(
+        [
+            {
+                "timestep": 0,
+                "contingency": "c1",
+                "element": protection_uid,
+                "p": 1.0,
+                "q": 0.5,
+                "vm": 110.0,
+                "i": 5.0,
+                "s": 1.1,
+                "element_name": "",
+                "contingency_name": "c1",
+                "side": None,
+            },
+            {
+                "timestep": 0,
+                "contingency": "c1",
+                "element": flow_only_uid,
+                "p": 2.0,
+                "q": 0.5,
+                "vm": 110.0,
+                "i": 5.0,
+                "s": 2.1,
+                "element_name": "",
+                "contingency_name": "c1",
+                "side": None,
+            },
+        ]
+    ).set_index(["timestep", "contingency", "element"])
+
+    empty_conditions = pa.typing.DataFrame[SppsConditionsPandapowerSchema](
+        pd.DataFrame(columns=list(SppsConditionsPandapowerSchema.to_schema().columns.keys()))
+    )
+    empty_actions = pa.typing.DataFrame[SppsActionsPandapowerSchema](
+        pd.DataFrame(columns=list(SppsActionsPandapowerSchema.to_schema().columns.keys()))
+    )
+    spps = SingleOutageSppsContext(conditions=empty_conditions, actions=empty_actions)
+    simulator = CascadeSimulator(
+        cfg=CascadeConfig(
+            depth_limit=1,
+            current_loading_threshold=1.0,
+            min_island_size=1,
+            cascade_log_elements=[],
+            basecase_distance_protection_factor=1.0,
+        ),
+        spps=spps,
+    )
+
+    net = build_cascade_test_net()
+    pp.runpp(net, lightsim2grid=False)
+
+    captured: list[pd.DataFrame] = []
+
+    def _fake_detect(net, branch_results, switch_results):
+        captured.append(switch_results)
+        return CascadeTriggers(
+            tripped_switches=get_empty_dataframe_from_model(SwitchResultsSchema),
+            current_overloaded_elements=get_empty_dataframe_from_model(BranchResultSchema),
+        )
+
+    with mock.patch.object(simulator, "_detect_triggers_from_results", side_effect=_fake_detect):
+        simulator.simulate(
+            net=net,
+            branch_results_df=get_empty_dataframe_from_model(BranchResultSchema),
+            switch_results_df=switch_results_df,
+            initial_contingency=PandapowerContingency(unique_id="c1", name="c1", elements=[]),
+            basecase_net=deepcopy(net),
+            monitored_elements=monitored_elements,
+        )
+
+    assert len(captured) == 1
+    received_elements = set(captured[0].index.get_level_values("element"))
+    assert protection_uid in received_elements
+    assert flow_only_uid not in received_elements

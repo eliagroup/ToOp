@@ -25,7 +25,7 @@ def test_acga_parameters_default():
     assert params.reject_voltage_jump_threshold == 1.1
     assert params.reject_critical_va_diff_threshold == 1.1
     assert params.critical_voltage_jump_percent == 5.0
-    assert params.critical_va_diff_degree == 0.0
+    assert params.critical_va_diff_degree == 20.0
     # Probabilities sum to one
 
 

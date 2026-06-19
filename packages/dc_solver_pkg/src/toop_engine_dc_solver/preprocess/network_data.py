@@ -739,13 +739,13 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
     )
     monitored_nodes = [
         MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.type, kind="bus")
-        for station in asset_topology.stations
+        for station in asset_topology.materialize_stations()
         for busbar in station.busbars
     ]
 
     monitored_switches = [
         MonitoredElement(id=switch.grid_model_id, name=switch.name or "", type=switch.type, kind="switch")
-        for station in asset_topology.stations
+        for station in asset_topology.materialize_stations()
         for switch in station.couplers
     ]
 

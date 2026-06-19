@@ -111,6 +111,12 @@ uv run pytest -n auto --dist loadgroup           # Parallel, all packages
 - **Type Hints**: ALL functions must have complete type annotations (parameters + return type)
 - **Docstrings**: Required for all public functions using Google style with parameter type documentation
 - **Pandera coercion**: Do not rely on `coerce=True` or schema-level coercion for runtime correctness; normalize dtypes explicitly in regular pandas code before validation so behavior stays correct when Pandera is disabled.
+- **Docstrings**:
+    - Use NumPy-style docstrings for all functions.
+    - Prefer sectioned multi-line NumPy docstrings with `Parameters`, `Returns`, and `Raises` when applicable; one-line docstrings are fine for small helpers without parameters.
+    - When editing an existing function docstring, normalize it to NumPy style instead of mixing styles.
+    - For dataclasses, Pydantic models, and similar attribute-based classes, document attributes with multiline strings directly below the attributes instead of function-style docstrings.
+    - Keep attribute documentation concise and aligned with the existing field-by-field style used in this repository.
 - **Commitizen**: Conventional commits required (`feat:`, `fix:`, `docs:`, etc.)
 - **Pre-commit hooks**: Auto-run ruff, commitizen validation
 - Ignore patterns in `ruff.toml`: `S101` (assert in tests), `F722` (JAX typing with spaces)

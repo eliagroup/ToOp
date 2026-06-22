@@ -60,20 +60,20 @@ def test_get_changing_switches_from_actions_matches_network_diff(
     target_station = basic_node_breaker_topology.materialize_stations()[0]
     changed_station = target_station.model_copy(
         update={
-            "asset_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
         }
     )
     target_raw_station = basic_node_breaker_topology.raw_stations[0]
     starting_station = target_station.model_copy(
         update={
             "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_station.couplers],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     starting_raw_station = target_raw_station.model_copy(
         update={
             "couplers": [coupler.model_copy(update={"open": False}) for coupler in target_raw_station.couplers],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     target_topology = build_test_topology(basic_node_breaker_topology, [target_raw_station])
@@ -98,7 +98,7 @@ def test_get_changing_switches_from_action_set_matches_expanded_inputs(
     target_station = basic_node_breaker_topology.materialize_stations()[0]
     changed_station = target_station.model_copy(
         update={
-            "asset_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[False, False, True], [True, True, False]], dtype=bool),
         }
     )
 
@@ -108,7 +108,7 @@ def test_get_changing_switches_from_action_set_matches_expanded_inputs(
                 coupler.model_copy(update={"open": False})
                 for coupler in basic_node_breaker_topology.raw_stations[0].couplers
             ],
-            "asset_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
+            "branch_switching_table": np.array([[True, False, True], [False, True, False]], dtype=bool),
         }
     )
     starting_topology = build_test_topology(basic_node_breaker_topology, [starting_raw_station])

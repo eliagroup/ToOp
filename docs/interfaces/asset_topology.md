@@ -10,16 +10,16 @@ Asset Topology is essential when stations do not allow free assignment of lines 
   Collection of time steps, each represented by a [`Topology`][toop_engine_interfaces.asset_topology.Topology].
 
 - [`Topology`][toop_engine_interfaces.asset_topology.Topology]  
-  Stores lean [`RawStation`][toop_engine_interfaces.asset_topology.RawStation] records in `raw_stations`, topology-owned canonical assets in `assets`, and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects. Rich [`MaterializedStation`][toop_engine_interfaces.asset_topology.MaterializedStation] objects are reconstructed with [`Topology.materialize_stations()`][toop_engine_interfaces.asset_topology.Topology.materialize_stations].
+  Stores lean [`RawStation`][toop_engine_interfaces.asset_topology.RawStation] records in `raw_stations`, topology-owned canonical branch and injection assets in `branch_assets` and `injection_assets`, and optional [`AssetSetpoint`][toop_engine_interfaces.asset_topology.AssetSetpoint] objects. Rich [`MaterializedStation`][toop_engine_interfaces.asset_topology.MaterializedStation] objects are reconstructed with [`Topology.materialize_stations()`][toop_engine_interfaces.asset_topology.Topology.materialize_stations].
 
 - [`MaterializedStation`][toop_engine_interfaces.asset_topology.MaterializedStation]  
   Contains lists of [`Busbar`][toop_engine_interfaces.asset_topology.Busbar], [`BusbarCoupler`][toop_engine_interfaces.asset_topology.BusbarCoupler], and [`SwitchableAsset`][toop_engine_interfaces.asset_topology.SwitchableAsset].  
-  Includes `asset_switching_table`, the current switch connection layout and `asset_connectivity`, all possible selections.
+  Includes `branch_switching_table` and `injection_switching_table` for the current switch connection layout, plus `branch_connectivity` and `injection_connectivity` for physically allowed selections.
   The `grid_model_id` refers to the bus-branch bus id of the splitable station view, not to the full voltage level id.
 
 - [`RawStation`][toop_engine_interfaces.asset_topology.RawStation]
   Stores the lean station representation used inside [`Topology`][toop_engine_interfaces.asset_topology.Topology].
-  Instead of embedded asset payloads it stores aligned station-local arrays `asset_ids`, `asset_branch_ends`, and `asset_bay_ids`.
+  Instead of embedded asset payloads it stores aligned station-local `branch_connections` and `injection_connections` arrays referencing topology-owned assets and asset bays.
 
 - [`Busbar`][toop_engine_interfaces.asset_topology.Busbar]  
   Represents a single busbar in a station.

@@ -10,7 +10,7 @@
 from copy import deepcopy
 
 import numpy as np
-from beartype.typing import Any, Collection, Literal, Optional, TypeAlias
+from beartype.typing import Any, Literal, Optional, TypeAlias
 from numpydantic import NDArray, Shape
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from toop_engine_interfaces.asset_topology.asset_types import BranchEnd
@@ -207,7 +207,10 @@ class _StationStructure(BaseModel):
         mode="before",
     )
     @classmethod
-    def normalize_station_tables(cls, v: Optional[Collection]) -> Optional[np.ndarray]:
+    def normalize_station_tables(
+        cls,
+        v: Optional[Any],  # noqa: ANN401
+    ) -> Optional[np.ndarray]:
         """Normalize switching and connectivity table inputs to boolean arrays."""
         if v is None:
             return None

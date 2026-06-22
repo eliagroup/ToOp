@@ -18,9 +18,48 @@ from jaxtyping import Array, Bool, Int
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_station_switching_distance
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.station_models import (
+    _validate_station_physical_assignments,
+    _validate_station_switching_tables,
+)
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)
+
+
+def _validate_realized_station_update(
+    station: MaterializedStation,
+    action_switching: Bool[np.ndarray, " n_busbars n_branches"],
+    action_coupler_states: Bool[np.ndarray, " n_couplers"],
+) -> None:
+    """Validate the mutated fields of a realized station.
+
+    The realization step only changes the branch switching table and coupler open states.
+    All other station-local payloads stay identical to the validated input station, so a full
+    pydantic round-trip per action is unnecessary in this hot path.
+    """
+    if len(action_coupler_states) != len(station.couplers):
+        raise ValueError(
+            f"Coupler state count {len(action_coupler_states)} does not match station coupler count "
+            f"{len(station.couplers)} for station {station.grid_model_id}."
+        )
+
+    _validate_station_switching_tables(
+        station_grid_model_id=station.grid_model_id,
+        station_name=station.name,
+        busbar_count=len(station.busbars),
+        asset_count=len(station.branch_connections),
+        asset_switching_table=np.asarray(action_switching, dtype=bool),
+        asset_connectivity=station.branch_connectivity,
+        asset_kind="branch",
+    )
+    _validate_station_physical_assignments(
+        station_grid_model_id=station.grid_model_id,
+        station_name=station.name,
+        asset_switching_table=np.asarray(action_switching, dtype=bool),
+        asset_connectivity=station.branch_connectivity,
+        asset_kind="branch",
+    )
 
 
 @partial(jax.jit, static_argnames=("batch_size", "choice_heuristic"))
@@ -482,21 +521,42 @@ def realise_ba_to_physical_topo_per_station_jax(
         phy_reassignment_distance = phy_reassignment_distance[within_limit]
 
     # Create the realised stations
-    realised_stations = [
-        station.model_copy(
-            update={
-                "branch_switching_table": action_switching,
-                "couplers": [
-                    coupler.model_copy(update={"open": bool(open)})
-                    for coupler, open in zip(station.couplers, action_coupler_states, strict=True)
+    coupler_payloads = [coupler.model_dump(round_trip=True) for coupler in station.couplers]
+    realised_stations: list[MaterializedStation] = []
+    for action_switching, action_coupler_states in zip(switching_table, chosen_coupler_state, strict=True):
+        if validate:
+            _validate_realized_station_update(
+                station=station,
+                action_switching=action_switching,
+                action_coupler_states=action_coupler_states,
+            )
+
+        realised_stations.append(
+            MaterializedStation.model_construct(
+                grid_model_id=station.grid_model_id,
+                name=station.name,
+                station_type=station.station_type,
+                region=station.region,
+                voltage_level=station.voltage_level,
+                busbars=station.busbars,
+                couplers=[
+                    type(coupler).model_construct(**(payload | {"open": bool(open_state)}))
+                    for coupler, payload, open_state in zip(
+                        station.couplers,
+                        coupler_payloads,
+                        action_coupler_states,
+                        strict=True,
+                    )
                 ],
-            }
+                branch_connections=station.branch_connections,
+                injection_connections=station.injection_connections,
+                branch_switching_table=action_switching,
+                injection_switching_table=station.injection_switching_table,
+                branch_connectivity=station.branch_connectivity,
+                injection_connectivity=station.injection_connectivity,
+                model_log=station.model_log,
+            )
         )
-        for action_switching, action_coupler_states in zip(switching_table, chosen_coupler_state, strict=True)
-    ]
-    if validate:
-        for realised_station in realised_stations:
-            MaterializedStation.model_validate(realised_station)
 
     # Convert the busbar mapping to a list of busbar A mappings
     busbar_mappings_converted = [np.flatnonzero(~mapping).tolist() for mapping in chosen_busbar_mapping]

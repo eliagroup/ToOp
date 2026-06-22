@@ -7,8 +7,6 @@
 
 """Dataclass for the genotype used in the genetic algorithm."""
 
-import math
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -63,8 +61,9 @@ def deduplicate_genotypes(
         # Flatten the nodal injection optimization results into the comparison
         # Shape: (batch_size, n_timesteps, n_controllable_pst)
         # -> (batch_size, n_timesteps * n_controllable_pst)
-        pst_tap_idx = genotypes.nodal_injections_optimized.pst_tap_idx
-        pst_taps_flat = pst_tap_idx.reshape(pst_tap_idx.shape[0], math.prod(pst_tap_idx.shape[1:]))
+        pst_taps_flat = genotypes.nodal_injections_optimized.pst_tap_idx.reshape(
+            genotypes.nodal_injections_optimized.pst_tap_idx.shape[0], -1
+        )
         genotype_parts.append(pst_taps_flat)
 
     genotype_flat = jnp.concatenate(genotype_parts, axis=1)

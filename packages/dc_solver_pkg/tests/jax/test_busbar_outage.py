@@ -59,6 +59,7 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     logger,
     preprocess_bb_outages,
 )
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import SINGLE_SLACK
 from toop_engine_interfaces.asset_topology import Station
 
 
@@ -513,10 +514,7 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
                 network_data.branch_ids.index(asset.grid_model_id) for asset in connected_assets if asset.is_branch()
             ]
             copy_net.remove_elements(connected_asset_ids)
-            config = pp.loadflow.Parameters(
-                distributed_slack=False,
-            )
-            pp.loadflow.run_dc(copy_net, parameters=config)
+            pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
 
             # Get the stub branches connected to this busbar
             stub_branch_indices = []
@@ -605,10 +603,7 @@ def test_compare_loadflows_rel_bb_outage(
                 if asset.is_branch()
             ]
             copy_net.remove_elements(connected_asset_ids)
-            config = pp.loadflow.Parameters(
-                distributed_slack=False,
-            )
-            pp.loadflow.run_dc(copy_net, parameters=config)
+            pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
 
             # Get the stub branches connected to this busbar
             stub_branch_indices = []

@@ -227,6 +227,14 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         MonitoredElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")
         for idx, row in busbar_sections[busbar_sections.index.isin(relevant_bus_ids)].iterrows()
     ]
+    outaged_busbars = [
+        Contingency(
+            id=idx,
+            name=row["name"],
+            elements=[GridElement(id=idx, name=row["name"], type="BUSBAR_SECTION", kind="bus")],
+        )
+        for idx, row in busbar_sections[network_masks.busbar_for_nminus1].iterrows()
+    ]
     busbreaker_buses = network.get_bus_breaker_view_buses(attributes=["name", "bus_id"])
     monitored_busbreakers = [
         MonitoredElement(id=idx, name=row["name"], type="BUS_BREAKER_BUS", kind="bus")
@@ -253,6 +261,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
             + outaged_generators
             + outaged_loads
             + outaged_switches
+            + outaged_busbars
         ),
     )
     return nminus1_definition

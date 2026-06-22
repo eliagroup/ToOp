@@ -146,6 +146,27 @@ def test_translate_contingency_to_powsybl():
     assert pow_basecase[0].id == basecase_contingency[0].id, "Id should stay the same"
 
 
+def test_translate_contingency_to_powsybl_with_busbar(
+    powsybl_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    identifiables = powsybl_node_breaker_net.get_identifiables(attributes=[]).index
+    busbar_id = powsybl_node_breaker_net.get_busbar_sections(attributes=[]).index[0]
+    contingency = Contingency(
+        id=busbar_id,
+        elements=[GridElement(id=busbar_id, type="BUSBAR_SECTION", kind="bus")],
+    )
+
+    pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
+        [contingency],
+        identifiables=identifiables,
+    )
+
+    assert missing_contingencies == []
+    assert len(pow_contingencies) == 1
+    assert pow_contingencies[0].id == busbar_id
+    assert pow_contingencies[0].elements == [busbar_id]
+
+
 def test_translate_monitored_elements_to_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     branches = powsybl_bus_breaker_net.get_branches()
     switches = powsybl_bus_breaker_net.get_switches()
@@ -553,6 +574,38 @@ def test_translate_nminus1_for_powsybl_split_helpers(powsybl_bus_breaker_net: py
     assert translated_full.blank_va_diff.equals(translated_rest.blank_va_diff)
     assert translated_full.bus_map.equals(translated_rest.bus_map)
     assert translated_full.voltage_levels.equals(translated_rest.voltage_levels)
+
+
+def test_translate_nminus1_for_powsybl_keeps_busbar_contingencies(
+    powsybl_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    busbar_sections = powsybl_node_breaker_net.get_busbar_sections(attributes=["name"])
+    selected_busbar_id, selected_busbar = next(busbar_sections.iterrows())
+    nminus1_def = Nminus1Definition(
+        monitored_elements=[],
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(
+                id=selected_busbar_id,
+                name=selected_busbar.name or "",
+                elements=[
+                    GridElement(
+                        id=selected_busbar_id,
+                        name=selected_busbar.name or "",
+                        type="BUSBAR_SECTION",
+                        kind="bus",
+                    )
+                ],
+            ),
+        ],
+        id_type="powsybl",
+    )
+
+    translated_nminus1 = translate_nminus1_components_for_powsybl(nminus1_def, powsybl_node_breaker_net)
+
+    assert [contingency.id for contingency in translated_nminus1.contingencies] == ["BASECASE", selected_busbar_id]
+    assert translated_nminus1.contingencies[1].elements == [selected_busbar_id]
+    assert translated_nminus1.missing_contingencies == []
 
 
 def test_translate_nminus1_for_powsybl_with_branch_limit_cache(

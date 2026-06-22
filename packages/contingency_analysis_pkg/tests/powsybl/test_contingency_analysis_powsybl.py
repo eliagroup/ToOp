@@ -8,11 +8,13 @@
 import numpy as np
 import pandas as pd
 import pandera as pa
+import polars as pl
 import pypowsybl
 import pytest
 from polars.testing import assert_frame_equal
 from toop_engine_contingency_analysis.ac_loadflow_service.ac_loadflow_service import get_ac_loadflow_results
 from toop_engine_contingency_analysis.pypowsybl import (
+    get_busbar_mapping,
     get_full_nminus1_definition_powsybl,
     run_powsybl_analysis,
     translate_nminus1_for_powsybl,
@@ -30,6 +32,16 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     extract_solver_matrices,
 )
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
+
+
+def _normalize_contingency_frame(frame: pl.DataFrame, contingency_id: str) -> pl.DataFrame:
+    """Normalize contingency-specific result frames for direct equality checks."""
+    normalized = frame.filter(pl.col("contingency") == contingency_id)
+    if "contingency_name" in normalized.columns:
+        normalized = normalized.with_columns(pl.lit("").alias("contingency_name"))
+    normalized = normalized.with_columns(pl.lit("reference").alias("contingency"))
+    sort_columns = [column for column in normalized.columns if column not in {"contingency_name"}]
+    return normalized.sort(sort_columns)
 
 
 def test_run_powsybl_analysis(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
@@ -158,6 +170,122 @@ def test_contingency_analysis_validated_or_not(powsybl_node_breaker_net: pypowsy
         )
 
     assert lf_result_with_val_polars == lf_result_no_val_polars
+
+
+def test_run_ac_contingency_analysis_powsybl_with_busbar_outage(
+    powsybl_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
+    busbar_sections = powsybl_node_breaker_net.get_busbar_sections(attributes=["name"])
+    selected_busbar_id, selected_busbar = next(busbar_sections.iterrows())
+    nminus1_definition.contingencies.append(
+        Contingency(
+            id=selected_busbar_id,
+            name=selected_busbar.name or "",
+            elements=[
+                GridElement(
+                    id=selected_busbar_id,
+                    name=selected_busbar.name or "",
+                    type="BUSBAR_SECTION",
+                    kind="bus",
+                )
+            ],
+        )
+    )
+
+    lf_result = get_ac_loadflow_results(powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1)
+
+    converged = lf_result.converged.collect()
+    assert selected_busbar_id in converged["contingency"].to_list()
+    assert not any(selected_busbar_id in warning for warning in lf_result.warnings)
+
+
+def test_busbar_outage_equals_connected_element_outage(
+    powsybl_node_breaker_net: pypowsybl.network.Network,
+) -> None:
+    busbar_sections = powsybl_node_breaker_net.get_busbar_sections(attributes=["name"])
+    selected_busbar_id, selected_busbar = next(busbar_sections.iterrows())
+    bus_map = get_busbar_mapping(powsybl_node_breaker_net)
+    bus_breaker_bus_id = bus_map.loc[selected_busbar_id, "bus_breaker_bus_id"]
+
+    branches = powsybl_node_breaker_net.get_branches(
+        attributes=["type", "name", "bus_breaker_bus1_id", "bus_breaker_bus2_id", "connected1", "connected2"]
+    )
+    connected_branches = branches.index[
+        ((branches["bus_breaker_bus1_id"] == bus_breaker_bus_id) & branches["connected1"])
+        | ((branches["bus_breaker_bus2_id"] == bus_breaker_bus_id) & branches["connected2"])
+    ].tolist()
+
+    injections = powsybl_node_breaker_net.get_injections(attributes=["type", "name", "bus_breaker_bus_id", "connected"])
+    connected_injections = injections.index[
+        (injections["bus_breaker_bus_id"] == bus_breaker_bus_id)
+        & injections["connected"]
+        & (injections["type"] != "BUSBAR_SECTION")
+    ].tolist()
+
+    explicit_elements = [
+        GridElement(
+            id=branch_id, name=branches.loc[branch_id, "name"] or "", type=branches.loc[branch_id, "type"], kind="branch"
+        )
+        for branch_id in connected_branches
+    ] + [
+        GridElement(
+            id=injection_id,
+            name=injections.loc[injection_id, "name"] or "",
+            type=injections.loc[injection_id, "type"],
+            kind="injection",
+        )
+        for injection_id in connected_injections
+    ]
+
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=get_full_nminus1_definition_powsybl(powsybl_node_breaker_net).monitored_elements,
+        contingencies=[
+            Contingency(id="BASECASE", elements=[]),
+            Contingency(
+                id=selected_busbar_id,
+                name=selected_busbar.name or "",
+                elements=[
+                    GridElement(
+                        id=selected_busbar_id,
+                        name=selected_busbar.name or "",
+                        type="BUSBAR_SECTION",
+                        kind="bus",
+                    )
+                ],
+            ),
+            Contingency(id="explicit_busbar_outage", elements=explicit_elements),
+        ],
+        id_type="powsybl",
+    )
+
+    lf_result = get_ac_loadflow_results(powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1)
+
+    assert_frame_equal(
+        _normalize_contingency_frame(lf_result.branch_results.collect(), selected_busbar_id),
+        _normalize_contingency_frame(lf_result.branch_results.collect(), "explicit_busbar_outage"),
+        check_row_order=False,
+    )
+    assert_frame_equal(
+        _normalize_contingency_frame(lf_result.node_results.collect(), selected_busbar_id),
+        _normalize_contingency_frame(lf_result.node_results.collect(), "explicit_busbar_outage"),
+        check_row_order=False,
+    )
+    assert_frame_equal(
+        _normalize_contingency_frame(lf_result.regulating_element_results.collect(), selected_busbar_id),
+        _normalize_contingency_frame(lf_result.regulating_element_results.collect(), "explicit_busbar_outage"),
+        check_row_order=False,
+    )
+    assert_frame_equal(
+        _normalize_contingency_frame(lf_result.va_diff_results.collect(), selected_busbar_id),
+        _normalize_contingency_frame(lf_result.va_diff_results.collect(), "explicit_busbar_outage"),
+        check_row_order=False,
+    )
+    assert_frame_equal(
+        _normalize_contingency_frame(lf_result.converged.collect(), selected_busbar_id),
+        _normalize_contingency_frame(lf_result.converged.collect(), "explicit_busbar_outage"),
+        check_row_order=False,
+    )
 
 
 @pytest.mark.parametrize("powsybl_net", ["powsybl_bus_breaker_net", "powsybl_node_breaker_net"])

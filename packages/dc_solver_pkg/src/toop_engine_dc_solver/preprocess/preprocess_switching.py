@@ -25,18 +25,11 @@ from networkx.algorithms.components import (
     number_connected_components,
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import hamming_distance
-from toop_engine_interfaces.asset_topology import (
-    AssetInjectionType,
-    BranchAsset,
-    Busbar,
-    BusbarCoupler,
-    InjectionAsset,
-    MaterializedStation,
-    SwitchableAsset,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
     copy_topology_with_updates,
 )
-from toop_engine_interfaces.asset_topology_helpers import (
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
     filter_disconnected_busbars,
     filter_duplicate_couplers,
     filter_out_of_service,
@@ -44,6 +37,9 @@ from toop_engine_interfaces.asset_topology_helpers import (
     fuse_all_couplers_with_type,
     order_station_assets,
 )
+from toop_engine_interfaces.asset_topology.asset_types import AssetInjectionType
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset, SwitchableAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 logger = structlog.get_logger(__name__)
 

@@ -69,7 +69,8 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_pandapower_branch_loadflow_results_sequence,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_ids
-from toop_engine_interfaces.asset_topology import MaterializedStation, copy_topology_with_updates
+from toop_engine_interfaces.asset_topology.asset_topology import copy_topology_with_updates
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessStage
 

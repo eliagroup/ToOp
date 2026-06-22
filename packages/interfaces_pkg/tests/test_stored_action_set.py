@@ -12,18 +12,13 @@ import numpy as np
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from pydantic import ValidationError
-from toop_engine_interfaces.asset_topology import (
-    BranchAsset,
-    Busbar,
-    BusbarCoupler,
-    InjectionAsset,
-    MaterializedAssetConnection,
-    MaterializedStation,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     RawStation,
-    StationAssetConnection,
-    SwitchableAsset,
     Topology,
 )
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset, SwitchableAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.stored_action_set import (
     ActionSet,
     StationDiffArray,

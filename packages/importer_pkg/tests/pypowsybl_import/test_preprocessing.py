@@ -25,13 +25,12 @@ from toop_engine_importer.pandapower_import.preprocessing import modify_constan_
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.preprocessing import create_nminus1_definition_from_masks
-from toop_engine_interfaces.asset_topology import (
-    Busbar,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     RawStation,
-    StationAssetConnection,
-    SwitchableAsset,
     Topology,
 )
+from toop_engine_interfaces.asset_topology.assets import Busbar, SwitchableAsset
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,

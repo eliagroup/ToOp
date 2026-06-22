@@ -14,7 +14,7 @@ from toop_engine_dc_solver.export.disconnection_switch_updates import (
 )
 from toop_engine_dc_solver.export.export import get_changing_switches_from_actions
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_topology
-from toop_engine_interfaces.asset_topology import RawStation, Topology, copy_topology_with_updates
+from toop_engine_interfaces.asset_topology.asset_topology import RawStation, Topology, copy_topology_with_updates
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 

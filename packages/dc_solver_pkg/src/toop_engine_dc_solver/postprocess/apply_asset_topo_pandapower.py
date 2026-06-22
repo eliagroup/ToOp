@@ -20,15 +20,13 @@ from beartype.typing import Iterable
 from pandapower.toolbox import element_bus_tuples, get_connected_elements_dict
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_element_table, get_remotely_connected_buses
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import parse_globally_unique_id, table_id
-from toop_engine_interfaces.asset_topology import (
-    AppliedStation,
-    Busbar,
-    BusbarCoupler,
-    MaterializedStation,
-    RealizedTopology,
+from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
 )
-from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs, find_busbars_for_coupler
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import accumulate_diffs, find_busbars_for_coupler
+from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 logger = structlog.get_logger(__name__)
 

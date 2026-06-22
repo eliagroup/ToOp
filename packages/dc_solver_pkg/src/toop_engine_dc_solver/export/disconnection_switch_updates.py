@@ -11,7 +11,9 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import structlog
-from toop_engine_interfaces.asset_topology import AssetBay, MaterializedStation, Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.assets import AssetBay
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 

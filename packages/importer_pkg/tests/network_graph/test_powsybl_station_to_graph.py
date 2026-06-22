@@ -38,7 +38,8 @@ from toop_engine_importer.network_graph.powsybl_station_to_graph import (
 )
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_busbar_sections_with_in_service
-from toop_engine_interfaces.asset_topology import MaterializedStation, Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,

@@ -22,7 +22,7 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     find_injection,
 )
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
-from toop_engine_interfaces.asset_topology import (
+from toop_engine_interfaces.asset_topology.asset_topology import (
     RawStation,
     Topology,
     copy_topology_with_updates,

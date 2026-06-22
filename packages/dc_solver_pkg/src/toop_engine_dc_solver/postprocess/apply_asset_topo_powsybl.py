@@ -26,16 +26,15 @@ import structlog
 from beartype.typing import Literal, Optional, Union
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import assert_station_in_network
-from toop_engine_interfaces.asset_topology import (
-    AppliedStation,
-    BusbarCoupler,
-    MaterializedStation,
+from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
+from toop_engine_interfaces.asset_topology.asset_topology import (
     RawStation,
-    RealizedTopology,
     Topology,
     copy_topology_with_updates,
 )
-from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import accumulate_diffs
+from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 

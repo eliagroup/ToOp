@@ -43,7 +43,7 @@ from toop_engine_importer.network_graph.powsybl_station_to_graph import (
 )
 from toop_engine_importer.pandapower_import import add_substation_column_to_bus
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,

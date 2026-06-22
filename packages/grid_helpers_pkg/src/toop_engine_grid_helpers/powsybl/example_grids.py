@@ -16,8 +16,8 @@ import pypowsybl
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_raw_stations_and_assets_bus_breaker
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_pandapower_net_for_powsybl
-from toop_engine_interfaces.asset_topology import Topology
-from toop_engine_interfaces.asset_topology_helpers import save_asset_topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import save_asset_topology
 from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
 
 

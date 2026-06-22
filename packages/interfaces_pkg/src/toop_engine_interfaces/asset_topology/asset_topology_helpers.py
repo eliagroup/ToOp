@@ -16,18 +16,13 @@ import numpy as np
 from beartype.typing import Literal, Optional, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_interfaces.asset_topology import (
-    AppliedStation,
-    AssetBay,
-    Busbar,
-    BusbarCoupler,
-    MaterializedAssetConnection,
-    MaterializedStation,
-    RealizedTopology,
-    SwitchableAsset,
+from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
     copy_topology_with_updates,
 )
+from toop_engine_interfaces.asset_topology.assets import AssetBay, Busbar, BusbarCoupler, SwitchableAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 
 

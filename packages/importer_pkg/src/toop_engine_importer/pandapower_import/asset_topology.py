@@ -30,15 +30,12 @@ from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker impo
     get_closed_switch,
     get_indirect_connected_switch,
 )
-from toop_engine_interfaces.asset_topology import (
-    AssetBay,
-    MaterializedAssetConnection,
-    MaterializedStation,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
-    build_asset_bay_id,
-    normalize_switchable_asset_payload,
-    topology_parts_from_materialized_station,
 )
+from toop_engine_interfaces.asset_topology.assets import AssetBay, build_asset_bay_id, normalize_switchable_asset_payload
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.topology_conversion import topology_parts_from_materialized_station
 
 logger = structlog.get_logger(__name__)
 

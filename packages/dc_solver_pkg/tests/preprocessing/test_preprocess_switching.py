@@ -22,15 +22,9 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_separation_set,
     prepare_for_separation_set,
 )
-from toop_engine_interfaces.asset_topology import (
-    AssetBranchType,
-    AssetInjectionType,
-    Busbar,
-    BusbarCoupler,
-    MaterializedAssetConnection,
-    MaterializedStation,
-    SwitchableAsset,
-)
+from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
+from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 
 
 def _combined_asset_connections(station: MaterializedStation) -> list[MaterializedAssetConnection]:

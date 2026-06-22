@@ -20,7 +20,8 @@ from toop_engine_dc_solver.export.disconnection_switch_updates import get_changi
 from toop_engine_dc_solver.export.station_switch_updates import (
     get_changing_switches_from_changed_stations,
 )
-from toop_engine_interfaces.asset_topology import MaterializedStation, Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.stored_action_set import ActionSet

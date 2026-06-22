@@ -44,7 +44,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_pandapower_loadflow_results_injection,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_id
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
     CHRONICS_FILE_NAMES,
     PREPROCESSING_PATHS,
@@ -160,13 +160,13 @@ def test_powsybl_complex_grid_actions_match_runner(
     _, static_information, network_data = load_grid(
         data_folder_dirfs=DirFileSystem(str(complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder)),
         parameters=PreprocessParameters(),
-        lf_params=DISTRIBUTED_SLACK,
+        lf_params=CGMES_DISTRIBUTED_SLACK,
     )
 
     action_set = extract_action_set(network_data)
     nminus1_definition = extract_nminus1_definition(network_data)
 
-    runner = PowsyblRunner(lf_params=DISTRIBUTED_SLACK)
+    runner = PowsyblRunner(lf_params=CGMES_DISTRIBUTED_SLACK)
     runner.load_base_grid(
         complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     )

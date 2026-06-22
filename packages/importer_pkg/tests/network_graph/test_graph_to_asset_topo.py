@@ -31,7 +31,7 @@ from toop_engine_importer.network_graph.network_graph import (
 )
 from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
 from toop_engine_importer.network_graph.powsybl_station_to_graph import get_station
-from toop_engine_interfaces.asset_topology import AssetBay, build_asset_bay_id
+from toop_engine_interfaces.asset_topology.assets import AssetBay, build_asset_bay_id
 
 
 def test_remove_double_connections():

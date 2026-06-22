@@ -10,7 +10,7 @@
 from beartype.typing import Optional
 from pypowsybl.network.impl.network import Network
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_voltage_level_with_region
-from toop_engine_interfaces.asset_topology import AssetBranchTypePowsybl, AssetInjectionTypePowsybl
+from toop_engine_interfaces.asset_topology.asset_types import AssetBranchTypePowsybl, AssetInjectionTypePowsybl
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     RegionType,
     RelevantStationRules,

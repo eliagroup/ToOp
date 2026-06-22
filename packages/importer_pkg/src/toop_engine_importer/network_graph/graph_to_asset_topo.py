@@ -24,7 +24,7 @@ from toop_engine_importer.network_graph.data_classes import (
     SwitchableAssetSchema,
     SwitchSchema,
 )
-from toop_engine_interfaces.asset_topology import (
+from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     build_asset_bay_id,
 )

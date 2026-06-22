@@ -20,18 +20,20 @@ from beartype.typing import Optional, TypeVar, Union
 from jaxtyping import Bool
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import change_dangling_to_tie, get_voltage_level_with_region
-from toop_engine_interfaces.asset_topology import (
+from toop_engine_interfaces.asset_topology.asset_topology import (
+    RawStation,
+    Topology,
+)
+from toop_engine_interfaces.asset_topology.assets import (
     BranchAsset,
     Busbar,
     BusbarCoupler,
     InjectionAsset,
-    MaterializedStation,
-    RawStation,
-    StationAssetConnection,
     SwitchableAsset,
-    Topology,
     normalize_switchable_asset_payload,
 )
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 
 SwitchableAssetType = TypeVar("SwitchableAssetType", bound=SwitchableAsset)
 

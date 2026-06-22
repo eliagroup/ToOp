@@ -46,8 +46,8 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     extract_single_injection_loadflow_result,
     load_powsybl_from_fs,
 )
-from toop_engine_interfaces.asset_topology import topology_from_materialized_stations
-from toop_engine_interfaces.asset_topology_helpers import electrical_components
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import electrical_components
+from toop_engine_interfaces.asset_topology.topology_conversion import topology_from_materialized_stations
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet

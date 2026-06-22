@@ -51,16 +51,12 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology import (
-    BranchAsset,
-    Busbar,
-    BusbarCoupler,
-    InjectionAsset,
-    MaterializedAssetConnection,
-    MaterializedStation,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
-    topology_from_materialized_stations,
 )
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.topology_conversion import topology_from_materialized_stations
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,

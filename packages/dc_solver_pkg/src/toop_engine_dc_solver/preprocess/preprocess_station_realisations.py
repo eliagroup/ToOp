@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology import RawStation
+from toop_engine_interfaces.asset_topology.asset_topology import RawStation
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 

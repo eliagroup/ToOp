@@ -12,12 +12,11 @@ import pandapower
 import pytest
 import structlog.testing
 from toop_engine_importer.pandapower_import import asset_topology
-from toop_engine_interfaces.asset_topology import (
-    AssetBay,
-    MaterializedStation,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
-    build_asset_bay_id,
 )
+from toop_engine_interfaces.asset_topology.assets import AssetBay, build_asset_bay_id
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 
 def test_get_busses_from_station(pp_network_w_switches):

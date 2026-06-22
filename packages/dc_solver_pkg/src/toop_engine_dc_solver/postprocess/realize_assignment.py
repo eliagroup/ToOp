@@ -17,7 +17,7 @@ from beartype.typing import Literal, Optional
 from jaxtyping import Array, Bool, Int
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_station_switching_distance
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
-from toop_engine_interfaces.asset_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)

@@ -12,23 +12,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 from pydantic import ValidationError
-from toop_engine_interfaces.asset_topology import (
-    AssetBay,
-    BranchAsset,
-    Busbar,
-    BusbarCoupler,
-    InjectionAsset,
-    MaterializedAssetConnection,
-    MaterializedStation,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     RawStation,
-    StationAssetConnection,
-    SwitchableAsset,
     Topology,
-    build_asset_bay_id,
-    normalize_switchable_asset_payload,
-    topology_from_materialized_stations,
 )
-from toop_engine_interfaces.asset_topology_helpers import (
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
     filter_assets_by_type,
     filter_disconnected_busbars,
     filter_duplicate_couplers,
@@ -38,6 +26,19 @@ from toop_engine_interfaces.asset_topology_helpers import (
     load_asset_topology,
     save_asset_topology,
 )
+from toop_engine_interfaces.asset_topology.assets import (
+    AssetBay,
+    BranchAsset,
+    Busbar,
+    BusbarCoupler,
+    InjectionAsset,
+    SwitchableAsset,
+    build_asset_bay_id,
+    normalize_switchable_asset_payload,
+)
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
+from toop_engine_interfaces.asset_topology.topology_conversion import topology_from_materialized_stations
 
 
 def materialized_asset_connections(

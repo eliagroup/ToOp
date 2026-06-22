@@ -26,10 +26,8 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     update_network_data_with_non_rel_bb_outages,
 )
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
-from toop_engine_interfaces.asset_topology import (
-    BranchAsset,
-    Busbar,
-    InjectionAsset,
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, InjectionAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import (
     MaterializedAssetConnection,
     MaterializedStation,
 )

@@ -56,7 +56,7 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     logger,
     preprocess_bb_outages,
 )
-from toop_engine_interfaces.asset_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 
 # FIxme: Look deeply into this

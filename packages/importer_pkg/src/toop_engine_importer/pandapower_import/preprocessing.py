@@ -53,7 +53,7 @@ from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker impo
     fuse_closed_switches_by_bus_ids,
     get_coupler_types_of_substation,
 )
-from toop_engine_interfaces.asset_topology import Topology, copy_topology_with_updates
+from toop_engine_interfaces.asset_topology.asset_topology import Topology, copy_topology_with_updates
 
 logger = structlog.get_logger(__name__)
 

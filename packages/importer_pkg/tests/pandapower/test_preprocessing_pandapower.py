@@ -18,7 +18,7 @@ from toop_engine_importer.pandapower_import import (
     pandapower_toolset_node_breaker,
     preprocessing,
 )
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
 
 
 def test_handle_switches(pp_network_w_switches):

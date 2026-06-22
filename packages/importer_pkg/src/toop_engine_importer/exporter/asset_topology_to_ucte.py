@@ -22,7 +22,9 @@ import pandas as pd
 import structlog
 from beartype.typing import Optional, Union
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
-from toop_engine_interfaces.asset_topology import BusbarCoupler, MaterializedStation, Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 logger = structlog.get_logger(__name__)
 

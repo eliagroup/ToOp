@@ -14,6 +14,9 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+
 os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 import chex
@@ -98,15 +101,10 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology import (
-    BranchAsset,
-    Busbar,
-    BusbarCoupler,
-    MaterializedAssetConnection,
-    MaterializedStation,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
 )
-from toop_engine_interfaces.asset_topology_helpers import load_asset_topology
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import load_asset_topology
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     OUTPUT_FILE_NAMES,

@@ -10,7 +10,7 @@ from pathlib import Path
 import pandapower as pp
 from toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower import apply_station, apply_topology
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 

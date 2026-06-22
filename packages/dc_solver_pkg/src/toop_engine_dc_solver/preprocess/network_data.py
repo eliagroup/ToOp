@@ -17,7 +17,8 @@ from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
-from toop_engine_interfaces.asset_topology import MaterializedStation, RawStation, Topology
+from toop_engine_interfaces.asset_topology.asset_topology import RawStation, Topology
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange

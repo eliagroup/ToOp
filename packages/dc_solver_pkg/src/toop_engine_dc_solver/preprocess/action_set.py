@@ -39,7 +39,7 @@ from toop_engine_dc_solver.preprocess.helpers.ptdf import (
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import min_hamming_distance_matrix
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, get_relevant_stations
-from toop_engine_interfaces.asset_topology import RawStation
+from toop_engine_interfaces.asset_topology.asset_topology import RawStation
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)

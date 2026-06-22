@@ -15,7 +15,7 @@ from toop_engine_dc_solver.export.station_switch_updates import (
     get_changing_switches_from_changed_stations,
 )
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import get_changing_switches_from_topology
-from toop_engine_interfaces.asset_topology import RawStation, Topology, copy_topology_with_updates
+from toop_engine_interfaces.asset_topology.asset_topology import RawStation, Topology, copy_topology_with_updates
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 

@@ -19,14 +19,12 @@ from toop_engine_dc_solver.preprocess.network_data import (
     OutageData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology import (
-    BranchAsset,
-    InjectionAsset,
-    MaterializedStation,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     RawStation,
-    SwitchableAsset,
 )
-from toop_engine_interfaces.asset_topology_helpers import find_station_by_id
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import find_station_by_id
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, InjectionAsset, SwitchableAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 logger = structlog.get_logger(__name__)
 

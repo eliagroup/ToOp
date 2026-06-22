@@ -12,17 +12,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_interfaces.asset_topology import (
-    BranchAsset,
-    Busbar,
-    BusbarCoupler,
-    MaterializedAssetConnection,
-    MaterializedStation,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     RawStation,
-    StationAssetConnection,
-    SwitchableAsset,
     Topology,
 )
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, SwitchableAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set, load_action_set_fs, save_action_set
 

@@ -51,14 +51,12 @@ from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import (
     get_voltage_level_with_region,
 )
 from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
-from toop_engine_interfaces.asset_topology import (
-    AssetBay,
-    MaterializedAssetConnection,
-    MaterializedStation,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
-    normalize_switchable_asset_payload,
-    topology_parts_from_materialized_station,
 )
+from toop_engine_interfaces.asset_topology.assets import AssetBay, normalize_switchable_asset_payload
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.topology_conversion import topology_parts_from_materialized_station
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 
 logger = structlog.get_logger(__name__)

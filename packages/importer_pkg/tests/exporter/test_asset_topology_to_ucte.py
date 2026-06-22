@@ -25,7 +25,7 @@ from toop_engine_importer.exporter.asset_topology_to_ucte import (
 )
 from toop_engine_importer.exporter.uct_exporter import validate_ucte_changes
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
-from toop_engine_interfaces.asset_topology import (
+from toop_engine_interfaces.asset_topology.assets import (
     AssetSetpoint,
     Busbar,
     BusbarCoupler,

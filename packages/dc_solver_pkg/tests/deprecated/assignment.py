@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_stat
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_separation_set,
 )
-from toop_engine_interfaces.asset_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 
 # TODO: A different rule could take precedent here. I would first check for parallel lines/trafos

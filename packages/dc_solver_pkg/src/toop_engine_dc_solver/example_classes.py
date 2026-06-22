@@ -10,15 +10,12 @@
 import datetime
 
 import numpy as np
-from toop_engine_interfaces.asset_topology import (
-    AssetBay,
-    BranchAsset,
-    Busbar,
-    BusbarCoupler,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     RawStation,
-    StationAssetConnection,
     Topology,
 )
+from toop_engine_interfaces.asset_topology.assets import AssetBay, BranchAsset, Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 
 
 def get_basic_node_breaker_topology() -> Topology:

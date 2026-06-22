@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from toop_engine_interfaces.asset_topology import Strategy
+from toop_engine_interfaces.asset_topology.asset_topology import Strategy
 from toop_engine_interfaces.messages.lf_service import loadflow_commands as lf_cmds
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
 

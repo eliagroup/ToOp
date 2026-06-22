@@ -25,7 +25,7 @@ from datetime import datetime
 
 from beartype.typing import Literal, Optional, Protocol, Union
 from pydantic import BaseModel, Field
-from toop_engine_interfaces.asset_topology import Strategy
+from toop_engine_interfaces.asset_topology.asset_topology import Strategy
 from toop_engine_interfaces.loadflow_results import LoadflowResults
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
 

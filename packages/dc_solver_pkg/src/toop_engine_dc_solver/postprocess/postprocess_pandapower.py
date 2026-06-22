@@ -32,12 +32,12 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
     parse_globally_unique_id,
 )
-from toop_engine_interfaces.asset_topology import (
+from toop_engine_interfaces.asset_topology.applied_topology import (
     AppliedStation,
     RealizedTopology,
-    topology_from_materialized_stations,
 )
-from toop_engine_interfaces.asset_topology_helpers import accumulate_diffs, electrical_components
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import accumulate_diffs, electrical_components
+from toop_engine_interfaces.asset_topology.topology_conversion import topology_from_materialized_stations
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition

@@ -198,39 +198,17 @@ class SwitchableAsset(BaseModel):
     ignored. This shall not be used for elements intentionally disconnected, instead set all zeros
     in the switching table."""
 
-    def is_branch(self) -> Optional[bool]:
-        """Return True if the asset is a branch.
-
-        Only works if the type is set. If type is not set this will return None.
-
-        Returns
-        -------
-        bool
-            True if the asset is a branch, False if it is an injection.
-        """
-        if self.asset_type is None:
-            return None
-        return self.asset_type in get_args(AssetBranchType)
-
 
 class BranchAsset(SwitchableAsset):
     """Switchable asset representing a branch-type element."""
 
     asset_type: Optional[AssetBranchType] = None
 
-    def is_branch(self) -> Optional[bool]:
-        """Return branch semantics for branch assets."""
-        return None if self.asset_type is None else True
-
 
 class InjectionAsset(SwitchableAsset):
     """Switchable asset representing an injection-type element."""
 
     asset_type: Optional[AssetInjectionType] = None
-
-    def is_branch(self) -> Optional[bool]:
-        """Return branch semantics for injection assets."""
-        return None if self.asset_type is None else False
 
 
 def normalize_switchable_asset_payload(asset: dict[str, Any]) -> SwitchableAsset:

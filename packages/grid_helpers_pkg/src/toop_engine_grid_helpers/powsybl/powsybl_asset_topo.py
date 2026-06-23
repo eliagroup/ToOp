@@ -250,7 +250,9 @@ def _get_branch_station_assets_from_df(
         normalize_switchable_asset_payload(switchable_asset)
         for switchable_asset in station_elements.to_dict(orient="records")
     ]
-    branch_mask = np.asarray([asset.is_branch() is not False for asset in normalized_assets], dtype=bool)
+    if any(not isinstance(asset, (BranchAsset, InjectionAsset)) for asset in normalized_assets):
+        raise ValueError("All station assets must normalize to BranchAsset or InjectionAsset")
+    branch_mask = np.asarray([isinstance(asset, BranchAsset) for asset in normalized_assets], dtype=bool)
     branch_assets = [
         asset if isinstance(asset, BranchAsset) else BranchAsset.model_validate(asset.model_dump())
         for asset, is_branch in zip(normalized_assets, branch_mask, strict=True)
@@ -297,7 +299,9 @@ def _get_injection_station_assets_from_df(
         normalize_switchable_asset_payload(switchable_asset)
         for switchable_asset in station_elements.to_dict(orient="records")
     ]
-    injection_mask = np.asarray([asset.is_branch() is False for asset in normalized_assets], dtype=bool)
+    if any(not isinstance(asset, (BranchAsset, InjectionAsset)) for asset in normalized_assets):
+        raise ValueError("All station assets must normalize to BranchAsset or InjectionAsset")
+    injection_mask = np.asarray([isinstance(asset, InjectionAsset) for asset in normalized_assets], dtype=bool)
     injection_assets = [
         asset if isinstance(asset, InjectionAsset) else InjectionAsset.model_validate(asset.model_dump())
         for asset, is_injection in zip(normalized_assets, injection_mask, strict=True)

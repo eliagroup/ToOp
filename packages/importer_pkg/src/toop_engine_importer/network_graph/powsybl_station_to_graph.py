@@ -54,7 +54,12 @@ from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
 from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
 )
-from toop_engine_interfaces.asset_topology.assets import AssetBay, normalize_switchable_asset_payload
+from toop_engine_interfaces.asset_topology.assets import (
+    AssetBay,
+    BranchAsset,
+    InjectionAsset,
+    normalize_switchable_asset_payload,
+)
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.asset_topology.topology_conversion import topology_parts_from_materialized_station
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
@@ -228,7 +233,9 @@ def _get_station_asset_connections(
     ]
     remove_suffix_from_switchable_assets(assets)
 
-    branch_mask = [asset.is_branch() is not False for asset in assets]
+    branch_mask = [isinstance(asset, BranchAsset) for asset in assets]
+    if any(not isinstance(asset, (BranchAsset, InjectionAsset)) for asset in assets):
+        raise ValueError("All station assets must normalize to BranchAsset or InjectionAsset")
     branch_connections: list[MaterializedAssetConnection] = []
     injection_connections: list[MaterializedAssetConnection] = []
     for asset, is_branch in zip(assets, branch_mask, strict=True):
@@ -641,9 +648,11 @@ def get_topology(network: Network, network_masks: NetworkMasks, importer_paramet
     topology_assets = {}
     topology_asset_bays = {}
     for station in station_list:
-        topology_station, station_assets, station_asset_bays = topology_parts_from_materialized_station(station)
+        topology_station, station_branch_assets, station_injection_assets, station_asset_bays = (
+            topology_parts_from_materialized_station(station)
+        )
         topology_stations.append(topology_station)
-        for asset in station_assets:
+        for asset in [*station_branch_assets, *station_injection_assets]:
             existing_asset = topology_assets.get(asset.grid_model_id)
             if existing_asset is None:
                 topology_assets[asset.grid_model_id] = asset
@@ -659,8 +668,8 @@ def get_topology(network: Network, network_masks: NetworkMasks, importer_paramet
                 raise ValueError(f"Conflicting topology asset bay payload for asset_bay_id {asset_bay.asset_bay_id}")
 
     topology_assets_list = list(topology_assets.values())
-    branch_assets = [asset for asset in topology_assets_list if asset.is_branch() is not False]
-    injection_assets = [asset for asset in topology_assets_list if asset.is_branch() is False]
+    branch_assets = [asset for asset in topology_assets_list if isinstance(asset, BranchAsset)]
+    injection_assets = [asset for asset in topology_assets_list if isinstance(asset, InjectionAsset)]
     return Topology(
         topology_id=topology_id,
         grid_model_file=grid_model_file,

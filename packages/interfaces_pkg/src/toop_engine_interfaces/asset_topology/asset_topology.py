@@ -11,7 +11,13 @@ from datetime import datetime
 
 from beartype.typing import Any, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
-from toop_engine_interfaces.asset_topology.assets import AssetBay, AssetSetpoint, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import (
+    AssetBay,
+    AssetSetpoint,
+    BranchAsset,
+    InjectionAsset,
+    SwitchableAsset,
+)
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.asset_topology.station_models import (
     RawStation,
@@ -64,10 +70,16 @@ class Topology(BaseModel):
     Each raw station represents one bus-branch bus view of a splitable station.
     """
 
-    branch_assets: list[SwitchableAsset] = Field(default_factory=list)
+    circuit_groups: Optional[list[CircuitGroup]] = None
+    """The topology-owned circuit groups. The list contains groups of assets that are connected to each
+    other without power switches. This means in case of an outage, the fault current can flow through
+    all assets in the same circuit group, triggering their outage as well.
+    # TODO This is currently not implemented. Use a graph search to determine these."""
+
+    branch_assets: list[BranchAsset] = Field(default_factory=list)
     """The topology-owned canonical branch payloads."""
 
-    injection_assets: list[SwitchableAsset] = Field(default_factory=list)
+    injection_assets: list[InjectionAsset] = Field(default_factory=list)
     """The topology-owned canonical injection payloads.
 
     Station-local branch-end and asset-bay assignment data are stored on raw_stations instead of on
@@ -90,24 +102,20 @@ class Topology(BaseModel):
 
     @field_validator("branch_assets")
     @classmethod
-    def check_branch_asset_ids_unique(cls, v: list[SwitchableAsset]) -> list[SwitchableAsset]:
+    def check_branch_asset_ids_unique(cls, v: list[BranchAsset]) -> list[BranchAsset]:
         """Check if all topology branch assets have unique grid model ids."""
         asset_ids = [asset.grid_model_id for asset in v]
         if len(asset_ids) != len(set(asset_ids)):
             raise ValueError("grid_model_id must be unique for topology branch assets")
-        if any(asset.is_branch() is False for asset in v):
-            raise ValueError("branch_assets must not contain injection assets")
         return v
 
     @field_validator("injection_assets")
     @classmethod
-    def check_injection_asset_ids_unique(cls, v: list[SwitchableAsset]) -> list[SwitchableAsset]:
+    def check_injection_asset_ids_unique(cls, v: list[InjectionAsset]) -> list[InjectionAsset]:
         """Check if all topology injection assets have unique grid model ids."""
         asset_ids = [asset.grid_model_id for asset in v]
         if len(asset_ids) != len(set(asset_ids)):
             raise ValueError("grid_model_id must be unique for topology injection assets")
-        if any(asset.is_branch() is True for asset in v):
-            raise ValueError("injection_assets must not contain branch assets")
         return v
 
     @field_validator("asset_bays")

@@ -525,6 +525,14 @@ def test_load_asset_topology() -> None:
         reference_topology=Topology(
             topology_id="topology1",
             raw_stations=[],
+            branch_assets=[
+                BranchAsset(grid_model_id="line1"),
+                BranchAsset(grid_model_id="line2"),
+                BranchAsset(grid_model_id="line3"),
+                BranchAsset(grid_model_id="line4"),
+                BranchAsset(grid_model_id="line5"),
+                BranchAsset(grid_model_id="line6"),
+            ],
             timestamp=datetime.now(),
         ),
         stations=[station1, station2],
@@ -573,6 +581,9 @@ def test_topology_extracts_assets_and_materializes_stations() -> None:
         reference_topology=Topology(
             topology_id="topology1",
             raw_stations=[],
+            branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
+            injection_assets=[InjectionAsset(grid_model_id="load1", asset_type="load")],
+            asset_bays=[asset_bays[0]],
             timestamp=datetime.now(),
         ),
         stations=[station],
@@ -622,6 +633,7 @@ def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_tw
         reference_topology=Topology(
             topology_id="topology1",
             raw_stations=[],
+            branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
             timestamp=datetime.now(),
         ),
         stations=[station_from, station_to],
@@ -657,6 +669,7 @@ def test_topology_from_materialized_stations_normalizes_equivalent_branch_asset_
         reference_topology=Topology(
             topology_id="topology1",
             raw_stations=[],
+            branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
             timestamp=datetime.now(),
         ),
         stations=[station_from, station_to],
@@ -665,6 +678,67 @@ def test_topology_from_materialized_stations_normalizes_equivalent_branch_asset_
     assert len(topology.branch_assets) == 1
     assert isinstance(topology.branch_assets[0], BranchAsset)
     assert topology.branch_assets[0].grid_model_id == "line1"
+
+
+def test_topology_from_materialized_stations_reuses_reference_canonical_assets() -> None:
+    reference_topology = Topology(
+        topology_id="topology1",
+        raw_stations=[],
+        branch_assets=[
+            BranchAsset(grid_model_id="line1", asset_type="line"),
+            BranchAsset(grid_model_id="line_unused", asset_type="line"),
+        ],
+        injection_assets=[InjectionAsset(grid_model_id="load1", asset_type="load")],
+        asset_bays=[
+            AssetBay(
+                asset_bay_id="station1::line1::bay",
+                dv_switch_grid_model_id="dv1",
+                sr_switch_grid_model_id={"busbar1": "sr1"},
+            )
+        ],
+        timestamp=datetime.now(),
+    )
+    station = make_materialized_station(
+        busbars=[Busbar(int_id=1, grid_model_id="busbar1")],
+        couplers=[],
+        branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
+        branch_terminals=["from"],
+        branch_asset_bays=[reference_topology.asset_bays[0]],
+        branch_switching_table=np.array([[True]]),
+        injection_assets=[InjectionAsset(grid_model_id="load1", asset_type="load")],
+        injection_switching_table=np.array([[True]]),
+        grid_model_id="station1",
+    )
+
+    topology = topology_from_materialized_stations(reference_topology=reference_topology, stations=[station])
+
+    assert [asset.grid_model_id for asset in topology.branch_assets] == ["line1", "line_unused"]
+    assert [asset.grid_model_id for asset in topology.injection_assets] == ["load1"]
+    assert [asset_bay.asset_bay_id for asset_bay in topology.asset_bays] == ["station1::line1::bay"]
+    assert topology.raw_stations[0].branch_connections[0].asset_id == "line1"
+
+
+def test_topology_from_materialized_stations_raises_when_reference_assets_are_missing() -> None:
+    reference_topology = Topology(
+        topology_id="topology1",
+        raw_stations=[],
+        branch_assets=[],
+        injection_assets=[],
+        asset_bays=[],
+        timestamp=datetime.now(),
+    )
+    station = make_materialized_station(
+        busbars=[Busbar(int_id=1, grid_model_id="busbar1")],
+        couplers=[],
+        branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
+        branch_switching_table=np.array([[True]]),
+        grid_model_id="station1",
+    )
+
+    with pytest.raises(
+        ValidationError, match="Branch asset grid_model_id line1 referenced by station station1 does not exist"
+    ):
+        topology_from_materialized_stations(reference_topology=reference_topology, stations=[station])
 
 
 def test_raw_station_model_copy_revalidates_updates() -> None:
@@ -732,6 +806,11 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
         reference_topology=Topology(
             topology_id="topology1",
             raw_stations=[],
+            branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
+            asset_bays=[
+                station_from.branch_connections[0].asset_bay.model_copy(deep=True),
+                station_to.branch_connections[0].asset_bay.model_copy(deep=True),
+            ],
             timestamp=datetime.now(),
         ),
         stations=[station_from, station_to],
@@ -777,6 +856,11 @@ def test_topology_from_materialized_stations_scopes_generated_asset_bay_ids_per_
         reference_topology=Topology(
             topology_id="topology1",
             raw_stations=[],
+            branch_assets=[BranchAsset(grid_model_id="line1", asset_type="line")],
+            asset_bays=[
+                station.branch_connections[0].asset_bay.model_copy(deep=True),
+                station.branch_connections[1].asset_bay.model_copy(deep=True),
+            ],
             timestamp=datetime.now(),
         ),
         stations=[station],
@@ -1206,13 +1290,10 @@ def test_station_bay() -> None:
 
 def test_disambiguate_type() -> None:
     asset = normalize_switchable_asset_payload({"grid_model_id": "line", "asset_type": None})
-    assert asset.is_branch() is None
     assert type(asset) is SwitchableAsset
 
     asset = normalize_switchable_asset_payload({"grid_model_id": "line", "asset_type": "line"})
-    assert asset.is_branch() is True
     assert isinstance(asset, BranchAsset)
 
     asset = normalize_switchable_asset_payload({"grid_model_id": "gen", "asset_type": "gen"})
-    assert asset.is_branch() is False
     assert isinstance(asset, InjectionAsset)

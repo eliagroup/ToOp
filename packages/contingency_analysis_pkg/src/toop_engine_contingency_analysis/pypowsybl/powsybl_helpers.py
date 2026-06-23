@@ -470,7 +470,7 @@ def get_va_diff_results(
     pd.DataFrame
         The dataframe containing the voltage angle difference results for the given outages.
     """
-    if len(outages) == 0 or len(va_diff_with_buses) == 0:
+    if len(va_diff_with_buses) == 0:
         return get_empty_dataframe_from_model(VADiffResultSchema)
     basecase_in_result = ""
     iteration_va_diff = va_diff_with_buses.loc[
@@ -478,22 +478,25 @@ def get_va_diff_results(
     ]
     iteration_va_diff["timestep"] = timestep
     # Map busbar sections where there are any. For the rest use the bus_breaker_bus_id from the results (here the bus id)
-    bus_results = bus_results.merge(
-        bus_map.bus_breaker_bus_id, left_on=bus_results.index.get_level_values("bus_id"), right_index=True, how="left"
+    bus_results = bus_results.reset_index().merge(
+        bus_map.bus_breaker_bus_id,
+        left_on="bus_id",
+        right_index=True,
+        how="left",
     )
 
     iteration_va_diff = iteration_va_diff.reset_index()
     # Map the values from the results to the buses of the switches and the outaged branches
     iteration_va_diff = iteration_va_diff.merge(
-        bus_results[["v_angle"]].add_suffix("_1"),
+        bus_results[["contingency_id", "bus_breaker_bus_id", "v_angle"]].rename(columns={"v_angle": "v_angle_1"}),
         left_on=["contingency", "bus_breaker_bus1_id"],
-        right_on=[bus_results.index.get_level_values("contingency_id"), bus_results.bus_breaker_bus_id],
+        right_on=["contingency_id", "bus_breaker_bus_id"],
         how="left",
     )
     iteration_va_diff = iteration_va_diff.merge(
-        bus_results[["v_angle"]].add_suffix("_2"),
+        bus_results[["contingency_id", "bus_breaker_bus_id", "v_angle"]].rename(columns={"v_angle": "v_angle_2"}),
         left_on=["contingency", "bus_breaker_bus2_id"],
-        right_on=[bus_results.index.get_level_values("contingency_id"), bus_results.bus_breaker_bus_id],
+        right_on=["contingency_id", "bus_breaker_bus_id"],
         how="left",
     )
     iteration_va_diff.drop_duplicates(inplace=True)
@@ -501,7 +504,16 @@ def get_va_diff_results(
     iteration_va_diff["va_diff"] = iteration_va_diff["v_angle_1"] - iteration_va_diff["v_angle_2"]
 
     iteration_va_diff = iteration_va_diff.drop(
-        columns=["bus_breaker_bus1_id", "bus_breaker_bus2_id", "v_angle_1", "v_angle_2"]
+        columns=[
+            "bus_breaker_bus1_id",
+            "bus_breaker_bus2_id",
+            "contingency_id_x",
+            "bus_breaker_bus_id_x",
+            "contingency_id_y",
+            "bus_breaker_bus_id_y",
+            "v_angle_1",
+            "v_angle_2",
+        ]
     )
 
     # set empty columns to NaN
@@ -771,17 +783,35 @@ def get_regulating_element_results(
         The regulating element results for the given outages and timestep
     """
     regulating_elements = get_empty_dataframe_from_model(RegulatingElementResultSchema)
-    # TODO dont fake this
-    if basecase_name and len(monitored_buses) > 0:
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "value"] = -9999.0
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "regulating_element_type"] = (
-            RegulatingElementType.GENERATOR_Q.value
+    if not basecase_name or not monitored_buses:
+        return regulating_elements
+
+    fake_rows = [
+        {
+            "timestep": timestep,
+            "contingency": basecase_name,
+            "element": monitored_buses[0],
+            "value": -9999.0,
+            "regulating_element_type": RegulatingElementType.GENERATOR_Q.value,
+            "element_name": "",
+            "contingency_name": "",
+        }
+    ]
+    if len(monitored_buses) > 1:
+        fake_rows.append(
+            {
+                "timestep": timestep,
+                "contingency": basecase_name,
+                "element": monitored_buses[1],
+                "value": 9999.0,
+                "regulating_element_type": RegulatingElementType.SLACK_P.value,
+                "element_name": "",
+                "contingency_name": "",
+            }
         )
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "value"] = 9999.0
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "regulating_element_type"] = (
-            RegulatingElementType.SLACK_P.value
-        )
-    return regulating_elements
+
+    fake_regulating_elements = pd.DataFrame(fake_rows).set_index(["timestep", "contingency", "element"])
+    return pd.concat([regulating_elements, fake_regulating_elements], axis=0)
 
 
 @pa.check_types
@@ -851,6 +881,7 @@ def get_node_results(
     node_results.rename(columns={"v_mag": "vm", "v_angle": "va"}, inplace=True)
 
     # Calculate the values
+
     if method == "dc":
         has_va = node_results["va"].notna().values
         node_results.loc[has_va, "vm"] = node_results.loc[has_va, "nominal_v"]
@@ -947,6 +978,8 @@ def get_branch_results(
     failed_branch_results = get_failed_branch_results(timestep, failed_outages, monitored_branches, monitored_trafo3w)
 
     converted_branch_results = pd.concat([converted_branch_results, failed_branch_results], axis=0)
+    converted_branch_results["element_name"] = converted_branch_results["element_name"].fillna("")
+    converted_branch_results["contingency_name"] = converted_branch_results["contingency_name"].fillna("")
     return converted_branch_results
 
 
@@ -1012,7 +1045,6 @@ def get_convergence_result_df(
     return converge_converted_df, failed_outages
 
 
-@pa.check_types(inplace=True)
 def update_basename(
     result_df: LoadflowResultTable,
     basecase_name: Optional[str] = None,
@@ -1049,7 +1081,6 @@ def update_basename(
     return result_df
 
 
-@pa.check_types(inplace=True)
 def add_name_column(
     result_df: LoadflowResultTable,
     name_map: dict[str, str],

@@ -450,10 +450,10 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
     ).set_index(["timestep", "contingency", "element"])
 
     empty_conditions = pa.typing.DataFrame[SppsConditionsPandapowerSchema](
-        pd.DataFrame(columns=list(SppsConditionsPandapowerSchema.to_schema().columns.keys()))
+        get_empty_dataframe_from_model(SppsConditionsPandapowerSchema)
     )
     empty_actions = pa.typing.DataFrame[SppsActionsPandapowerSchema](
-        pd.DataFrame(columns=list(SppsActionsPandapowerSchema.to_schema().columns.keys()))
+        get_empty_dataframe_from_model(SppsActionsPandapowerSchema)
     )
     spps = SingleOutageSppsContext(conditions=empty_conditions, actions=empty_actions)
     simulator = CascadeSimulator(

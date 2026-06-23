@@ -771,17 +771,35 @@ def get_regulating_element_results(
         The regulating element results for the given outages and timestep
     """
     regulating_elements = get_empty_dataframe_from_model(RegulatingElementResultSchema)
-    # TODO dont fake this
-    if basecase_name and len(monitored_buses) > 0:
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "value"] = -9999.0
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "regulating_element_type"] = (
-            RegulatingElementType.GENERATOR_Q.value
+    if not basecase_name or not monitored_buses:
+        return regulating_elements
+
+    fake_rows = [
+        {
+            "timestep": timestep,
+            "contingency": basecase_name,
+            "element": monitored_buses[0],
+            "value": -9999.0,
+            "regulating_element_type": RegulatingElementType.GENERATOR_Q.value,
+            "element_name": "",
+            "contingency_name": "",
+        }
+    ]
+    if len(monitored_buses) > 1:
+        fake_rows.append(
+            {
+                "timestep": timestep,
+                "contingency": basecase_name,
+                "element": monitored_buses[1],
+                "value": 9999.0,
+                "regulating_element_type": RegulatingElementType.SLACK_P.value,
+                "element_name": "",
+                "contingency_name": "",
+            }
         )
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "value"] = 9999.0
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "regulating_element_type"] = (
-            RegulatingElementType.SLACK_P.value
-        )
-    return regulating_elements
+
+    fake_regulating_elements = pd.DataFrame(fake_rows).set_index(["timestep", "contingency", "element"])
+    return pd.concat([regulating_elements, fake_regulating_elements], axis=0)
 
 
 @pa.check_types
@@ -947,6 +965,8 @@ def get_branch_results(
     failed_branch_results = get_failed_branch_results(timestep, failed_outages, monitored_branches, monitored_trafo3w)
 
     converted_branch_results = pd.concat([converted_branch_results, failed_branch_results], axis=0)
+    converted_branch_results["element_name"] = converted_branch_results["element_name"].fillna("")
+    converted_branch_results["contingency_name"] = converted_branch_results["contingency_name"].fillna("")
     return converted_branch_results
 
 
@@ -1012,7 +1032,6 @@ def get_convergence_result_df(
     return converge_converted_df, failed_outages
 
 
-@pa.check_types(inplace=True)
 def update_basename(
     result_df: LoadflowResultTable,
     basecase_name: Optional[str] = None,
@@ -1049,7 +1068,6 @@ def update_basename(
     return result_df
 
 
-@pa.check_types(inplace=True)
 def add_name_column(
     result_df: LoadflowResultTable,
     name_map: dict[str, str],

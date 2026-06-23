@@ -96,23 +96,6 @@ class MaterializedStation(_StationStructure):
         )
         return self
 
-    @model_validator(mode="after")
-    def check_asset_bay(self: "MaterializedStation") -> "MaterializedStation":
-        """Check if the asset bay bus is in busbars."""
-        busbar_grid_model_id = [busbar.grid_model_id for busbar in self.busbars]
-        for asset_connection in [*self.branch_connections, *self.injection_connections]:
-            asset = asset_connection.asset
-            asset_bay = asset_connection.asset_bay
-            if asset_bay is not None:
-                for busbar_id in asset_bay.sr_switch_grid_model_id.keys():
-                    if busbar_id not in busbar_grid_model_id:
-                        raise ValueError(
-                            f"busbar_id {busbar_id} in asset {asset.grid_model_id} does not exist in busbars"
-                            f" Station_id: {self.grid_model_id}, Name: {self.name}"
-                        )
-
-        return self
-
     def __eq__(self, other: object) -> bool:
         """Check if two stations are equal.
 

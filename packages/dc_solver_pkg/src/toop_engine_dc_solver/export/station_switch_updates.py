@@ -16,7 +16,7 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from toop_engine_interfaces.asset_topology.asset_topology import Topology
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
@@ -24,6 +24,31 @@ from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 def _get_busbar_lookup(station: MaterializedStation) -> dict[int, str]:
     """Map busbar row indices in the switching table to busbar ids."""
     return {index: busbar.grid_model_id for index, busbar in enumerate(station.busbars)}
+
+
+def _get_asset_busbar_lookup(
+    station: MaterializedStation,
+    asset_connection: MaterializedAssetConnection,
+) -> dict[int, str]:
+    """Resolve row-to-busbar ids for one asset connection.
+
+    Simplified split-station actions can use per-asset logical rows that no longer match the
+    station-level busbar ids. When that happens, the asset bay selector-switch keys preserve the
+    physical busbar ordering needed to translate row changes back into switch updates.
+    """
+    station_busbar_lookup = _get_busbar_lookup(station)
+    asset_bay = asset_connection.asset_bay
+    if asset_bay is None:
+        return station_busbar_lookup
+
+    station_busbar_ids = list(station_busbar_lookup.values())
+    asset_busbar_ids = list(asset_bay.sr_switch_grid_model_id.keys())
+    if len(asset_busbar_ids) == len(station_busbar_ids) and not set(station_busbar_ids).issubset(
+        asset_bay.sr_switch_grid_model_id
+    ):
+        return {index: busbar_id for index, busbar_id in enumerate(asset_busbar_ids)}
+
+    return station_busbar_lookup
 
 
 def _resolve_changed_stations(
@@ -168,11 +193,11 @@ def _get_branch_switch_diffs(
             f"{changed_station.grid_model_id}. Use ActionSet.simplified_starting_topology as input."
         )
 
-    changed_busbar_lookup = _get_busbar_lookup(changed_station)
     switching_xor = np.logical_xor(starting_station.branch_switching_table, changed_station.branch_switching_table)
     diff_switches: list[dict[str, str | bool]] = []
 
     for column, changed_asset_connection in enumerate(changed_station.branch_connections):
+        changed_busbar_lookup = _get_asset_busbar_lookup(changed_station, changed_asset_connection)
         asset_bay = changed_asset_connection.asset_bay
         if asset_bay is None:
             continue
@@ -248,7 +273,6 @@ def _get_injection_switch_diffs(
             f"{changed_station.grid_model_id}. Use ActionSet.simplified_starting_topology as input."
         )
 
-    changed_busbar_lookup = _get_busbar_lookup(changed_station)
     switching_xor = np.logical_xor(
         starting_station.injection_switching_table,
         changed_station.injection_switching_table,
@@ -256,6 +280,7 @@ def _get_injection_switch_diffs(
     diff_switches: list[dict[str, str | bool]] = []
 
     for column, changed_asset_connection in enumerate(changed_station.injection_connections):
+        changed_busbar_lookup = _get_asset_busbar_lookup(changed_station, changed_asset_connection)
         asset_bay = changed_asset_connection.asset_bay
         if asset_bay is None:
             continue

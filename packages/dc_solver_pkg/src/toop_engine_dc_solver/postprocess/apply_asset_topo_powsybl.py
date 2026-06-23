@@ -34,7 +34,7 @@ from toop_engine_interfaces.asset_topology.asset_topology import (
 )
 from toop_engine_interfaces.asset_topology.asset_topology_helpers import accumulate_diffs
 from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
@@ -88,9 +88,31 @@ def get_busbar_lookup(station: MaterializedStation) -> dict[int, str]:
     return {index: busbar.grid_model_id for index, busbar in enumerate(station.busbars)}
 
 
+def _get_asset_busbar_lookup(
+    station: MaterializedStation,
+    asset_connection: MaterializedAssetConnection,
+) -> dict[int, str]:
+    """Resolve row-to-busbar ids for one asset connection.
+
+    Simplified split-station actions can compress station rows while keeping per-asset selector
+    switch ids that refer to the original physical busbars. In that case the row semantics are
+    asset-local and must be recovered from the asset bay ordering instead of the station busbar ids.
+    """
+    station_busbar_lookup = get_busbar_lookup(station)
+    asset_switch_ids = asset_connection.get_sr_switch()
+    if asset_switch_ids is None:
+        return station_busbar_lookup
+
+    station_busbar_ids = list(station_busbar_lookup.values())
+    asset_busbar_ids = list(asset_switch_ids.keys())
+    if len(asset_busbar_ids) == len(station_busbar_ids) and not set(station_busbar_ids).issubset(asset_switch_ids):
+        return {index: busbar_id for index, busbar_id in enumerate(asset_busbar_ids)}
+
+    return station_busbar_lookup
+
+
 def _get_branch_switch_states_from_station(
     station: MaterializedStation,
-    busbar_id_dict: dict[int, str],
 ) -> tuple[list[dict[str, str | bool]], list[dict[str, str | bool]]]:
     """Translate branch selector and breaker states of one station to switch updates.
 
@@ -98,8 +120,6 @@ def _get_branch_switch_states_from_station(
     ----------
     station : MaterializedStation
         Station whose branch-side switching state should be exported.
-    busbar_id_dict : dict[int, str]
-        Mapping from branch switching-table row index to busbar id.
 
     Returns
     -------
@@ -122,6 +142,7 @@ def _get_branch_switch_states_from_station(
     )
 
     for column, asset_connection in enumerate(station.branch_connections):
+        busbar_id_dict = _get_asset_busbar_lookup(station, asset_connection)
         asset_switch_ids = asset_connection.get_sr_switch()
         if asset_switch_ids is None:
             continue
@@ -155,7 +176,6 @@ def _get_branch_switch_states_from_station(
 
 def _get_injection_switch_states_from_station(
     station: MaterializedStation,
-    busbar_id_dict: dict[int, str],
 ) -> tuple[list[dict[str, str | bool]], list[dict[str, str | bool]]]:
     """Translate injection selector and breaker states of one station to switch updates.
 
@@ -163,8 +183,6 @@ def _get_injection_switch_states_from_station(
     ----------
     station : MaterializedStation
         Station whose injection-side switching state should be exported.
-    busbar_id_dict : dict[int, str]
-        Mapping from injection switching-table row index to busbar id.
 
     Returns
     -------
@@ -187,6 +205,7 @@ def _get_injection_switch_states_from_station(
     )
 
     for column, asset_connection in enumerate(station.injection_connections):
+        busbar_id_dict = _get_asset_busbar_lookup(station, asset_connection)
         asset_switch_ids = asset_connection.get_sr_switch()
         if asset_switch_ids is None:
             continue
@@ -236,14 +255,11 @@ def get_asset_switch_states_from_station(
         Two dataframes containing reassignment-related switch updates and
         disconnection-related switch updates.
     """
-    busbar_id_dict = get_busbar_lookup(station)
     branch_reassignment_list, branch_disconnection_list = _get_branch_switch_states_from_station(
         station=station,
-        busbar_id_dict=busbar_id_dict,
     )
     injection_reassignment_list, injection_disconnection_list = _get_injection_switch_states_from_station(
         station=station,
-        busbar_id_dict=busbar_id_dict,
     )
     switch_reassignment_list = [*branch_reassignment_list, *injection_reassignment_list]
     switch_disconnection_list = [*branch_disconnection_list, *injection_disconnection_list]

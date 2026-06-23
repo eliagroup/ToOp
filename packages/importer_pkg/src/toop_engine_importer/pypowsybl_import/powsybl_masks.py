@@ -630,7 +630,7 @@ def update_bus_masks(
     blacklisted_substations = np.isin(substation_ids, blacklisted_ids)
     relevant_subs = relevant_subs & ~blacklisted_substations
     busbar_substation_ids = pd.Series(substation_ids, index=buses.index).reindex(busbar_sections["bus_id"]).to_numpy()
-    busbar_for_nminus1 = np.logical_and(busbar_for_nminus1, ~np.isin(busbar_substation_ids, blacklisted_substations))
+    busbar_for_nminus1 = np.logical_and(busbar_for_nminus1, ~np.isin(busbar_substation_ids, blacklisted_ids))
 
     return replace(
         network_masks,

@@ -16,12 +16,10 @@ import pandera.typing.polars as patpl
 import polars as pl
 import pypowsybl
 from beartype.typing import Literal, Optional
-from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_result_helpers import get_failed_branch_results, get_failed_node_results
 from toop_engine_interfaces.loadflow_results import (
     BranchSide,
     ConvergenceStatus,
-    VADiffResultSchema,
 )
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchResultSchemaPolars,
@@ -110,6 +108,7 @@ def get_node_results_polars(
     node_results = node_results.rename({"v_mag": "vm", "v_angle": "va"})
 
     # Calculate the values
+
     if method == "dc":
         node_results = node_results.with_columns(
             pl.when(pl.col("va").is_not_null())
@@ -306,20 +305,21 @@ def get_va_diff_results_polars(
     VADiffResultSchemaPolars
         The dataframe containing the voltage angle difference results for the given outages.
     """
-    if len(outages) == 0 or bus_results.limit(1).collect().is_empty():
-        return (
-            pl.from_pandas(get_empty_dataframe_from_model(VADiffResultSchema), include_index=True, nan_to_null=False)
-            .lazy()
-            .cast({"timestep": pl.Int64, "va_diff": pl.Float64})
-        )
     basecase_in_result = ""
     iteration_va_diff = va_diff_with_buses.filter(pl.col("contingency").is_in([basecase_in_result, *outages]))
 
     iteration_va_diff = iteration_va_diff.with_columns(timestep=pl.lit(timestep).cast(pl.Int64))
     # Map busbar sections where there are any. For the rest use the bus_breaker_bus_id from the results (here the bus id)
-    bus_results = bus_results.join(
-        bus_map.select("id", "bus_breaker_bus_id"), left_on=["bus_id"], right_on=["id"], how="left"
-    )  # m:1 join
+    bus_map_for_join = bus_map.select(
+        pl.col("id").cast(pl.String),
+        pl.col("bus_breaker_bus_id").cast(pl.String),
+    )
+    bus_results = bus_results.with_columns(
+        pl.col("contingency_id").cast(pl.String),
+        pl.col("bus_id").cast(pl.String),
+    )
+    bus_results = bus_results.join(bus_map_for_join, left_on=["bus_id"], right_on=["id"], how="left")  # m:1 join
+    bus_results = bus_results.with_columns(pl.coalesce("bus_breaker_bus_id", "bus_id").alias("bus_breaker_bus_id"))
 
     # get the voltage angles for both buses in the va_diff definition
     iteration_va_diff = iteration_va_diff.join(
@@ -338,7 +338,9 @@ def get_va_diff_results_polars(
     iteration_va_diff = iteration_va_diff.rename({"v_angle": "v_angle_2"})
 
     # Calculate the voltage angle difference
-    iteration_va_diff = iteration_va_diff.with_columns((pl.col("v_angle_1") - pl.col("v_angle_2")).alias("va_diff"))
+    iteration_va_diff = iteration_va_diff.with_columns(
+        (pl.col("v_angle_1") - pl.col("v_angle_2")).cast(pl.Float64).alias("va_diff")
+    )
 
     # drop duplicates
     iteration_va_diff = iteration_va_diff.unique()

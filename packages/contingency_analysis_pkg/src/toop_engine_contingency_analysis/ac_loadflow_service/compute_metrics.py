@@ -18,6 +18,7 @@ from beartype.typing import Literal, Optional
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchResultSchemaPolars,
     LoadflowResultsPolars,
+    NodeResultSchemaPolars,
     VADiffResultSchemaPolars,
 )
 from toop_engine_interfaces.types import MetricType
@@ -138,7 +139,7 @@ def count_critical_branches(
 
 
 def compute_max_va_diff(va_diff_results: patpl.LazyFrame[VADiffResultSchemaPolars]) -> float | None:
-    """Compute the maximum voltage angle difference.
+    """Compute the maximum absolute voltage angle difference.
 
     Parameters
     ----------
@@ -148,12 +149,95 @@ def compute_max_va_diff(va_diff_results: patpl.LazyFrame[VADiffResultSchemaPolar
     Returns
     -------
     float | None
-        The maximum voltage angle difference in degrees, or None if there are no valid values.
+        The maximum absolute voltage angle difference in degrees, or None if there are no valid values.
     """
-    max_va_diff = va_diff_results.select(pl.col("va_diff").max()).collect().item()
+    max_va_diff = va_diff_results.select(pl.col("va_diff").abs().max()).collect().item()
     if max_va_diff is None or pd.isna(max_va_diff):
         return None
     return float(max_va_diff)
+
+
+def count_critical_va_diff_cases(
+    va_diff_results: patpl.LazyFrame[VADiffResultSchemaPolars],
+    critical_threshold: float = 0.0,
+) -> int | None:
+    """Count how many monitored elements have a maximum absolute voltage angle difference above a threshold.
+
+    Parameters
+    ----------
+    va_diff_results : patpl.LazyFrame[VADiffResultSchemaPolars]
+        The voltage angle difference results dataframe.
+    critical_threshold : float, optional
+        The threshold in degrees above which a `(timestep, element)` maximum is counted, by default 0.0.
+
+    Returns
+    -------
+    int | None
+        The number of `(timestep, element)` groups whose maximum absolute voltage angle difference across contingencies
+        is strictly above the threshold, or None if the required columns are not available.
+    """
+    required_columns = {"timestep", "element", "va_diff"}
+    if not required_columns.issubset(va_diff_results.collect_schema().names()):
+        return None
+
+    return int(
+        va_diff_results.drop_nans("va_diff")
+        .group_by(["timestep", "element"])
+        .agg(pl.col("va_diff").abs().max().alias("max_va_diff"))
+        .filter(pl.col("max_va_diff") > critical_threshold)
+        .select(pl.len())
+        .collect()
+        .item()
+    )
+
+
+def count_voltage_jumps(
+    node_results: patpl.LazyFrame[NodeResultSchemaPolars],
+    base_case_id: Optional[str],
+    jump_threshold_percent: float = 5.0,
+) -> int | None:
+    """Count nodal voltage jumps above the basecase deviation threshold.
+
+    Parameters
+    ----------
+    node_results : patpl.LazyFrame[NodeResultSchemaPolars]
+        The node results dataframe containing both basecase and N-1 node voltages.
+    base_case_id : Optional[str]
+        The contingency id of the base case. If None, the voltage jump metric cannot be computed.
+    jump_threshold_percent : float, optional
+        The minimum relative voltage jump in percent that counts as a voltage jump, by default 5.0.
+
+    Returns
+    -------
+    int | None
+        The number of N-1 node results whose voltage deviation from the basecase is strictly above the threshold.
+        None if the required columns are not available or if no base case id is provided.
+    """
+    if base_case_id is None:
+        return None
+
+    required_columns = {"timestep", "contingency", "element", "vm"}
+    if not required_columns.issubset(node_results.collect_schema().names()):
+        return None
+
+    basecase_vm = (
+        node_results.filter(pl.col("contingency") == base_case_id)
+        .select("timestep", "element", pl.col("vm").alias("vm_basecase"))
+        .unique(subset=["timestep", "element"], keep="first")
+    )
+    n_1_node_results = node_results.filter(pl.col("contingency") != base_case_id)
+
+    return int(
+        n_1_node_results.join(basecase_vm, on=["timestep", "element"], how="left")
+        .filter(pl.col("vm").is_not_null() & pl.col("vm_basecase").is_not_null() & (pl.col("vm_basecase") != 0))
+        .with_columns(
+            voltage_jump_percent=((pl.col("vm") - pl.col("vm_basecase")).abs() / pl.col("vm_basecase").abs()) * 100.0
+        )
+        .filter(pl.col("voltage_jump_percent") > jump_threshold_percent)
+        .select(pl.len())
+        .collect()
+        .item()
+    )
 
 
 def get_worst_k_contingencies_ac(
@@ -215,6 +299,7 @@ def get_worst_k_contingencies_ac(
 def compute_metrics(
     loadflow_results: LoadflowResultsPolars,
     base_case_id: Optional[str] = None,
+    critical_va_diff_threshold: float = 0.0,
 ) -> dict[MetricType, float | None]:
     """Compute the metrics from the loadflow results.
 
@@ -230,6 +315,8 @@ def compute_metrics(
         The loadflow results containing the branch results.
     base_case_id : Optional[str], optional
         The contingency ID for the base case (N-0). If not provided, no n-0 metrics will be computed.
+    critical_va_diff_threshold : float, optional
+        Threshold in degrees above which a contingency case is counted in the voltage-angle-difference count metrics.
 
     Returns
     -------
@@ -246,13 +333,16 @@ def compute_metrics(
         if base_case_id is not None
         else loadflow_results.va_diff_results
     )
-
     metrics = {
         "max_flow_n_1": compute_max_load(n_1_branch_res),
         "overload_energy_n_1": compute_overload_energy(n_1_branch_res, field="p"),
         "max_va_diff_n_1": compute_max_va_diff(n_1_va_diff_res),
+        "critical_va_diff_count_n_1": count_critical_va_diff_cases(
+            n_1_va_diff_res, critical_threshold=critical_va_diff_threshold
+        ),
         "overload_current_n_1": compute_overload_energy(n_1_branch_res, field="i"),
         "critical_branch_count_n_1": count_critical_branches(n_1_branch_res),
+        "voltage_jump_count_n_1": count_voltage_jumps(loadflow_results.node_results, base_case_id=base_case_id),
     }
 
     if base_case_id is not None:
@@ -267,6 +357,9 @@ def compute_metrics(
             "max_flow_n_0": compute_max_load(n_0_branch_res),
             "overload_energy_n_0": compute_overload_energy(n_0_branch_res, field="p"),
             "max_va_diff_n_0": compute_max_va_diff(n_0_va_diff) or 0.0,  # Default to 0.0 if no valid va_diff values for n-0
+            "critical_va_diff_count_n_0": count_critical_va_diff_cases(
+                n_0_va_diff, critical_threshold=critical_va_diff_threshold
+            ),
             "overload_current_n_0": compute_overload_energy(n_0_branch_res, field="i"),
             "critical_branch_count_n_0": count_critical_branches(n_0_branch_res),
         }

@@ -169,6 +169,8 @@ class Topology(BaseModel):
         materialized_stations: list[MaterializedStation] = []
 
         for station in self.raw_stations:
+            station_busbar_ids = {busbar.grid_model_id for busbar in station.busbars}
+
             station_branch_assets = [
                 branch_asset_map[asset_connection.asset_id].model_copy(deep=True)
                 for asset_connection in station.branch_connections
@@ -179,13 +181,35 @@ class Topology(BaseModel):
             ]
 
             station_branch_asset_bays = [
-                asset_bay_map[asset_connection.asset_bay_id].model_copy(deep=True)
+                asset_bay_map[asset_connection.asset_bay_id].model_copy(
+                    update={
+                        "sr_switch_grid_model_id": {
+                            busbar_id: switch_id
+                            for busbar_id, switch_id in asset_bay_map[
+                                asset_connection.asset_bay_id
+                            ].sr_switch_grid_model_id.items()
+                            if busbar_id in station_busbar_ids
+                        }
+                    },
+                    deep=True,
+                )
                 if asset_connection.asset_bay_id is not None
                 else None
                 for asset_connection in station.branch_connections
             ]
             station_injection_asset_bays = [
-                asset_bay_map[asset_connection.asset_bay_id].model_copy(deep=True)
+                asset_bay_map[asset_connection.asset_bay_id].model_copy(
+                    update={
+                        "sr_switch_grid_model_id": {
+                            busbar_id: switch_id
+                            for busbar_id, switch_id in asset_bay_map[
+                                asset_connection.asset_bay_id
+                            ].sr_switch_grid_model_id.items()
+                            if busbar_id in station_busbar_ids
+                        }
+                    },
+                    deep=True,
+                )
                 if asset_connection.asset_bay_id is not None
                 else None
                 for asset_connection in station.injection_connections

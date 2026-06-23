@@ -14,6 +14,7 @@ import structlog
 from toop_engine_interfaces.asset_topology.asset_topology import Topology
 from toop_engine_interfaces.asset_topology.assets import AssetBay
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.nminus1_definition import GridElement
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
@@ -105,4 +106,9 @@ def get_changing_switches_from_disconnections(
                 }
             )
 
-    return pd.DataFrame.from_records(switch_updates, columns=["grid_model_id", "open"])
+    if not switch_updates:
+        return get_empty_dataframe_from_model(SwitchUpdateSchema)
+
+    return pd.DataFrame.from_records(switch_updates, columns=["grid_model_id", "open"]).astype(
+        {"grid_model_id": str, "open": bool}
+    )

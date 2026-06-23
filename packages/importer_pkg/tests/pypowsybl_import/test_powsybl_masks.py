@@ -813,58 +813,6 @@ def test_make_masks_node_breaker_with_ignore_file(
     assert powsybl_masks.validate_network_masks(ignored_masks, default_masks)
 
 
-def test_make_masks_node_breaker_with_ignore_file(
-    basic_node_breaker_network_powsybl_not_disconnectable: Network,
-    cgmes_importer_parameters: CgmesImporterParameters,
-    tmp_path: Path,
-):
-    network = basic_node_breaker_network_powsybl_not_disconnectable
-    importer_parameters = deepcopy(cgmes_importer_parameters)
-    importer_parameters.data_folder = tmp_path
-    default_masks = powsybl_masks.create_default_network_masks(network)
-
-    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
-    baseline_masks = powsybl_masks.make_masks(
-        network=network,
-        slack_id=lf_result.reference_bus_id,
-        importer_parameters=importer_parameters,
-        blacklisted_ids=[],
-    )
-    relevant_sub_idx = np.flatnonzero(baseline_masks.relevant_subs)[0]
-    ignored_station_id = network.get_buses().iloc[relevant_sub_idx]["name"][:-2]
-
-    ignore_list_file = tmp_path / "ignore_list.csv"
-    ignore_list_file.write_text(f"grid_model_id;reason\n{ignored_station_id};station\n")
-    importer_parameters.ignore_list_file = ignore_list_file
-
-    statistics = PreProcessingStatistics(
-        id_lists={},
-        import_result=ImportResult(data_folder=tmp_path),
-        border_current={},
-        network_changes={},
-        import_parameter=importer_parameters,
-    )
-    statistics = network_analysis.apply_cb_lists_cgmes(
-        statistics=statistics,
-        white_list_file=None,
-        ignore_list_file=ignore_list_file,
-        filesystem=LocalFileSystem(),
-    )
-
-    ignored_masks = preprocessing.get_network_masks(
-        network=network,
-        slack_id=lf_result.reference_bus_id,
-        importer_parameters=importer_parameters,
-        statistics=statistics,
-        filesystem=LocalFileSystem(),
-    )
-
-    assert statistics.id_lists["black_list"] == [ignored_station_id]
-    assert baseline_masks.relevant_subs[relevant_sub_idx]
-    assert not ignored_masks.relevant_subs[relevant_sub_idx]
-    assert powsybl_masks.validate_network_masks(ignored_masks, default_masks)
-
-
 def test_update_masks_from_contingency_list_file(
     ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters, tmp_path_factory: pytest.TempPathFactory
 ):

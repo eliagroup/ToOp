@@ -203,7 +203,7 @@ class Topology(BaseModel):
                     branch_connections=[
                         MaterializedAssetConnection(
                             asset=asset,
-                            terminal=asset_connection.terminal,
+                            branch_end=asset_connection.branch_end,
                             asset_bay=asset_bay,
                         )
                         for asset, asset_connection, asset_bay in zip(
@@ -216,7 +216,7 @@ class Topology(BaseModel):
                     injection_connections=[
                         MaterializedAssetConnection(
                             asset=asset,
-                            terminal=asset_connection.terminal,
+                            branch_end=asset_connection.branch_end,
                             asset_bay=asset_bay,
                         )
                         for asset, asset_connection, asset_bay in zip(

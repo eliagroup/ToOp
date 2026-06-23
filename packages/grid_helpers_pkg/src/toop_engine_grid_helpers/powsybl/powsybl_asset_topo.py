@@ -194,8 +194,8 @@ def _get_station_asset_inputs_from_topology(
     -------
     station_elements : pd.DataFrame
         Normalized station asset rows used for asset materialization.
-    asset_terminals : list[str | None]
-        Terminal labels aligned with `station_elements`.
+    asset_branch_ends : list[str | None]
+        Branch-end labels aligned with `station_elements`.
     switching_matrix : np.ndarray
         Station-local switching matrix aligned with `station_elements`.
     asset_connectivity : np.ndarray
@@ -208,17 +208,17 @@ def _get_station_asset_inputs_from_topology(
         element_names,
     )
     asset_connectivity = np.ones_like(switching_matrix, dtype=bool)
-    asset_terminals = (
+    asset_branch_ends = (
         station_elements["branch_end"].tolist()
         if "branch_end" in station_elements.columns
         else [None] * len(station_elements)
     )
-    return station_elements, asset_terminals, switching_matrix, asset_connectivity
+    return station_elements, asset_branch_ends, switching_matrix, asset_connectivity
 
 
 def _get_branch_station_assets_from_df(
     station_elements: pd.DataFrame,
-    asset_terminals: list[str | None],
+    asset_branch_ends: list[str | None],
     switching_matrix: np.ndarray,
     asset_connectivity: np.ndarray,
 ) -> tuple[list[BranchAsset], list[str | None], np.ndarray, np.ndarray]:
@@ -228,8 +228,8 @@ def _get_branch_station_assets_from_df(
     ----------
     station_elements : pd.DataFrame
         Normalized station asset rows.
-    asset_terminals : list[str | None]
-        Terminal labels aligned with `station_elements`.
+    asset_branch_ends : list[str | None]
+        Branch-end labels aligned with `station_elements`.
     switching_matrix : np.ndarray
         Station-local switching matrix aligned with `station_elements`.
     asset_connectivity : np.ndarray
@@ -239,8 +239,8 @@ def _get_branch_station_assets_from_df(
     -------
     branch_assets : list[BranchAsset]
         Materialized branch assets for the station.
-    branch_terminals : list[str | None]
-        Terminal labels aligned with `branch_assets`.
+    branch_ends : list[str | None]
+        Branch-end labels aligned with `branch_assets`.
     branch_switching_table : np.ndarray
         Branch-only switching table.
     branch_connectivity : np.ndarray
@@ -258,16 +258,16 @@ def _get_branch_station_assets_from_df(
         for asset, is_branch in zip(normalized_assets, branch_mask, strict=True)
         if is_branch
     ]
-    branch_terminals = [terminal for terminal, is_branch in zip(asset_terminals, branch_mask, strict=True) if is_branch]
+    branch_ends = [branch_end for branch_end, is_branch in zip(asset_branch_ends, branch_mask, strict=True) if is_branch]
     branch_switching_table = switching_matrix[:, branch_mask]
     branch_connectivity = asset_connectivity[:, branch_mask]
 
-    return branch_assets, branch_terminals, branch_switching_table, branch_connectivity
+    return branch_assets, branch_ends, branch_switching_table, branch_connectivity
 
 
 def _get_injection_station_assets_from_df(
     station_elements: pd.DataFrame,
-    asset_terminals: list[str | None],
+    asset_branch_ends: list[str | None],
     switching_matrix: np.ndarray,
     asset_connectivity: np.ndarray,
 ) -> tuple[list[InjectionAsset], list[str | None], np.ndarray, np.ndarray]:
@@ -277,8 +277,8 @@ def _get_injection_station_assets_from_df(
     ----------
     station_elements : pd.DataFrame
         Normalized station asset rows.
-    asset_terminals : list[str | None]
-        Terminal labels aligned with `station_elements`.
+    asset_branch_ends : list[str | None]
+        Branch-end labels aligned with `station_elements`.
     switching_matrix : np.ndarray
         Station-local switching matrix aligned with `station_elements`.
     asset_connectivity : np.ndarray
@@ -288,8 +288,8 @@ def _get_injection_station_assets_from_df(
     -------
     injection_assets : list[InjectionAsset]
         Materialized injection assets for the station.
-    injection_terminals : list[str | None]
-        Terminal labels aligned with `injection_assets`.
+    injection_branch_ends : list[str | None]
+        Branch-end labels aligned with `injection_assets`.
     injection_switching_table : np.ndarray
         Injection-only switching table.
     injection_connectivity : np.ndarray
@@ -307,13 +307,13 @@ def _get_injection_station_assets_from_df(
         for asset, is_injection in zip(normalized_assets, injection_mask, strict=True)
         if is_injection
     ]
-    injection_terminals = [
-        terminal for terminal, is_injection in zip(asset_terminals, injection_mask, strict=True) if is_injection
+    injection_branch_ends = [
+        branch_end for branch_end, is_injection in zip(asset_branch_ends, injection_mask, strict=True) if is_injection
     ]
     injection_switching_table = switching_matrix[:, injection_mask]
     injection_connectivity = asset_connectivity[:, injection_mask]
 
-    return injection_assets, injection_terminals, injection_switching_table, injection_connectivity
+    return injection_assets, injection_branch_ends, injection_switching_table, injection_connectivity
 
 
 def _get_single_topology_kind(buses_with_substation_and_voltage: pd.DataFrame) -> str:
@@ -660,11 +660,11 @@ def get_raw_stations_and_assets(
             busbars=get_list_of_busbars_from_df(station_buses),
             couplers=get_list_of_coupler_from_df(coupler_elements),
             branch_connections=[
-                StationAssetConnection(asset_id=asset.grid_model_id, terminal=asset_terminal, asset_bay_id=None)
+                StationAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)
                 for asset, asset_terminal in zip(branch_assets, branch_terminals, strict=True)
             ],
             injection_connections=[
-                StationAssetConnection(asset_id=asset.grid_model_id, terminal=asset_terminal, asset_bay_id=None)
+                StationAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)
                 for asset, asset_terminal in zip(injection_assets, injection_terminals, strict=True)
             ],
             branch_switching_table=branch_switching_table,
@@ -823,11 +823,11 @@ def get_raw_stations_and_assets_bus_breaker(
             busbars=busbars,
             couplers=couplers,
             branch_connections=[
-                StationAssetConnection(asset_id=asset.grid_model_id, terminal=asset_terminal, asset_bay_id=None)
+                StationAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)
                 for asset, asset_terminal in zip(branch_assets, branch_terminals, strict=True)
             ],
             injection_connections=[
-                StationAssetConnection(asset_id=asset.grid_model_id, terminal=None, asset_bay_id=None)
+                StationAssetConnection(asset_id=asset.grid_model_id, branch_end=None, asset_bay_id=None)
                 for asset in injection_assets
             ],
             branch_switching_table=branch_switching_table,

@@ -35,8 +35,8 @@ class StationAssetConnection(BaseModel):
     asset_id: str
     """Grid model id of the topology-owned asset referenced by this station-local column."""
 
-    terminal: Optional[BranchEnd] = None
-    """Optional branch terminal metadata for this station-local asset occurrence."""
+    branch_end: Optional[BranchEnd] = None
+    """Optional branch-end metadata for this station-local asset occurrence."""
 
     asset_bay_id: Optional[str] = None
     """Optional topology-scoped asset bay identifier for this station-local asset occurrence."""
@@ -304,7 +304,7 @@ class RawStation(_StationStructure):
         return self.model_copy(
             update={
                 "branch_connections": [
-                    asset_connection.model_copy(update={"terminal": asset_terminal})
+                    asset_connection.model_copy(update={"branch_end": asset_terminal})
                     for asset_connection, asset_terminal in zip(self.branch_connections, asset_terminals, strict=True)
                 ]
             }

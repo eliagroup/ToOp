@@ -16,7 +16,7 @@ from toop_engine_interfaces.asset_topology.asset_topology import (
     RawStation,
     Topology,
 )
-from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
@@ -53,7 +53,7 @@ def _build_large_random_action_set(
     asset_counts = np.tile(asset_counts, n_stations // len(asset_counts))
 
     raw_stations: list[RawStation] = []
-    topology_assets: list[SwitchableAsset] = []
+    topology_assets: list[BranchAsset] = []
     local_actions: list[MaterializedStation] = []
 
     for station_idx in range(n_stations):
@@ -111,7 +111,7 @@ def _build_large_random_action_set(
             branch_connections=[
                 StationAssetConnection.model_construct(
                     asset_id=asset.grid_model_id,
-                    terminal=None,
+                    branch_end=None,
                     asset_bay_id=None,
                 )
                 for asset in assets
@@ -135,7 +135,7 @@ def _build_large_random_action_set(
             busbars=busbars,
             couplers=couplers,
             branch_connections=[
-                MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None) for asset in assets
+                MaterializedAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None) for asset in assets
             ],
             branch_switching_table=branch_switching_table,
             branch_connectivity=None,

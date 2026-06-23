@@ -268,7 +268,7 @@ def compute_cross_coupler_flows(
         q_sum = 0.0
         for index, asset_connection in enumerate(station.branch_connections):
             if station.branch_switching_table[busbars_a, index].any():
-                branch_end = asset_connection.terminal
+                branch_end = asset_connection.branch_end
                 if branch_end is None:
                     raise ValueError("Branch end is None")
                 from_end = branch_end in ("from", "hv")

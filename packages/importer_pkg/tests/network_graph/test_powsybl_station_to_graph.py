@@ -175,7 +175,7 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
 
     assets = [asset_connection.asset for asset_connection in all_station_connections(res)]
     asset_bays = [asset_connection.asset_bay for asset_connection in all_station_connections(res)]
-    asset_terminals = [asset_connection.terminal for asset_connection in all_station_connections(res)]
+    asset_terminals = [asset_connection.branch_end for asset_connection in all_station_connections(res)]
     assert len(assets) == 5
     assert asset_terminals == [None] * len(assets)
     assert assets[0].grid_model_id == "L3"

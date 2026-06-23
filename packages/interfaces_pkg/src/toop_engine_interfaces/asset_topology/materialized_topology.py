@@ -30,8 +30,8 @@ class MaterializedAssetConnection(BaseModel):
     asset: SwitchableAsset
     """Station-local asset payload aligned with one switching-table column."""
 
-    terminal: Optional[BranchEnd] = None
-    """Optional branch terminal metadata for this station-local asset occurrence."""
+    branch_end: Optional[BranchEnd] = None
+    """Optional branch-end metadata for this station-local asset occurrence."""
 
     asset_bay: Optional[AssetBay] = None
     """Optional station-local asset bay payload for this station-local asset occurrence."""

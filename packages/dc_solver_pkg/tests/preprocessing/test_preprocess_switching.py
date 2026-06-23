@@ -225,8 +225,8 @@ def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> No
             if asset.grid_model_id in network_data.branch_ids:
                 assert asset.name in network_data.branch_names
                 assert asset.asset_type in network_data.branch_types
-                assert asset_connection.terminal in ["from", "to"]
-                if asset_connection.terminal == "from":
+                assert asset_connection.branch_end in ["from", "to"]
+                if asset_connection.branch_end == "from":
                     from_ends += 1
                 else:
                     to_ends += 1
@@ -311,12 +311,12 @@ def test_prepare_for_separation_set_node_breaker_test_station():
     asset_bays = station_data.pop("asset_bays", [None] * len(assets))
     combined_switching_table = np.asarray(station_data.pop("asset_switching_table"), dtype=bool)
     station_data["branch_connections"] = [
-        {"asset": asset, "terminal": asset_terminal, "asset_bay": asset_bay}
+        {"asset": asset, "branch_end": asset_terminal, "asset_bay": asset_bay}
         for asset, asset_terminal, asset_bay in zip(assets, asset_terminals, asset_bays, strict=True)
         if asset["asset_type"] in get_args(AssetBranchType)
     ]
     station_data["injection_connections"] = [
-        {"asset": asset, "terminal": asset_terminal, "asset_bay": asset_bay}
+        {"asset": asset, "branch_end": asset_terminal, "asset_bay": asset_bay}
         for asset, asset_terminal, asset_bay in zip(assets, asset_terminals, asset_bays, strict=True)
         if asset["asset_type"] in get_args(AssetInjectionType)
     ]

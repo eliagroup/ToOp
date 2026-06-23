@@ -54,7 +54,7 @@ def topology_parts_from_materialized_station(
         branch_connections.append(
             StationAssetConnection(
                 asset_id=asset_id,
-                terminal=asset_connection.terminal,
+                branch_end=asset_connection.branch_end,
                 asset_bay_id=asset_bay_id,
             )
         )
@@ -73,7 +73,7 @@ def topology_parts_from_materialized_station(
         injection_connections.append(
             StationAssetConnection(
                 asset_id=asset_id,
-                terminal=asset_connection.terminal,
+                branch_end=asset_connection.branch_end,
                 asset_bay_id=asset_bay_id,
             )
         )

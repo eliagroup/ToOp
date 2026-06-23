@@ -84,7 +84,7 @@ def build_raw_station(
         busbars=busbars,
         couplers=couplers,
         branch_connections=[
-            StationAssetConnection(asset_id=asset_id, terminal=asset_terminal, asset_bay_id=asset_bay_id)
+            StationAssetConnection(asset_id=asset_id, branch_end=asset_terminal, asset_bay_id=asset_bay_id)
             for asset_id, asset_terminal, asset_bay_id in zip(
                 asset_ids,
                 asset_terminals if asset_terminals is not None else [None] * len(asset_ids),
@@ -93,7 +93,7 @@ def build_raw_station(
             )
         ],
         injection_connections=[
-            StationAssetConnection(asset_id=asset_id, terminal=None, asset_bay_id=None)
+            StationAssetConnection(asset_id=asset_id, branch_end=None, asset_bay_id=None)
             for asset_id in resolved_injection_asset_ids
         ],
         branch_switching_table=asset_switching_table,
@@ -129,10 +129,10 @@ def build_materialized_station(
         busbars=busbars,
         couplers=couplers,
         branch_connections=[
-            MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None) for asset in assets
+            MaterializedAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None) for asset in assets
         ],
         injection_connections=[
-            MaterializedAssetConnection.model_construct(asset=asset, terminal=None, asset_bay=None)
+            MaterializedAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None)
             for asset in resolved_injection_assets
         ],
         branch_switching_table=asset_switching_table,
@@ -396,7 +396,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
         )
     ]
     assets = [
-        SwitchableAsset.model_construct(
+        BranchAsset.model_construct(
             grid_model_id="station_a_asset_0",
             type=None,
             name=None,
@@ -412,7 +412,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
         voltage_level=None,
         busbars=busbars,
         couplers=[],
-        branch_connections=[MaterializedAssetConnection.model_construct(asset=assets[0], terminal=None, asset_bay=None)],
+        branch_connections=[MaterializedAssetConnection.model_construct(asset=assets[0], branch_end=None, asset_bay=None)],
         injection_connections=[],
         branch_switching_table=np.zeros((1, 1), dtype=bool),
         injection_switching_table=np.zeros((1, 0), dtype=bool),
@@ -448,7 +448,9 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
                 voltage_level=None,
                 busbars=busbars,
                 couplers=[],
-                branch_connections=[StationAssetConnection(asset_id="station_a_asset_0", terminal=None, asset_bay_id=None)],
+                branch_connections=[
+                    StationAssetConnection(asset_id="station_a_asset_0", branch_end=None, asset_bay_id=None)
+                ],
                 injection_connections=[],
                 branch_switching_table=np.zeros((1, 1), dtype=bool),
                 injection_switching_table=np.zeros((1, 0), dtype=bool),
@@ -464,7 +466,9 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
                 voltage_level=None,
                 busbars=busbars,
                 couplers=[],
-                branch_connections=[StationAssetConnection(asset_id="station_b_asset_0", terminal=None, asset_bay_id=None)],
+                branch_connections=[
+                    StationAssetConnection(asset_id="station_b_asset_0", branch_end=None, asset_bay_id=None)
+                ],
                 injection_connections=[],
                 branch_switching_table=np.zeros((1, 1), dtype=bool),
                 injection_switching_table=np.zeros((1, 0), dtype=bool),
@@ -670,13 +674,13 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
         )
     ]
     assets = [
-        SwitchableAsset.model_construct(
+        BranchAsset.model_construct(
             grid_model_id="station_save_load_asset_1",
             type=None,
             name=None,
             in_service=True,
         ),
-        SwitchableAsset.model_construct(
+        BranchAsset.model_construct(
             grid_model_id="station_save_load_asset_2",
             type=None,
             name=None,
@@ -784,13 +788,13 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
         )
     ]
     assets = [
-        SwitchableAsset.model_construct(
+        BranchAsset.model_construct(
             grid_model_id="asset1",
             type=None,
             name=None,
             in_service=True,
         ),
-        SwitchableAsset.model_construct(
+        BranchAsset.model_construct(
             grid_model_id="asset2",
             type=None,
             name=None,

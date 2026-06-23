@@ -444,7 +444,7 @@ def add_missing_asset_topology_branch_info(
         new_branch_ends = []
         for asset_connection in station.branch_connections:
             asset_id = asset_connection.asset_id
-            branch_end = asset_connection.terminal
+            branch_end = asset_connection.branch_end
             index = branch_id_lookup.get(asset_id, None)
             if (
                 index is not None

@@ -84,7 +84,7 @@ def build_raw_station(
         busbars=busbars,
         couplers=couplers,
         branch_connections=[
-            StationAssetConnection(asset_id=asset_id, terminal=asset_terminal, asset_bay_id=asset_bay_id)
+            StationAssetConnection(asset_id=asset_id, branch_end=asset_terminal, asset_bay_id=asset_bay_id)
             for asset_id, asset_terminal, asset_bay_id in zip(
                 asset_ids,
                 asset_terminals if asset_terminals is not None else [None] * len(asset_ids),
@@ -93,7 +93,7 @@ def build_raw_station(
             )
         ],
         injection_connections=[
-            StationAssetConnection(asset_id=asset_id, terminal=None, asset_bay_id=None)
+            StationAssetConnection(asset_id=asset_id, branch_end=None, asset_bay_id=None)
             for asset_id in resolved_injection_asset_ids
         ],
         branch_switching_table=asset_switching_table,
@@ -451,8 +451,8 @@ def test_get_connected_assets_raw_station_injection_scope():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[],
-        branch_connections=[StationAssetConnection(asset_id="line1", terminal="from", asset_bay_id=None)],
-        injection_connections=[StationAssetConnection(asset_id="gen1", terminal=None, asset_bay_id=None)],
+        branch_connections=[StationAssetConnection(asset_id="line1", branch_end="from", asset_bay_id=None)],
+        injection_connections=[StationAssetConnection(asset_id="gen1", branch_end=None, asset_bay_id=None)],
         branch_switching_table=np.array([[True], [False]]),
         injection_switching_table=np.array([[False], [True]]),
     )

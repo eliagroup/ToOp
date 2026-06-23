@@ -209,7 +209,7 @@ def compute_cross_coupler_flows(
             if station.branch_switching_table[busbars_a, index].any():
                 asset_id, asset_type = parse_globally_unique_id(asset_connection.asset.grid_model_id)
                 asset_id = int(asset_id)
-                branch_end = asset_connection.terminal
+                branch_end = asset_connection.branch_end
                 if branch_end is None:
                     raise ValueError("Branch end must be set in asset topo")
                 from_end = branch_end in ("from", "hv")

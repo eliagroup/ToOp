@@ -54,9 +54,9 @@ def get_basic_node_breaker_topology() -> Topology:
                     )
                 ],
                 branch_connections=[
-                    StationAssetConnection(asset_id="L4", terminal=None, asset_bay_id="VL4_0::L4::bay"),
-                    StationAssetConnection(asset_id="L5", terminal=None, asset_bay_id="VL4_0::L5::bay"),
-                    StationAssetConnection(asset_id="L8", terminal=None, asset_bay_id="VL4_0::L8::bay"),
+                    StationAssetConnection(asset_id="L4", branch_end=None, asset_bay_id="VL4_0::L4::bay"),
+                    StationAssetConnection(asset_id="L5", branch_end=None, asset_bay_id="VL4_0::L5::bay"),
+                    StationAssetConnection(asset_id="L8", branch_end=None, asset_bay_id="VL4_0::L8::bay"),
                 ],
                 injection_connections=[],
                 branch_switching_table=np.array([[False, False, False], [True, True, False]], dtype=bool),

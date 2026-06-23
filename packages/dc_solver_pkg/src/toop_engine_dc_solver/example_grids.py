@@ -56,7 +56,9 @@ from toop_engine_interfaces.asset_topology.asset_topology import (
 )
 from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
-from toop_engine_interfaces.asset_topology.topology_conversion import topology_from_materialized_stations
+from toop_engine_interfaces.asset_topology.topology_conversion import (
+    topology_parts_from_materialized_station,
+)
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
@@ -292,6 +294,7 @@ def random_station_info_backend(
     ), pp_counters
 
 
+# ruff: noqa: C901
 def random_topology_info_backend(backend: BackendInterface, pp_counters: Optional[PandapowerCounters]) -> Topology:
     """Generate a random topology for any backend
 
@@ -315,13 +318,41 @@ def random_topology_info_backend(backend: BackendInterface, pp_counters: Optiona
         new_station, pp_counters = random_station_info_backend(backend, node_idx, pp_counters)
         stations.append(new_station)
 
-    return topology_from_materialized_stations(
-        reference_topology=Topology(
-            topology_id="random_topology",
-            raw_stations=[],
-            timestamp=datetime.datetime.now(),
-        ),
-        stations=stations,
+    raw_stations = []
+    branch_assets: dict[str, BranchAsset] = {}
+    injection_assets: dict[str, InjectionAsset] = {}
+    asset_bays = {}
+    for station in stations:
+        raw_station, station_branch_assets, station_injection_assets, station_asset_bays = (
+            topology_parts_from_materialized_station(station)
+        )
+        raw_stations.append(raw_station)
+        for asset in station_branch_assets:
+            existing_asset = branch_assets.get(asset.grid_model_id)
+            if existing_asset is None:
+                branch_assets[asset.grid_model_id] = asset
+            elif existing_asset != asset:
+                raise ValueError(f"Conflicting branch asset payload for grid_model_id {asset.grid_model_id}")
+        for asset in station_injection_assets:
+            existing_asset = injection_assets.get(asset.grid_model_id)
+            if existing_asset is None:
+                injection_assets[asset.grid_model_id] = asset
+            elif existing_asset != asset:
+                raise ValueError(f"Conflicting injection asset payload for grid_model_id {asset.grid_model_id}")
+        for asset_bay in station_asset_bays:
+            existing_asset_bay = asset_bays.get(asset_bay.asset_bay_id)
+            if existing_asset_bay is None:
+                asset_bays[asset_bay.asset_bay_id] = asset_bay
+            elif existing_asset_bay != asset_bay:
+                raise ValueError(f"Conflicting asset bay payload for asset_bay_id {asset_bay.asset_bay_id}")
+
+    return Topology(
+        topology_id="random_topology",
+        raw_stations=raw_stations,
+        branch_assets=list(branch_assets.values()),
+        injection_assets=list(injection_assets.values()),
+        asset_bays=list(asset_bays.values()),
+        timestamp=datetime.datetime.now(),
     )
 
 

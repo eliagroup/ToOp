@@ -51,7 +51,7 @@ def materialized_asset_connections(
     if asset_bays is None:
         asset_bays = [None] * len(assets)
     return [
-        MaterializedAssetConnection(asset=asset, terminal=terminal, asset_bay=asset_bay)
+        MaterializedAssetConnection(asset=asset, branch_end=terminal, asset_bay=asset_bay)
         for asset, terminal, asset_bay in zip(assets, terminals, asset_bays, strict=True)
     ]
 
@@ -66,7 +66,7 @@ def raw_asset_connections(
     if asset_bay_ids is None:
         asset_bay_ids = [None] * len(asset_ids)
     return [
-        StationAssetConnection(asset_id=asset_id, terminal=terminal, asset_bay_id=asset_bay_id)
+        StationAssetConnection(asset_id=asset_id, branch_end=terminal, asset_bay_id=asset_bay_id)
         for asset_id, terminal, asset_bay_id in zip(asset_ids, terminals, asset_bay_ids, strict=True)
     ]
 
@@ -641,9 +641,9 @@ def test_topology_from_materialized_stations_keeps_single_canonical_asset_for_tw
 
     assert [asset.grid_model_id for asset in topology.branch_assets] == ["line1"]
     assert [connection.asset_id for connection in topology.raw_stations[0].branch_connections] == ["line1"]
-    assert [connection.terminal for connection in topology.raw_stations[0].branch_connections] == ["from"]
+    assert [connection.branch_end for connection in topology.raw_stations[0].branch_connections] == ["from"]
     assert [connection.asset_id for connection in topology.raw_stations[1].branch_connections] == ["line1"]
-    assert [connection.terminal for connection in topology.raw_stations[1].branch_connections] == ["to"]
+    assert [connection.branch_end for connection in topology.raw_stations[1].branch_connections] == ["to"]
     assert topology.materialize_stations() == [station_from, station_to]
 
 

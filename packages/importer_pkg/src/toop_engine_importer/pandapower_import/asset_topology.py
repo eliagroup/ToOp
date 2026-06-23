@@ -462,7 +462,7 @@ def _materialize_station_asset_connections(
         branch_mask,
         strict=True,
     ):
-        connection = MaterializedAssetConnection(asset=asset, terminal=asset_terminal, asset_bay=asset_bay)
+        connection = MaterializedAssetConnection(asset=asset, branch_end=asset_terminal, asset_bay=asset_bay)
         if is_branch:
             branch_connections.append(connection)
         else:

@@ -619,7 +619,7 @@ def _get_station_articulation_busbar_ids(station: Station) -> set[str]:
             busbar_intid_index_mapper[coupler.busbar_to_id],
         )
         for coupler in station.couplers
-        if not coupler.open
+        if (not coupler.open) and coupler.in_service
     ]
     if len(edges) <= 1:
         return set()

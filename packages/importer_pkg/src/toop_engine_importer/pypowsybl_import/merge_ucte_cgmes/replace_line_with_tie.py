@@ -18,38 +18,38 @@ from pypowsybl.network.impl.network import Network
 class DanglingLineCreationSchema(pa.DataFrameModel):
     """A Schema for network.create_boundary_lines."""
 
-    name: pat.Series[str] = pa.Field(coerce=True)
+    name: pat.Series[str]
     """The name of the line."""
 
-    pairing_key: pat.Series[str] = pa.Field(coerce=True)
+    pairing_key: pat.Series[str]
     """The dangling pairing key of the line."""
 
-    bus_id: pat.Series[str] = pa.Field(coerce=True)
+    bus_id: pat.Series[str]
     """The bus id of the line.
        Note: depending on the connected attribute this can be a "connectable_bus" id or a "bus_id"."""
 
-    voltage_level_id: pat.Series[str] = pa.Field(coerce=True)
+    voltage_level_id: pat.Series[str]
     """The voltage level id of the line."""
 
-    r: pat.Series[float] = pa.Field(coerce=True)
+    r: pat.Series[float]
     """The resistance of the line."""
 
-    x: pat.Series[float] = pa.Field(coerce=True)
+    x: pat.Series[float]
     """The reactance of the line."""
 
-    g: pat.Series[float] = pa.Field(coerce=True)
+    g: pat.Series[float]
     """The conductance of the line."""
 
-    b: pat.Series[float] = pa.Field(coerce=True)
+    b: pat.Series[float]
     """The susceptance of the line."""
 
-    p0: pat.Series[float] = pa.Field(coerce=True)
+    p0: pat.Series[float]
     """The active power of the line."""
 
-    q0: pat.Series[float] = pa.Field(coerce=True)
+    q0: pat.Series[float]
     """The reactive power of the line."""
 
-    connected: pat.Series[bool] = pa.Field(coerce=True)
+    connected: pat.Series[bool]
     """The connected attribute of the line.
          Note: This is a boolean value that indicates if the line is connected or not.
          This determines if the bus_id or connectable_bus_id is used in network.create_boundary_lines.
@@ -59,32 +59,32 @@ class DanglingLineCreationSchema(pa.DataFrameModel):
 class DanglingGeneratorSchema(pa.DataFrameModel):
     """A Schema for network.create_boundary_lines."""
 
-    id: pat.Index[str] = pa.Field(coerce=True)
+    id: pat.Index[str]
     """The id of the generator."""
 
-    min_p: pat.Series[float] = pa.Field(coerce=True)
+    min_p: pat.Series[float]
     """The minimum active power output of the generator."""
 
-    max_p: pat.Series[float] = pa.Field(coerce=True)
+    max_p: pat.Series[float]
     """The maximum active power output of the generator."""
 
-    target_p: pat.Series[float] = pa.Field(coerce=True)
+    target_p: pat.Series[float]
     """The active power target of the generator."""
 
-    target_q: pat.Series[float] = pa.Field(coerce=True)
+    target_q: pat.Series[float]
     """The reactive power target of the generator."""
 
-    target_v: pat.Series[float] = pa.Field(coerce=True)
+    target_v: pat.Series[float]
     """The voltage target of the generator."""
 
-    voltage_regulator_on: pat.Series[bool] = pa.Field(coerce=True)
+    voltage_regulator_on: pat.Series[bool]
     """True if the generator regulates voltage."""
 
-    bus_id: pat.Series[str] = pa.Field(coerce=True)
+    bus_id: pat.Series[str]
     """The bus id of the generator.
        Used to identify the dangling line id."""
 
-    powsybl_gen_id: pat.Series[str] = pa.Field(coerce=True)
+    powsybl_gen_id: pat.Series[str]
     """The powsybl id of the generator."""
 
     class Config:
@@ -231,7 +231,7 @@ def get_dangling_generator_creation_schema(
     columns = ["bus_id", "powsybl_gen_id", *columns]
     dangling_generator_df = dangling_generator_df[columns]
     # check schema
-    dangling_generator_df = DanglingGeneratorSchema.validate(dangling_generator_df)
+    DanglingGeneratorSchema.validate(dangling_generator_df)
     return dangling_generator_df
 
 
@@ -287,7 +287,7 @@ def set_dangling_generator_ids(
             )
     # check schema
     dangling_generator_df.set_index("id", inplace=True)
-    dangling_generator_df = DanglingGeneratorSchema.validate(dangling_generator_df)
+    DanglingGeneratorSchema.validate(dangling_generator_df)
 
 
 def get_boundary_lines_creation_schema(

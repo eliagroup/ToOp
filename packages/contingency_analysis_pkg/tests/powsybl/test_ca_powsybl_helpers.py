@@ -836,7 +836,7 @@ def test_get_node_results_ac():
     bus_results["operator_strategy_id"] = ""
     bus_results["voltage_level_id"] = ["VL_1"] * 4
     bus_results["bus_id"] = ["bus_1", "bus_2", "bus_1", "bus_2"]
-    bus_results["v_mag"] = [1.0, 1.1, 0.9, np.nan]
+    bus_results["v_mag"] = [10.0, 10.1, 9.9, np.nan]
     bus_results["v_angle"] = [180.0, 0, 10, np.nan]
     bus_results.set_index(["contingency_id", "operator_strategy_id", "voltage_level_id", "bus_id"], inplace=True)
 

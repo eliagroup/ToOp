@@ -881,13 +881,8 @@ def get_node_results(
     node_results.rename(columns={"v_mag": "vm", "v_angle": "va"}, inplace=True)
 
     # Calculate the values
-    if method == "ac":
-        has_vm = node_results["vm"].notna().values
-        has_pu_vm = has_vm & (np.abs(node_results["vm"].values) <= (node_results["nominal_v"].values * 0.1))
-        node_results.loc[has_pu_vm, "vm"] = (
-            node_results.loc[has_pu_vm, "vm"].values * node_results.loc[has_pu_vm, "nominal_v"].values
-        )
-    elif method == "dc":
+
+    if method == "dc":
         has_va = node_results["va"].notna().values
         node_results.loc[has_va, "vm"] = node_results.loc[has_va, "nominal_v"]
     vm_deviation = node_results["vm"].values - node_results["nominal_v"].values

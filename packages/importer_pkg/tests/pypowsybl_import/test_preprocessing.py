@@ -29,7 +29,7 @@ from toop_engine_interfaces.asset_topology.asset_topology import (
     RawStation,
     Topology,
 )
-from toop_engine_interfaces.asset_topology.assets import Busbar, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar
 from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
@@ -90,7 +90,7 @@ def test_filter_split_stations_from_relevant_subs(basic_node_breaker_network_pow
         topology_id="topology",
         grid_model_file="grid.xiidm",
         raw_stations=[split_station, regular_station],
-        branch_assets=[SwitchableAsset(grid_model_id="asset0"), SwitchableAsset(grid_model_id="asset1")],
+        branch_assets=[BranchAsset(grid_model_id="asset0"), BranchAsset(grid_model_id="asset1")],
         injection_assets=[],
         timestamp=datetime.now(),
     )

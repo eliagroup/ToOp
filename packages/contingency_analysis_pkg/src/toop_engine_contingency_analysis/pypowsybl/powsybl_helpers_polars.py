@@ -365,7 +365,6 @@ def get_va_diff_results_polars(
     return iteration_va_diff
 
 
-@pa.check_types
 def update_basename_polars(
     result_df: LoadflowResultTablePolars,
     basecase_name: Optional[str] = None,
@@ -411,7 +410,6 @@ def update_basename_polars(
     return result_df
 
 
-@pa.check_types
 def add_name_column_polars(
     result_df: LoadflowResultTablePolars,
     name_map: dict[str, str],

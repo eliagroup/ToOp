@@ -92,7 +92,108 @@ def test_get_va_diff_results():
     VADiffResultSchemaPolars.validate(va_results)
     va_results = va_results.collect()
     VADiffResultSchemaPolars.validate(va_results)
-    assert va_results.height == 0, "As only the first contingency is considered, there should be 2 rows"
+    assert va_results.height == 2, "Rows should be preserved even when voltage angles are unavailable"
+    assert va_results["va_diff"].is_null().sum() == 2, "Missing voltage angles should produce null va_diff values"
+
+    blank_va_diff_basecase = pl.LazyFrame(
+        {
+            "contingency": ["", ""],
+            "element": ["element_1", "element_2"],
+            "bus_breaker_bus1_id": ["bus_1", "bus_2"],
+            "bus_breaker_bus2_id": ["bus_2", "bus_1"],
+        }
+    )
+    bus_results_basecase = pl.LazyFrame(
+        {
+            "contingency_id": ["", ""],
+            "operator_strategy_id": ["", ""],
+            "voltage_level_id": ["placeholder", "placeholder"],
+            "bus_id": ["bus_1", "bus_2"],
+            "v_mag": [10.0, 10.0],
+            "v_angle": [180.0, 0.0],
+        }
+    )
+    va_results = get_va_diff_results_polars(
+        bus_results_basecase,
+        [],
+        va_diff_with_buses=blank_va_diff_basecase,
+        bus_map=bus_map,
+        timestep=timestep,
+    ).collect()
+    VADiffResultSchemaPolars.validate(va_results)
+    assert va_results.height == 2, "Basecase switch rows should be preserved when there are no outages"
+    assert va_results.filter(pl.col("element") == "element_1")["va_diff"][0] == 180.0
+    assert va_results.filter(pl.col("element") == "element_2")["va_diff"][0] == -180.0
+
+
+def test_get_va_diff_results_all_null_bus_and_contingency_ids() -> None:
+    blank_va_diff_basecase = pl.LazyFrame(
+        {
+            "contingency": ["", ""],
+            "element": ["element_1", "element_2"],
+            "bus_breaker_bus1_id": ["bus_1", "bus_2"],
+            "bus_breaker_bus2_id": ["bus_2", "bus_1"],
+        }
+    )
+    bus_results_basecase = pl.LazyFrame(
+        {
+            "contingency_id": [None, None],
+            "operator_strategy_id": ["", ""],
+            "voltage_level_id": ["placeholder", "placeholder"],
+            "bus_id": [None, None],
+            "v_mag": [None, None],
+            "v_angle": [None, None],
+        }
+    )
+    bus_map = pl.LazyFrame({"id": ["bus_1", "bus_2"], "bus_breaker_bus_id": ["bus_1", "bus_2"]})
+
+    va_results = get_va_diff_results_polars(
+        bus_results_basecase,
+        [],
+        va_diff_with_buses=blank_va_diff_basecase,
+        bus_map=bus_map,
+        timestep=0,
+    ).collect()
+
+    VADiffResultSchemaPolars.validate(va_results)
+    assert va_results.height == 2
+    assert va_results["va_diff"].is_null().sum() == 2
+
+
+def test_get_node_results_polars_keeps_absolute_ac_voltage() -> None:
+    bus_results = pl.LazyFrame(
+        {
+            "contingency_id": ["contingency_1", "contingency_1"],
+            "operator_strategy_id": ["", ""],
+            "voltage_level_id": ["VL_1", "VL_1"],
+            "bus_id": ["bus_1", "bus_2"],
+            "v_mag": [224.4, 224.8],
+            "v_angle": [-1.2, -0.4],
+        }
+    )
+    voltage_levels = pl.LazyFrame(
+        {
+            "id": ["VL_1"],
+            "nominal_v": [225.0],
+            "high_voltage_limit": [245.0],
+            "low_voltage_limit": [205.0],
+        }
+    )
+    monitored_buses = ["bus_1", "bus_2"]
+    busmap = pl.LazyFrame({"id": monitored_buses, "bus_breaker_bus_id": monitored_buses})
+
+    node_results = get_node_results_polars(
+        bus_results,
+        monitored_buses,
+        busmap,
+        voltage_levels,
+        failed_outages=[],
+        timestep=0,
+        method="ac",
+    ).collect()
+
+    assert node_results.filter(pl.col("element") == "bus_1").select("vm").item() == 224.4
+    assert node_results.filter(pl.col("element") == "bus_2").select("vm").item() == 224.8
 
 
 def test_get_branch_results():
@@ -377,7 +478,7 @@ def test_get_node_results_ac():
             "operator_strategy_id": ["", "", "", ""],
             "voltage_level_id": ["VL_1"] * 4,
             "bus_id": ["bus_1", "bus_2", "bus_1", "bus_2"],
-            "v_mag": [10.0, 11.0, 9.0, np.nan],
+            "v_mag": [10.0, 10.1, 9.9, np.nan],
             "v_angle": [180.0, 0, 10, np.nan],
         }
     )
@@ -428,6 +529,12 @@ def test_get_node_results_ac():
             )
             orig_vm = row["v_mag"]
             nominal_v = voltage_levels_df.filter(pl.col("id") == "VL_1").select("nominal_v").item()
+            expected_vm = np.nan
+            if not np.isnan(orig_vm):
+                expected_vm = orig_vm * nominal_v if abs(orig_vm) <= nominal_v * 0.1 else orig_vm
+            assert vm_result == expected_vm or (np.isnan(vm_result) and np.isnan(expected_vm)), (
+                f"Voltage magnitude for {bus_id} in {contingency} in {method} should match"
+            )
             vm_loading = (
                 node_results.filter(
                     (pl.col("timestep") == timestep) & (pl.col("contingency") == contingency) & (pl.col("element") == bus_id)
@@ -437,16 +544,18 @@ def test_get_node_results_ac():
             )
             if np.isnan(vm_loading):
                 assert np.isnan(orig_vm), "Loading should only be NaN if the original voltage is NaN"
-            elif vm_loading > nominal_v:
+            elif vm_result >= nominal_v:
                 voltage_max = voltage_levels_df.filter(pl.col("id") == "VL_1").select("high_voltage_limit").item()
-                assert vm_loading == (vm_result - nominal_v) / (voltage_max - nominal_v), (
+                expected_loading = (vm_result - nominal_v) / (voltage_max - nominal_v)
+                assert vm_loading == expected_loading, (
                     f"Voltage loading for {bus_id} in {contingency} in {method} should match"
                 )
             elif vm_loading == 0.0:
                 assert vm_loading == 0.0, "Loading should be 0 if the voltage is equal to the nominal voltage"
             else:
                 voltage_min = voltage_levels_df.filter(pl.col("id") == "VL_1").select("low_voltage_limit").item()
-                assert vm_loading == (vm_result - nominal_v) / (nominal_v - voltage_min), (
+                expected_loading = (vm_result - nominal_v) / (nominal_v - voltage_min)
+                assert vm_loading == expected_loading, (
                     f"Voltage loading for {bus_id} in {contingency} in {method} should match"
                 )
             va_result = (
@@ -485,12 +594,23 @@ def test_update_basename_with_new_name():
     node_df = get_empty_dataframe_from_model(NodeResultSchema)
     node_df = pl.from_pandas(node_df, include_index=True)
     # Fill the specified values and fill the rest of the columns with their default values
-    default_row = {
-        col: node_df.schema[col].dtype.default() if hasattr(node_df.schema[col], "default") else np.nan
-        for col in node_df.columns
-    }
-    default_row.update({"timestep": timestep, "contingency": contingency, "element": element, "vm": 2.0})
-    node_df = pl.DataFrame([default_row]).lazy()
+    node_df = pl.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element,
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            }
+        ]
+    ).lazy()
     NodeResultSchemaPolars.validate(node_df)
     updated_df = update_basename_polars(node_df, base_case_name)
     assert node_df.filter(pl.col("contingency") == empty_base_case_name).collect().height == 1, (
@@ -503,12 +623,22 @@ def test_update_basename_with_new_name():
     branch_df = get_empty_dataframe_from_model(BranchResultSchema)
     branch_df = pl.from_pandas(branch_df, include_index=True).lazy()
     # Fill the specified values and fill the rest of the columns with their default values
-    default_row = {
-        col: branch_df.schema[col].dtype.default() if hasattr(branch_df.schema[col], "default") else np.nan
-        for col in branch_df.columns
-    }
-    default_row.update({"timestep": timestep, "contingency": contingency, "element": element, "side": 1, "i": 2.0})
-    branch_df = pl.DataFrame([default_row]).lazy()
+    branch_df = pl.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element,
+                "side": 1,
+                "p": np.nan,
+                "q": np.nan,
+                "i": 2.0,
+                "loading": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            }
+        ]
+    ).lazy()
     updated_df = update_basename_polars(branch_df, base_case_name)
     assert branch_df.filter(pl.col("contingency") == empty_base_case_name).collect().height == 1, (
         "The contingency should not be updated to BASECASE"
@@ -520,12 +650,18 @@ def test_update_basename_with_new_name():
     va_diff_df = get_empty_dataframe_from_model(VADiffResultSchema)
     va_diff_df = pl.from_pandas(va_diff_df, include_index=True).lazy()
     # Fill the specified values and fill the rest of the columns with their default values
-    default_row = {
-        col: va_diff_df.schema[col].dtype.default() if hasattr(va_diff_df.schema[col], "default") else np.nan
-        for col in va_diff_df.columns
-    }
-    default_row.update({"timestep": timestep, "contingency": contingency, "element": element, "va_diff": 5.0})
-    va_diff_df = pl.DataFrame([default_row]).lazy()
+    va_diff_df = pl.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element,
+                "va_diff": 5.0,
+                "element_name": "",
+                "contingency_name": "",
+            }
+        ]
+    ).lazy()
     updated_df = update_basename_polars(va_diff_df, base_case_name)
     assert va_diff_df.filter(pl.col("contingency") == empty_base_case_name).collect().height == 1, (
         "The contingency should not be updated to BASECASE"
@@ -537,17 +673,49 @@ def test_update_basename_with_new_name():
     node_df = get_empty_dataframe_from_model(NodeResultSchema)
     node_df = pl.from_pandas(node_df, include_index=True).lazy()
     # Fill the specified values and fill the rest of the columns with their default values
-    default_row = {
-        col: node_df.schema[col].dtype.default() if hasattr(node_df.schema[col], "default") else np.nan
-        for col in node_df.columns
-    }
-    # Add three rows to the DataFrame
-    rows = [
-        {**default_row, "timestep": timestep, "contingency": contingency, "element": element, "vm": 2.0},
-        {**default_row, "timestep": timestep, "contingency": contingency, "element": element + "_2", "vm": 2.0},
-        {**default_row, "timestep": timestep, "contingency": "OTHER_CONTINGENCY", "element": element, "vm": 2.0},
-    ]
-    node_df = pl.DataFrame(rows).lazy()
+    node_df = pl.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element,
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            },
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element + "_2",
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            },
+            {
+                "timestep": timestep,
+                "contingency": "OTHER_CONTINGENCY",
+                "element": element,
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            },
+        ]
+    ).lazy()
     NodeResultSchemaPolars.validate(node_df)
     updated_df = update_basename_polars(node_df, base_case_name)
     assert node_df.filter(pl.col("contingency") == empty_base_case_name).collect().height == 2, (
@@ -572,12 +740,23 @@ def test_update_basename_drops():
 
     node_df = get_empty_dataframe_from_model(NodeResultSchema)
     node_df = pl.from_pandas(node_df, include_index=True)
-    default_row = {
-        col: node_df.schema[col].dtype.default() if hasattr(node_df.schema[col], "default") else np.nan
-        for col in node_df.columns
-    }
-    default_row.update({"timestep": timestep, "contingency": contingency, "element": element, "vm": 2.0})
-    node_df = pl.DataFrame([default_row]).lazy()
+    node_df = pl.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element,
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            }
+        ]
+    ).lazy()
     NodeResultSchemaPolars.validate(node_df)
     updated_df = update_basename_polars(node_df, base_case_name)
     assert updated_df.collect().is_empty(), "The dataframe should be empty when base_case_name is None"
@@ -585,16 +764,49 @@ def test_update_basename_drops():
 
     node_df = get_empty_dataframe_from_model(NodeResultSchema)
     node_df = pl.from_pandas(node_df, include_index=True)
-    default_row = {
-        col: node_df.schema[col].dtype.default() if hasattr(node_df.schema[col], "default") else np.nan
-        for col in node_df.columns
-    }
-    rows = [
-        {**default_row, "timestep": timestep, "contingency": contingency, "element": element, "vm": 2.0},
-        {**default_row, "timestep": timestep, "contingency": contingency, "element": element + "_2", "vm": 2.0},
-        {**default_row, "timestep": timestep, "contingency": "OTHER_CONTINGENCY", "element": element, "vm": 2.0},
-    ]
-    node_df = pl.DataFrame(rows).lazy()
+    node_df = pl.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element,
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            },
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element + "_2",
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            },
+            {
+                "timestep": timestep,
+                "contingency": "OTHER_CONTINGENCY",
+                "element": element,
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            },
+        ]
+    ).lazy()
     NodeResultSchemaPolars.validate(node_df)
     updated_df = update_basename_polars(node_df, base_case_name)
     assert updated_df.collect().height == 1, "Only the non-basecase contingency should remain"
@@ -621,12 +833,23 @@ def test_translate_element_names():
     updated_df = add_name_column_polars(node_df, element_mapping, index_level="element")
     assert updated_df.collect().is_empty(), "The dataframe should remain empty when no elements are present"
 
-    default_row = {
-        col: node_df.schema[col].dtype.default() if hasattr(node_df.schema[col], "default") else np.nan
-        for col in node_df.columns
-    }
-    default_row.update({"timestep": timestep, "contingency": contingency, "element": element_id, "vm": 2.0})
-    node_df = pl.DataFrame([default_row]).lazy()
+    node_df = pl.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element_id,
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            }
+        ]
+    ).lazy()
     NodeResultSchemaPolars.validate(node_df)
     updated_df = add_name_column_polars(node_df, element_mapping, index_level="element")
     assert updated_df.collect()["element"][0] == element_id, "The element should still be as before"
@@ -640,8 +863,36 @@ def test_translate_element_names():
 
     # Adding another row without entry
     missing_element_id = "missing"
-    row_missing = {**default_row, "element": missing_element_id}
-    node_df = pl.DataFrame([default_row, row_missing]).lazy()
+    node_df = pl.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element_id,
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            },
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": missing_element_id,
+                "vm": 2.0,
+                "vm_loading": np.nan,
+                "va": np.nan,
+                "p": np.nan,
+                "q": np.nan,
+                "vm_basecase_deviation": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            },
+        ]
+    ).lazy()
     NodeResultSchemaPolars.validate(node_df)
     updated_df = add_name_column_polars(node_df, element_mapping, index_level="element")
     assert updated_df.collect()["element"][0] == element_id, "The element should still be as before"
@@ -653,16 +904,26 @@ def test_translate_element_names():
     assert updated_df.filter(pl.col("element") == missing_element_id).collect()["element_name"][0] == "", (
         "The map does not contain the key, so the name should be empty ('')"
     )
-    assert np.isnan(node_df.collect()["element_name"].to_numpy()).all(), "Nothing should change in the original dataframe"
+    assert (node_df.collect()["element_name"] == "").all(), "Nothing should change in the original dataframe"
 
     branch_df = get_empty_dataframe_from_model(BranchResultSchema)
     branch_df = pl.from_pandas(branch_df, include_index=True).lazy()
-    default_row_branch = {
-        col: branch_df.schema[col].dtype.default() if hasattr(branch_df.schema[col], "default") else np.nan
-        for col in branch_df.columns
-    }
-    default_row_branch.update({"timestep": timestep, "contingency": contingency, "element": element_id, "side": 1, "p": 2.0})
-    branch_df = pl.DataFrame([default_row_branch]).lazy()
+    branch_df = pl.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element_id,
+                "side": 1,
+                "p": 2.0,
+                "q": np.nan,
+                "i": np.nan,
+                "loading": np.nan,
+                "element_name": "",
+                "contingency_name": "",
+            }
+        ]
+    ).lazy()
     BranchResultSchemaPolars.validate(branch_df)
     updated_branch_df = add_name_column_polars(branch_df, element_mapping, index_level="element")
     assert updated_branch_df.collect()["element"][0] == element_id, "The element should still be as before"
@@ -670,16 +931,22 @@ def test_translate_element_names():
     assert updated_branch_df.collect()["element_name"][0] == element_name, (
         "The element_name column should contain the translated name"
     )
-    assert np.isnan(branch_df.collect()["element_name"].to_numpy()).all(), "Nothing should change in the original dataframe"
+    assert (branch_df.collect()["element_name"] == "").all(), "Nothing should change in the original dataframe"
 
     va_diff_df = get_empty_dataframe_from_model(VADiffResultSchema)
     va_diff_df = pl.from_pandas(va_diff_df, include_index=True).lazy()
-    default_row_va = {
-        col: va_diff_df.schema[col].dtype.default() if hasattr(va_diff_df.schema[col], "default") else np.nan
-        for col in va_diff_df.columns
-    }
-    default_row_va.update({"timestep": timestep, "contingency": contingency, "element": element_id, "va_diff": 5.0})
-    va_diff_df = pl.DataFrame([default_row_va]).lazy()
+    va_diff_df = pl.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency,
+                "element": element_id,
+                "va_diff": 5.0,
+                "element_name": "",
+                "contingency_name": "",
+            }
+        ]
+    ).lazy()
     VADiffResultSchemaPolars.validate(va_diff_df)
     updated_va_diff_df = add_name_column_polars(va_diff_df, element_mapping, index_level="element")
     assert updated_va_diff_df.collect()["element"][0] == element_id, "The element should still be as before"
@@ -687,4 +954,4 @@ def test_translate_element_names():
     assert updated_va_diff_df.collect()["element_name"][0] == element_name, (
         "The element_name column should contain the translated name"
     )
-    assert np.isnan(va_diff_df.collect()["element_name"].to_numpy()).all(), "Nothing should change in the original dataframe"
+    assert (va_diff_df.collect()["element_name"] == "").all(), "Nothing should change in the original dataframe"

@@ -34,10 +34,10 @@ from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 class ForeignIdSchema(pa.DataFrameModel):
     """Schema for the switch update DataFrame."""
 
-    grid_model_id: pat.Series[str] = pa.Field(coerce=True)
+    grid_model_id: pat.Series[str]
     """ The grid_model_id to be updated."""
 
-    foreign_id: pat.Series[str] = pa.Field(coerce=True)
+    foreign_id: pat.Series[str]
     """ The foreign id e.g. from PowerFactory."""
 
 

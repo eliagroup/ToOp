@@ -7,7 +7,7 @@
 
 import math
 from copy import deepcopy
-from unittest.mock import MagicMock
+from datetime import datetime
 
 import pandapower as pp
 import pandas as pd
@@ -18,7 +18,7 @@ from toop_engine_importer.pandapower_import import (
     pandapower_toolset_node_breaker,
     preprocessing,
 )
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
 
 
 def test_handle_switches(pp_network_w_switches):
@@ -86,10 +86,9 @@ def preprocess_net_step2_network_helper(net: pp.pandapowerNet, station_ids) -> l
 def run_preprocess_net_step2_network(net: pp.pandapowerNet) -> pp.pandapowerNet:
     assert net.converged
     net = preprocessing.preprocess_net_step1(net)
-    mock_topology = MagicMock(spec=Topology)
-    mock_topology.stations = []
+    topology = Topology(topology_id="test", grid_model_file="test", raw_stations=[], timestamp=datetime.now())
     net["bus_geodata"] = pd.DataFrame()
-    preprocessing.preprocess_net_step2(net, mock_topology)
+    preprocessing.preprocess_net_step2(net, topology)
     assert "bus_geodata" not in net
     pp.runpp(net)
     assert net.converged

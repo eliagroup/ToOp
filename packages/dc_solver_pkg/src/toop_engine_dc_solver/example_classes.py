@@ -10,14 +10,12 @@
 import datetime
 
 import numpy as np
-from toop_engine_interfaces.asset_topology import (
-    AssetBay,
-    Busbar,
-    BusbarCoupler,
-    Station,
-    SwitchableAsset,
+from toop_engine_interfaces.asset_topology.asset_topology import (
+    RawStation,
     Topology,
 )
+from toop_engine_interfaces.asset_topology.assets import AssetBay, BranchAsset, Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 
 
 def get_basic_node_breaker_topology() -> Topology:
@@ -33,8 +31,8 @@ def get_basic_node_breaker_topology() -> Topology:
         topology_id="test",
         grid_model_file="test_file",
         name=None,
-        stations=[
-            Station(
+        raw_stations=[
+            RawStation(
                 grid_model_id="VL4_0",
                 name="VLevel4",
                 type=None,
@@ -55,49 +53,45 @@ def get_basic_node_breaker_topology() -> Topology:
                         in_service=True,
                     )
                 ],
-                assets=[
-                    SwitchableAsset(
-                        grid_model_id="L4",
-                        type="LINE",
-                        name="",
-                        in_service=True,
-                        branch_end=None,
-                        asset_bay=AssetBay(
-                            sl_switch_grid_model_id=None,
-                            dv_switch_grid_model_id="L42_BREAKER",
-                            sr_switch_grid_model_id={"BBS4_1": "L42_DISCONNECTOR_3_0", "BBS4_2": "L42_DISCONNECTOR_3_1"},
-                        ),
-                    ),
-                    SwitchableAsset(
-                        grid_model_id="L5",
-                        type="LINE",
-                        name="",
-                        in_service=True,
-                        branch_end=None,
-                        asset_bay=AssetBay(
-                            sl_switch_grid_model_id=None,
-                            dv_switch_grid_model_id="L52_BREAKER",
-                            sr_switch_grid_model_id={"BBS4_1": "L52_DISCONNECTOR_5_0", "BBS4_2": "L52_DISCONNECTOR_5_1"},
-                        ),
-                    ),
-                    SwitchableAsset(
-                        grid_model_id="L8",
-                        type="LINE",
-                        name="",
-                        in_service=True,
-                        branch_end=None,
-                        asset_bay=AssetBay(
-                            sl_switch_grid_model_id=None,
-                            dv_switch_grid_model_id="L82_BREAKER",
-                            sr_switch_grid_model_id={"BBS4_1": "L82_DISCONNECTOR_7_0", "BBS4_2": "L82_DISCONNECTOR_7_1"},
-                        ),
-                    ),
+                branch_connections=[
+                    StationAssetConnection(asset_id="L4", branch_end=None, asset_bay_id="VL4_0::L4::bay"),
+                    StationAssetConnection(asset_id="L5", branch_end=None, asset_bay_id="VL4_0::L5::bay"),
+                    StationAssetConnection(asset_id="L8", branch_end=None, asset_bay_id="VL4_0::L8::bay"),
                 ],
-                asset_switching_table=np.array([[False, False, False], [True, True, False]]),
-                asset_connectivity=np.array([[True, True, True], [True, True, True]]),
+                injection_connections=[],
+                branch_switching_table=np.array([[False, False, False], [True, True, False]], dtype=bool),
+                injection_switching_table=np.zeros((2, 0), dtype=bool),
+                branch_connectivity=np.array([[True, True, True], [True, True, True]], dtype=bool),
+                injection_connectivity=np.zeros((2, 0), dtype=bool),
             )
         ],
-        asset_setpoints=None,
+        branch_assets=[
+            BranchAsset(grid_model_id="L4", type="LINE", name="", in_service=True),
+            BranchAsset(grid_model_id="L5", type="LINE", name="", in_service=True),
+            BranchAsset(grid_model_id="L8", type="LINE", name="", in_service=True),
+        ],
+        injection_assets=[],
+        asset_bays=[
+            AssetBay(
+                asset_bay_id="VL4_0::L4::bay",
+                sl_switch_grid_model_id=None,
+                dv_switch_grid_model_id="L42_BREAKER",
+                sr_switch_grid_model_id={"BBS4_1": "L42_DISCONNECTOR_3_0", "BBS4_2": "L42_DISCONNECTOR_3_1"},
+            ),
+            AssetBay(
+                asset_bay_id="VL4_0::L5::bay",
+                sl_switch_grid_model_id=None,
+                dv_switch_grid_model_id="L52_BREAKER",
+                sr_switch_grid_model_id={"BBS4_1": "L52_DISCONNECTOR_5_0", "BBS4_2": "L52_DISCONNECTOR_5_1"},
+            ),
+            AssetBay(
+                asset_bay_id="VL4_0::L8::bay",
+                sl_switch_grid_model_id=None,
+                dv_switch_grid_model_id="L82_BREAKER",
+                sr_switch_grid_model_id={"BBS4_1": "L82_DISCONNECTOR_7_0", "BBS4_2": "L82_DISCONNECTOR_7_1"},
+            ),
+        ],
         timestamp=datetime.datetime(2025, 2, 4, 9, 12, 0, 109256),
+        asset_setpoints=None,
         metrics=None,
     )

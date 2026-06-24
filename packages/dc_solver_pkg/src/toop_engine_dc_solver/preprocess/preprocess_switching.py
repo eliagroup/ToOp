@@ -12,6 +12,7 @@ The switching distance is evaluated between a topology and a reference topology.
 
 import itertools
 from dataclasses import dataclass
+from typing import get_args
 
 import jax.numpy as jnp
 import networkx as nx
@@ -24,14 +25,11 @@ from networkx.algorithms.components import (
     number_connected_components,
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import hamming_distance
-from toop_engine_interfaces.asset_topology import (
-    Busbar,
-    BusbarCoupler,
-    Station,
-    SwitchableAsset,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
+    copy_topology_with_updates,
 )
-from toop_engine_interfaces.asset_topology_helpers import (
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
     filter_disconnected_busbars,
     filter_duplicate_couplers,
     filter_out_of_service,
@@ -39,6 +37,9 @@ from toop_engine_interfaces.asset_topology_helpers import (
     fuse_all_couplers_with_type,
     order_station_assets,
 )
+from toop_engine_interfaces.asset_topology.asset_types import AssetInjectionType
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset, SwitchableAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 logger = structlog.get_logger(__name__)
 
@@ -70,7 +71,7 @@ class OptimalSeparationSetInfo:
 
 
 def make_separation_set(
-    station: Station,
+    station: MaterializedStation,
 ) -> tuple[
     Bool[np.ndarray, " n_configurations 2 ..."],
     Bool[np.ndarray, " n_configurations n_couplers"],
@@ -123,13 +124,13 @@ def make_separation_set(
     """
     assert all(busbar.in_service for busbar in station.busbars)
     assert all(coupler.in_service for coupler in station.couplers)
-    assert all(asset.in_service for asset in station.assets)
+    assert all(asset_connection.asset.in_service for asset_connection in station.branch_connections)
     if not len(station.couplers):
-        return (np.zeros((0, 2, len(station.assets)), dtype=bool), np.zeros((0, 0), dtype=bool), [])
+        return (np.zeros((0, 2, len(station.branch_connections)), dtype=bool), np.zeros((0, 0), dtype=bool), [])
     # Go through all possible coupler assignments and find all the configurations in which there are
     # exactly two electrical busbars.
     switching_map = {
-        busbar_index: station.asset_switching_table[busbar_index] for busbar_index, _ in enumerate(station.busbars)
+        busbar_index: station.branch_switching_table[busbar_index] for busbar_index, _ in enumerate(station.busbars)
     }
     busbar_int_id_map = {busbar.int_id: busbar_index for busbar_index, busbar in enumerate(station.busbars)}
     configurations = []
@@ -259,8 +260,8 @@ class StationProblems:
 
 
 def prepare_for_separation_set(
-    station: Station, branch_ids: list[str], injection_ids: list[str], close_couplers: bool = False
-) -> tuple[Station, StationProblems]:
+    station: MaterializedStation, branch_ids: list[str], injection_ids: list[str], close_couplers: bool = False
+) -> tuple[MaterializedStation, StationProblems]:
     """Prepare a Station so it can be used in make_separation_set.
 
     This function will:
@@ -326,13 +327,13 @@ def prepare_for_separation_set(
             update={"model_log": (station.model_log or []) + [f"Problems during simplification: {problems}"]}
         )
 
-    Station.model_validate(station)
+    MaterializedStation.model_validate(station)
 
     return station, problems
 
 
 def make_optimal_separation_set(
-    station: Station,
+    station: MaterializedStation,
     clip_hamming_distance: int = 0,
     clip_at_size: int = 100,
 ) -> OptimalSeparationSetInfo:
@@ -423,29 +424,45 @@ def add_missing_asset_topology_branch_info(
     # Faster lookup of the position of the branch
     branch_id_lookup = {branch_id: i for i, branch_id in enumerate(branch_ids)}
 
-    new_stations = []
-    for station in asset_topology.stations:
-        new_assets = []
-        for asset in station.assets:
-            index = branch_id_lookup.get(asset.grid_model_id, None)
-            if index is not None:
-                branch_end = "from" if branch_from_nodes[index] == station.grid_model_id else "to"
-                new_assets.append(
-                    asset.model_copy(
-                        update={
-                            "name": (branch_names[index] if overwrite_if_present or asset.name is None else asset.name),
-                            "type": (branch_types[index] if overwrite_if_present or asset.type is None else asset.type),
-                            "branch_end": (
-                                branch_end if overwrite_if_present or asset.branch_end is None else asset.branch_end
-                            ),
-                        }
-                    )
-                )
-            else:
-                new_assets.append(asset)
-        new_stations.append(station.model_copy(update={"assets": new_assets}))
+    updated_assets_by_id: dict[str, SwitchableAsset] = {}
+    for asset in asset_topology.branch_assets:
+        index = branch_id_lookup.get(asset.grid_model_id, None)
+        if index is not None:
+            asset_data = asset.model_dump()
+            asset_data["name"] = branch_names[index] if overwrite_if_present or asset.name is None else asset.name
+            asset_data["asset_type"] = (
+                branch_types[index] if overwrite_if_present or asset.asset_type is None else asset.asset_type
+            )
+            updated_assets_by_id[asset.grid_model_id] = BranchAsset(**asset_data)
+        else:
+            updated_assets_by_id[asset.grid_model_id] = asset.model_copy(deep=True)
 
-    return asset_topology.model_copy(update={"stations": new_stations})
+    updated_injection_assets = [asset.model_copy(deep=True) for asset in asset_topology.injection_assets]
+
+    new_raw_stations = []
+    for station in asset_topology.raw_stations:
+        new_branch_ends = []
+        for asset_connection in station.branch_connections:
+            asset_id = asset_connection.asset_id
+            branch_end = asset_connection.branch_end
+            index = branch_id_lookup.get(asset_id, None)
+            if (
+                index is not None
+                and isinstance(updated_assets_by_id[asset_id], BranchAsset)
+                and (overwrite_if_present or branch_end is None)
+            ):
+                new_branch_ends.append("from" if branch_from_nodes[index] == station.grid_model_id else "to")
+            else:
+                new_branch_ends.append(branch_end)
+        new_raw_stations.append(station.with_asset_terminals(new_branch_ends))
+
+    return copy_topology_with_updates(
+        reference_topology=asset_topology,
+        raw_stations=new_raw_stations,
+        asset_bays=asset_topology.asset_bays,
+        branch_assets=[updated_assets_by_id[asset.grid_model_id] for asset in asset_topology.branch_assets],
+        injection_assets=updated_injection_assets,
+    )
 
 
 def add_missing_asset_topology_injection_info(
@@ -482,22 +499,28 @@ def add_missing_asset_topology_injection_info(
     # Faster lookup of the position of the injection
     injection_id_lookup = {injection_id: i for i, injection_id in enumerate(injection_ids)}
 
-    new_stations = []
-    for station in asset_topology.stations:
-        new_assets = []
-        for asset in station.assets:
-            index = injection_id_lookup.get(asset.grid_model_id, None)
-            if index is not None:
-                new_assets.append(
-                    asset.model_copy(
-                        update={
-                            "name": (injection_names[index] if overwrite_if_present or asset.name is None else asset.name),
-                            "type": (injection_types[index] if overwrite_if_present or asset.type is None else asset.type),
-                        }
-                    )
-                )
+    updated_branch_assets = [asset.model_copy(deep=True) for asset in asset_topology.branch_assets]
+    updated_injection_assets = []
+    for asset in asset_topology.injection_assets:
+        index = injection_id_lookup.get(asset.grid_model_id, None)
+        if index is not None:
+            asset_data = asset.model_dump()
+            asset_data["name"] = injection_names[index] if overwrite_if_present or asset.name is None else asset.name
+            updated_type = injection_types[index] if overwrite_if_present or asset.asset_type is None else asset.asset_type
+            if updated_type in get_args(AssetInjectionType):
+                asset_data["asset_type"] = updated_type
+                updated_injection_assets.append(InjectionAsset(**asset_data))
+            elif isinstance(asset, BranchAsset):
+                updated_injection_assets.append(BranchAsset(**asset_data))
             else:
-                new_assets.append(asset)
-        new_stations.append(station.model_copy(update={"assets": new_assets}))
+                updated_injection_assets.append(asset.model_copy(update=asset_data, deep=True))
+        else:
+            updated_injection_assets.append(asset.model_copy(deep=True))
 
-    return asset_topology.model_copy(update={"stations": new_stations})
+    return copy_topology_with_updates(
+        reference_topology=asset_topology,
+        raw_stations=asset_topology.raw_stations,
+        asset_bays=asset_topology.asset_bays,
+        branch_assets=updated_branch_assets,
+        injection_assets=updated_injection_assets,
+    )

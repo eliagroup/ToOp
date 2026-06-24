@@ -17,7 +17,8 @@ from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
-from toop_engine_interfaces.asset_topology import Station, Topology
+from toop_engine_interfaces.asset_topology.asset_topology import RawStation, Topology
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
@@ -310,7 +311,7 @@ class NetworkData:
     """The mask over nodes that are a controllable phase shifter. When adding the PSDF matrix, bogus
     nodes will be included. The ones that refer to a controllable PST will be mentioned in this mask."""
 
-    realised_stations: Optional[list[list[Station]]] = None
+    realised_stations: Optional[list[list[MaterializedStation]]] = None
     """The realised stations for each relevant node depending on the branch_actions. The outer list
     is of length equal to the number of relevant nodes. The inner list if of length equal to the number
     of branch actions feasible for the given node. Each station is a simplified station."""
@@ -571,34 +572,34 @@ def validate_network_data(network_data: NetworkData) -> None:
     ):
         assert len(branch_act) == len(inj_act) == len(sw_dist)
 
-    assert len(network_data.simplified_asset_topology.stations) == n_rel_subs
+    assert len(network_data.simplified_asset_topology.raw_stations) == n_rel_subs
     assert len(network_data.realised_stations) == n_rel_subs
     for realizations in network_data.realised_stations:
         for realized_station in realizations:
-            Station.model_validate(realized_station)
+            MaterializedStation.model_validate(realized_station)
     assert len(network_data.busbar_a_mappings) == n_rel_subs
     assert len(network_data.branch_action_set_switching_distance) == n_rel_subs
 
 
-def get_relevant_stations(network_data: NetworkData) -> list[Station]:
+def get_relevant_stations(network_data: NetworkData) -> list[RawStation]:
     """
-    Get the relevant asset-topology stations from the network data.
+    Get the relevant raw asset-topology stations from the network data.
 
     Parameters
     ----------
     network_data : NetworkData
-        The network data containing asset topology.
+        The network data containing the simplified asset topology and relevant node mask.
 
     Returns
     -------
-    list[Station]
-        A list of relevant stations.
+    list[RawStation]
+        The relevant raw stations in the same order as the relevant nodes.
     """
     relevant_node_ids = [
         node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
     ]
 
-    def find_station(stations: list[Station], grid_model_id: str, fallback: Optional[Station] = None) -> Station:
+    def find_station(stations: list[RawStation], grid_model_id: str, fallback: Optional[RawStation] = None) -> RawStation:
         for station in stations:
             if station.grid_model_id == grid_model_id:
                 return station
@@ -606,7 +607,7 @@ def get_relevant_stations(network_data: NetworkData) -> list[Station]:
             return fallback
         raise ValueError(f"Could not find station with grid_model_id {grid_model_id}")
 
-    return [find_station(network_data.simplified_asset_topology.stations, node_id) for node_id in relevant_node_ids]
+    return [find_station(network_data.simplified_asset_topology.raw_stations, node_id) for node_id in relevant_node_ids]
 
 
 def map_branch_injection_ids(
@@ -738,14 +739,14 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         network_data.simplified_asset_topology if network_data.simplified_asset_topology else network_data.asset_topology
     )
     monitored_nodes = [
-        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.type, kind="bus")
-        for station in asset_topology.stations
+        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
+        for station in asset_topology.materialize_stations()
         for busbar in station.busbars
     ]
 
     monitored_switches = [
-        MonitoredElement(id=switch.grid_model_id, name=switch.name or "", type=switch.type, kind="switch")
-        for station in asset_topology.stations
+        MonitoredElement(id=switch.grid_model_id, name=switch.name or "", type=switch.coupler_type, kind="switch")
+        for station in asset_topology.materialize_stations()
         for switch in station.couplers
     ]
 

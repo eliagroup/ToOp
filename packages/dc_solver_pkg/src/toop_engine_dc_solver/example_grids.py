@@ -51,12 +51,13 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology import (
-    Busbar,
-    BusbarCoupler,
-    Station,
-    SwitchableAsset,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
+)
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.topology_conversion import (
+    topology_parts_from_materialized_station,
 )
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.folder_structure import (
@@ -158,7 +159,7 @@ class PandapowerCounters:
 
 def random_station_info_backend(
     backend: BackendInterface, node_idx: Integral, pp_counters: Optional[PandapowerCounters]
-) -> tuple[Station, Optional[PandapowerCounters]]:
+) -> tuple[MaterializedStation, Optional[PandapowerCounters]]:
     """Generate a random station for any backend
 
     This will create a Station object with 2 busbars, 1 coupler and a random assignment of assets
@@ -191,12 +192,11 @@ def random_station_info_backend(
     ):
         if branch_node == node_idx:
             switchable_assets.append(
-                SwitchableAsset(
+                BranchAsset(
                     grid_model_id=branch_id,
-                    type=branch_type,
+                    asset_type=branch_type,
                     name=branch_name,
                     in_service=True,
-                    branch_end="from",
                 )
             )
 
@@ -209,12 +209,11 @@ def random_station_info_backend(
     ):
         if branch_node == node_idx:
             switchable_assets.append(
-                SwitchableAsset(
+                BranchAsset(
                     grid_model_id=branch_id,
-                    type=branch_type,
+                    asset_type=branch_type,
                     name=branch_name,
                     in_service=True,
-                    branch_end="to",
                 )
             )
 
@@ -227,18 +226,26 @@ def random_station_info_backend(
     ):
         if injection_node == node_idx:
             switchable_assets.append(
-                SwitchableAsset(
+                InjectionAsset(
                     grid_model_id=injection_id,
-                    type=injection_type,
+                    asset_type=injection_type,
                     name=injection_name,
                     in_service=True,
                 )
             )
 
-    asset_switching_table = np.zeros((2, len(switchable_assets)), dtype=bool)
-    is_on_a = np.random.rand(len(switchable_assets)) > 0.5
-    asset_switching_table[0, is_on_a] = True
-    asset_switching_table[1, ~is_on_a] = True
+    branch_assets = [asset for asset in switchable_assets if isinstance(asset, BranchAsset)]
+    injection_assets = [asset for asset in switchable_assets if isinstance(asset, InjectionAsset)]
+
+    branch_switching_table = np.zeros((2, len(branch_assets)), dtype=bool)
+    branch_is_on_a = np.random.rand(len(branch_assets)) > 0.5
+    branch_switching_table[0, branch_is_on_a] = True
+    branch_switching_table[1, ~branch_is_on_a] = True
+
+    injection_switching_table = np.zeros((2, len(injection_assets)), dtype=bool)
+    injection_is_on_a = np.random.rand(len(injection_assets)) > 0.5
+    injection_switching_table[0, injection_is_on_a] = True
+    injection_switching_table[1, ~injection_is_on_a] = True
 
     global_id = backend.get_node_ids()[node_idx]
     if pp_counters is not None:
@@ -256,7 +263,7 @@ def random_station_info_backend(
         bus_b_id = global_id + "_b"
         switch_id = global_id + "_coupler"
 
-    return Station(
+    return MaterializedStation(
         grid_model_id=global_id,
         busbars=[
             Busbar(
@@ -278,12 +285,16 @@ def random_station_info_backend(
                 open=False,
             ),
         ],
-        assets=switchable_assets,
-        asset_switching_table=asset_switching_table,
-        asset_connectivity=np.ones_like(asset_switching_table, dtype=bool),
+        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in branch_assets],
+        injection_connections=[MaterializedAssetConnection(asset=asset) for asset in injection_assets],
+        branch_switching_table=branch_switching_table,
+        injection_switching_table=injection_switching_table,
+        branch_connectivity=np.ones_like(branch_switching_table, dtype=bool),
+        injection_connectivity=np.ones_like(injection_switching_table, dtype=bool),
     ), pp_counters
 
 
+# ruff: noqa: C901
 def random_topology_info_backend(backend: BackendInterface, pp_counters: Optional[PandapowerCounters]) -> Topology:
     """Generate a random topology for any backend
 
@@ -307,9 +318,40 @@ def random_topology_info_backend(backend: BackendInterface, pp_counters: Optiona
         new_station, pp_counters = random_station_info_backend(backend, node_idx, pp_counters)
         stations.append(new_station)
 
+    raw_stations = []
+    branch_assets: dict[str, BranchAsset] = {}
+    injection_assets: dict[str, InjectionAsset] = {}
+    asset_bays = {}
+    for station in stations:
+        raw_station, station_branch_assets, station_injection_assets, station_asset_bays = (
+            topology_parts_from_materialized_station(station)
+        )
+        raw_stations.append(raw_station)
+        for asset in station_branch_assets:
+            existing_asset = branch_assets.get(asset.grid_model_id)
+            if existing_asset is None:
+                branch_assets[asset.grid_model_id] = asset
+            elif existing_asset != asset:
+                raise ValueError(f"Conflicting branch asset payload for grid_model_id {asset.grid_model_id}")
+        for asset in station_injection_assets:
+            existing_asset = injection_assets.get(asset.grid_model_id)
+            if existing_asset is None:
+                injection_assets[asset.grid_model_id] = asset
+            elif existing_asset != asset:
+                raise ValueError(f"Conflicting injection asset payload for grid_model_id {asset.grid_model_id}")
+        for asset_bay in station_asset_bays:
+            existing_asset_bay = asset_bays.get(asset_bay.asset_bay_id)
+            if existing_asset_bay is None:
+                asset_bays[asset_bay.asset_bay_id] = asset_bay
+            elif existing_asset_bay != asset_bay:
+                raise ValueError(f"Conflicting asset bay payload for asset_bay_id {asset_bay.asset_bay_id}")
+
     return Topology(
-        stations=stations,
         topology_id="random_topology",
+        raw_stations=raw_stations,
+        branch_assets=list(branch_assets.values()),
+        injection_assets=list(injection_assets.values()),
+        asset_bays=list(asset_bays.values()),
         timestamp=datetime.datetime.now(),
     )
 

@@ -27,7 +27,7 @@ import pandapower
 # Domain-specific imports (may raise if not available in the environment)
 import pypowsybl
 import structlog
-from beartype.typing import Literal, Optional, Tuple
+from beartype.typing import Any, Literal, Optional, Tuple
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from omegaconf import DictConfig
@@ -97,7 +97,7 @@ jax.config.update("jax_enable_x64", True)
 def suppress_jax_logs() -> None:
     """Disables jax debug logs spamming the console"""
 
-    def _drop_jax_logs(_logger, _method_name, event_dict: dict[str, str]) -> dict[str, str]:  # noqa: ANN001
+    def _drop_jax_logs(_logger, _method_name, event_dict: dict[str, Any]) -> dict[str, Any]:  # noqa: ANN001
         logger_name = event_dict.get("logger", "")
         if logger_name.startswith(("jax", "jaxlib", "xla", "absl")):
             raise DropEvent

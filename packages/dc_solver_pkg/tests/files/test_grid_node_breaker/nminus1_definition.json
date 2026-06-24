@@ -2,155 +2,204 @@
   "monitored_elements": [
     {
       "id": "L1",
+      "name": "VL1_2 ## VL2_3 ## ",
       "type": "LINE",
       "kind": "branch"
     },
     {
       "id": "L2",
+      "name": "VL1_4 ## VL2_5 ## ",
       "type": "LINE",
       "kind": "branch"
     },
     {
       "id": "L3",
+      "name": "VL1_6 ## VL3_4 ## ",
       "type": "LINE",
       "kind": "branch"
     },
     {
-      "id": "VL1_0",
-      "type": "BUS",
-      "kind": "node"
+      "id": "BBS2_1",
+      "name": "bus1",
+      "type": "busbar",
+      "kind": "bus"
     },
     {
-      "id": "VL2_0",
-      "type": "BUS",
-      "kind": "node"
+      "id": "BBS2_2",
+      "name": "bus2",
+      "type": "busbar",
+      "kind": "bus"
     },
     {
-      "id": "VL3_0",
-      "type": "BUS",
-      "kind": "node"
+      "id": "BBS2_3",
+      "name": "bus3",
+      "type": "busbar",
+      "kind": "bus"
+    },
+    {
+      "id": "VL2_BREAKER",
+      "name": "VL2_BREAKER",
+      "type": "BREAKER",
+      "kind": "switch"
+    },
+    {
+      "id": "VL2_BREAKER#0",
+      "name": "VL2_BREAKER#0",
+      "type": "BREAKER",
+      "kind": "switch"
     }
   ],
   "contingencies": [
     {
+      "elements": [],
+      "id": "BASECASE",
+      "name": ""
+    },
+    {
       "elements": [
         {
           "id": "L1",
+          "name": "VL1_2 ## VL2_3 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
-      "name": "L1"
+      "id": "L1",
+      "name": "VL1_2 ## VL2_3 ## "
     },
     {
       "elements": [
         {
           "id": "L2",
+          "name": "VL1_4 ## VL2_5 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
-      "name": "L2"
+      "id": "L2",
+      "name": "VL1_4 ## VL2_5 ## "
     },
     {
       "elements": [
         {
           "id": "L3",
+          "name": "VL1_6 ## VL3_4 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
-      "name": "L3"
+      "id": "L3",
+      "name": "VL1_6 ## VL3_4 ## "
     },
     {
       "elements": [
         {
           "id": "L4",
+          "name": "VL1_8 ## VL4_4 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
-      "name": "L4"
+      "id": "L4",
+      "name": "VL1_8 ## VL4_4 ## "
     },
     {
       "elements": [
         {
           "id": "L5",
+          "name": "VL1_10 ## VL4_6 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
-      "name": "L5"
+      "id": "L5",
+      "name": "VL1_10 ## VL4_6 ## "
     },
     {
       "elements": [
         {
           "id": "L6",
+          "name": "VL2_7 ## VL3_6 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
-      "name": "L6"
+      "id": "L6",
+      "name": "VL2_7 ## VL3_6 ## "
     },
     {
       "elements": [
         {
           "id": "L7",
+          "name": "VL2_9 ## VL3_8 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
-      "name": "L7"
+      "id": "L7",
+      "name": "VL2_9 ## VL3_8 ## "
     },
     {
       "elements": [
         {
           "id": "L8",
+          "name": "VL2_11 ## VL4_8 ## ",
           "type": "LINE",
           "kind": "branch"
         }
       ],
-      "name": "L8"
+      "id": "L8",
+      "name": "VL2_11 ## VL4_8 ## "
     },
     {
       "elements": [
         {
           "id": "generator3",
+          "name": "",
           "type": "GENERATOR",
           "kind": "injection"
         }
       ],
-      "name": "generator3"
+      "id": "generator3",
+      "name": ""
     },
     {
       "elements": [
         {
           "id": "load2",
+          "name": "",
           "type": "LOAD",
           "kind": "injection"
         }
       ],
-      "name": "load2"
+      "id": "load2",
+      "name": ""
     },
     {
       "elements": [
         {
           "id": "load6",
+          "name": "",
           "type": "LOAD",
           "kind": "injection"
         }
       ],
-      "name": "load6"
+      "id": "load6",
+      "name": ""
     },
     {
       "elements": [
         {
           "id": "load1",
+          "name": "",
           "type": "LOAD",
           "kind": "injection"
         }
       ],
-      "name": "load1"
+      "id": "load1",
+      "name": ""
     }
-  ]
+  ],
+  "spps_rules": null,
+  "id_type": null
 }

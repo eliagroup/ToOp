@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import json
 from pathlib import Path
 
 import jax.numpy as jnp
@@ -21,18 +22,39 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_separation_set,
     prepare_for_separation_set,
 )
-from toop_engine_interfaces.asset_topology import (
-    AssetBranchType,
-    AssetInjectionType,
-    Busbar,
-    BusbarCoupler,
-    Station,
-    SwitchableAsset,
-)
+from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
+from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+
+
+def _combined_asset_connections(station: MaterializedStation) -> list[MaterializedAssetConnection]:
+    return [*station.branch_connections, *station.injection_connections]
+
+
+def _combined_asset_switching_table(station: MaterializedStation) -> np.ndarray:
+    return np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1)
+
+
+def build_materialized_station(
+    grid_model_id: str,
+    busbars: list[Busbar],
+    couplers: list[BusbarCoupler],
+    assets: list[SwitchableAsset],
+    asset_switching_table: np.ndarray,
+) -> MaterializedStation:
+    return MaterializedStation(
+        grid_model_id=grid_model_id,
+        busbars=busbars,
+        couplers=couplers,
+        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in assets],
+        injection_connections=[],
+        branch_switching_table=asset_switching_table,
+        injection_switching_table=np.zeros((asset_switching_table.shape[0], 0), dtype=bool),
+    )
 
 
 def test_make_configurations_table():
-    station = Station(
+    station = build_materialized_station(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -69,7 +91,7 @@ def test_make_configurations_table():
     assert problems.disconnected_busbars is None
     assert problems.duplicate_couplers is None
     assert preprocessed_station.busbars == station.busbars
-    assert preprocessed_station.assets == station.assets
+    assert preprocessed_station.branch_connections == station.branch_connections
     assert len(preprocessed_station.couplers) == 3
     assert all([not coupler.open for coupler in preprocessed_station.couplers])
 
@@ -79,7 +101,7 @@ def test_make_configurations_table():
     assert coupler_states.shape == (3, 3)
     assert len(assignment) == 3
 
-    table = preprocessed_station.asset_switching_table
+    table = preprocessed_station.branch_switching_table
 
     # Coupler 3 open
     config_1_a = table[0] | table[1] | table[2]
@@ -138,7 +160,7 @@ def test_identify_unnecessary_combinations() -> None:
 
 
 def test_preprocess_station() -> None:
-    station = Station(
+    station = build_materialized_station(
         busbars=[
             Busbar(int_id=1, grid_model_id="busbar1"),
             Busbar(int_id=2, grid_model_id="busbar2"),
@@ -182,7 +204,9 @@ def test_preprocess_station() -> None:
 
 
 def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> None:
-    num_assets_before = sum(len(station.assets) for station in network_data.asset_topology.stations)
+    num_assets_before = sum(
+        len(station.branch_connections) for station in network_data.asset_topology.materialize_stations()
+    )
 
     topo = add_missing_asset_topology_branch_info(
         asset_topology=network_data.asset_topology,
@@ -195,13 +219,14 @@ def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> No
 
     from_ends = 0
     to_ends = 0
-    for station in topo.stations:
-        for asset in station.assets:
+    for station in topo.materialize_stations():
+        for asset_connection in station.branch_connections:
+            asset = asset_connection.asset
             if asset.grid_model_id in network_data.branch_ids:
                 assert asset.name in network_data.branch_names
-                assert asset.type in network_data.branch_types
-                assert asset.branch_end in ["from", "to"]
-                if asset.branch_end == "from":
+                assert asset.asset_type in network_data.branch_types
+                assert asset_connection.branch_end in ["from", "to"]
+                if asset_connection.branch_end == "from":
                     from_ends += 1
                 else:
                     to_ends += 1
@@ -209,12 +234,15 @@ def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> No
     assert from_ends > 0
     assert to_ends > 0
 
-    num_assets_after = sum(len(station.assets) for station in topo.stations)
+    num_assets_after = sum(len(station.branch_connections) for station in topo.materialize_stations())
     assert num_assets_before == num_assets_after
 
 
 def test_add_missing_asset_topology_injection_info(network_data: NetworkData) -> None:
-    num_assets_before = sum(len(station.assets) for station in network_data.asset_topology.stations)
+    num_assets_before = sum(
+        len(_combined_asset_connections(station)) for station in network_data.asset_topology.materialize_stations()
+    )
+    replacement_injection_type = "load"
 
     topo = add_missing_asset_topology_injection_info(
         asset_topology=network_data.asset_topology,
@@ -224,13 +252,13 @@ def test_add_missing_asset_topology_injection_info(network_data: NetworkData) ->
         overwrite_if_present=True,
     )
 
-    for station in topo.stations:
-        for asset in station.assets:
+    for station in topo.materialize_stations():
+        for asset in [asset_connection.asset for asset_connection in _combined_asset_connections(station)]:
             if asset.grid_model_id in network_data.injection_ids:
                 assert asset.name in network_data.injection_names
-                assert asset.type in network_data.injection_types
+                assert asset.asset_type in network_data.injection_types
 
-    num_assets_after = sum(len(station.assets) for station in topo.stations)
+    num_assets_after = sum(len(_combined_asset_connections(station)) for station in topo.materialize_stations())
     assert num_assets_before == num_assets_after
 
     # Test with overwrite_if_present=False
@@ -238,41 +266,69 @@ def test_add_missing_asset_topology_injection_info(network_data: NetworkData) ->
         asset_topology=topo,
         injection_ids=network_data.injection_ids,
         injection_names=["new_name"] * len(network_data.injection_ids),
-        injection_types=["new_type"] * len(network_data.injection_ids),
+        injection_types=[replacement_injection_type] * len(network_data.injection_ids),
         overwrite_if_present=False,
     )
 
-    for station in topo.stations:
-        for asset in station.assets:
+    for station in topo.materialize_stations():
+        for asset in [asset_connection.asset for asset_connection in _combined_asset_connections(station)]:
             if asset.grid_model_id in network_data.injection_ids:
                 assert asset.name in network_data.injection_names
-                assert asset.type in network_data.injection_types
+                assert asset.asset_type in network_data.injection_types
 
     topo = add_missing_asset_topology_injection_info(
         asset_topology=topo,
         injection_ids=network_data.injection_ids,
         injection_names=["new_name"] * len(network_data.injection_ids),
-        injection_types=["new_type"] * len(network_data.injection_ids),
+        injection_types=[replacement_injection_type] * len(network_data.injection_ids),
         overwrite_if_present=True,
     )
 
-    for station in topo.stations:
-        for asset in station.assets:
+    for station in topo.materialize_stations():
+        for asset in [asset_connection.asset for asset_connection in _combined_asset_connections(station)]:
             if asset.grid_model_id in network_data.injection_ids:
                 assert asset.name == "new_name"
-                assert asset.type == "new_type"
+                assert asset.asset_type == replacement_injection_type
 
 
 def test_prepare_for_separation_set_node_breaker_test_station():
     file = Path(__file__).parent.parent / "files" / "test_station.json"
     with open(file, "r") as f:
-        station = Station.model_validate_json(f.read())
+        station_data = json.load(f)
+
+    station_data["station_type"] = station_data.pop("type")
+    for busbar in station_data["busbars"]:
+        busbar["busbar_type"] = busbar.pop("type")
+    for coupler in station_data["couplers"]:
+        coupler["coupler_type"] = coupler.pop("type")
+
+    assets = station_data.pop("assets")
+    for asset in assets:
+        asset["asset_type"] = asset.pop("type")
+    branch_mask = [asset["asset_type"] in get_args(AssetBranchType) for asset in assets]
+    injection_mask = [asset["asset_type"] in get_args(AssetInjectionType) for asset in assets]
+    asset_terminals = station_data.pop("asset_terminals", [None] * len(assets))
+    asset_bays = station_data.pop("asset_bays", [None] * len(assets))
+    combined_switching_table = np.asarray(station_data.pop("asset_switching_table"), dtype=bool)
+    station_data["branch_connections"] = [
+        {"asset": asset, "branch_end": asset_terminal, "asset_bay": asset_bay}
+        for asset, asset_terminal, asset_bay in zip(assets, asset_terminals, asset_bays, strict=True)
+        if asset["asset_type"] in get_args(AssetBranchType)
+    ]
+    station_data["injection_connections"] = [
+        {"asset": asset, "branch_end": asset_terminal, "asset_bay": asset_bay}
+        for asset, asset_terminal, asset_bay in zip(assets, asset_terminals, asset_bays, strict=True)
+        if asset["asset_type"] in get_args(AssetInjectionType)
+    ]
+    station_data["branch_switching_table"] = combined_switching_table[:, branch_mask]
+    station_data["injection_switching_table"] = combined_switching_table[:, injection_mask]
+    station = MaterializedStation.model_validate(station_data)
 
     x = nx.Graph()
     for busbar in station.busbars:
         x.add_node(busbar.int_id)
     for coupler in station.couplers:
-        if coupler.type != "DISCONNECTOR":
+        if coupler.coupler_type != "DISCONNECTOR":
             continue
         x.add_edge(coupler.busbar_from_id, coupler.busbar_to_id)
     connected_components = list(nx.connected_components(x))
@@ -281,8 +337,16 @@ def test_prepare_for_separation_set_node_breaker_test_station():
     with pytest.raises(ValueError, match="no couplers left after preprocessing"):
         prepare_for_separation_set(
             station,
-            branch_ids=[asset.grid_model_id for asset in station.assets if asset.type in get_args(AssetBranchType)],
-            injection_ids=[asset.grid_model_id for asset in station.assets if asset.type in get_args(AssetInjectionType)],
+            branch_ids=[
+                asset_connection.asset.grid_model_id
+                for asset_connection in _combined_asset_connections(station)
+                if asset_connection.asset.asset_type in get_args(AssetBranchType)
+            ],
+            injection_ids=[
+                asset_connection.asset.grid_model_id
+                for asset_connection in _combined_asset_connections(station)
+                if asset_connection.asset.asset_type in get_args(AssetInjectionType)
+            ],
         )
 
     station = station.model_copy(
@@ -293,8 +357,16 @@ def test_prepare_for_separation_set_node_breaker_test_station():
 
     preprocessed_station, problems = prepare_for_separation_set(
         station,
-        branch_ids=[asset.grid_model_id for asset in station.assets if asset.type in get_args(AssetBranchType)],
-        injection_ids=[asset.grid_model_id for asset in station.assets if asset.type in get_args(AssetInjectionType)],
+        branch_ids=[
+            asset_connection.asset.grid_model_id
+            for asset_connection in _combined_asset_connections(station)
+            if asset_connection.asset.asset_type in get_args(AssetBranchType)
+        ],
+        injection_ids=[
+            asset_connection.asset.grid_model_id
+            for asset_connection in _combined_asset_connections(station)
+            if asset_connection.asset.asset_type in get_args(AssetInjectionType)
+        ],
         close_couplers=True,
     )
     assert len(preprocessed_station.couplers)

@@ -10,10 +10,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
-from beartype.typing import cast
 from toop_engine_dc_solver.jax.benchmarks.bench_postprocessing import (
     Args,
-    LoadflowType,
     main,
     run_benchmark,
     setup_benchmark,
@@ -34,7 +32,7 @@ def test_benchmark(preprocessed_data_folder: Path, method: str, init_ray) -> Non
         framework="pandapower",
     )
 
-    n_loadflows, n_success, time = run_benchmark(runner, topologies, method=cast(LoadflowType, method))
+    n_loadflows, n_success, time = run_benchmark(runner, topologies, method=method)
 
     nminus1_definition = load_nminus1_definition(
         preprocessed_data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"]

@@ -31,7 +31,7 @@ from toop_engine_importer.network_graph.network_graph import (
 )
 from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
 from toop_engine_importer.network_graph.powsybl_station_to_graph import get_station
-from toop_engine_interfaces.asset_topology import AssetBay
+from toop_engine_interfaces.asset_topology.assets import AssetBay, build_asset_bay_id
 
 
 def test_remove_double_connections():
@@ -81,7 +81,7 @@ def test_get_busbar_df(network_graph_data_test1: NetworkGraphData):
     expected = [
         {
             "grid_model_id": "BBS3_1",
-            "type": "busbar",
+            "busbar_type": "busbar",
             "name": "ab",
             "int_id": 0,
             "in_service": True,
@@ -89,7 +89,7 @@ def test_get_busbar_df(network_graph_data_test1: NetworkGraphData):
         },
         {
             "grid_model_id": "BBS3_2",
-            "type": "busbar",
+            "busbar_type": "busbar",
             "name": "cd",
             "int_id": 1,
             "in_service": True,
@@ -108,7 +108,7 @@ def test_get_coupler_df_busbar_coupler(network_graph_for_asset_topo: tuple[nx.Gr
     expected = [
         {
             "grid_model_id": "5",
-            "type": "BREAKER",
+            "coupler_type": "BREAKER",
             "name": "fid_5",
             "in_service": True,
             "open": False,
@@ -131,13 +131,13 @@ def test_get_switchable_asset(network_graph_for_asset_topoV2_S1: tuple[nx.Graph,
     bus_info = get_busbar_connection_info(graph=graph)
     branches_df = network_graph_data.branches
     expected = [
-        {"grid_model_id": "L1", "name": "", "type": "LINE", "in_service": True},
-        {"grid_model_id": "L2", "name": "", "type": "LINE", "in_service": True},
-        {"grid_model_id": "L3", "name": "", "type": "LINE", "in_service": True},
-        {"grid_model_id": "L4", "name": "", "type": "LINE", "in_service": True},
-        {"grid_model_id": "L5", "name": "", "type": "LINE", "in_service": True},
-        {"grid_model_id": "generator1", "name": "", "type": "GENERATOR", "in_service": True},
-        {"grid_model_id": "generator2", "name": "", "type": "GENERATOR", "in_service": True},
+        {"grid_model_id": "L1", "name": "", "asset_type": "LINE", "in_service": True},
+        {"grid_model_id": "L2", "name": "", "asset_type": "LINE", "in_service": True},
+        {"grid_model_id": "L3", "name": "", "asset_type": "LINE", "in_service": True},
+        {"grid_model_id": "L4", "name": "", "asset_type": "LINE", "in_service": True},
+        {"grid_model_id": "L5", "name": "", "asset_type": "LINE", "in_service": True},
+        {"grid_model_id": "generator1", "name": "", "asset_type": "GENERATOR", "in_service": True},
+        {"grid_model_id": "generator2", "name": "", "asset_type": "GENERATOR", "in_service": True},
     ]
     res = get_switchable_asset(busbar_connection_info=bus_info, node_assets_df=nodes_asset_df, branches_df=branches_df)
     assert res.to_dict(orient="records") == expected
@@ -151,11 +151,17 @@ def test_switching_tables_V2(basic_node_breaker_network_powsybl_grid_v2):
     asset_connectivity = np.array([[True, True, True], [True, True, True], [True, True, True]])
     asset_switching_table = np.array([[True, True, False], [False, False, False], [False, False, True]])
 
-    assert np.array_equal(station.asset_connectivity, asset_connectivity)
-    assert np.array_equal(station.asset_switching_table, asset_switching_table)
+    assert len(station.branch_connections) == 2
+    assert len(station.injection_connections) == 1
+    assert np.array_equal(
+        np.concatenate([station.branch_connectivity, station.injection_connectivity], axis=1), asset_connectivity
+    )
+    assert np.array_equal(
+        np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1), asset_switching_table
+    )
     assert len(station.couplers) == 2
-    assert station.couplers[0].type == "BREAKER"
-    assert station.couplers[1].type == "BREAKER"
+    assert station.couplers[0].coupler_type == "BREAKER"
+    assert station.couplers[1].coupler_type == "BREAKER"
 
     station_info = {"name": "Station6", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL6"}
     station_info = SubstationInformation(**station_info)
@@ -169,8 +175,14 @@ def test_switching_tables_V2(basic_node_breaker_network_powsybl_grid_v2):
         [[True, True], [False, False], [False, False], [True, True], [False, False], [False, False]]
     )
 
-    assert np.array_equal(station.asset_connectivity, asset_connectivity)
-    assert np.array_equal(station.asset_switching_table, asset_switching_table)
+    assert len(station.branch_connections) == 1
+    assert len(station.injection_connections) == 1
+    assert np.array_equal(
+        np.concatenate([station.branch_connectivity, station.injection_connectivity], axis=1), asset_connectivity
+    )
+    assert np.array_equal(
+        np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1), asset_switching_table
+    )
 
 
 def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
@@ -183,13 +195,13 @@ def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
 
     assert len(station.couplers) == 2
     assert station.couplers[0].grid_model_id == "VL2_BREAKER"
-    assert station.couplers[0].type == "BREAKER"
+    assert station.couplers[0].coupler_type == "BREAKER"
     assert station.couplers[0].name == "VL2_BREAKER"
     assert station.couplers[0].busbar_from_id == 0
     assert station.couplers[0].busbar_to_id == 1
 
     assert station.couplers[1].grid_model_id == "VL2_BREAKER#0"
-    assert station.couplers[1].type == "BREAKER"
+    assert station.couplers[1].coupler_type == "BREAKER"
     assert station.couplers[1].name == "VL2_BREAKER#0"
     assert station.couplers[1].busbar_from_id == 1
     assert station.couplers[1].busbar_to_id == 2
@@ -202,14 +214,14 @@ def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
     assert len(station.couplers) == 5
 
     assert station.couplers[0].grid_model_id == "VL6_BREAKER"
-    assert station.couplers[0].type == "BREAKER"
+    assert station.couplers[0].coupler_type == "BREAKER"
     assert station.couplers[0].name == "VL6_BREAKER"
     assert station.couplers[0].busbar_from_id == 1
     assert station.couplers[0].busbar_to_id == 4
     assert not station.couplers[0].open
 
     assert station.couplers[1].grid_model_id == "VL6_BREAKER_1_1"
-    assert station.couplers[1].type == "BREAKER"
+    assert station.couplers[1].coupler_type == "BREAKER"
     assert station.couplers[1].name == "VL6_BREAKER_1_1"
     assert station.couplers[1].busbar_from_id == 0
     assert station.couplers[1].busbar_to_id == 1
@@ -217,7 +229,7 @@ def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
     assert station.couplers[1].in_service
 
     assert station.couplers[2].grid_model_id == "VL6_BREAKER_2_1"
-    assert station.couplers[2].type == "BREAKER"
+    assert station.couplers[2].coupler_type == "BREAKER"
     assert station.couplers[2].name == "VL6_BREAKER_2_1"
     assert station.couplers[2].busbar_from_id == 3
     assert station.couplers[2].busbar_to_id == 4
@@ -225,13 +237,13 @@ def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
     assert station.couplers[2].in_service
 
     assert station.couplers[3].grid_model_id == "VL6_DISCONNECTOR_2_4"
-    assert station.couplers[3].type == "DISCONNECTOR"
+    assert station.couplers[3].coupler_type == "DISCONNECTOR"
     assert station.couplers[3].name == "VL6_DISCONNECTOR_2_4"
     assert station.couplers[3].busbar_from_id == 1
     assert station.couplers[3].busbar_to_id == 2
 
     assert station.couplers[4].grid_model_id == "VL6_DISCONNECTOR_3_5"
-    assert station.couplers[4].type == "DISCONNECTOR"
+    assert station.couplers[4].coupler_type == "DISCONNECTOR"
     assert station.couplers[4].name == "VL6_DISCONNECTOR_3_5"
     assert station.couplers[4].busbar_from_id == 4
     assert station.couplers[4].busbar_to_id == 5
@@ -242,19 +254,19 @@ def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
     station = get_station(net, "VL4_0", station_info)
     assert len(station.couplers) == 3
     assert station.couplers[0].grid_model_id == "VL4_BREAKER"
-    assert station.couplers[0].type == "BREAKER"
+    assert station.couplers[0].coupler_type == "BREAKER"
     assert station.couplers[0].name == "VL4_BREAKER"
     assert station.couplers[0].busbar_from_id == 0
     assert station.couplers[0].busbar_to_id == 1
 
     assert station.couplers[1].grid_model_id == "VL4_BREAKER#0"
-    assert station.couplers[1].type == "BREAKER"
+    assert station.couplers[1].coupler_type == "BREAKER"
     assert station.couplers[1].name == "VL4_BREAKER#0"
     assert station.couplers[1].busbar_from_id == 0
     assert station.couplers[1].busbar_to_id == 2
 
     assert station.couplers[2].grid_model_id == "VL4_BREAKER#1"
-    assert station.couplers[2].type == "BREAKER"
+    assert station.couplers[2].coupler_type == "BREAKER"
     assert station.couplers[2].name == "VL4_BREAKER#1"
     assert station.couplers[2].busbar_from_id == 0
     assert station.couplers[2].busbar_to_id == 3
@@ -295,26 +307,31 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     )
     expected = {
         "L3": AssetBay(
+            asset_bay_id=build_asset_bay_id(substation_id, "L3"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="L32_BREAKER",
             sr_switch_grid_model_id={"BBS3_1": "L32_DISCONNECTOR_5_0", "BBS3_2": "L32_DISCONNECTOR_5_1"},
         ),
         "L6": AssetBay(
+            asset_bay_id=build_asset_bay_id(substation_id, "L6"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="L62_BREAKER",
             sr_switch_grid_model_id={"BBS3_1": "L62_DISCONNECTOR_7_0", "BBS3_2": "L62_DISCONNECTOR_7_1"},
         ),
         "L7": AssetBay(
+            asset_bay_id=build_asset_bay_id(substation_id, "L7"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="L72_BREAKER",
             sr_switch_grid_model_id={"BBS3_1": "L72_DISCONNECTOR_9_0", "BBS3_2": "L72_DISCONNECTOR_9_1"},
         ),
         "L9": AssetBay(
+            asset_bay_id=build_asset_bay_id(substation_id, "L9"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="L91_BREAKER",
             sr_switch_grid_model_id={"BBS3_1": "L91_DISCONNECTOR_11_0", "BBS3_2": "L91_DISCONNECTOR_11_1"},
         ),
         "load2": AssetBay(
+            asset_bay_id=build_asset_bay_id(substation_id, "load2"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="load2_BREAKER",
             sr_switch_grid_model_id={"BBS3_1": "load2_DISCONNECTOR_19_0", "BBS3_2": "load2_DISCONNECTOR_19_1"},
@@ -325,6 +342,7 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     for asset_grid_model_id in switchable_assets_df["grid_model_id"].to_list():
         asset_bay, logs = get_asset_bay(
             network_graph_data.switches,
+            station_grid_model_id=substation_id,
             asset_grid_model_id=asset_grid_model_id,
             busbar_df=busbar_df,
             edge_connection_info=edge_connection_info,
@@ -338,6 +356,7 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     with pytest.raises(ValueError, match="Expected 3 switches, but got"):
         get_asset_bay(
             switches_df=switches_df,
+            station_grid_model_id=substation_id,
             asset_grid_model_id="L3",
             busbar_df=busbar_df,
             edge_connection_info=edge_connection_info,
@@ -348,11 +367,13 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
 
     asset_grid_model_id, logs = get_asset_bay(
         switches_df=switches_df,
+        station_grid_model_id=substation_id,
         asset_grid_model_id="L3",
         busbar_df=busbar_df,
         edge_connection_info=edge_connection_info,
     )
     expected = AssetBay(
+        asset_bay_id=build_asset_bay_id(substation_id, "L3"),
         sl_switch_grid_model_id=None,
         dv_switch_grid_model_id="L32_BREAKER",
         sr_switch_grid_model_id={"BBS3_1": "L32_DISCONNECTOR_5_0", "BBS3_2": "L32_DISCONNECTOR_5_1"},
@@ -366,6 +387,7 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     switches_df.drop(2, inplace=True)
     asset_grid_model_id, logs = get_asset_bay(
         switches_df=switches_df,
+        station_grid_model_id=substation_id,
         asset_grid_model_id="L3",
         busbar_df=busbar_df,
         edge_connection_info=edge_connection_info,
@@ -376,11 +398,13 @@ def test_asset_bay(network_graph_for_asset_topoV2_S3: tuple[nx.Graph, NetworkGra
     edge_connection_info["L62_DISCONNECTOR_7_0"].direct_busbar_grid_model_id = ""
     asset_grid_model_id, logs = get_asset_bay(
         switches_df=switches_df,
+        station_grid_model_id=substation_id,
         asset_grid_model_id="L6",
         busbar_df=busbar_df,
         edge_connection_info=edge_connection_info,
     )
     expected = AssetBay(
+        asset_bay_id=build_asset_bay_id(substation_id, "L6"),
         sl_switch_grid_model_id="L62_DISCONNECTOR_7_0",
         dv_switch_grid_model_id="L62_BREAKER",
         sr_switch_grid_model_id={"BBS3_2": "L62_DISCONNECTOR_7_1"},

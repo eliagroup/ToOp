@@ -14,6 +14,7 @@ Created: 2024-09-04
 
 import json
 from copy import deepcopy
+from dataclasses import replace
 from itertools import product
 from pathlib import Path
 
@@ -47,7 +48,7 @@ from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import 
     create_new_border_limits,
 )
 from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks, make_masks, save_masks_to_filesystem
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
 from toop_engine_interfaces.filesystem_helper import copy_file_fs, save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
@@ -68,6 +69,40 @@ logger = structlog.get_logger(__name__)
 
 
 CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
+
+
+def filter_split_stations_from_relevant_subs(
+    network: Network, topology_model: Topology, network_masks: NetworkMasks
+) -> NetworkMasks:
+    """Remove split stations from the ``relevant_subs`` mask.
+
+    Parameters
+    ----------
+    network : Network
+        Network whose bus ids define the mask ordering.
+    topology_model : Topology
+        Topology used to identify split stations.
+    network_masks : NetworkMasks
+        Existing network masks to update.
+
+    Returns
+    -------
+    NetworkMasks
+        Updated masks with split stations removed from ``relevant_subs``.
+
+    Notes
+    -----
+    A split station spans more than one non-empty bus-branch bus id in its station view.
+    Those stations are not safe optimizer targets because one relevant bus id would already
+    represent multiple bus-branch buses.
+    """
+    split_station_ids = {station.grid_model_id for station in topology_model.raw_stations if station.is_split()}
+    if len(split_station_ids) == 0:
+        return network_masks
+
+    relevant_subs = network_masks.relevant_subs & ~network.get_buses(attributes=[]).index.isin(split_station_ids)
+    logger.warning("Removed split stations from relevant_subs", split_station_ids=sorted(split_station_ids))
+    return replace(network_masks, relevant_subs=relevant_subs)
 
 
 def save_preprocessing_statistics_filesystem(
@@ -385,18 +420,8 @@ def convert_file(
     )
     # get N-1 masks
     status_update_fn("get_masks", "Creating Network Masks")
-    slack_id = network.get_extension("slackTerminal").iloc[0].bus_id
-    network_masks = get_network_masks(network, slack_id, importer_parameters, statistics, filesystem=unprocessed_gridfile_fs)
-    save_masks_to_filesystem(
-        data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
-    )
-
-    # get nminus1 definition
-    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
-    save_pydantic_model_fs(
-        filesystem=processed_gridfile_fs,
-        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
-        pydantic_model=nminus1_definition,
+    network_masks = compute_network_masks_and_n_1_definition(
+        importer_parameters, processed_gridfile_fs, unprocessed_gridfile_fs, network, statistics
     )
 
     if (
@@ -414,14 +439,28 @@ def convert_file(
             file_path=grid_file_path,
         )
 
+    status_update_fn("get_topology_model", "Creating Pydantic Topology Model")
+    topology_model = get_topology_model(network, network_masks, importer_parameters)
+    network_masks = filter_split_stations_from_relevant_subs(network, topology_model, network_masks)
+    fill_statistics_for_network_masks(network=network, statistics=statistics, network_masks=network_masks)
+
+    save_masks_to_filesystem(
+        data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
+    )
+
+    # get nminus1 definition
+    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
+    save_pydantic_model_fs(
+        filesystem=processed_gridfile_fs,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        pydantic_model=nminus1_definition,
+    )
+
     save_preprocessing_statistics_filesystem(
         statistics=statistics,
         file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["importer_auxiliary_file_path"],
         filesystem=processed_gridfile_fs,
     )
-
-    status_update_fn("get_topology_model", "Creating Pydantic Topology Model")
-    topology_model = get_topology_model(network, network_masks, importer_parameters)
 
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,
@@ -431,6 +470,56 @@ def convert_file(
     )
 
     return statistics.import_result
+
+
+def compute_network_masks_and_n_1_definition(
+    importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
+    processed_gridfile_fs: AbstractFileSystem,
+    unprocessed_gridfile_fs: AbstractFileSystem,
+    network: Network,
+    statistics: PreProcessingStatistics,
+) -> NetworkMasks:
+    """Create, persist, and return network masks plus the derived N-1 definition.
+
+    Parameters
+    ----------
+    importer_parameters : Union[UcteImporterParameters, CgmesImporterParameters]
+        Import configuration providing the data folder and mask generation settings.
+    processed_gridfile_fs : AbstractFileSystem
+        Filesystem used to persist the generated masks and N-1 definition.
+    unprocessed_gridfile_fs : AbstractFileSystem
+        Filesystem used to resolve auxiliary inputs required during mask creation.
+    network : Network
+        Powsybl network for which masks and contingencies are computed.
+    statistics : PreProcessingStatistics
+        Statistics object updated while generating masks.
+
+    Returns
+    -------
+    NetworkMasks
+        Generated network masks after saving them and the derived N-1 definition.
+    """
+    slack_id = network.get_extension("slackTerminal").iloc[0].bus_id
+    network_masks = get_network_masks(
+        network,
+        slack_id,
+        importer_parameters,
+        statistics,
+        filesystem=unprocessed_gridfile_fs,
+    )
+    save_masks_to_filesystem(
+        data_folder=importer_parameters.data_folder, network_masks=network_masks, filesystem=processed_gridfile_fs
+    )
+
+    # get nminus1 definition
+    nminus1_definition = create_nminus1_definition_from_masks(network, network_masks)
+    save_pydantic_model_fs(
+        filesystem=processed_gridfile_fs,
+        file_path=importer_parameters.data_folder / PREPROCESSING_PATHS["nminus1_definition_file_path"],
+        pydantic_model=nminus1_definition,
+    )
+
+    return network_masks
 
 
 def get_slack_ids(network: Network) -> list[str] | None:

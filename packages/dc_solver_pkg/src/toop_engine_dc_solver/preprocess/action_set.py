@@ -39,8 +39,7 @@ from toop_engine_dc_solver.preprocess.helpers.ptdf import (
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import min_hamming_distance_matrix
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, get_relevant_stations
-from toop_engine_interfaces.asset_topology import Station
-from toop_engine_interfaces.asset_topology_helpers import get_connected_assets
+from toop_engine_interfaces.asset_topology.asset_topology import RawStation
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)
@@ -632,7 +631,7 @@ def unpad_branch_actions(
 def determine_injection_topology_sub(
     network_data: NetworkData,
     local_injection_idxs: Int[np.ndarray, " n_injections_at_node"],
-    station: Station,
+    station: RawStation,
     n_local_branch_actions: int,
     local_busbar_a_mapping: list[list[int]],
     n_injections_at_node: int,
@@ -651,7 +650,7 @@ def determine_injection_topology_sub(
         The network data containing injection and branch information.
     local_injection_idxs : list[int]
         List of local injection indices corresponding to the station.
-    station : Station
+    station : RawStation
         The station object containing information about busbars and connected assets.
     n_local_branch_actions : int
         Number of local branch actions to consider.
@@ -675,8 +674,11 @@ def determine_injection_topology_sub(
         bba_connected_injection_ids = [
             asset.grid_model_id
             for bb_index in busbar_a_mapping
-            for asset in get_connected_assets(station, bb_index)
-            if not asset.is_branch()
+            for asset in station.get_connected_assets(
+                bb_index,
+                topology_assets=network_data.simplified_asset_topology.injection_assets,
+                asset_scope="injection",
+            )
         ]
         bba_connected_injection_idxs = [
             np.argmax(local_injection_idxs == network_data.injection_ids.index(injection_id))

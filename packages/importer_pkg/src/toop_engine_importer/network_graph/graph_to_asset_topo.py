@@ -13,7 +13,8 @@ import pandas as pd
 import pandera.typing as pat
 import structlog
 from beartype.typing import Literal, Optional, Union
-from jaxtyping import ArrayLike, Bool
+from jaxtyping import Bool
+from numpy.typing import ArrayLike
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     BusbarConnectionInfo,
@@ -23,8 +24,9 @@ from toop_engine_importer.network_graph.data_classes import (
     SwitchableAssetSchema,
     SwitchSchema,
 )
-from toop_engine_interfaces.asset_topology import (
+from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
+    build_asset_bay_id,
 )
 
 logger = structlog.get_logger(__name__)
@@ -51,11 +53,11 @@ def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd
     busbar_df = (
         busbar_df.sort_values(by="grid_model_id")
         .reset_index()
-        .rename(columns={"foreign_id": "name", "node_type": "type", "bus_id": "bus_branch_bus_id"})
+        .rename(columns={"foreign_id": "name", "node_type": "busbar_type", "bus_id": "bus_branch_bus_id"})
     )
     busbar_df["int_id"] = busbar_df.index
 
-    busbar_df = busbar_df[["grid_model_id", "type", "name", "int_id", "in_service", "bus_branch_bus_id"]]
+    busbar_df = busbar_df[["grid_model_id", "busbar_type", "name", "int_id", "in_service", "bus_branch_bus_id"]]
 
     return busbar_df
 
@@ -102,7 +104,7 @@ def get_coupler_df(
     coupler_df = switches_connected_to_busbars[switches_connected_to_busbars["coupler_type"] != ""].copy()
     coupler_df["from_busbar_grid_model_id"] = ""
     coupler_df["to_busbar_grid_model_id"] = ""
-    coupler_df["type"] = ""
+    coupler_df["coupler_type"] = ""
 
     # hotfix in case a bay id has not been identified for a switch
     # a missing bay id indecates there is a data quality issue
@@ -137,7 +139,7 @@ def get_coupler_df(
             out_of_service_busbar_ids=busbar_out_of_service,
             ignore_busbar_id=coupler_df.loc[index, "from_busbar_grid_model_id"],
         )
-        coupler_df.loc[index, "type"] = row["asset_type"]
+        coupler_df.loc[index, "coupler_type"] = row["asset_type"]
         bay_state = get_state_of_coupler_based_on_bay(
             coupler_index=index,
             bay_df=bay_df,
@@ -166,7 +168,9 @@ def get_coupler_df(
         suffixes=("", "_to"),
     )
     coupler_df.rename(columns={"int_id": "busbar_to_id"}, inplace=True)
-    coupler_df = coupler_df[["grid_model_id", "type", "name", "in_service", "open", "busbar_from_id", "busbar_to_id"]]
+    coupler_df = coupler_df[
+        ["grid_model_id", "coupler_type", "name", "in_service", "open", "busbar_from_id", "busbar_to_id"]
+    ]
 
     return coupler_df
 
@@ -344,8 +348,8 @@ def get_switchable_asset(
         connected_asset_df["in_service"].notna(), connected_asset_df["in_service"], connected_asset_df["in_service_1"]
     )
     # rename columns to match the AssetTopology
-    connected_asset_df.rename(columns={"asset_type": "type", "foreign_id": "name"}, inplace=True)
-    connected_asset_df = connected_asset_df[["grid_model_id", "name", "type", "in_service"]]
+    connected_asset_df.rename(columns={"foreign_id": "name"}, inplace=True)
+    connected_asset_df = connected_asset_df[["grid_model_id", "name", "asset_type", "in_service"]]
     # ensure the order of the assets
     connected_asset_df.sort_values(by="grid_model_id", inplace=True)
     connected_asset_df.reset_index(drop=True, inplace=True)
@@ -583,6 +587,7 @@ def get_dv_sr_switch(asset_bays_df: pd.DataFrame) -> tuple[dict[str, str], list[
 
 def get_asset_bay(
     switches_df: pat.DataFrame[SwitchSchema],
+    station_grid_model_id: str,
     asset_grid_model_id: str,
     busbar_df: pd.DataFrame,
     edge_connection_info: dict[str, EdgeConnectionInfo],
@@ -594,6 +599,8 @@ def get_asset_bay(
     switches_df: pat.DataFrame[SwitchSchema]
         Dataframe with all switches of the substation.
         expects NetworkGraphData.switches
+    station_grid_model_id: str
+        Station identifier owning the asset bay.
     asset_grid_model_id: str
         Asset grid model id for which the asset bays should be retrieved.
     busbar_df: pd.DataFrame
@@ -653,7 +660,10 @@ def get_asset_bay(
             f" AssetBay ignored for grid_model_id: {asset_grid_model_id}"
         )
         return None, logs
-    return AssetBay(**asset_bay_dict), logs
+    return AssetBay(
+        asset_bay_id=build_asset_bay_id(station_grid_model_id, asset_grid_model_id),
+        **asset_bay_dict,
+    ), logs
 
 
 def get_station_connection_tables(

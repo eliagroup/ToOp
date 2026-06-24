@@ -17,6 +17,7 @@ https://doi.org/10.48550/arXiv.2412.16164
 
 import numpy as np
 from jaxtyping import Bool, Float, Int
+from toop_engine_dc_solver.preprocess.helpers.ptdf import compute_ptdf
 
 
 def _validate_assignment(assignment: Bool[np.ndarray, " n_branches_at_node"]) -> None:
@@ -509,6 +510,207 @@ def calc_bsdf(
     )
 
     return bsdf, ptdf_new, from_node_new, to_node_new
+
+
+def calc_bsdf_exact_rebuild(
+    switched_node: int,
+    assignment: Bool[np.ndarray, " n_branches_at_node"],
+    is_slack: bool,
+    bus_a_ptdf: int,
+    bus_b_ptdf: int,
+    ptdf: Float[np.ndarray, " n_branches n_nodes"],
+    susceptance: Float[np.ndarray, " n_branches"],
+    from_node: Int[np.ndarray, " n_branches"],
+    to_node: Int[np.ndarray, " n_branches"],
+    branches_at_nodes: list[Int[np.ndarray, " n_branches_at_node"]],
+    branch_direction: list[Bool[np.ndarray, " n_branches_at_node"]],
+) -> tuple[
+    Float[np.ndarray, " n_branches"],
+    Float[np.ndarray, " n_branches n_nodes"],
+    Int[np.ndarray, " n_branches"],
+    Int[np.ndarray, " n_branches"],
+    float,
+]:
+    """Prototype an exact split update by rebuilding the PTDF on active connected nodes.
+
+    This is intended as a diagnostic/reference path for cases where the closed-form BSDF update
+    appears to be structurally wrong. It performs the topology split exactly on the branch endpoint
+    arrays, recomputes the PTDF on the active connected node set, restores untouched extended
+    columns, and then projects the exact PTDF delta back onto the standard BSDF rank-1 form.
+
+    Parameters
+    ----------
+    switched_node : int
+        Index of the node being split.
+    assignment : Bool[np.ndarray, " n_branches_at_node"]
+        Boolean mask for branch assignment to busbars.
+    is_slack : bool
+        True if the node is the slack node.
+    bus_a_ptdf : int
+        PTDF column index for busbar A.
+    bus_b_ptdf : int
+        PTDF column index for busbar B.
+    ptdf : Float[np.ndarray, " n_branches n_nodes"]
+        PTDF matrix before the split.
+    susceptance : Float[np.ndarray, " n_branches"]
+        Branch susceptances.
+    from_node : Int[np.ndarray, " n_branches"]
+        Branch from-nodes.
+    to_node : Int[np.ndarray, " n_branches"]
+        Branch to-nodes.
+    branches_at_nodes : list[Int[np.ndarray, " n_branches_at_node"]]
+        Branch indices at each node.
+    branch_direction : list[Bool[np.ndarray, " n_branches_at_node"]]
+        Direction mask for branches at each node.
+
+    Returns
+    -------
+    Float[np.ndarray, " n_branches"]
+        Least-squares BSDF vector implied by the exact PTDF rebuild.
+    Float[np.ndarray, " n_branches n_nodes"]
+        Exact PTDF after the split on the active connected node set.
+    Int[np.ndarray, " n_branches"]
+        Updated from-nodes.
+    Int[np.ndarray, " n_branches"]
+        Updated to-nodes.
+    float
+        Maximum absolute reconstruction error of the projected rank-1 BSDF update.
+    """
+    _validate_assignment(assignment)
+
+    branches_local, direction_local = _get_local_branch_data(
+        switched_node=switched_node,
+        branches_at_nodes=branches_at_nodes,
+        branch_direction=branch_direction,
+    )
+    branch_from_a, branch_to_a, branch_from_b, branch_to_b, _node_from_a, _node_to_a = get_bsdf_branch_indices(
+        assignment=assignment,
+        branches_locally=branches_local,
+        branch_direction_locally=direction_local,
+        from_node=from_node,
+        to_node=to_node,
+    )
+
+    ptdf_diff_raw = _compute_ptdf_difference(
+        ptdf=ptdf,
+        branch_from_a=branch_from_a,
+        branch_to_a=branch_to_a,
+    )
+    ptdf_diff, _ptdf_b = _adjust_ptdf_for_slack(
+        ptdf_diff=ptdf_diff_raw,
+        is_slack=is_slack,
+        bus_a_ptdf=bus_a_ptdf,
+        bus_b_ptdf=bus_b_ptdf,
+    )
+
+    from_node_new = from_node.copy()
+    to_node_new = to_node.copy()
+    from_node_new[branch_from_b] = bus_b_ptdf
+    to_node_new[branch_to_b] = bus_b_ptdf
+
+    active_nodes = np.unique(np.r_[from_node_new, to_node_new])
+    node_remap = {old_idx: new_idx for new_idx, old_idx in enumerate(active_nodes.tolist())}
+    from_node_compact = np.array([node_remap[idx] for idx in from_node_new], dtype=int)
+    to_node_compact = np.array([node_remap[idx] for idx in to_node_new], dtype=int)
+
+    slack_compact = node_remap[bus_a_ptdf]
+    ptdf_compact = compute_ptdf(
+        from_node=from_node_compact,
+        to_node=to_node_compact,
+        susceptances=susceptance,
+        slack_bus=slack_compact,
+    )
+
+    ptdf_new = ptdf.copy()
+    ptdf_new[:, active_nodes] = ptdf_compact
+
+    delta_ptdf = ptdf_new - ptdf
+    ptdf_diff_norm = float(ptdf_diff @ ptdf_diff)
+    bsdf = delta_ptdf @ ptdf_diff / ptdf_diff_norm
+    reconstruction_error = float(np.max(np.abs(delta_ptdf - np.outer(bsdf, ptdf_diff))))
+
+    return bsdf, ptdf_new, from_node_new, to_node_new, reconstruction_error
+
+
+def compute_flow_exact_rebuild(
+    switched_node: int,
+    assignment: Bool[np.ndarray, " n_branches_at_node"],
+    is_slack: bool,
+    bus_a_ptdf: int,
+    bus_b_ptdf: int,
+    ptdf: Float[np.ndarray, " n_branches n_nodes"],
+    susceptance: Float[np.ndarray, " n_branches"],
+    from_node: Int[np.ndarray, " n_branches"],
+    to_node: Int[np.ndarray, " n_branches"],
+    branches_at_nodes: list[Int[np.ndarray, " n_branches_at_node"]],
+    branch_direction: list[Bool[np.ndarray, " n_branches_at_node"]],
+    nodal_injection: Float[np.ndarray, " n_nodes"],
+) -> tuple[
+    Float[np.ndarray, " n_branches"],
+    Float[np.ndarray, " n_branches n_nodes"],
+    Int[np.ndarray, " n_branches"],
+    Int[np.ndarray, " n_branches"],
+    float,
+]:
+    """Compute exact rebuilt split flows for a single bus split.
+
+    This is a thin convenience wrapper around ``calc_bsdf_exact_rebuild`` for diagnostics that
+    need the post-split flow vector rather than only the rebuilt PTDF.
+
+    Parameters
+    ----------
+    switched_node : int
+        Index of the node being split.
+    assignment : Bool[np.ndarray, " n_branches_at_node"]
+        Boolean mask for branch assignment to busbars.
+    is_slack : bool
+        True if the node is the slack node.
+    bus_a_ptdf : int
+        PTDF column index for busbar A.
+    bus_b_ptdf : int
+        PTDF column index for busbar B.
+    ptdf : Float[np.ndarray, " n_branches n_nodes"]
+        PTDF matrix before the split.
+    susceptance : Float[np.ndarray, " n_branches"]
+        Branch susceptances.
+    from_node : Int[np.ndarray, " n_branches"]
+        Branch from-nodes.
+    to_node : Int[np.ndarray, " n_branches"]
+        Branch to-nodes.
+    branches_at_nodes : list[Int[np.ndarray, " n_branches_at_node"]]
+        Branch indices at each node.
+    branch_direction : list[Bool[np.ndarray, " n_branches_at_node"]]
+        Direction mask for branches at each node.
+    nodal_injection : Float[np.ndarray, " n_nodes"]
+        Nodal injection vector to apply to the rebuilt PTDF.
+
+    Returns
+    -------
+    Float[np.ndarray, " n_branches"]
+        Exact rebuilt branch flows after the split.
+    Float[np.ndarray, " n_branches n_nodes"]
+        Exact PTDF after the split on the active connected node set.
+    Int[np.ndarray, " n_branches"]
+        Updated from-nodes.
+    Int[np.ndarray, " n_branches"]
+        Updated to-nodes.
+    float
+        Maximum absolute reconstruction error of the projected rank-1 BSDF update.
+    """
+    _bsdf, ptdf_new, from_node_new, to_node_new, reconstruction_error = calc_bsdf_exact_rebuild(
+        switched_node=switched_node,
+        assignment=assignment,
+        is_slack=is_slack,
+        bus_a_ptdf=bus_a_ptdf,
+        bus_b_ptdf=bus_b_ptdf,
+        ptdf=ptdf,
+        susceptance=susceptance,
+        from_node=from_node,
+        to_node=to_node,
+        branches_at_nodes=branches_at_nodes,
+        branch_direction=branch_direction,
+    )
+    return ptdf_new @ nodal_injection, ptdf_new, from_node_new, to_node_new, reconstruction_error
 
 
 def extract_bsdf_data(

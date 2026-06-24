@@ -12,11 +12,11 @@ import pandapower
 import pytest
 import structlog.testing
 from toop_engine_importer.pandapower_import import asset_topology
-from toop_engine_interfaces.asset_topology import (
-    AssetBay,
-    Station,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
 )
+from toop_engine_interfaces.asset_topology.assets import AssetBay, build_asset_bay_id
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 
 def test_get_busses_from_station(pp_network_w_switches):
@@ -121,26 +121,31 @@ def test_get_branches_from_station(pp_network_w_switches):
     expected_switching_matrix = np.array([[True, True, True, True, True]])
     expected_asset_connection = [
         AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "HV Line1"),
             sl_switch_grid_model_id="SB DS2.1",
             dv_switch_grid_model_id="SB CB2",
             sr_switch_grid_model_id={"16%%bus": "SB DS2.2"},
         ),
         AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "HV Line6"),
             sl_switch_grid_model_id="SB DS3.1",
             dv_switch_grid_model_id="SB CB3",
             sr_switch_grid_model_id={"16%%bus": "SB DS3.2"},
         ),
         AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "EHV-HV-Trafo"),
             sl_switch_grid_model_id="SB DS1.1",
             dv_switch_grid_model_id="SB CB1",
             sr_switch_grid_model_id={"16%%bus": "SB DS1.2"},
         ),
         AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "MV Net 0"),
             sl_switch_grid_model_id="SB DS4.1",
             dv_switch_grid_model_id="SB CB4",
             sr_switch_grid_model_id={"16%%bus": "SB DS4.2"},
         ),
         AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "Wind Park"),
             sl_switch_grid_model_id="SB DS5.1",
             dv_switch_grid_model_id="SB CB5",
             sr_switch_grid_model_id={"16%%bus": "SB DS5.2"},
@@ -222,6 +227,7 @@ def test_get_branches_from_station_edge_cases(pp_network_w_switches):
         net.switch.loc[31, "element"] = 19
         net.switch.loc[33, "closed"] = False
         expected_path = AssetBay(
+            asset_bay_id=build_asset_bay_id("16%%bus", "HV Line6"),
             sl_switch_grid_model_id=None,
             dv_switch_grid_model_id="SB CB3",
             sr_switch_grid_model_id={"16%%bus": "SB DS3.2"},
@@ -243,6 +249,7 @@ def test_get_branches_from_station_edge_cases(pp_network_w_switches):
         net.switch.loc[5, "closed"] = True
         expected_path = [
             AssetBay(
+                asset_bay_id=build_asset_bay_id("0%%bus", "EHV-HV-Trafo"),
                 sl_switch_grid_model_id="DB DS11",
                 dv_switch_grid_model_id="DB CB2",
                 sr_switch_grid_model_id={"1%%bus": "DB DS4", "0%%bus": "DB DS5"},
@@ -287,10 +294,10 @@ def test_get_station_from_id(pp_network_w_switches):
     net = pp_network_w_switches
     station_id_list = [el for el in range(0, 15)]
     result = asset_topology.get_station_from_id(network=net, station_id_list=station_id_list, foreign_key="name")
-    assert isinstance(result, Station)
+    assert isinstance(result, MaterializedStation)
     assert result.grid_model_id == r"0%%bus"
     assert result.name == "Double Busbar 1"
-    assert result.type is None
+    assert result.station_type is None
     assert result.voltage_level == 380.0
     assert len(result.busbars) == 2
 
@@ -301,8 +308,8 @@ def test_get_list_of_stations_ids(pp_network_w_switches):
     result = asset_topology.get_list_of_stations_ids(network=net, station_list=station_id_list, foreign_key="name")
     assert isinstance(result, list)
     assert len(result) == 2
-    assert isinstance(result[0], Station)
-    assert isinstance(result[1], Station)
+    assert isinstance(result[0], MaterializedStation)
+    assert isinstance(result[1], MaterializedStation)
     assert result[0].grid_model_id == r"0%%bus"
     assert result[0].name == "Double Busbar 1"
     assert result[1].grid_model_id == r"16%%bus"
@@ -322,7 +329,7 @@ def test_get_asset_topology_from_network(pp_network_w_switches):
     assert isinstance(result, Topology)
     assert result.topology_id == "1"
     assert result.grid_model_file == "test"
-    assert isinstance(result.stations, list)
+    assert isinstance(result.raw_stations, list)
     assert isinstance(result.timestamp, datetime)
     current_time = datetime.now()
     time_difference = current_time - result.timestamp

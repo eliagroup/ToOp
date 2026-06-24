@@ -72,7 +72,8 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_optimal_separation_set,
     prepare_for_separation_set,
 )
-from toop_engine_interfaces.asset_topology_helpers import order_topology
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import order_topology
+from toop_engine_interfaces.asset_topology.topology_conversion import topology_from_materialized_stations
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters, ReassignmentLimits
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
@@ -195,7 +196,7 @@ def filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> Network
     """
     assert network_data.asset_topology is not None, "Asset topology has to be passed in"
     relevant_node_ids = np.array(network_data.node_ids)[np.flatnonzero(network_data.relevant_node_mask)]
-    station_ids = np.array([station.grid_model_id for station in network_data.asset_topology.stations])
+    station_ids = np.array([station.grid_model_id for station in network_data.asset_topology.materialize_stations()])
     keep_mask = np.isin(relevant_node_ids, station_ids)
 
     for node_id in relevant_node_ids[~keep_mask]:
@@ -947,9 +948,9 @@ def remove_relevant_subs(
     simplified_asset_topology = (
         network_data.simplified_asset_topology.model_copy(
             update={
-                "stations": [
+                "raw_stations": [
                     x
-                    for x, has_action in zip(network_data.simplified_asset_topology.stations, keep_mask, strict=True)
+                    for x, has_action in zip(network_data.simplified_asset_topology.raw_stations, keep_mask, strict=True)
                     if has_action
                 ]
             }
@@ -1195,7 +1196,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
         network_data.relevant_nodes,
         network_data.branches_at_nodes,
         network_data.injection_idx_at_nodes,
-        topology.stations,
+        topology.materialize_stations(),
         strict=True,
     ):
         assert network_data.node_ids[node_index] == station.grid_model_id, "The station id does not match the node id"
@@ -1223,9 +1224,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
 
     network_data = replace(
         network_data,
-        simplified_asset_topology=topology.model_copy(
-            update={"stations": stations},
-        ),
+        simplified_asset_topology=topology_from_materialized_stations(topology, stations),
     )
     return remove_relevant_subs(network_data, np.array(keep_mask, dtype=bool))
 
@@ -1254,7 +1253,7 @@ def compute_separation_set_for_stations(
     assert network_data.simplified_asset_topology is not None, "Please simplify the asset topology first"
     actions = 0
     separation_sets_info: list[OptimalSeparationSetInfo] = []
-    for station in network_data.simplified_asset_topology.stations:
+    for station in network_data.simplified_asset_topology.materialize_stations():
         separation_set_info = make_optimal_separation_set(station, clip_hamming_distance, clip_at_size)
         separation_sets_info.append(separation_set_info)
         actions += separation_set_info.separation_set.shape[0]

@@ -14,6 +14,9 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+
 os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 import chex
@@ -98,14 +101,10 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology import (
-    Busbar,
-    BusbarCoupler,
-    Station,
-    SwitchableAsset,
+from toop_engine_interfaces.asset_topology.asset_topology import (
     Topology,
 )
-from toop_engine_interfaces.asset_topology_helpers import load_asset_topology
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import load_asset_topology
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     OUTPUT_FILE_NAMES,
@@ -635,7 +634,7 @@ def oberrhein_outage_station_busbars_map(_oberrhein_data_folder: Path) -> dict:
 
     asset_topo = load_asset_topology(_oberrhein_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"])
     retval = {}
-    for station in asset_topo.stations:
+    for station in asset_topo.materialize_stations():
         if station.grid_model_id in stations_desired:
             # Get the busbar IDs for the station
             busbars = [bb.grid_model_id for bb in station.busbars]
@@ -845,11 +844,11 @@ def basic_node_breaker_topology() -> Topology:
 
 
 @pytest.fixture(scope="session")
-def mock_station() -> Station:
-    asset1 = SwitchableAsset(grid_model_id="branch_01", in_service=True, branch_end="from", type="line")
-    asset2 = SwitchableAsset(grid_model_id="branch_02", in_service=True, branch_end="to", type="line")
-    asset3 = SwitchableAsset(grid_model_id="branch_03", in_service=True, branch_end="from", type="line")
-    asset4 = SwitchableAsset(grid_model_id="branch_04", in_service=True, branch_end="to", type="line")
+def mock_station() -> MaterializedStation:
+    asset1 = BranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    asset2 = BranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
+    asset3 = BranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
+    asset4 = BranchAsset(grid_model_id="branch_04", in_service=True, asset_type="line")
 
     # Create mock Busbar objects
     busbar_0 = Busbar(grid_model_id="busbar_0", int_id=1)
@@ -863,13 +862,13 @@ def mock_station() -> Station:
     # 1-2-3-4-5
 
     # Create a mock Station object
-    station = Station(
+    station = MaterializedStation(
         grid_model_id="station_1",
         busbars=[busbar_0, busbar_1, busbar_2, busbar_3, busbar_4],
         couplers=[
             BusbarCoupler(
                 grid_model_id="VL4_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL4_BREAKER",
                 busbar_from_id=1,
                 busbar_to_id=2,
@@ -878,7 +877,7 @@ def mock_station() -> Station:
             ),
             BusbarCoupler(
                 grid_model_id="VL5_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL5_BREAKER",
                 busbar_from_id=2,
                 busbar_to_id=3,
@@ -887,7 +886,7 @@ def mock_station() -> Station:
             ),
             BusbarCoupler(
                 grid_model_id="VL6_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL6_BREAKER",
                 busbar_from_id=3,
                 busbar_to_id=4,
@@ -896,7 +895,7 @@ def mock_station() -> Station:
             ),
             BusbarCoupler(
                 grid_model_id="VL7_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL7_BREAKER",
                 busbar_from_id=4,
                 busbar_to_id=5,
@@ -905,7 +904,7 @@ def mock_station() -> Station:
             ),
             BusbarCoupler(
                 grid_model_id="VL9_BREAKER",
-                type="busbar_coupler",
+                coupler_type="busbar_coupler",
                 name="VL9_BREAKER",
                 busbar_from_id=1,
                 busbar_to_id=3,
@@ -913,8 +912,14 @@ def mock_station() -> Station:
                 in_service=True,
             ),
         ],
-        assets=[asset1, asset2, asset3, asset4],
-        asset_switching_table=np.array(
+        branch_connections=[
+            MaterializedAssetConnection(asset=asset1),
+            MaterializedAssetConnection(asset=asset2),
+            MaterializedAssetConnection(asset=asset3),
+            MaterializedAssetConnection(asset=asset4),
+        ],
+        injection_connections=[],
+        branch_switching_table=np.array(
             [
                 [True, False, True, False],  # Busbar 0
                 [False, True, False, False],  # Busbar 1
@@ -924,6 +929,7 @@ def mock_station() -> Station:
             ],
             dtype=bool,
         ),
+        injection_switching_table=np.zeros((5, 0), dtype=bool),
     )
     return station
 

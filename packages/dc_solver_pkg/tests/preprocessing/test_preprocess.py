@@ -69,7 +69,8 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_pandapower_branch_loadflow_results_sequence,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_ids
-from toop_engine_interfaces.asset_topology import Station
+from toop_engine_interfaces.asset_topology.asset_topology import copy_topology_with_updates
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessStage
 
@@ -585,16 +586,24 @@ def test_enumerate_station_realisations(
     for stations, br_act in zip(network_data.realised_stations, network_data.branch_action_set, strict=True):
         assert br_act.shape[0] == len(stations)
         for station in stations:
-            Station.model_validate(station)
+            MaterializedStation.model_validate(station)
 
 
 def test_enumerate_station_realisations_no_coupler(
     network_data_filled: NetworkData,
 ) -> None:
-    stations = [station.model_copy(update={"couplers": []}) for station in network_data_filled.asset_topology.stations]
+    raw_stations = [
+        station.model_copy(update={"couplers": []}) for station in network_data_filled.asset_topology.raw_stations
+    ]
     network_data = replace(
         network_data_filled,
-        asset_topology=network_data_filled.asset_topology.model_copy(update={"stations": stations}),
+        asset_topology=copy_topology_with_updates(
+            reference_topology=network_data_filled.asset_topology,
+            raw_stations=raw_stations,
+            asset_bays=network_data_filled.asset_topology.asset_bays,
+            branch_assets=network_data_filled.asset_topology.branch_assets,
+            injection_assets=network_data_filled.asset_topology.injection_assets,
+        ),
     )
     network_data = filter_relevant_nodes_branch_count(network_data)
     network_data = compute_branch_topology_info(network_data)
@@ -611,15 +620,19 @@ def test_simplify_asset_topology(
     network_data = compute_injection_topology_info(network_data)
     network_data = simplify_asset_topology(network_data)
     assert network_data.simplified_asset_topology is not None
-    assert len(network_data.simplified_asset_topology.stations) == network_data.relevant_node_mask.sum()
+    simplified_stations = network_data.simplified_asset_topology.materialize_stations()
+    assert len(simplified_stations) == network_data.relevant_node_mask.sum()
     for rel_node_index, (rel_node_id, station) in enumerate(
-        zip(network_data.relevant_nodes, network_data.simplified_asset_topology.stations, strict=True)
+        zip(network_data.relevant_nodes, simplified_stations, strict=True)
     ):
         assert station.grid_model_id == network_data.node_ids[rel_node_id]
-        Station.model_validate(station)
+        MaterializedStation.model_validate(station)
         branch_ids = [network_data.branch_ids[i] for i in network_data.branches_at_nodes[rel_node_index]]
         inj_ids = [network_data.injection_ids[i] for i in network_data.injection_idx_at_nodes[rel_node_index]]
-        asset_ids = [a.grid_model_id for a in station.assets]
+        asset_ids = [
+            *(asset_connection.asset.grid_model_id for asset_connection in station.branch_connections),
+            *(asset_connection.asset.grid_model_id for asset_connection in station.injection_connections),
+        ]
         assert branch_ids == asset_ids[: len(branch_ids)]
         assert inj_ids == asset_ids[len(branch_ids) :]
 
@@ -787,7 +800,7 @@ def test_filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> No
         network_data,
         asset_topology=network_data.asset_topology.model_copy(
             update={
-                "stations": network_data.asset_topology.stations[:2]  # Keep only the first two stations
+                "raw_stations": network_data.asset_topology.raw_stations[:2]  # Keep only the first two stations
             }
         ),
     )
@@ -874,14 +887,18 @@ def test_preprocess(data_folder: str, tmp_path: str) -> None:
     static_information = load_static_information(Path(tmp_path) / "test_static_information.hdf5")
     validate_static_information(static_information)
 
+    simplified_stations = network_data.simplified_asset_topology.materialize_stations()
     for rel_node_index, (rel_node_id, station) in enumerate(
-        zip(network_data.relevant_nodes, network_data.simplified_asset_topology.stations, strict=True)
+        zip(network_data.relevant_nodes, simplified_stations, strict=True)
     ):
         assert station.grid_model_id == network_data.node_ids[rel_node_id]
-        Station.model_validate(station)
+        MaterializedStation.model_validate(station)
         branch_ids = [network_data.branch_ids[i] for i in network_data.branches_at_nodes[rel_node_index]]
         inj_ids = [network_data.injection_ids[i] for i in network_data.injection_idx_at_nodes[rel_node_index]]
-        asset_ids = [a.grid_model_id for a in station.assets]
+        asset_ids = [
+            *(asset_connection.asset.grid_model_id for asset_connection in station.branch_connections),
+            *(asset_connection.asset.grid_model_id for asset_connection in station.injection_connections),
+        ]
         assert branch_ids == asset_ids[: len(branch_ids)]
         assert inj_ids == asset_ids[len(branch_ids) :]
 

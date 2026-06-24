@@ -14,10 +14,10 @@ import pandapower
 import pandas as pd
 import pypowsybl
 from pypowsybl.network import Network
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_stations_bus_breaker
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_raw_stations_and_assets_bus_breaker
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_pandapower_net_for_powsybl
-from toop_engine_interfaces.asset_topology import Topology
-from toop_engine_interfaces.asset_topology_helpers import save_asset_topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import save_asset_topology
 from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
 
 
@@ -660,14 +660,17 @@ def create_busbar_b_in_ieee(net: pypowsybl.network.Network) -> None:
 
 
 def extract_station_info_powsybl(net: Network, base_folder: Path) -> None:
-    stations = get_stations_bus_breaker(net)
+    raw_stations, branch_assets, injection_assets = get_raw_stations_and_assets_bus_breaker(net)
     target = base_folder / PREPROCESSING_PATHS["asset_topology_file_path"]
     target.parent.mkdir(parents=True, exist_ok=True)
     save_asset_topology(
         target,
         Topology(
-            stations=stations,
             topology_id="extracted_topology",
+            raw_stations=raw_stations,
+            branch_assets=branch_assets,
+            injection_assets=injection_assets,
+            asset_bays=[],
             timestamp=datetime.datetime.now(),
         ),
     )

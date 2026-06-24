@@ -24,13 +24,17 @@ from toop_engine_dc_solver.jax.topology_computations import (
     convert_topo_to_action_set_index,
     default_topology,
 )
+from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
+from toop_engine_dc_solver.jax.types import ActionIndexComputations
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import (
     compute_n_1_dc,
 )
-from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
+from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
+from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, load_grid
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
     find_n_minus_2_safe_branches,
 )
+from toop_engine_dc_solver.preprocess.network_data import extract_action_set, extract_nminus1_definition
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
@@ -40,10 +44,79 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_pandapower_loadflow_results_injection,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_id
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
     CHRONICS_FILE_NAMES,
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
+from toop_engine_interfaces.stored_action_set import ActionSet
+
+
+def _select_asset_covering_action_indices(action_set: ActionSet) -> list[int]:
+    """Select a small action subset covering all changed branch and injection entries.
+
+    The action set is grouped by station. For each station we greedily choose local
+    actions until every branch or injection column that changes relative to the
+    simplified starting topology is covered at least once.
+    """
+    starting_station_by_id = {
+        station.grid_model_id: station for station in action_set.simplified_starting_topology.materialize_stations()
+    }
+    selected_action_indices: list[int] = []
+    action_idx = 0
+
+    while action_idx < len(action_set.local_actions):
+        station_id = action_set.local_actions[action_idx].grid_model_id
+        station_start = action_idx
+        while (
+            action_idx < len(action_set.local_actions) and action_set.local_actions[action_idx].grid_model_id == station_id
+        ):
+            action_idx += 1
+        station_end = action_idx
+
+        starting_station = starting_station_by_id[station_id]
+        station_actions = action_set.local_actions[station_start:station_end]
+        changed_assets_by_action = []
+        for station in station_actions:
+            changed_branch_mask = np.any(
+                station.branch_switching_table != starting_station.branch_switching_table,
+                axis=0,
+            )
+            changed_injection_mask = np.any(
+                station.injection_switching_table != starting_station.injection_switching_table,
+                axis=0,
+            )
+            changed_assets_by_action.append(
+                {
+                    *(set(("branch", asset_idx) for asset_idx in np.flatnonzero(changed_branch_mask).tolist())),
+                    *(set(("injection", asset_idx) for asset_idx in np.flatnonzero(changed_injection_mask).tolist())),
+                }
+            )
+
+        uncovered_assets = set().union(*changed_assets_by_action)
+        chosen_station_actions: set[int] = set()
+
+        while uncovered_assets:
+            best_action_offset = None
+            best_covered_assets: set[tuple[str, int]] = set()
+            for offset, changed_assets in enumerate(changed_assets_by_action):
+                if offset in chosen_station_actions:
+                    continue
+                covered_assets = changed_assets & uncovered_assets
+                if len(covered_assets) > len(best_covered_assets):
+                    best_action_offset = offset
+                    best_covered_assets = covered_assets
+
+            if best_action_offset is None or not best_covered_assets:
+                break
+
+            chosen_station_actions.add(best_action_offset)
+            selected_action_indices.append(station_start + best_action_offset)
+            uncovered_assets -= best_covered_assets
+
+    return selected_action_indices
 
 
 def test_grid_loadflow_uptodate(data_folder: Path) -> None:
@@ -79,6 +152,71 @@ def test_n_0_results(data_folder: Path, preprocessed_data_folder: Path) -> None:
     assert np.allclose(abs_backend_loadflow, np.abs(n_0), rtol=1e-3, atol=1e-3)
     # Two batch dimensions, time and batch
     assert abs_backend_loadflow.shape == n_0[0, 0, :].shape
+
+
+def test_powsybl_complex_grid_actions_match_runner(
+    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder: Path,
+) -> None:
+    _, static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder)),
+        parameters=PreprocessParameters(),
+        lf_params=CGMES_DISTRIBUTED_SLACK,
+    )
+
+    action_set = extract_action_set(network_data)
+    nminus1_definition = extract_nminus1_definition(network_data)
+
+    runner = PowsyblRunner(lf_params=CGMES_DISTRIBUTED_SLACK)
+    runner.load_base_grid(
+        complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    )
+    runner.store_action_set(action_set)
+    runner.store_nminus1_definition(nminus1_definition)
+
+    selected_action_indices = _select_asset_covering_action_indices(action_set)
+    failing_actions: list[str] = []
+
+    for action_idx in selected_action_indices:
+        actions = ActionIndexComputations(
+            action=jnp.array([[action_idx]], dtype=int),
+            pad_mask=jnp.array([True]),
+        )
+        (n_0_solver, n_1_solver), success = run_solver_symmetric(
+            topologies=actions,
+            disconnections=None,
+            injections=None,
+            dynamic_information=static_information.dynamic_information,
+            solver_config=static_information.solver_config,
+            aggregate_output_fn=lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+        )
+
+        assert np.all(success)
+
+        runner_result = runner.run_dc_loadflow([action_idx], [])
+        n_0_runner, n_1_runner, runner_success = extract_solver_matrices_polars(runner_result, nminus1_definition, 0)
+
+        assert np.all(runner_success)
+
+        n_0_expected = np.abs(np.asarray(n_0_solver[0, 0]))
+        n_1_expected = np.abs(np.asarray(n_1_solver[0, 0]))
+        n_0_actual = np.abs(n_0_runner)
+        n_1_actual = np.abs(n_1_runner)
+
+        n_0_matches = np.allclose(n_0_expected, n_0_actual)
+        n_1_matches = np.allclose(n_1_expected, n_1_actual)
+        if n_0_matches and n_1_matches:
+            continue
+
+        failure_parts = []
+        if not n_0_matches:
+            n_0_diff = np.abs(n_0_expected - n_0_actual)
+            failure_parts.append(f"N-0 max_diff={float(np.max(n_0_diff)):.6g} mean_diff={float(np.mean(n_0_diff)):.6g}")
+        if not n_1_matches:
+            n_1_diff = np.abs(n_1_expected - n_1_actual)
+            failure_parts.append(f"N-1 max_diff={float(np.max(n_1_diff)):.6g} mean_diff={float(np.mean(n_1_diff)):.6g}")
+        failing_actions.append(f"action {action_idx}: {'; '.join(failure_parts)}")
+
+    assert not failing_actions, "Failing actions:\n" + "\n".join(failing_actions)
 
 
 @pytest.mark.skip(

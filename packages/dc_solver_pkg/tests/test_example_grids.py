@@ -46,7 +46,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import assert_station_in_network
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 
@@ -60,7 +60,7 @@ def test_random_topology_info(data_folder: Path) -> None:
     )
     topology = random_topology_info_backend(backend, pp_counters)
 
-    assert len(topology.stations) == sum(backend.get_relevant_node_mask())
+    assert len(topology.materialize_stations()) == sum(backend.get_relevant_node_mask())
 
 
 def test_oberrhein_data() -> None:
@@ -481,7 +481,7 @@ def test_case14_with_matching_asset_topo() -> None:
         # Check the asset topology
         with open(tmp_dir / PREPROCESSING_PATHS["asset_topology_file_path"], "r") as f:
             asset_topo = Topology.model_validate_json(f.read())
-        for station in asset_topo.stations:
+        for station in asset_topo.materialize_stations():
             assert_station_in_network(backend.net, station)
 
 

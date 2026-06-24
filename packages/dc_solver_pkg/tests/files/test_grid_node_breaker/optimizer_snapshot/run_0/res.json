@@ -1,0 +1,98 @@
+{
+  "total_branch_combis": 2532808,
+  "total_inj_combis": 2532808,
+  "total_num_splits": 0,
+  "max_fitness": -88.39493471678644,
+  "best_topos": [
+    {
+      "actions": [
+        5
+      ],
+      "disconnections": [],
+      "pst_setpoints": null,
+      "metrics": {
+        "fitness": -88.39493471678644,
+        "extra_scores": {
+          "overload_energy_n_1": 88.39493471678644,
+          "split_subs": 1.0,
+          "top_k_overloads_n_1": 133.17284815697712
+        },
+        "worst_k_contingency_cases": [
+          "generator3",
+          "L8"
+        ]
+      },
+      "loadflow_results": null
+    }
+  ],
+  "initial_fitness": -138.25617430975592,
+  "initial_metrics": {
+    "overload_energy_n_1": 138.25617430975592,
+    "split_subs": 0.0
+  },
+  "args": {
+    "ga_config": {
+      "runtime_seconds": 30.0,
+      "iterations_per_epoch": 100,
+      "random_seed": 42,
+      "enable_nodal_inj_optim": false,
+      "plot": false,
+      "n_worst_contingencies": 2,
+      "enable_bb_outage": false,
+      "bb_outage_as_nminus1": true,
+      "clip_bb_outage_penalty": false,
+      "bb_outage_more_islands_penalty": 0.0,
+      "mutation_repetition": 1,
+      "random_topo_prob": 0.1,
+      "n_subs_mutated_lambda": 2.0,
+      "add_split_prob": 0.25,
+      "change_split_prob": 0.3,
+      "remove_split_prob": 0.25,
+      "add_disconnection_prob": 0.2,
+      "change_disconnection_prob": 0.2,
+      "remove_disconnection_prob": 0.2,
+      "pst_mutation_sigma": 0.0,
+      "pst_mutation_probability": 0.2,
+      "pst_reset_probability": 0.0,
+      "proportion_crossover": 0.1,
+      "crossover_mutation_ratio": 0.5,
+      "target_metrics": [
+        [
+          "overload_energy_n_1",
+          1.0
+        ]
+      ],
+      "observed_metrics": [
+        "overload_energy_n_1",
+        "split_subs"
+      ],
+      "me_descriptors": [
+        {
+          "metric": "split_subs",
+          "num_cells": 4,
+          "range": null
+        }
+      ],
+      "cell_depth": 1
+    },
+    "lf_config": {
+      "max_num_splits": 4,
+      "max_num_disconnections": 0,
+      "batch_size": 8,
+      "distributed": false,
+      "cross_coupler_flow": false
+    },
+    "fixed_files": [
+      "../data/test_grid_node_breaker/grid/static_information.hdf5"
+    ],
+    "tensorboard_dir": "../data/test_grid_node_breaker/results/test",
+    "stats_dir": "../data/test_grid_node_breaker/results/test",
+    "summary_frequency": 10,
+    "checkpoint_frequency": 100,
+    "double_limits": [
+      1.0,
+      1.0
+    ]
+  },
+  "iteration": 3166
+}

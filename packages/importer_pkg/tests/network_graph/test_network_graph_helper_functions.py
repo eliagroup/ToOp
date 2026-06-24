@@ -17,7 +17,7 @@ from toop_engine_importer.network_graph.network_graph_helper_functions import (
     remove_suffix_from_switchable_assets,
     reverse_dict_list,
 )
-from toop_engine_interfaces.asset_topology import SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import SwitchableAsset
 
 
 def test_find_busbar_in_list():

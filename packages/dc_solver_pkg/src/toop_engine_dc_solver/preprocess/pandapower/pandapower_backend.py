@@ -36,7 +36,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_tasks import (
     get_trafo3w_ppc_branch_idx,
     get_trafo3w_ppc_node_idx,
 )
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (

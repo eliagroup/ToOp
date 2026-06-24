@@ -20,7 +20,7 @@ from copy import deepcopy
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
-from beartype.typing import Any, Optional, cast
+from beartype.typing import Optional
 from toop_engine_dc_solver.export.dgs_v7_definitions import (
     DGS_GENERAL_SHEET_CONTENT_FID,
     DGS_GENERAL_SHEET_CONTENT_FID_CIM,
@@ -89,8 +89,7 @@ def switch_update_schema_to_dgs(
     dgs_df = dgs_df.astype({"FID(a:40)": str, "OP": str, "on_off": int})
     if cim:
         dgs_df["FID(a:40)"] = "_" + dgs_df["FID(a:40)"]
-    DgsElmCoupSchema.validate(dgs_df)
-    return cast(pat.DataFrame[DgsElmCoupSchema], dgs_df)
+    return dgs_df
 
 
 @pa.check_types
@@ -105,8 +104,7 @@ def get_dgs_general_schema(
         general_info = DGS_GENERAL_SHEET_CONTENT_FID
 
     df_general = pd.DataFrame(general_info)
-    DgsGeneralSchema.validate(df_general)
-    return cast(pat.DataFrame[DgsGeneralSchema], df_general)
+    return df_general
 
 
 @pa.check_types
@@ -171,7 +169,7 @@ def switch_dgs_schema_to_bytes_io(
         BytesIO object containing the xlsx file with the DGS information
     """
     bytes_io = io.BytesIO()
-    with pd.ExcelWriter(cast(Any, bytes_io), engine="openpyxl") as writer:
+    with pd.ExcelWriter(bytes_io, engine="openpyxl") as writer:
         df_general.to_excel(writer, index=False, sheet_name="General")
         switch_dgs_schema.to_excel(writer, index=False, sheet_name=sheet_name)
     bytes_io.seek(0)

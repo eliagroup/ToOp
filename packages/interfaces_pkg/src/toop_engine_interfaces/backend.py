@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from beartype.typing import Optional, Sequence, Union
 from jaxtyping import Bool, Float, Int
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
 
 
 class BackendInterface(ABC):

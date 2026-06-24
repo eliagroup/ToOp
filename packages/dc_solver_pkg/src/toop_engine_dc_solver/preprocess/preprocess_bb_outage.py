@@ -19,10 +19,31 @@ from toop_engine_dc_solver.preprocess.network_data import (
     OutageData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology import Station, SwitchableAsset
-from toop_engine_interfaces.asset_topology_helpers import find_station_by_id, get_connected_assets
+from toop_engine_interfaces.asset_topology.asset_topology import (
+    RawStation,
+)
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import find_station_by_id
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, InjectionAsset, SwitchableAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 logger = structlog.get_logger(__name__)
+
+
+def _topology_assets(network_data: NetworkData) -> list[SwitchableAsset]:
+    """Get the list of assets in the topology.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        The network data containing the asset topology.
+
+    Returns
+    -------
+    list[SwitchableAsset]
+        A list of switchable assets in the topology.
+    """
+    topology = network_data.simplified_asset_topology or network_data.asset_topology
+    return [*topology.branch_assets, *topology.injection_assets]
 
 
 def get_total_injection_along_stub_branch(
@@ -86,7 +107,7 @@ def get_total_injection_along_stub_branch(
     return total_injection
 
 
-def get_busbar_index(station: Station, busbar_id: str) -> int:
+def get_busbar_index(station: MaterializedStation, busbar_id: str) -> int:
     """Get the index of a busbar within a station by its grid_model_id of busbar (busbar_id).
 
     Parameters
@@ -147,7 +168,7 @@ def extract_outage_index_injection_from_asset(
     branch_index_to_outage = None
 
     if asset.in_service:
-        if asset.is_branch():
+        if isinstance(asset, BranchAsset):
             # Branch is a line or a trafo
             try:
                 branch_index = network.branch_ids.index(asset.grid_model_id)
@@ -168,7 +189,7 @@ def extract_outage_index_injection_from_asset(
                         branch_index, nodal_index_for_busbar, network
                     )
                     stub_power_map[key] = nodal_injection_to_outage
-        else:
+        elif isinstance(asset, InjectionAsset):
             # Branch is an injection
             try:
                 injection_index = network.injection_ids.index(asset.grid_model_id)
@@ -205,15 +226,15 @@ def get_busbar_map_adjacent_branches(network_data: NetworkData) -> Bool[np.ndarr
         # Gather all branches connected to a station with a busbar outage
         for station_id in network_data.busbar_outage_map.keys():
             # Find the asset topo station id
-            station = find_station_by_id(network_data.asset_topology.stations, station_id)
-            for asset in station.assets:
-                bb_outage_asset_indices.add(asset.grid_model_id)
+            station = find_station_by_id(network_data.asset_topology.materialize_stations(), station_id)
+            for asset_connection in station.branch_connections:
+                bb_outage_asset_indices.add(asset_connection.asset.grid_model_id)
 
         busbar_outage_branch_mask = np.array([(id in bb_outage_asset_indices) for id in network_data.branch_ids])
     return busbar_outage_branch_mask
 
 
-def get_busbar_branches_map(station: Station, network_data: NetworkData) -> dict[str, list[int]]:
+def get_busbar_branches_map(station: MaterializedStation, network_data: NetworkData) -> dict[str, list[int]]:
     """Map each busbar in a station to the list of branch indices connected to it.
 
     These branch_indices index into network_data.branch_ids.
@@ -238,9 +259,16 @@ def get_busbar_branches_map(station: Station, network_data: NetworkData) -> dict
     - The branch indices are determined based on their position in the `network_data.branch_ids` list.
     """
     busbar_branches_map = {}
+    topology_assets = _topology_assets(network_data)
     for bb_index, bb in enumerate(station.busbars):
-        connected_assets = get_connected_assets(station, bb_index)
-        connected_branches = [asset.grid_model_id for asset in connected_assets if asset.is_branch() and asset.in_service]
+        connected_branches = [
+            asset.grid_model_id
+            for asset in station.get_connected_assets(
+                bb_index,
+                topology_assets=topology_assets,
+                asset_scope="branch",
+            )
+        ]
         connected_branches = [network_data.branch_ids.index(branch_id) for branch_id in connected_branches]
         busbar_branches_map[bb.grid_model_id] = connected_branches
     return busbar_branches_map
@@ -290,7 +318,7 @@ def get_phy_bb_nodal_index(
 
 
 def extract_busbar_outage_data(
-    station: Station,
+    station: MaterializedStation,
     busbar_id: str,
     network: NetworkData,
     stub_power_map: dict[str, Float[np.ndarray, " n_timestep"]],
@@ -329,7 +357,10 @@ def extract_busbar_outage_data(
     assert station.busbars[busbar_index].in_service, f"Busbar {busbar_id} is not in service. Cannot outage it."
 
     connected_branches_to_outage = []
-    connected_assets = get_connected_assets(station, busbar_index)
+    connected_assets = station.get_connected_assets(
+        busbar_index,
+        topology_assets=_topology_assets(network),
+    )
     node_indices_to_outage = np.nonzero(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
 
     # Determine the nodal_index of the physical busbar.
@@ -402,7 +433,7 @@ def update_network_data_with_non_rel_bb_outages(
     delta_p = []
     nodal_indices = []
 
-    for station in asset_topology.stations:
+    for station in asset_topology.materialize_stations():
         if station.grid_model_id in outage_station_busbars_map:
             for bb_id in outage_station_busbars_map[station.grid_model_id]:
                 (branch_indices_to_outage, nodal_injection_to_outage, node_index_to_outage) = extract_busbar_outage_data(
@@ -515,7 +546,7 @@ def get_branch_injection_outages_for_rel_subs(
 def get_modified_stations(
     network_data: NetworkData,
     stations_to_outage: Optional[list[str]],
-) -> list[Optional[list[Station]]]:
+) -> list[Optional[list[MaterializedStation]]]:
     """Get the modified stations after applying branch actions.
 
     Note: We don't consider injection actions here.
@@ -551,7 +582,7 @@ def get_modified_stations(
 
 
 def get_all_rel_bb_outage_data(
-    modified_stations: list[Optional[list[Station]]],
+    modified_stations: list[Optional[list[MaterializedStation]]],
     network_data: NetworkData,
     busbars_to_outage: Optional[set[str]] = None,
 ) -> list[Optional[list[list[Optional[OutageData]]]]]:
@@ -744,7 +775,7 @@ def get_non_rel_articulation_nodes(
     , list[str]],network_data: NetworkData) -> dict[str, list[str]]:
     """
     asset_topology = network_data.simplified_asset_topology
-    for station in asset_topology.stations:
+    for station in asset_topology.materialize_stations():
         if station.grid_model_id in non_rel_busbar_outage_map:
             busbar_intid_index_mapper = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
             nodes = [busbar_index for busbar_index in range(len(station.busbars))]
@@ -768,7 +799,7 @@ def get_non_rel_articulation_nodes(
 
 
 def get_rel_articulation_nodes(
-    rel_stations: list[Station], busbar_a_mappings: list[list[list[int]]]
+    rel_stations: list[RawStation | MaterializedStation], busbar_a_mappings: list[list[list[int]]]
 ) -> list[list[list[int]]]:
     """Determine the busbars that serve as articulation nodes for relevant substations in the network.
 
@@ -780,7 +811,7 @@ def get_rel_articulation_nodes(
 
     Parameters
     ----------
-    rel_stations : list[Station]
+    rel_stations : list[RawStation | MaterializedStation]
         A list of relevant substations in the network.
     busbar_a_mappings : list[list[list[int]]]
         A list of busbar_a mappings for each relevant substation. The outer list is of length equal to the number

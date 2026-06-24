@@ -20,7 +20,8 @@ import numpy as np
 import pandapower as pp
 import structlog
 from beartype.typing import Optional
-from jaxtyping import ArrayLike, Bool, Int
+from jaxtyping import Bool, Int
+from numpy.typing import ArrayLike
 from pandas import Index
 from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker import (
     get_coupler_types_of_substation,

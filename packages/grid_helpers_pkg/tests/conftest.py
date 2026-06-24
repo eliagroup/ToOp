@@ -15,7 +15,7 @@ import pytest
 from pandapower import pp_dir
 from pandapower.converter import to_mpc
 from toop_engine_grid_helpers.powsybl.example_grids import case14_matching_asset_topo_powsybl
-from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 

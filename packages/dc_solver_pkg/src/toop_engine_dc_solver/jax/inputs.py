@@ -224,7 +224,6 @@ def validate_static_information(
 
     assert di.susceptance.shape == (n_branch,)
     assert jnp.all(di.susceptance != 0)
-
     assert di.branches_to_fail.shape[0] <= n_branch
 
     assert di.action_set is not None

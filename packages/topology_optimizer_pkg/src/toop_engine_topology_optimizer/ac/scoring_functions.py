@@ -23,7 +23,7 @@ from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import
     count_voltage_jumps,
 )
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
-from toop_engine_interfaces.asset_topology import RealizedTopology
+from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
     subset_contingencies_polars,
@@ -179,7 +179,7 @@ def extract_switching_distance(additional_info: AdditionalActionInfo) -> int:
         The switching distance, or 0 if not available
     """
     if isinstance(additional_info, RealizedTopology):
-        return len(additional_info.reassignment_diff)
+        return len(additional_info.branch_reassignment_diff) + len(additional_info.injection_reassignment_diff)
     if isinstance(additional_info, pd.DataFrame):
         return len(additional_info)
     raise ValueError("Unknown format for additional info")

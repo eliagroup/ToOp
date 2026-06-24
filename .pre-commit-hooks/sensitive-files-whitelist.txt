@@ -48,6 +48,14 @@ packages/dc_solver_pkg/tests/files/test_grid_node_breaker/static_information.zip
 packages/dc_solver_pkg/tests/files/test_grid_node_breaker/nminus1_definition.json
 packages/dc_solver_pkg/tests/files/test_grid_node_breaker/initial_topology/test_ucte_powsybl_example.xiidm
 packages/dc_solver_pkg/tests/files/test_grid_node_breaker/initial_topology/asset_topology.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/static_information_stats.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/optimizer_snapshot/run_0/unsplit_ac_metrics.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/optimizer_snapshot/run_0/topology_0/orao_summary.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/optimizer_snapshot/run_0/topology_0/modified_network.xiidm
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/optimizer_snapshot/run_0/topology_0/ac_metrics.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/optimizer_snapshot/run_0/res.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/loadflow_parameters.json
+packages/dc_solver_pkg/tests/files/test_grid_node_breaker/action_set_diffs.hdf5
 
 # Grid helpers package test files
 packages/grid_helpers_pkg/tests/files/test_ucte_powsybl_example.uct

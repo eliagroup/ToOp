@@ -12,7 +12,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
+from toop_engine_interfaces.asset_topology.asset_topology import (
+    RawStation,
+    Topology,
+)
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set, load_action_set_fs, save_action_set
 
@@ -46,8 +52,9 @@ def _build_large_random_action_set(
     )
     asset_counts = np.tile(asset_counts, n_stations // len(asset_counts))
 
-    stations: list[Station] = []
-    local_actions: list[Station] = []
+    raw_stations: list[RawStation] = []
+    topology_assets: list[BranchAsset] = []
+    local_actions: list[MaterializedStation] = []
 
     for station_idx in range(n_stations):
         grid_model_id = f"station_{station_idx:03d}"
@@ -81,18 +88,19 @@ def _build_large_random_action_set(
         ]
 
         assets = [
-            SwitchableAsset.model_construct(
+            BranchAsset.model_construct(
                 grid_model_id=f"{grid_model_id}_asset_{asset_idx}",
                 type=None,
                 name=None,
                 in_service=True,
-                branch_end=None,
-                asset_bay=None,
             )
             for asset_idx in range(n_assets)
         ]
 
-        starting_station = Station.model_construct(
+        branch_switching_table = rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool)
+        injection_switching_table = np.zeros((n_busbars, 0), dtype=bool)
+
+        raw_station = RawStation.model_construct(
             grid_model_id=grid_model_id,
             name=None,
             type=None,
@@ -100,14 +108,44 @@ def _build_large_random_action_set(
             voltage_level=None,
             busbars=busbars,
             couplers=couplers,
-            assets=assets,
-            asset_switching_table=rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool),
-            asset_connectivity=None,
+            branch_connections=[
+                StationAssetConnection.model_construct(
+                    asset_id=asset.grid_model_id,
+                    branch_end=None,
+                    asset_bay_id=None,
+                )
+                for asset in assets
+            ],
+            branch_switching_table=branch_switching_table,
+            branch_connectivity=None,
+            injection_connections=[],
+            injection_switching_table=injection_switching_table,
+            injection_connectivity=None,
             model_log=None,
         )
-        stations.append(starting_station)
+        raw_stations.append(raw_station)
+        topology_assets.extend(assets)
 
-        base_switching_table = np.asarray(starting_station.asset_switching_table, dtype=bool)
+        starting_station = MaterializedStation.model_construct(
+            grid_model_id=grid_model_id,
+            name=None,
+            type=None,
+            region=None,
+            voltage_level=None,
+            busbars=busbars,
+            couplers=couplers,
+            branch_connections=[
+                MaterializedAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None) for asset in assets
+            ],
+            branch_switching_table=branch_switching_table,
+            branch_connectivity=None,
+            injection_connections=[],
+            injection_switching_table=injection_switching_table,
+            injection_connectivity=None,
+            model_log=None,
+        )
+
+        base_switching_table = np.asarray(starting_station.branch_switching_table, dtype=bool)
         for _ in range(actions_per_station):
             action_couplers = [
                 coupler.model_copy(update={"open": bool(rng.integers(0, 2))}) for coupler in starting_station.couplers
@@ -123,16 +161,18 @@ def _build_large_random_action_set(
                 starting_station.model_copy(
                     update={
                         "couplers": action_couplers,
-                        "asset_switching_table": switching_table,
+                        "branch_switching_table": switching_table,
                     }
                 )
             )
 
-    starting_topology = Topology.model_construct(
+    starting_topology = Topology(
         topology_id="performance_starting_topology",
         grid_model_file=None,
         name=None,
-        stations=stations,
+        raw_stations=raw_stations,
+        branch_assets=topology_assets,
+        injection_assets=[],
         asset_setpoints=None,
         timestamp=datetime.now(),
         metrics=None,
@@ -175,11 +215,12 @@ def test_stored_action_set_large_performance(tmp_path: Path, record_property) ->
     )
 
     # Sanity checks for requested test configuration.
-    assert len(action_set.starting_topology.stations) == n_stations
+    starting_stations = action_set.starting_topology.materialize_stations()
+    assert len(starting_stations) == n_stations
     assert len(action_set.local_actions) == n_actions
-    mean_assets = float(np.mean([len(station.assets) for station in action_set.starting_topology.stations]))
+    mean_assets = float(np.mean([len(station.branch_connections) for station in starting_stations]))
     assert mean_assets == avg_assets_per_station
-    assert all(len(station.couplers) == couplers_per_station for station in action_set.starting_topology.stations)
+    assert all(len(station.couplers) == couplers_per_station for station in starting_stations)
 
     old_file = tmp_path / "action_set_legacy.json"
     new_json = tmp_path / "action_set_split.json"

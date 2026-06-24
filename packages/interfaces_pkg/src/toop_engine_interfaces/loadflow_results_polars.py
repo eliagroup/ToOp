@@ -148,7 +148,7 @@ class LoadflowResultsPolars(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     """Global warnings that occured during the computation (e.g. monitored elements/contingencies that were not found)"""
 
-    spps_results: Union[patpl.LazyFrame[SppsResultsSchemaPolars], pl.LazyFrame] = None
+    spps_results: Union[patpl.LazyFrame[SppsResultsSchemaPolars], pl.LazyFrame, None] = None
     """SpPS run summaries, concatenated in single-outage order. Empty when no
     SpPS was recorded (default)."""
 

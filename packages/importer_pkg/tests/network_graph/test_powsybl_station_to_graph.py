@@ -619,18 +619,17 @@ def test_get_topo_integration(basic_node_breaker_network_powsybl_grid: Network):
     relevant_voltage_level_with_region = get_relevant_voltage_levels(network=net, network_masks=network_masks)
     expected = ["VL1", "VL2", "VL3", "VL4", "VL5"]
     assert all(net.get_voltage_levels().index == expected)
-    # VL4 has only 3 branches, VL5 has only 1 busbar
-    assert all(relevant_voltage_level_with_region["voltage_level_id"] == expected[1:3])
-    assert all(relevant_voltage_level_with_region.index == ["VL2_0", "VL3_0"])
+    assert all(relevant_voltage_level_with_region["voltage_level_id"] == expected[1:])
+    assert all(relevant_voltage_level_with_region.index == ["VL2_0", "VL3_0", "VL4_0", "VL5_0"])
 
     res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
-    assert len(res) == 2
+    assert len(res) == 4
     assert all([isinstance(station, Station) for station in res])
 
     timestamp = datetime.datetime.now()
     res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
     assert isinstance(res, Topology)
-    assert len(res.stations) == 2
+    assert len(res.stations) == 4
     assert res.topology_id == "cgmes_file.zip"
     assert res.grid_model_file == "cgmes_file.zip"
     assert res.timestamp - timestamp < datetime.timedelta(seconds=3)

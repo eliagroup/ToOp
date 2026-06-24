@@ -83,6 +83,15 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 logger = structlog.get_logger(__name__)
 
 
+def disable_busbar_outage_contingencies(network_data: NetworkData) -> NetworkData:
+    """Clear busbar-outage configuration from network data.
+
+    The importer may provide a busbar outage map unconditionally, but when preprocessing-side
+    busbar outages are disabled we must not reconstruct bus contingencies from it later on.
+    """
+    return replace(network_data, busbar_outage_map=None)
+
+
 def compute_ptdf_if_not_given(network_data: NetworkData) -> NetworkData:
     """Compute the PTDF if not given.
 
@@ -1431,6 +1440,7 @@ def preprocess(  # noqa: PLR0915
         network_data = preprocess_bb_outages(network_data)
     else:
         logging_fn("preprocess_bb_outage", "BB-Outages disabled, skipping preprocessing step")
+        network_data = disable_busbar_outage_contingencies(network_data)
 
     logging_fn("preprocess_done", None)
     return network_data

@@ -593,6 +593,43 @@ class PowsyblBackend(BackendInterface):
             )
         return None
 
+    def get_busbar_outage_map(self) -> Optional[dict[str, Sequence[str]]]:
+        """Get busbar outages grouped by asset-topology station id."""
+        mask_path = self._get_masks_path() / NETWORK_MASK_NAMES["busbar_for_nminus1"]
+        if not self.data_folder_dirfs.exists(str(mask_path)):
+            return None
+
+        busbar_sections = self.net.get_busbar_sections(attributes=["bus_id"])
+        busbar_for_nminus1 = load_numpy_filesystem(filesystem=self.data_folder_dirfs, file_path=str(mask_path))
+        selected_busbars = busbar_sections[busbar_for_nminus1]
+        selected_busbars = selected_busbars[selected_busbars["bus_id"].isin(self.get_node_ids())]
+
+        asset_topology = self.get_asset_topology()
+        busbar_to_station_id = {}
+        bus_id_to_station_id = {}
+        if asset_topology is not None:
+            busbar_to_station_id = {
+                busbar.grid_model_id: station.grid_model_id
+                for station in asset_topology.stations
+                for busbar in station.busbars
+            }
+            bus_id_to_station_id = {
+                busbar.bus_branch_bus_id: station.grid_model_id
+                for station in asset_topology.stations
+                for busbar in station.busbars
+            }
+
+        outage_map: dict[str, list[str]] = {}
+        for busbar_id, busbar in selected_busbars.iterrows():
+            station_id = busbar_to_station_id.get(str(busbar_id))
+            if station_id is None:
+                station_id = bus_id_to_station_id.get(str(busbar["bus_id"]))
+            if station_id is None:
+                continue
+            outage_map.setdefault(station_id, []).append(str(busbar_id))
+
+        return outage_map
+
     def get_metadata(self) -> dict:
         """Get the path to the data_folder, masks_folder and the start datetime of the case"""
         return {

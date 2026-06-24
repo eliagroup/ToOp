@@ -1000,10 +1000,7 @@ def remove_slack_from_relevant_subs(network_masks: NetworkMasks, network: Networ
         The updated network masks without the slack bus in the relevant_subs mask.
     """
     relevant_subs = network_masks.relevant_subs & ~network.get_buses(attributes=[]).index.isin([slack_id])
-    busbar_for_nminus1 = network_masks.busbar_for_nminus1 & ~network.get_busbar_sections(attributes=["bus_id"])[
-        "bus_id"
-    ].isin([slack_id]).to_numpy(dtype=bool)
-    return replace(network_masks, relevant_subs=relevant_subs, busbar_for_nminus1=busbar_for_nminus1)
+    return replace(network_masks, relevant_subs=relevant_subs)
 
 
 def update_masks_from_power_factory_contingency_list_file(

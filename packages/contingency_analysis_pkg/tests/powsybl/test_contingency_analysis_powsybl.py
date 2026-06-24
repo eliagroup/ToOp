@@ -24,7 +24,7 @@ from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl imp
     build_branch_limit_cache,
     run_contingency_analysis_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
 from toop_engine_interfaces.loadflow_result_helpers import (
     convert_pandas_loadflow_results_to_polars,
     convert_polars_loadflow_results_to_pandas,
@@ -176,16 +176,19 @@ def test_run_ac_contingency_analysis_powsybl_with_busbar_outage(
     powsybl_node_breaker_net: pypowsybl.network.Network,
 ) -> None:
     nminus1_definition = get_full_nminus1_definition_powsybl(powsybl_node_breaker_net)
-    busbar_sections = powsybl_node_breaker_net.get_busbar_sections(attributes=["name"])
-    selected_busbar_id, selected_busbar = next(busbar_sections.iterrows())
+    busbar_sections = powsybl_node_breaker_net.get_busbar_sections()
+    # select a busbar section that is not the slack
+    lf_res = pypowsybl.loadflow.run_ac(powsybl_node_breaker_net)[0]
+    busbar_sections = busbar_sections[busbar_sections.bus_id != lf_res.reference_bus_id]
+    selected_busbar_id = selected_busbar_name = busbar_sections.index[0]
     nminus1_definition.contingencies.append(
         Contingency(
             id=selected_busbar_id,
-            name=selected_busbar.name or "",
+            name=selected_busbar_name or "",
             elements=[
                 GridElement(
                     id=selected_busbar_id,
-                    name=selected_busbar.name or "",
+                    name=selected_busbar_name or "",
                     type="BUSBAR_SECTION",
                     kind="bus",
                 )
@@ -203,20 +206,23 @@ def test_run_ac_contingency_analysis_powsybl_with_busbar_outage(
 def test_busbar_outage_equals_connected_element_outage(
     powsybl_node_breaker_net: pypowsybl.network.Network,
 ) -> None:
-    busbar_sections = powsybl_node_breaker_net.get_busbar_sections(attributes=["name"])
-    selected_busbar_id, selected_busbar = next(busbar_sections.iterrows())
+    busbar_sections = powsybl_node_breaker_net.get_busbar_sections()
+    # Exclude slack from selection
+    lf_res = pypowsybl.loadflow.run_ac(powsybl_node_breaker_net)[0]
+    busbar_sections = busbar_sections[busbar_sections.bus_id != lf_res.reference_bus_id]
+    selected_busbar_id = selected_busbar_name = busbar_sections.index[0]
     bus_map = get_busbar_mapping(powsybl_node_breaker_net)
     bus_breaker_bus_id = bus_map.loc[selected_busbar_id, "bus_breaker_bus_id"]
 
     branches = powsybl_node_breaker_net.get_branches(
-        attributes=["type", "name", "bus_breaker_bus1_id", "bus_breaker_bus2_id", "connected1", "connected2"]
+        attributes=["type", "bus_breaker_bus1_id", "bus_breaker_bus2_id", "connected1", "connected2"]
     )
     connected_branches = branches.index[
         ((branches["bus_breaker_bus1_id"] == bus_breaker_bus_id) & branches["connected1"])
         | ((branches["bus_breaker_bus2_id"] == bus_breaker_bus_id) & branches["connected2"])
     ].tolist()
 
-    injections = powsybl_node_breaker_net.get_injections(attributes=["type", "name", "bus_breaker_bus_id", "connected"])
+    injections = powsybl_node_breaker_net.get_injections(attributes=["type", "bus_breaker_bus_id", "connected"])
     connected_injections = injections.index[
         (injections["bus_breaker_bus_id"] == bus_breaker_bus_id)
         & injections["connected"]
@@ -224,14 +230,12 @@ def test_busbar_outage_equals_connected_element_outage(
     ].tolist()
 
     explicit_elements = [
-        GridElement(
-            id=branch_id, name=branches.loc[branch_id, "name"] or "", type=branches.loc[branch_id, "type"], kind="branch"
-        )
+        GridElement(id=branch_id, name=branch_id, type=branches.loc[branch_id, "type"], kind="branch")
         for branch_id in connected_branches
     ] + [
         GridElement(
             id=injection_id,
-            name=injections.loc[injection_id, "name"] or "",
+            name=injection_id or "",
             type=injections.loc[injection_id, "type"],
             kind="injection",
         )
@@ -244,11 +248,11 @@ def test_busbar_outage_equals_connected_element_outage(
             Contingency(id="BASECASE", elements=[]),
             Contingency(
                 id=selected_busbar_id,
-                name=selected_busbar.name or "",
+                name=selected_busbar_name or "",
                 elements=[
                     GridElement(
                         id=selected_busbar_id,
-                        name=selected_busbar.name or "",
+                        name=selected_busbar_name or "",
                         type="BUSBAR_SECTION",
                         kind="bus",
                     )
@@ -259,7 +263,9 @@ def test_busbar_outage_equals_connected_element_outage(
         id_type="powsybl",
     )
 
-    lf_result = get_ac_loadflow_results(powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1)
+    lf_result = get_ac_loadflow_results(
+        powsybl_node_breaker_net, nminus1_definition, job_id="test_job", n_processes=1, lf_params=SINGLE_SLACK
+    )
 
     assert_frame_equal(
         _normalize_contingency_frame(lf_result.branch_results.collect(), selected_busbar_id),

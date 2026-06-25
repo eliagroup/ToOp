@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import numpy as np
+import polars as pl
 import pytest
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
@@ -80,6 +81,10 @@ def test_score_strategy_worst_k_batch_parallelizes(monkeypatch: pytest.MonkeyPat
         reject_convergence_threshold=1.0,
         reject_overload_threshold=0.95,
         reject_critical_branch_threshold=1.1,
+        reject_voltage_jump_threshold=1.1,
+        reject_critical_va_diff_threshold=1.1,
+        critical_voltage_jump_percent=5.0,
+        max_allowed_va_diff=0.0,
         base_case_id=None,
         early_stop_validation=True,
     )
@@ -165,6 +170,10 @@ def test_score_strategy_remaining_batch_chunks_survivors(monkeypatch: pytest.Mon
         reject_convergence_threshold=1.0,
         reject_overload_threshold=0.95,
         reject_critical_branch_threshold=1.1,
+        reject_voltage_jump_threshold=1.1,
+        reject_critical_va_diff_threshold=1.1,
+        critical_voltage_jump_percent=5.0,
+        max_allowed_va_diff=0.0,
         base_case_id=None,
         early_stop_validation=True,
     )
@@ -236,6 +245,10 @@ def test_score_strategy_batch_without_early_results_uses_full_evaluation(monkeyp
         reject_convergence_threshold=1.0,
         reject_overload_threshold=0.95,
         reject_critical_branch_threshold=1.1,
+        reject_voltage_jump_threshold=1.1,
+        reject_critical_va_diff_threshold=1.1,
+        critical_voltage_jump_percent=5.0,
+        max_allowed_va_diff=0.0,
         base_case_id=None,
         early_stop_validation=True,
     )
@@ -326,6 +339,42 @@ def test_scoring_functions_split(grid_folder: Path) -> None:
     assert "switching_distance" in metrics.extra_scores
 
 
+def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
+    loadflow = Mock(spec=LoadflowResultsPolars)
+    loadflow.converged = pl.DataFrame({"status": []}).lazy()
+    loadflow.node_results = pl.LazyFrame()
+
+    def fake_compute_metrics_lfs(**kwargs):
+        assert kwargs["critical_va_diff_threshold"] == 12.0
+        return {
+            "overload_energy_n_1": 1.0,
+            "critical_va_diff_count_n_1": 2.0,
+            "voltage_jump_count_n_1": 3.0,
+        }
+
+    def fake_count_voltage_jumps(node_results, base_case_id, jump_threshold_percent):
+        del node_results
+        assert base_case_id == "BASECASE"
+        assert jump_threshold_percent == 7.5
+        return 4
+
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.compute_metrics_lfs", fake_compute_metrics_lfs)
+    monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.count_voltage_jumps", fake_count_voltage_jumps)
+
+    metrics = compute_metrics_single_timestep(
+        actions=[],
+        disconnections=[],
+        loadflow=loadflow,
+        additional_info=None,
+        base_case_id="BASECASE",
+        critical_voltage_jump_percent=7.5,
+        max_allowed_va_diff=12.0,
+    )
+
+    assert metrics.extra_scores["voltage_jump_count_n_1"] == 4.0
+    assert metrics.extra_scores["critical_va_diff_count_n_1"] == 2.0
+
+
 def test_evaluate_acceptance_identical_metrics():
     metrics_unsplit = Metrics(
         fitness=-1.0,
@@ -333,6 +382,8 @@ def test_evaluate_acceptance_identical_metrics():
             "non_converging_loadflows": 5,
             "overload_energy_n_1": 50.0,
             "critical_branch_count_n_1": 10,
+            "voltage_jump_count_n_1": 4,
+            "critical_va_diff_count_n_1": 6,
         },
     )
     # Check identical values
@@ -342,6 +393,8 @@ def test_evaluate_acceptance_identical_metrics():
             "non_converging_loadflows": 5,
             "overload_energy_n_1": 50.0,
             "critical_branch_count_n_1": 10,
+            "voltage_jump_count_n_1": 4,
+            "critical_va_diff_count_n_1": 6,
         },
     )
     # Accepted if thresholds == 1.
@@ -351,6 +404,8 @@ def test_evaluate_acceptance_identical_metrics():
         reject_convergence_threshold=1.0,
         reject_overload_threshold=1.0,
         reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.0,
+        reject_critical_va_diff_threshold=1.0,
     )
     assert reason is None, "Results rejected although they are the same as before and thresholds is exactly 1."
     # Not accepted if any thresholds < 1.
@@ -360,6 +415,8 @@ def test_evaluate_acceptance_identical_metrics():
         reject_convergence_threshold=0.9,
         reject_overload_threshold=0.9,
         reject_critical_branch_threshold=0.9,
+        reject_voltage_jump_threshold=0.9,
+        reject_critical_va_diff_threshold=0.9,
     )
     assert reason is not None, "Results rejected although they are the same as before and thresholds is below 1."
     assert reason.criterion == "convergence"
@@ -370,6 +427,8 @@ def test_evaluate_acceptance_identical_metrics():
         reject_convergence_threshold=0.9,
         reject_overload_threshold=1.0,
         reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.0,
+        reject_critical_va_diff_threshold=1.0,
     )
     assert reason is not None, "Results rejected although they are just as good and convergence thresholds below 1."
     assert reason.criterion == "convergence"
@@ -379,6 +438,8 @@ def test_evaluate_acceptance_identical_metrics():
         reject_convergence_threshold=1.0,
         reject_overload_threshold=0.9,
         reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.0,
+        reject_critical_va_diff_threshold=1.0,
     )
     assert reason is not None, "Results rejected although they are just as good and overload thresholds below 1."
     assert reason.criterion == "overload-energy"
@@ -389,6 +450,8 @@ def test_evaluate_acceptance_identical_metrics():
         reject_convergence_threshold=1.0,
         reject_overload_threshold=1.0,
         reject_critical_branch_threshold=0.9,
+        reject_voltage_jump_threshold=1.0,
+        reject_critical_va_diff_threshold=1.0,
     )
     assert reason is not None, "Results rejected although they are just as good and crit branch thresholds below 1."
     assert reason.criterion == "critical-branch-count"
@@ -400,6 +463,8 @@ def test_evaluate_acceptance_identical_metrics():
         reject_convergence_threshold=1.1,
         reject_overload_threshold=1.1,
         reject_critical_branch_threshold=1.1,
+        reject_voltage_jump_threshold=1.1,
+        reject_critical_va_diff_threshold=1.1,
     )
     assert reason is None, "Results rejected although they are just as good and thresholds above 1."
 
@@ -411,6 +476,8 @@ def test_evaluate_acceptance_improved_metrics():
             "non_converging_loadflows": 10,
             "overload_energy_n_1": 100.0,
             "critical_branch_count_n_1": 10,
+            "voltage_jump_count_n_1": 10,
+            "critical_va_diff_count_n_1": 10,
         },
     )
     # Check identical values
@@ -420,6 +487,8 @@ def test_evaluate_acceptance_improved_metrics():
             "non_converging_loadflows": 9,
             "overload_energy_n_1": 90,
             "critical_branch_count_n_1": 9,
+            "voltage_jump_count_n_1": 9,
+            "critical_va_diff_count_n_1": 9,
         },
     )
     # Accepted if thresholds == 1.
@@ -429,6 +498,8 @@ def test_evaluate_acceptance_improved_metrics():
         reject_convergence_threshold=1.0,
         reject_overload_threshold=1.0,
         reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.0,
+        reject_critical_va_diff_threshold=1.0,
     )
     assert reason is None, "Results rejected although they are the same as before and thresholds is exactly 1."
     # Accepted if all thresholds=0.9.
@@ -438,6 +509,8 @@ def test_evaluate_acceptance_improved_metrics():
         reject_convergence_threshold=0.9,
         reject_overload_threshold=0.9,
         reject_critical_branch_threshold=0.9,
+        reject_voltage_jump_threshold=0.9,
+        reject_critical_va_diff_threshold=0.9,
     )
     assert reason is None, "Results not accepted although they improved by exactly 10 percent and thresholds is 0.9."
 
@@ -447,6 +520,8 @@ def test_evaluate_acceptance_improved_metrics():
         reject_convergence_threshold=0.8,
         reject_overload_threshold=0.8,
         reject_critical_branch_threshold=0.8,
+        reject_voltage_jump_threshold=0.8,
+        reject_critical_va_diff_threshold=0.8,
     )
     assert reason is not None, "Results accepted although they only improved by exactly 10 percent and thresholds is 0.8."
     assert reason.criterion == "convergence"
@@ -457,6 +532,8 @@ def test_evaluate_acceptance_improved_metrics():
         reject_convergence_threshold=0.8,
         reject_overload_threshold=0.8,
         reject_critical_branch_threshold=0.8,
+        reject_voltage_jump_threshold=0.8,
+        reject_critical_va_diff_threshold=0.8,
     )
     assert reason is not None, "Results accepted although they only improved by exactly 10 percent and thresholds is 0.8."
     assert reason.criterion == "convergence"
@@ -468,6 +545,8 @@ def test_evaluate_acceptance_improved_metrics():
         reject_convergence_threshold=1.1,
         reject_overload_threshold=1.1,
         reject_critical_branch_threshold=1.1,
+        reject_voltage_jump_threshold=1.1,
+        reject_critical_va_diff_threshold=1.1,
     )
     assert reason is None, "Results rejected although they are just as good and thresholds above 1."
 
@@ -479,6 +558,8 @@ def test_evaluate_acceptance_worse_metrics():
             "non_converging_loadflows": 10,
             "overload_energy_n_1": 100.0,
             "critical_branch_count_n_1": 10,
+            "voltage_jump_count_n_1": 10,
+            "critical_va_diff_count_n_1": 10,
         },
     )
     # Check identical values
@@ -488,6 +569,8 @@ def test_evaluate_acceptance_worse_metrics():
             "non_converging_loadflows": 11,
             "overload_energy_n_1": 110,
             "critical_branch_count_n_1": 11,
+            "voltage_jump_count_n_1": 11,
+            "critical_va_diff_count_n_1": 11,
         },
     )
     # Dont Accept if thresholds == 1.
@@ -497,6 +580,8 @@ def test_evaluate_acceptance_worse_metrics():
         reject_convergence_threshold=1.0,
         reject_overload_threshold=1.0,
         reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.0,
+        reject_critical_va_diff_threshold=1.0,
     )
     assert reason is not None, "Results accepted although they are worse as before and thresholds is exactly 1."
     assert reason.criterion == "convergence"
@@ -508,6 +593,8 @@ def test_evaluate_acceptance_worse_metrics():
         reject_convergence_threshold=0.9,
         reject_overload_threshold=0.9,
         reject_critical_branch_threshold=0.9,
+        reject_voltage_jump_threshold=0.9,
+        reject_critical_va_diff_threshold=0.9,
     )
     assert reason is not None, "Results accepted although they got worse by exactly 10 percent and thresholds is 0.9."
     assert reason.criterion == "convergence"
@@ -518,8 +605,82 @@ def test_evaluate_acceptance_worse_metrics():
         reject_convergence_threshold=1.1,
         reject_overload_threshold=1.1,
         reject_critical_branch_threshold=1.1,
+        reject_voltage_jump_threshold=1.1,
+        reject_critical_va_diff_threshold=1.1,
     )
     assert reason is None, "Results not accepted although they only got worse by exactly 10 percent and thresholds is 1.1."
+
+
+def test_evaluate_acceptance_rejects_voltage_jump_increase() -> None:
+    metrics_unsplit = Metrics(
+        fitness=-1.0,
+        extra_scores={
+            "non_converging_loadflows": 1,
+            "overload_energy_n_1": 10.0,
+            "critical_branch_count_n_1": 1,
+            "voltage_jump_count_n_1": 2,
+            "critical_va_diff_count_n_1": 1,
+        },
+    )
+    metrics_split = Metrics(
+        fitness=-1.0,
+        extra_scores={
+            "non_converging_loadflows": 1,
+            "overload_energy_n_1": 10.0,
+            "critical_branch_count_n_1": 1,
+            "voltage_jump_count_n_1": 4,
+            "critical_va_diff_count_n_1": 1,
+        },
+    )
+
+    reason = evaluate_acceptance(
+        metrics_split=metrics_split,
+        metrics_unsplit=metrics_unsplit,
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=1.0,
+        reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.1,
+        reject_critical_va_diff_threshold=1.1,
+    )
+
+    assert reason is not None
+    assert reason.criterion == "voltage-magnitude"
+
+
+def test_evaluate_acceptance_rejects_critical_va_diff_increase() -> None:
+    metrics_unsplit = Metrics(
+        fitness=-1.0,
+        extra_scores={
+            "non_converging_loadflows": 1,
+            "overload_energy_n_1": 10.0,
+            "critical_branch_count_n_1": 1,
+            "voltage_jump_count_n_1": 1,
+            "critical_va_diff_count_n_1": 2,
+        },
+    )
+    metrics_split = Metrics(
+        fitness=-1.0,
+        extra_scores={
+            "non_converging_loadflows": 1,
+            "overload_energy_n_1": 10.0,
+            "critical_branch_count_n_1": 1,
+            "voltage_jump_count_n_1": 1,
+            "critical_va_diff_count_n_1": 4,
+        },
+    )
+
+    reason = evaluate_acceptance(
+        metrics_split=metrics_split,
+        metrics_unsplit=metrics_unsplit,
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=1.0,
+        reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.1,
+        reject_critical_va_diff_threshold=1.1,
+    )
+
+    assert reason is not None
+    assert reason.criterion == "voltage-angle"
 
 
 def test_compute_remaining_loadflows(grid_folder: Path) -> None:

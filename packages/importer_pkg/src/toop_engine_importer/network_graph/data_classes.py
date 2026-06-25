@@ -36,6 +36,16 @@ EDGE_ID: TypeAlias = tuple[int, int]
 DUPLICATED_EDGE_SUFFIX: TypeAlias = Literal["_FROM", "_TO"]
 
 
+class ValidationOnlyDataFrameModel(pa.DataFrameModel):
+    """Pandera base model configured for validation-only usage."""
+
+    class Config:
+        """Disable schema-driven dataframe shaping."""
+
+        coerce = False
+        add_missing_columns = False
+
+
 class SubstationInformation(BaseModel):
     """SubstationInformation contains information about a powsybl substation."""
 
@@ -217,7 +227,7 @@ class WeightValues(Enum):
     max_coupler = 5.0
 
 
-class NodeSchema(pa.DataFrameModel):
+class NodeSchema(ValidationOnlyDataFrameModel):
     """A NodeSchema is a DataFrameModel that represents a node in a network graph."""
 
     int_id: pat.Index[int] = pa.Field(check_name=False, description="Index of Dataframe")
@@ -251,16 +261,16 @@ class NodeSchema(pa.DataFrameModel):
     If set as an empty string, the node is not part of a relevant substation.
     If set as None, the node is part of an unknown substation."""
 
-    helper_node: pat.Series[bool] = pa.Field(default=False)
+    helper_node: pat.Series[bool]
     """A helper node is a node that is used to connect other nodes in the network graph.
     Helper nodes are not part of the network and do not contain any information."""
 
-    in_service: pat.Series[bool] = pa.Field(default=True)
+    in_service: pat.Series[bool]
     """The state of the node.
     True: The node is in service. Normally expected to be True or not included in the network graph."""
 
 
-class AssetSchema(pa.DataFrameModel):
+class AssetSchema(ValidationOnlyDataFrameModel):
     """An AssetSchema is a DataFrameModel that represents an asset in a network graph.
 
     This is the parent class for SwitchSchema and BranchSchema and should not be used directly.
@@ -281,7 +291,7 @@ class AssetSchema(pa.DataFrameModel):
     This is the index of the dataframe and is expected to be unique for the asset DataFrame
     and of type int."""
 
-    in_service: pat.Series[bool] = pa.Field(default=True)
+    in_service: pat.Series[bool]
     """The state of the asset.
     True: The asset is in service. Normally expected to be True or not included in the network graph."""
 
@@ -305,7 +315,7 @@ class BranchSchema(AssetSchema):
     )
     """The type of the branch."""
 
-    node_tuple: Optional[pat.Series[Tuple[int, int]]] = pa.Field(default=None, nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[Tuple[int, int]]] = pa.Field(nullable=True, description="optional")
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
 
@@ -327,7 +337,7 @@ class SwitchSchema(AssetSchema):
     True: The switch is open.
     False: The switch is closed."""
 
-    node_tuple: Optional[pat.Series[Tuple[int, int]]] = pa.Field(default=None, nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[Tuple[int, int]]] = pa.Field(nullable=True, description="optional")
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
 
@@ -343,7 +353,7 @@ class NodeAssetSchema(AssetSchema):
     """The nodes_index of the node where the asset is located."""
 
 
-class HelperBranchSchema(pa.DataFrameModel):
+class HelperBranchSchema(ValidationOnlyDataFrameModel):
     """A HelperBranchSchema is a BranchSchema that represents a helper branch in a network graph.
 
     Helper branches no real branches, but are used to connect nodes in the network graph.
@@ -363,7 +373,7 @@ class HelperBranchSchema(pa.DataFrameModel):
     It is set to an empty string, creating all edges with a grid_model_id."""
 
 
-class SwitchableAssetSchema(pa.DataFrameModel):
+class SwitchableAssetSchema(ValidationOnlyDataFrameModel):
     """A SwitchableAssetSchema to collect assets for the AssetTopology model."""
 
     grid_model_id: pat.Series[str]

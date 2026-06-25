@@ -459,10 +459,11 @@ def update_results_with_names(
     Notes
     -----
         - Only missing or empty `element_name` values are filled.
-        - If an element is not found in `element_name_map`, the value remains NaN.
+        - If an element is not found in `element_name_map`, the value falls back to an empty string.
     """
     no_name_yet = (df["element_name"] == "") | (df["element_name"].isna())
     df.loc[no_name_yet, "element_name"] = df.loc[no_name_yet].index.get_level_values("element").map(element_name_map)
+    df["element_name"] = df["element_name"].fillna("")
     return df
 
 

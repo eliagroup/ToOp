@@ -68,6 +68,20 @@ class ACGAParameters(BaseModel):
     """The rejection threshold for the critical branches increase, i.e. the split case must have less than 10% more
     critical branches than the unsplit case or it will be rejected."""
 
+    reject_voltage_jump_threshold: float = 1.1
+    """The rejection threshold for the voltage jump count increase, i.e. the split case must have less than 10% more
+    critical voltage jumps than the unsplit case or it will be rejected."""
+
+    reject_critical_va_diff_threshold: float = 1.1
+    """The rejection threshold for the critical voltage-angle-difference count increase, i.e. the split case must have
+    less than 10% more critical voltage-angle differences than the unsplit case or it will be rejected."""
+
+    critical_voltage_jump_percent: float = 5.0
+    """Voltage jumps larger than this percentage are counted as critical in the AC metrics."""
+
+    critical_va_diff_degree: float = 20.0
+    """Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics."""
+
     early_stop_validation: bool = True
     """Whether to enable early stopping during the optimization process."""
 

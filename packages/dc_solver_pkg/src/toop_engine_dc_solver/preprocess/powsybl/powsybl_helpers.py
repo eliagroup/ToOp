@@ -20,7 +20,7 @@ import pandera as pa
 import pandera.typing as pat
 import structlog
 from beartype.typing import Literal, Optional
-from pandera import DataFrameModel, Field
+from pandera import Field
 from pandera.typing import Index, Series
 from pypowsybl.network import Network
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
@@ -28,7 +28,19 @@ from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_mo
 logger = structlog.get_logger(__name__)
 
 
-class BranchModel(DataFrameModel):
+BRANCH_MODEL_DEFAULTS = {
+    "has_pst_tap": False,
+    "has_pst_linear_tap": False,
+    "for_reward": False,
+    "for_nminus1": False,
+    "overload_weight": 1.0,
+    "disconnectable": False,
+    "pst_controllable": False,
+    "n0_n1_max_diff_factor": -1.0,
+}
+
+
+class BranchModel(pa.DataFrameModel):
     """Schema for the branch data required by the backend."""
 
     id: Index[str]
@@ -46,7 +58,9 @@ class BranchModel(DataFrameModel):
     for_nminus1: Series[bool] = Field(
         nullable=True, default=False, description="Whether the branch is used for N-1 calculations"
     )
-    overload_weight: Series[float] = Field(nullable=True, default=1.0, description="Multiplier for overload calculations")
+    for_reward: Series[bool] = Field(nullable=True, description="Whether the branch is used for reward calculation")
+    for_nminus1: Series[bool] = Field(nullable=True, description="Whether the branch is used for N-1 calculations")
+    overload_weight: Series[float] = Field(nullable=True, description="Multiplier for overload calculations")
     p_max_mw: Series[float] = Field(nullable=True, description="Maximum active power in MW (taken from 'permanent_limit')")
     p_max_mw_n_1: Series[float] = Field(
         nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'N-1')"
@@ -59,7 +73,7 @@ class BranchModel(DataFrameModel):
         nullable=True, default=-1, description="Parallel-PST group label (-1 = not a controllable PST / not grouped)"
     )
     n0_n1_max_diff_factor: Series[float] = Field(
-        nullable=True, default=-1.0, description="Maximum difference factor between N-0 and N-1 limits"
+        nullable=True, description="Maximum difference factor between N-0 and N-1 limits"
     )
 
 
@@ -89,7 +103,7 @@ def add_missing_branch_model_columns(branches: pd.DataFrame) -> pat.DataFrame[Br
         if column_name == branch_template.index.name or column_name in normalized_branches.columns:
             continue
 
-        default_value = field.default
+        default_value = BRANCH_MODEL_DEFAULTS.get(column_name, field.default)
         if default_value is None or default_value is ...:
             default_value = np.nan
         branch_template[column_name] = default_value

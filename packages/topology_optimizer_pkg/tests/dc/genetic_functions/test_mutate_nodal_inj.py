@@ -191,8 +191,7 @@ def test_resetting_psts() -> None:
     # Assert boundaries
     assert jnp.all(0 <= mutated_pst_taps)
     assert jnp.all(mutated_pst_taps < pst_n_taps)
-    # Assert some PSTs are adjusted but not all
-    difference = jnp.abs(pst_taps - mutated_pst_taps)
+    # Assert all PSTs are reset to starting taps
     assert jnp.all(mutated_pst_taps == pst_starting_taps)
 
     # Test resetting some PSTs
@@ -250,8 +249,41 @@ def test_grouped_mutate_psts_keeps_parallel_members_equal() -> None:
         parallel_pst_group_mask=parallel_pst_group_mask,
     )
 
+    difference = jnp.abs(pst_taps - mutated_pst_taps)
+    assert jnp.any(difference > 0)
     assert mutated_pst_taps[0] == mutated_pst_taps[1]
     assert mutated_pst_taps[2] == mutated_pst_taps[3]
+
+
+def test_grouped_mutate_psts_keeps_parallel_members_equal_different_order() -> None:
+    random_key = jax.random.PRNGKey(32324)
+    pst_taps = jnp.array([3, 7, 3, 7])
+    pst_starting_taps = jnp.array([5, 7, 5, 7])
+    pst_n_taps = jnp.array([20, 20, 20, 20])
+    parallel_pst_group_mask = jnp.array(
+        [
+            [True, False, True, False],
+            [False, True, False, True],
+        ],
+        dtype=bool,
+    )
+
+    mutated_pst_taps = mutate_psts(
+        random_key=random_key,
+        pst_taps=pst_taps,
+        pst_n_taps=pst_n_taps,
+        pst_starting_taps=pst_starting_taps,
+        pst_mutation_sigma=3.0,
+        pst_mutation_probability=1.0,
+        pst_reset_probability=0.0,
+        enable_parallel_pst_group_optim=True,
+        parallel_pst_group_mask=parallel_pst_group_mask,
+    )
+
+    difference = jnp.abs(pst_taps - mutated_pst_taps)
+    assert jnp.any(difference > 0)
+    assert mutated_pst_taps[0] == mutated_pst_taps[2]
+    assert mutated_pst_taps[1] == mutated_pst_taps[3]
 
 
 def test_mutate_nodal_injections_ignores_empty_group_mask_when_group_optim_disabled() -> None:
@@ -264,7 +296,7 @@ def test_mutate_nodal_injections_ignores_empty_group_mask_when_group_optim_disab
         pst_start_tap_idx=jnp.array([1, 2], dtype=int),
         enable_parallel_pst_group_optim=False,
         # An empty group mask (zero group rows) aligned with the two controllable PSTs.
-        parallel_pst_group_mask=jnp.zeros((0, 2), dtype=bool),
+        parallel_pst_group_mask=None,
     )
 
     mutated = mutate_nodal_injections(
@@ -274,3 +306,27 @@ def test_mutate_nodal_injections_ignores_empty_group_mask_when_group_optim_disab
     )
 
     assert mutated == nodal_inj_info
+
+
+def test_mutate_nodal_injections_grouped_psts() -> None:
+    nodal_inj_info = NodalInjOptimResults(pst_tap_idx=jnp.array([[[1, 2, 2]]], dtype=int))
+    mutation_config = NodalInjectionMutationConfig(
+        pst_mutation_sigma=2.0,
+        pst_mutation_probability=1.0,
+        pst_reset_probability=0.0,
+        pst_n_taps=jnp.array([10, 10, 10], dtype=int),
+        pst_start_tap_idx=jnp.array([1, 2, 2], dtype=int),
+        enable_parallel_pst_group_optim=True,
+        # A group mask defining two groups: the first PST is in the first group, the second and third PSTs are in the second group.
+        parallel_pst_group_mask=jnp.array([[1, 0, 0], [0, 1, 1]], dtype=bool),
+    )
+
+    mutated = mutate_nodal_injections(
+        random_key=jax.random.PRNGKey(32422341),
+        nodal_inj_info=nodal_inj_info,
+        nodal_mutation_config=mutation_config,
+    )
+
+    difference = jnp.abs(mutated.pst_tap_idx - nodal_inj_info.pst_tap_idx)
+    assert jnp.any(difference > 0)
+    assert mutated.pst_tap_idx[0, 0, 1] == mutated.pst_tap_idx[0, 0, 2]

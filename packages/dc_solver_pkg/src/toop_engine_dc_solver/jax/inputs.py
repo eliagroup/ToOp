@@ -329,6 +329,17 @@ def validate_static_information(
         )
         assert jnp.all(di.nodal_injection_information.starting_tap_idx >= 0)
         assert jnp.all(di.nodal_injection_information.starting_tap_idx < di.nodal_injection_information.pst_n_taps)
+        assert di.nodal_injection_information.parallel_pst_group_mask is not None, (
+            "Parallel PST group mask should always be imported but are None. Check the preprocessing step."
+        )
+        assert (
+            di.nodal_injection_information.parallel_pst_group_mask.shape[1]
+            == (di.nodal_injection_information.controllable_pst_indices.shape[0])
+        )
+        # Sum of each column must be 1, as each PST can only belong to one parallel group
+        assert jnp.all(jnp.sum(di.nodal_injection_information.parallel_pst_group_mask, axis=0) == 1), (
+            "PST group mask implies that a PST belongs to more than one parallel group. Error during mask creation step."
+        )
 
 
 def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:
@@ -546,11 +557,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 "grid_model_low_tap",
                 data=nodal_inj_opt.grid_model_low_tap,
             )
-            if solver_config.enable_parallel_pst_group_optim:
-                file.create_dataset(
-                    "parallel_pst_group_mask",
-                    data=nodal_inj_opt.parallel_pst_group_mask,
-                )
+            file.create_dataset(
+                "parallel_pst_group_mask",
+                data=nodal_inj_opt.parallel_pst_group_mask,
+            )
 
         for idx, (branches, nodes) in enumerate(
             zip(

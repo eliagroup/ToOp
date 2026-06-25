@@ -34,6 +34,7 @@ Parallel PST group optimization is currently supported only for Powsybl-imported
 Controllable PSTs are serialized in `ActionSet.pst_ranges`. Each PST range carries a `pst_group` field that persists the import-derived group used by downstream tooling.
 
 - PSTs with the same `pst_group` are treated as one optimization group.
+- Group metadata is imported and carried in static information when available, but grouped behavior is applied only when `enable_parallel_pst_group_optim=True`.
 - Group members share the same tap delta during solver execution and optimization, then each member is clipped to its own tap domain.
 - Different initial taps inside one group trigger a warning.
 - Mixed linear and non-linear PSTs are not supported in one group when grouped optimization is enabled. We currently do not support optimization of non-linear/asymmetric PSTs.

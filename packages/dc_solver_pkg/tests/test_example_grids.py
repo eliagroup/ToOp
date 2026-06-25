@@ -31,6 +31,7 @@ from toop_engine_dc_solver.example_grids import (
     node_breaker_folder_powsybl,
     oberrhein_data,
     random_topology_info_backend,
+    three_node_pst_example_folder_powsybl,
 )
 from toop_engine_dc_solver.jax.bsdf import _apply_bus_split, calc_bsdf, init_bsdf_results
 from toop_engine_dc_solver.jax.inputs import validate_static_information
@@ -467,6 +468,21 @@ def test_case30_with_psts_powsybl() -> None:
         powsybl_backend = PowsyblBackend(filesystem_dir)
         assert powsybl_backend.get_phase_shift_mask().sum() == 2
         assert powsybl_backend.get_controllable_phase_shift_mask().sum() == 2
+
+
+def test_three_node_pst_example_folder_powsybl() -> None:
+    """Check that the three-node PST example keeps only the two PST stations relevant."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir)
+        three_node_pst_example_folder_powsybl(tmp_dir)
+
+        backend = PowsyblBackend(DirFileSystem(str(tmp_dir)))
+        relevant_mask = backend.get_relevant_node_mask()
+        first_pst_connected_bus = 1
+        second_pst_connected_bus = 2
+        # The 3-node PST example marks only the two PST-connected buses as relevant.
+        assert relevant_mask.sum() == 2
+        assert relevant_mask[[first_pst_connected_bus, second_pst_connected_bus]].all()
 
 
 def test_case14_with_matching_asset_topo() -> None:

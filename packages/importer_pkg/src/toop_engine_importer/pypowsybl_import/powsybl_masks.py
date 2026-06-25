@@ -607,17 +607,72 @@ def filter_and_group_linear_psts(
         Boolean mask marking transformers that have a linear phase tap changer and are in the control area.
     pst_group_labels: Int[np.ndarray, " n_trafos"]
         Integer array of parallel PST group labels, aligned with ``trafos_df`` rows. Each group of parallel PSTs shares a
-        unique positive integer label. Non-PSTs are labeled with ``-1``.
+        unique non-negative integer label. Non-PSTs are labeled with ``-1``.
+    """
+    trafo_has_pst_tap, trafo_pst_linear, step_tables, buckets = _identify_psts_and_create_buckets(
+        network=network,
+        trafos_df=trafos_df,
+        control_area_hv_trafo_mask=control_area_hv_trafo_mask,
+    )
+    pst_group_labels = np.full(len(trafos_df), -1, dtype=int)
+    if not buckets:
+        return trafo_has_pst_tap, trafo_pst_linear, pst_group_labels
+
+    pst_group_labels = _build_pst_group_labels_from_buckets(
+        trafos_df=trafos_df,
+        step_tables=step_tables,
+        buckets=buckets,
+    )
+
+    return trafo_has_pst_tap, trafo_pst_linear, pst_group_labels
+
+
+def _identify_psts_and_create_buckets(
+    network: Network,
+    trafos_df: pd.DataFrame,
+    control_area_hv_trafo_mask: Bool[np.ndarray, " n_trafos"],
+) -> tuple[
+    Bool[np.ndarray, " n_trafos"],
+    Bool[np.ndarray, " n_trafos"],
+    dict[str, np.ndarray],
+    dict[tuple[object, ...], list[int]],
+]:
+    """Identify PSTs, linear PSTs and grouping buckets.
+
+    Candidate PSTs are transformers in the control area that have a phase tap changer. The returned
+    buckets contain exactly comparable grouping attributes: unordered bus pair, nominal voltage, tap range,
+    number of tap steps and whether the tap changer is linear. The per-tap step tables are returned
+    separately so that grouping can compare them numerically within each bucket.
+
+    Parameters
+    ----------
+    network: Network
+        The powsybl network providing the phase-tap-changer and voltage-level data.
+    trafos_df: pd.DataFrame
+        The 2-winding transformer dataframe, indexed by trafo id and including the ``bus1_id``,
+        ``bus2_id`` and ``voltage_level1_id`` columns.
+    control_area_hv_trafo_mask: Bool[np.ndarray, " n_trafos"]
+        Boolean mask (aligned with ``trafos_df`` rows) marking transformers in the control area.
+
+    Returns
+    -------
+    trafo_has_pst_tap: Bool[np.ndarray, " n_trafos"]
+        Boolean mask marking transformers that have a phase tap changer and are in the control area.
+    trafo_pst_linear: Bool[np.ndarray, " n_trafos"]
+        Boolean mask marking transformers that have a linear phase tap changer and are in the control area.
+    step_tables: dict[str, np.ndarray]
+        Mapping from PST id to its phase-tap-changer step table as a numeric array.
+    buckets: dict[tuple[object, ...], list[int]]
+        Mapping from exactly comparable PST attributes to transformer positions in ``trafos_df``.
     """
     trafo_pst_linear = np.zeros(len(trafos_df), dtype=bool)
-    pst_group_labels = np.full(len(trafos_df), -1, dtype=int)
 
     tap_changers = network.get_phase_tap_changers()
     # Candidate PSTs are trafos that actually carry a phase tap changer.
     trafo_has_pst_tap = control_area_hv_trafo_mask & trafos_df.index.isin(tap_changers.index)
     trafo_has_pst_tap_index = np.flatnonzero(trafo_has_pst_tap)
     if trafo_has_pst_tap_index.size == 0:
-        return trafo_has_pst_tap, trafo_pst_linear, pst_group_labels
+        return trafo_has_pst_tap, trafo_pst_linear, {}, defaultdict(list)
 
     trafo_has_pst_tap_ids = trafos_df.index[trafo_has_pst_tap_index]
     nominal_v = get_voltage_from_voltage_level_id(network, trafos_df.loc[trafo_has_pst_tap_ids, "voltage_level1_id"])
@@ -627,7 +682,7 @@ def filter_and_group_linear_psts(
     # Bucket candidates by exactly-comparable attributes; the per-tap step tables are then compared
     # within each (small) bucket using a numerical tolerance.
     step_tables: dict[str, np.ndarray] = {}
-    buckets: dict[tuple, list[int]] = defaultdict(list)
+    buckets: dict[tuple[object, ...], list[int]] = defaultdict(list)
     for local_idx, (position, pst_id) in enumerate(zip(trafo_has_pst_tap_index, trafo_has_pst_tap_ids, strict=True)):
         low_tap = int(tap_changers.at[pst_id, "low_tap"])
         high_tap = int(tap_changers.at[pst_id, "high_tap"])
@@ -645,6 +700,36 @@ def filter_and_group_linear_psts(
         )
         buckets[bucket_key].append(position)
 
+    return trafo_has_pst_tap, trafo_pst_linear, step_tables, buckets
+
+
+def _build_pst_group_labels_from_buckets(
+    trafos_df: pd.DataFrame,
+    step_tables: dict[str, np.ndarray],
+    buckets: dict[tuple[object, ...], list[int]],
+) -> Int[np.ndarray, " n_trafos"]:
+    """Build parallel PST group labels from precomputed buckets.
+
+    PSTs in the same bucket already share exactly comparable attributes. This function splits each
+    bucket into one or more groups by comparing the corresponding per-tap step tables with numerical
+    tolerance, then assigns consecutive labels starting at ``0``. Non-PST positions keep label ``-1``.
+
+    Parameters
+    ----------
+    trafos_df: pd.DataFrame
+        The 2-winding transformer dataframe, indexed by trafo id.
+    step_tables: dict[str, np.ndarray]
+        Mapping from PST id to its phase-tap-changer step table as a numeric array.
+    buckets: dict[tuple[object, ...], list[int]]
+        Mapping from exactly comparable PST attributes to transformer positions in ``trafos_df``.
+
+    Returns
+    -------
+    pst_group_labels: Int[np.ndarray, " n_trafos"]
+        Integer array of parallel PST group labels, aligned with ``trafos_df`` rows. Each group of parallel PSTs shares a
+        unique non-negative integer label. Non-PSTs are labeled with ``-1``.
+    """
+    pst_group_labels = np.full(len(trafos_df), -1, dtype=int)
     next_label = 0
     for positions in buckets.values():
         # Within a bucket all candidates already share bus pair, voltage and tap range. Group those
@@ -665,7 +750,7 @@ def filter_and_group_linear_psts(
                 pst_group_labels[position] = next_label
             next_label += 1
 
-    return trafo_has_pst_tap, trafo_pst_linear, pst_group_labels
+    return pst_group_labels
 
 
 def update_bus_masks(

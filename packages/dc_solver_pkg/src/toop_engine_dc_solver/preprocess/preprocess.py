@@ -1277,7 +1277,7 @@ def compute_separation_set_for_stations(
 
 
 def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> NetworkData:
-    """Exclude nonlinear phase shifters from the controllable phase shifters and paralle grouping.
+    """Exclude nonlinear phase shifters from the controllable phase shifters and parallel grouping.
 
     This is necessary because nonlinear phase shifters cannot be optimized correctly in the backend
     at this moment.

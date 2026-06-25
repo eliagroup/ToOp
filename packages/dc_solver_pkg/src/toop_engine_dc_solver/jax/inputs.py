@@ -558,10 +558,11 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 "grid_model_low_tap",
                 data=nodal_inj_opt.grid_model_low_tap,
             )
-            file.create_dataset(
-                "parallel_pst_group_mask",
-                data=nodal_inj_opt.parallel_pst_group_mask,
-            )
+            if nodal_inj_opt.parallel_pst_group_mask is not None:
+                file.create_dataset(
+                    "parallel_pst_group_mask",
+                    data=nodal_inj_opt.parallel_pst_group_mask,
+                )
 
         for idx, (branches, nodes) in enumerate(
             zip(
@@ -860,14 +861,15 @@ def load_nodal_injection_optimization(
     NodalInjectionOptimization | None
         The loaded NodalInjectionOptimization or None if not present
     """
-    if "parallel_pst_group_mask" in file:
-        parallel_pst_group_mask = jnp.array(file["parallel_pst_group_mask"][:])
-    else:
-        parallel_pst_group_mask = jnp.eye(file["pst_n_taps"].shape[0], dtype=bool)
-        logger.warning(
-            "No parallel PST group mask found in the file. Using identity matrix as default, which means no parallel groups."
-        )
     if nodal_injection_optimization_present:
+        if "parallel_pst_group_mask" in file:
+            parallel_pst_group_mask = jnp.array(file["parallel_pst_group_mask"][:])
+        else:
+            parallel_pst_group_mask = jnp.eye(file["pst_n_taps"].shape[0], dtype=bool)
+            logger.warning(
+                "No parallel PST group mask found in the file. "
+                "Using identity matrix as default, which means no parallel groups."
+            )
         return NodalInjectionInformation(
             controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
             shift_degree_min=jnp.array(file["shift_degree_min"][:]),

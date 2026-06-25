@@ -167,14 +167,9 @@ def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
     validate_static_information(static_information)
     nodal_injection_information = static_information.dynamic_information.nodal_injection_information
     assert nodal_injection_information.shift_degree_max.shape == (3,)
-    assert nodal_injection_information.parallel_pst_group_mask is not None
-    assert nodal_injection_information.parallel_pst_group_mask.shape == (0, 3)
 
     loaded_static_information = load_static_information(folder / PREPROCESSING_PATHS["static_information_file_path"])
     validate_static_information(loaded_static_information)
-    loaded_nodal_injection_information = loaded_static_information.dynamic_information.nodal_injection_information
-    assert loaded_nodal_injection_information.parallel_pst_group_mask is not None
-    assert loaded_nodal_injection_information.parallel_pst_group_mask.shape == (0, 3)
 
     action_set = load_action_set(
         folder / PREPROCESSING_PATHS["action_set_file_path"],

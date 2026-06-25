@@ -329,6 +329,13 @@ def validate_static_information(
         )
         assert jnp.all(di.nodal_injection_information.starting_tap_idx >= 0)
         assert jnp.all(di.nodal_injection_information.starting_tap_idx < di.nodal_injection_information.pst_n_taps)
+        assert di.nodal_injection_information.parallel_pst_group_mask is not None, (
+            "Parallel PST group mask should always be imported but are None. Check the preprocessing step."
+        )
+        assert (
+            di.nodal_injection_information.parallel_pst_group_mask.shape[1]
+            == di.nodal_injection_information.controllable_pst_indices.shape[0]
+        )
 
 
 def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:
@@ -544,6 +551,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             file.create_dataset(
                 "grid_model_low_tap",
                 data=nodal_inj_opt.grid_model_low_tap,
+            )
+            file.create_dataset(
+                "parallel_pst_group_mask",
+                data=nodal_inj_opt.parallel_pst_group_mask,
             )
 
         for idx, (branches, nodes) in enumerate(
@@ -843,6 +854,11 @@ def load_nodal_injection_optimization(
         The loaded NodalInjectionOptimization or None if not present
     """
     if nodal_injection_optimization_present:
+        parallel_pst_group_mask = (
+            jnp.array(file["parallel_pst_group_mask"][:])
+            if "parallel_pst_group_mask" in file
+            else jnp.zeros((0, file["controllable_pst_indices"].shape[0]), dtype=bool)
+        )
         return NodalInjectionInformation(
             controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
             shift_degree_min=jnp.array(file["shift_degree_min"][:]),
@@ -851,6 +867,7 @@ def load_nodal_injection_optimization(
             pst_tap_values=jnp.array(file["pst_tap_values"][:]),
             starting_tap_idx=jnp.array(file["starting_tap_idx"][:]),
             grid_model_low_tap=jnp.array(file["grid_model_low_tap"][:]),
+            parallel_pst_group_mask=parallel_pst_group_mask,
         )
     return None
 

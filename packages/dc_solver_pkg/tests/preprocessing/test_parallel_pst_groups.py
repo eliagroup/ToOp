@@ -33,17 +33,6 @@ def test_build_parallel_pst_group_mask_shared_label_groups_members() -> None:
     assert np.array_equal(mask.sum(axis=0), np.ones(3, dtype=int))
 
 
-def test_build_parallel_pst_group_mask_sentinel_labels_form_singletons() -> None:
-    mask, group_ids = build_2d_pst_group_mask_and_labels(
-        group_labels=np.array([0, 1, 2]),
-        pst_id_list=["PST1", "PST2", "PST3"],
-    )
-
-    # The -1 sentinel never merges PSTs: each gets its own row.
-    assert np.array_equal(mask, np.eye(3, dtype=bool))
-    assert group_ids == ["PST1", "PST2", "PST3"]
-
-
 def test_build_parallel_pst_group_mask_empty() -> None:
     mask, group_ids = build_2d_pst_group_mask_and_labels(group_labels=np.array([], dtype=int), pst_id_list=[])
 

@@ -1309,7 +1309,7 @@ def _is_disconnectable(network: Network, grid_model_id: list[str]) -> np.ndarray
 def _is_linear_pst(step_table: pd.DataFrame) -> bool:
     """Check Powsybl's phase tap changer step table of a transformer for linear behavior.
 
-    This check is done by checking if `rho`, `x, `r, `g`, or `b` columns have at least two different values
+    This check is done by checking if `rho`, `x, `r`, `g`, or `b` columns have at least two different values
     at different tap positions.
 
     Parameters

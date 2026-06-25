@@ -150,9 +150,8 @@ def nodal_inj_optimization(
 
     # Get PST tap indices from start options (shape: batch_size x n_timesteps x n_controllable_pst)
     pst_tap_indices = start_options.previous_results.pst_tap_idx
-    # TODO: This should not be necessary
-    # if pst_tap_indices.ndim == 2:
-    #   pst_tap_indices = pst_tap_indices[None, :, :]
+    if pst_tap_indices.ndim == 2:
+        pst_tap_indices = pst_tap_indices[None, :, :]
 
     n_0_updated = apply_pst_taps(
         n_0=n_0,

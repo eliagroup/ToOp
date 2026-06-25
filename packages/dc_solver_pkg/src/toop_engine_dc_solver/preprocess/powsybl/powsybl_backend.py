@@ -263,13 +263,15 @@ class PowsyblBackend(BackendInterface):
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
         trafos["n0_n1_max_diff_factor"] = self._get_mask(NETWORK_MASK_NAMES["trafo_n0_n1_max_diff_factor"], -1.0, n_trafos)
         default_has_pst_tap = trafos["has_pst_tap"].to_numpy(dtype=bool)
-        default_pst_linear = trafos["pst_linear"].to_numpy(dtype=bool)
-        default_pst_group = np.full(n_trafos, -1, dtype=int)
-        default_pst_group[default_pst_linear] = np.arange(np.sum(default_pst_linear))
         trafos["has_pst_tap"] = self._get_mask_or_default(NETWORK_MASK_NAMES["trafo_has_pst_tap"], default_has_pst_tap)
+        default_pst_linear = trafos["pst_linear"].to_numpy(dtype=bool)
         trafos["pst_linear"] = self._get_mask_or_default(NETWORK_MASK_NAMES["trafo_pst_linear"], default_pst_linear)
-        # Parallel-PST group label per trafo (-1 for non-grouped). Identified during importing.
-        trafos["pst_group"] = self._get_mask_or_default(NETWORK_MASK_NAMES["pst_group_labels"], default_pst_group)
+        # Parallel-PST group label per trafo. Identified during importing.
+        # Default mask sets -1 for all non-PSTs and assigns unique groups per PST.
+        default_pst_groups = np.full(n_trafos, -1, dtype=int)
+        groups_for_psts = np.arange(np.sum(trafos["has_pst_tap"]), dtype=int)
+        default_pst_groups[trafos["has_pst_tap"]] = groups_for_psts
+        trafos["pst_group"] = self._get_mask_or_default(NETWORK_MASK_NAMES["pst_group_labels"], default_pst_groups)
 
         return trafos
 
@@ -504,7 +506,7 @@ class PowsyblBackend(BackendInterface):
         """Get parallel PST grouping metadata aligned with controllable PST arrays.
 
         The parallel PSTs and their group labels are identified during importing and stored per PST (branch):
-          1. BranchModel.``pst_controllable``
+          1. BranchModel.``pst_linear``
           2. BranchModel.``pst_group``
         Use the masks to create a 2-d boolean array with rows as parallel PST groups and columns as controllable PSTs, where
         True indicates that a PST belongs to a group. The order of the columns is aligned with the order of controllable PSTs

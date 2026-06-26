@@ -372,14 +372,12 @@ def extract_topologies(optimizer_data: OptimizerData) -> list[Topology]:
     # Get grid_model_low_tap if nodal injection information is available
     nodal_inj_info = optimizer_data.jax_data.dynamic_informations[0].nodal_injection_information
     grid_model_low_tap = nodal_inj_info.grid_model_low_tap if nodal_inj_info is not None else None
-    grouped_pst_nodal_inj_info = nodal_inj_info if optimizer_data.solver_configs[0].enable_parallel_pst_group_optim else None
 
     topologies = summarize_repo(
         optimizer_data.jax_data.repertoire,
         initial_fitness=optimizer_data.initial_fitness,
         contingency_ids=contingency_ids,
         grid_model_low_tap=grid_model_low_tap,
-        nodal_injection_information=grouped_pst_nodal_inj_info,
     )
 
     # Filter out topologies that have already been sent

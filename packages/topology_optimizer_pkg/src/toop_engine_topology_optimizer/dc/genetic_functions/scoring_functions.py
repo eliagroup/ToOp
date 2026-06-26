@@ -16,11 +16,10 @@ from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 from qdax.core.emitters.standard_emitters import EmitterState, ExtraScores
 from toop_engine_dc_solver.jax.aggregate_results import aggregate_to_metric_batched, get_worst_k_contingencies
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
-from toop_engine_dc_solver.jax.nodal_inj_optim import canonicalize_parallel_pst_taps, make_start_options
+from toop_engine_dc_solver.jax.nodal_inj_optim import make_start_options
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     DynamicInformation,
-    NodalInjectionInformation,
     NodalInjOptimResults,
     NodalInjStartOptions,
     SolverConfig,
@@ -325,7 +324,6 @@ def convert_to_topologies(
     repertoire: DiscreteMapElitesRepertoire,
     contingency_ids: list[str],
     grid_model_low_tap: Int[Array, " n_controllable_psts"] | None = None,
-    nodal_injection_information: NodalInjectionInformation | None = None,
 ) -> list[Topology]:
     """Take a repertoire and convert it to a list of kafka-sendable topologies.
 
@@ -339,8 +337,6 @@ def convert_to_topologies(
         The lowest tap value in the grid model, used to convert the relative tap values in the genotype to absolute tap
         values that can be sent to the kafka topics. This will only be read if nodal_injection results are present
         in the genotype.
-    nodal_injection_information : NodalInjectionInformation | None
-        Optional nodal injection information used to emit grouped PST setpoints consistently with the solver.
 
     Returns
     -------
@@ -366,13 +362,7 @@ def convert_to_topologies(
             assert nodal_inj.pst_tap_idx.shape[0] == 1, "Only one timestep is supported, but found shape " + str(
                 nodal_inj.pst_tap_idx.shape
             )
-            tap_array = nodal_inj.pst_tap_idx.astype(int)
-            if nodal_injection_information is not None:
-                tap_array = canonicalize_parallel_pst_taps(
-                    pst_tap_indices=tap_array[None, :, :],
-                    nodal_inj_info=nodal_injection_information,
-                )[0]
-            tap_array = tap_array[0] + grid_model_low_tap
+            tap_array = nodal_inj.pst_tap_idx[0].astype(int) + grid_model_low_tap
             pst_setpoints = tap_array.tolist()
 
         case_indices = iter_repertoire.extra_scores.pop("case_indices", [])
@@ -399,7 +389,6 @@ def summarize_repo(
     initial_fitness: float,
     contingency_ids: list[str],
     grid_model_low_tap: Int[Array, " n_controllable_psts"] | None = None,
-    nodal_injection_information: NodalInjectionInformation | None = None,
 ) -> list[Topology]:
     """Summarize the repertoire into a list of topologies.
 
@@ -415,8 +404,6 @@ def summarize_repo(
         TODO: Fix me to have per topology contingency ids if needed
     grid_model_low_tap : Int[Array, " n_controllable_psts"] | None
         The lowest tap value in the grid model, from nodal_injection_information.grid_model_low_tap.
-    nodal_injection_information : NodalInjectionInformation | None
-        Optional nodal injection information used to emit grouped PST setpoints consistently with the solver.
 
     Returns
     -------
@@ -429,12 +416,7 @@ def summarize_repo(
             initial_fitness=initial_fitness,
         )
 
-        topologies = convert_to_topologies(
-            best_repo,
-            contingency_ids,
-            grid_model_low_tap=grid_model_low_tap,
-            nodal_injection_information=nodal_injection_information,
-        )
+        topologies = convert_to_topologies(best_repo, contingency_ids, grid_model_low_tap=grid_model_low_tap)
 
     return topologies
 

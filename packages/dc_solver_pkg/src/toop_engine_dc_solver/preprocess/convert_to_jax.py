@@ -20,7 +20,7 @@ import numpy as np
 import structlog
 from beartype.typing import Callable, Literal, Optional
 from fsspec import AbstractFileSystem
-from jaxtyping import Bool, Float, Int
+from jaxtyping import Array, Bool, Float, Int
 from pypowsybl.loadflow import Parameters as LoadflowParameters
 from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric,
@@ -219,6 +219,7 @@ def convert_to_jax(  # noqa: PLR0913
             for taps in network_data.phase_shift_taps
         ]
     )
+    parallel_pst_group_mask = _get_parallel_pst_group_mask(network_data)
 
     logging_fn("pad_out_branch_actions", None)
     assert network_data.branch_action_set is not None, "Please compute branch action set first!"
@@ -238,6 +239,11 @@ def convert_to_jax(  # noqa: PLR0913
     logging_fn("create_static_information", None)
     ptdf = jnp.array(network_data.ptdf)
     nodal_injection = jnp.array(network_data.nodal_injection, dtype=float)
+    parallel_pst_group_mask = (
+        jnp.array(network_data.parallel_pst_group_mask, dtype=bool)
+        if network_data.parallel_pst_group_mask is not None
+        else None
+    )
     static_information = StaticInformation(
         dynamic_information=DynamicInformation(
             # Network Data arguments
@@ -286,6 +292,7 @@ def convert_to_jax(  # noqa: PLR0913
                 pst_tap_values=pst_tap_values,
                 starting_tap_idx=jnp.array(network_data.phase_shift_starting_tap_idx, dtype=int),
                 grid_model_low_tap=jnp.array(network_data.phase_shift_low_tap, dtype=int),
+                parallel_pst_group_mask=parallel_pst_group_mask,
             )
             if network_data.controllable_pst_node_mask.any()
             else None,
@@ -329,6 +336,26 @@ def convert_to_jax(  # noqa: PLR0913
         )
 
     return static_information
+
+
+def _get_parallel_pst_group_mask(network_data: NetworkData) -> Bool[Array, " n_parallel_pst_groups n_controllable_pst"]:
+    """Build a mask that groups controllable PSTs sharing the same branch endpoints."""
+    controllable_pst_branch_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
+    n_controllable_pst = len(controllable_pst_branch_indices)
+    if n_controllable_pst == 0:
+        return jnp.zeros((0, 0), dtype=bool)
+
+    pst_endpoint_groups: dict[tuple[int, int], list[int]] = {}
+    for pst_idx, branch_idx in enumerate(controllable_pst_branch_indices):
+        branch_endpoints = tuple(sorted((int(network_data.from_nodes[branch_idx]), int(network_data.to_nodes[branch_idx]))))
+        pst_endpoint_groups.setdefault(branch_endpoints, []).append(pst_idx)
+
+    parallel_groups = [pst_indices for pst_indices in pst_endpoint_groups.values() if len(pst_indices) > 1]
+    group_mask = np.zeros((len(parallel_groups), n_controllable_pst), dtype=bool)
+    for group_idx, pst_indices in enumerate(parallel_groups):
+        group_mask[group_idx, pst_indices] = True
+
+    return jnp.array(group_mask, dtype=bool)
 
 
 def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty: float) -> BBOutageBaselineAnalysis:

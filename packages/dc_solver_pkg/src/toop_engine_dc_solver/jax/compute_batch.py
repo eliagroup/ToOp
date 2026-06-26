@@ -432,7 +432,6 @@ def compute_symmetric_batch(
             topo_res=topo_res,
             start_options=nodal_inj_start_options,
             dynamic_information=dynamic_information,
-            solver_config=solver_config,
         )
 
     # Compute the N-1 matrix

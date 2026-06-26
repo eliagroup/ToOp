@@ -6,13 +6,13 @@
 # Mozilla Public License, version 2.0
 
 import numpy as np
-from beartype.typing import Sequence, Union
+from beartype.typing import Optional, Sequence, Union
 from jaxtyping import Bool, Float, Int
 from toop_engine_interfaces.backend import BackendInterface
 
 
 class TestBackend(BackendInterface):
-    """An AI generated implentation so we can test the functions that infer from others"""
+    """An AI generated implementation so we can test the functions that infer from others"""
 
     def get_slack(self) -> int:
         return 0
@@ -34,6 +34,12 @@ class TestBackend(BackendInterface):
 
     def get_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         return np.array([True, False])
+
+    def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
+        return None
+
+    def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
+        return None
 
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         return np.array([True, False, True])

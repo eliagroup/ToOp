@@ -166,6 +166,7 @@ def verify_static_information(
     static_informations: Iterable[StaticInformation],
     max_num_disconnections: int,
     enable_nodal_inj_optim: bool,
+    enable_parallel_pst_group_optim: bool = False,
 ) -> None:
     """Verify the static information.
 
@@ -181,6 +182,9 @@ def verify_static_information(
     enable_nodal_inj_optim: bool
         Whether to enable the nodal injection optimization. If so, all static informations are verified to contain
         nodal injection information with at least one controllable PST.
+    enable_parallel_pst_group_optim: bool
+        Whether to enable parallel PST group optimization. If so, all static informations are verified to contain
+        the parallel_pst_group_mask in the nodal injection information.
 
     Raises
     ------
@@ -250,12 +254,24 @@ def verify_static_information(
             "This requires at least one controllable PST in the nodal injection information. "
             "Disable nodal injection optimization or provide correct static information. "
         )
+    if enable_parallel_pst_group_optim:
+        assert first_static_information.dynamic_information.nodal_injection_information is not None, (
+            "Parallel PST group optimization requires nodal injection information with controllable PSTs."
+        )
+        assert (
+            first_static_information.dynamic_information.nodal_injection_information.parallel_pst_group_mask is not None
+        ), (
+            "Parallel PST group optimization is enabled, but the first static information lacks a parallel_pst_group_mask. "
+            "This requires a parallel_pst_group_mask in the nodal injection information. "
+            "Disable parallel PST group optimization or provide correct static information. "
+        )
 
 
 def update_static_information(
     static_informations: tuple[StaticInformation, ...],
     batch_size: int,
     enable_nodal_inj_optim: bool,
+    enable_parallel_pst_group_optim: bool,
     enable_bb_outage: bool,
     bb_outage_as_nminus1: bool,
     clip_bb_outage_penalty: bool,
@@ -274,6 +290,10 @@ def update_static_information(
     enable_nodal_inj_optim: bool
         Whether to enable the nodal injection optimization, if False, nodal_inj_optim related information will be removed
         from the dynamic information to save GPU memory.
+    enable_parallel_pst_group_optim: bool
+        Whether to enable parallel PST group optimization, which requires the presence of the parallel_pst_group_mask
+        in the nodal injection information. If False, this mask will be removed from the dynamic information to save
+        GPU memory.
     enable_bb_outage : bool
         Whether the optimizer should include busbar outage effects. This is only enabled when
         the loaded static information contains busbar outage data.
@@ -299,6 +319,7 @@ def update_static_information(
             dynamic_information=static_information.dynamic_information,
             batch_size=batch_size,
             enable_nodal_inj_optim=enable_nodal_inj_optim,
+            enable_parallel_pst_group_optim=enable_parallel_pst_group_optim,
         )
         solver_config, dynamic_information = update_single_pair_bb_outage_information(
             solver_config=solver_config,
@@ -327,6 +348,7 @@ def update_single_pair_branch_limit_information(
     dynamic_information: DynamicInformation,
     batch_size: int,
     enable_nodal_inj_optim: bool,
+    enable_parallel_pst_group_optim: bool,
 ) -> tuple[SolverConfig, DynamicInformation]:
     """Normalize branch-limit and nodal-injection data for one timestep.
 
@@ -344,6 +366,9 @@ def update_single_pair_branch_limit_information(
         The batch size to write into both batch dimensions of the solver config.
     enable_nodal_inj_optim : bool
         Whether nodal injection optimization is enabled.
+    enable_parallel_pst_group_optim : bool
+        Whether parallel PST group optimization is enabled, which requires the presence of the parallel_pst_group_mask
+        in the nodal injection information.
 
     Returns
     -------
@@ -354,7 +379,20 @@ def update_single_pair_branch_limit_information(
         solver_config,
         batch_size_bsdf=batch_size,
         batch_size_injection=batch_size,
+        enable_parallel_pst_group_optim=enable_parallel_pst_group_optim if enable_nodal_inj_optim else False,
     )
+    nodal_injection_info = None
+    if dynamic_information.nodal_injection_information is not None:
+        if not enable_nodal_inj_optim:
+            nodal_injection_info = replace(dynamic_information.nodal_injection_information, parallel_pst_group_mask=None)
+        else:
+            nodal_injection_info = replace(
+                dynamic_information.nodal_injection_information,
+                parallel_pst_group_mask=dynamic_information.nodal_injection_information.parallel_pst_group_mask
+                if enable_parallel_pst_group_optim
+                else None,
+            )
+
     updated_dynamic_information = replace(
         dynamic_information,
         branch_limits=replace(
@@ -370,7 +408,7 @@ def update_single_pair_branch_limit_information(
                 else dynamic_information.branch_limits.n0_n1_max_diff
             ),
         ),
-        nodal_injection_information=(dynamic_information.nodal_injection_information if enable_nodal_inj_optim else None),
+        nodal_injection_information=nodal_injection_info,
     )
     return updated_solver_config, updated_dynamic_information
 
@@ -722,13 +760,17 @@ def algo_setup(
     logger.info(f"Running {n_devices} GPUs with config {ga_args}, {lf_args}")
 
     verify_static_information(
-        static_informations, lf_args.max_num_disconnections, enable_nodal_inj_optim=ga_args.enable_nodal_inj_optim
+        static_informations,
+        lf_args.max_num_disconnections,
+        enable_nodal_inj_optim=ga_args.enable_nodal_inj_optim,
+        enable_parallel_pst_group_optim=ga_args.enable_parallel_pst_group_optim,
     )
 
     static_informations = update_static_information(
         static_informations,
         lf_args.batch_size,
         enable_nodal_inj_optim=ga_args.enable_nodal_inj_optim,
+        enable_parallel_pst_group_optim=ga_args.enable_parallel_pst_group_optim,
         enable_bb_outage=ga_args.enable_bb_outage,
         bb_outage_as_nminus1=ga_args.bb_outage_as_nminus1,
         clip_bb_outage_penalty=ga_args.clip_bb_outage_penalty,
@@ -787,6 +829,10 @@ def algo_setup(
             pst_reset_probability=ga_args.pst_reset_probability,
             pst_n_taps=static_informations[0].dynamic_information.nodal_injection_information.pst_n_taps,
             pst_start_tap_idx=static_informations[0].dynamic_information.nodal_injection_information.starting_tap_idx,
+            enable_parallel_pst_group_optim=ga_args.enable_parallel_pst_group_optim,
+            parallel_pst_group_mask=(
+                static_informations[0].dynamic_information.nodal_injection_information.parallel_pst_group_mask
+            ),
         )
         if static_informations[0].dynamic_information.nodal_injection_information is not None
         else None,

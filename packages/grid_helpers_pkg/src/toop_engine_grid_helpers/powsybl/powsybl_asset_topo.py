@@ -543,6 +543,7 @@ def get_stations_bus_breaker(net: Network) -> list[Station]:
         injections = all_injections[
             (all_injections["bus_breaker_bus_id"].isin(local_buses.index) & all_injections["connected"])
         ]
+        injections = injections[injections["type"] != "BUSBAR_SECTION"]
         busbar_mapper = {grid_model_id: index for index, grid_model_id in enumerate(local_buses.index)}
 
         busbars = [

@@ -49,9 +49,14 @@ class BranchModel(pa.DataFrameModel):
     name: Series[str]
     rho: Series[float] = Field(nullable=True, description="Ratio of the rated voltages of the transformer")
     alpha: Series[float] = Field(nullable=True, description="Phase shift angle in degrees")
-    has_pst_tap: Series[bool] = Field(nullable=True, description="Whether the transformer has a phase tap changer")
-    has_pst_linear_tap: Series[bool] = Field(
-        nullable=True, description="Whether the transformer has a linear phase tap changer"
+    has_pst_tap: Series[bool] = Field(
+        nullable=True, default=False, description="Whether the transformer has a phase tap changer"
+    )
+    for_reward: Series[bool] = Field(
+        nullable=True, default=False, description="Whether the branch is used for reward calculation"
+    )
+    for_nminus1: Series[bool] = Field(
+        nullable=True, default=False, description="Whether the branch is used for N-1 calculations"
     )
     for_reward: Series[bool] = Field(nullable=True, description="Whether the branch is used for reward calculation")
     for_nminus1: Series[bool] = Field(nullable=True, description="Whether the branch is used for N-1 calculations")
@@ -60,9 +65,12 @@ class BranchModel(pa.DataFrameModel):
     p_max_mw_n_1: Series[float] = Field(
         nullable=True, description="Maximum active power in MW for N-1 cases (taken from 'N-1')"
     )
-    disconnectable: Series[bool] = Field(nullable=True, description="Whether the branch can be disconnected")
-    pst_controllable: Series[bool] = Field(
-        nullable=True, description="Whether the branch can be controlled by a phase tap changer"
+    disconnectable: Series[bool] = Field(nullable=True, default=False, description="Whether the branch can be disconnected")
+    pst_linear: Series[bool] = Field(
+        nullable=True, default=False, description="Whether the branch can be controlled by a linear phase tap changer"
+    )
+    pst_group: Series[int] = Field(
+        nullable=True, default=-1, description="Parallel-PST group label (-1 = not a controllable PST / not grouped)"
     )
     n0_n1_max_diff_factor: Series[float] = Field(
         nullable=True, description="Maximum difference factor between N-0 and N-1 limits"
@@ -266,11 +274,11 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
             + (trafos["elementName"] if "elementName" in trafos.keys() else trafos["name"])
         )
     linear_psts = get_linear_pst(net, mode="dc")
-    trafos["has_pst_linear_tap"] = False
+    trafos["pst_linear"] = False
     trafos["has_pst_tap"] = False
-    trafos.loc[linear_psts.index, "has_pst_linear_tap"] = linear_psts.values
+    trafos.loc[linear_psts.index, "pst_linear"] = linear_psts.values
     trafos.loc[linear_psts.index, "has_pst_tap"] = True
-    return add_missing_branch_model_columns(trafos[["x", "r", "rho", "alpha", "name", "has_pst_linear_tap", "has_pst_tap"]])
+    return add_missing_branch_model_columns(trafos[["x", "r", "rho", "alpha", "name", "pst_linear", "has_pst_tap"]])
 
 
 @pa.check_types
@@ -402,21 +410,7 @@ def get_lines(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[B
 
 
 def get_linear_pst(net: Network, mode: Literal["ac", "dc"], tol: float = 1e-9) -> pd.Series:
-    """Check if a given branch has a linear phase shift transformer (PST) tap changer.
-
-    A linear PST is defined by the evaluation of x, r, g, b values at different tap positions.
-
-    Parameters
-    ----------
-    net : Network
-        The powsybl network
-    mode : Literal["ac", "dc"]
-        The mode for which to check the linearity of the PST.
-        In "dc" mode, only the reactance (x) is checked.
-        In "ac" mode, the reactance (x), resistance (r), conductance (g) and susceptance (b) are checked.
-    tol : float, optional
-        The tolerance for determining linearity, by default 1e-9.
-    """
+    """Check if a given branch has a linear phase shift transformer (PST) tap changer."""
     tap_steps = net.get_phase_tap_changer_steps()
     if mode == "dc":
         linear_cols = ["x"]

@@ -692,13 +692,13 @@ def _identify_psts_and_create_buckets(
         step_tables[pst_id] = step_table.to_numpy(dtype=float)
         bucket_key = (
             bus_pair,
-            round(float(nominal_v[local_idx]), 6),
+            round(float(nominal_v[local_idx])),
             low_tap,
             high_tap,
             step_table.shape[0],
             trafo_pst_linear[position],
         )
-        buckets[bucket_key].append(position)
+        buckets[bucket_key].append(int(position))
 
     return trafo_has_pst_tap, trafo_pst_linear, step_tables, buckets
 

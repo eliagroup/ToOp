@@ -130,7 +130,7 @@ def sort_powsybl_element_frame_by_id(element_frame: pd.DataFrame) -> pd.DataFram
     pd.DataFrame
         The sorted PowSyBl element dataframe.
     """
-    return element_frame.sort_index(kind="stable")
+    return element_frame.sort_index()
 
 
 def get_injections_with_i(injections: pd.DataFrame, net: Network) -> pd.DataFrame:

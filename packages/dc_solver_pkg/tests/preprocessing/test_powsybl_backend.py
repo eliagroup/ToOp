@@ -35,12 +35,40 @@ from toop_engine_dc_solver.preprocess.network_data import (
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
+from toop_engine_grid_helpers.powsybl.example_grids import grouped_pst_grid_example
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
+    NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
+
+GROUPED_PST_IDS = ["PST_1_group_1", "PST_2_group_1", "PST_3_group_2", "PST_4_group_2"]
+
+
+def _write_grouped_pst_grid(
+    tmp_dir: Path,
+    linear_pst: list[bool],
+    pst_group_labels: dict[str, int],
+    split_station: bool,
+) -> PowsyblBackend:
+    net = grouped_pst_grid_example(linear_pst=linear_pst)
+    if split_station:
+        net.open_switch("VL2_BREAKER#0")
+
+    grid_path = tmp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_path)
+
+    mask_path = tmp_dir / PREPROCESSING_PATHS["masks_path"]
+    mask_path.mkdir(parents=True, exist_ok=True)
+    trafo_ids = net.get_2_windings_transformers(attributes=[]).index.to_list()
+    np.save(mask_path / NETWORK_MASK_NAMES["trafo_pst_controllable"], np.isin(trafo_ids, GROUPED_PST_IDS))
+    group_labels = np.array([pst_group_labels[trafo_id] for trafo_id in trafo_ids])
+    np.save(mask_path / NETWORK_MASK_NAMES["pst_group_masks"], group_labels)
+
+    return PowsyblBackend(DirFileSystem(str(tmp_dir)))
 
 
 def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
@@ -429,3 +457,61 @@ def test_psts(tmp_path_factory: pytest.TempPathFactory) -> None:
                 tap_found = True
                 break
         assert tap_found
+
+
+@pytest.mark.parametrize(
+    (
+        "linear_pst",
+        "split_station",
+        "pst_group_labels",
+        "expected_linearity",
+        "expected_group_mask",
+        "expected_group_ids",
+    ),
+    [
+        (
+            [True, True, True, True],
+            False,
+            {pst_id: 0 for pst_id in GROUPED_PST_IDS},
+            [True, True, True, True],
+            [[True, True, True, True]],
+            ["PST_1_group_1"],
+        ),
+        (
+            [True, True, True, True],
+            True,
+            {"PST_1_group_1": 0, "PST_2_group_1": 1, "PST_3_group_2": 0, "PST_4_group_2": 1},
+            [True, True, True, True],
+            [[True, False, True, False], [False, True, False, True]],
+            ["PST_1_group_1", "PST_2_group_1"],
+        ),
+        (
+            [True, False, True, False],
+            False,
+            {"PST_1_group_1": 0, "PST_2_group_1": 1, "PST_3_group_2": 0, "PST_4_group_2": 1},
+            [True, False, True, False],
+            [[True, False, True, False], [False, True, False, True]],
+            ["PST_1_group_1", "PST_2_group_1"],
+        ),
+    ],
+)
+def test_grouped_pst_grid_backend_reads_parallel_group_masks(
+    tmp_path: Path,
+    linear_pst: list[bool],
+    split_station: bool,
+    pst_group_labels: dict[str, int],
+    expected_linearity: list[bool],
+    expected_group_mask: list[list[bool]],
+    expected_group_ids: list[str],
+) -> None:
+    backend = _write_grouped_pst_grid(
+        tmp_dir=tmp_path,
+        linear_pst=linear_pst,
+        pst_group_labels=pst_group_labels,
+        split_station=split_station,
+    )
+
+    assert backend.get_controllable_phase_shift_ids() == GROUPED_PST_IDS
+    assert np.array_equal(backend.get_phase_shift_linearity(), np.array(expected_linearity))
+    assert np.array_equal(backend.get_parallel_pst_group_mask(), np.array(expected_group_mask))
+    assert backend.get_parallel_pst_group_ids() == expected_group_ids

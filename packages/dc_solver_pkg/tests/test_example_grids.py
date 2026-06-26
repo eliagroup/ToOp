@@ -14,6 +14,7 @@ import pandapower as pp
 import pypowsybl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
+from tests.network_data_pickle import load_network_data
 from tests.numpy_reference import calc_bsdf as calc_bsdf_numpy
 from toop_engine_dc_solver.example_grids import (
     PandapowerCounters,
@@ -33,7 +34,7 @@ from toop_engine_dc_solver.example_grids import (
     random_topology_info_backend,
 )
 from toop_engine_dc_solver.jax.bsdf import _apply_bus_split, calc_bsdf, init_bsdf_results
-from toop_engine_dc_solver.jax.inputs import validate_static_information
+from toop_engine_dc_solver.jax.inputs import load_static_information_fs, validate_static_information
 from toop_engine_dc_solver.jax.lodf import calc_lodf
 from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, load_grid
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
@@ -467,6 +468,53 @@ def test_case30_with_psts_powsybl() -> None:
         powsybl_backend = PowsyblBackend(filesystem_dir)
         assert powsybl_backend.get_phase_shift_mask().sum() == 2
         assert powsybl_backend.get_controllable_phase_shift_mask().sum() == 2
+
+
+def test_parallel_pst_example_data_folder(parallel_pst_data_folder: Path) -> None:
+    network_data = load_network_data(parallel_pst_data_folder / "network_data.pkl")
+    assert network_data.controllable_phase_shift_mask.sum() == 3
+    assert np.array_equal(network_data.phase_shift_linearity, np.array([True, True, True]))
+    assert np.array_equal(
+        network_data.parallel_pst_group_mask,
+        np.array([[True, True, False], [False, False, True]], dtype=bool),
+    )
+    assert network_data.parallel_pst_group_ids == ["PST1", "PST3"]
+    assert len(network_data.branch_action_set) > 0
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_group_mask", "expected_group_ids"),
+    [
+        ("grouped_pst_grid_example_data_folder", np.ones((1, 4), dtype=bool), ["PST_1_group_1"]),
+        (
+            "grouped_pst_grid_example_split_data_folder",
+            np.array([[True, False, True, False], [False, True, False, True]], dtype=bool),
+            ["PST_1_group_1", "PST_2_group_1"],
+        ),
+    ],
+)
+def test_grouped_pst_grid_example_data_folder(
+    request: pytest.FixtureRequest,
+    fixture_name: str,
+    expected_group_mask: np.ndarray,
+    expected_group_ids: list[str],
+) -> None:
+    data_folder = request.getfixturevalue(fixture_name)
+    network_data = load_network_data(data_folder / "network_data.pkl")
+
+    assert network_data.controllable_phase_shift_mask.sum() == 4
+    assert np.array_equal(network_data.phase_shift_linearity, np.ones(4, dtype=bool))
+    assert np.array_equal(network_data.parallel_pst_group_mask, expected_group_mask)
+    assert network_data.parallel_pst_group_ids == expected_group_ids
+    assert len(network_data.branch_action_set) > 0
+
+    static_information = load_static_information_fs(
+        filesystem=DirFileSystem(str(data_folder)),
+        filename=PREPROCESSING_PATHS["static_information_file_path"],
+    )
+    nodal_injection_information = static_information.dynamic_information.nodal_injection_information
+    assert nodal_injection_information is not None
+    assert np.array_equal(nodal_injection_information.parallel_pst_group_mask, expected_group_mask)
 
 
 def test_case14_with_matching_asset_topo() -> None:

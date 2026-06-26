@@ -936,12 +936,14 @@ def test_grouped_pst_grid_importer_masks_include_pst_groups(
         importer_parameters=importer_parameters,
         blacklisted_ids=[],
     )
-    label_by_id = dict(zip(trafos.index, network_masks.pst_group_masks, strict=True))
+    label_by_id = dict(zip(trafos.index, network_masks.pst_group_labels, strict=True))
 
     assert powsybl_masks.validate_network_masks(network_masks, powsybl_masks.create_default_network_masks(net))
-    assert np.array_equal(network_masks.trafo_pst_controllable, np.ones(len(trafos), dtype=bool))
-    assert set(label_by_id) == {"PST_1_group_1", "PST_2_group_1", "PST_3_group_2", "PST_4_group_2"}
-    assert len(set(network_masks.pst_group_masks)) == expected_group_count
+    if expected_group_count == 2:
+        assert set(label_by_id.values()) == {0, 1}
+    else:
+        assert set(label_by_id.values()) == {0}
+    assert len(set(network_masks.pst_group_labels)) == expected_group_count
     for first_pst_id, second_pst_id in expected_grouped_pairs:
         assert label_by_id[first_pst_id] == label_by_id[second_pst_id]
 

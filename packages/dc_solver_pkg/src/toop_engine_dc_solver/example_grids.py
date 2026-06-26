@@ -41,6 +41,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     create_busbar_b_in_ieee,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     extract_station_info_powsybl,
+    grouped_pst_grid_example,
     parallel_pst_example,
     powsybl_case30_with_psts,
     powsybl_case1354,
@@ -1158,6 +1159,57 @@ def parallel_pst_data_folder(folder: Path) -> NetworkData:
         The network data after preprocessing, which can be used for testing the consistency of the preprocessing step
     """
     net = parallel_pst_example()
+    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+
+    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_file_path)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        data_folder=folder,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+
+    preprocessing_parameters = PreprocessParameters(action_set_clip=2**4, preprocess_bb_outages=False)
+    _info, _static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(folder),
+        pandapower=False,
+        status_update_fn=None,
+        parameters=preprocessing_parameters,
+    )
+
+    return network_data
+
+
+def grouped_pst_grid_example_data_folder(folder: Path, split_group_station: bool = False) -> NetworkData:
+    """Create a preprocessed folder for grouped_pst_example().
+
+    Runs the importer and preprocessing.
+
+    Parameter:
+    folder: Path
+        The root folder where the data is saved to.
+    split_group_station: bool
+        Whether to split the group station into two separate stations.
+    Returns:
+    NetworkData
+        The network data after preprocessing, which can be used for testing the consistency of the preprocessing step
+    """
+    net = grouped_pst_grid_example(linear_pst=None)
+    if split_group_station:
+        net.open_switch("VL2_BREAKER#0")
     pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
 
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]

@@ -546,7 +546,7 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 "grid_model_low_tap",
                 data=nodal_inj_opt.grid_model_low_tap,
             )
-            if solver_config.enable_parallel_pst_group_optim:
+            if nodal_inj_opt.parallel_pst_group_mask is not None:
                 file.create_dataset(
                     "parallel_pst_group_mask",
                     data=nodal_inj_opt.parallel_pst_group_mask,

@@ -16,7 +16,7 @@ import pypowsybl
 import pytest
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
-from toop_engine_grid_helpers.powsybl.example_grids import parallel_pst_example
+from toop_engine_grid_helpers.powsybl.example_grids import grouped_pst_grid_example, parallel_pst_example
 from toop_engine_importer.pypowsybl_import import network_analysis, powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
@@ -880,6 +880,62 @@ def test_build_pst_group_labels_marks_non_controllable_as_ungrouped():
     assert label_by_id["PST1"] >= 0
     assert label_by_id["PST2"] == -1
     assert label_by_id["PST3"] == -1
+
+
+@pytest.mark.parametrize(
+    ("linear_pst", "split_pst_station", "expected_group_count", "expected_grouped_pairs"),
+    [
+        (
+            [True, True, True, True],
+            False,
+            1,
+            [("PST_1_group_1", "PST_2_group_1"), ("PST_3_group_2", "PST_4_group_2")],
+        ),
+        (
+            [True, True, True, True],
+            True,
+            2,
+            [("PST_1_group_1", "PST_3_group_2"), ("PST_2_group_1", "PST_4_group_2")],
+        ),
+        (
+            [True, False, True, False],
+            False,
+            2,
+            [("PST_1_group_1", "PST_3_group_2"), ("PST_2_group_1", "PST_4_group_2")],
+        ),
+    ],
+)
+def test_grouped_pst_grid_importer_masks_include_pst_groups(
+    linear_pst: list[bool],
+    split_pst_station: bool,
+    expected_group_count: int,
+    expected_grouped_pairs: list[tuple[str, str]],
+    cgmes_importer_parameters: CgmesImporterParameters,
+) -> None:
+    net = grouped_pst_grid_example(linear_pst=linear_pst)
+    if split_pst_station:
+        net.open_switch("VL2_BREAKER#0")
+    trafos = net.get_2_windings_transformers(attributes=[])
+    importer_parameters = deepcopy(cgmes_importer_parameters)
+    importer_parameters.area_settings.control_area = ["BE"]
+    importer_parameters.area_settings.view_area = ["BE"]
+    importer_parameters.area_settings.nminus1_area = ["BE"]
+    importer_parameters.area_settings.cutoff_voltage = 220
+
+    network_masks = powsybl_masks.make_masks(
+        network=net,
+        slack_id="VL1_0",
+        importer_parameters=importer_parameters,
+        blacklisted_ids=[],
+    )
+    label_by_id = dict(zip(trafos.index, network_masks.pst_group_masks, strict=True))
+
+    assert powsybl_masks.validate_network_masks(network_masks, powsybl_masks.create_default_network_masks(net))
+    assert np.array_equal(network_masks.trafo_pst_controllable, np.ones(len(trafos), dtype=bool))
+    assert set(label_by_id) == {"PST_1_group_1", "PST_2_group_1", "PST_3_group_2", "PST_4_group_2"}
+    assert len(set(network_masks.pst_group_masks)) == expected_group_count
+    for first_pst_id, second_pst_id in expected_grouped_pairs:
+        assert label_by_id[first_pst_id] == label_by_id[second_pst_id]
 
 
 def test_update_reward_masks_to_include_border_branches(

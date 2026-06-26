@@ -15,12 +15,14 @@ import pypowsybl
 import pytest
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     add_missing_branch_model_columns,
+    get_linear_pst,
     get_lines,
     get_network_as_pu,
     get_p_max,
     get_tie_lines,
     get_trafos,
 )
+from toop_engine_grid_helpers.powsybl.example_grids import grouped_pst_grid_example
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
@@ -291,3 +293,25 @@ def test_get_cgmes_ids_hybrid(ucte_file: Path) -> None:
     cgmes_ids = get_cgmes_ids(net)
 
     assert np.array_equal(cgmes_ids, cgmes_net.get_identifiables().index.values)
+
+
+@pytest.mark.parametrize(
+    ("linear_pst", "expected_linearity"),
+    [
+        (None, [True, True, True, True]),
+        ([True, True, True, True], [True, True, True, True]),
+        ([False, False, False, False], [False, False, False, False]),
+        ([True, False, True, False], [True, False, True, False]),
+    ],
+)
+def test_grouped_pst_grid_importer_detects_linear_and_nonlinear_psts(
+    linear_pst: list[bool] | None, expected_linearity: list[bool]
+) -> None:
+    net = grouped_pst_grid_example(linear_pst=linear_pst)
+    pst_ids = ["PST_1_group_1", "PST_2_group_1", "PST_3_group_2", "PST_4_group_2"]
+
+    dc_linearity = get_linear_pst(net, mode="dc").loc[pst_ids]
+    ac_linearity = get_linear_pst(net, mode="ac").loc[pst_ids]
+
+    assert np.array_equal(dc_linearity.values, np.array(expected_linearity))
+    assert np.array_equal(ac_linearity.values, np.array(expected_linearity))

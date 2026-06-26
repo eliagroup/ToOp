@@ -41,6 +41,7 @@ from toop_engine_interfaces.messages.protobuf_message_factory import deserialize
 from toop_engine_topology_optimizer.ac.scoring_functions import compute_metrics_single_timestep
 from toop_engine_topology_optimizer.ac.worker import Args as ACArgs
 from toop_engine_topology_optimizer.ac.worker import main as ac_main
+from toop_engine_topology_optimizer.dc.worker.optimizer import extract_topologies, initialize_optimization, run_epoch
 from toop_engine_topology_optimizer.dc.worker.worker import Args as DCArgs
 from toop_engine_topology_optimizer.dc.worker.worker import main as dc_main
 from toop_engine_topology_optimizer.interfaces.messages.ac_params import ACGAParameters, ACOptimizerParameters
@@ -63,6 +64,40 @@ from .fake_kafka import FakeConsumer, FakeConsumerEmptyException, FakeProducer
 logger = structlog.get_logger()
 # Ensure that tests using Kafka are not run in parallel with each other
 pytestmark = pytest.mark.xdist_group("kafka")
+
+GROUPED_PST_IDS = ("PST_1_group_1", "PST_2_group_1", "PST_3_group_2", "PST_4_group_2")
+
+
+def _dc_n0_overload_for_pst_setpoints(
+    grid_folder: Path,
+    pst_setpoints: list[int] | None,
+) -> float:
+    network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(grid_folder)),
+        parameters=PreprocessParameters(),
+        lf_params=SINGLE_SLACK,
+    )[2]
+    runner = PowsyblRunner()
+    runner.load_base_grid(grid_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    runner.store_action_set(extract_action_set(network_data))
+    nminus1_definition = extract_nminus1_definition(network_data)
+    runner.store_nminus1_definition(nminus1_definition)
+    base_case_id = nminus1_definition.base_case.id if nminus1_definition.base_case is not None else None
+
+    loadflow = runner.run_loadflow_single_timestep(
+        actions=[],
+        disconnections=[],
+        pst_setpoints=pst_setpoints,
+        method="dc",
+    )
+    metrics = compute_metrics_single_timestep(
+        actions=[],
+        disconnections=[],
+        loadflow=loadflow,
+        additional_info=None,
+        base_case_id=base_case_id,
+    )
+    return float(metrics.extra_scores["overload_energy_n_0"])
 
 
 def dc_main_wrapper(args: DCArgs, processed_gridfile_fs: AbstractFileSystem) -> None:
@@ -779,6 +814,77 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
     assert np.allclose(solver_metrics, runner_metrics, atol=1e-5, rtol=0.0), (
         f"DC solver versus DC validation failed. Taps: {absolute_taps_list}"
     )
+
+
+@pytest.mark.parametrize("grid_fixture_name", ["grouped_pst_grid_path", "grouped_pst_grid_split_path"])
+def test_grouped_pst_optimizer_improves_n0_loadflow(request: pytest.FixtureRequest, grid_fixture_name: str) -> None:
+    """Run the DC optimizer on grouped PST grids and validate the emitted PST setpoints on DC N-0 loadflow."""
+    grid_folder = request.getfixturevalue(grid_fixture_name)
+    _, static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(grid_folder)),
+        parameters=PreprocessParameters(),
+        lf_params=SINGLE_SLACK,
+    )
+    action_set = extract_action_set(network_data)
+    nodal_injection_information = static_information.dynamic_information.nodal_injection_information
+    assert nodal_injection_information is not None
+    parallel_pst_group_mask = nodal_injection_information.parallel_pst_group_mask
+    assert parallel_pst_group_mask is not None
+    assert [pst.id for pst in action_set.pst_ranges] == list(GROUPED_PST_IDS)
+    assert len(action_set.pst_ranges) == parallel_pst_group_mask.shape[1]
+
+    initial_n0_overload = _dc_n0_overload_for_pst_setpoints(grid_folder, pst_setpoints=None)
+    assert initial_n0_overload > 0.0
+
+    optimizer_params = DCOptimizerParameters(
+        ga_config=BatchedMEParameters(
+            iterations_per_epoch=40,
+            runtime_seconds=5,
+            random_seed=42,
+            enable_nodal_inj_optim=True,
+            enable_parallel_pst_group_optim=True,
+            n_worst_contingencies=2,
+            pst_mutation_sigma=3.0,
+            pst_mutation_probability=1.0,
+            target_metrics=(("overload_energy_n_0", 1.0),),
+            observed_metrics=("overload_energy_n_0", "split_subs"),
+            me_descriptors=(DescriptorDef(metric="split_subs", num_cells=2),),
+            random_topo_prob=0.0,
+            add_split_prob=0.0,
+            change_split_prob=0.0,
+            remove_split_prob=0.0,
+        ),
+        loadflow_solver_config=LoadflowSolverParameters(batch_size=16, max_num_splits=1, max_num_disconnections=0),
+    )
+    optimizer_data, _stats, initial_strategy = initialize_optimization(
+        params=optimizer_params,
+        optimization_id="test_grouped_pst",
+        static_information_files=(PREPROCESSING_PATHS["static_information_file_path"],),
+        processed_gridfile_fs=DirFileSystem(str(grid_folder)),
+    )
+    assert initial_strategy.timesteps[0].metrics.extra_scores["overload_energy_n_0"] > 0.0
+
+    optimizer_data = run_epoch(optimizer_data)
+    topologies = extract_topologies(optimizer_data)
+    topology = max(topologies, key=lambda candidate: candidate.metrics.fitness)
+    assert topology.pst_setpoints is not None
+    pst_setpoints = np.asarray(topology.pst_setpoints, dtype=int)
+    assert pst_setpoints.shape == (parallel_pst_group_mask.shape[1],)
+    for group_mask in np.asarray(parallel_pst_group_mask, dtype=bool):
+        group_setpoints = pst_setpoints[group_mask]
+        assert np.all(group_setpoints == group_setpoints[0])
+    assert (
+        topology.metrics.extra_scores["overload_energy_n_0"]
+        < initial_strategy.timesteps[0].metrics.extra_scores["overload_energy_n_0"]
+    )
+
+    optimized_n0_overload = _dc_n0_overload_for_pst_setpoints(
+        grid_folder,
+        pst_setpoints=topology.pst_setpoints,
+    )
+    assert optimized_n0_overload < initial_n0_overload
+    if grid_fixture_name == "grouped_pst_grid_split_path":
+        assert optimized_n0_overload == pytest.approx(0.0, abs=1e-6)
 
 
 def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: pytest.TempPathFactory) -> None:

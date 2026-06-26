@@ -241,6 +241,7 @@ def test_apply_disconnections_matches_loadflows(
         "complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder",
         "complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder",
         "complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_folder",
+        "grouped_pst_grid_example_data_folder",
     ],
 )
 def test_change_pst_matches_loadflows(

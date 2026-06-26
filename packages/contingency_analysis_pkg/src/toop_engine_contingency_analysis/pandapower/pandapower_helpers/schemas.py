@@ -10,6 +10,7 @@
 import dataclasses
 
 import pandapower as pp
+import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 from beartype.typing import Any, Literal, Optional
@@ -102,6 +103,10 @@ class PandapowerMonitoredElementSchema(pa.DataFrameModel):
         description="The kind of the monitored element, e.g. 'branch', 'bus' etc.",
     )
     name: Series[str] = pa.Field(description="The name of the monitored element, if available.")
+    monitoring_scope: Series[object] = pa.Field(
+        nullable=True,
+        description=("Frozenset of SwitchMonitoringScope values for switch elements. None for non-switch elements."),
+    )
 
 
 class PandapowerElements(BaseModel):
@@ -192,16 +197,13 @@ class SppsConditionsPandapowerSchema(pa.DataFrameModel):
     When ``None``, the column value is ignored during result extraction.
     """
 
-    condition_limit_value: Series[float] = pa.Field(
-        nullable=True,
-        coerce=True,
-    )
+    condition_limit_value: Series[float] = pa.Field(nullable=True)
     """Threshold value for the condition (empty for state-based checks)."""
 
     condition_element_table: Series[str]
     """Pandapower table containing the element to monitor."""
 
-    condition_element_table_id: Series[int] = pa.Field(coerce=True)
+    condition_element_table_id: Series[int]
     """Row id of the monitored element in the table."""
 
     condition_mode: Series[str] = pa.Field(isin=SPPS_CONDITION_MODE_VALUES)
@@ -229,8 +231,32 @@ class SppsActionsPandapowerSchema(pa.DataFrameModel):
     measure_element_table: Series[str]
     """Pandapower table containing the element to control."""
 
-    measure_element_table_id: Series[int] = pa.Field(coerce=True)
+    measure_element_table_id: Series[int]
     """Row id of the controlled element in the table."""
+
+
+def normalize_spps_conditions_dataframe(conditions: pd.DataFrame) -> pd.DataFrame:
+    """Normalize SpPS condition tables to the expected runtime dtypes.
+
+    Parameters
+    ----------
+    conditions : pd.DataFrame
+        SpPS condition table that may have been created from Python dicts with
+        ``None`` values, which would otherwise leave ``condition_limit_value``
+        as ``object`` dtype.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of ``conditions`` with ``condition_limit_value`` converted to
+        nullable float semantics using plain pandas operations.
+    """
+    normalized_conditions = conditions.copy()
+    if "condition_limit_value" in normalized_conditions.columns:
+        normalized_conditions["condition_limit_value"] = pd.to_numeric(
+            normalized_conditions["condition_limit_value"], errors="coerce"
+        ).astype("float64")
+    return normalized_conditions
 
 
 def _default_spps_conditions() -> "pat.DataFrame[SppsConditionsPandapowerSchema]":

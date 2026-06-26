@@ -258,6 +258,13 @@ def verify_static_information(
         assert first_static_information.dynamic_information.nodal_injection_information is not None, (
             "Parallel PST group optimization requires nodal injection information with controllable PSTs."
         )
+        assert (
+            first_static_information.dynamic_information.nodal_injection_information.parallel_pst_group_mask is not None
+        ), (
+            "Parallel PST group optimization is enabled, but the first static information lacks a parallel_pst_group_mask. "
+            "This requires a parallel_pst_group_mask in the nodal injection information. "
+            "Disable parallel PST group optimization or provide correct static information. "
+        )
 
 
 def update_static_information(

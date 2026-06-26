@@ -36,7 +36,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.powsybl.example_grids import grouped_pst_grid_example
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -71,8 +71,8 @@ def _write_grouped_pst_grid(
     return PowsyblBackend(DirFileSystem(str(tmp_dir)))
 
 
-def test_get_branches(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_branches(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     n_branches = len(backend.get_branch_ids())
     n_timesteps = 1
@@ -108,8 +108,8 @@ def test_get_branches(powsybl_data_folder: Path) -> None:
     assert np.all(np.isfinite(ac_dc_diff))
 
 
-def test_get_nodes(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_nodes(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     busses = backend.net.get_buses()
     n_connected_nodes = sum(busses.connected_component == 0)
@@ -124,8 +124,8 @@ def test_get_nodes(powsybl_data_folder: Path) -> None:
     assert backend.get_cross_coupler_limits().shape == (n_connected_nodes,)
 
 
-def test_get_injections(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_get_injections(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     n_injections = len(backend.get_injection_ids())
     n_timesteps = 1
@@ -138,8 +138,8 @@ def test_get_injections(powsybl_data_folder: Path) -> None:
     assert backend.get_outaged_injection_mask().shape == (n_injections,)
 
 
-def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_ptdf_matrix(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     net = backend.net
     loadflow_ref = net.get_branches()["p1"].loc[backend.get_branch_ids()].values
@@ -173,7 +173,7 @@ def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
     # different sign convention in pypowsybl loadflow results
     assert np.allclose(loadflow, -loadflow_ref)
 
-    pypowsybl.loadflow.run_ac(net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(net, CGMES_DISTRIBUTED_SLACK)
     ac_loadflow_ref = net.get_branches()["p1"].loc[backend.get_branch_ids()].values
 
     # different sign convention in pypowsybl loadflow results
@@ -181,8 +181,8 @@ def test_ptdf_matrix(powsybl_data_folder: Path) -> None:
     assert np.allclose(ac_loadflow, -ac_loadflow_ref)
 
 
-def test_extract_network_data(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_extract_network_data(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     network_data = preprocess(backend)
     assert network_data.ptdf.size > 0
@@ -427,8 +427,8 @@ def test_loadflows_match_ucte(basic_ucte_data_folder: Path) -> None:
     assert np.allclose(-n_1, n_1_ref)
 
 
-def test_globally_unique_ids(powsybl_data_folder: Path) -> None:
-    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+def test_globally_unique_ids(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
 
     assert len(backend.get_branch_ids()) == len(set(backend.get_branch_ids()))

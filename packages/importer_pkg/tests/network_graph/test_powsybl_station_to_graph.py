@@ -10,6 +10,7 @@ from pathlib import Path
 
 import networkx as nx
 import pandas as pd
+import pandera as pa
 import pypowsybl
 import pytest
 from pypowsybl.network import Network
@@ -80,6 +81,27 @@ def test_get_nodes(basic_node_breaker_network_powsybl_grid):
         substation_info=substation_information,
     )
     NodeSchema.validate(nodes_df)
+
+
+def test_node_schema_validate_rejects_wrong_dtype(basic_node_breaker_network_powsybl_grid):
+    net = basic_node_breaker_network_powsybl_grid
+    nbt = net.get_node_breaker_topology("VL1")
+    switches_df = get_switches(switches_df=nbt.switches)
+    substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
+    substation_information = SubstationInformation(**substation_dict)
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service", "bus_id"])
+
+    nodes_df = get_nodes(
+        busbar_sections_names_df=busbar_sections_names_df,
+        nodes_df=nbt.nodes,
+        switches_df=switches_df,
+        substation_info=substation_information,
+    )
+    nodes_df["in_service"] = nodes_df["in_service"].astype(object)
+
+    with pa.config.config_context(validation_enabled=True):
+        with pytest.raises(pa.errors.SchemaError):
+            NodeSchema.validate(nodes_df)
 
 
 def test_get_helper_branches(basic_node_breaker_network_powsybl_grid):

@@ -23,7 +23,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.loadflow_result_helpers import extract_branch_results
 from toop_engine_interfaces.loadflow_results import RegulatingElementType
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
 @pytest.mark.xdist_group("ray")
@@ -154,7 +154,7 @@ def test_extract_branch_results_pandapower_disconnected():
     net.line.loc[0, "in_service"] = False  # Disconnect the first line
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
+            MonitoredElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
             for index, row in net.line.iterrows()
         ],
         contingencies=[
@@ -196,7 +196,7 @@ def test_extract_branch_results_pandapower_disconnected():
     net.line.loc[0, "in_service"] = False  # Disconnect the first line
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
+            MonitoredElement(id=get_globally_unique_id(index, "line"), name=str(row.name), kind="branch", type="line")
             for index, row in net.line.iterrows()
         ],
         contingencies=[
@@ -296,7 +296,7 @@ def test_outage_grouping_combines_connected_elements_into_single_contingency():
     # ------------------------------------------------------------------
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(
+            MonitoredElement(
                 id=get_globally_unique_id(int(index), "line"),
                 name=str(row.name),
                 kind="branch",
@@ -436,7 +436,7 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
     # Define N-1 case (outage of line02)
     # ------------------------------------------------------------------
     monitored_elements = [
-        GridElement(
+        MonitoredElement(
             id=get_globally_unique_id(int(index), "line"),
             name=str(row.name),
             kind="branch",
@@ -446,7 +446,7 @@ def test_basecase_deviation_is_nan_when_basecase_fails_and_defined_when_basecase
     ]
 
     monitored_elements += [
-        GridElement(
+        MonitoredElement(
             id=get_globally_unique_id(int(index), "bus"),
             name=str(row.name),
             kind="bus",

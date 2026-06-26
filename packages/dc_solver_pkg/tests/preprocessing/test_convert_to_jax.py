@@ -37,7 +37,7 @@ from toop_engine_dc_solver.preprocess.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     preprocess_bb_outages,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.stored_action_set import load_action_set
 
@@ -165,7 +165,11 @@ def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
     filesystem_dir = DirFileSystem(str(folder))
     _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=True)
     validate_static_information(static_information)
-    assert static_information.dynamic_information.nodal_injection_information.shift_degree_max.shape == (3,)
+    nodal_injection_information = static_information.dynamic_information.nodal_injection_information
+    assert nodal_injection_information.shift_degree_max.shape == (3,)
+
+    loaded_static_information = load_static_information(folder / PREPROCESSING_PATHS["static_information_file_path"])
+    validate_static_information(loaded_static_information)
 
     action_set = load_action_set(
         folder / PREPROCESSING_PATHS["action_set_file_path"],
@@ -178,7 +182,9 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
     folder = tmp_path_factory.mktemp("case30")
     case30_with_psts_powsybl(folder)
     filesystem_dir = DirFileSystem(str(folder))
-    _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=False, lf_params=DISTRIBUTED_SLACK)
+    _, static_information, _ = load_grid(
+        data_folder_dirfs=filesystem_dir, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
+    )
     validate_static_information(static_information)
     assert static_information.dynamic_information.nodal_injection_information.shift_degree_max.shape == (2,)
 

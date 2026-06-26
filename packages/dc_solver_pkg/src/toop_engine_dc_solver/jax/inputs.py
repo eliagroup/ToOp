@@ -22,6 +22,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import structlog
 from beartype.typing import Iterator, Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -39,6 +40,8 @@ from toop_engine_dc_solver.jax.types import (
     StaticInformation,
 )
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
+
+logger = structlog.get_logger(__name__)
 
 
 def convert_tot_stat(
@@ -329,6 +332,15 @@ def validate_static_information(
         )
         assert jnp.all(di.nodal_injection_information.starting_tap_idx >= 0)
         assert jnp.all(di.nodal_injection_information.starting_tap_idx < di.nodal_injection_information.pst_n_taps)
+        if di.nodal_injection_information.parallel_pst_group_mask is not None:
+            assert (
+                di.nodal_injection_information.parallel_pst_group_mask.shape[1]
+                == (di.nodal_injection_information.controllable_pst_indices.shape[0])
+            )
+            # Sum of each column must be 1, as each PST can only belong to one parallel group
+            assert jnp.all(jnp.sum(di.nodal_injection_information.parallel_pst_group_mask, axis=0) == 1), (
+                "PST group mask implies that a PST belongs to more than one parallel group. Error during mask creation step."
+            )
 
 
 def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:
@@ -850,6 +862,14 @@ def load_nodal_injection_optimization(
         The loaded NodalInjectionOptimization or None if not present
     """
     if nodal_injection_optimization_present:
+        if "parallel_pst_group_mask" in file:
+            parallel_pst_group_mask = jnp.array(file["parallel_pst_group_mask"][:])
+        else:
+            parallel_pst_group_mask = jnp.eye(file["pst_n_taps"].shape[0], dtype=bool)
+            logger.warning(
+                "No parallel PST group mask found in the file. "
+                "Using identity matrix as default, which means no parallel groups."
+            )
         return NodalInjectionInformation(
             controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
             shift_degree_min=jnp.array(file["shift_degree_min"][:]),
@@ -858,11 +878,7 @@ def load_nodal_injection_optimization(
             pst_tap_values=jnp.array(file["pst_tap_values"][:]),
             starting_tap_idx=jnp.array(file["starting_tap_idx"][:]),
             grid_model_low_tap=jnp.array(file["grid_model_low_tap"][:]),
-            parallel_pst_group_mask=(
-                jnp.array(file["parallel_pst_group_mask"][:])
-                if "parallel_pst_group_mask" in file
-                else jnp.eye(file["pst_n_taps"].shape[0], dtype=bool)
-            ),
+            parallel_pst_group_mask=parallel_pst_group_mask,
         )
     return None
 

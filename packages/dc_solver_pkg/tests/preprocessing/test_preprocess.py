@@ -199,12 +199,12 @@ def test_exclude_nonlinear_psts_from_controllable_keeps_member_tap_domains(
     )
 
     with structlog.testing.capture_logs() as cap_logs:
-        updated_network_data = exclude_nonlinear_psts_from_controllable(network_data)
+        network_data = exclude_nonlinear_psts_from_controllable(network_data)
 
-    assert np.array_equal(updated_network_data.phase_shift_low_tap, np.array([0, 0]))
-    assert np.array_equal(updated_network_data.phase_shift_starting_tap_idx, np.array([3, 1]))
-    assert np.array_equal(updated_network_data.phase_shift_taps[0], np.array([0.0, 1.0, 2.0, 3.0]))
-    assert np.array_equal(updated_network_data.phase_shift_taps[1], np.array([0.0, 1.0, 2.0, 3.0]))
+    assert np.array_equal(network_data.phase_shift_low_tap, np.array([0, 0]))
+    assert np.array_equal(network_data.phase_shift_starting_tap_idx, np.array([3, 1]))
+    assert np.array_equal(network_data.phase_shift_taps[0], np.array([0.0, 1.0, 2.0, 3.0]))
+    assert np.array_equal(network_data.phase_shift_taps[1], np.array([0.0, 1.0, 2.0, 3.0]))
     assert any("do not share the same starting tap" in entry["event"] for entry in cap_logs)
 
 
@@ -227,11 +227,11 @@ def test_exclude_nonlinear_psts_from_controllable_drops_nonlinear_group_member(
         parallel_pst_group_ids=["group_1"],
     )
 
-    updated_network_data = exclude_nonlinear_psts_from_controllable(network_data)
+    network_data = exclude_nonlinear_psts_from_controllable(network_data)
 
-    assert updated_network_data.controllable_phase_shift_mask.sum() == 1
-    assert np.array_equal(updated_network_data.parallel_pst_group_mask, np.array([[True]], dtype=bool))
-    assert updated_network_data.parallel_pst_group_ids == ["group_1"]
+    assert network_data.controllable_phase_shift_mask.sum() == 1
+    assert np.array_equal(network_data.parallel_pst_group_mask, np.array([[True]], dtype=bool))
+    assert network_data.parallel_pst_group_ids == ["group_1"]
 
 
 def test_compute_bridging_branches(data_folder: str, network_data: NetworkData) -> None:

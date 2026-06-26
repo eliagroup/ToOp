@@ -445,7 +445,11 @@ class SolverConfig:
     this to True."""
 
     enable_parallel_pst_group_optim: bool = False
-    """Whether controllable PSTs should be optimized and applied in configured parallel groups."""
+    """Whether controllable PSTs should be optimized and applied in configured parallel groups.
+
+    Group metadata is still imported into the static information when available, but this flag controls whether the
+    optimizer uses that grouping behavior at runtime.
+    """
 
     def __hash__(self) -> int:
         """Get id as the hash for the static information.

@@ -21,6 +21,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_branch_results,
     get_convergence_result_df,
     get_node_results,
+    get_regulating_element_results,
     get_va_diff_results,
     prepare_branch_limits,
     set_target_values_to_lf_values_incl_distributed_slack,
@@ -31,10 +32,10 @@ from toop_engine_contingency_analysis.pypowsybl import (
     translate_nminus1_for_powsybl,
     update_basename,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResultSchema, VADiffResultSchema
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
 def test_powsybl_n_1_definition_slice():
@@ -151,9 +152,9 @@ def test_translate_monitored_elements_to_powsybl(powsybl_bus_breaker_net: pypows
     switches = powsybl_bus_breaker_net.get_switches()
     buses = powsybl_bus_breaker_net.get_bus_breaker_view_buses()
 
-    branch_elements = [GridElement(id=id, type=row.type, kind="branch") for id, row in branches.iterrows()]
-    switch_elements = [GridElement(id=id, type=row.kind, kind="switch") for id, row in switches.iterrows()]
-    bus_elements = [GridElement(id=id, type="bus", kind="bus") for id, _row in buses.iterrows()]
+    branch_elements = [MonitoredElement(id=id, type=row.type, kind="branch") for id, row in branches.iterrows()]
+    switch_elements = [MonitoredElement(id=id, type=row.kind, kind="switch") for id, row in switches.iterrows()]
+    bus_elements = [MonitoredElement(id=id, type="bus", kind="bus") for id, _row in buses.iterrows()]
     contingencies = [Contingency(id=elem.id, name=elem.id, elements=[elem]) for elem in branch_elements]
 
     # Test branches
@@ -253,7 +254,7 @@ def test_translate_monitored_elements_to_powsybl(powsybl_bus_breaker_net: pypows
     # Test non existing elements
     nminus1_definition = Nminus1Definition(
         contingencies=[],
-        monitored_elements=[GridElement(id="I do not exist", type="branch", kind="branch")],
+        monitored_elements=[MonitoredElement(id="I do not exist", type="branch", kind="branch")],
         id_type="powsybl",
     )
     monitored_elements, element_map, missing_elements = translate_monitored_elements_to_powsybl(
@@ -441,6 +442,24 @@ def test_get_va_diff_results():
     )
     assert len(va_results) == 2, "As only the first contingency is considered, there should be 2 rows"
 
+    blank_va_diff_basecase = blank_va_diff_with_buses.reset_index().iloc[:2].copy()
+    blank_va_diff_basecase["contingency"] = ""
+    blank_va_diff_basecase.set_index(["contingency", "element"], inplace=True)
+    bus_results_basecase = bus_results.reset_index().iloc[:2].copy()
+    bus_results_basecase["contingency_id"] = ""
+    bus_results_basecase.set_index(["contingency_id", "operator_strategy_id", "voltage_level_id", "bus_id"], inplace=True)
+
+    va_results = get_va_diff_results(
+        bus_results_basecase,
+        [],
+        va_diff_with_buses=blank_va_diff_basecase,
+        bus_map=bus_map,
+        timestep=timestep,
+    )
+    assert len(va_results) == 2, "Basecase switch rows should be preserved when there are no outages"
+    assert va_results.loc[(0, "", "element_1"), "va_diff"] == 180
+    assert va_results.loc[(0, "", "element_2"), "va_diff"] == -180
+
 
 def test_translate_nminus1_for_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     buses = powsybl_bus_breaker_net.get_bus_breaker_view_buses().iloc[:6]
@@ -458,11 +477,11 @@ def test_translate_nminus1_for_powsybl(powsybl_bus_breaker_net: pypowsybl.networ
     ]
 
     monitored_branches = [
-        GridElement(id=index, name=row.name, kind="branch", type=row.type) for index, row in branches.iterrows()
+        MonitoredElement(id=index, name=row.name, kind="branch", type=row.type) for index, row in branches.iterrows()
     ]
-    monitored_buses = [GridElement(id=index, name=row.name, kind="bus", type="bus") for index, row in buses.iterrows()]
+    monitored_buses = [MonitoredElement(id=index, name=row.name, kind="bus", type="bus") for index, row in buses.iterrows()]
     monitored_switches = [
-        GridElement(id=index, name=row.name, kind="switch", type=row.kind) for index, row in switches.iterrows()
+        MonitoredElement(id=index, name=row.name, kind="switch", type=row.kind) for index, row in switches.iterrows()
     ]
 
     nminus1_def = Nminus1Definition(
@@ -528,7 +547,7 @@ def test_translate_nminus1_for_powsybl(powsybl_bus_breaker_net: pypowsybl.networ
 def test_translate_nminus1_for_powsybl_split_helpers(powsybl_bus_breaker_net: pypowsybl.network.Network) -> None:
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in powsybl_bus_breaker_net.get_branches().iloc[:4].iterrows()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
@@ -560,7 +579,7 @@ def test_translate_nminus1_for_powsybl_with_branch_limit_cache(
 ) -> None:
     nminus1_def = Nminus1Definition(
         monitored_elements=[
-            GridElement(id=index, name=row.name, kind="branch", type=row.type)
+            MonitoredElement(id=index, name=row.name, kind="branch", type=row.type)
             for index, row in powsybl_bus_breaker_net.get_branches().iloc[:4].iterrows()
         ],
         contingencies=[Contingency(id="BASECASE", elements=[])],
@@ -817,7 +836,7 @@ def test_get_node_results_ac():
     bus_results["operator_strategy_id"] = ""
     bus_results["voltage_level_id"] = ["VL_1"] * 4
     bus_results["bus_id"] = ["bus_1", "bus_2", "bus_1", "bus_2"]
-    bus_results["v_mag"] = [10.0, 11.0, 9.0, np.nan]
+    bus_results["v_mag"] = [10.0, 10.1, 9.9, np.nan]
     bus_results["v_angle"] = [180.0, 0, 10, np.nan]
     bus_results.set_index(["contingency_id", "operator_strategy_id", "voltage_level_id", "bus_id"], inplace=True)
 
@@ -849,25 +868,30 @@ def test_get_node_results_ac():
             # Test voltage magnitude
             vm_result = node_results.loc[(timestep, contingency, bus_id), "vm"]
             orig_vm = row["v_mag"]
-            assert vm_result == orig_vm or (np.isnan(vm_result) and np.isnan(orig_vm)), (
+            nominal_v = voltage_levels.loc["VL_1", "nominal_v"]
+            expected_vm = np.nan
+            if not np.isnan(orig_vm):
+                expected_vm = orig_vm * nominal_v if abs(orig_vm) <= nominal_v * 0.1 else orig_vm
+            assert vm_result == expected_vm or (np.isnan(vm_result) and np.isnan(expected_vm)), (
                 f"Voltage magnitude for {bus_id} in {contingency} in {method} should match"
             )
 
             # Test voltage magnitude loading
             vm_loading = node_results.loc[(timestep, contingency, bus_id), "vm_loading"]
-            nominal_v = voltage_levels.loc["VL_1", "nominal_v"]
             if np.isnan(vm_loading):
                 assert np.isnan(orig_vm), "Loading should only by NaN if the original voltage is NaN"
-            elif vm_loading > nominal_v:
+            elif vm_result >= nominal_v:
                 voltage_max = voltage_levels.loc["VL_1", "high_voltage_limit"]
-                assert vm_loading == (vm_result - nominal_v) / (voltage_max - nominal_v), (
+                expected_loading = (vm_result - nominal_v) / (voltage_max - nominal_v)
+                assert vm_loading == expected_loading, (
                     f"Voltage loading for {bus_id} in {contingency} in {method} should match"
                 )
-            elif vm_loading == nominal_v:
+            elif vm_loading == 0.0:
                 assert vm_loading == 0.0, "Loading should be 0 if the voltage is equal to the nominal voltage"
             else:
                 voltage_min = voltage_levels.loc["VL_1", "low_voltage_limit"]
-                assert vm_loading == (vm_result - nominal_v) / (nominal_v - voltage_min), (
+                expected_loading = (vm_result - nominal_v) / (nominal_v - voltage_min)
+                assert vm_loading == expected_loading, (
                     f"Voltage loading for {bus_id} in {contingency} in {method} should match"
                 )
 
@@ -929,6 +953,19 @@ def test_update_basename_with_new_name():
     updated_empty_df = update_basename(empty_df, base_case_name)
     assert empty_df.empty, "The empty dataframe should remain empty"
     assert updated_empty_df.empty, "The updated empty dataframe should remain empty"
+
+
+def test_get_regulating_element_results_sets_non_nullable_name_columns() -> None:
+    regulating_element_results = get_regulating_element_results(
+        monitored_buses=["bus_1", "bus_2"],
+        timestep=0,
+        basecase_name="BASECASE",
+    )
+
+    assert len(regulating_element_results) == 2
+    assert set(regulating_element_results.index.get_level_values("element")) == {"bus_1", "bus_2"}
+    assert regulating_element_results["element_name"].tolist() == ["", ""]
+    assert regulating_element_results["contingency_name"].tolist() == ["", ""]
 
 
 def test_update_basename_drops():
@@ -1022,16 +1059,16 @@ def test_translate_element_names():
 def test_set_target_values_to_lf_values_incl_distributed_slack_dc(
     powsybl_bus_breaker_net: pypowsybl.network.Network,
 ) -> None:
-    pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
     generators_before = powsybl_bus_breaker_net.get_generators()
     assert not np.all(generators_before.p == generators_before.target_p), (
         "Make sure the initial target values are different from the loadflow values. Otherwise this test is useless."
     )
 
     powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(
-        powsybl_bus_breaker_net, "dc", DISTRIBUTED_SLACK
+        powsybl_bus_breaker_net, "dc", CGMES_DISTRIBUTED_SLACK
     )
-    lf_result = pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, DISTRIBUTED_SLACK)
+    lf_result = pypowsybl.loadflow.run_dc(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
     assert lf_result[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED, (
         "Loadflow did not converge after setting the target values."
     )
@@ -1048,7 +1085,7 @@ def test_set_target_values_to_lf_values_incl_distributed_slack_dc(
 def test_set_target_values_to_lf_values_incl_distributed_slack_ac(
     powsybl_bus_breaker_net: pypowsybl.network.Network,
 ) -> None:
-    pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
     generators_before = powsybl_bus_breaker_net.get_generators(all_attributes=True)
     assert not np.all(generators_before.p == generators_before.target_p), (
         "Make sure the initial p-target values are different from the loadflow values. Otherwise this test is useless."
@@ -1058,9 +1095,9 @@ def test_set_target_values_to_lf_values_incl_distributed_slack_ac(
     )
 
     powsybl_bus_breaker_net = set_target_values_to_lf_values_incl_distributed_slack(
-        powsybl_bus_breaker_net, "ac", DISTRIBUTED_SLACK
+        powsybl_bus_breaker_net, "ac", CGMES_DISTRIBUTED_SLACK
     )
-    lf_result = pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, DISTRIBUTED_SLACK)
+    lf_result = pypowsybl.loadflow.run_ac(powsybl_bus_breaker_net, CGMES_DISTRIBUTED_SLACK)
     assert lf_result[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED, (
         "Loadflow did not converge after setting the target values."
     )

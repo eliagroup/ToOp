@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparat
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
 from toop_engine_interfaces.asset_topology import Station, Topology
 from toop_engine_interfaces.backend import BackendInterface
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, PSTRange
 
 
@@ -311,10 +311,12 @@ class NetworkData:
     nodes will be included. The ones that refer to a controllable PST will be mentioned in this mask."""
 
     parallel_pst_group_mask: Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]] = None
-    """Boolean masks describing groups of parallel controllable PSTs aligned with PST arrays."""
+    """Boolean masks describing groups of parallel controllable PSTs aligned with PST arrays. If there are no controllable
+    PSTs, this will be None."""
 
-    parallel_pst_group_ids: Optional[list[str]] = None
-    """Optional identifiers aligned one-to-one with rows of parallel_pst_group_mask.
+    parallel_pst_group_ids: Optional[Sequence[str]] = None
+    """Optional identifiers aligned one-to-one with rows of parallel_pst_group_mask. If there are no controllable
+    PSTs, this will be None.
 
     This is per parallel PST group, not per controllable PST member. If present, its length must match
     `parallel_pst_group_mask.shape[0]`.
@@ -531,7 +533,7 @@ def validate_network_data(network_data: NetworkData) -> None:
 
     assert network_data.ptdf.shape == (n_branch, n_nodes)
     assert network_data.psdf.shape[0] == n_branch
-    assert network_data.slack > 0 and network_data.slack < n_nodes
+    assert network_data.slack >= 0 and network_data.slack < n_nodes
     assert network_data.relevant_node_mask.shape == (n_nodes,)
     assert network_data.max_mw_flows.shape == (n_timestep, n_branch)
     assert network_data.max_mw_flows_n_1.shape == (n_timestep, n_branch)
@@ -710,7 +712,7 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             starting_tap=start + low,  # Convert from index to absolute grid model tap position
             low_tap=low,
             high_tap=low + len(taps),
-            pst_group=_get_parallel_pst_group_id(network_data=network_data, pst_idx=pst_idx, branch_idx=index),
+            pst_group=_get_parallel_pst_group_id(network_data=network_data, pst_idx=pst_idx, branch_idx=int(index)),
         )
         for pst_idx, (index, start, low, taps) in enumerate(
             zip(
@@ -736,7 +738,7 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
     )
 
 
-def _get_parallel_pst_group_id(network_data: NetworkData, pst_idx: Int, branch_idx: Int) -> str:
+def _get_parallel_pst_group_id(network_data: NetworkData, pst_idx: int, branch_idx: int) -> str:
     """Return the persisted PST group id for one controllable PST.
 
     If no parallel PST group information is available, or if the PST does not belong to any
@@ -770,7 +772,7 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         The N-1 definition extracted from the network data.
     """
     monitored_branches = [
-        GridElement(id=branch_id, name=branch_name, type=branch_type, kind="branch")
+        MonitoredElement(id=branch_id, name=branch_name, type=branch_type, kind="branch")
         for (branch_id, branch_type, branch_name, monitored) in zip(
             network_data.branch_ids,
             network_data.branch_types,
@@ -785,13 +787,13 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         network_data.simplified_asset_topology if network_data.simplified_asset_topology else network_data.asset_topology
     )
     monitored_nodes = [
-        GridElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.type, kind="bus")
+        MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.type, kind="bus")
         for station in asset_topology.stations
         for busbar in station.busbars
     ]
 
     monitored_switches = [
-        GridElement(id=switch.grid_model_id, name=switch.name or "", type=switch.type, kind="switch")
+        MonitoredElement(id=switch.grid_model_id, name=switch.name or "", type=switch.type, kind="switch")
         for station in asset_topology.stations
         for switch in station.couplers
     ]

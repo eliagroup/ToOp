@@ -21,6 +21,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     PandapowerMonitoredElementSchema,
     SppsActionsPandapowerSchema,
     SppsConditionsPandapowerSchema,
+    normalize_spps_conditions_dataframe,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_element_table
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
@@ -31,9 +32,19 @@ from toop_engine_interfaces.nminus1_definition import (
     Action,
     Condition,
     Contingency,
-    GridElement,
+    MonitoredElement,
     SppsRule,
+    SwitchMonitoringScope,
 )
+
+
+def _scope_value(element: MonitoredElement) -> Optional[frozenset]:
+    """Return the frozenset of active scopes for *element*, or ``None`` for non-switches."""
+    if element.kind != "switch":
+        return None
+    if element.monitoring_scope is None:
+        return frozenset(SwitchMonitoringScope)
+    return element.monitoring_scope
 
 
 def get_cgmes_id_to_table_df(net: pandapowerNet) -> tuple[pd.DataFrame, list[str]]:
@@ -119,8 +130,8 @@ def extract_contingencies_with_unique_pandapower_id(
 
 
 def extract_monitored_elements_with_cgmes_id(
-    net: pandapowerNet, monitored_elements: list[GridElement]
-) -> tuple[pat.DataFrame[PandapowerMonitoredElementSchema], list[GridElement], list[str]]:
+    net: pandapowerNet, monitored_elements: list[MonitoredElement]
+) -> tuple[pat.DataFrame[PandapowerMonitoredElementSchema], list[MonitoredElement], list[str]]:
     """Extract monitored elements with unique cgmes guids.
 
     Uses the globally unique ids of the elements to find them in the pandapower network columns "origin_id".
@@ -129,81 +140,96 @@ def extract_monitored_elements_with_cgmes_id(
     ----------
     net : pandapowerNet
         The pandapower network to use for the translation. This is used to get buses etc.
-    monitored_elements : list[GridElement]
+    monitored_elements : list[MonitoredElement]
         The list of monitored elements to translate.
 
     Returns
     -------
     pat.DataFrame[PandapowerMonitoredElementSchema]
         A pandas DataFrame containing the monitored elements with their globally unique ids, table, table_id, kind and name.
-    list[GridElement]
+    list[MonitoredElement]
         A list of monitored elements that were not found in the network.
     list[str]
         A list of ids that were not unique in the grid. This is only relevant for cgmes ids.
     """
-    pandapower_monitored_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-
+    empty_df = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
     cgmes_ids, duplicated_ids = get_cgmes_id_to_table_df(net)
 
-    pandapower_monitored_elements = pandapower_monitored_elements.reindex([element.id for element in monitored_elements])
-    pandapower_monitored_elements["name"] = [element.name for element in monitored_elements]
-    pandapower_monitored_elements["kind"] = [element.kind for element in monitored_elements]
-    pandapower_monitored_elements["table"] = cgmes_ids["table"]
-    pandapower_monitored_elements["table_id"] = cgmes_ids["table_id"].astype(int)
-    pandapower_monitored_elements.dropna(subset=["table", "table_id"], inplace=True)
-    missing_elements = [element for element in monitored_elements if element.id not in pandapower_monitored_elements.index]
-    duplicated_ids = [element.id for element in monitored_elements if element.id in duplicated_ids]
-    return pandapower_monitored_elements, missing_elements, duplicated_ids
+    rows: list[dict] = []
+    indices: list[str] = []
+    missing_elements: list[MonitoredElement] = []
+    seen_duplicated_ids: list[str] = []
+
+    for element in monitored_elements:
+        if element.id not in cgmes_ids.index:
+            missing_elements.append(element)
+            continue
+        if element.id in duplicated_ids:
+            seen_duplicated_ids.append(element.id)
+        table_id, table = cgmes_ids.loc[element.id, ["table_id", "table"]].tolist()
+        rows.append(
+            {
+                "table": table,
+                "table_id": int(table_id),
+                "kind": element.kind,
+                "name": element.name or "",
+                "monitoring_scope": _scope_value(element),
+            }
+        )
+        indices.append(element.id)
+
+    pandapower_monitored_elements = pd.concat([empty_df, pd.DataFrame(rows, index=indices)])
+    return pandapower_monitored_elements, missing_elements, seen_duplicated_ids
 
 
 @pa.check_types
 def extract_monitored_elements_with_unique_pandapower_id(
-    net: pandapowerNet, monitored_elements: list[GridElement]
-) -> tuple[pat.DataFrame[PandapowerMonitoredElementSchema], list[GridElement], list[str]]:
+    net: pandapowerNet, monitored_elements: list[MonitoredElement]
+) -> tuple[pat.DataFrame[PandapowerMonitoredElementSchema], list[MonitoredElement], list[str]]:
     """Extract monitored elements with unique pandapower ids.
 
     Parameters
     ----------
     net : pandapowerNet
         The pandapower network to use for the translation. This is used to get buses etc.
-    monitored_elements : list[GridElement]
+    monitored_elements : list[MonitoredElement]
         The list of monitored elements to translate.
 
     Returns
     -------
     pat.DataFrame[PandapowerMonitoredElementSchema]
         A pandas DataFrame containing the monitored elements with their globally unique ids, table, table_id, kind and name.
-    list[GridElement]
+    list[MonitoredElement]
         A list of monitored elements that were not found in the network.
     list[str]
         A list of ids that were not unique in the grid. This is only relevant for cgmes ids.
     """
     empty_df = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-    missing_elements = []
-    index = []
-    df_rows = []
+    missing_elements: list[MonitoredElement] = []
+    indices: list[str] = []
+    df_rows: list[dict] = []
     for element in monitored_elements:
         try:
             pp_id, pp_type = parse_globally_unique_id(element.id)
         except ValueError:
-            # If the id is not a globally unique id, we cannot translate it
             missing_elements.append(element)
             continue
         table = get_element_table(pp_type, res_table=False)
         if pp_id not in net[table].index.values:
             missing_elements.append(element)
             continue
-        index.append(element.id)
         df_rows.append(
             {
                 "table": table,
                 "table_id": pp_id,
                 "kind": element.kind,
                 "name": element.name or "",
+                "monitoring_scope": _scope_value(element),
             }
         )
+        indices.append(element.id)
 
-    pandapower_monitored_elements = pd.concat([empty_df, pd.DataFrame(df_rows, index=index)])
+    pandapower_monitored_elements = pd.concat([empty_df, pd.DataFrame(df_rows, index=indices)])
     return pandapower_monitored_elements, missing_elements, []
 
 
@@ -438,7 +464,9 @@ def extract_spps_rules_with_unique_pandapower_id(
         cond_rows.extend(_build_spps_condition_rows(rule, resolved_conditions))
         act_rows.extend(_build_spps_action_rows(rule, resolved_actions))
 
-    spps_conditions = pd.concat([empty_conditions, pd.DataFrame(cond_rows)], ignore_index=True)
+    spps_conditions = normalize_spps_conditions_dataframe(
+        pd.concat([empty_conditions, pd.DataFrame(cond_rows)], ignore_index=True)
+    )
     spps_actions = pd.concat([empty_actions, pd.DataFrame(act_rows)], ignore_index=True)
     return spps_conditions, spps_actions, missing_rules, []
 
@@ -551,6 +579,8 @@ def extract_spps_rules_with_cgmes_id(
         cond_rows.extend(_build_spps_condition_rows(rule, resolved_conditions))
         act_rows.extend(_build_spps_action_rows(rule, resolved_actions))
 
-    spps_conditions = pd.concat([empty_conditions, pd.DataFrame(cond_rows)], ignore_index=True)
+    spps_conditions = normalize_spps_conditions_dataframe(
+        pd.concat([empty_conditions, pd.DataFrame(cond_rows)], ignore_index=True)
+    )
     spps_actions = pd.concat([empty_actions, pd.DataFrame(act_rows)], ignore_index=True)
     return spps_conditions, spps_actions, missing_rules, list(dict.fromkeys(seen_duplicated_ids))

@@ -180,7 +180,7 @@ class NetworkData:
     """Mask of branches that would lead to islanding if outaged"""
 
     nodal_injection: Optional[Float[np.ndarray, " n_timestep n_node"]] = None
-    """The injected netto power at each node in the grid for all timesteps"""
+    """The injected net power at each node in the grid for all timesteps"""
 
     ptdf_is_extended: bool = False
     """Flag to show if PTDF was already extended"""
@@ -310,6 +310,18 @@ class NetworkData:
     """The mask over nodes that are a controllable phase shifter. When adding the PSDF matrix, bogus
     nodes will be included. The ones that refer to a controllable PST will be mentioned in this mask."""
 
+    parallel_pst_group_mask: Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]] = None
+    """Boolean masks describing groups of parallel controllable PSTs aligned with PST arrays. If there are no controllable
+    PSTs, this will be None."""
+
+    parallel_pst_group_ids: Optional[Sequence[str]] = None
+    """Optional identifiers aligned one-to-one with rows of parallel_pst_group_mask. If there are no controllable
+    PSTs, this will be None.
+
+    This is per parallel PST group, not per controllable PST member. If present, its length must match
+    `parallel_pst_group_mask.shape[0]`.
+    """
+
     realised_stations: Optional[list[list[Station]]] = None
     """The realised stations for each relevant node depending on the branch_actions. The outer list
     is of length equal to the number of relevant nodes. The inner list if of length equal to the number
@@ -422,6 +434,8 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         phase_shift_starting_tap_idx=interface.get_phase_shift_starting_taps(),
         phase_shift_low_tap=interface.get_phase_shift_low_taps(),
         phase_shift_linearity=interface.get_phase_shift_linearity(),
+        parallel_pst_group_mask=interface.get_parallel_pst_group_mask(),
+        parallel_pst_group_ids=interface.get_parallel_pst_group_ids(),
         busbar_outage_map=interface.get_busbar_outage_map(),
     )
 
@@ -462,6 +476,17 @@ def assert_network_data(network_data: NetworkData) -> None:
     )
     # We currently can't split the slack node - something in the BSDF doesn't work properly...
     assert network_data.relevant_node_mask[network_data.slack].item() is False
+    if network_data.parallel_pst_group_mask is not None:
+        assert network_data.parallel_pst_group_mask.shape[1] == int(np.sum(network_data.controllable_phase_shift_mask)), (
+            "Parallel PST group mask must align with controllable PST arrays"
+        )
+        assert np.all(network_data.parallel_pst_group_mask.sum(axis=0) == 1), (
+            "Each controllable PST must belong to exactly one parallel PST group"
+        )
+        if network_data.parallel_pst_group_ids is not None:
+            assert len(network_data.parallel_pst_group_ids) == network_data.parallel_pst_group_mask.shape[0], (
+                "parallel_pst_group_ids must contain one identifier per parallel PST group row"
+            )
 
 
 # ruff: noqa: PLR0915
@@ -508,7 +533,7 @@ def validate_network_data(network_data: NetworkData) -> None:
 
     assert network_data.ptdf.shape == (n_branch, n_nodes)
     assert network_data.psdf.shape[0] == n_branch
-    assert network_data.slack > 0 and network_data.slack < n_nodes
+    assert network_data.slack >= 0 and network_data.slack < n_nodes
     assert network_data.relevant_node_mask.shape == (n_nodes,)
     assert network_data.max_mw_flows.shape == (n_timestep, n_branch)
     assert network_data.max_mw_flows_n_1.shape == (n_timestep, n_branch)
@@ -526,6 +551,10 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert np.sum(network_data.controllable_phase_shift_mask) == np.sum(network_data.controllable_pst_node_mask)
     assert len(network_data.phase_shift_taps) == network_data.controllable_phase_shift_mask.sum()
     assert all(len(tap) > 0 for tap in network_data.phase_shift_taps)
+    if network_data.parallel_pst_group_mask is not None:
+        assert network_data.parallel_pst_group_mask.shape[1] == network_data.controllable_phase_shift_mask.sum()
+        if network_data.parallel_pst_group_ids is not None:
+            assert len(network_data.parallel_pst_group_ids) == network_data.parallel_pst_group_mask.shape[0]
     assert network_data.monitored_branch_mask.shape == (n_branch,)
     assert network_data.disconnectable_branch_mask.shape == (n_branch,)
     assert network_data.outaged_branch_mask.shape == (n_branch,)
@@ -683,13 +712,16 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
             starting_tap=start + low,  # Convert from index to absolute grid model tap position
             low_tap=low,
             high_tap=low + len(taps),
+            pst_group=_get_parallel_pst_group_id(network_data=network_data, pst_idx=pst_idx, branch_idx=int(index)),
         )
-        for (index, start, low, taps) in zip(
-            controllable_pst_indices,
-            network_data.phase_shift_starting_tap_idx,
-            network_data.phase_shift_low_tap,
-            network_data.phase_shift_taps,
-            strict=True,
+        for pst_idx, (index, start, low, taps) in enumerate(
+            zip(
+                controllable_pst_indices,
+                network_data.phase_shift_starting_tap_idx,
+                network_data.phase_shift_low_tap,
+                network_data.phase_shift_taps,
+                strict=True,
+            )
         )
     ]
 
@@ -704,6 +736,23 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
         hvdc_ranges=[],  # Not implemented yet
         connectable_branches=[],  # Not implemented yet
     )
+
+
+def _get_parallel_pst_group_id(network_data: NetworkData, pst_idx: int, branch_idx: int) -> str:
+    """Return the persisted PST group id for one controllable PST.
+
+    If no parallel PST group information is available, or if the PST does not belong to any
+    parallel group, return the branch id as default.
+    """
+    if network_data.parallel_pst_group_mask is None or network_data.parallel_pst_group_ids is None:
+        return str(network_data.branch_ids[branch_idx])
+
+    group_membership = network_data.parallel_pst_group_mask[:, pst_idx]
+    if not np.any(group_membership):
+        return str(network_data.branch_ids[branch_idx])
+
+    group_idx = int(np.argmax(group_membership))
+    return network_data.parallel_pst_group_ids[group_idx]
 
 
 def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:

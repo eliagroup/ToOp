@@ -42,6 +42,7 @@ from toop_engine_dc_solver.example_grids import (
     case14_pandapower,
     case30_with_psts_pandapower,
     case57_data_powsybl,
+    case57_data_powsybl_xiidm,
     complex_grid_battery_hvdc_svc_3w_trafo_data_folder,
     node_breaker_folder_powsybl,
     oberrhein_data,
@@ -543,15 +544,18 @@ def data_folder_with_more_branches(_data_folder_with_more_branches: Path, tmp_pa
 
 
 @pytest.fixture(scope="session")
-def _powsybl_case57_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    temp_dir = tmp_path_factory.mktemp("powsybl_case57")
-    case57_data_powsybl(temp_dir)
+def _powsybl_case57_folder_xiidm(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    temp_dir = tmp_path_factory.mktemp("powsybl_case57_xiidm")
+    shutil.copy(Path(__file__).parents[3] / "data" / "case57_xiidm" / "grid.xiidm", temp_dir)
+    case57_data_powsybl_xiidm(temp_dir)
     return temp_dir
 
 
 @pytest.fixture(scope="session")
-def _powsybl_data_folder(_powsybl_case57_folder: Path) -> Path:
-    return _powsybl_case57_folder
+def _powsybl_case57_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    temp_dir = tmp_path_factory.mktemp("powsybl_case57")
+    case57_data_powsybl(temp_dir)
+    return temp_dir
 
 
 @pytest.fixture(scope="function")
@@ -561,21 +565,27 @@ def powsybl_case57_folder(_powsybl_case57_folder: Path, tmp_path: Path) -> Path:
 
 
 @pytest.fixture(scope="function")
-def powsybl_data_folder(_powsybl_data_folder: Path, tmp_path: Path) -> Path:
-    shutil.copytree(_powsybl_data_folder, tmp_path, dirs_exist_ok=True)
+def powsybl_case57_folder_xiidm(_powsybl_case57_folder_xiidm: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_powsybl_case57_folder_xiidm, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_powsybl_case57_folder, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 
 @pytest.fixture(scope="session")
-def loaded_powsybl_net(_powsybl_data_folder: Path) -> pypowsybl.network.Network:
-    grid_file_path = _powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+def loaded_powsybl_net(_powsybl_case57_folder: Path) -> pypowsybl.network.Network:
+    grid_file_path = _powsybl_case57_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     net = pypowsybl.network.load(grid_file_path)
     pypowsybl.loadflow.run_ac(net)
     return net
 
 
 @pytest.fixture(scope="session")
-def _preprocessed_powsybl_data_folder(_powsybl_data_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _preprocessed_powsybl_data_folder(_powsybl_case57_folder: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("powsybl_result")
     tmp_grid_file_path = tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     tmp_grid_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -587,12 +597,12 @@ def _preprocessed_powsybl_data_folder(_powsybl_data_folder: Path, tmp_path_facto
     temp_lf_parameters_file_path.parent.mkdir(parents=True, exist_ok=True)
     # Copy over the grid file
     shutil.copy(
-        _powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        _powsybl_case57_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         tmp_grid_file_path,
     )
 
     # Extract data from the backend, run preprocessing
-    fs_dir = DirFileSystem(str(_powsybl_data_folder))
+    fs_dir = DirFileSystem(str(_powsybl_case57_folder))
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )

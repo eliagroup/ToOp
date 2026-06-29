@@ -109,6 +109,8 @@ uv run pytest -n auto --dist loadgroup           # Parallel, all packages
 ### Code Quality
 - **Ruff**: Line length 125, enforces annotations (`ANN`), docstrings (`D`), no prints (`T20`)
 - **Type Hints**: ALL functions must have complete type annotations (parameters + return type)
+- **Docstrings**: Required for all public functions using Google style with parameter type documentation
+- **Pandera coercion**: Do not rely on `coerce=True` or schema-level coercion for runtime correctness; normalize dtypes explicitly in regular pandas code before validation so behavior stays correct when Pandera is disabled.
 - **Docstrings**:
     - Use NumPy-style docstrings for all functions.
     - Prefer sectioned multi-line NumPy docstrings with `Parameters`, `Returns`, and `Raises` when applicable; one-line docstrings are fine for small helpers without parameters.

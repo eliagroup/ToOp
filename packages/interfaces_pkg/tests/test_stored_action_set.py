@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
 from toop_engine_interfaces.stored_action_set import (
     ActionSet,
+    PSTRange,
     StationDiffArray,
     compress_actions_to_station_diffs,
     expand_station_diffs,
@@ -583,3 +584,60 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
         np.asarray(loaded_action.asset_switching_table),
         np.asarray(local_action.asset_switching_table),
     )
+
+
+def test_pst_range_defaults_missing_group_to_id() -> None:
+    pst_range = PSTRange.model_validate(
+        {
+            "id": "PST1",
+            "name": "Transformer 1",
+            "type": "TWO_WINDINGS_TRANSFORMER",
+            "kind": "branch",
+            "starting_tap": 0,
+            "low_tap": -30,
+            "high_tap": 31,
+        }
+    )
+
+    assert pst_range.pst_group == "PST1"
+
+
+def test_save_and_load_action_set_preserves_pst_group(tmp_path: Path) -> None:
+    starting_topology = Topology.model_construct(
+        topology_id="starting_topology",
+        grid_model_file=None,
+        name=None,
+        stations=[],
+        asset_setpoints=None,
+        timestamp=datetime.now(),
+        metrics=None,
+    )
+
+    action_set = ActionSet.model_construct(
+        starting_topology=starting_topology,
+        simplified_starting_topology=starting_topology,
+        connectable_branches=[],
+        disconnectable_branches=[],
+        pst_ranges=[
+            PSTRange(
+                id="PST1",
+                name="Transformer 1",
+                type="TWO_WINDINGS_TRANSFORMER",
+                kind="branch",
+                starting_tap=0,
+                low_tap=-30,
+                high_tap=31,
+                pst_group="group_a",
+            )
+        ],
+        hvdc_ranges=[],
+        local_actions=[],
+    )
+
+    json_file = tmp_path / "action_set.json"
+    diff_file = tmp_path / "action_set.hdf5"
+    save_action_set(json_file, diff_file, action_set)
+
+    loaded_action_set = load_action_set(json_file, diff_file)
+
+    assert loaded_action_set.pst_ranges[0].pst_group == "group_a"

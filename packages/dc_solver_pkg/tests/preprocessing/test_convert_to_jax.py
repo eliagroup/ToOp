@@ -165,7 +165,11 @@ def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
     filesystem_dir = DirFileSystem(str(folder))
     _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=True)
     validate_static_information(static_information)
-    assert static_information.dynamic_information.nodal_injection_information.shift_degree_max.shape == (3,)
+    nodal_injection_information = static_information.dynamic_information.nodal_injection_information
+    assert nodal_injection_information.shift_degree_max.shape == (3,)
+
+    loaded_static_information = load_static_information(folder / PREPROCESSING_PATHS["static_information_file_path"])
+    validate_static_information(loaded_static_information)
 
     action_set = load_action_set(
         folder / PREPROCESSING_PATHS["action_set_file_path"],

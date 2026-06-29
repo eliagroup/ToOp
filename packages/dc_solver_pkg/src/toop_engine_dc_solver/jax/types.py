@@ -84,6 +84,9 @@ class NodalInjectionInformation(eqx.Module):
     taps are to be reconstructed from indices into pst_tap_values then tap + grid_model_low_tap gives the actual tap position
     in the original grid model."""
 
+    parallel_pst_group_mask: Optional[Bool[Array, " n_parallel_pst_groups n_controllable_pst"]] = None
+    """Boolean masks describing groups of controllable PSTs that must move together."""
+
 
 class RelBBOutageData(eqx.Module):
     """Holds the relevant busbar outage data."""
@@ -440,6 +443,13 @@ class SolverConfig:
     We set this parameter to False, if we want the optimiser to solve busbar outage problems in the grid. However,
     when we just want to ensure that the busbar outage problems are not exacerbated due to the optimiser, we set
     this to True."""
+
+    enable_parallel_pst_group_optim: bool = False
+    """Whether controllable PSTs should be optimized and applied in configured parallel groups.
+
+    Group metadata is still imported into the static information when available, but this flag controls whether the
+    optimizer uses that grouping behavior at runtime.
+    """
 
     def __hash__(self) -> int:
         """Get id as the hash for the static information.

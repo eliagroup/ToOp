@@ -768,6 +768,69 @@ def test_make_masks_node_breaker_with_ignore_file(
     assert powsybl_masks.validate_network_masks(ignored_masks, default_masks)
 
 
+def test_make_masks_cgmes_ca_list_keeps_ignored_monitored_element(
+    test_pypowsybl_cgmes_with_3w_trafo: Path,
+    cgmes_importer_parameters: CgmesImporterParameters,
+    tmp_path: Path,
+):
+    """Test that a monitored element is not removed from the masks when it is in the contingency list."""
+    network = pypowsybl.network.load(test_pypowsybl_cgmes_with_3w_trafo)
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
+    importer_parameters = deepcopy(cgmes_importer_parameters)
+
+    lf_result, *_ = pypowsybl.loadflow.run_dc(network)
+    baseline_masks = powsybl_masks.make_masks(
+        network=network,
+        slack_id=lf_result.reference_bus_id,
+        importer_parameters=importer_parameters,
+        blacklisted_ids=[],
+    )
+
+    monitored_line_idx = np.flatnonzero(baseline_masks.line_for_reward)
+    if monitored_line_idx.size == 0:
+        pytest.skip("No monitored lines available in CGMES fixture.")
+
+    line_df = network.get_lines(attributes=[])
+    ignored_line_id = line_df.index[monitored_line_idx[0]]
+    ignored_line_pos = line_df.index.get_loc(ignored_line_id)
+
+    ignored_without_ca_masks = powsybl_masks.make_masks(
+        network=network,
+        slack_id=lf_result.reference_bus_id,
+        importer_parameters=importer_parameters,
+        blacklisted_ids=[ignored_line_id],
+    )
+    assert baseline_masks.line_for_reward[ignored_line_pos]
+    assert not ignored_without_ca_masks.line_for_reward[ignored_line_pos]
+
+    contingency_file = tmp_path / "contingency.csv"
+    contingency_df = pd.DataFrame(
+        {
+            "heo_relevant": [True],
+            "contingency_case": [False],
+            "observe_std": [True],
+            "observe_ntc": [False],
+            "observe_vor": [False],
+        },
+        index=[ignored_line_id],
+    )
+    contingency_df.index.name = "mrid"
+    contingency_df.to_csv(contingency_file)
+
+    importer_parameters.contingency_list_file = contingency_file
+    importer_parameters.schema_format = "ContingencyImportSchema"
+
+    ignored_with_ca_masks = powsybl_masks.make_masks(
+        network=network,
+        slack_id=lf_result.reference_bus_id,
+        importer_parameters=importer_parameters,
+        blacklisted_ids=[ignored_line_id],
+        filesystem=LocalFileSystem(),
+    )
+
+    assert ignored_with_ca_masks.line_for_reward[ignored_line_pos]
+
+
 def test_update_masks_from_contingency_list_file(
     ucte_file_with_border, ucte_importer_parameters: UcteImporterParameters, tmp_path_factory: pytest.TempPathFactory
 ):

@@ -192,7 +192,7 @@ def compute_metrics_single_timestep(
     additional_info: Optional[AdditionalActionInfo],
     base_case_id: Optional[str] = None,
     critical_voltage_jump_percent: float = 5.0,
-    max_allowed_va_diff: float = 0.0,
+    max_allowed_va_diff: float = 20.0,
 ) -> Metrics:
     """Compute the metrics for a single timestep
 
@@ -297,6 +297,7 @@ def evaluate_acceptance(
     reject_critical_branch_threshold: float = 1.1,
     reject_voltage_jump_threshold: float = 1.1,
     reject_critical_va_diff_threshold: float = 1.1,
+    enable_critical_voltage_rejection: bool = False,
     early_stopping: bool = False,
 ) -> Optional[TopologyRejectionReason]:
     """Evaluate if the split loadflow results are acceptable compared to the unsplit results.
@@ -337,6 +338,8 @@ def evaluate_acceptance(
     reject_critical_va_diff_threshold : float, optional
         The threshold for the critical voltage-angle-difference count increase, by default 1.1
         (i.e. the split case must not have more than 110 % of the critical voltage-angle differences in the unsplit case).
+    enable_critical_voltage_rejection : bool, optional
+        Whether to reject based on the critical jump or voltage-angle-difference count increase.
     early_stopping : bool, optional
         Whether the acceptance is computed as part of an early stopping criterion, will set the early_stopping field in the
         TopologyRejectionReason
@@ -398,30 +401,33 @@ def evaluate_acceptance(
     unsplit_voltage_jumps = np.array([metrics_unsplit.extra_scores.get("voltage_jump_count_n_1", 999)], dtype=float)
     split_voltage_jumps = np.array([metrics_split.extra_scores.get("voltage_jump_count_n_1", 0)], dtype=float)
     voltage_jumps_acceptable = np.all(split_voltage_jumps <= unsplit_voltage_jumps * reject_voltage_jump_threshold)
-    if not voltage_jumps_acceptable:
-        return TopologyRejectionReason(
-            criterion="voltage-magnitude",
-            value_after=float(split_voltage_jumps.sum()),
-            value_before=float(unsplit_voltage_jumps.sum()),
-            threshold=reject_voltage_jump_threshold,
-            early_stopping=early_stopping,
-            description="Critical voltage jump count increased too much.",
-        )
+    if enable_critical_voltage_rejection:
+        if not voltage_jumps_acceptable:
+            return TopologyRejectionReason(
+                criterion="voltage-magnitude",
+                value_after=float(split_voltage_jumps.sum()),
+                value_before=float(unsplit_voltage_jumps.sum()),
+                threshold=reject_voltage_jump_threshold,
+                early_stopping=early_stopping,
+                description="Critical voltage jump count increased too much.",
+            )
 
-    unsplit_critical_va_diff = np.array([metrics_unsplit.extra_scores.get("critical_va_diff_count_n_1", 999)], dtype=float)
-    split_critical_va_diff = np.array([metrics_split.extra_scores.get("critical_va_diff_count_n_1", 0)], dtype=float)
-    critical_va_diff_acceptable = np.all(
-        split_critical_va_diff <= unsplit_critical_va_diff * reject_critical_va_diff_threshold
-    )
-    if not critical_va_diff_acceptable:
-        return TopologyRejectionReason(
-            criterion="voltage-angle",
-            value_after=float(split_critical_va_diff.sum()),
-            value_before=float(unsplit_critical_va_diff.sum()),
-            threshold=reject_critical_va_diff_threshold,
-            early_stopping=early_stopping,
-            description="Critical voltage-angle-difference count increased too much.",
-        )
+            unsplit_critical_va_diff = np.array(
+                [metrics_unsplit.extra_scores.get("critical_va_diff_count_n_1", 999)], dtype=float
+            )
+            split_critical_va_diff = np.array([metrics_split.extra_scores.get("critical_va_diff_count_n_1", 0)], dtype=float)
+            critical_va_diff_acceptable = np.all(
+                split_critical_va_diff <= unsplit_critical_va_diff * reject_critical_va_diff_threshold
+            )
+        if not critical_va_diff_acceptable:
+            return TopologyRejectionReason(
+                criterion="voltage-angle",
+                value_after=float(split_critical_va_diff.sum()),
+                value_before=float(unsplit_critical_va_diff.sum()),
+                threshold=reject_critical_va_diff_threshold,
+                early_stopping=early_stopping,
+                description="Critical voltage-angle-difference count increased too much.",
+            )
 
     return None
 
@@ -432,6 +438,8 @@ def compute_remaining_loadflows(
     base_case_id: Optional[str],
     loadflows_subset: LoadflowResultsPolars,
     cases_subset: list[str],
+    critical_voltage_jump_percent: float = 5.0,
+    max_allowed_va_diff: float = 0.0,
 ) -> tuple[LoadflowResultsPolars, Metrics]:
     """Compute the loadflows for the remaining contingencies that were not included in the early stopping subset.
 
@@ -452,6 +460,10 @@ def compute_remaining_loadflows(
     cases_subset : list[str]
         The contingency case ids that were included in the early stopping subset for each timestep. This could be extracted
         from the loadflows_subset but as it is available it is faster to pass it in.
+    critical_voltage_jump_percent : float, optional
+        Voltage jumps larger than this percentage are counted as critical in the AC metrics.
+    max_allowed_va_diff : float, optional
+        Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics.
 
     Returns
     -------
@@ -485,6 +497,8 @@ def compute_remaining_loadflows(
         loadflow=lfs,
         additional_info=additional_info_remaining,
         base_case_id=base_case_id,
+        critical_voltage_jump_percent=critical_voltage_jump_percent,
+        max_allowed_va_diff=max_allowed_va_diff,
     )
 
     # Restore the original N-1 definitions in the runners
@@ -519,6 +533,9 @@ class ACScoringParameters:
 
     reject_critical_va_diff_threshold: float
     """The rejection threshold for the critical voltage-angle-difference count increase."""
+
+    enable_critical_voltage_rejection: bool = False
+    """Whether to reject based on the critical voltage jump or voltage-angle-difference count increase."""
 
     critical_voltage_jump_percent: float
     """Voltage jumps larger than this percentage are counted as critical in the AC metrics."""
@@ -638,6 +655,7 @@ def score_strategy_worst_k(
             reject_critical_branch_threshold=scoring_params.reject_critical_branch_threshold,
             reject_voltage_jump_threshold=scoring_params.reject_voltage_jump_threshold,
             reject_critical_va_diff_threshold=scoring_params.reject_critical_va_diff_threshold,
+            enable_critical_voltage_rejection=scoring_params.enable_critical_voltage_rejection,
             early_stopping=True,
         )
         return EarlyStoppingStageResult(
@@ -662,6 +680,7 @@ def score_strategy_worst_k(
         reject_critical_branch_threshold=scoring_params.reject_critical_branch_threshold,
         reject_voltage_jump_threshold=scoring_params.reject_voltage_jump_threshold,
         reject_critical_va_diff_threshold=scoring_params.reject_critical_va_diff_threshold,
+        enable_critical_voltage_rejection=scoring_params.enable_critical_voltage_rejection,
         early_stopping=False,
     )
     return EarlyStoppingStageResult(
@@ -781,6 +800,8 @@ def score_topology_remaining(
             base_case_id=scoring_params.base_case_id,
             loadflows_subset=early_stage_result.loadflow_results,
             cases_subset=early_stage_result.cases_subset,
+            critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
+            max_allowed_va_diff=scoring_params.max_allowed_va_diff,
         )
     else:
         lfs = early_stage_result.loadflow_results
@@ -794,6 +815,7 @@ def score_topology_remaining(
         reject_critical_branch_threshold=scoring_params.reject_critical_branch_threshold,
         reject_voltage_jump_threshold=scoring_params.reject_voltage_jump_threshold,
         reject_critical_va_diff_threshold=scoring_params.reject_critical_va_diff_threshold,
+        enable_critical_voltage_rejection=scoring_params.enable_critical_voltage_rejection,
         early_stopping=False,
     )
     return TopologyScoringResult(loadflow_results=lfs, metrics=metrics, rejection_reason=rejection_reason)
@@ -827,6 +849,8 @@ def score_strategy_full(
         runner=runner,
         topology=topology,
         base_case_id=scoring_params.base_case_id,
+        critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
+        max_allowed_va_diff=scoring_params.max_allowed_va_diff,
     )
     rejection_reason = evaluate_acceptance(
         metrics_split=metrics,
@@ -834,6 +858,9 @@ def score_strategy_full(
         reject_convergence_threshold=scoring_params.reject_convergence_threshold,
         reject_overload_threshold=scoring_params.reject_overload_threshold,
         reject_critical_branch_threshold=scoring_params.reject_critical_branch_threshold,
+        reject_voltage_jump_threshold=scoring_params.reject_voltage_jump_threshold,
+        reject_critical_va_diff_threshold=scoring_params.reject_critical_va_diff_threshold,
+        enable_critical_voltage_rejection=scoring_params.enable_critical_voltage_rejection,
         early_stopping=False,
     )
     return TopologyScoringResult(loadflow_results=lfs, metrics=metrics, rejection_reason=rejection_reason)

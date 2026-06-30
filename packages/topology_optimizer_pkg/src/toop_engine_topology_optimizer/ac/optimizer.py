@@ -359,6 +359,7 @@ def initialize_optimization(
         reject_critical_branch_threshold=ga_config.reject_critical_branch_threshold,
         reject_voltage_jump_threshold=ga_config.reject_voltage_jump_threshold,
         reject_critical_va_diff_threshold=ga_config.reject_critical_va_diff_threshold,
+        enable_critical_voltage_rejection=ga_config.enable_critical_voltage_rejection,
         critical_voltage_jump_percent=ga_config.critical_voltage_jump_percent,
         max_allowed_va_diff=ga_config.critical_va_diff_degree,
     )

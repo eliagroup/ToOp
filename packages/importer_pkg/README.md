@@ -31,6 +31,12 @@ Main entry point: [`convert_file`][toop_engine_importer.pypowsybl_import.preproc
 
 For PyPowSyBl-imported grids, `convert_file` also prepares supported parallel PST group metadata from the grid data so downstream solver and optimizer stages can keep grouped PSTs synchronized.
 
+## CGMES Ignore List and Contingency List Precedence
+
+For the CGMES PyPowSyBl import path, `ignore_list_file` (stored as `black_list` in preprocessing statistics) is applied during the default mask-building stage.
+
+When a contingency list is also provided, elements listed as monitored in the contingency list remain monitored even if they are present in the ignore list.
+
 The downstream [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] step augments that same folder with `static_information.hdf5`, `action_set.json`, `action_set_diffs.hdf5`, `static_information_stats.json`, and the final filtered contingency definition used during optimization.
 
 TODO: add Importer example

@@ -37,6 +37,9 @@ from toop_engine_dc_solver.example_grids import (
     oberrhein_data,
     three_node_pst_example_folder_powsybl,
 )
+from toop_engine_dc_solver.example_grids import (
+    grouped_pst_grid_example_data_folder as create_grouped_pst_grid_example_data_folder,
+)
 from toop_engine_dc_solver.jax.types import ActionSet, StaticInformation
 from toop_engine_dc_solver.preprocess import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
@@ -313,6 +316,36 @@ def _case57_non_converging_path(tmp_path_factory: pytest.TempPathFactory) -> Pat
 def case57_non_converging_path(_case57_non_converging_path: Path, tmp_path: Path) -> Path:
     """Path to a per-test copy of the case57 non-converging grid file directory."""
     shutil.copytree(_case57_non_converging_path, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
+def _grouped_pst_grid_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Preprocessed grouped PST grid prepared once per test session."""
+    tmp_path = tmp_path_factory.mktemp("grouped_pst_grid")
+    create_grouped_pst_grid_example_data_folder(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def grouped_pst_grid_path(_grouped_pst_grid_path: Path, tmp_path: Path) -> Path:
+    """Path to a per-test copy of the grouped PST grid."""
+    shutil.copytree(_grouped_pst_grid_path, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
+def _grouped_pst_grid_split_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Preprocessed grouped PST grid with the PST station switch split prepared once per test session."""
+    tmp_path = tmp_path_factory.mktemp("grouped_pst_grid_split")
+    create_grouped_pst_grid_example_data_folder(tmp_path, split_group_station=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def grouped_pst_grid_split_path(_grouped_pst_grid_split_path: Path, tmp_path: Path) -> Path:
+    """Path to a per-test copy of the grouped PST grid with the PST station switch split."""
+    shutil.copytree(_grouped_pst_grid_split_path, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 

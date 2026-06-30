@@ -48,6 +48,12 @@ from toop_engine_dc_solver.example_grids import (
     oberrhein_data,
     three_node_pst_example_folder_powsybl,
 )
+from toop_engine_dc_solver.example_grids import (
+    grouped_pst_grid_example_data_folder as create_grouped_pst_grid_example_data_folder,
+)
+from toop_engine_dc_solver.example_grids import (
+    parallel_pst_data_folder as create_parallel_pst_data_folder,
+)
 from toop_engine_dc_solver.jax.injections import (
     convert_action_index_to_numpy,
     random_injection,
@@ -1326,6 +1332,51 @@ def complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_folder(
         dirs_exist_ok=True,
     )
 
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
+def _parallel_pst_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("parallel_pst")
+    network_data = create_parallel_pst_data_folder(tmp_path)
+    save_network_data(tmp_path / "network_data.pkl", network_data)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def parallel_pst_data_folder(_parallel_pst_data_path: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_parallel_pst_data_path, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
+def _grouped_pst_grid_example_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("grouped_pst")
+    network_data = create_grouped_pst_grid_example_data_folder(tmp_path)
+    save_network_data(tmp_path / "network_data.pkl", network_data)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def grouped_pst_grid_example_data_folder(_grouped_pst_grid_example_data_path: Path, tmp_path: Path) -> Path:
+    shutil.copytree(_grouped_pst_grid_example_data_path, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
+def _grouped_pst_grid_example_split_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("grouped_pst_split")
+    network_data = create_grouped_pst_grid_example_data_folder(tmp_path, split_group_station=True)
+    save_network_data(tmp_path / "network_data.pkl", network_data)
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def grouped_pst_grid_example_split_data_folder(
+    _grouped_pst_grid_example_split_data_path: Path,
+    tmp_path: Path,
+) -> Path:
+    shutil.copytree(_grouped_pst_grid_example_split_data_path, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 

@@ -429,3 +429,42 @@ def test_psts(tmp_path_factory: pytest.TempPathFactory) -> None:
                 tap_found = True
                 break
         assert tap_found
+
+
+@pytest.mark.parametrize(
+    (
+        "fixture_name",
+        "expected_group_mask",
+        "expected_group_ids",
+    ),
+    [
+        (
+            "grouped_pst_grid_example_data_folder",
+            np.ones((1, 4), dtype=bool),
+            ["PST_1_group_1"],
+        ),
+        (
+            "grouped_pst_grid_example_split_data_folder",
+            np.array([[True, False, True, False], [False, True, False, True]], dtype=bool),
+            ["PST_1_group_1", "PST_2_group_1"],
+        ),
+    ],
+)
+def test_grouped_pst_grid_backend_reads_parallel_group_masks(
+    request: pytest.FixtureRequest,
+    fixture_name: str,
+    expected_group_mask: np.ndarray,
+    expected_group_ids: list[str],
+) -> None:
+    data_folder = request.getfixturevalue(fixture_name)
+    backend = PowsyblBackend(DirFileSystem(str(data_folder)))
+
+    assert backend.get_controllable_phase_shift_ids() == [
+        "PST_1_group_1",
+        "PST_2_group_1",
+        "PST_3_group_2",
+        "PST_4_group_2",
+    ]
+    assert np.array_equal(backend.get_phase_shift_linearity(), np.ones(4, dtype=bool))
+    assert np.array_equal(backend.get_parallel_pst_group_mask(), expected_group_mask)
+    assert backend.get_parallel_pst_group_ids() == expected_group_ids

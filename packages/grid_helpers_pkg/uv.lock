@@ -1575,19 +1575,18 @@ hdf5 = [
 
 [[package]]
 name = "pandera"
-version = "0.22.1"
+version = "0.32.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy" },
     { name = "packaging" },
-    { name = "pandas" },
     { name = "pydantic" },
     { name = "typeguard" },
+    { name = "typing-extensions" },
     { name = "typing-inspect" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/13/f2/923e5a06f0f70e28de41eca58c89e4f87b00aa7c17a3436cc09592756c43/pandera-0.22.1.tar.gz", hash = "sha256:091ebc353383ba642e5a20ee0df763ed2059ab99cb4b2ac3e83f482de8493645", size = 203085, upload-time = "2024-12-26T21:21:31.996Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/e1/b605cc7b203deb015e3fbb3a9ef90cd83050af4c61941f14bed956f890ca/pandera-0.32.0.tar.gz", hash = "sha256:070c705eafbcfb4dd2ce494154d4bc0ce6d2b8e02a95ae15234040683bbab1f5", size = 867262, upload-time = "2026-06-19T02:01:07.22Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/b8/ab3e1419c0f3472c23ec7323da4bc970c3620055c9475d6fe3aa1dcdcef7/pandera-0.22.1-py3-none-any.whl", hash = "sha256:2a35531b4b533ac83e606a6dcc3cd41561774ff3d872117228e931f22e72f330", size = 261370, upload-time = "2024-12-26T21:21:29.16Z" },
+    { url = "https://files.pythonhosted.org/packages/76/ea/6e6af2a8118c51bf3f1a6958688b77b0a3a652242a0b383f1e3cdf6cd2b4/pandera-0.32.0-py3-none-any.whl", hash = "sha256:b8488704d80ed7fc0a812b0a8123e2028903e90e8ec5c31f880894c8e94786b3", size = 442527, upload-time = "2026-06-19T02:01:05.66Z" },
 ]
 
 [[package]]
@@ -2622,7 +2621,7 @@ requires-dist = [
     { name = "numpydantic", specifier = ">=1.6.4,<2.0.0" },
     { name = "pandapower", marker = "extra == 'pandapower'", specifier = ">=3.0.0" },
     { name = "pandas", specifier = ">=2.2.3,<3.0.0" },
-    { name = "pandera", specifier = ">=0.22.1,<0.23.0" },
+    { name = "pandera", specifier = ">=0.32.0,<0.33.0" },
     { name = "polars", specifier = ">=1.33.0" },
     { name = "protobuf", specifier = ">=5,<8" },
     { name = "pyarrow", specifier = ">=21.0.0" },

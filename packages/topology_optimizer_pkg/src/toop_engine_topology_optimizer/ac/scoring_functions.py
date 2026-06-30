@@ -534,7 +534,7 @@ class ACScoringParameters:
     reject_critical_va_diff_threshold: float
     """The rejection threshold for the critical voltage-angle-difference count increase."""
 
-    enable_critical_voltage_rejection: bool = False
+    enable_critical_voltage_rejection: bool
     """Whether to reject based on the critical voltage jump or voltage-angle-difference count increase."""
 
     critical_voltage_jump_percent: float

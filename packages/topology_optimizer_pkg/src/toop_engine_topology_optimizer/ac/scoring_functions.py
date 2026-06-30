@@ -107,7 +107,7 @@ def compute_loadflow_and_metrics(
     base_case_id: Optional[str],
     cases_subset: Optional[Collection[str]] = None,
     critical_voltage_jump_percent: float = 5.0,
-    max_allowed_va_diff: float = 0.0,
+    max_allowed_va_diff: float = 20.0,
 ) -> tuple[LoadflowResultsPolars, Optional[AdditionalActionInfo], Metrics]:
     """Compute loadflow results and associated metrics for a given set of strategies.
 
@@ -398,10 +398,10 @@ def evaluate_acceptance(
             early_stopping=early_stopping,
         )
 
-    unsplit_voltage_jumps = np.array([metrics_unsplit.extra_scores.get("voltage_jump_count_n_1", 999)], dtype=float)
-    split_voltage_jumps = np.array([metrics_split.extra_scores.get("voltage_jump_count_n_1", 0)], dtype=float)
-    voltage_jumps_acceptable = np.all(split_voltage_jumps <= unsplit_voltage_jumps * reject_voltage_jump_threshold)
     if enable_critical_voltage_rejection:
+        unsplit_voltage_jumps = np.array([metrics_unsplit.extra_scores.get("voltage_jump_count_n_1", 999)], dtype=float)
+        split_voltage_jumps = np.array([metrics_split.extra_scores.get("voltage_jump_count_n_1", 0)], dtype=float)
+        voltage_jumps_acceptable = np.all(split_voltage_jumps <= unsplit_voltage_jumps * reject_voltage_jump_threshold)
         if not voltage_jumps_acceptable:
             return TopologyRejectionReason(
                 criterion="voltage-magnitude",
@@ -412,13 +412,13 @@ def evaluate_acceptance(
                 description="Critical voltage jump count increased too much.",
             )
 
-            unsplit_critical_va_diff = np.array(
-                [metrics_unsplit.extra_scores.get("critical_va_diff_count_n_1", 999)], dtype=float
-            )
-            split_critical_va_diff = np.array([metrics_split.extra_scores.get("critical_va_diff_count_n_1", 0)], dtype=float)
-            critical_va_diff_acceptable = np.all(
-                split_critical_va_diff <= unsplit_critical_va_diff * reject_critical_va_diff_threshold
-            )
+        unsplit_critical_va_diff = np.array(
+            [metrics_unsplit.extra_scores.get("critical_va_diff_count_n_1", 999)], dtype=float
+        )
+        split_critical_va_diff = np.array([metrics_split.extra_scores.get("critical_va_diff_count_n_1", 0)], dtype=float)
+        critical_va_diff_acceptable = np.all(
+            split_critical_va_diff <= unsplit_critical_va_diff * reject_critical_va_diff_threshold
+        )
         if not critical_va_diff_acceptable:
             return TopologyRejectionReason(
                 criterion="voltage-angle",
@@ -439,7 +439,7 @@ def compute_remaining_loadflows(
     loadflows_subset: LoadflowResultsPolars,
     cases_subset: list[str],
     critical_voltage_jump_percent: float = 5.0,
-    max_allowed_va_diff: float = 0.0,
+    max_allowed_va_diff: float = 20.0,
 ) -> tuple[LoadflowResultsPolars, Metrics]:
     """Compute the loadflows for the remaining contingencies that were not included in the early stopping subset.
 

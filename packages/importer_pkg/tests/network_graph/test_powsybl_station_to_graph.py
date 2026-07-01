@@ -617,19 +617,27 @@ def test_get_topo_integration(basic_node_breaker_network_powsybl_grid: Network):
         blacklisted_ids=[],
     )
     relevant_voltage_level_with_region = get_relevant_voltage_levels(network=net, network_masks=network_masks)
-    expected = ["VL1", "VL2", "VL3", "VL4", "VL5"]
-    assert all(net.get_voltage_levels().index == expected)
-    assert all(relevant_voltage_level_with_region["voltage_level_id"] == expected[1:])
-    assert all(relevant_voltage_level_with_region.index == ["VL2_0", "VL3_0", "VL4_0", "VL5_0"])
+    # net.get_buses().index
+    # [
+    #    VL1_0, slack -> not relevant
+    #    VL2_0, relevant
+    #    VL3_0, relevant
+    #    VL4_0, RelevantStationRules() require per default 4 braches -> only 3 branches -> not relevant
+    #    VL5_0, 1 branch, 1 injection, 1 busbar -> not relevant
+    # ]
+    expected_relevant_voltage_level_with_region = ["VL2", "VL3"]
+    assert all(net.get_voltage_levels().index == ["VL1", "VL2", "VL3", "VL4", "VL5"])
+    assert all(relevant_voltage_level_with_region["voltage_level_id"] == expected_relevant_voltage_level_with_region)
+    assert all(relevant_voltage_level_with_region.index == ["VL2_0", "VL3_0"])
 
     res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
-    assert len(res) == 4
+    assert len(res) == 2
     assert all([isinstance(station, Station) for station in res])
 
     timestamp = datetime.datetime.now()
     res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
     assert isinstance(res, Topology)
-    assert len(res.stations) == 4
+    assert len(res.stations) == 2
     assert res.topology_id == "cgmes_file.zip"
     assert res.grid_model_file == "cgmes_file.zip"
     assert res.timestamp - timestamp < datetime.timedelta(seconds=3)
@@ -700,7 +708,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         ),
     )
 
-    lf_result, *_ = pypowsybl.loadflow.run_dc(net)
+    lf_result, *_ = pypowsybl.loadflow.run_ac(net)
     network_masks = powsybl_masks.make_masks(
         network=net,
         slack_id=lf_result.reference_bus_id,
@@ -708,6 +716,25 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         blacklisted_ids=[],
     )
     relevant_voltage_level_with_region = get_relevant_voltage_levels(network=net, network_masks=network_masks)
+    # net.get_buses().index =
+    # [
+    #     'VL_3W_HV_0', large station
+    #     'VL_3W_MV_0', large station
+    #     'VL_3W_LV_0', 2 branches, 1 injections -> not relevant
+    #     'VL_2W_MV_LV_MV_0', 4 branches -> relevant
+    #     'VL_2W_MV_LV_LV_0', 2 branches, 1 injections -> not relevant
+    #     'VL_LV_load_0', 2 branches, 2 injections, 1 busbar -> not relevant
+    #     'VL_MV_load_0', 3 branches + pst -> 4 branches, 1 injection -> relevant
+    #     'VL_MV_load_3', other side of pst -> not relevant
+    #     'VL_MV_svc_0', large station
+    #     'VL_MV_0', large station
+    #     'VL_2W_MV_HV_MV_0', large station + pst
+    #     'VL_2W_MV_HV_MV_2', other side of pst -> not relevant
+    #     'VL_2W_MV_HV_HV_0', large station
+    #     'VL_HV_gen_0',  large station, slack bus -> not relevant
+    #     'VL_HV_vsc_0', 4 branches, 1 injection, 1 HVDC
+    #     '3W-Star-VL_0' not relevant
+    #    ]
     expected = [
         "VL_3W_HV",
         "VL_3W_MV",
@@ -719,14 +746,17 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_HV_vsc",
         "VL_MV_load",
     ]
-    # 'VL_HV_gen' not included as it is the slack
+    # 'VL_HV_gen_0' not included as it is the slack
 
     for vl in expected:
         assert vl in relevant_voltage_level_with_region["voltage_level_id"].values, f"Expected voltage level {vl} not found"
 
     res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
-    assert len(res) >= len(expected)
+    assert len(res) == len(expected)
     assert all([isinstance(station, Station) for station in res])
+    station_names = [station.name for station in res]
+    for bus_id in expected:
+        assert bus_id in station_names, f"Expected station {bus_id} not found in station list"
 
     res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
     assert isinstance(res, Topology)

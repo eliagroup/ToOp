@@ -109,6 +109,10 @@ def get_most_connected_bus_at_voltage_level(
     node_breaker_topology = net.get_node_breaker_topology(voltage_level_id)
     switches = bus_breaker_topology.switches
     elements = bus_breaker_topology.elements
+    elements.rename(columns={"bus_id": "bus_breaker_id"}, inplace=True)
+    elements = elements.merge(
+        net.get_bus_breaker_view_buses()[["bus_id"]], left_on="bus_breaker_id", right_on="id", how="left"
+    )
     if switches[switches["kind"] == "BREAKER"].empty:
         return None
 

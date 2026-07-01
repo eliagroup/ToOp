@@ -831,6 +831,10 @@ def update_bus_masks(
     relevant_subs = relevant_subs & ~blacklisted_substations
     busbar_substation_ids = pd.Series(substation_ids, index=buses.index).reindex(busbar_sections["bus_id"]).to_numpy()
     busbar_for_nminus1 = np.logical_and(busbar_for_nminus1, ~np.isin(busbar_substation_ids, blacklisted_ids))
+    relevant_busbar_substations = (
+        pd.Series(relevant_subs, index=buses.index).reindex(busbar_sections["bus_id"]).fillna(False)
+    )
+    busbar_for_nminus1 = np.logical_and(busbar_for_nminus1, relevant_busbar_substations.to_numpy(dtype=bool))
 
     return replace(
         network_masks,
@@ -1116,6 +1120,8 @@ def make_masks(
     if not validate_network_masks(network_masks, default_masks):
         raise RuntimeError("Network masks are not created correctly.")
 
+    network_masks = remove_slack_busbar_sections(network_masks, network, slack_id=slack_id)
+
     return network_masks
 
 
@@ -1201,6 +1207,28 @@ def remove_slack_from_relevant_subs(network_masks: NetworkMasks, network: Networ
     """
     relevant_subs = network_masks.relevant_subs & ~network.get_buses(attributes=[]).index.isin([slack_id])
     return replace(network_masks, relevant_subs=relevant_subs)
+
+
+def remove_slack_busbar_sections(network_masks: NetworkMasks, network: Network, slack_id: str) -> NetworkMasks:
+    """Remove busbar sections that belong to the slack bus from the N-1 mask.
+
+    Parameters
+    ----------
+    network_masks: NetworkMasks
+        The network masks to update.
+    network: Network
+        The network to get the busbar-section information from.
+    slack_id: str
+        The id of the slack bus.
+
+    Returns
+    -------
+    NetworkMasks
+        The updated network masks without slack-connected busbar sections in the N-1 mask.
+    """
+    busbar_sections = network.get_busbar_sections(attributes=["bus_id"])
+    busbar_for_nminus1 = network_masks.busbar_for_nminus1 & ~busbar_sections["bus_id"].isin([slack_id]).to_numpy()
+    return replace(network_masks, busbar_for_nminus1=busbar_for_nminus1)
 
 
 def update_masks_from_power_factory_contingency_list_file(

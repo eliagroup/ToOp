@@ -17,7 +17,6 @@ from toop_engine_dc_solver.jax.types import (
     NodalInjectionInformation,
     NodalInjOptimResults,
     NodalInjStartOptions,
-    SolverConfig,
     TopologyResults,
 )
 
@@ -114,7 +113,6 @@ def nodal_inj_optimization(
     topo_res: TopologyResults,
     start_options: NodalInjStartOptions,
     dynamic_information: DynamicInformation,
-    solver_config: SolverConfig,  # noqa: ARG001
 ) -> tuple[
     Float[Array, " batch_size n_timesteps n_branches"],
     Float[Array, " batch_size n_timesteps n_outages n_branches_monitored"],
@@ -137,8 +135,6 @@ def nodal_inj_optimization(
         Contains previous PST tap results to apply
     dynamic_information : DynamicInformation
         Contains PST information and grid data
-    solver_config : SolverConfig
-        Solver configuration
 
     Returns
     -------

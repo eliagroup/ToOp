@@ -16,6 +16,7 @@ import pypowsybl
 import pytest
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
+from toop_engine_grid_helpers.powsybl.example_grids import parallel_pst_example
 from toop_engine_importer.pypowsybl_import import network_analysis, powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.ucte.powsybl_masks_ucte import get_switchable_buses_ucte
@@ -55,6 +56,9 @@ def test_create_default_network_masks():
     assert isinstance(masks.load_for_nminus1, np.ndarray)
     assert isinstance(masks.switch_for_nminus1, np.ndarray)
     assert isinstance(masks.switch_for_reward, np.ndarray)
+    assert isinstance(masks.pst_group_labels, np.ndarray)
+    # Default group labels are -1 (no parallel-PST grouping identified yet).
+    assert np.all(masks.pst_group_labels == -1)
 
 
 def test_validate_network_masks(ucte_importer_parameters: UcteImporterParameters):
@@ -303,7 +307,7 @@ def test_update_masks_apply_ignore_list(ucte_file_with_border, ucte_importer_par
     assert not trafo_masks_ignored.trafo_for_nminus1[ignored_trafo_idx]
     assert not trafo_masks_ignored.trafo_for_reward[ignored_trafo_idx]
     assert not trafo_masks_ignored.trafo_disconnectable[ignored_trafo_idx]
-    assert not trafo_masks_ignored.trafo_pst_controllable[ignored_trafo_idx]
+    assert not trafo_masks_ignored.trafo_pst_linear[ignored_trafo_idx]
 
     assert not tie_and_dangling_masks_ignored.tie_line_for_nminus1[ignored_tie_idx]
     assert not tie_and_dangling_masks_ignored.tie_line_for_reward[ignored_tie_idx]
@@ -458,7 +462,7 @@ def test_update_masks_apply_ignore_list_cgmes(
         assert not trafo_masks_ignored.trafo_for_nminus1[ignored_trafo_idx]
         assert not trafo_masks_ignored.trafo_for_reward[ignored_trafo_idx]
         assert not trafo_masks_ignored.trafo_disconnectable[ignored_trafo_idx]
-        assert not trafo_masks_ignored.trafo_pst_controllable[ignored_trafo_idx]
+        assert not trafo_masks_ignored.trafo_pst_linear[ignored_trafo_idx]
 
     if ignored_tie_id is not None:
         ignored_tie_idx = tie_df.index.get_loc(ignored_tie_id)
@@ -673,8 +677,8 @@ def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: Uct
         np.array([False, False, False, False, False, False]),
     )
     assert np.array_equal(
-        network_masks.trafo_pst_controllable,
-        np.array([False, False, True, False, False, False]),
+        network_masks.trafo_pst_linear,
+        np.array([False, False, False, False, False, False]),
     )
 
     ucte_importer_parameters.area_settings.nminus1_area = ["D8"]
@@ -926,6 +930,45 @@ def test_save_masks_to_files(ucte_file_with_border, ucte_importer_parameters: Uc
         assert (
             ucte_importer_parameters.data_folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES[file_name]
         ).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
+
+
+def test_build_pst_group_labels_groups_parallel_psts():
+    """Parallel PSTs (same bus pair, voltage and tap-changer parameters) share a group label."""
+    net = parallel_pst_example()
+    trafos = net.get_2_windings_transformers(attributes=["bus1_id", "bus2_id", "voltage_level1_id", "voltage_level2_id"])
+    control_area_hv_trafo_mask = trafos.index.isin(net.get_phase_tap_changers().index)
+
+    trafo_has_pst_tap, trafo_pst_linear, pst_group_labels = powsybl_masks.filter_and_group_linear_psts(
+        network=net, trafos_df=trafos, control_area_hv_trafo_mask=control_area_hv_trafo_mask
+    )
+
+    assert trafo_has_pst_tap.sum() == 3
+    assert trafo_pst_linear.sum() == 3
+    label_by_id = dict(zip(trafos.index, pst_group_labels, strict=True))
+    # PST1 and PST2 connect the same bus pair with identical tap-changer parameters -> same group.
+    assert label_by_id["PST1"] == label_by_id["PST2"]
+    # PST3 connects a different bus pair with a different tap range -> its own group.
+    assert label_by_id["PST3"] >= 0
+    assert label_by_id["PST3"] != label_by_id["PST1"]
+
+
+def test_build_pst_group_labels_marks_non_controllable_as_ungrouped():
+    """Trafos that are not controllable PSTs keep the -1 sentinel and are never grouped."""
+    net = parallel_pst_example()
+    trafos = net.get_2_windings_transformers(attributes=["bus1_id", "bus2_id", "voltage_level1_id", "voltage_level2_id"])
+    # Only PST1 is controllable; the parallel PST2 and the distinct PST3 are excluded.
+    control_area_hv_trafo_mask = np.asarray(trafos.index == "PST1")
+
+    trafo_has_pst_tap, trafo_pst_linear, pst_group_labels = powsybl_masks.filter_and_group_linear_psts(
+        network=net, trafos_df=trafos, control_area_hv_trafo_mask=control_area_hv_trafo_mask
+    )
+
+    assert trafo_has_pst_tap.sum() == 1
+    assert trafo_pst_linear.sum() == 1
+    label_by_id = dict(zip(trafos.index, pst_group_labels, strict=True))
+    assert label_by_id["PST1"] >= 0
+    assert label_by_id["PST2"] == -1
+    assert label_by_id["PST3"] == -1
 
 
 def test_update_reward_masks_to_include_border_branches(

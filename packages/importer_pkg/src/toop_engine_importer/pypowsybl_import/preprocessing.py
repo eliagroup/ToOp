@@ -39,6 +39,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     load_powsybl_from_fs,
     save_lf_params_to_fs,
     save_powsybl_to_fs,
+    sort_powsybl_element_frame_by_id,
 )
 from toop_engine_importer.network_graph import powsybl_station_to_graph
 from toop_engine_importer.pypowsybl_import import network_analysis
@@ -137,7 +138,7 @@ def create_nminus1_definition_from_masks(network: Network, network_masks: Networ
         for idx, row in lines[network_masks.line_for_nminus1].iterrows()
     ]
 
-    trafos = network.get_2_windings_transformers(attributes=["name"])
+    trafos = sort_powsybl_element_frame_by_id(network.get_2_windings_transformers(attributes=["name"]))
     is_trafo2w = ~trafos.index.str.contains(CONVERTED_TRAFO3W_ENDING)
     monitored_trafos = [
         MonitoredElement(id=idx, name=row["name"], type="TWO_WINDINGS_TRANSFORMER", kind="branch")
@@ -641,9 +642,9 @@ def fill_statistics_for_network_masks(
     statistics.id_lists["line_for_nminus1"] = network.get_lines(attributes=[])[
         network_masks.line_for_nminus1
     ].index.to_list()
-    statistics.id_lists["trafo_for_nminus1"] = network.get_2_windings_transformers(attributes=[])[
-        network_masks.trafo_for_nminus1
-    ].index.to_list()
+    statistics.id_lists["trafo_for_nminus1"] = sort_powsybl_element_frame_by_id(
+        network.get_2_windings_transformers(attributes=[])
+    )[network_masks.trafo_for_nminus1].index.to_list()
     statistics.id_lists["tie_line_for_nminus1"] = network.get_tie_lines(attributes=[])[
         network_masks.tie_line_for_nminus1
     ].index.to_list()
@@ -662,9 +663,9 @@ def fill_statistics_for_network_masks(
     statistics.id_lists["line_disconnectable"] = network.get_lines(attributes=[])[
         network_masks.line_disconnectable
     ].index.to_list()
-    statistics.id_lists["trafo_disconnectable"] = network.get_2_windings_transformers(attributes=[])[
-        network_masks.trafo_disconnectable
-    ].index.to_list()
+    statistics.id_lists["trafo_disconnectable"] = sort_powsybl_element_frame_by_id(
+        network.get_2_windings_transformers(attributes=[])
+    )[network_masks.trafo_disconnectable].index.to_list()
 
     statistics.import_result.n_relevant_subs = int(network_masks.relevant_subs.sum())
     statistics.import_result.n_line_for_nminus1 = int(network_masks.line_for_nminus1.sum())

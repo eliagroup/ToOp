@@ -5,6 +5,9 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+from dataclasses import replace
+
+import numpy as np
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.example_grids import case30_with_psts_pandapower
@@ -113,3 +116,50 @@ def test_write_aux_data_pst_ranges(tmp_path_factory: pytest.TempPathFactory) -> 
 
     assert len(action_set.local_actions) == sum(len(x) for x in network_data.branch_action_set)
     assert len(action_set.pst_ranges) == network_data.controllable_phase_shift_mask.sum()
+
+
+def test_write_aux_data_persists_pst_groups_and_clipped_ranges(
+    network_data_preprocessed: NetworkData,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    tmp_path = tmp_path_factory.mktemp("test_write_aux_data_parallel_pst_groups")
+
+    controllable_phase_shift_mask = network_data_preprocessed.controllable_phase_shift_mask.copy()
+    controllable_phase_shift_mask[:] = False
+    controllable_phase_shift_mask[:2] = True
+
+    phase_shift_mask = network_data_preprocessed.phase_shift_mask.copy()
+    phase_shift_mask[:2] = True
+
+    branch_ids = network_data_preprocessed.branch_ids.copy()
+    branch_names = network_data_preprocessed.branch_names.copy()
+    branch_types = network_data_preprocessed.branch_types.copy()
+    branch_ids[:2] = ["PST1", "PST2"]
+    branch_names[:2] = ["PST1", "PST2"]
+    branch_types[:2] = ["TWO_WINDINGS_TRANSFORMER", "TWO_WINDINGS_TRANSFORMER"]
+
+    network_data = replace(
+        network_data_preprocessed,
+        controllable_phase_shift_mask=controllable_phase_shift_mask,
+        phase_shift_mask=phase_shift_mask,
+        phase_shift_taps=[np.array([1.0, 2.0]), np.array([10.0, 11.0])],
+        phase_shift_starting_tap_idx=np.array([1, 1]),
+        phase_shift_low_tap=np.array([5, 5]),
+        phase_shift_linearity=np.array([True, True]),
+        parallel_pst_group_mask=np.array([[True, True]], dtype=bool),
+        parallel_pst_group_ids=["shared_group"],
+        branch_ids=branch_ids,
+        branch_names=branch_names,
+        branch_types=branch_types,
+    )
+
+    write_aux_data(tmp_path, network_data)
+    action_set = load_action_set(
+        tmp_path / PREPROCESSING_PATHS["action_set_file_path"],
+        tmp_path / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
+
+    assert [pst_range.pst_group for pst_range in action_set.pst_ranges] == ["shared_group", "shared_group"]
+    assert [pst_range.low_tap for pst_range in action_set.pst_ranges] == [5, 5]
+    assert [pst_range.high_tap for pst_range in action_set.pst_ranges] == [7, 7]
+    assert [pst_range.starting_tap for pst_range in action_set.pst_ranges] == [6, 6]

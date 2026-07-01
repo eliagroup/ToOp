@@ -558,6 +558,7 @@ def test_update_bus_masks(ucte_file_with_border, ucte_importer_parameters: UcteI
 
 def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network_powsybl_grid: Network):
     network = basic_node_breaker_network_powsybl_grid
+    buses = network.get_buses(attributes=[])
     importer_parameters = CgmesImporterParameters(
         grid_model_file=Path("cgmes_file.zip"),
         data_folder="data_folder",
@@ -579,6 +580,12 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
         busbar_sections,
         importer_parameters.area_settings.nminus1_area,
         "region",
+    )
+    expected_busbar_mask &= (
+        pd.Series(expected_bus_mask, index=buses.index)
+        .reindex(network.get_busbar_sections(attributes=["bus_id"])["bus_id"])
+        .fillna(False)
+        .to_numpy(dtype=bool)
     )
     assert np.array_equal(updated_masks.busbar_for_nminus1, expected_busbar_mask)
 
@@ -738,6 +745,7 @@ def test_make_masks_node_breaker(
     basic_node_breaker_network_powsybl_not_disconnectable, cgmes_importer_parameters: CgmesImporterParameters
 ):
     network = basic_node_breaker_network_powsybl_not_disconnectable
+    buses = network.get_buses(attributes=[])
     default_masks = powsybl_masks.create_default_network_masks(network)
     lf_result, *_ = pypowsybl.loadflow.run_dc(network)
     masks = powsybl_masks.make_masks(
@@ -755,6 +763,12 @@ def test_make_masks_node_breaker(
         busbar_sections,
         cgmes_importer_parameters.area_settings.nminus1_area,
         "region",
+    )
+    expected_busbar_mask &= (
+        pd.Series(masks.relevant_subs, index=buses.index)
+        .reindex(busbar_sections["bus_id"])
+        .fillna(False)
+        .to_numpy(dtype=bool)
     )
     expected_busbar_mask &= ~busbar_sections["bus_id"].isin([lf_result.reference_bus_id]).to_numpy()
     assert np.array_equal(masks.busbar_for_nminus1, expected_busbar_mask)

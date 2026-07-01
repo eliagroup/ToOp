@@ -76,6 +76,12 @@ class ACGAParameters(BaseModel):
     """The rejection threshold for the critical voltage-angle-difference count increase, i.e. the split case must have
     less than 10% more critical voltage-angle differences than the unsplit case or it will be rejected."""
 
+    enable_critical_voltage_rejection: bool = False
+    """Whether to use critical voltage jumps and voltage-angle-difference counts as an acceptance/rejection criterion.
+
+    The associated metrics are still computed and reported when this flag is disabled.
+    """
+
     critical_voltage_jump_percent: float = 5.0
     """Voltage jumps larger than this percentage are counted as critical in the AC metrics."""
 

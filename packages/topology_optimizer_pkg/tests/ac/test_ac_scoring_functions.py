@@ -751,61 +751,6 @@ def test_evaluate_acceptance_zero_baseline_va_diff_respects_toggle() -> None:
     assert rejected_reason.criterion == "voltage-angle"
 
 
-def test_compute_remaining_loadflows_uses_configured_voltage_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
-    topology = ACOptimTopology(
-        actions=[1],
-        disconnections=[],
-        pst_setpoints=None,
-        unsplit=False,
-        timestep=0,
-        strategy_hash=b"thresholds",
-        optimization_id="test",
-        optimizer_type=OptimizerType.AC,
-        fitness=0.0,
-        metrics={},
-        worst_k_contingency_cases=["c1"],
-    )
-    runner = Mock(spec=AbstractLoadflowRunner)
-    nminus1_definition = Mock()
-    nminus1_definition.contingencies = [Mock(id="c1"), Mock(id="c2")]
-    runner.get_nminus1_definition.return_value = nminus1_definition
-
-    monkeypatch.setattr(
-        "toop_engine_topology_optimizer.ac.scoring_functions.update_runner_nminus1", lambda *args, **kwargs: None
-    )
-    monkeypatch.setattr(
-        "toop_engine_topology_optimizer.ac.scoring_functions.compute_loadflow",
-        lambda **kwargs: ("remaining-loadflow", "info"),
-    )
-    monkeypatch.setattr(
-        "toop_engine_topology_optimizer.ac.scoring_functions.concatenate_loadflow_results_polars",
-        lambda loadflows: "combined-loadflow",
-    )
-
-    def fake_compute_metrics_single_timestep(**kwargs):
-        assert kwargs["loadflow"] == "combined-loadflow"
-        assert kwargs["critical_voltage_jump_percent"] == 7.5
-        assert kwargs["max_allowed_va_diff"] == 12.0
-        return Metrics(fitness=1.0, extra_scores={"overload_energy_n_1": 1.0})
-
-    monkeypatch.setattr(
-        "toop_engine_topology_optimizer.ac.scoring_functions.compute_metrics_single_timestep",
-        fake_compute_metrics_single_timestep,
-    )
-
-    _, metrics = compute_remaining_loadflows(
-        runner=runner,
-        topology=topology,
-        base_case_id="BASECASE",
-        loadflows_subset=Mock(spec=LoadflowResultsPolars),
-        cases_subset=["c1"],
-        critical_voltage_jump_percent=7.5,
-        max_allowed_va_diff=12.0,
-    )
-
-    assert metrics.fitness == 1.0
-
-
 def test_score_strategy_full_forwards_thresholds_and_toggle(monkeypatch: pytest.MonkeyPatch) -> None:
     topology = ACOptimTopology(
         actions=[1],

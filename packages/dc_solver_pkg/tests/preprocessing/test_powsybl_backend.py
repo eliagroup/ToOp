@@ -136,7 +136,7 @@ def test_get_busbar_outage_map(powsybl_data_folder: Path) -> None:
     assert backend.get_busbar_outage_map() == expected_outage_map
 
 
-def test_get_injections(powsybl_case57_folder_xiidm: Path) -> None:
+def test_get_busbar_outage_map_case57(powsybl_case57_folder_xiidm: Path) -> None:
     filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
     asset_topology = backend.get_asset_topology()
@@ -146,7 +146,7 @@ def test_get_injections(powsybl_case57_folder_xiidm: Path) -> None:
     selected_busbars = connected_busbars.iloc[: min(3, len(connected_busbars))]
     mask = np.zeros(len(busbar_sections), dtype=bool)
     mask[busbar_sections.index.get_indexer(selected_busbars.index)] = True
-    mask_path = powsybl_data_folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["busbar_for_nminus1"]
+    mask_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["busbar_for_nminus1"]
     mask_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(mask_path, mask)
 

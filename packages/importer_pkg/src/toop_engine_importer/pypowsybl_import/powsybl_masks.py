@@ -778,6 +778,7 @@ def update_bus_masks(
         The updated network mask object including the bus masks.
     """
     buses = network.get_buses()
+    busbar_sections = network.get_busbar_sections(attributes=["bus_id", "voltage_level_id"])
     if importer_parameters.data_type == "ucte":
         relevant_subs = buses.index.isin(
             get_switchable_buses_ucte(
@@ -788,6 +789,11 @@ def update_bus_masks(
             )
         )
         substation_ids = buses["voltage_level_id"].values
+        busbar_area_mask = get_mask_for_area_codes(
+            busbar_sections,
+            importer_parameters.area_settings.nminus1_area,
+            "voltage_level_id",
+        )
     elif importer_parameters.data_type == "cgmes":
         relevant_subs = buses.index.isin(
             get_switchable_buses_cgmes(
@@ -799,15 +805,41 @@ def update_bus_masks(
             )
         )
         substation_ids = buses["name"].str[:-2].values
+        busbar_sections = get_region_for_df(df=busbar_sections, network=network)
+        busbar_area_mask = get_mask_for_area_codes(
+            busbar_sections,
+            importer_parameters.area_settings.nminus1_area,
+            "region",
+        )
     else:
         raise ValueError(f"Data type {importer_parameters.data_type} is not supported.")
 
+    if importer_parameters.select_by_voltage_level_id_list is None:
+        busbar_hv_mask = (
+            get_voltage_from_voltage_level_id(network, busbar_sections["voltage_level_id"])
+            >= importer_parameters.area_settings.cutoff_voltage
+        )
+        busbar_for_nminus1 = busbar_hv_mask & busbar_area_mask
+    else:
+        busbar_for_nminus1 = (
+            busbar_sections["voltage_level_id"]
+            .isin(importer_parameters.select_by_voltage_level_id_list)
+            .to_numpy(dtype=bool)
+        )
+
     blacklisted_substations = np.isin(substation_ids, blacklisted_ids)
     relevant_subs = relevant_subs & ~blacklisted_substations
+    busbar_substation_ids = pd.Series(substation_ids, index=buses.index).reindex(busbar_sections["bus_id"]).to_numpy()
+    busbar_for_nminus1 = np.logical_and(busbar_for_nminus1, ~np.isin(busbar_substation_ids, blacklisted_ids))
+    relevant_busbar_substations = (
+        pd.Series(relevant_subs, index=buses.index).reindex(busbar_sections["bus_id"]).fillna(False)
+    )
+    busbar_for_nminus1 = np.logical_and(busbar_for_nminus1, relevant_busbar_substations.to_numpy(dtype=bool))
 
     return replace(
         network_masks,
         relevant_subs=relevant_subs,
+        busbar_for_nminus1=busbar_for_nminus1,
     )
 
 
@@ -1088,6 +1120,8 @@ def make_masks(
     if not validate_network_masks(network_masks, default_masks):
         raise RuntimeError("Network masks are not created correctly.")
 
+    network_masks = remove_slack_busbar_sections(network_masks, network, slack_id=slack_id)
+
     return network_masks
 
 
@@ -1171,9 +1205,30 @@ def remove_slack_from_relevant_subs(network_masks: NetworkMasks, network: Networ
     network_masks: NetworkMasks
         The updated network masks without the slack bus in the relevant_subs mask.
     """
-    return replace(
-        network_masks, relevant_subs=network_masks.relevant_subs & ~network.get_buses(attributes=[]).index.isin([slack_id])
-    )
+    relevant_subs = network_masks.relevant_subs & ~network.get_buses(attributes=[]).index.isin([slack_id])
+    return replace(network_masks, relevant_subs=relevant_subs)
+
+
+def remove_slack_busbar_sections(network_masks: NetworkMasks, network: Network, slack_id: str) -> NetworkMasks:
+    """Remove busbar sections that belong to the slack bus from the N-1 mask.
+
+    Parameters
+    ----------
+    network_masks: NetworkMasks
+        The network masks to update.
+    network: Network
+        The network to get the busbar-section information from.
+    slack_id: str
+        The id of the slack bus.
+
+    Returns
+    -------
+    NetworkMasks
+        The updated network masks without slack-connected busbar sections in the N-1 mask.
+    """
+    busbar_sections = network.get_busbar_sections(attributes=["bus_id"])
+    busbar_for_nminus1 = network_masks.busbar_for_nminus1 & ~busbar_sections["bus_id"].isin([slack_id]).to_numpy()
+    return replace(network_masks, busbar_for_nminus1=busbar_for_nminus1)
 
 
 def update_masks_from_power_factory_contingency_list_file(
@@ -1256,11 +1311,30 @@ def update_masks_from_power_factory_contingency_list_file(
     )
     load_nminus1_mask = load_hv_mask & network.get_loads().index.isin(grid_model_ids)
 
-    busbar_df = network.get_busbar_sections(attributes=["voltage_level_id"])
-    busbar_for_nminus1 = (
+    busbar_df = network.get_busbar_sections(attributes=["name", "bus_id", "voltage_level_id"])
+    busbar_hv_mask = (
         get_voltage_from_voltage_level_id(network, busbar_df.voltage_level_id)
         >= importer_parameters.area_settings.cutoff_voltage
-    ) & busbar_df.index.isin(grid_model_ids)
+    )
+    busbar_rows = processed_n1_definition["element_type"].isin(["BUS", "BUSBAR_SECTION"])
+    if "power_factory_element_type" in processed_n1_definition:
+        busbar_rows |= processed_n1_definition["power_factory_element_type"].isin(["BUS", "BUSBAR_SECTION"])
+    busbar_candidate_ids = pd.unique(
+        pd.concat(
+            [
+                processed_n1_definition.loc[busbar_rows, "grid_model_id"],
+                processed_n1_definition.loc[busbar_rows, "power_factory_grid_model_rdf_id"],
+                processed_n1_definition.loc[busbar_rows, "power_factory_grid_model_fid"],
+                processed_n1_definition.loc[busbar_rows, "power_factory_grid_model_name"],
+            ],
+            ignore_index=True,
+        ).dropna()
+    )
+    busbar_for_nminus1 = busbar_hv_mask & (
+        busbar_df.index.isin(busbar_candidate_ids)
+        | busbar_df["bus_id"].isin(busbar_candidate_ids).to_numpy(dtype=bool)
+        | busbar_df["name"].isin(busbar_candidate_ids).to_numpy(dtype=bool)
+    )
 
     if not process_multi_outages:
         grid_model_ids = processed_n1_definition["grid_model_id"].unique()

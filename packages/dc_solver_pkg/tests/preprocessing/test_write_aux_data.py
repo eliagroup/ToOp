@@ -13,7 +13,12 @@ from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.example_grids import case30_with_psts_pandapower
 from toop_engine_dc_solver.postprocess.write_aux_data import write_aux_data
 from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
-from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
+from toop_engine_dc_solver.preprocess.network_data import (
+    NetworkData,
+    extract_action_set,
+    extract_busbar_outage_ids,
+    extract_nminus1_definition,
+)
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -24,13 +29,20 @@ from toop_engine_interfaces.stored_action_set import load_action_set
 def test_extract_data_compare_to_jax(network_data_preprocessed: NetworkData) -> None:
     nminus1_definition = extract_nminus1_definition(network_data_preprocessed)
     action_set = extract_action_set(network_data_preprocessed)
+    busbar_outage_ids = extract_busbar_outage_ids(network_data_preprocessed)
+    busbar_contingencies = [
+        contingency
+        for contingency in nminus1_definition.contingencies
+        if contingency.elements and contingency.elements[0].kind == "bus"
+    ]
 
     # Compare with the processed jax data
     static_information = convert_to_jax(network_data_preprocessed)
     assert len(action_set.local_actions) == len(static_information.dynamic_information.action_set)
     mon_branches = [el for el in nminus1_definition.monitored_elements if el.kind == "branch"]
     assert len(mon_branches) == static_information.n_branches_monitored
-    assert len(nminus1_definition.contingencies) == static_information.n_nminus1_cases + 1
+    assert [contingency.id for contingency in busbar_contingencies] == busbar_outage_ids
+    assert len(nminus1_definition.contingencies) == static_information.n_nminus1_cases + len(busbar_outage_ids) + 1
     assert nminus1_definition.contingencies[0].id == "BASECASE"
     assert len(nminus1_definition.contingencies[0].elements) == 0
     assert len(action_set.disconnectable_branches) == static_information.dynamic_information.disconnectable_branches.shape[0]
@@ -45,12 +57,14 @@ def test_extract_data_compare_to_network_data(network_data_preprocessed: Network
     n_multi_outages = len(network_data_preprocessed.multi_outage_ids)
     n_branch_outages = network_data_preprocessed.outaged_branch_mask.sum()
     n_inj_outages = network_data_preprocessed.outaged_injection_mask.sum()
+    n_busbar_outages = len(extract_busbar_outage_ids(network_data_preprocessed))
 
     n_expected_contingencies = (
         1  # Base case
         + n_branch_outages  # Single branch outages
         + n_multi_outages  # Multi outages
         + n_inj_outages  # Injection outages
+        + n_busbar_outages  # Exported busbar outages
     )
     assert n_contingencies == n_expected_contingencies, "Number of contingencies does not match expected count"
 

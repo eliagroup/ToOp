@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from omegaconf import DictConfig
+from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     PreprocessParameters,
@@ -21,9 +22,11 @@ from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     get_paths,
     prepare_importer_parameters,
     run_pipeline,
+    run_preprocessing,
     run_task_process,
     set_environment_variables,
 )
+from toop_engine_topology_optimizer.dc.genetic_functions.initialization import update_static_information
 
 
 def test_run_task_process_no_conn(dc_config):
@@ -223,6 +226,95 @@ def test_run_pipeline(pipeline_and_configs, preprocessing_parameters):
         assert _get_serialized_topology_fitness(ac_metrics["dc_info"]) == _get_serialized_topology_fitness(expected_topology)
         assert ac_metrics["dc_info"]["actions"] == (expected_topology.get("actions") or [])
         assert ac_metrics["dc_info"]["disconnections"] == (expected_topology.get("disconnections") or [])
+
+
+def test_run_task_process_with_imported_busbar_outages(tmp_path: Path) -> None:
+    input_grid = tmp_path / "grid.xiidm"
+    net = basic_node_breaker_network_powsybl()
+    # create a busbar outage related overload for L2 when the second busbar in VL2 is outaged
+    open_switches = ["load1_DISCONNECTOR_18_0", "L71_DISCONNECTOR_10_1"]
+    close_switches = ["load1_DISCONNECTOR_18_1", "L71_DISCONNECTOR_10_0"]
+    for switch in close_switches:
+        net.close_switch(switch)
+    for switch in open_switches:
+        net.open_switch(switch)
+
+    net.save(input_grid)
+
+    data_folder = tmp_path / input_grid.stem
+    importer_parameters = prepare_importer_parameters(input_grid, data_folder)
+    preprocessing_parameters = PreprocessParameters(action_set_clip=2**10, preprocess_bb_outages=True)
+
+    _, static_information = run_preprocessing(
+        importer_parameters=importer_parameters,
+        data_folder=data_folder,
+        preprocessing_parameters=preprocessing_parameters,
+        is_pandapower_net=False,
+    )
+
+    assert (
+        static_information.dynamic_information.action_set.rel_bb_outage_data is not None
+        or static_information.dynamic_information.non_rel_bb_outage_data is not None
+        or static_information.dynamic_information.bb_outage_baseline_analysis is not None
+    )
+    n_worst_contingencies = min(20, int(static_information.dynamic_information.n_nminus1_cases))
+    assert n_worst_contingencies > 0
+
+    dc_config = DictConfig(
+        {
+            "task_name": "test_busbar_outage_optimizer",
+            "fixed_files": [str(data_folder / "static_information.hdf5")],
+            "double_precision": None,
+            "tensorboard_dir": str(tmp_path / "results" / "{task_name}"),
+            "stats_dir": str(tmp_path / "results" / "{task_name}"),
+            "summary_frequency": None,
+            "checkpoint_frequency": None,
+            "stdout": None,
+            "double_limits": None,
+            "num_cuda_devices": 1,
+            "omp_num_threads": 1,
+            "xla_force_host_platform_device_count": None,
+            "output_json": str(tmp_path / "results" / "output.json"),
+            "lf_config": {"distributed": False},
+            "ga_config": {
+                "runtime_seconds": 5,
+                "enable_bb_outage": True,
+                "bb_outage_as_nminus1": False,
+                "n_worst_contingencies": n_worst_contingencies,
+                "target_metrics": [["bb_outage_overload", 1.0]],
+                "me_descriptors": [{"metric": "split_subs", "num_cells": 5}],
+                "observed_metrics": ["bb_outage_penalty", "bb_outage_overload", "bb_outage_grid_splits", "split_subs"],
+            },
+        }
+    )
+
+    updated_static_information = update_static_information(
+        static_informations=(static_information,),
+        batch_size=8,
+        enable_nodal_inj_optim=False,
+        enable_parallel_pst_group_optim=False,
+        enable_bb_outage=True,
+        bb_outage_as_nminus1=False,
+        clip_bb_outage_penalty=False,
+        bb_outage_more_islands_penalty=0.0,
+    )[0]
+    assert updated_static_information.solver_config.enable_bb_outages
+
+    set_environment_variables(dc_config)
+    result = run_task_process(dc_config)
+
+    assert result is not None
+    assert "bb_outage_penalty" in result["initial_metrics"]
+    assert result["initial_metrics"]["bb_outage_penalty"] >= 0
+    assert result["initial_metrics"]["bb_outage_overload"] > 0
+    assert result["max_fitness"] > result["initial_fitness"]
+    assert len(result["best_topos"]) > 0
+    best_topology = max(result["best_topos"], key=lambda topo: topo["metrics"]["fitness"])
+    assert best_topology["metrics"]["fitness"] > result["initial_fitness"]
+    assert best_topology["metrics"]["extra_scores"]["bb_outage_overload"] < result["initial_metrics"]["bb_outage_overload"]
+    result_dir = Path(dc_config["output_json"]).parent
+    assert result_dir.exists()
+    assert len(list(result_dir.iterdir())) > 0
 
 
 def test_run_pipeline_no_optimization_stage(pipeline_and_configs, preprocessing_parameters):

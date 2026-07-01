@@ -8,12 +8,14 @@
 import copy
 from dataclasses import replace
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pypowsybl as pp
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Array, Bool, Float, Int
 from tests.deprecated.assignment import realise_bus_split_single_station
 from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
@@ -45,8 +47,12 @@ from toop_engine_dc_solver.jax.types import (
     int_max,
 )
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import apply_topology
-from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, get_bb_outage_baseline_analysis
-from toop_engine_dc_solver.preprocess.network_data import extract_action_set, map_branch_injection_ids
+from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, get_bb_outage_baseline_analysis, load_grid
+from toop_engine_dc_solver.preprocess.network_data import (
+    extract_action_set,
+    extract_busbar_outage_ids,
+    map_branch_injection_ids,
+)
 from toop_engine_dc_solver.preprocess.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     extract_busbar_outage_data,
@@ -59,7 +65,17 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     logger,
     preprocess_bb_outages,
 )
+from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology import Station
+from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    AreaSettings,
+    CgmesImporterParameters,
+    PreprocessParameters,
+)
+from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 
 
 # FIxme: Look deeply into this
@@ -263,6 +279,56 @@ def test_perform_non_rel_bb_outages(
         n_timesteps,
         dynamic_information.branches_monitored.shape[0],
     ), "Shape of lfs_outage is incorrect"
+
+
+def test_node_breaker_import_preserves_all_imported_busbar_outages() -> None:
+    with TemporaryDirectory() as temp_dir_str:
+        temp_dir = Path(temp_dir_str)
+        net = basic_node_breaker_network_powsybl()
+
+        grid_file = temp_dir / "node_breaker_network.xiidm"
+        net.save(grid_file)
+        importer_parameters = CgmesImporterParameters(
+            grid_model_file=grid_file,
+            data_folder=temp_dir,
+            white_list_file=None,
+            black_list_file=None,
+            area_settings=AreaSettings(cutoff_voltage=1, control_area=[""], view_area=[""], nminus1_area=[""]),
+        )
+        preprocessing.convert_file(importer_parameters=importer_parameters)
+
+        imported_nminus1_definition = load_nminus1_definition(temp_dir / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+        all_busbar_ids = sorted(net.get_busbar_sections().index.to_list())
+        expected_busbar_ids = sorted(
+            {
+                element.id
+                for contingency in imported_nminus1_definition.contingencies
+                for element in contingency.elements
+                if element.kind == "bus" and element.type == "BUSBAR_SECTION"
+            }
+        )
+
+        _info, _static_information, network_data = load_grid(
+            data_folder_dirfs=DirFileSystem(str(temp_dir)),
+            pandapower=False,
+            parameters=PreprocessParameters(preprocess_bb_outages=True),
+            lf_params=CGMES_DISTRIBUTED_SLACK,
+        )
+
+        configured_busbar_ids = sorted(
+            busbar_id for busbar_ids in (network_data.busbar_outage_map or {}).values() for busbar_id in busbar_ids
+        )
+        preprocessed_busbar_ids = sorted(extract_busbar_outage_ids(network_data))
+        _, non_rel_busbar_outage_map = get_rel_non_rel_sub_bb_maps(network_data, network_data.busbar_outage_map or {})
+        expected_non_rel_busbar_count = sum(len(busbar_ids) for busbar_ids in non_rel_busbar_outage_map.values())
+
+        assert expected_busbar_ids
+        assert set(expected_busbar_ids).issubset(set(all_busbar_ids))
+        assert configured_busbar_ids == expected_busbar_ids
+        assert preprocessed_busbar_ids == expected_busbar_ids
+        assert len(network_data.non_rel_bb_outage_br_indices) == expected_non_rel_busbar_count
+        assert network_data.non_rel_bb_outage_deltap.shape[0] == expected_non_rel_busbar_count
+        assert network_data.non_rel_bb_outage_nodal_indices.shape[0] == expected_non_rel_busbar_count
 
 
 def test_perform_rel_bb_outage_single_topo_with_no_inj_reassignments(
@@ -513,10 +579,7 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
                 network_data.branch_ids.index(asset.grid_model_id) for asset in connected_assets if asset.is_branch()
             ]
             copy_net.remove_elements(connected_asset_ids)
-            config = pp.loadflow.Parameters(
-                distributed_slack=False,
-            )
-            pp.loadflow.run_dc(copy_net, parameters=config)
+            pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
 
             # Get the stub branches connected to this busbar
             stub_branch_indices = []
@@ -605,10 +668,7 @@ def test_compare_loadflows_rel_bb_outage(
                 if asset.is_branch()
             ]
             copy_net.remove_elements(connected_asset_ids)
-            config = pp.loadflow.Parameters(
-                distributed_slack=False,
-            )
-            pp.loadflow.run_dc(copy_net, parameters=config)
+            pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
 
             # Get the stub branches connected to this busbar
             stub_branch_indices = []

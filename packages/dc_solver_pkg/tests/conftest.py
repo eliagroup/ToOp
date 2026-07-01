@@ -729,6 +729,9 @@ def _test_grid_folder_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a temporary folder with test grid node breaker data."""
     tmp_path = tmp_path_factory.mktemp("test_grid_node_breaker")
     node_breaker_folder_powsybl(tmp_path)
+    save_lf_params_to_fs(
+        SINGLE_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
     return tmp_path
 
 

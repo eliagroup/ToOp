@@ -402,6 +402,12 @@ def get_relevant_voltage_levels(network: Network, network_masks: NetworkMasks) -
     voltage_levels = get_voltage_level_with_region(network, attributes=attributes)
     busses = network.get_buses()
     relevant_voltage_levels = busses[network_masks.relevant_subs]["voltage_level_id"]
+    busbar_sections = network.get_busbar_sections(attributes=["bus_id"])
+    busbar_outage_bus_ids = pd.Index(busbar_sections[network_masks.busbar_for_nminus1]["bus_id"].unique())
+    relevant_busbar_buses = busses.loc[busses.index.intersection(busbar_outage_bus_ids)]
+    relevant_voltage_levels = pd.concat(
+        [relevant_voltage_levels, relevant_busbar_buses["voltage_level_id"]]
+    ).drop_duplicates()
     relevant_voltage_level_with_region = voltage_levels[voltage_levels.index.isin(relevant_voltage_levels)]
     relevant_voltage_level_with_region_and_bus_id = relevant_voltage_level_with_region.merge(
         relevant_voltage_levels, left_index=True, right_on="voltage_level_id", how="left"

@@ -298,7 +298,15 @@ def test_node_breaker_import_preserves_all_imported_busbar_outages() -> None:
         preprocessing.convert_file(importer_parameters=importer_parameters)
 
         imported_nminus1_definition = load_nminus1_definition(temp_dir / PREPROCESSING_PATHS["nminus1_definition_file_path"])
-        expected_busbar_ids = sorted(net.get_busbar_sections().index.to_list())
+        all_busbar_ids = sorted(net.get_busbar_sections().index.to_list())
+        expected_busbar_ids = sorted(
+            {
+                element.id
+                for contingency in imported_nminus1_definition.contingencies
+                for element in contingency.elements
+                if element.kind == "bus" and element.type == "BUSBAR_SECTION"
+            }
+        )
 
         _info, _static_information, network_data = load_grid(
             data_folder_dirfs=DirFileSystem(str(temp_dir)),
@@ -315,6 +323,7 @@ def test_node_breaker_import_preserves_all_imported_busbar_outages() -> None:
         expected_non_rel_busbar_count = sum(len(busbar_ids) for busbar_ids in non_rel_busbar_outage_map.values())
 
         assert expected_busbar_ids
+        assert set(expected_busbar_ids).issubset(set(all_busbar_ids))
         assert configured_busbar_ids == expected_busbar_ids
         assert preprocessed_busbar_ids == expected_busbar_ids
         assert len(network_data.non_rel_bb_outage_br_indices) == expected_non_rel_busbar_count

@@ -410,6 +410,7 @@ def test_evaluate_acceptance_identical_metrics():
         reject_critical_branch_threshold=1.0,
         reject_voltage_jump_threshold=1.0,
         reject_critical_va_diff_threshold=1.0,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is None, "Results rejected although they are the same as before and thresholds is exactly 1."
     # Not accepted if any thresholds < 1.
@@ -421,6 +422,7 @@ def test_evaluate_acceptance_identical_metrics():
         reject_critical_branch_threshold=0.9,
         reject_voltage_jump_threshold=0.9,
         reject_critical_va_diff_threshold=0.9,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is not None, "Results rejected although they are the same as before and thresholds is below 1."
     assert reason.criterion == "convergence"
@@ -433,6 +435,7 @@ def test_evaluate_acceptance_identical_metrics():
         reject_critical_branch_threshold=1.0,
         reject_voltage_jump_threshold=1.0,
         reject_critical_va_diff_threshold=1.0,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is not None, "Results rejected although they are just as good and convergence thresholds below 1."
     assert reason.criterion == "convergence"
@@ -444,6 +447,7 @@ def test_evaluate_acceptance_identical_metrics():
         reject_critical_branch_threshold=1.0,
         reject_voltage_jump_threshold=1.0,
         reject_critical_va_diff_threshold=1.0,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is not None, "Results rejected although they are just as good and overload thresholds below 1."
     assert reason.criterion == "overload-energy"
@@ -456,6 +460,7 @@ def test_evaluate_acceptance_identical_metrics():
         reject_critical_branch_threshold=0.9,
         reject_voltage_jump_threshold=1.0,
         reject_critical_va_diff_threshold=1.0,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is not None, "Results rejected although they are just as good and crit branch thresholds below 1."
     assert reason.criterion == "critical-branch-count"
@@ -469,6 +474,7 @@ def test_evaluate_acceptance_identical_metrics():
         reject_critical_branch_threshold=1.1,
         reject_voltage_jump_threshold=1.1,
         reject_critical_va_diff_threshold=1.1,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is None, "Results rejected although they are just as good and thresholds above 1."
 
@@ -504,6 +510,7 @@ def test_evaluate_acceptance_improved_metrics():
         reject_critical_branch_threshold=1.0,
         reject_voltage_jump_threshold=1.0,
         reject_critical_va_diff_threshold=1.0,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is None, "Results rejected although they are the same as before and thresholds is exactly 1."
     # Accepted if all thresholds=0.9.
@@ -515,6 +522,7 @@ def test_evaluate_acceptance_improved_metrics():
         reject_critical_branch_threshold=0.9,
         reject_voltage_jump_threshold=0.9,
         reject_critical_va_diff_threshold=0.9,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is None, "Results not accepted although they improved by exactly 10 percent and thresholds is 0.9."
 
@@ -538,6 +546,7 @@ def test_evaluate_acceptance_improved_metrics():
         reject_critical_branch_threshold=0.8,
         reject_voltage_jump_threshold=0.8,
         reject_critical_va_diff_threshold=0.8,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is not None, "Results accepted although they only improved by exactly 10 percent and thresholds is 0.8."
     assert reason.criterion == "convergence"
@@ -551,6 +560,7 @@ def test_evaluate_acceptance_improved_metrics():
         reject_critical_branch_threshold=1.1,
         reject_voltage_jump_threshold=1.1,
         reject_critical_va_diff_threshold=1.1,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is None, "Results rejected although they are just as good and thresholds above 1."
 
@@ -586,6 +596,7 @@ def test_evaluate_acceptance_worse_metrics():
         reject_critical_branch_threshold=1.0,
         reject_voltage_jump_threshold=1.0,
         reject_critical_va_diff_threshold=1.0,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is not None, "Results accepted although they are worse as before and thresholds is exactly 1."
     assert reason.criterion == "convergence"
@@ -599,6 +610,7 @@ def test_evaluate_acceptance_worse_metrics():
         reject_critical_branch_threshold=0.9,
         reject_voltage_jump_threshold=0.9,
         reject_critical_va_diff_threshold=0.9,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is not None, "Results accepted although they got worse by exactly 10 percent and thresholds is 0.9."
     assert reason.criterion == "convergence"
@@ -611,6 +623,7 @@ def test_evaluate_acceptance_worse_metrics():
         reject_critical_branch_threshold=1.1,
         reject_voltage_jump_threshold=1.1,
         reject_critical_va_diff_threshold=1.1,
+        enable_critical_voltage_rejection=True,
     )
     assert reason is None, "Results not accepted although they only got worse by exactly 10 percent and thresholds is 1.1."
 
@@ -645,6 +658,7 @@ def test_evaluate_acceptance_rejects_voltage_jump_increase() -> None:
         reject_critical_branch_threshold=1.0,
         reject_voltage_jump_threshold=1.1,
         reject_critical_va_diff_threshold=1.1,
+        enable_critical_voltage_rejection=True,
     )
 
     assert reason is not None
@@ -681,6 +695,7 @@ def test_evaluate_acceptance_rejects_critical_va_diff_increase() -> None:
         reject_critical_branch_threshold=1.0,
         reject_voltage_jump_threshold=1.1,
         reject_critical_va_diff_threshold=1.1,
+        enable_critical_voltage_rejection=True,
     )
 
     assert reason is not None

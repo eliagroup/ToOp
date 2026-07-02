@@ -227,6 +227,50 @@ def test_compute_batch_symmetric_with_bb_outage(
     assert lf_res.bb_outage_penalty.shape == (solver_config.batch_size_bsdf,)
 
 
+def test_compute_batch_symmetric_with_bb_outage_nminus1_with_baseline(
+    jax_inputs_oberrhein: tuple[ActionIndexComputations, StaticInformation],
+) -> None:
+    """Regression test: keep baseline present with bb_outage_as_nminus1 enabled.
+
+    In this setup, N-1 contains busbar outages and contingency_success must have
+    matching failure-axis length.
+    """
+    topo_indices, static_information = jax_inputs_oberrhein
+    di = static_information.dynamic_information
+    baseline_analysis = di.bb_outage_baseline_analysis
+    if baseline_analysis is None:
+        baseline_analysis = get_bb_outage_baseline_analysis(
+            di=di,
+            more_splits_penalty=1000.0,
+        )
+
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            enable_bb_outages=True,
+            bb_outage_as_nminus1=True,
+        ),
+        dynamic_information=replace(
+            di,
+            bb_outage_baseline_analysis=baseline_analysis,
+        ),
+    )
+
+    lf_res, success = compute_symmetric_batch(
+        topology_batch=topo_indices,
+        disconnection_batch=None,
+        injections=None,
+        nodal_inj_start_options=None,
+        dynamic_information=static_information.dynamic_information,
+        solver_config=static_information.solver_config,
+    )
+
+    assert jnp.any(success)
+    assert lf_res.contingency_success is not None
+    assert lf_res.contingency_success.shape[1] == lf_res.n_1_matrix.shape[2]
+
+
 def test_compute_symmetric_batch_with_disconnection(
     jax_inputs: tuple[TopoVectBranchComputations, InjectionComputations, StaticInformation],
 ) -> None:

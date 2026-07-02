@@ -1642,6 +1642,8 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     if connect_line_out_of_service:
         n.connect("LINE_out_of_service")
 
+    pypowsybl.loadflow.run_ac(n)
+
     return n
 
 

@@ -10,6 +10,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import networkx as nx
 import numpy as np
 import pypowsybl
 from beartype.typing import NamedTuple, Optional, Sequence, Union
@@ -638,6 +639,84 @@ def get_relevant_stations(network_data: NetworkData) -> list[Station]:
     return [find_station(network_data.simplified_asset_topology.stations, node_id) for node_id in relevant_node_ids]
 
 
+def _get_station_articulation_busbar_ids(station: Station) -> set[str]:
+    """Return busbar ids that would split the station if they were outaged."""
+    busbar_intid_index_mapper = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
+    edges = [
+        (
+            busbar_intid_index_mapper[coupler.busbar_from_id],
+            busbar_intid_index_mapper[coupler.busbar_to_id],
+        )
+        for coupler in station.couplers
+        if (not coupler.open) and coupler.in_service
+    ]
+    if len(edges) <= 1:
+        return set()
+
+    graph = nx.Graph()
+    graph.add_nodes_from(range(len(station.busbars)))
+    graph.add_edges_from(edges)
+    return {station.busbars[node_index].grid_model_id for node_index in nx.articulation_points(graph)}
+
+
+def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
+    """Extract busbar outage ids that remain after preprocessing-side filtering."""
+    if network_data.busbar_outage_map is None or network_data.asset_topology is None:
+        return []
+
+    relevant_station_ids = {
+        node_id
+        for node_id, is_relevant in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True)
+        if is_relevant
+    }
+
+    busbar_outage_ids: list[str] = []
+    relevant_stations = get_relevant_stations(network_data)
+    for station_index, station in enumerate(relevant_stations):
+        configured_busbars = set(network_data.busbar_outage_map.get(station.grid_model_id, []))
+        always_articulation_ids: set[str] = set()
+        if network_data.rel_bb_articulation_nodes is not None and station_index < len(
+            network_data.rel_bb_articulation_nodes
+        ):
+            articulation_by_action = network_data.rel_bb_articulation_nodes[station_index]
+            if articulation_by_action:
+                always_articulation_indices = set(articulation_by_action[0])
+                for articulation_indices in articulation_by_action[1:]:
+                    always_articulation_indices &= set(articulation_indices)
+                always_articulation_ids = {
+                    station.busbars[busbar_index].grid_model_id
+                    for busbar_index in always_articulation_indices
+                    if busbar_index < len(station.busbars)
+                }
+
+        busbar_outage_ids.extend(
+            busbar.grid_model_id
+            for busbar in station.busbars
+            if busbar.grid_model_id in configured_busbars and busbar.grid_model_id not in always_articulation_ids
+        )
+
+    articulation_ids_by_station = {
+        station.grid_model_id: _get_station_articulation_busbar_ids(station)
+        for station in (
+            network_data.simplified_asset_topology.stations
+            if network_data.simplified_asset_topology is not None
+            else network_data.asset_topology.stations
+        )
+    }
+    for station in network_data.asset_topology.stations:
+        if station.grid_model_id in relevant_station_ids:
+            continue
+        configured_busbars = set(network_data.busbar_outage_map.get(station.grid_model_id, []))
+        articulation_ids = articulation_ids_by_station.get(station.grid_model_id, set())
+        busbar_outage_ids.extend(
+            busbar.grid_model_id
+            for busbar in station.busbars
+            if busbar.grid_model_id in configured_busbars and busbar.grid_model_id not in articulation_ids
+        )
+
+    return busbar_outage_ids
+
+
 def map_branch_injection_ids(
     network_data: NetworkData,
 ) -> tuple[list[list[str]], list[list[str]]]:
@@ -871,11 +950,34 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         for index in network_data.rel_io_global_inj_index
     ]
 
+    busbar_contingencies: list[Contingency] = []
+    if network_data.asset_topology is not None:
+        busbar_lookup = {
+            busbar.grid_model_id: busbar for station in network_data.asset_topology.stations for busbar in station.busbars
+        }
+        busbar_contingencies = [
+            Contingency(
+                elements=[
+                    GridElement(
+                        id=busbar_id,
+                        type=busbar_lookup[busbar_id].type,
+                        name=busbar_lookup[busbar_id].name or "",
+                        kind="bus",
+                    )
+                ],
+                id=busbar_id,
+                name=busbar_lookup[busbar_id].name or "",
+            )
+            for busbar_id in extract_busbar_outage_ids(network_data)
+            if busbar_id in busbar_lookup
+        ]
+
     return Nminus1Definition(
         monitored_elements=monitored_branches + monitored_nodes + monitored_switches,
         contingencies=basecase_contingency
         + branch_contingencies
         + multi_contingencies
         + nonrel_inj_contingencies
-        + rel_inj_contingencies,
+        + rel_inj_contingencies
+        + busbar_contingencies,
     )

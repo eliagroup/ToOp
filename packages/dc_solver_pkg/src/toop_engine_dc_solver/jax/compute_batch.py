@@ -208,12 +208,12 @@ def compute_bsdf_lodf_static_flows(
         topo_res.success[:, None],
         (topo_res.success.shape[0], dynamic_information.n_inj_failures),
     )
+    n_bb_outage_failures = (
+        dynamic_information.n_bb_outages if solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1 else 0
+    )
     bb_outage_success = jnp.broadcast_to(
         topo_res.success[:, None],
-        (
-            topo_res.success.shape[0],
-            dynamic_information.n_bb_outages if dynamic_information.bb_outage_baseline_analysis is None else 0,
-        ),
+        (topo_res.success.shape[0], n_bb_outage_failures),
     )
     contingency_success = jnp.concatenate(
         [

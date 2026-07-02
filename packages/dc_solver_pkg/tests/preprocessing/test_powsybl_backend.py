@@ -37,6 +37,7 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBack
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
+    NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
 )
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
@@ -94,6 +95,84 @@ def test_get_nodes(powsybl_case57_folder_xiidm: Path) -> None:
     assert busses.loc[slack_id]["v_angle"] == 0
     assert backend.get_relevant_node_mask().shape == (n_connected_nodes,)
     assert backend.get_cross_coupler_limits().shape == (n_connected_nodes,)
+
+
+def test_get_busbar_outage_map(powsybl_data_folder: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
+    asset_topology = backend.get_asset_topology()
+
+    busbar_sections = backend.net.get_busbar_sections(attributes=["bus_id"])
+    connected_busbars = busbar_sections[busbar_sections["bus_id"].isin(backend.get_node_ids())]
+    selected_busbars = connected_busbars.iloc[: min(3, len(connected_busbars))]
+    mask = np.zeros(len(busbar_sections), dtype=bool)
+    mask[busbar_sections.index.get_indexer(selected_busbars.index)] = True
+    mask_path = powsybl_data_folder / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["busbar_for_nminus1"]
+    mask_path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(mask_path, mask)
+
+    selected_busbars = busbar_sections[mask]
+    selected_busbars = selected_busbars[selected_busbars["bus_id"].isin(backend.get_node_ids())]
+    busbar_to_station_id = {}
+    bus_id_to_station_id = {}
+    if asset_topology is not None:
+        busbar_to_station_id = {
+            busbar.grid_model_id: station.grid_model_id for station in asset_topology.stations for busbar in station.busbars
+        }
+        bus_id_to_station_id = {
+            busbar.bus_branch_bus_id: station.grid_model_id
+            for station in asset_topology.stations
+            for busbar in station.busbars
+        }
+    expected_outage_map: dict[str, list[str]] = {}
+    for busbar_id, busbar in selected_busbars.iterrows():
+        station_id = busbar_to_station_id.get(str(busbar_id))
+        if station_id is None:
+            station_id = bus_id_to_station_id.get(str(busbar["bus_id"]))
+        if station_id is None:
+            continue
+        expected_outage_map.setdefault(station_id, []).append(str(busbar_id))
+
+    assert backend.get_busbar_outage_map() == expected_outage_map
+
+
+def test_get_busbar_outage_map_case57(powsybl_case57_folder_xiidm: Path) -> None:
+    filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
+    asset_topology = backend.get_asset_topology()
+
+    busbar_sections = backend.net.get_busbar_sections(attributes=["bus_id"])
+    connected_busbars = busbar_sections[busbar_sections["bus_id"].isin(backend.get_node_ids())]
+    selected_busbars = connected_busbars.iloc[: min(3, len(connected_busbars))]
+    mask = np.zeros(len(busbar_sections), dtype=bool)
+    mask[busbar_sections.index.get_indexer(selected_busbars.index)] = True
+    mask_path = powsybl_case57_folder_xiidm / PREPROCESSING_PATHS["masks_path"] / NETWORK_MASK_NAMES["busbar_for_nminus1"]
+    mask_path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(mask_path, mask)
+
+    selected_busbars = busbar_sections[mask]
+    selected_busbars = selected_busbars[selected_busbars["bus_id"].isin(backend.get_node_ids())]
+    busbar_to_station_id = {}
+    bus_id_to_station_id = {}
+    if asset_topology is not None:
+        busbar_to_station_id = {
+            busbar.grid_model_id: station.grid_model_id for station in asset_topology.stations for busbar in station.busbars
+        }
+        bus_id_to_station_id = {
+            busbar.bus_branch_bus_id: station.grid_model_id
+            for station in asset_topology.stations
+            for busbar in station.busbars
+        }
+    expected_outage_map: dict[str, list[str]] = {}
+    for busbar_id, busbar in selected_busbars.iterrows():
+        station_id = busbar_to_station_id.get(str(busbar_id))
+        if station_id is None:
+            station_id = bus_id_to_station_id.get(str(busbar["bus_id"]))
+        if station_id is None:
+            continue
+        expected_outage_map.setdefault(station_id, []).append(str(busbar_id))
+
+    assert backend.get_busbar_outage_map() == expected_outage_map
 
 
 def test_get_injections(powsybl_case57_folder_xiidm: Path) -> None:

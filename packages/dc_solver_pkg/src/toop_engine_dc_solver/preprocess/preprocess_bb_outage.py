@@ -151,8 +151,9 @@ def extract_outage_index_injection_from_asset(
             # Branch is a line or a trafo
             try:
                 branch_index = network.branch_ids.index(asset.grid_model_id)
-            except ValueError as e:
-                raise ValueError(f"Branch {asset.grid_model_id} not found in network data.") from e
+            except ValueError:
+                logger.warning(f"Branch {asset.grid_model_id} is not a valid branch. Might have been removed.")
+                return branch_index_to_outage, nodal_injection_to_outage
             if not network.bridging_branch_mask[branch_index]:
                 branch_index_to_outage = branch_index
             else:

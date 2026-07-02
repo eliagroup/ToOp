@@ -177,6 +177,27 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     )
     assert connected_branches_to_outage == [], f"Expected [], but got {connected_branches_to_outage}"
 
+    # Test case 5: Process an in-service branch that is no longer present in network.branch_ids
+    # (e.g. filtered out as disconnected during backend preprocessing).
+    missing_branch_asset = SwitchableAsset(
+        grid_model_id="branch_missing",
+        in_service=True,
+        branch_end="from",
+        type="line",
+    )
+    nodal_injection_to_outage = np.zeros(network_data_dummy.nodal_injection.shape[0], float)
+    connected_branches_to_outage = []
+    branch_index, injection = extract_outage_index_injection_from_asset(missing_branch_asset, network_data_dummy, 0, {})
+    if branch_index is not None:
+        connected_branches_to_outage.append(branch_index)
+    nodal_injection_to_outage += injection
+
+    expected_busbar_nodal_injection_removal = np.zeros(network_data_dummy.nodal_injection.shape[0], float)
+    assert np.allclose(nodal_injection_to_outage, expected_busbar_nodal_injection_removal), (
+        f"Expected {expected_busbar_nodal_injection_removal}, but got {nodal_injection_to_outage}"
+    )
+    assert connected_branches_to_outage == [], f"Expected [], but got {connected_branches_to_outage}"
+
 
 def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     # Create mock SwitchableAsset objects

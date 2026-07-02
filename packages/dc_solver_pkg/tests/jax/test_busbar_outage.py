@@ -6,7 +6,6 @@
 # Mozilla Public License, version 2.0
 
 import copy
-from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -539,15 +538,14 @@ def correct_power_flow_directions(lfs, network_data_preprocessed: NetworkData):
 def test_compare_loadflows_non_rel_bb_outage_powsybl(
     test_grid_folder_path: Path,
     network_data_test_grid: NetworkData,
-    outage_map_test_grid: dict[str, list[str]],
 ):
     net = pp.network.load(test_grid_folder_path / "grid.xiidm")
     # outage_map = outage_map_test_grid
     outage_map = network_data_test_grid.busbar_outage_map
+    assert set(outage_map.keys()) == {"VL2_0", "VL3_0", "VL4_0", "VL5_0"}
 
     rel_bb_outage_map, non_rel_bb_outage_map = get_rel_non_rel_sub_bb_maps(network_data_test_grid, outage_map)
-    network_data = replace(network_data_test_grid, busbar_outage_map=outage_map)
-    network_data = preprocess_bb_outages(network_data)
+    network_data = preprocess_bb_outages(network_data_test_grid)
     static_information = convert_to_jax(
         network_data,
         preprocess_bb_outages=True,
@@ -607,7 +605,6 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
 def test_compare_loadflows_rel_bb_outage(
     test_grid_folder_path: Path,
     network_data_test_grid: NetworkData,
-    outage_map_test_grid: dict[str, list[str]],
     jax_inputs_test_grid: tuple[ActionIndexComputations, StaticInformation],
 ):
     net = pp.network.load(test_grid_folder_path / "grid.xiidm")
@@ -619,7 +616,10 @@ def test_compare_loadflows_rel_bb_outage(
 
     # These indices are neccessarily sorted in the order of rel_subs
     updated_topo_indices = jax.jit(pad_action_with_unsplit_action_indices)(di.action_set, topo_indices.action)
-    rel_bb_outage_map, _ = get_rel_non_rel_sub_bb_maps(network_data_test_grid, outage_map_test_grid)
+
+    assert set(network_data_test_grid.busbar_outage_map.keys()) == {"VL2_0", "VL3_0", "VL4_0", "VL5_0"}
+
+    rel_bb_outage_map, _ = get_rel_non_rel_sub_bb_maps(network_data_test_grid, network_data_test_grid.busbar_outage_map)
 
     branch_actions = di.action_set.branch_actions[updated_topo_indices]
     affected_sub_ids = di.action_set.substation_correspondence[updated_topo_indices]

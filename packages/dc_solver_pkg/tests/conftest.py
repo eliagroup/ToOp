@@ -742,23 +742,12 @@ def test_grid_folder_path(_test_grid_folder_path: Path, tmp_path: Path) -> Path:
 
 
 @pytest.fixture(scope="session")
-def network_data_test_grid(_test_grid_folder_path: Path, outage_map_test_grid: dict) -> NetworkData:
-    class TestBackend(PowsyblBackend):
-        def get_busbar_outage_map(self):
-            return outage_map_test_grid
+def network_data_test_grid(_test_grid_folder_path: Path) -> NetworkData:
 
     fs_dir = DirFileSystem(str(_test_grid_folder_path))
-    backend = TestBackend(fs_dir, lf_params=SINGLE_SLACK)
+    backend = PowsyblBackend(fs_dir, lf_params=SINGLE_SLACK)
     network_data = preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=True))
     return network_data
-
-
-@pytest.fixture(scope="session")
-def outage_map_test_grid():
-    return {
-        "VL2_0": ["BBS2_1", "BBS2_2", "BBS2_3"],
-        "VL3_0": ["BBS3_1", "BBS3_2"],
-    }
 
 
 @pytest.fixture(scope="session")

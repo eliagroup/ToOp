@@ -622,22 +622,22 @@ def test_get_topo_integration(basic_node_breaker_network_powsybl_grid: Network):
     #    VL1_0, slack -> not relevant
     #    VL2_0, relevant
     #    VL3_0, relevant
-    #    VL4_0, RelevantStationRules() require per default 4 braches -> only 3 branches -> not relevant
-    #    VL5_0, 1 branch, 1 injection, 1 busbar -> not relevant
+    #    VL4_0, RelevantStationRules() require per default 4 braches -> only 3 branches, but on busbaroutage list > relevant
+    #    VL5_0, 1 branch, 1 injection, 1 busbar -> but on busbar outage list -> relevant
     # ]
-    expected_relevant_voltage_level_with_region = ["VL2", "VL3"]
+    expected_relevant_voltage_level_with_region = ["VL2", "VL3", "VL4", "VL5"]
     assert all(net.get_voltage_levels().index == ["VL1", "VL2", "VL3", "VL4", "VL5"])
     assert all(relevant_voltage_level_with_region["voltage_level_id"] == expected_relevant_voltage_level_with_region)
-    assert all(relevant_voltage_level_with_region.index == ["VL2_0", "VL3_0"])
+    assert all(relevant_voltage_level_with_region.index == ["VL2_0", "VL3_0", "VL4_0", "VL5_0"])
 
     res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
-    assert len(res) == 2
+    assert len(res) == 4
     assert all([isinstance(station, Station) for station in res])
 
     timestamp = datetime.datetime.now()
     res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
     assert isinstance(res, Topology)
-    assert len(res.stations) == 2
+    assert len(res.stations) == 4
     assert res.topology_id == "cgmes_file.zip"
     assert res.grid_model_file == "cgmes_file.zip"
     assert res.timestamp - timestamp < datetime.timedelta(seconds=3)

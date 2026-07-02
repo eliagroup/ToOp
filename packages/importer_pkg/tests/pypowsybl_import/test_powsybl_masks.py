@@ -581,12 +581,6 @@ def test_update_bus_masks_node_breaker_select_station(basic_node_breaker_network
         importer_parameters.area_settings.nminus1_area,
         "region",
     )
-    expected_busbar_mask &= (
-        pd.Series(expected_bus_mask, index=buses.index)
-        .reindex(network.get_busbar_sections(attributes=["bus_id"])["bus_id"])
-        .fillna(False)
-        .to_numpy(dtype=bool)
-    )
     assert np.array_equal(updated_masks.busbar_for_nminus1, expected_busbar_mask)
 
     # make sure the slack is removed from relevant subs
@@ -763,12 +757,6 @@ def test_make_masks_node_breaker(
         busbar_sections,
         cgmes_importer_parameters.area_settings.nminus1_area,
         "region",
-    )
-    expected_busbar_mask &= (
-        pd.Series(masks.relevant_subs, index=buses.index)
-        .reindex(busbar_sections["bus_id"])
-        .fillna(False)
-        .to_numpy(dtype=bool)
     )
     expected_busbar_mask &= ~busbar_sections["bus_id"].isin([lf_result.reference_bus_id]).to_numpy()
     assert np.array_equal(masks.busbar_for_nminus1, expected_busbar_mask)

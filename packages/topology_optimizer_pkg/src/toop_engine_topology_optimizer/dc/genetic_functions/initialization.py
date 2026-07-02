@@ -461,14 +461,34 @@ def update_single_pair_bb_outage_information(
     needs_penalty_baseline = (
         should_enable_bb_outage and not bb_outage_as_nminus1 and has_rel_bb_outage_data and has_monitored_branches
     )
-    # Keep or create a baseline only when busbar outages stay enabled for this run.
-    should_keep_or_create_baseline = should_enable_bb_outage and (has_stored_bb_outage_baseline or needs_penalty_baseline)
+    # Keep or create a baseline only in penalty mode. In N-1 mode, baseline must not influence case counting.
+    should_keep_or_create_baseline = (
+        should_enable_bb_outage and not bb_outage_as_nminus1 and (has_stored_bb_outage_baseline or needs_penalty_baseline)
+    )
+
+    base_nminus1_cases = (
+        dynamic_information.n_outages + dynamic_information.n_multi_outages + dynamic_information.n_inj_failures
+    )
+    expected_nminus1_cases = (
+        base_nminus1_cases + dynamic_information.n_bb_outages
+        if should_enable_bb_outage and bb_outage_as_nminus1
+        else base_nminus1_cases
+    )
+    contingency_ids = list(solver_config.contingency_ids)
+    if len(contingency_ids) < expected_nminus1_cases:
+        if len(contingency_ids) < base_nminus1_cases:
+            contingency_ids.extend(f"nminus1_case_{i}" for i in range(len(contingency_ids), base_nminus1_cases))
+        contingency_ids.extend(
+            f"bb_outage_case_{i}"
+            for i in range(len(contingency_ids) - base_nminus1_cases, expected_nminus1_cases - base_nminus1_cases)
+        )
 
     updated_solver_config = replace(
         solver_config,
         enable_bb_outages=should_enable_bb_outage,
         bb_outage_as_nminus1=bb_outage_as_nminus1,
         clip_bb_outage_penalty=clip_bb_outage_penalty,
+        contingency_ids=contingency_ids,
     )
     updated_action_set = (
         dynamic_information.action_set

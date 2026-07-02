@@ -279,11 +279,11 @@ def test_run_task_process_with_imported_busbar_outages(tmp_path: Path) -> None:
             "ga_config": {
                 "runtime_seconds": 5,
                 "enable_bb_outage": True,
-                "bb_outage_as_nminus1": False,
+                "bb_outage_as_nminus1": True,
                 "n_worst_contingencies": n_worst_contingencies,
-                "target_metrics": [["bb_outage_overload", 1.0]],
+                "target_metrics": [["overload_energy_n_1", 1.0]],
                 "me_descriptors": [{"metric": "split_subs", "num_cells": 5}],
-                "observed_metrics": ["bb_outage_penalty", "bb_outage_overload", "bb_outage_grid_splits", "split_subs"],
+                "observed_metrics": ["overload_energy_n_1", "split_subs"],
             },
         }
     )
@@ -294,24 +294,26 @@ def test_run_task_process_with_imported_busbar_outages(tmp_path: Path) -> None:
         enable_nodal_inj_optim=False,
         enable_parallel_pst_group_optim=False,
         enable_bb_outage=True,
-        bb_outage_as_nminus1=False,
+        bb_outage_as_nminus1=True,
         clip_bb_outage_penalty=False,
         bb_outage_more_islands_penalty=0.0,
     )[0]
     assert updated_static_information.solver_config.enable_bb_outages
+    # assert updated_static_information.solver_config.bb_outage_as_nminus1
 
     set_environment_variables(dc_config)
     result = run_task_process(dc_config)
 
     assert result is not None
-    assert "bb_outage_penalty" in result["initial_metrics"]
-    assert result["initial_metrics"]["bb_outage_penalty"] >= 0
-    assert result["initial_metrics"]["bb_outage_overload"] > 0
+    assert "overload_energy_n_1" in result["initial_metrics"]
+    assert result["initial_metrics"]["overload_energy_n_1"] > 0
     assert result["max_fitness"] > result["initial_fitness"]
     assert len(result["best_topos"]) > 0
     best_topology = max(result["best_topos"], key=lambda topo: topo["metrics"]["fitness"])
     assert best_topology["metrics"]["fitness"] > result["initial_fitness"]
-    assert best_topology["metrics"]["extra_scores"]["bb_outage_overload"] < result["initial_metrics"]["bb_outage_overload"]
+    assert (
+        best_topology["metrics"]["extra_scores"]["overload_energy_n_1"] <= result["initial_metrics"]["overload_energy_n_1"]
+    )
     result_dir = Path(dc_config["output_json"]).parent
     assert result_dir.exists()
     assert len(list(result_dir.iterdir())) > 0

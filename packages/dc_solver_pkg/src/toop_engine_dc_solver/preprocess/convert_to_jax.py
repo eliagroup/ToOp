@@ -458,7 +458,15 @@ def convert_rel_bb_outage_data(  # noqa: C901
 
     # Determine dimensions for padding of branch_outage_set
     n_actions = sum(actions_per_sub)  # Total number of combinations
-    n_max_bb_to_outage_per_sub = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    n_max_bb_slots_from_outages = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    n_max_bb_slots_from_articulation = max(
+        (
+            max((max(articulation_bbs, default=-1) + 1) for articulation_bbs in sub_articulation_nodes)
+            for sub_articulation_nodes in network_data.rel_bb_articulation_nodes
+        ),
+        default=0,
+    )
+    n_max_bb_to_outage_per_sub = max(n_max_bb_slots_from_outages, n_max_bb_slots_from_articulation)
     max_branches_per_sub = max(len(branches) for branches in network_data.branches_at_nodes)
 
     # Initialize the padded array with a sentinel value (int_max)

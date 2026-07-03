@@ -75,12 +75,23 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
     NetworkGraphData.
     """
     all_names_df = get_all_element_names(net, line_trafo_name_col="name")
-    branches_df = net.get_branches(attributes=["connected1", "connected2"])
-    injections_df = net.get_injections(attributes=["connected"])
+    branches_df = net.get_branches(attributes=["connected1", "connected2", "bus1_id", "bus2_id"])
+    injections_df = net.get_injections(attributes=["connected", "bus_id"])
+    buses_df = net.get_buses(attributes=["connected_component"])
+    in_main_connected_component = buses_df["connected_component"].fillna(0).eq(0)
+
     asset_in_service = pd.concat(
         [
-            (branches_df["connected1"].fillna(False) & branches_df["connected2"].fillna(False)).rename("in_service"),
-            injections_df["connected"].fillna(False).rename("in_service"),
+            (
+                branches_df["connected1"].fillna(False)
+                & branches_df["connected2"].fillna(False)
+                & branches_df["bus1_id"].map(in_main_connected_component).fillna(False)
+                & branches_df["bus2_id"].map(in_main_connected_component).fillna(False)
+            ).rename("in_service"),
+            (
+                injections_df["connected"].fillna(False)
+                & injections_df["bus_id"].map(in_main_connected_component).fillna(False)
+            ).rename("in_service"),
         ]
     )
     nbt = net.get_node_breaker_topology(substation_info.voltage_level_id)

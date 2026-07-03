@@ -114,6 +114,16 @@ def test_get_helper_branches(basic_node_breaker_network_powsybl_grid):
 def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
+    branches_df = net.get_branches(attributes=["connected1", "connected2"])
+    injections_df = net.get_injections(attributes=["connected"])
+    asset_in_service = pd.concat(
+        [
+            (branches_df["connected1"].fillna(False) & branches_df["connected2"].fillna(False)).rename("in_service"),
+            injections_df["connected"].fillna(False).rename("in_service"),
+        ]
+    )
+    asset_in_service.loc["L1"] = False
+    asset_in_service.loc["generator1"] = False
     names_dict = {
         "L1": "",
         "L2": "",
@@ -143,8 +153,11 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
         switches_df=switches_df,
         substation_info=substation_information,
     )
-    node_assets_df = get_node_assets(nodes_df=nodes_df, all_names_df=all_names_df)
-    node_assets_df["in_service"] = True
+    node_assets_df = get_node_assets(nodes_df=nodes_df, all_names_df=all_names_df, asset_in_service=asset_in_service)
+
+    assert not node_assets_df.loc[node_assets_df["grid_model_id"] == "L1", "in_service"].item()
+    assert not node_assets_df.loc[node_assets_df["grid_model_id"] == "generator1", "in_service"].item()
+    assert node_assets_df.loc[node_assets_df["grid_model_id"] == "L2", "in_service"].item()
     NodeAssetSchema.validate(node_assets_df)
 
 

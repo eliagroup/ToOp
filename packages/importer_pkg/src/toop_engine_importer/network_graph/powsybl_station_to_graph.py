@@ -75,6 +75,14 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
     NetworkGraphData.
     """
     all_names_df = get_all_element_names(net, line_trafo_name_col="name")
+    branches_df = net.get_branches(attributes=["connected1", "connected2"])
+    injections_df = net.get_injections(attributes=["connected"])
+    asset_in_service = pd.concat(
+        [
+            (branches_df["connected1"].fillna(False) & branches_df["connected2"].fillna(False)).rename("in_service"),
+            injections_df["connected"].fillna(False).rename("in_service"),
+        ]
+    )
     nbt = net.get_node_breaker_topology(substation_info.voltage_level_id)
 
     switches_df = get_switches(switches_df=nbt.switches)
@@ -86,7 +94,11 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
         substation_info=substation_info,
     )
     helper_branches = get_helper_branches(internal_connections_df=nbt.internal_connections)
-    node_assets_df = get_node_assets(nodes_df=nodes_df, all_names_df=all_names_df)
+    node_assets_df = get_node_assets(
+        nodes_df=nodes_df,
+        all_names_df=all_names_df,
+        asset_in_service=asset_in_service,
+    )
 
     graph_data = NetworkGraphData(
         nodes=nodes_df,
@@ -232,7 +244,11 @@ def get_helper_branches(internal_connections_df: pd.DataFrame) -> pat.DataFrame[
     return helper_branches
 
 
-def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.Series) -> pat.DataFrame[NodeAssetSchema]:
+def get_node_assets(
+    nodes_df: pd.DataFrame,
+    all_names_df: pd.Series,
+    asset_in_service: pd.Series,
+) -> pat.DataFrame[NodeAssetSchema]:
     """Get node assets from a node breaker topology.
 
     Get the node assets from a node breaker topology, rename and retype for the NetworkGraph.
@@ -243,6 +259,8 @@ def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.Series) -> pat.Data
         The nodes DataFrame from the node NodeBreakerTopology.
     all_names_df : pd.Series
         The names of all elements in the network.
+    asset_in_service : pd.Series
+        Boolean service state by connectable id derived from the Powsybl network model.
 
     Returns
     -------
@@ -260,8 +278,7 @@ def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.Series) -> pat.Data
     node_assets_df.rename(columns={"connectable_type": "asset_type", "name": "foreign_id"}, inplace=True)
     node_assets_df.fillna({"foreign_id": ""}, inplace=True)
     node_assets_df = node_assets_df[["grid_model_id", "foreign_id", "node", "asset_type"]]
-    # TODO: might need to be changed once there is more information about the in_service state
-    node_assets_df["in_service"] = True
+    node_assets_df["in_service"] = node_assets_df["grid_model_id"].map(asset_in_service).fillna(True).astype(bool)
     return node_assets_df
 
 

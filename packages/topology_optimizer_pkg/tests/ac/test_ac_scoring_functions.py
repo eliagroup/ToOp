@@ -86,7 +86,7 @@ def test_score_strategy_worst_k_batch_parallelizes(monkeypatch: pytest.MonkeyPat
         reject_critical_va_diff_threshold=1.1,
         enable_critical_voltage_rejection=True,
         critical_voltage_jump_percent=5.0,
-        max_allowed_va_diff=0.0,
+        critical_va_diff_degree=0.0,
         base_case_id=None,
         early_stop_validation=True,
     )
@@ -176,7 +176,7 @@ def test_score_strategy_remaining_batch_chunks_survivors(monkeypatch: pytest.Mon
         reject_critical_va_diff_threshold=1.1,
         enable_critical_voltage_rejection=True,
         critical_voltage_jump_percent=5.0,
-        max_allowed_va_diff=0.0,
+        critical_va_diff_degree=0.0,
         base_case_id=None,
         early_stop_validation=True,
     )
@@ -252,7 +252,7 @@ def test_score_strategy_batch_without_early_results_uses_full_evaluation(monkeyp
         reject_critical_va_diff_threshold=1.1,
         enable_critical_voltage_rejection=True,
         critical_voltage_jump_percent=5.0,
-        max_allowed_va_diff=0.0,
+        critical_va_diff_degree=0.0,
         base_case_id=None,
         early_stop_validation=True,
     )
@@ -356,10 +356,9 @@ def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monk
             "voltage_jump_count_n_1": 3.0,
         }
 
-    def fake_count_voltage_jumps(node_results, base_case_id, jump_threshold_percent):
+    def fake_count_voltage_jumps(node_results, critical_voltage_jump_threshold):
         del node_results
-        assert base_case_id == "BASECASE"
-        assert jump_threshold_percent == 7.5
+        assert critical_voltage_jump_threshold == 7.5
         return 4
 
     monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.compute_metrics_lfs", fake_compute_metrics_lfs)
@@ -372,7 +371,7 @@ def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monk
         additional_info=None,
         base_case_id="BASECASE",
         critical_voltage_jump_percent=7.5,
-        max_allowed_va_diff=12.0,
+        critical_va_diff_degree=12.0,
     )
 
     assert metrics.extra_scores["voltage_jump_count_n_1"] == 4.0
@@ -773,7 +772,7 @@ def test_score_strategy_full_forwards_thresholds_and_toggle(monkeypatch: pytest.
         reject_critical_va_diff_threshold=0.85,
         enable_critical_voltage_rejection=True,
         critical_voltage_jump_percent=7.5,
-        max_allowed_va_diff=12.0,
+        critical_va_diff_degree=12.0,
         base_case_id="BASECASE",
         early_stop_validation=False,
     )
@@ -783,7 +782,7 @@ def test_score_strategy_full_forwards_thresholds_and_toggle(monkeypatch: pytest.
 
     def fake_compute_loadflow_and_metrics(**kwargs):
         assert kwargs["critical_voltage_jump_percent"] == 7.5
-        assert kwargs["max_allowed_va_diff"] == 12.0
+        assert kwargs["critical_va_diff_degree"] == 12.0
         return Mock(spec=LoadflowResultsPolars), None, split_metrics
 
     def fake_evaluate_acceptance(**kwargs):

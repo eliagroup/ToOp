@@ -881,25 +881,43 @@ def get_node_results(
     node_results.rename(columns={"v_mag": "vm", "v_angle": "va"}, inplace=True)
 
     # Calculate the values
+    # Basecase id is empty string, because the basecase is not a contingency in powsybl
+    # The variable is used in the query below
+    basecase_contingency_id = ""  # noqa: F841
 
     if method == "dc":
         has_va = node_results["va"].notna().values
         node_results.loc[has_va, "vm"] = node_results.loc[has_va, "nominal_v"]
+    basecase_vm = (
+        node_results.reset_index()[["timestep", "contingency", "element", "vm"]]
+        .query("contingency == @basecase_contingency_id")
+        .drop_duplicates(subset=["timestep", "element"])
+        .rename(columns={"vm": "vm_basecase"})[["timestep", "element", "vm_basecase"]]
+    )
+    node_results = (
+        node_results.reset_index()
+        .merge(basecase_vm, on=["timestep", "element"], how="left")
+        .set_index(["timestep", "contingency", "element"])
+    )
     vm_deviation = node_results["vm"].values - node_results["nominal_v"].values
     deviation_to_max = vm_deviation / (node_results["high_voltage_limit"].values - node_results["nominal_v"].values)
     deviation_to_min = vm_deviation / (node_results["nominal_v"].values - node_results["low_voltage_limit"].values)
     higher_voltage = vm_deviation > 0
     node_results.loc[higher_voltage, "vm_loading"] = deviation_to_max[higher_voltage]
     node_results.loc[~higher_voltage, "vm_loading"] = deviation_to_min[~higher_voltage]
+    node_results["vm_basecase_deviation"] = (
+        (node_results["vm"] - node_results["vm_basecase"]).abs() / node_results["vm_basecase"].replace(0, np.nan).abs()
+    ) * 100.0
     # TODO Add sum of p and q at the node
     failed_node_results = get_failed_node_results(timestep, failed_outages, monitored_buses)
 
-    all_node_results = pd.concat([node_results, failed_node_results], axis=0)[["vm", "va", "vm_loading"]]
+    all_node_results = pd.concat([node_results, failed_node_results], axis=0)[
+        ["vm", "va", "vm_loading", "vm_basecase_deviation"]
+    ]
 
     # set empty dataframe columns to NaN
     all_node_results["p"] = np.nan
     all_node_results["q"] = np.nan
-    all_node_results["vm_basecase_deviation"] = np.nan
     all_node_results["element_name"] = ""
     all_node_results["contingency_name"] = ""
 

@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Kafka worker for the genetic algorithm optimization."""
+"""Standalone Kafka worker for DC bruteforce optimization."""
 
 import time
 from functools import partial
@@ -20,11 +20,13 @@ from pydantic import BaseModel
 from toop_engine_contingency_analysis.ac_loadflow_service.kafka_client import LongRunningKafkaConsumer
 from toop_engine_interfaces.messages.protobuf_message_factory import serialize_message
 from toop_engine_topology_optimizer.dc.worker.idle_loop import idle_loop
-from toop_engine_topology_optimizer.dc.worker.optimizer import (
+from toop_engine_topology_optimizer.dc_bruteforce.optimizer import (
     OptimizerData,
     convert_topologies_to_messages,
     extract_topologies,
+    get_num_branch_topologies_tried,
     initialize_optimization,
+    is_exhausted,
     run_epoch,
 )
 from toop_engine_topology_optimizer.interfaces.messages.commons import GridFile, OptimizerType
@@ -46,7 +48,7 @@ logger = structlog.get_logger(__name__)
 
 
 class Args(BaseModel):
-    """Launch arguments for the worker, which can not be changed during the optimization run."""
+    """Launch arguments for the standalone bruteforce worker."""
 
     kafka_broker: str = "localhost:9092"
     """The Kafka broker to connect to."""
@@ -64,26 +66,25 @@ class Args(BaseModel):
     """The interval in milliseconds to send heartbeats."""
 
     max_command_age_hours: float = 3.0
-    """The maximum age of a command in hours. If a command is received that is older than this,
-    the command will be ignored."""
+    """The maximum age of a command in hours before it is ignored."""
 
 
 def push_topologies(optimizer_data: OptimizerData, epoch: int, send_result_fn: Callable[[ResultUnion], None]) -> int:
-    """Push topologies to the results topic.
+    """Push new bruteforce topologies to Kafka.
 
     Parameters
     ----------
     optimizer_data : OptimizerData
-        The data of the optimizer, containing the repertoire with topologies to push.
+        The optimizer state containing the latest improved topologies to emit.
     epoch : int
-        The current epoch, used for logging and to include in the messages.
+        The current epoch, used in the emitted result messages.
     send_result_fn : Callable[[ResultUnion], None]
-        A function to call to send results back to the results topic.
+        A function to call to queue results for the Kafka results topic.
 
     Returns
     -------
     int
-        The number of topologies pushed
+        The number of topology messages queued for emission.
     """
     with jax.default_device(jax.devices("cpu")[0]):
         push_results = convert_topologies_to_messages(extract_topologies(optimizer_data), epoch)
@@ -101,106 +102,84 @@ def optimization_loop(
     optimization_id: str,
     processed_gridfile_fs: AbstractFileSystem,
 ) -> None:
-    """Run an optimization until the optimization has converged
+    """Run the standalone bruteforce optimization loop.
 
     Parameters
     ----------
     dc_params : DCOptimizerParameters
-        The parameters for the optimization run, usually from the start command
+        Parameters controlling the bruteforce optimization run.
     grid_files : list[GridFile]
-        The grid files to load, where each gridfile represents one timestep.
+        Grid files to load, where each file represents one timestep.
     send_result_fn : Callable[[ResultUnion], None]
-        A function to queue results for the results topic. This callback is not expected to flush and will be called
-        multiple times in every epoch, for every topology discovered. After all topologies have been sent, the
-        flush_result_fn will be called to flush the results to Kafka.
+        A function to queue results for the results topic. This callback is not expected to flush and may be called
+        multiple times within a single epoch.
     flush_result_fn : Callable[[], None]
         A function to flush queued results to Kafka after one or more calls to ``send_result_fn``.
     send_heartbeat_fn : Callable[[HeartbeatUnion], None]
         A function to call after every epoch to signal that the worker is still alive.
     optimization_id : str
-        The id of the optimization run. This will be used to identify the optimization run in the
-        results. Should stay the same for the whole optimization run and should be equal to the kafka
-        event key.
-    processed_gridfile_fs: AbstractFileSystem
-        The target filesystem for the preprocessing worker. This contains all processed grid files.
-        During the import job,  a new folder import_results.data_folder was created
-        which will be completed with the preprocess call to this function.
-        Internally, only the data folder is passed around as a dirfs.
-        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
-        unprocessed gridfiles were already done.
-
-    Raises
-    ------
-    SystemExit
-        If a ShutdownCommand is received
+        Identifier of the optimization run. This value is propagated into emitted results.
+    processed_gridfile_fs : AbstractFileSystem
+        Filesystem containing the preprocessed grid data for all timesteps.
     """
-    logger.info(f"Initializing DC optimization {optimization_id}")
+    logger.info(f"Initializing DC bruteforce optimization {optimization_id}")
 
     try:
-        send_heartbeat_fn(
-            OptimizationStartedHeartbeat(
-                optimization_id=optimization_id,
-            )
-        )
+        send_heartbeat_fn(OptimizationStartedHeartbeat(optimization_id=optimization_id))
         optimizer_data, stats, initial_strategy = initialize_optimization(
             params=dc_params,
             optimization_id=optimization_id,
-            static_information_files=tuple([gf.static_information_file for gf in grid_files]),
+            static_information_files=tuple(gf.static_information_file for gf in grid_files),
             processed_gridfile_fs=processed_gridfile_fs,
         )
-        send_result_fn(
-            OptimizationStartedResult(
-                initial_topology=initial_strategy,
-                initial_stats=stats,
-            )
-        )
+        send_result_fn(OptimizationStartedResult(initial_topology=initial_strategy, initial_stats=stats))
         flush_result_fn()
-
-    except Exception as e:
-        send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
+    except Exception as exc:
+        send_result_fn(OptimizationStoppedResult(reason="error", message=str(exc)))
         flush_result_fn()
-        logger.error(f"Error during initialization of optimization {optimization_id}: {e}")
+        logger.error(f"Error during bruteforce initialization {optimization_id}: {exc}")
         return
 
-    logger.info(f"Starting optimization {optimization_id}")
     epoch = 1
-    running = True
     start_time = time.time()
-    while running:
+    while True:
         try:
             optimizer_data = run_epoch(optimizer_data)
             n_pushes = push_topologies(optimizer_data, epoch, send_result_fn)
             if n_pushes > 0:
                 flush_result_fn()
             logger.info(
-                f"Sent {n_pushes} strategies to results topic,"
-                f" best repofitness: {optimizer_data.jax_data.repertoire.fitnesses.max().item()}, epoch: {epoch}"
+                f"Sent {n_pushes} bruteforce strategies to results topic,"
+                f" best fitness: {optimizer_data.runtime_state.best_fitness}, epoch: {epoch}"
+                f" progress: {get_num_branch_topologies_tried(optimizer_data)} "
+                f"/ {optimizer_data.runtime_state.total_workset_size}"
             )
-        except Exception as e:
-            # Send a stop message to the results
-            send_result_fn(OptimizationStoppedResult(reason="error", message=str(e)))
+        except Exception as exc:
+            send_result_fn(OptimizationStoppedResult(reason="error", message=str(exc)))
             flush_result_fn()
-
-            logger.error(f"Error during optimization {optimization_id}, epoch {epoch}: {e}")
+            logger.error(f"Error during bruteforce optimization {optimization_id}, epoch {epoch}: {exc}")
             return
-        epoch += 1
 
+        epoch += 1
         send_heartbeat_fn(
             OptimizationStatsHeartbeat(
                 optimization_id=optimization_id,
                 wall_time=time.time() - start_time,
                 iteration=epoch,
-                num_branch_topologies_tried=optimizer_data.jax_data.emitter_state.total_branch_combis.sum().item(),
-                num_injection_topologies_tried=optimizer_data.jax_data.emitter_state.total_inj_combis.sum().item(),
+                num_branch_topologies_tried=get_num_branch_topologies_tried(optimizer_data),
+                num_injection_topologies_tried=get_num_branch_topologies_tried(optimizer_data),
             )
         )
 
+        if is_exhausted(optimizer_data):
+            send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="workset exhausted"))
+            flush_result_fn()
+            return
+
         if time.time() - start_time > dc_params.ga_config.runtime_seconds:
-            logger.info(f"Stopping optimization {optimization_id} at epoch {epoch} due to runtime limit")
             send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
             flush_result_fn()
-            running = False
-            break
+            return
 
 
 def main(
@@ -209,36 +188,25 @@ def main(
     producer: Producer,
     command_consumer: LongRunningKafkaConsumer,
 ) -> None:
-    """Run the main DC worker loop.
+    """Run the standalone bruteforce worker loop.
 
     Parameters
     ----------
     args : Args
-        The command line arguments
-    processed_gridfile_fs: AbstractFileSystem
-        The target filesystem for the preprocessing worker. This contains all processed grid files.
-        During the import job,  a new folder import_results.data_folder was created
-        which will be completed with the preprocess call to this function.
-        Internally, only the data folder is passed around as a dirfs.
-        Note that the unprocessed_gridfile_fs is not needed here anymore, as all preprocessing steps that need the
-        unprocessed gridfiles were already done.
+        Worker launch arguments.
+    processed_gridfile_fs : AbstractFileSystem
+        Filesystem containing the preprocessed grid data.
     producer : Producer
-        The Kafka producer to send results and heartbeats with.
+        Kafka producer used to send heartbeats and results.
     command_consumer : LongRunningKafkaConsumer
-        The Kafka consumer to receive commands with.
-
-    Raises
-    ------
-    SystemExit
-        If the worker receives a ShutdownCommand
+        Kafka consumer used to receive optimization commands.
     """
     instance_id = str(uuid4())
-    logger.info(f"Starting DC worker {instance_id} with config {args}")
+    logger.info(f"Starting DC bruteforce worker {instance_id} with config {args}")
     jax.config.update("jax_enable_x64", True)
     jax.config.update("jax_logging_level", "INFO")
 
     def send_heartbeat(message: HeartbeatUnion, ping_consumer: bool) -> None:
-        logger.debug(f"Sending heartbeat: {message}", message_type=type(message).__name__)
         heartbeat = Heartbeat(
             optimizer_type=OptimizerType.DC,
             instance_id=instance_id,
@@ -254,11 +222,6 @@ def main(
             command_consumer.heartbeat()
 
     def send_result(message: ResultUnion, optimization_id: str) -> None:
-        logger.info(
-            f"Sending result for optimization {optimization_id}: {message}",
-            optimization_id=optimization_id,
-            result_type=type(message).__name__,
-        )
         result = Result(
             result=message,
             optimization_id=optimization_id,
@@ -275,6 +238,9 @@ def main(
         send_result(message=message, optimization_id=optimization_id)
         producer.flush()
 
+    def flush_results() -> None:
+        producer.flush()
+
     while True:
         command = idle_loop(
             consumer=command_consumer,
@@ -283,13 +249,12 @@ def main(
             heartbeat_interval_ms=args.heartbeat_interval_ms,
             max_command_age_hours=args.max_command_age_hours,
         )
-
         command_consumer.start_processing()
         optimization_loop(
             dc_params=command.dc_params,
             grid_files=command.grid_files,
             send_result_fn=partial(send_result, optimization_id=command.optimization_id),
-            flush_result_fn=producer.flush,
+            flush_result_fn=flush_results,
             send_heartbeat_fn=partial(send_heartbeat, ping_consumer=True),
             optimization_id=command.optimization_id,
             processed_gridfile_fs=processed_gridfile_fs,

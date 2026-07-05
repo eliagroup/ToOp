@@ -46,7 +46,6 @@ from toop_engine_topology_optimizer.dc_bruteforce.generator import (
 )
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import DCOptimizerParameters
 from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, Strategy, Topology, TopologyPushResult
-from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_strategy
 
 
 @dataclass
@@ -96,9 +95,6 @@ class OptimizerData:
 
     start_time: float
     """Wall-clock timestamp when the bruteforce run started."""
-
-    sent_topologies: set[bytes]
-    """Hashes of topologies already emitted to avoid duplicate result messages."""
 
     latest_topologies: list[Topology] = field(default_factory=list)
     """Improved topologies produced by the most recent epoch."""
@@ -166,7 +162,6 @@ def initialize_optimization(
             initial_metrics=initial_metrics,
             runtime_state=runtime_state,
             start_time=time.time(),
-            sent_topologies=set(),
         ),
         static_information_descriptions,
         initial_strategy,
@@ -303,30 +298,6 @@ def _get_topologies_per_epoch(params: DCOptimizerParameters) -> int:
         Number of topologies evaluated in a single bruteforce epoch.
     """
     return params.ga_config.iterations_per_epoch * params.loadflow_solver_config.batch_size
-
-
-def extract_topologies(optimizer_data: OptimizerData) -> list[Topology]:
-    """Return deduplicated topologies discovered in the latest epoch.
-
-    Parameters
-    ----------
-    optimizer_data : OptimizerData
-        Current state of the bruteforce optimization.
-
-    Returns
-    -------
-    list[Topology]
-        Newly discovered topologies that have not yet been emitted.
-    """
-    new_topologies = []
-    new_hashes = []
-    for topology in optimizer_data.latest_topologies:
-        topology_hash = hash_strategy(Strategy(timesteps=[topology]))
-        if topology_hash not in optimizer_data.sent_topologies:
-            new_topologies.append(topology)
-            new_hashes.append(topology_hash)
-    optimizer_data.sent_topologies.update(new_hashes)
-    return new_topologies
 
 
 def convert_topologies_to_messages(topologies: list[Topology], epoch: int) -> list[TopologyPushResult]:

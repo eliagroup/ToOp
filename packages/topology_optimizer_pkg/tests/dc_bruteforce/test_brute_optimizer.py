@@ -14,7 +14,6 @@ from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions impor
 from toop_engine_topology_optimizer.dc_bruteforce.optimizer import (
     OptimizerData,
     convert_topologies_to_messages,
-    extract_topologies,
     get_num_branch_topologies_tried,
     initialize_optimization,
     is_exhausted,
@@ -80,7 +79,7 @@ def test_initialize_and_run_epoch(grid_folder: str) -> None:
         topologies_per_epoch, optimizer_data.runtime_state.total_workset_size
     )
 
-    topologies = extract_topologies(optimizer_data)
+    topologies = optimizer_data.latest_topologies
     assert isinstance(topologies, list)
     if topologies:
         assert isinstance(topologies[0], Topology)
@@ -91,7 +90,6 @@ def test_initialize_and_run_epoch(grid_folder: str) -> None:
         assert isinstance(messages[0].strategy, Strategy)
         assert len(messages[0].strategy.timesteps) == 1
 
-    assert extract_topologies(optimizer_data) == []
     assert is_exhausted(optimizer_data) is (optimizer_data.runtime_state.total_workset_size <= topologies_per_epoch)
 
 

@@ -23,7 +23,6 @@ from toop_engine_topology_optimizer.dc.worker.idle_loop import idle_loop
 from toop_engine_topology_optimizer.dc_bruteforce.optimizer import (
     OptimizerData,
     convert_topologies_to_messages,
-    extract_topologies,
     get_num_branch_topologies_tried,
     initialize_optimization,
     is_exhausted,
@@ -87,7 +86,7 @@ def push_topologies(optimizer_data: OptimizerData, epoch: int, send_result_fn: C
         The number of topology messages queued for emission.
     """
     with jax.default_device(jax.devices("cpu")[0]):
-        push_results = convert_topologies_to_messages(extract_topologies(optimizer_data), epoch)
+        push_results = convert_topologies_to_messages(optimizer_data.latest_topologies, epoch)
         for push_result in push_results:
             send_result_fn(push_result)
         return len(push_results)
@@ -134,6 +133,7 @@ def optimization_loop(
         )
         send_result_fn(OptimizationStartedResult(initial_topology=initial_strategy, initial_stats=stats))
         flush_result_fn()
+        logger.info(f"Starting optimization with initial fitness {initial_strategy.timesteps[0].metrics.fitness}")
     except Exception as exc:
         send_result_fn(OptimizationStoppedResult(reason="error", message=str(exc)))
         flush_result_fn()

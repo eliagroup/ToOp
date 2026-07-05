@@ -9,28 +9,35 @@
 
 import time
 from dataclasses import dataclass, field
-from functools import partial
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-from beartype.typing import Any, Callable, Iterator, Sequence
+from beartype.typing import Any, Iterator, Sequence
 from fsspec import AbstractFileSystem
 from jax_dataclasses import replace
-from jaxtyping import Array, ArrayLike, Float, Int, PRNGKeyArray
-from qdax.core.emitters.standard_emitters import ExtraScores
+from jaxtyping import Array, ArrayLike, Float, Int
 from toop_engine_dc_solver.jax.inputs import load_static_information_fs
-from toop_engine_dc_solver.jax.types import DynamicInformation, SolverConfig, StaticInformation, int_max
+from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
+from toop_engine_dc_solver.jax.types import (
+    ActionIndexComputations,
+    DynamicInformation,
+    SolverConfig,
+    SolverLoadflowResults,
+    StaticInformation,
+    int_max,
+)
 from toop_engine_dc_solver.preprocess.convert_to_jax import StaticInformationStats, extract_static_information_stats
 from toop_engine_interfaces.types import MetricType
-from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     update_max_mw_flows_according_to_double_limits,
     update_static_information,
     verify_static_information,
 )
-from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import scoring_function
+from toop_engine_topology_optimizer.dc.genetic_functions.scoring_functions import (
+    get_aggregate_metrics,
+)
 from toop_engine_topology_optimizer.dc_bruteforce.generator import (
     WorksetEntry,
     count_workset_size,
@@ -41,31 +48,16 @@ from toop_engine_topology_optimizer.interfaces.messages.dc_params import DCOptim
 from toop_engine_topology_optimizer.interfaces.messages.results import Metrics, Strategy, Topology, TopologyPushResult
 from toop_engine_topology_optimizer.interfaces.models.base_storage import hash_strategy
 
-ScoreChunkFn = Callable[
-    [Genotype, PRNGKeyArray],
-    tuple[
-        Float[Array, " batch_size"],
-        Int[Array, " batch_size n_dims"],
-        dict[str, Any],
-        ExtraScores,
-        PRNGKeyArray,
-        Genotype,
-    ],
-]
-
 
 @dataclass
 class BruteforceRuntimeState:
     """State kept across bruteforce epochs."""
 
-    dynamic_informations: tuple[DynamicInformation, ...]
-    """Dynamic solver inputs for each timestep."""
+    dynamic_information: DynamicInformation
+    """Dynamic solver inputs for the single supported timestep."""
 
-    solver_configs: tuple[SolverConfig, ...]
-    """Static solver configuration for each timestep."""
-
-    score_chunk_fn: ScoreChunkFn
-    """Jitted scoring function that evaluates a chunk of bruteforce candidates."""
+    solver_config: SolverConfig
+    """Static solver configuration for the single supported timestep."""
 
     workset: Iterator[WorksetEntry]
     """Lazy iterator over the remaining bruteforce candidates."""
@@ -138,21 +130,20 @@ def initialize_optimization(
         strategy.
     """
     topologies_per_epoch = _get_topologies_per_epoch(params)
+    solver_batch_size = params.loadflow_solver_config.batch_size
 
-    static_informations = _load_and_prepare_static_informations(
+    static_information = _load_and_prepare_static_informations(
         params=params,
         static_information_files=static_information_files,
         processed_gridfile_fs=processed_gridfile_fs,
-        batch_size=topologies_per_epoch,
+        batch_size=solver_batch_size,
     )
-    _validate_bruteforce_inputs(params, topologies_per_epoch, static_informations[0].dynamic_information)
+    _validate_bruteforce_inputs(params, topologies_per_epoch, static_information.dynamic_information)
     runtime_state, initial_fitness, initial_metrics, initial_case_ids = _initialize_runtime_state(
         params=params,
-        static_informations=static_informations,
-        topologies_per_epoch=topologies_per_epoch,
+        static_information=static_information,
     )
     initial_strategy = build_initial_strategy(
-        n_timesteps=len(runtime_state.dynamic_informations),
         fitness=initial_fitness,
         initial_metrics=initial_metrics,
         initial_case_ids=initial_case_ids,
@@ -165,7 +156,6 @@ def initialize_optimization(
             overload_n1=initial_metrics.get("overload_energy_n_1", 0.0),
             time="",
         )
-        for static_information in static_informations
     ]
 
     return (
@@ -184,7 +174,6 @@ def initialize_optimization(
 
 
 def build_initial_strategy(
-    n_timesteps: int,
     fitness: float,
     initial_metrics: dict[MetricType, float],
     initial_case_ids: list[str],
@@ -193,8 +182,6 @@ def build_initial_strategy(
 
     Parameters
     ----------
-    n_timesteps : int
-        Number of timesteps for which the initial strategy must be emitted.
     fitness : float
         Fitness of the unsplit baseline topology.
     initial_metrics : dict[MetricType, float]
@@ -220,7 +207,6 @@ def build_initial_strategy(
                 pst_setpoints=None,
                 metrics=metrics,
             )
-            for _ in range(n_timesteps)
         ]
     )
 
@@ -253,26 +239,34 @@ def run_epoch(optimizer_data: OptimizerData) -> OptimizerData:
 
     max_num_splits = optimizer_data.start_params.loadflow_solver_config.max_num_splits
     max_num_disconnections = optimizer_data.start_params.loadflow_solver_config.max_num_disconnections
-
-    genotype = _chunk_to_genotype(
+    evaluated_count = len(chunk)
+    topology_chunk, disconnection_chunk = _chunk_to_topologies(
         chunk=chunk,
-        batch_size=topologies_per_epoch,
+        chunk_size=topologies_per_epoch,
         max_num_splits=max_num_splits,
         max_num_disconnections=max_num_disconnections,
     )
-    fitness, _descriptors, metrics, _emitter_info, _unused_random_key, scored_genotypes = runtime_state.score_chunk_fn(
-        genotype, jax.random.PRNGKey(0)
+
+    fitness, metrics = _score_chunk(
+        topology_chunk=topology_chunk,
+        disconnection_chunk=disconnection_chunk,
+        evaluated_count=evaluated_count,
+        dynamic_information=runtime_state.dynamic_information,
+        solver_config=runtime_state.solver_config,
+        target_metrics=optimizer_data.start_params.ga_config.target_metrics,
+        observed_metrics=optimizer_data.start_params.ga_config.observed_metrics,
+        n_worst_contingencies=optimizer_data.start_params.ga_config.n_worst_contingencies,
     )
 
-    evaluated_count = len(chunk)
     evaluated_fitness = np.asarray(fitness[:evaluated_count])
     improved_indices = np.flatnonzero(np.isfinite(evaluated_fitness) & (evaluated_fitness > optimizer_data.initial_fitness))
-    topologies = _convert_improved_topologies(
-        genotypes=scored_genotypes,
+    topologies_out = _convert_improved_topologies(
+        topology_actions=topology_chunk.action,
+        disconnection_chunk=disconnection_chunk,
         fitness=evaluated_fitness,
-        metrics=metrics,
+        metrics={metric_name: np.asarray(metric_values[:evaluated_count]) for metric_name, metric_values in metrics.items()},
         observed_metrics=optimizer_data.start_params.ga_config.observed_metrics,
-        contingency_ids=list(runtime_state.solver_configs[0].contingency_ids),
+        contingency_ids=list(runtime_state.solver_config.contingency_ids),
         survivor_indices=improved_indices,
     )
 
@@ -281,15 +275,17 @@ def run_epoch(optimizer_data: OptimizerData) -> OptimizerData:
     if finite_fitness.size > 0:
         best_fitness = max(best_fitness, float(finite_fitness.max()))
 
+    exhausted = evaluated_count < topologies_per_epoch
+
     return replace(
         optimizer_data,
         runtime_state=replace(
             runtime_state,
             total_branch_topologies_tried=runtime_state.total_branch_topologies_tried + evaluated_count,
-            exhausted=evaluated_count < topologies_per_epoch,
+            exhausted=exhausted,
             best_fitness=best_fitness,
         ),
-        latest_topologies=topologies,
+        latest_topologies=topologies_out,
     )
 
 
@@ -428,15 +424,15 @@ def _load_and_prepare_static_informations(
     static_information_files: Sequence[str | Path],
     processed_gridfile_fs: AbstractFileSystem,
     batch_size: int,
-) -> tuple[StaticInformation, ...]:
-    """Load and preprocess static information for bruteforce execution.
+) -> StaticInformation:
+    """Load and preprocess the single static information used by bruteforce.
 
     Parameters
     ----------
     params : DCOptimizerParameters
         Optimization parameters controlling preprocessing options.
     static_information_files : Sequence[str | Path]
-        Paths to the static-information files for all timesteps.
+        Paths to the preprocessed static-information files. Bruteforce supports exactly one.
     processed_gridfile_fs : AbstractFileSystem
         Filesystem containing the preprocessed grid data.
     batch_size : int
@@ -444,21 +440,24 @@ def _load_and_prepare_static_informations(
 
     Returns
     -------
-    tuple[StaticInformation, ...]
-        Prepared static-information objects for all timesteps.
+    StaticInformation
+        Prepared static-information object for the single supported timestep.
     """
-    static_informations = tuple(
-        load_static_information_fs(filesystem=processed_gridfile_fs, filename=str(filename))
-        for filename in static_information_files
+    assert len(static_information_files) == 1, "Bruteforce optimizer supports exactly one static information file."
+    static_information = load_static_information_fs(
+        filesystem=processed_gridfile_fs,
+        filename=str(static_information_files[0]),
     )
+    assert static_information.dynamic_information.n_timesteps == 1, "Bruteforce optimizer supports exactly one timestep."
+
     verify_static_information(
-        static_informations,
+        (static_information,),
         params.loadflow_solver_config.max_num_disconnections,
         enable_nodal_inj_optim=False,
         enable_parallel_pst_group_optim=False,
     )
-    static_informations = update_static_information(
-        static_informations,
+    static_information = update_static_information(
+        (static_information,),
         batch_size=batch_size,
         enable_nodal_inj_optim=False,
         enable_parallel_pst_group_optim=False,
@@ -466,27 +465,23 @@ def _load_and_prepare_static_informations(
         bb_outage_as_nminus1=params.ga_config.bb_outage_as_nminus1,
         clip_bb_outage_penalty=params.ga_config.clip_bb_outage_penalty,
         bb_outage_more_islands_penalty=params.ga_config.bb_outage_more_islands_penalty,
-    )
+    )[0]
 
     if params.double_limits is not None:
-        dynamic_infos = update_max_mw_flows_according_to_double_limits(
-            dynamic_informations=tuple(static_information.dynamic_information for static_information in static_informations),
-            solver_configs=tuple(static_information.solver_config for static_information in static_informations),
+        dynamic_information = update_max_mw_flows_according_to_double_limits(
+            dynamic_informations=(static_information.dynamic_information,),
+            solver_configs=(static_information.solver_config,),
             lower_limit=params.double_limits.lower,
             upper_limit=params.double_limits.upper,
-        )
-        static_informations = tuple(
-            replace(static_information, dynamic_information=dynamic_info)
-            for static_information, dynamic_info in zip(static_informations, dynamic_infos, strict=True)
-        )
+        )[0]
+        static_information = replace(static_information, dynamic_information=dynamic_information)
 
-    return static_informations
+    return static_information
 
 
 def _initialize_runtime_state(
     params: DCOptimizerParameters,
-    static_informations: tuple[StaticInformation, ...],
-    topologies_per_epoch: int,
+    static_information: StaticInformation,
 ) -> tuple[BruteforceRuntimeState, float, dict[MetricType, float], list[str]]:
     """Create the JAX scoring state and evaluate the unsplit baseline.
 
@@ -494,60 +489,54 @@ def _initialize_runtime_state(
     ----------
     params : DCOptimizerParameters
         Optimization parameters for the bruteforce run.
-    static_informations : tuple[StaticInformation, ...]
-        Prepared static-information objects for all timesteps.
-    topologies_per_epoch : int
-        Number of bruteforce candidates to evaluate per epoch.
+    static_information : StaticInformation
+        Prepared static-information object for the single supported timestep.
 
     Returns
     -------
     tuple[BruteforceRuntimeState, float, dict[MetricType, float], list[str]]
         Runtime state, baseline fitness, baseline metrics, and baseline worst contingency ids.
     """
-    dynamic_informations = tuple(static_information.dynamic_information for static_information in static_informations)
-    solver_configs = tuple(static_information.solver_config for static_information in static_informations)
-    action_set = dynamic_informations[0].action_set
+    dynamic_information = static_information.dynamic_information
+    solver_config = static_information.solver_config
+    action_set = dynamic_information.action_set
     assert action_set is not None, "Bruteforce optimization requires an action set."
 
     split_action_groups = tuple(
         tuple(range(int(start), int(start) + int(count)))
         for start, count in zip(action_set.action_start_indices.tolist(), action_set.n_actions_per_sub.tolist(), strict=True)
     )
-    n_disconnectable_branches = dynamic_informations[0].n_disconnectable_branches
+    n_disconnectable_branches = dynamic_information.n_disconnectable_branches
     max_num_splits = params.loadflow_solver_config.max_num_splits
     max_num_disconnections = params.loadflow_solver_config.max_num_disconnections
-    descriptor_metrics: tuple[MetricType, ...] = tuple(desc.metric for desc in params.ga_config.me_descriptors)
-    score_chunk_fn = jax.jit(
-        partial(
-            scoring_function,
-            dynamic_informations=dynamic_informations,
-            solver_configs=solver_configs,
-            target_metrics=params.ga_config.target_metrics,
-            observed_metrics=params.ga_config.observed_metrics,
-            descriptor_metrics=descriptor_metrics,
-            n_worst_contingencies=params.ga_config.n_worst_contingencies,
-        )
-    )
-
-    initial_genotype = _chunk_to_genotype(
+    solver_batch_size = params.loadflow_solver_config.batch_size
+    # Pad the initial topology to the size of one batch and run it through the scoring function
+    # Reusing chunking functions.
+    initial_topology_chunk, initial_disconnection_chunk = _chunk_to_topologies(
         chunk=[WorksetEntry(action_indices=(), disconnections=())],
-        batch_size=topologies_per_epoch,
+        chunk_size=solver_batch_size,
         max_num_splits=max_num_splits,
         max_num_disconnections=max_num_disconnections,
     )
-    fitness, _descriptors, metrics, _emitter_info, _unused_random_key, _ = score_chunk_fn(
-        initial_genotype, jax.random.PRNGKey(0)
+    fitness, metrics = _score_chunk(
+        topology_chunk=initial_topology_chunk,
+        disconnection_chunk=initial_disconnection_chunk,
+        evaluated_count=1,
+        dynamic_information=dynamic_information,
+        solver_config=solver_config,
+        target_metrics=params.ga_config.target_metrics,
+        observed_metrics=params.ga_config.observed_metrics,
+        n_worst_contingencies=params.ga_config.n_worst_contingencies,
     )
     initial_fitness = float(np.asarray(fitness[0]).item())
     initial_metrics: dict[MetricType, float] = {
         metric_name: float(np.asarray(metrics[metric_name][0]).item()) for metric_name in params.ga_config.observed_metrics
     }
-    initial_case_ids = _case_ids_from_metric(metrics["case_indices"][0], solver_configs[0].contingency_ids)
+    initial_case_ids = _case_ids_from_metric(metrics["case_indices"][0], solver_config.contingency_ids)
 
     runtime_state = BruteforceRuntimeState(
-        dynamic_informations=dynamic_informations,
-        solver_configs=solver_configs,
-        score_chunk_fn=score_chunk_fn,
+        dynamic_information=dynamic_information,
+        solver_config=solver_config,
         workset=iter_workset(
             action_start_indices=action_set.action_start_indices.tolist(),
             n_actions_per_sub=action_set.n_actions_per_sub.tolist(),
@@ -566,21 +555,118 @@ def _initialize_runtime_state(
     return runtime_state, initial_fitness, initial_metrics, initial_case_ids
 
 
-def _chunk_to_genotype(
+class _AggregateMetricsOutputFn:
+    """Adapt the shared batch metric helper to the solver's per-topology callback API."""
+
+    def __init__(
+        self,
+        dynamic_information: DynamicInformation,
+        observed_metrics: tuple[MetricType, ...],
+        n_worst_contingencies: int,
+        fixed_hash: int,
+    ) -> None:
+        """Create a per-topology aggregation callback for ``run_solver_symmetric``.
+
+        Parameters
+        ----------
+        dynamic_information : DynamicInformation
+            Dynamic grid information required by the metric aggregation.
+        observed_metrics : tuple[MetricType, ...]
+            Metrics that should be returned for each topology.
+        n_worst_contingencies : int
+            Number of worst contingency indices to retain.
+        fixed_hash : int
+            Stable hash used for JAX static-argument caching.
+        """
+        self.dynamic_information = dynamic_information
+        self.observed_metrics = observed_metrics
+        self.n_worst_contingencies = n_worst_contingencies
+        self.fixed_hash = fixed_hash
+
+    def __call__(self, lf_res: SolverLoadflowResults) -> dict[str, Array]:
+        """Aggregate one topology's solver output into the bruteforce metrics payload."""
+        lf_res_batch = jax.tree_util.tree_map(
+            lambda leaf: jnp.expand_dims(leaf, axis=0) if leaf is not None else None,
+            lf_res,
+        )
+        success = (
+            jnp.expand_dims(jnp.all(lf_res.contingency_success), axis=0)
+            if lf_res.contingency_success is not None
+            else jnp.ones((1,), dtype=bool)
+        )
+        metrics = get_aggregate_metrics(
+            lf_res=lf_res_batch,
+            success=success,
+            dynamic_information=self.dynamic_information,
+            observed_metrics=self.observed_metrics,
+            n_worst_contingencies=self.n_worst_contingencies,
+        )
+        return jax.tree_util.tree_map(lambda leaf: leaf[0], metrics)
+
+    def __hash__(self) -> int:
+        """Return a stable hash so JAX can cache the compiled solver loop."""
+        return self.fixed_hash
+
+    def __eq__(self, other: object) -> bool:
+        """Compare callbacks by hash to avoid unnecessary recompilation."""
+        if not isinstance(other, _AggregateMetricsOutputFn):
+            return False
+        return hash(self) == hash(other)
+
+
+def _score_chunk(
+    topology_chunk: ActionIndexComputations,
+    disconnection_chunk: Int[Array, " chunk_size n_disconnections"],
+    evaluated_count: int,
+    dynamic_information: DynamicInformation,
+    solver_config: SolverConfig,
+    target_metrics: tuple[tuple[MetricType, float], ...],
+    observed_metrics: tuple[MetricType, ...],
+    n_worst_contingencies: int,
+) -> tuple[Float[Array, " chunk_size"], dict[str, Array]]:
+    """Score one padded bruteforce chunk directly in solver input format.
+
+    The chunk can span multiple solver mini-batches; ``run_solver_symmetric`` handles
+    the internal mini-batching.
+    """
+    metrics, _contingency_success = run_solver_symmetric(
+        topologies=topology_chunk,
+        disconnections=disconnection_chunk,
+        injections=None,
+        dynamic_information=dynamic_information,
+        solver_config=solver_config,
+        aggregate_output_fn=_AggregateMetricsOutputFn(
+            dynamic_information=dynamic_information,
+            observed_metrics=observed_metrics,
+            n_worst_contingencies=n_worst_contingencies,
+            fixed_hash=hash((solver_config, observed_metrics, n_worst_contingencies)),
+        ),
+    )
+
+    fitness = sum(-metrics[metric_name] * weight for metric_name, weight in target_metrics)
+    invalid_rows = jnp.arange(len(topology_chunk)) >= evaluated_count
+    fitness = jnp.where(invalid_rows, -jnp.inf, fitness)
+    for metric_name in observed_metrics:
+        metrics[metric_name] = jnp.where(invalid_rows, jnp.nan, metrics[metric_name])
+    metrics["case_indices"] = jnp.where(invalid_rows[:, None], -1, metrics["case_indices"])
+    return fitness, metrics
+
+
+def _chunk_to_topologies(
     chunk: list[WorksetEntry],
-    batch_size: int,
+    chunk_size: int,
     max_num_splits: int,
     max_num_disconnections: int,
-) -> Genotype:
-    """Convert a lazy workset chunk into a fixed-size genotype batch.
+) -> tuple[ActionIndexComputations, Int[Array, " chunk_size n_disconnections"]]:
+    """Convert a lazy workset chunk into solver-ready topology arrays.
 
     Parameters
     ----------
     chunk : list[WorksetEntry]
         Bruteforce candidates to convert.
-    batch_size : int
-        Fixed batch size expected by the scoring function. Usually this is equal to len(chunk) except on the last batch where
-        the chunk might be shorter. We still pad to a fixed shape here so the JIT-compiled scoring path can reuse the same
+    chunk_size : int
+        Fixed chunk size for one bruteforce epoch. Usually this is equal to ``len(chunk)`` except on the last epoch where
+        the chunk might be shorter. We still pad to a fixed shape here so the solver-facing chunk path can reuse the same
         array shapes for every epoch.
     max_num_splits : int
         Maximum number of split actions per candidate.
@@ -589,11 +675,11 @@ def _chunk_to_genotype(
 
     Returns
     -------
-    Genotype
-        Padded genotype batch suitable for the shared DC scoring function.
+    tuple[ActionIndexComputations, Int[Array, " chunk_size n_disconnections"]]
+        Padded action-index topologies and aligned disconnections.
     """
-    action_index = np.full((batch_size, max_num_splits), int_max(), dtype=int)
-    disconnections = np.full((batch_size, max_num_disconnections), int_max(), dtype=int)
+    action_index = np.full((chunk_size, max_num_splits), int_max(), dtype=int)
+    disconnections = np.full((chunk_size, max_num_disconnections), int_max(), dtype=int)
 
     for row_index, entry in enumerate(chunk):
         if entry.action_indices:
@@ -601,15 +687,15 @@ def _chunk_to_genotype(
         if entry.disconnections:
             disconnections[row_index, : len(entry.disconnections)] = np.asarray(entry.disconnections, dtype=int)
 
-    return Genotype(
-        action_index=jnp.asarray(action_index),
-        disconnections=jnp.asarray(disconnections),
-        nodal_injections_optimized=None,
-    )
+    return ActionIndexComputations(
+        action=jnp.asarray(action_index),
+        pad_mask=jnp.ones((chunk_size,), dtype=bool),
+    ), jnp.asarray(disconnections)
 
 
 def _convert_improved_topologies(
-    genotypes: Genotype,
+    topology_actions: Int[ArrayLike, " batch_size n_splits"],
+    disconnection_chunk: Int[ArrayLike, " chunk_size n_disconnections"],
     fitness: np.ndarray,
     metrics: dict[str, Any],
     observed_metrics: tuple[MetricType, ...],
@@ -620,8 +706,10 @@ def _convert_improved_topologies(
 
     Parameters
     ----------
-    genotypes : Genotype
-        Scored genotype batch.
+    topology_actions : Int[ArrayLike, " batch_size n_splits"]
+        Scored topology actions for the current bruteforce chunk in action-index format.
+    disconnection_chunk : Int[ArrayLike, " chunk_size n_disconnections"]
+        Disconnections aligned with ``topology_actions`` for the current chunk.
     fitness : np.ndarray
         Fitness values for the valid rows in the current chunk.
     metrics : dict[str, Any]
@@ -640,12 +728,14 @@ def _convert_improved_topologies(
     """
     topologies = []
     for row_index in survivor_indices.tolist():
-        action_indices = [int(value) for value in np.asarray(genotypes.action_index[row_index]) if int(value) != int_max()]
-        disconnections = [int(value) for value in np.asarray(genotypes.disconnections[row_index]) if int(value) != int_max()]
+        action_indices = [int(value) for value in np.asarray(topology_actions[row_index]) if int(value) != int_max()]
+        disconnection_values = [
+            int(value) for value in np.asarray(disconnection_chunk[row_index]) if int(value) != int_max()
+        ]
         topologies.append(
             Topology(
                 actions=action_indices,
-                disconnections=disconnections,
+                disconnections=disconnection_values,
                 pst_setpoints=None,
                 metrics=Metrics(
                     fitness=float(fitness[row_index]),

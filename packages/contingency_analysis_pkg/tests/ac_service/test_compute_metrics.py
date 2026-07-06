@@ -196,6 +196,7 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
             "contingency": ["BASECASE", "BASECASE", "cont1", "cont1"],
             "element": ["node1", "node2", "node1", "node2"],
             "vm": [100.0, 100.0, 105.0, 105.1],
+            "vm_basecase_deviation": [0.0, 0.0, 5.0, 5.1],
         }
     ).lazy()
 

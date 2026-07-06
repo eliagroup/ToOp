@@ -353,16 +353,10 @@ def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monk
         return {
             "overload_energy_n_1": 1.0,
             "critical_va_diff_count_n_1": 2.0,
-            "voltage_jump_count_n_1": 3.0,
+            "voltage_jump_count_n_1": 4.0,
         }
 
-    def fake_count_voltage_jumps(node_results, critical_voltage_jump_threshold):
-        del node_results
-        assert critical_voltage_jump_threshold == 7.5
-        return 4
-
     monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.compute_metrics_lfs", fake_compute_metrics_lfs)
-    monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.count_voltage_jumps", fake_count_voltage_jumps)
 
     metrics = compute_metrics_single_timestep(
         actions=[],

@@ -577,7 +577,7 @@ def save_ac_metrics_summary(
         Additional action metadata captured during the AC loadflow.
     dc_info: dict
         Any additional data from the DC run that is added for awareness
-    output_file_name : str, optional
+    output_file_name : str
         The name of the JSON file to write.
     ac_validation_cfg:
         The config of the ac run

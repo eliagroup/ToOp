@@ -208,13 +208,13 @@ def test_exclude_nonlinear_psts_from_controllable_keeps_member_tap_domains(
     assert any("do not share the same starting tap" in entry["event"] for entry in cap_logs)
 
 
-def test_exclude_nonlinear_psts_from_controllable_drops_nonlinear_group_member(
+def test_exclude_nonlinear_psts_from_controllable_keeps_nonlinear_group_member(
     complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
 ) -> None:
-    """A non-linear member is dropped from a group rather than rejected.
+    """A non-linear member remains controllable.
 
-    We load two linear PSTs but configure one as non-linear; it is excluded from the controllable
-    set and the group row shrinks to the remaining linear member.
+    Nonlinear PSTs are now supported at runtime, so preprocessing must keep them in the controllable
+    set and preserve the original parallel group row.
     """
     grid_folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder
     network_data = load_network_data(grid_folder / "network_data.pkl")
@@ -229,8 +229,8 @@ def test_exclude_nonlinear_psts_from_controllable_drops_nonlinear_group_member(
 
     network_data = exclude_nonlinear_psts_from_controllable(network_data)
 
-    assert network_data.controllable_phase_shift_mask.sum() == 1
-    assert np.array_equal(network_data.parallel_pst_group_mask, np.array([[True]], dtype=bool))
+    assert network_data.controllable_phase_shift_mask.sum() == 2
+    assert np.array_equal(network_data.parallel_pst_group_mask, np.array([[True, True]], dtype=bool))
     assert network_data.parallel_pst_group_ids == ["group_1"]
 
 

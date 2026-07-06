@@ -54,27 +54,30 @@ def test_compare_nodal_inj_to_powsybl(tmp_path: Path) -> None:
     to_node_batched = di.to_node[None, :]  # (1, n_branches)
 
     taps = inj_info.starting_tap_idx
-    n_0_unchanged, n_1_unchanged, results_unchanged = nodal_inj_optimization(
-        n_0=n_0_batched,
-        nodal_injections=nodal_injections_batched,
-        topo_res=TopologyResults(
-            ptdf=ptdf_batched,
-            from_node=from_node_batched,
-            to_node=to_node_batched,
-            lodf=jnp.array([[]]),
-            success=jnp.ones((batch_size,), dtype=bool),
-            outage_modf=[],
-            bsdf=jnp.zeros((1, n_branches)),  # dummy BSDF with batch dimension
-            failure_cases_to_zero=None,
-            disconnection_modf=None,
-        ),
-        start_options=NodalInjStartOptions(
-            previous_results=NodalInjOptimResults(
-                pst_tap_idx=taps[None, None, :],  # Add batch and timestep dimensions
+    n_0_unchanged, n_1_unchanged, results_unchanged, _topo_res_unchanged, _nodal_injections_unchanged = (
+        nodal_inj_optimization(
+            n_0=n_0_batched,
+            nodal_injections=nodal_injections_batched,
+            topo_res=TopologyResults(
+                ptdf=ptdf_batched,
+                from_node=from_node_batched,
+                to_node=to_node_batched,
+                lodf=jnp.array([[]]),
+                success=jnp.ones((batch_size,), dtype=bool),
+                outage_modf=[],
+                bsdf=jnp.zeros((1, n_branches)),  # dummy BSDF with batch dimension
+                failure_cases_to_zero=None,
+                disconnection_modf=None,
             ),
-            precision_percent=jnp.array(1.0),
-        ),
-        dynamic_information=di,
+            start_options=NodalInjStartOptions(
+                previous_results=NodalInjOptimResults(
+                    pst_tap_idx=taps[None, None, :],  # Add batch and timestep dimensions
+                ),
+                precision_percent=jnp.array(1.0),
+            ),
+            dynamic_information=di,
+            solver_config=solver_config,
+        )
     )
 
     # When we apply starting taps to flows that were already computed with starting taps,
@@ -84,7 +87,7 @@ def test_compare_nodal_inj_to_powsybl(tmp_path: Path) -> None:
 
     # Now take different taps, lets say we increase all taps by 1 (if possible) and see if n-0 results changed.
     new_taps = jnp.minimum(taps + 1, inj_info.pst_n_taps - 1)  # increase taps by 1 but don't exceed max tap
-    n_0_changed, n_1_changed, results_changed = nodal_inj_optimization(
+    n_0_changed, n_1_changed, results_changed, _topo_res_changed, _nodal_injections_changed = nodal_inj_optimization(
         n_0=n_0_batched,
         nodal_injections=nodal_injections_batched,
         topo_res=TopologyResults(
@@ -105,6 +108,7 @@ def test_compare_nodal_inj_to_powsybl(tmp_path: Path) -> None:
             precision_percent=jnp.array(1.0),
         ),
         dynamic_information=di,
+        solver_config=solver_config,
     )
 
     # Verify that when we apply different taps, we get different flows than with starting taps
@@ -149,27 +153,30 @@ def test_compare_nodal_inj_to_powsybl_parallel_psts(tmp_path: Path) -> None:
     to_node_batched = di.to_node[None, :]  # (1, n_branches)
 
     taps = inj_info.starting_tap_idx
-    n_0_unchanged, n_1_unchanged, results_unchanged = nodal_inj_optimization(
-        n_0=n_0_batched,
-        nodal_injections=nodal_injections_batched,
-        topo_res=TopologyResults(
-            ptdf=ptdf_batched,
-            from_node=from_node_batched,
-            to_node=to_node_batched,
-            lodf=jnp.array([[]]),
-            success=jnp.ones((batch_size,), dtype=bool),
-            outage_modf=[],
-            bsdf=jnp.zeros((1, n_branches)),  # dummy BSDF with batch dimension
-            failure_cases_to_zero=None,
-            disconnection_modf=None,
-        ),
-        start_options=NodalInjStartOptions(
-            previous_results=NodalInjOptimResults(
-                pst_tap_idx=taps[None, None, :],  # Add batch and timestep dimensions
+    n_0_unchanged, n_1_unchanged, results_unchanged, _topo_res_unchanged, _nodal_injections_unchanged = (
+        nodal_inj_optimization(
+            n_0=n_0_batched,
+            nodal_injections=nodal_injections_batched,
+            topo_res=TopologyResults(
+                ptdf=ptdf_batched,
+                from_node=from_node_batched,
+                to_node=to_node_batched,
+                lodf=jnp.array([[]]),
+                success=jnp.ones((batch_size,), dtype=bool),
+                outage_modf=[],
+                bsdf=jnp.zeros((1, n_branches)),  # dummy BSDF with batch dimension
+                failure_cases_to_zero=None,
+                disconnection_modf=None,
             ),
-            precision_percent=jnp.array(1.0),
-        ),
-        dynamic_information=di,
+            start_options=NodalInjStartOptions(
+                previous_results=NodalInjOptimResults(
+                    pst_tap_idx=taps[None, None, :],  # Add batch and timestep dimensions
+                ),
+                precision_percent=jnp.array(1.0),
+            ),
+            dynamic_information=di,
+            solver_config=solver_config,
+        )
     )
 
     # When we apply starting taps to flows that were already computed with starting taps,
@@ -179,7 +186,7 @@ def test_compare_nodal_inj_to_powsybl_parallel_psts(tmp_path: Path) -> None:
 
     # Now take different taps, lets say we increase all taps by 1 (if possible) and see if n-0 results changed.
     new_taps = jnp.minimum(taps + 1, inj_info.pst_n_taps - 1)  # increase taps by 1 but don't exceed max tap
-    n_0_changed, n_1_changed, results_changed = nodal_inj_optimization(
+    n_0_changed, n_1_changed, results_changed, _topo_res_changed, _nodal_injections_changed = nodal_inj_optimization(
         n_0=n_0_batched,
         nodal_injections=nodal_injections_batched,
         topo_res=TopologyResults(
@@ -200,6 +207,7 @@ def test_compare_nodal_inj_to_powsybl_parallel_psts(tmp_path: Path) -> None:
             precision_percent=jnp.array(1.0),
         ),
         dynamic_information=di,
+        solver_config=solver_config,
     )
 
     # Verify that when we apply different taps, we get different flows than with starting taps
@@ -209,7 +217,7 @@ def test_compare_nodal_inj_to_powsybl_parallel_psts(tmp_path: Path) -> None:
     pst_start_options = NodalInjOptimResults(
         pst_tap_idx=new_taps[None, None, :],  # Add batch and timestep dimensions
     )
-    n_0_changed, n_1_changed, results_changed = nodal_inj_optimization(
+    n_0_changed, n_1_changed, results_changed, _topo_res_changed, _nodal_injections_changed = nodal_inj_optimization(
         n_0=n_0_batched,
         nodal_injections=nodal_injections_batched,
         topo_res=TopologyResults(
@@ -228,6 +236,7 @@ def test_compare_nodal_inj_to_powsybl_parallel_psts(tmp_path: Path) -> None:
             precision_percent=jnp.array(1.0),
         ),
         dynamic_information=di,
+        solver_config=solver_config,
     )
 
     # Verify that when we apply different taps, we get different flows than with starting taps

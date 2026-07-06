@@ -38,9 +38,9 @@ from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Defini
 class LoadflowValidationParameters(BaseModel):
     """Parameters for validating loadflow results."""
 
-    atol: float = 1e-5
+    atol: float = 1e-9
     """Absolute tolerance for the comparison."""
-    rtol: float = 1e-5
+    rtol: float = 1e-9
     """Relative tolerance for the comparison."""
     equal_nan: bool = False
     """Whether to consider NaN values as equal."""

@@ -271,6 +271,21 @@ class BackendInterface(ABC):
         viable_shifts = self.get_shift_angles()[0, self.get_controllable_phase_shift_mask()]
         return [np.array([shift]) for shift in viable_shifts]
 
+    def get_phase_shift_susceptance_taps(self) -> list[Float[np.ndarray, " n_tap_positions"]]:
+        """Return the effective branch susceptance at every controllable PST tap.
+
+        The returned lists must align with get_phase_shift_taps() and get_controllable_phase_shift_mask().
+        By default, repeat the current branch susceptance for every tap, which is correct for PSTs whose
+        effective branch parameters do not vary with the tap.
+        """
+        controllable_pst_indices = np.flatnonzero(self.get_controllable_phase_shift_mask())
+        susceptances = self.get_susceptances()
+        tap_values = self.get_phase_shift_taps()
+        return [
+            np.full_like(taps, fill_value=float(susceptances[branch_idx]), dtype=float)
+            for taps, branch_idx in zip(tap_values, controllable_pst_indices, strict=True)
+        ]
+
     def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_pst"]:
         """Get the starting tap position for each controllable PST, given as an integer index into pst_tap_values.
 

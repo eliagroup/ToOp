@@ -219,6 +219,12 @@ def convert_to_jax(  # noqa: PLR0913
             for taps in network_data.phase_shift_taps
         ]
     )
+    pst_tap_susceptance_values = jnp.array(
+        [
+            jnp.pad(jnp.array(taps), (0, max_pst_n_taps - len(taps)), "constant", constant_values=jnp.nan)
+            for taps in network_data.phase_shift_susceptance_taps
+        ]
+    )
     parallel_pst_group_mask = _get_parallel_pst_group_mask(network_data)
 
     logging_fn("pad_out_branch_actions", None)
@@ -285,13 +291,19 @@ def convert_to_jax(  # noqa: PLR0913
             non_rel_bb_outage_data=convert_non_rel_bb_outage(network_data) if preprocess_bb_outages else None,
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
+                phase_shift_branch_indices=jnp.flatnonzero(network_data.phase_shift_mask),
+                phase_shift_susceptance=jnp.array(network_data.susceptances[network_data.phase_shift_mask]),
+                phase_shift_degree_to_flow_factor=jnp.array(network_data.base_mva * np.pi / 180.0),
                 controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
+                controllable_pst_branch_indices=jnp.flatnonzero(network_data.controllable_phase_shift_mask),
                 shift_degree_min=shift_degree_min,
                 shift_degree_max=shift_degree_max,
                 pst_n_taps=pst_n_taps,
                 pst_tap_values=pst_tap_values,
+                pst_tap_susceptance_values=pst_tap_susceptance_values,
                 starting_tap_idx=jnp.array(network_data.phase_shift_starting_tap_idx, dtype=int),
                 grid_model_low_tap=jnp.array(network_data.phase_shift_low_tap, dtype=int),
+                phase_shift_linearity=jnp.array(network_data.phase_shift_linearity, dtype=bool),
                 parallel_pst_group_mask=parallel_pst_group_mask,
             )
             if network_data.controllable_pst_node_mask.any()
@@ -841,7 +853,9 @@ def run_initial_loadflow(
 
     # Prepare starting options for nodal injection optimization if enabled
     nodal_inj_start_options = None
-    if static_information.dynamic_information.nodal_injection_information is not None:
+    if static_information.dynamic_information.nodal_injection_information is not None and bool(
+        jnp.all(static_information.dynamic_information.nodal_injection_information.phase_shift_linearity)
+    ):
         nodal_inj_start_options = NodalInjStartOptions(
             previous_results=NodalInjOptimResults(
                 pst_tap_idx=static_information.dynamic_information.nodal_injection_information.starting_tap_idx[

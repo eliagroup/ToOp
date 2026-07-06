@@ -426,12 +426,13 @@ def compute_symmetric_batch(
     if nodal_inj_start_options is not None:
         # TODO replace N-1 computation below with the results from optimization as soon as the optimization is halfway stable
         # It might be a good debug aid to have the original code below still available.
-        n_0, _n_1, nodal_injections_optimized = nodal_inj_optimization(
+        n_0, _n_1, nodal_injections_optimized, topo_res, nodal_injections = nodal_inj_optimization(
             n_0=n_0,
             nodal_injections=nodal_injections,
             topo_res=topo_res,
             start_options=nodal_inj_start_options,
             dynamic_information=dynamic_information,
+            solver_config=solver_config,
         )
 
     # Compute the N-1 matrix

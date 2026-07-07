@@ -41,6 +41,18 @@ from toop_engine_topology_optimizer.interfaces.messages.results import (
 
 @pytest.fixture(scope="session")
 def acceptance_grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create and preprocess a node-breaker grid for AC acceptance tests.
+
+    Parameters
+    ----------
+    tmp_path_factory : pytest.TempPathFactory
+        Factory used to create a session-scoped temporary directory.
+
+    Returns
+    -------
+    Path
+        Path to the preprocessed grid data folder.
+    """
     base_path = tmp_path_factory.mktemp("ac_acceptance_node_breaker")
     input_grid = base_path / "grid.xiidm"
 
@@ -68,6 +80,18 @@ def acceptance_grid_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="session")
 def dc_acceptance_result(acceptance_grid_folder: Path) -> dict:
+    """Run a small DC optimization that seeds the AC acceptance scenarios.
+
+    Parameters
+    ----------
+    acceptance_grid_folder : Path
+        Folder containing the preprocessed static information for the test grid.
+
+    Returns
+    -------
+    dict
+        Serialized DC optimization results with candidate topologies.
+    """
     output_dir = acceptance_grid_folder / "dc_results"
     dc_config = DictConfig(
         {
@@ -112,6 +136,22 @@ def ac_optimizer_context(
     dc_acceptance_result: dict,
     tmp_path: Path,
 ) -> Iterator[tuple[Session, object, list[dict], list[object]]]:
+    """Build an initialized AC optimizer context backed by seeded DC topologies.
+
+    Parameters
+    ----------
+    acceptance_grid_folder : Path
+        Folder containing the preprocessed grid artifacts.
+    dc_acceptance_result : dict
+        DC optimization output used to seed the AC optimizer database.
+    tmp_path : Path
+        Per-test temporary directory for loadflow outputs.
+
+    Yields
+    ------
+    Iterator[tuple[Session, object, list[dict], list[object]]]
+        Database session, optimizer state, seeded DC topologies, and a result sink.
+    """
     optimization_id = "test_ac_acceptance"
     loadflow_result_fs = DirFileSystem(str(tmp_path / "loadflows"))
     processed_gridfile_fs = DirFileSystem(str(acceptance_grid_folder.parent))
@@ -187,6 +227,18 @@ def ac_optimizer_context(
 
 
 def to_message_topology(topology_data: dict) -> Topology:
+    """Convert a serialized topology payload into the message model used by storage.
+
+    Parameters
+    ----------
+    topology_data : dict
+        Dictionary representation of a topology and its metrics.
+
+    Returns
+    -------
+    Topology
+        Topology message with normalized optional fields.
+    """
     metrics_payload = topology_data["metrics"]
     return Topology(
         actions=topology_data.get("actions") or [],
@@ -204,6 +256,20 @@ def _run_ac_epoch(
     optimizer_data: object,
     send_result_fn: Callable[[object], None],
 ) -> tuple[list[ACOptimTopology], list[ACOptimTopology]]:
+    """Execute one AC acceptance epoch across fast-failing and remaining stages.
+
+    Parameters
+    ----------
+    optimizer_data : object
+        Initialized optimizer state consumed by the AC workflow.
+    send_result_fn : Callable[[object], None]
+        Callback that receives emitted acceptance or rejection results.
+
+    Returns
+    -------
+    tuple[list[ACOptimTopology], list[ACOptimTopology]]
+        Fast-failing candidates and the topologies that reached full evaluation.
+    """
     fast_topologies, fast_results = run_fast_failing_epoch(optimizer_data=optimizer_data)
     survivor_topologies, survivor_early_results = process_fast_failing_results(
         optimizer_data=optimizer_data,
@@ -228,6 +294,18 @@ def _run_ac_epoch(
 
 
 def _make_ac_params(**overrides: float | bool | int) -> ACOptimizerParameters:
+    """Create baseline AC optimizer parameters with optional test-specific overrides.
+
+    Parameters
+    ----------
+    **overrides : float | bool | int
+        Parameter values that should replace the default test configuration.
+
+    Returns
+    -------
+    ACOptimizerParameters
+        AC optimizer configuration for the acceptance test scenarios.
+    """
     return ACOptimizerParameters(
         ga_config=ACGAParameters(
             runtime_seconds=10,
@@ -248,6 +326,25 @@ def _make_ac_params(**overrides: float | bool | int) -> ACOptimizerParameters:
 
 
 def _criterion_specific_params(criterion: str, threshold: float) -> ACOptimizerParameters:
+    """Build AC rejection parameters for a single acceptance criterion.
+
+    Parameters
+    ----------
+    criterion : str
+        Name of the rejection criterion to activate.
+    threshold : float
+        Threshold applied to the selected criterion.
+
+    Returns
+    -------
+    ACOptimizerParameters
+        Parameter set with the requested criterion threshold adjusted.
+
+    Raises
+    ------
+    ValueError
+        If the criterion is not supported by this helper.
+    """
     overrides: dict[str, float | bool | int] = {
         "reject_convergence_threshold": 10.0,
         "reject_overload_threshold": 10.0,
@@ -279,6 +376,24 @@ def _build_action_seed_context(
     params: ACOptimizerParameters,
     optimization_id: str,
 ) -> tuple[Session, object]:
+    """Seed the database with simple action-based DC topologies for AC tests.
+
+    Parameters
+    ----------
+    acceptance_grid_folder : Path
+        Folder containing the processed grid files.
+    tmp_path : Path
+        Temporary directory used for loadflow outputs.
+    params : ACOptimizerParameters
+        AC optimizer configuration used during initialization.
+    optimization_id : str
+        Identifier used to isolate database rows and output folders.
+
+    Returns
+    -------
+    tuple[Session, object]
+        Database session and initialized AC optimizer state.
+    """
     loadflow_result_fs = DirFileSystem(str(tmp_path / optimization_id / "loadflows"))
     processed_gridfile_fs = DirFileSystem(str(acceptance_grid_folder.parent))
     session = create_session()
@@ -320,6 +435,24 @@ def _run_action_seeded_acceptance_epoch(
     params: ACOptimizerParameters,
     optimization_id: str,
 ) -> tuple[list[object], list[ACOptimTopology], dict]:
+    """Run AC acceptance until completion for a deterministic seeded action set.
+
+    Parameters
+    ----------
+    acceptance_grid_folder : Path
+        Folder containing the processed grid data.
+    tmp_path : Path
+        Temporary directory used for intermediate AC outputs.
+    params : ACOptimizerParameters
+        AC optimizer configuration for the run.
+    optimization_id : str
+        Identifier used to scope persisted optimizer state.
+
+    Returns
+    -------
+    tuple[list[object], list[ACOptimTopology], dict]
+        Emitted result messages, persisted AC topologies, and unsplit baseline metrics.
+    """
     session, optimizer_data = _build_action_seed_context(
         acceptance_grid_folder=acceptance_grid_folder,
         tmp_path=tmp_path,
@@ -399,6 +532,10 @@ def test_ac_acceptance_rejection_matrix_for_voltage_angle_with_lowered_cutoff(
     acceptance_grid_folder: Path,
     tmp_path: Path,
 ) -> None:
+    """Test that AC acceptance correctly rejects candidates based on voltage angle differences.
+    Since the test grid is quite stable in regards to voltage angle differences,
+    we need to lower the threshold to see any rejections.
+    """
     strict_results, strict_topologies, _ = _run_action_seeded_acceptance_epoch(
         acceptance_grid_folder=acceptance_grid_folder,
         tmp_path=tmp_path,
@@ -479,6 +616,10 @@ def test_ac_acceptance_sensible_voltage_angle_threshold_rejects_some_candidates(
     acceptance_grid_folder: Path,
     tmp_path: Path,
 ) -> None:
+    """Test that AC acceptance correctly rejects candidates based on voltage angle differences.
+    Since the test grid is quite stable in regards to voltage angle differences,
+    we need to lower the threshold to see any rejections.
+    """
     sent_results, ac_topologies, unsplit_metrics = _run_action_seeded_acceptance_epoch(
         acceptance_grid_folder=acceptance_grid_folder,
         tmp_path=tmp_path,
@@ -510,6 +651,10 @@ def test_ac_acceptance_rejection_matrix_for_voltage_magnitude_with_lowered_cutof
     acceptance_grid_folder: Path,
     tmp_path: Path,
 ) -> None:
+    """Test that AC acceptance correctly rejects candidates based on voltage magnitude with a lowered cutoff.
+    Since the test grid is quite stable in regards to voltage magnitude,
+    we need to lower the threshold to see any rejections.
+    """
     strict_results, strict_topologies, _ = _run_action_seeded_acceptance_epoch(
         acceptance_grid_folder=acceptance_grid_folder,
         tmp_path=tmp_path,
@@ -558,6 +703,10 @@ def test_ac_acceptance_sensible_voltage_magnitude_threshold_rejects_some_candida
     acceptance_grid_folder: Path,
     tmp_path: Path,
 ) -> None:
+    """Test that AC acceptance correctly rejects candidates based on voltage magnitude differences.
+    Since the test grid is quite stable in regards to voltage magnitude differences,
+    we need to lower the threshold to see any rejections.
+    """
     sent_results, ac_topologies, unsplit_metrics = _run_action_seeded_acceptance_epoch(
         acceptance_grid_folder=acceptance_grid_folder,
         tmp_path=tmp_path,

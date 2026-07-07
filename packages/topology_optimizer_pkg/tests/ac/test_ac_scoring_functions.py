@@ -862,6 +862,8 @@ def test_compute_remaining_loadflows(grid_folder: Path) -> None:
         topology=topology,
         base_case_id=None,
         cases_subset=subset_case_ids,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
     )
 
     # Verify that subset only contains the specified contingencies
@@ -882,6 +884,8 @@ def test_compute_remaining_loadflows(grid_folder: Path) -> None:
         base_case_id=None,
         loadflows_subset=lfs_subset,
         cases_subset=subset_case_ids,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
     )
 
     # Verify that the complete result contains all contingencies

@@ -636,6 +636,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
             disconnections=disconnections,
             loadflow=dc_loadflow,
             additional_info=None,
+            critical_voltage_jump_percent=5.0,
+            critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
         runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
@@ -771,6 +773,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
             disconnections=disconnections,
             loadflow=dc_loadflow,
             additional_info=None,
+            critical_voltage_jump_percent=5.0,
+            critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
         runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
@@ -897,6 +901,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
             disconnections=disconnections,
             loadflow=dc_loadflow,
             additional_info=None,
+            critical_voltage_jump_percent=5.0,
+            critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
         runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])

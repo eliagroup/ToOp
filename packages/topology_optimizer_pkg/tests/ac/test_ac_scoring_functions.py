@@ -299,6 +299,8 @@ def test_compute_loadflow(grid_folder: Path) -> None:
         disconnections=[],
         loadflow=res,
         additional_info=info,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
     )
 
     assert metrics is not None
@@ -338,6 +340,8 @@ def test_scoring_functions_split(grid_folder: Path) -> None:
         disconnections=[],
         loadflow=ref_loadflow,
         additional_info=info,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
     )
 
     assert "switching_distance" in metrics.extra_scores

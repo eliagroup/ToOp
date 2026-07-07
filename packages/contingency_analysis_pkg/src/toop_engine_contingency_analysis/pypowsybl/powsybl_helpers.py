@@ -868,16 +868,15 @@ def get_node_results(
     # Merge the actual voltage level in kV
     voltage_columns = voltage_levels.columns.to_list()
     node_results[voltage_columns] = voltage_levels.loc[node_results.index.get_level_values("voltage_level_id")].values
-    node_results = node_results.assign(timestep=0)
     node_results.index = pd.MultiIndex.from_arrays(
         [
-            node_results.timestep.values,
+            np.ones(len(node_results), dtype=int) * timestep,
             node_results.index.get_level_values("contingency_id").values,
             node_results.element.values,
         ],
         names=["timestep", "contingency", "element"],
     )
-
+    node_results.drop(columns=["element"], inplace=True)
     node_results.rename(columns={"v_mag": "vm", "v_angle": "va"}, inplace=True)
 
     # Calculate the values

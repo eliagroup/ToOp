@@ -19,6 +19,8 @@ from toop_engine_topology_optimizer.dc.worker.worker import Args, main, optimiza
 from toop_engine_topology_optimizer.interfaces.messages.commands import (
     Command,
     DCOptimizerParameters,
+    ShutdownCommand,
+    StartOptimizationCommand,
 )
 from toop_engine_topology_optimizer.interfaces.messages.commons import Framework, GridFile
 from toop_engine_topology_optimizer.interfaces.messages.dc_params import BatchedMEParameters, LoadflowSolverParameters

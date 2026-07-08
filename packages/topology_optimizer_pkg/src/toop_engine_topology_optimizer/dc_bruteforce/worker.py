@@ -172,11 +172,13 @@ def optimization_loop(
         )
 
         if is_exhausted(optimizer_data):
+            logger.info(f"Ending bruteforce search due to workset exhaustion after {time.time() - start_time}s")
             send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="workset exhausted"))
             flush_result_fn()
             return
 
         if time.time() - start_time > dc_params.ga_config.runtime_seconds:
+            logger.info(f"Ending due to runtime limit after {time.time() - start_time}s")
             send_result_fn(OptimizationStoppedResult(epoch=epoch, reason="converged", message="runtime limit"))
             flush_result_fn()
             return

@@ -748,6 +748,31 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
             bb_outage_baseline_analysis_present,
             nodal_injection_optimization_present,
         ) = check_data_availability(file)
+        rel_bb_outage_data = (
+            RelBBOutageData(
+                branch_outage_set=jnp.array(file["action_set_rel_bb_outage_data_branch_outage_set"][:]),
+                nodal_indices=jnp.array(file["action_set_rel_bb_outage_data_nodal_indices"][:]),
+                deltap_set=jnp.array(file["action_set_rel_bb_outage_data_deltap_set"][:]),
+                articulation_node_mask=jnp.array(file["action_set_rel_bb_outage_data_critical_node_mask"][:]),
+                valid_slot_mask=jnp.array(file["action_set_rel_bb_outage_data_valid_slot_mask"][:]),
+                visible_flat_slot_indices=load_rel_bb_outage_visible_flat_slot_indices(file),
+                busbar_id_set=load_rel_bb_outage_busbar_id_set(file),
+            )
+            if rel_bb_outage_data_present
+            else None
+        )
+        non_rel_bb_outage_data = load_non_rel_bb_outage_data(file, non_rel_bb_outage_data_present)
+        action_set = ActionSet(
+            branch_actions=jnp.array(file["action_set_branch_actions"][:]),
+            inj_actions=jnp.array(file["action_set_inj_actions"][:]),
+            n_actions_per_sub=jnp.array(file["action_set_n_actions_per_sub"][:]),
+            substation_correspondence=jnp.array(file["action_set_substation_correspondence"][:]),
+            unsplit_action_mask=jnp.array(file["action_set_unsplit_action_mask"][:]),
+            reassignment_distance=jnp.array(file["action_set_reassignment_distance"][:]),
+            action_start_indices=jnp.array(file["action_set_action_start_indices"][:]),
+            rel_bb_outage_data=rel_bb_outage_data,
+        )
+        bb_outage_count = DynamicInformation.infer_bb_outage_count(action_set, non_rel_bb_outage_data)
 
         return StaticInformation(
             dynamic_information=DynamicInformation(
@@ -771,28 +796,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 nodal_injections=jnp.array(file["nodal_injections"][:]),
                 branches_to_fail=jnp.array(file["branches_to_fail"][:]),
                 disconnectable_branches=jnp.array(file["disconnectable_branches"][:]),
-                action_set=(
-                    ActionSet(
-                        branch_actions=jnp.array(file["action_set_branch_actions"][:]),
-                        inj_actions=jnp.array(file["action_set_inj_actions"][:]),
-                        n_actions_per_sub=jnp.array(file["action_set_n_actions_per_sub"][:]),
-                        substation_correspondence=jnp.array(file["action_set_substation_correspondence"][:]),
-                        unsplit_action_mask=jnp.array(file["action_set_unsplit_action_mask"][:]),
-                        reassignment_distance=jnp.array(file["action_set_reassignment_distance"][:]),
-                        action_start_indices=jnp.array(file["action_set_action_start_indices"][:]),
-                        rel_bb_outage_data=RelBBOutageData(
-                            branch_outage_set=jnp.array(file["action_set_rel_bb_outage_data_branch_outage_set"][:]),
-                            nodal_indices=jnp.array(file["action_set_rel_bb_outage_data_nodal_indices"][:]),
-                            deltap_set=jnp.array(file["action_set_rel_bb_outage_data_deltap_set"][:]),
-                            articulation_node_mask=jnp.array(file["action_set_rel_bb_outage_data_critical_node_mask"][:]),
-                            valid_slot_mask=jnp.array(file["action_set_rel_bb_outage_data_valid_slot_mask"][:]),
-                            visible_flat_slot_indices=load_rel_bb_outage_visible_flat_slot_indices(file),
-                            busbar_id_set=load_rel_bb_outage_busbar_id_set(file),
-                        )
-                        if rel_bb_outage_data_present
-                        else None,
-                    )
-                ),
+                action_set=action_set,
                 multi_outage_branches=list(_load_multi_outage_branch(file)),
                 multi_outage_nodes=list(_load_multi_outage_node(file)),
                 nonrel_injection_outage_deltap=jnp.array(file["nonrel_injection_outage_deltap"][:]),
@@ -802,7 +806,8 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 unsplit_flow=jnp.array(file["unsplit_flow"][:]),
                 branches_monitored=jnp.array(file["branches_monitored"][:]),
                 nodal_injection_information=load_nodal_injection_optimization(file, nodal_injection_optimization_present),
-                non_rel_bb_outage_data=load_non_rel_bb_outage_data(file, non_rel_bb_outage_data_present),
+                non_rel_bb_outage_data=non_rel_bb_outage_data,
+                bb_outage_count=bb_outage_count,
                 bb_outage_baseline_analysis=load_bb_outage_baseline_analysis(file, bb_outage_baseline_analysis_present),
             ),
             solver_config=SolverConfig(

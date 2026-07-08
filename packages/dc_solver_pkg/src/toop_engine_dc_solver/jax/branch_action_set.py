@@ -55,21 +55,18 @@ def merge_branch_action_sets(  # noqa: PLR0915
         valid_slot_mask = jnp.concatenate(
             [a.rel_bb_outage_data.valid_slot_mask, b.rel_bb_outage_data.valid_slot_mask], axis=0
         )
-        busbar_id_set = a.rel_bb_outage_data.busbar_id_set + b.rel_bb_outage_data.busbar_id_set
 
         branch_outage_set = branch_outage_set[sorting_idx]
         deltap_set = deltap_set[sorting_idx]
         nodal_indices = nodal_indices[sorting_idx]
         articulation_node_mask = articulation_node_mask[sorting_idx]
         valid_slot_mask = valid_slot_mask[sorting_idx]
-        busbar_id_set = tuple(busbar_id_set[int(index)] for index in sorting_idx.tolist())
     else:
         branch_outage_set = None
         deltap_set = None
         nodal_indices = None
         articulation_node_mask = None
         valid_slot_mask = None
-        busbar_id_set = None
 
     # Remove duplicates on a per-substation basis
     n_subs = a.n_actions_per_sub.shape[0]
@@ -82,7 +79,6 @@ def merge_branch_action_sets(  # noqa: PLR0915
     nodal_indices_per_sub = []
     articulation_node_mask_per_sub = []
     valid_slot_mask_per_sub = []
-    busbar_id_set_per_sub = []
 
     for sub in range(n_subs):
         mask = substation_correspondence == sub
@@ -97,8 +93,6 @@ def merge_branch_action_sets(  # noqa: PLR0915
             nodal_indices_per_sub.append(nodal_indices[mask][unique_idx])
             articulation_node_mask_per_sub.append(articulation_node_mask[mask][unique_idx])
             valid_slot_mask_per_sub.append(valid_slot_mask[mask][unique_idx])
-            busbar_id_set_masked = [busbar_id_set[index] for index in jnp.where(mask)[0].tolist()]
-            busbar_id_set_per_sub.extend(busbar_id_set_masked[int(index)] for index in unique_idx.tolist())
 
     # Concatenate it back together
     actions = jnp.concatenate(actions_per_sub, axis=0)
@@ -112,31 +106,20 @@ def merge_branch_action_sets(  # noqa: PLR0915
 
     rel_bb_outage_data = None
     if a.rel_bb_outage_data is not None and b.rel_bb_outage_data is not None:
+        assert a.rel_bb_outage_data.visible_flat_slot_indices == b.rel_bb_outage_data.visible_flat_slot_indices
         branch_outage_set = jnp.concatenate(branch_outage_set_per_sub, axis=0)
         deltap_set = jnp.concatenate(deltap_set_per_sub, axis=0)
         nodal_indices = jnp.concatenate(nodal_indices_per_sub, axis=0)
         articulation_node_mask = jnp.concatenate(articulation_node_mask_per_sub, axis=0)
         valid_slot_mask = jnp.concatenate(valid_slot_mask_per_sub, axis=0)
-        action_start_indices = jnp.concatenate(
-            [
-                jnp.array([0], dtype=n_actions_per_sub.dtype),
-                jnp.cumsum(n_actions_per_sub[:-1]),
-            ]
-        )
-        visible_flat_slot_indices = tuple(
-            int(sub_idx * valid_slot_mask.shape[1] + slot_idx)
-            for sub_idx, action_idx in enumerate(action_start_indices.tolist())
-            for slot_idx, is_valid in enumerate(valid_slot_mask[int(action_idx)].tolist())
-            if is_valid
-        )
         rel_bb_outage_data = RelBBOutageData(
             branch_outage_set=branch_outage_set,
             deltap_set=deltap_set,
             nodal_indices=nodal_indices,
             articulation_node_mask=articulation_node_mask,
             valid_slot_mask=valid_slot_mask,
-            visible_flat_slot_indices=visible_flat_slot_indices,
-            busbar_id_set=tuple(busbar_id_set_per_sub),
+            visible_flat_slot_indices=a.rel_bb_outage_data.visible_flat_slot_indices,
+            busbar_id_set=tuple(() for _ in range(actions.shape[0])),
         )
 
     return ActionSet(

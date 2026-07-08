@@ -43,6 +43,7 @@ def test_extract_data_compare_to_jax(network_data_preprocessed: NetworkData) -> 
     assert len(mon_branches) == static_information.n_branches_monitored
     assert [contingency.id for contingency in busbar_contingencies] == busbar_outage_ids
     assert static_information.dynamic_information.bb_outage_contingency_ids == busbar_outage_ids
+    assert static_information.dynamic_information.n_bb_outages == len(busbar_outage_ids)
     assert len(nminus1_definition.contingencies) == static_information.n_nminus1_cases + len(busbar_outage_ids) + 1
     assert nminus1_definition.contingencies[0].id == "BASECASE"
     assert len(nminus1_definition.contingencies[0].elements) == 0

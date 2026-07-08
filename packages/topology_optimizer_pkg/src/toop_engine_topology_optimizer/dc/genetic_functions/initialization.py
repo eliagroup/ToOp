@@ -452,14 +452,18 @@ def update_single_pair_bb_outage_information(
     has_rel_bb_outage_data = dynamic_information.action_set.rel_bb_outage_data is not None
     has_monitored_branches = dynamic_information.branches_monitored.size > 0
     has_stored_bb_outage_baseline = dynamic_information.bb_outage_baseline_analysis is not None
-    has_non_rel_bb_outage_data = dynamic_information.non_rel_bb_outage_data is not None
+    has_visible_bb_outages = dynamic_information.n_bb_outages > 0
 
     # Busbar outages can only be enabled when some preprocessed outage payload exists.
-    has_bb_outage_data = has_stored_bb_outage_baseline or has_non_rel_bb_outage_data or has_rel_bb_outage_data
+    has_bb_outage_data = has_visible_bb_outages or has_stored_bb_outage_baseline
     should_enable_bb_outage = enable_bb_outage and has_bb_outage_data
     # A fresh baseline is only needed when busbar outages are scored as a separate penalty.
     needs_penalty_baseline = (
-        should_enable_bb_outage and not bb_outage_as_nminus1 and has_rel_bb_outage_data and has_monitored_branches
+        should_enable_bb_outage
+        and not bb_outage_as_nminus1
+        and has_rel_bb_outage_data
+        and has_monitored_branches
+        and has_visible_bb_outages
     )
     # Keep or create a baseline only in penalty mode. In N-1 mode, baseline must not influence case counting.
     should_keep_or_create_baseline = (

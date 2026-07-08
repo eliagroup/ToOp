@@ -255,6 +255,29 @@ def test_convert_rel_bb_outage_data_uses_physical_busbar_width_for_articulation_
     assert rel_bb_outage_data.articulation_node_mask[0, 4]
 
 
+def test_convert_rel_bb_outage_data_handles_empty_relevant_outage_combinations(
+    network_data_preprocessed: NetworkData,
+) -> None:
+    rel_bb_outage_data = convert_rel_bb_outage_data(
+        replace(
+            network_data_preprocessed,
+            branch_action_set=[np.zeros((1, 1), dtype=bool)],
+            rel_bb_outage_br_indices=[[]],
+            rel_bb_outage_deltap=[[]],
+            rel_bb_outage_nodal_indices=[[]],
+            rel_bb_articulation_nodes=[[]],
+            rel_bb_outage_slot_ids=[[]],
+            rel_bb_outage_valid_slot_mask=[[]],
+        )
+    )
+
+    assert rel_bb_outage_data.branch_outage_set.shape == (1, 0, len(network_data_preprocessed.branches_at_nodes[0]))
+    assert rel_bb_outage_data.deltap_set.shape[1] == 0
+    assert rel_bb_outage_data.nodal_indices.shape[1] == 0
+    assert rel_bb_outage_data.valid_slot_mask.shape[1] == 0
+    assert rel_bb_outage_data.visible_flat_slot_indices == tuple()
+
+
 def test_get_bb_outage_baseline_analysis(jax_inputs_oberrhein):
     static_information = jax_inputs_oberrhein[1]
     result = get_bb_outage_baseline_analysis(
@@ -275,3 +298,27 @@ def test_convert_to_jax_uses_neutral_busbar_penalty_defaults(network_data_prepro
     assert static_information.solver_config.clip_bb_outage_penalty is False
     assert static_information.dynamic_information.bb_outage_baseline_analysis is not None
     assert static_information.dynamic_information.bb_outage_baseline_analysis.more_splits_penalty == 0.0
+
+
+def test_convert_to_jax_skips_busbar_baseline_when_no_visible_busbar_outages(
+    network_data_preprocessed: NetworkData,
+) -> None:
+    static_information = convert_to_jax(
+        replace(
+            network_data_preprocessed,
+            rel_bb_outage_br_indices=[[]],
+            rel_bb_outage_deltap=[[]],
+            rel_bb_outage_nodal_indices=[[]],
+            rel_bb_articulation_nodes=[[]],
+            rel_bb_outage_slot_ids=[[]],
+            rel_bb_outage_valid_slot_mask=[[]],
+            non_rel_bb_outage_br_indices=[],
+            non_rel_bb_outage_deltap=[],
+            non_rel_bb_outage_nodal_indices=[],
+            non_rel_bb_outage_ids=[],
+        ),
+        preprocess_bb_outages=True,
+    )
+
+    assert static_information.dynamic_information.n_bb_outages == 0
+    assert static_information.dynamic_information.bb_outage_baseline_analysis is None

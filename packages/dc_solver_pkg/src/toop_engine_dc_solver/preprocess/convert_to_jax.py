@@ -236,6 +236,9 @@ def convert_to_jax(  # noqa: PLR0913
         logging_fn("convert_rel_bb_outage_data", None)
         action_set = replace(action_set, rel_bb_outage_data=convert_rel_bb_outage_data(network_data))
 
+    non_rel_bb_outage_data = convert_non_rel_bb_outage(network_data) if preprocess_bb_outages else None
+    bb_outage_count = DynamicInformation.infer_bb_outage_count(action_set, non_rel_bb_outage_data)
+
     logging_fn("create_static_information", None)
     ptdf = jnp.array(network_data.ptdf)
     nodal_injection = jnp.array(network_data.nodal_injection, dtype=float)
@@ -282,7 +285,8 @@ def convert_to_jax(  # noqa: PLR0913
                 ac_dc_interpolation=ac_dc_interpolation,
             ),
             branches_monitored=branches_monitored,
-            non_rel_bb_outage_data=convert_non_rel_bb_outage(network_data) if preprocess_bb_outages else None,
+            non_rel_bb_outage_data=non_rel_bb_outage_data,
+            bb_outage_count=bb_outage_count,
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
                 controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
@@ -319,7 +323,7 @@ def convert_to_jax(  # noqa: PLR0913
         ),
     )
 
-    if preprocess_bb_outages:
+    if preprocess_bb_outages and static_information.dynamic_information.n_bb_outages > 0:
         # A comparison of the overload energy of the unsplit grid with the overload energy of the split grid
         # after busbar outages is required. Therefore, we need to store the baseline loadflows after busbar outages
         # of unsplit grid so the optimizer can choose the runtime mode later.
@@ -459,7 +463,7 @@ def convert_rel_bb_outage_data(  # # noqa: C901, PLR0915
 
     # Determine dimensions for padding of branch_outage_set
     n_actions = sum(actions_per_sub)  # Total number of combinations
-    n_max_bb_slots_from_outages = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    n_max_bb_slots_from_outages = max((len(combi) for sub in rel_bb_outage_br_indices for combi in sub), default=0)
     n_max_bb_slots_from_articulation = max(
         (
             max((max(articulation_bbs, default=-1) + 1) for articulation_bbs in sub_articulation_nodes)

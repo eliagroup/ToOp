@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import pytest
 from jax_dataclasses import replace
 from toop_engine_dc_solver.jax.inputs import load_static_information
-from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis, NonRelBBOutageData
+from toop_engine_dc_solver.jax.types import BBOutageBaselineAnalysis, DynamicInformation, NonRelBBOutageData
 from toop_engine_topology_optimizer.dc.genetic_functions.genotype import Genotype
 from toop_engine_topology_optimizer.dc.genetic_functions.initialization import (
     get_repertoire_metrics,
@@ -28,6 +28,17 @@ from toop_engine_topology_optimizer.dc.repertoire.discrete_me_repertoire import 
     DiscreteMapElitesRepertoire,
 )
 from toop_engine_topology_optimizer.interfaces.messages.commons import DescriptorDef
+
+
+def _with_derived_bb_outage_count(dynamic_information: DynamicInformation) -> DynamicInformation:
+    """Update the static busbar-outage count from the visible contingency ids."""
+    return replace(
+        dynamic_information,
+        bb_outage_count=DynamicInformation.infer_bb_outage_count(
+            dynamic_information.action_set,
+            dynamic_information.non_rel_bb_outage_data,
+        ),
+    )
 
 
 def test_update_max_mw_flows_according_to_double_limits(
@@ -151,20 +162,17 @@ def test_update_static_information_extends_contingency_ids_for_bb_outage_nminus1
         + static_information.dynamic_information.n_inj_failures
     )
 
-    static_information = replace(
-        static_information,
-        solver_config=replace(
-            static_information.solver_config,
-            contingency_ids=[f"cont_{i}" for i in range(base_cases)],
-        ),
-        dynamic_information=replace(
+    non_rel_bb_outage_data = NonRelBBOutageData(
+        branch_outages=jnp.zeros((2, 1), dtype=int),
+        nodal_indices=jnp.zeros((2,), dtype=int),
+        deltap=jnp.zeros((2, n_timesteps), dtype=float),
+        busbar_ids=("bb_0", "bb_1"),
+    )
+    dynamic_information = _with_derived_bb_outage_count(
+        replace(
             static_information.dynamic_information,
-            non_rel_bb_outage_data=NonRelBBOutageData(
-                branch_outages=jnp.zeros((2, 1), dtype=int),
-                nodal_indices=jnp.zeros((2,), dtype=int),
-                deltap=jnp.zeros((2, n_timesteps), dtype=float),
-                busbar_ids=("bb_0", "bb_1"),
-            ),
+            action_set=replace(static_information.dynamic_information.action_set, rel_bb_outage_data=None),
+            non_rel_bb_outage_data=non_rel_bb_outage_data,
             bb_outage_baseline_analysis=BBOutageBaselineAnalysis(
                 overload=jnp.array(1.0),
                 success_count=jnp.array(2),
@@ -172,7 +180,16 @@ def test_update_static_information_extends_contingency_ids_for_bb_outage_nminus1
                 overload_weight=static_information.dynamic_information.branch_limits.overload_weight,
                 max_mw_flow=static_information.dynamic_information.branch_limits.max_mw_flow,
             ),
+        )
+    )
+
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            contingency_ids=[f"cont_{i}" for i in range(base_cases)],
         ),
+        dynamic_information=dynamic_information,
     )
 
     updated = update_static_information(
@@ -189,6 +206,38 @@ def test_update_static_information_extends_contingency_ids_for_bb_outage_nminus1
     assert updated.dynamic_information.bb_outage_baseline_analysis is None
     assert len(updated.solver_config.contingency_ids) == base_cases + updated.dynamic_information.n_bb_outages
     assert updated.solver_config.contingency_ids[-2:] == ["bb_0", "bb_1"]
+
+
+def test_update_static_information_keeps_busbar_mode_disabled_without_visible_busbar_outages(
+    static_information_file: str,
+) -> None:
+    static_information = load_static_information(static_information_file)
+    dynamic_information = _with_derived_bb_outage_count(
+        replace(
+            static_information.dynamic_information,
+            action_set=replace(static_information.dynamic_information.action_set, rel_bb_outage_data=None),
+            bb_outage_baseline_analysis=None,
+            non_rel_bb_outage_data=None,
+        )
+    )
+    static_information = replace(
+        static_information,
+        dynamic_information=dynamic_information,
+    )
+
+    updated = update_static_information(
+        (static_information,),
+        batch_size=3,
+        enable_nodal_inj_optim=False,
+        enable_parallel_pst_group_optim=False,
+        enable_bb_outage=True,
+        bb_outage_as_nminus1=True,
+        clip_bb_outage_penalty=False,
+        bb_outage_more_islands_penalty=125.0,
+    )[0]
+
+    assert updated.solver_config.enable_bb_outages is False
+    assert updated.dynamic_information.bb_outage_baseline_analysis is None
 
 
 def test_initialize_genetic_algorithm(

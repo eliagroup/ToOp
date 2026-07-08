@@ -634,6 +634,9 @@ class DynamicInformation(eqx.Module):
     Note: The data for relevant busbar outages is stored in the action set.
     """
 
+    bb_outage_count: Static[int] = eqx.field(static=True)
+    """Visible busbar-outage count in solver failure-axis order, stored statically for JIT-safe access."""
+
     bb_outage_baseline_analysis: Optional[BBOutageBaselineAnalysis]
     """The results of the busbar outage analysis for unsplit grid is stored in this dataclass.
     This is calculated if a comparision of bb_outage analysis has to be made between the unsplit
@@ -642,6 +645,19 @@ class DynamicInformation(eqx.Module):
     nodal_injection_information: Optional[NodalInjectionInformation]
     """If provided, contains the information about nodal injections (e.g. PSTs).
     This is required for nodal injection optimization (and thus PST optimization)"""
+
+    @staticmethod
+    def infer_bb_outage_count(
+        action_set: ActionSet,
+        non_rel_bb_outage_data: Optional[NonRelBBOutageData],
+    ) -> int:
+        """Infer the visible busbar-outage count from relevant and non-relevant payloads."""
+        count = 0
+        if action_set.rel_bb_outage_data is not None:
+            count += len(action_set.rel_bb_outage_data.visible_flat_slot_indices)
+        if non_rel_bb_outage_data is not None:
+            count += len(non_rel_bb_outage_data.busbar_ids)
+        return count
 
     @property
     def n_timesteps(self) -> int:
@@ -696,7 +712,7 @@ class DynamicInformation(eqx.Module):
     @property
     def n_bb_outages(self) -> int:
         """The number of busbar outages"""
-        return len(self.bb_outage_contingency_ids)
+        return self.bb_outage_count
 
     @property
     def bb_outage_contingency_ids(self) -> list[str]:

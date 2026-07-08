@@ -7,11 +7,13 @@
 
 """Module for comparing the postprocessing loadflow results in DC to the solver results."""
 
+from dataclasses import replace as dataclass_replace
 from functools import partial
 
 import jax.numpy as jnp
 import numpy as np
 from beartype.typing import Optional
+from jax_dataclasses import replace as jax_replace
 from jaxtyping import ArrayLike, Bool, Float
 from pydantic import BaseModel
 from pypowsybl.network import Network
@@ -192,6 +194,11 @@ def validate_loadflow_results(
 
     dynamic_information = static_information.dynamic_information
     solver_config = static_information.solver_config
+    dynamic_information, solver_config = _prepare_solver_inputs_for_validation(
+        dynamic_information=dynamic_information,
+        solver_config=solver_config,
+        nminus1_definition=nminus1_definition,
+    )
 
     n_0, n_1, success = extract_solver_matrices_polars(
         loadflow_results=loadflows,
@@ -396,6 +403,44 @@ def get_solver_results(
     n_1_solver = n_1_solver[0, timestep]
     success_solver = success_solver[0]
     return n_0_solver, n_1_solver, success_solver
+
+
+def _prepare_solver_inputs_for_validation(
+    dynamic_information: DynamicInformation,
+    solver_config: SolverConfig,
+    nminus1_definition: Nminus1Definition,
+) -> tuple[DynamicInformation, SolverConfig]:
+    """Align solver runtime flags with the contingencies present in the validation definition."""
+    bb_outage_contingency_ids = dynamic_information.bb_outage_contingency_ids
+    if not bb_outage_contingency_ids:
+        return dynamic_information, solver_config
+
+    case_contingency_ids = [
+        contingency.id for contingency in nminus1_definition.contingencies if not contingency.is_basecase()
+    ]
+    if not any(contingency_id in set(bb_outage_contingency_ids) for contingency_id in case_contingency_ids):
+        return dynamic_information, solver_config
+
+    base_nminus1_cases = (
+        dynamic_information.n_outages + dynamic_information.n_multi_outages + dynamic_information.n_inj_failures
+    )
+    expected_nminus1_cases = base_nminus1_cases + dynamic_information.n_bb_outages
+    contingency_ids = list(solver_config.contingency_ids)
+
+    if len(contingency_ids) < base_nminus1_cases:
+        contingency_ids.extend(f"nminus1_case_{i}" for i in range(len(contingency_ids), base_nminus1_cases))
+    if len(contingency_ids) < expected_nminus1_cases:
+        contingency_ids.extend(bb_outage_contingency_ids[len(contingency_ids) - base_nminus1_cases :])
+
+    return (
+        jax_replace(dynamic_information, bb_outage_baseline_analysis=None),
+        dataclass_replace(
+            solver_config,
+            enable_bb_outages=True,
+            bb_outage_as_nminus1=True,
+            contingency_ids=contingency_ids,
+        ),
+    )
 
 
 def _build_nodal_inj_start_options(

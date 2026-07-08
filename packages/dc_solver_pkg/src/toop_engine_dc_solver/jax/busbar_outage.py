@@ -268,9 +268,9 @@ def perform_non_rel_bb_outages(
 def remove_articulation_nodes_from_bb_outage(
     rel_bb_outage_data: RelBBOutageData, branch_action_indices: Int[Array, " n_rel_subs"]
 ) -> tuple[
-    Int[Array, " n_rel_subs max_n_physical_bb_per_sub max_branches_per_sub"],
-    Int[Array, " n_rel_subs max_n_physical_bb_per_sub"],
-    Float[Array, " n_rel_subs max_n_physical_bb_per_sub n_timesteps"],
+    Int[Array, " n_bb_outages max_branches_per_sub"],
+    Int[Array, " n_bb_outages"],
+    Float[Array, " n_bb_outages n_timesteps"],
 ]:
     """
     Remove critical busbars from outage data.
@@ -284,12 +284,12 @@ def remove_articulation_nodes_from_bb_outage(
 
     Returns
     -------
-    branch_outages : Int[Array, "n_rel_subs max_n_physical_bb_per_sub max_branches_per_sub"]
-        Updated branch outages with critical busbars removed.
-    nodal_indices : Int[Array, "n_rel_subs max_n_physical_bb_per_sub"]
-        Updated nodal indices with critical busbars removed.
-    deltap_outages : Float[Array, "n_rel_subs max_n_physical_bb_per_sub n_timesteps"]
-        Updated delta power outages with critical busbars removed.
+    branch_outages : Int[Array, "n_bb_outages max_branches_per_sub"]
+        Updated branch outages with only visible busbar-outage slots retained.
+    nodal_indices : Int[Array, "n_bb_outages"]
+        Updated nodal indices with only visible busbar-outage slots retained.
+    deltap_outages : Float[Array, "n_bb_outages n_timesteps"]
+        Updated delta power outages with only visible busbar-outage slots retained.
     """
     articulation_node_mask: Bool[Array, " n_rel_subs n_max_bb_to_outage_per_sub"] = (
         rel_bb_outage_data.articulation_node_mask.at[branch_action_indices].get()
@@ -311,7 +311,16 @@ def remove_articulation_nodes_from_bb_outage(
     deltap_outages = rel_bb_outage_data.deltap_set.at[branch_action_indices].get()
     deltap_outages = jnp.where(unavailable_slot_mask[..., None], 0.0, deltap_outages)
 
-    return branch_outages, nodal_indices, deltap_outages
+    flat_branch_outages = branch_outages.reshape((-1, max_n_branches_per_sub))
+    flat_nodal_indices = nodal_indices.reshape((-1,))
+    flat_deltap_outages = deltap_outages.reshape((-1, deltap_outages.shape[-1]))
+    visible_flat_slot_indices = jnp.asarray(rel_bb_outage_data.visible_flat_slot_indices, dtype=int)
+
+    return (
+        flat_branch_outages[visible_flat_slot_indices],
+        flat_nodal_indices[visible_flat_slot_indices],
+        flat_deltap_outages[visible_flat_slot_indices],
+    )
 
 
 def filter_already_outaged_branches_single_outage(
@@ -408,16 +417,7 @@ def perform_rel_bb_outage_single_topo(
     branch_outages, nodal_indices_outages, deltap_outages = remove_articulation_nodes_from_bb_outage(
         action_set.rel_bb_outage_data, action_indices
     )
-    # Note: branch_indices with value -1 or int_max are automatically ignored in the  build_modf_matrix  function
-    branch_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub max_branches_per_sub"] = jnp.concatenate(
-        branch_outages, axis=0
-    )
-    deltap_outages: Float[Array, " n_rel_subs*max_n_physical_bb_per_sub n_timesteps"] = jnp.concatenate(
-        deltap_outages, axis=0
-    )
-    nodal_indices_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub "] = jnp.concatenate(
-        nodal_indices_outages, axis=0
-    )
+    # Note: branch indices with value -1 or int_max are automatically ignored in build_modf_matrix.
 
     lfs_list, success = perform_outage_multi_busbars(
         branch_outages,

@@ -707,6 +707,7 @@ def create_dummy_rel_bb_outage_data(
     n_br_combis: int, n_max_bb_to_outage_per_sub: int, max_branches_per_sub: int, n_timesteps: int, seed: int
 ) -> RelBBOutageData:
     """Creates a dummy RelBBOutageData object with the given dimensions filled with random data"""
+    visible_flat_slot_indices = tuple(range(n_br_combis * n_max_bb_to_outage_per_sub))
     return RelBBOutageData(
         branch_outage_set=jax.random.randint(
             jax.random.PRNGKey(seed),
@@ -725,6 +726,7 @@ def create_dummy_rel_bb_outage_data(
             jax.random.PRNGKey(seed + 3), 0.5, (n_br_combis, n_max_bb_to_outage_per_sub)
         ),
         valid_slot_mask=jnp.ones((n_br_combis, n_max_bb_to_outage_per_sub), dtype=bool),
+        visible_flat_slot_indices=visible_flat_slot_indices,
         busbar_id_set=tuple(
             tuple(f"bb_{action_idx}_{slot_idx}" for slot_idx in range(n_max_bb_to_outage_per_sub))
             for action_idx in range(n_br_combis)
@@ -734,35 +736,40 @@ def create_dummy_rel_bb_outage_data(
 
 def test_remove_critical_busbars_from_outage():
     rel_outage_data = create_dummy_rel_bb_outage_data(
-        n_br_combis=10,
+        n_br_combis=4,
         n_max_bb_to_outage_per_sub=4,
         max_branches_per_sub=5,
         n_timesteps=1,
         seed=42,
     )
-    branch_action_indices = jnp.array([3, 7, 8, 10])
+    branch_action_indices = jnp.array([0, 1, 2, 3])
     branch_outages, nodal_indices, deltap_outages = remove_articulation_nodes_from_bb_outage(
         rel_outage_data, branch_action_indices
     )
-    assert rel_outage_data.branch_outage_set[branch_action_indices].shape == branch_outages.shape, (
-        "Shape of branch_outages is incorrect"
+    flat_branch_outages = rel_outage_data.branch_outage_set[branch_action_indices].reshape(
+        (-1, rel_outage_data.branch_outage_set.shape[2])
     )
+    flat_articulation_mask = rel_outage_data.articulation_node_mask[branch_action_indices].reshape((-1,))
+    flat_deltap = rel_outage_data.deltap_set[branch_action_indices].reshape((-1, rel_outage_data.deltap_set.shape[2]))
+    flat_nodal_indices = rel_outage_data.nodal_indices[branch_action_indices].reshape((-1,))
+
+    assert branch_outages.shape == flat_branch_outages.shape, "Shape of branch_outages is incorrect"
     assert jnp.all(
         jnp.isclose(
-            ~jnp.all(rel_outage_data.branch_outage_set[branch_action_indices] == branch_outages, axis=2),
-            rel_outage_data.articulation_node_mask[branch_action_indices],
+            ~jnp.all(flat_branch_outages == branch_outages, axis=1),
+            flat_articulation_mask,
         )
     ), "Branch outage data is incorrect"
     assert jnp.all(
         jnp.isclose(
-            ~jnp.all(rel_outage_data.deltap_set[branch_action_indices] == deltap_outages, axis=2),
-            rel_outage_data.articulation_node_mask[branch_action_indices],
+            ~jnp.all(flat_deltap == deltap_outages, axis=1),
+            flat_articulation_mask,
         )
     ), "Deltap data is incorrect"
     assert jnp.all(
         jnp.isclose(
-            ~(rel_outage_data.nodal_indices[branch_action_indices] == nodal_indices),
-            rel_outage_data.articulation_node_mask[branch_action_indices],
+            ~(flat_nodal_indices == nodal_indices),
+            flat_articulation_mask,
         )
     ), "Nodal indices are incorrect"
 
@@ -774,6 +781,7 @@ def test_remove_critical_busbars_from_outage_respects_valid_slot_mask() -> None:
         nodal_indices=jnp.array([[8, 9]], dtype=int),
         articulation_node_mask=jnp.array([[False, False]]),
         valid_slot_mask=jnp.array([[True, False]]),
+        visible_flat_slot_indices=(0,),
         busbar_id_set=(("bb_0", "bb_1"),),
     )
 
@@ -781,12 +789,12 @@ def test_remove_critical_busbars_from_outage_respects_valid_slot_mask() -> None:
         rel_outage_data, jnp.array([0], dtype=int)
     )
 
-    assert jnp.array_equal(branch_outages[0, 0], jnp.array([1, 2]))
-    assert jnp.array_equal(branch_outages[0, 1], jnp.array([int_max(), int_max()]))
-    assert int(nodal_indices[0, 0]) == 8
-    assert int(nodal_indices[0, 1]) == -1
-    assert float(deltap_outages[0, 0, 0]) == 5.0
-    assert float(deltap_outages[0, 1, 0]) == 0.0
+    assert branch_outages.shape == (1, 2)
+    assert nodal_indices.shape == (1,)
+    assert deltap_outages.shape == (1, 1)
+    assert jnp.array_equal(branch_outages[0], jnp.array([1, 2]))
+    assert int(nodal_indices[0]) == 8
+    assert float(deltap_outages[0, 0]) == 5.0
 
 
 def test_perform_rel_bb_outage_for_unsplit_grid(

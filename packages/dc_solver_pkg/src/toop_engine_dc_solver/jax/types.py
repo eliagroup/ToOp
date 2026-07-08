@@ -121,6 +121,9 @@ class RelBBOutageData(eqx.Module):
     valid_slot_mask: Bool[Array, " n_actions n_max_bb_to_outage_per_sub"]
     """Mask of visible busbar-outage slots after preprocessing-side filtering, excluding padding."""
 
+    visible_flat_slot_indices: Static[tuple[int, ...]] = eqx.field(static=True)
+    """Flattened slot indices for visible relevant busbar outages, one action row per relevant substation."""
+
     busbar_id_set: Static[tuple[tuple[str, ...], ...]] = eqx.field(static=True)
     """Physical busbar ids per action row in slot order, before padding beyond the stored tuple length."""
 
@@ -145,6 +148,7 @@ class RelBBOutageData(eqx.Module):
             and jnp.array_equal(self.nodal_indices, other.nodal_indices)
             and jnp.array_equal(self.articulation_node_mask, other.articulation_node_mask)
             and jnp.array_equal(self.valid_slot_mask, other.valid_slot_mask)
+            and self.visible_flat_slot_indices == other.visible_flat_slot_indices
             and self.busbar_id_set == other.busbar_id_set
         )
 
@@ -158,12 +162,21 @@ class RelBBOutageData(eqx.Module):
                 busbar_id_set = (self.busbar_id_set[int(busbar_id_indices)],)
             else:
                 busbar_id_set = tuple(self.busbar_id_set[int(index)] for index in np.asarray(busbar_id_indices).tolist())
+        valid_slot_mask = self.valid_slot_mask[key]
+        valid_slot_mask_2d = np.atleast_2d(np.asarray(valid_slot_mask))
+        visible_flat_slot_indices = tuple(
+            int(row_idx * valid_slot_mask_2d.shape[1] + slot_idx)
+            for row_idx, row in enumerate(valid_slot_mask_2d)
+            for slot_idx, is_valid in enumerate(row.tolist())
+            if is_valid
+        )
         return RelBBOutageData(
             branch_outage_set=self.branch_outage_set[key],
             deltap_set=self.deltap_set[key],
             nodal_indices=self.nodal_indices[key],
             articulation_node_mask=self.articulation_node_mask[key],
-            valid_slot_mask=self.valid_slot_mask[key],
+            valid_slot_mask=valid_slot_mask,
+            visible_flat_slot_indices=visible_flat_slot_indices,
             busbar_id_set=busbar_id_set,
         )
 

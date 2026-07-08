@@ -624,6 +624,13 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 data=dynamic_information.action_set.rel_bb_outage_data.valid_slot_mask,
             )
             file.create_dataset(
+                "action_set_rel_bb_outage_data_visible_flat_slot_indices",
+                data=np.asarray(
+                    dynamic_information.action_set.rel_bb_outage_data.visible_flat_slot_indices,
+                    dtype=int,
+                ),
+            )
+            file.create_dataset(
                 "action_set_rel_bb_outage_data_busbar_id_counts",
                 data=np.asarray(
                     [len(busbar_ids) for busbar_ids in dynamic_information.action_set.rel_bb_outage_data.busbar_id_set],
@@ -779,6 +786,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                             deltap_set=jnp.array(file["action_set_rel_bb_outage_data_deltap_set"][:]),
                             articulation_node_mask=jnp.array(file["action_set_rel_bb_outage_data_critical_node_mask"][:]),
                             valid_slot_mask=jnp.array(file["action_set_rel_bb_outage_data_valid_slot_mask"][:]),
+                            visible_flat_slot_indices=load_rel_bb_outage_visible_flat_slot_indices(file),
                             busbar_id_set=load_rel_bb_outage_busbar_id_set(file),
                         )
                         if rel_bb_outage_data_present
@@ -864,6 +872,22 @@ def load_rel_bb_outage_busbar_id_set(file: h5py.File) -> tuple[tuple[str, ...], 
         busbar_id_set.append(tuple(flat_busbar_ids[offset:next_offset]))
         offset = next_offset
     return tuple(busbar_id_set)
+
+
+def load_rel_bb_outage_visible_flat_slot_indices(file: h5py.File) -> tuple[int, ...]:
+    """Load flattened visible relevant busbar slot indices from HDF5."""
+    if "action_set_rel_bb_outage_data_visible_flat_slot_indices" in file:
+        return tuple(int(index) for index in file["action_set_rel_bb_outage_data_visible_flat_slot_indices"][:].tolist())
+
+    valid_slot_mask = np.asarray(file["action_set_rel_bb_outage_data_valid_slot_mask"][:])
+    action_start_indices = np.asarray(file["action_set_action_start_indices"][:])
+    n_max_bb_to_outage_per_sub = valid_slot_mask.shape[1]
+    return tuple(
+        int(sub_idx * n_max_bb_to_outage_per_sub + slot_idx)
+        for sub_idx, action_idx in enumerate(action_start_indices.tolist())
+        for slot_idx, is_valid in enumerate(valid_slot_mask[int(action_idx)].tolist())
+        if is_valid
+    )
 
 
 def load_bb_outage_baseline_analysis(

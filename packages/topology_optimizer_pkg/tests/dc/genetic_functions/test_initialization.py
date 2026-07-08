@@ -163,6 +163,7 @@ def test_update_static_information_extends_contingency_ids_for_bb_outage_nminus1
                 branch_outages=jnp.zeros((2, 1), dtype=int),
                 nodal_indices=jnp.zeros((2,), dtype=int),
                 deltap=jnp.zeros((2, n_timesteps), dtype=float),
+                busbar_ids=("bb_0", "bb_1"),
             ),
             bb_outage_baseline_analysis=BBOutageBaselineAnalysis(
                 overload=jnp.array(1.0),
@@ -187,6 +188,7 @@ def test_update_static_information_extends_contingency_ids_for_bb_outage_nminus1
 
     assert updated.dynamic_information.bb_outage_baseline_analysis is None
     assert len(updated.solver_config.contingency_ids) == base_cases + updated.dynamic_information.n_bb_outages
+    assert updated.solver_config.contingency_ids[-2:] == ["bb_0", "bb_1"]
 
 
 def test_initialize_genetic_algorithm(

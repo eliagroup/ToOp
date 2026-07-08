@@ -294,18 +294,22 @@ def remove_articulation_nodes_from_bb_outage(
     articulation_node_mask: Bool[Array, " n_rel_subs n_max_bb_to_outage_per_sub"] = (
         rel_bb_outage_data.articulation_node_mask.at[branch_action_indices].get()
     )
+    valid_slot_mask: Bool[Array, " n_rel_subs n_max_bb_to_outage_per_sub"] = rel_bb_outage_data.valid_slot_mask.at[
+        branch_action_indices
+    ].get()
+    unavailable_slot_mask = articulation_node_mask | ~valid_slot_mask
     max_n_branches_per_sub = rel_bb_outage_data.branch_outage_set.shape[2]
 
     branch_outages = rel_bb_outage_data.branch_outage_set.at[branch_action_indices].get()
     branch_outages = jnp.where(
-        jnp.repeat(articulation_node_mask[..., None], max_n_branches_per_sub, 2), int_max(), branch_outages
+        jnp.repeat(unavailable_slot_mask[..., None], max_n_branches_per_sub, 2), int_max(), branch_outages
     )
 
     nodal_indices = rel_bb_outage_data.nodal_indices.at[branch_action_indices].get()
-    nodal_indices = jnp.where(articulation_node_mask, -1, nodal_indices)
+    nodal_indices = jnp.where(unavailable_slot_mask, -1, nodal_indices)
 
     deltap_outages = rel_bb_outage_data.deltap_set.at[branch_action_indices].get()
-    deltap_outages = jnp.where(articulation_node_mask[..., None], 0.0, deltap_outages)
+    deltap_outages = jnp.where(unavailable_slot_mask[..., None], 0.0, deltap_outages)
 
     return branch_outages, nodal_indices, deltap_outages
 

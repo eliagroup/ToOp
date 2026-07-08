@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import equinox as eqx
 import jax
+import numpy as np
 from beartype.typing import Optional, Protocol, Union
 from jax import numpy as jnp
 from jax_dataclasses import Static
@@ -117,6 +118,11 @@ class RelBBOutageData(eqx.Module):
     For ex, if bus_a: 1 - 2 - 3 ; bus_b: 4
     Here busbar 2 is an articulation node as if it is outaged, bus_a will be split into 1 and 3.
     """
+    valid_slot_mask: Bool[Array, " n_actions n_max_bb_to_outage_per_sub"]
+    """Mask of visible busbar-outage slots after preprocessing-side filtering, excluding padding."""
+
+    busbar_id_set: Static[tuple[tuple[str, ...], ...]] = eqx.field(static=True)
+    """Physical busbar ids per action row in slot order, before padding beyond the stored tuple length."""
 
     def __eq__(self, other: object) -> bool:
         """Equality is defined by array_equals checks
@@ -138,15 +144,27 @@ class RelBBOutageData(eqx.Module):
             and jnp.array_equal(self.deltap_set, other.deltap_set)
             and jnp.array_equal(self.nodal_indices, other.nodal_indices)
             and jnp.array_equal(self.articulation_node_mask, other.articulation_node_mask)
+            and jnp.array_equal(self.valid_slot_mask, other.valid_slot_mask)
+            and self.busbar_id_set == other.busbar_id_set
         )
 
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "RelBBOutageData":
         """Access the first batch dimension of the RelBBOutageData"""
+        if isinstance(key, int):
+            busbar_id_set = (self.busbar_id_set[key],)
+        else:
+            busbar_id_indices = np.arange(len(self.busbar_id_set))[np.asarray(key)]
+            if np.isscalar(busbar_id_indices):
+                busbar_id_set = (self.busbar_id_set[int(busbar_id_indices)],)
+            else:
+                busbar_id_set = tuple(self.busbar_id_set[int(index)] for index in np.asarray(busbar_id_indices).tolist())
         return RelBBOutageData(
             branch_outage_set=self.branch_outage_set[key],
             deltap_set=self.deltap_set[key],
             nodal_indices=self.nodal_indices[key],
             articulation_node_mask=self.articulation_node_mask[key],
+            valid_slot_mask=self.valid_slot_mask[key],
+            busbar_id_set=busbar_id_set,
         )
 
 
@@ -165,6 +183,9 @@ class NonRelBBOutageData(eqx.Module):
     deltap: Float[Array, " n_non_rel_bb_outages n_timesteps"]
     """For every busbar outage, the delta in power that has to be subtracted from
     the nodal injection."""
+
+    busbar_ids: Static[tuple[str, ...]] = eqx.field(static=True)
+    """Physical busbar ids aligned one-to-one with non-relevant busbar-outage rows."""
 
 
 class BBOutageBaselineAnalysis(eqx.Module):
@@ -662,15 +683,26 @@ class DynamicInformation(eqx.Module):
     @property
     def n_bb_outages(self) -> int:
         """The number of busbar outages"""
-        n_bb_outages = 0
-        if self.non_rel_bb_outage_data is not None:
-            n_bb_outages += self.non_rel_bb_outage_data.nodal_indices.shape[0]
+        return len(self.bb_outage_contingency_ids)
 
-        if self.action_set.rel_bb_outage_data is not None:
-            max_bbs_per_sub = self.action_set.rel_bb_outage_data.nodal_indices.shape[1]
-            max_n_rel_bbs = self.n_sub_relevant * max_bbs_per_sub
-            n_bb_outages += max_n_rel_bbs
-        return n_bb_outages
+    @property
+    def bb_outage_contingency_ids(self) -> list[str]:
+        """Physical busbar-outage ids in solver failure-axis order."""
+        contingency_ids: list[str] = []
+        rel_bb_outage_data = self.action_set.rel_bb_outage_data
+        if rel_bb_outage_data is not None:
+            action_start_indices = np.asarray(self.action_set.action_start_indices)
+            for action_start_index in action_start_indices.tolist():
+                slot_ids = rel_bb_outage_data.busbar_id_set[action_start_index]
+                slot_mask = np.asarray(rel_bb_outage_data.valid_slot_mask[action_start_index])
+                contingency_ids.extend(
+                    busbar_id for busbar_id, is_valid in zip(slot_ids, slot_mask[: len(slot_ids)], strict=True) if is_valid
+                )
+
+        if self.non_rel_bb_outage_data is not None:
+            contingency_ids.extend(self.non_rel_bb_outage_data.busbar_ids)
+
+        return contingency_ids
 
     @property
     def n_nminus1_cases(self) -> int:

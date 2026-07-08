@@ -724,6 +724,11 @@ def create_dummy_rel_bb_outage_data(
         articulation_node_mask=jax.random.bernoulli(
             jax.random.PRNGKey(seed + 3), 0.5, (n_br_combis, n_max_bb_to_outage_per_sub)
         ),
+        valid_slot_mask=jnp.ones((n_br_combis, n_max_bb_to_outage_per_sub), dtype=bool),
+        busbar_id_set=tuple(
+            tuple(f"bb_{action_idx}_{slot_idx}" for slot_idx in range(n_max_bb_to_outage_per_sub))
+            for action_idx in range(n_br_combis)
+        ),
     )
 
 
@@ -760,6 +765,28 @@ def test_remove_critical_busbars_from_outage():
             rel_outage_data.articulation_node_mask[branch_action_indices],
         )
     ), "Nodal indices are incorrect"
+
+
+def test_remove_critical_busbars_from_outage_respects_valid_slot_mask() -> None:
+    rel_outage_data = RelBBOutageData(
+        branch_outage_set=jnp.array([[[1, 2], [3, 4]]], dtype=int),
+        deltap_set=jnp.array([[[5.0], [7.0]]]),
+        nodal_indices=jnp.array([[8, 9]], dtype=int),
+        articulation_node_mask=jnp.array([[False, False]]),
+        valid_slot_mask=jnp.array([[True, False]]),
+        busbar_id_set=(("bb_0", "bb_1"),),
+    )
+
+    branch_outages, nodal_indices, deltap_outages = remove_articulation_nodes_from_bb_outage(
+        rel_outage_data, jnp.array([0], dtype=int)
+    )
+
+    assert jnp.array_equal(branch_outages[0, 0], jnp.array([1, 2]))
+    assert jnp.array_equal(branch_outages[0, 1], jnp.array([int_max(), int_max()]))
+    assert int(nodal_indices[0, 0]) == 8
+    assert int(nodal_indices[0, 1]) == -1
+    assert float(deltap_outages[0, 0, 0]) == 5.0
+    assert float(deltap_outages[0, 1, 0]) == 0.0
 
 
 def test_perform_rel_bb_outage_for_unsplit_grid(

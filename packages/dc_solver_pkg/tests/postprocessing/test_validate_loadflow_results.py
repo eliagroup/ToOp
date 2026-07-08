@@ -232,3 +232,36 @@ def test_validate_loadflows_with_psts(tmp_path: Path) -> None:
             disconnections=[],
             pst_setpoints=wrong_pst_setpoints,
         )
+
+
+def test_validate_loadflow_results_including_busbar_outages(
+    test_grid_folder_path: Path,
+    network_data_test_grid: NetworkData,
+    jax_inputs_test_grid: tuple,
+) -> None:
+    topo_indices, static_information = jax_inputs_test_grid
+    static_information = replace(
+        static_information,
+        solver_config=replace(static_information.solver_config, batch_size_bsdf=1),
+    )
+    nminus1_definition = extract_nminus1_definition(network_data_test_grid)
+
+    runner = PowsyblRunner(
+        lf_params=load_lf_params(test_grid_folder_path / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
+    runner.load_base_grid(test_grid_folder_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    runner.store_nminus1_definition(nminus1_definition)
+    runner.store_action_set(extract_action_set(network_data_test_grid))
+
+    actions = topo_indices.action[0].tolist()
+    disconnections: list[int] = []
+    loadflow_results = runner.run_dc_loadflow(actions, disconnections)
+
+    validate_loadflow_results(
+        static_information=static_information,
+        nminus1_definition=nminus1_definition,
+        loadflows=loadflow_results,
+        active_topology_network=runner.build_topology_network(actions, disconnections),
+        actions=actions,
+        disconnections=disconnections,
+    )

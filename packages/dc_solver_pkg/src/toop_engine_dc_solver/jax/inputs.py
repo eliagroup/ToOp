@@ -596,6 +596,12 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 "non_rel_bb_outage_data_deltap",
                 data=dynamic_information.non_rel_bb_outage_data.deltap,
             )
+            file.create_dataset(
+                "non_rel_bb_outage_data_busbar_ids",
+                data=np.asarray(
+                    dynamic_information.non_rel_bb_outage_data.busbar_ids, dtype=h5py.string_dtype(encoding="utf-8")
+                ),
+            )
         if dynamic_information.action_set.rel_bb_outage_data is not None:
             file.create_dataset(
                 "action_set_rel_bb_outage_data_branch_outage_set",
@@ -612,6 +618,28 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             file.create_dataset(
                 "action_set_rel_bb_outage_data_critical_node_mask",
                 data=dynamic_information.action_set.rel_bb_outage_data.articulation_node_mask,
+            )
+            file.create_dataset(
+                "action_set_rel_bb_outage_data_valid_slot_mask",
+                data=dynamic_information.action_set.rel_bb_outage_data.valid_slot_mask,
+            )
+            file.create_dataset(
+                "action_set_rel_bb_outage_data_busbar_id_counts",
+                data=np.asarray(
+                    [len(busbar_ids) for busbar_ids in dynamic_information.action_set.rel_bb_outage_data.busbar_id_set],
+                    dtype=int,
+                ),
+            )
+            file.create_dataset(
+                "action_set_rel_bb_outage_data_busbar_ids_flat",
+                data=np.asarray(
+                    [
+                        busbar_id
+                        for busbar_ids in dynamic_information.action_set.rel_bb_outage_data.busbar_id_set
+                        for busbar_id in busbar_ids
+                    ],
+                    dtype=h5py.string_dtype(encoding="utf-8"),
+                ),
             )
         if dynamic_information.bb_outage_baseline_analysis is not None:
             file.create_dataset(
@@ -750,6 +778,8 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                             nodal_indices=jnp.array(file["action_set_rel_bb_outage_data_nodal_indices"][:]),
                             deltap_set=jnp.array(file["action_set_rel_bb_outage_data_deltap_set"][:]),
                             articulation_node_mask=jnp.array(file["action_set_rel_bb_outage_data_critical_node_mask"][:]),
+                            valid_slot_mask=jnp.array(file["action_set_rel_bb_outage_data_valid_slot_mask"][:]),
+                            busbar_id_set=load_rel_bb_outage_busbar_id_set(file),
                         )
                         if rel_bb_outage_data_present
                         else None,
@@ -810,8 +840,30 @@ def load_non_rel_bb_outage_data(file: h5py.File, non_rel_bb_outage_data_present:
             branch_outages=jnp.array(file["non_rel_bb_outage_data_branch_outages"][:]),
             nodal_indices=jnp.array(file["non_rel_bb_outage_data_nodal_indices"][:]),
             deltap=jnp.array(file["non_rel_bb_outage_data_deltap"][:]),
+            busbar_ids=tuple(file["non_rel_bb_outage_data_busbar_ids"].asstr()[:].tolist())
+            if "non_rel_bb_outage_data_busbar_ids" in file
+            else tuple(),
         )
     return None
+
+
+def load_rel_bb_outage_busbar_id_set(file: h5py.File) -> tuple[tuple[str, ...], ...]:
+    """Load variable-length relevant busbar slot ids from flattened HDF5 datasets."""
+    if (
+        "action_set_rel_bb_outage_data_busbar_id_counts" not in file
+        or "action_set_rel_bb_outage_data_busbar_ids_flat" not in file
+    ):
+        return tuple()
+
+    counts = file["action_set_rel_bb_outage_data_busbar_id_counts"][:].tolist()
+    flat_busbar_ids = file["action_set_rel_bb_outage_data_busbar_ids_flat"].asstr()[:].tolist()
+    offset = 0
+    busbar_id_set: list[tuple[str, ...]] = []
+    for count in counts:
+        next_offset = offset + count
+        busbar_id_set.append(tuple(flat_busbar_ids[offset:next_offset]))
+        offset = next_offset
+    return tuple(busbar_id_set)
 
 
 def load_bb_outage_baseline_analysis(

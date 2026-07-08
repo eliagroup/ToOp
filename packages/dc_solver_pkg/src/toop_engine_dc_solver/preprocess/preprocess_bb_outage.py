@@ -395,12 +395,14 @@ def update_network_data_with_non_rel_bb_outages(
             non_rel_bb_outage_br_indices=[],
             non_rel_bb_outage_deltap=np.zeros((n_busbar_outages, network.nodal_injection.shape[0]), float),
             non_rel_bb_outage_nodal_indices=np.zeros((n_busbar_outages), int),
+            non_rel_bb_outage_ids=[],
         )
     asset_topology = network.asset_topology
 
     branch_indices = []
     delta_p = []
     nodal_indices = []
+    outage_ids = []
 
     for station in asset_topology.stations:
         if station.grid_model_id in outage_station_busbars_map:
@@ -411,12 +413,14 @@ def update_network_data_with_non_rel_bb_outages(
                 branch_indices.append(list(set(branch_indices_to_outage)))
                 delta_p.append(nodal_injection_to_outage)
                 nodal_indices.append(node_index_to_outage)
+                outage_ids.append(bb_id)
 
     return replace(
         network,
         non_rel_bb_outage_br_indices=branch_indices,
         non_rel_bb_outage_deltap=np.array(delta_p),
         non_rel_bb_outage_nodal_indices=np.array(nodal_indices),
+        non_rel_bb_outage_ids=outage_ids,
     )
 
 
@@ -644,12 +648,36 @@ def update_network_data_with_rel_bb_outages(
 
     relevant_subs = get_relevant_stations(network_data=network_data)
     rel_bb_articulation_nodes = get_rel_articulation_nodes(relevant_subs, network_data.busbar_a_mappings)
+    rel_bb_outage_slot_ids = []
+    rel_bb_outage_valid_slot_mask = []
+    for station_index, station in enumerate(relevant_subs):
+        configured_busbars = set(rel_station_busbars_map.get(station.grid_model_id, []))
+        always_articulation_ids: set[str] = set()
+        if station_index < len(rel_bb_articulation_nodes):
+            articulation_by_action = rel_bb_articulation_nodes[station_index]
+            if articulation_by_action:
+                always_articulation_indices = set(articulation_by_action[0])
+                for articulation_indices in articulation_by_action[1:]:
+                    always_articulation_indices &= set(articulation_indices)
+                always_articulation_ids = {
+                    station.busbars[busbar_index].grid_model_id
+                    for busbar_index in always_articulation_indices
+                    if busbar_index < len(station.busbars)
+                }
+        station_slot_ids = [busbar.grid_model_id for busbar in station.busbars]
+        station_valid_slot_mask = [
+            busbar_id in configured_busbars and busbar_id not in always_articulation_ids for busbar_id in station_slot_ids
+        ]
+        rel_bb_outage_slot_ids.append(station_slot_ids)
+        rel_bb_outage_valid_slot_mask.append(station_valid_slot_mask)
     return replace(
         network_data,
         rel_bb_outage_br_indices=rel_bb_outage_br_indices,
         rel_bb_outage_deltap=rel_bb_outage_deltap,
         rel_bb_outage_nodal_indices=rel_bb_outage_nodal_indices,
         rel_bb_articulation_nodes=rel_bb_articulation_nodes,
+        rel_bb_outage_slot_ids=rel_bb_outage_slot_ids,
+        rel_bb_outage_valid_slot_mask=rel_bb_outage_valid_slot_mask,
     )
 
 

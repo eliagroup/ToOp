@@ -37,11 +37,12 @@ def test_extract_data_compare_to_jax(network_data_preprocessed: NetworkData) -> 
     ]
 
     # Compare with the processed jax data
-    static_information = convert_to_jax(network_data_preprocessed)
+    static_information = convert_to_jax(network_data_preprocessed, preprocess_bb_outages=True)
     assert len(action_set.local_actions) == len(static_information.dynamic_information.action_set)
     mon_branches = [el for el in nminus1_definition.monitored_elements if el.kind == "branch"]
     assert len(mon_branches) == static_information.n_branches_monitored
     assert [contingency.id for contingency in busbar_contingencies] == busbar_outage_ids
+    assert static_information.dynamic_information.bb_outage_contingency_ids == busbar_outage_ids
     assert len(nminus1_definition.contingencies) == static_information.n_nminus1_cases + len(busbar_outage_ids) + 1
     assert nminus1_definition.contingencies[0].id == "BASECASE"
     assert len(nminus1_definition.contingencies[0].elements) == 0

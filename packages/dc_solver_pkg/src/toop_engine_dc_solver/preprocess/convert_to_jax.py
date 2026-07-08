@@ -429,6 +429,7 @@ def convert_non_rel_bb_outage(
         branch_outages=jnp.array(padded_outage_branches),
         deltap=outage_deltap,
         nodal_indices=jnp.array(network_data.non_rel_bb_outage_nodal_indices),
+        busbar_ids=tuple(network_data.non_rel_bb_outage_ids or []),
     )
 
 
@@ -475,6 +476,8 @@ def convert_rel_bb_outage_data(  # noqa: C901
     padded_delta_p_set = np.zeros((n_actions, n_max_bb_to_outage_per_sub, n_timesteps), dtype=float)
     padded_nodal_index_set = max_val * np.ones((n_actions, n_max_bb_to_outage_per_sub), dtype=int)
     padded_articulation_node_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
+    padded_valid_slot_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
+    busbar_id_set: list[tuple[str, ...]] = []
 
     def fill_padded_array(
         padded_array: np.ndarray,
@@ -634,11 +637,22 @@ def convert_rel_bb_outage_data(  # noqa: C901
         padded_articulation_node_mask, network_data.rel_bb_articulation_nodes, fill_articulation_node_mask
     )
 
+    rel_bb_outage_slot_ids = network_data.rel_bb_outage_slot_ids or [[] for _ in actions_per_sub]
+    rel_bb_outage_valid_slot_mask = network_data.rel_bb_outage_valid_slot_mask or [[] for _ in actions_per_sub]
+    for sub_idx, n_sub_actions in enumerate(actions_per_sub):
+        start_action_idx = 0 if sub_idx == 0 else int(cum_sum_actions_per_sub[sub_idx - 1])
+        slot_mask = rel_bb_outage_valid_slot_mask[sub_idx] if sub_idx < len(rel_bb_outage_valid_slot_mask) else []
+        slot_ids = rel_bb_outage_slot_ids[sub_idx] if sub_idx < len(rel_bb_outage_slot_ids) else []
+        padded_valid_slot_mask[start_action_idx : start_action_idx + n_sub_actions, : len(slot_mask)] = slot_mask
+        busbar_id_set.extend([tuple(slot_ids)] * n_sub_actions)
+
     return RelBBOutageData(
         branch_outage_set=padded_branch_outage_set,
         deltap_set=padded_delta_p_set,
         nodal_indices=padded_nodal_index_set,
         articulation_node_mask=padded_articulation_node_mask,
+        valid_slot_mask=jnp.array(padded_valid_slot_mask),
+        busbar_id_set=tuple(busbar_id_set),
     )
 
 

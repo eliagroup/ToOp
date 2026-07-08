@@ -278,6 +278,9 @@ class NetworkData:
     non_rel_bb_outage_nodal_indices: Optional[Int[np.ndarray, " n_busbar_outages"]] = None
     """The node index of the the busbar that will be outaged . Will be computed during busbar-outage cases"""
 
+    non_rel_bb_outage_ids: Optional[list[str]] = None
+    """Visible busbar-outage ids for non-relevant stations, aligned with non_rel_bb_outage_* rows."""
+
     rel_bb_outage_br_indices: Optional[list[list[list[list[int]]]]] = None
     """
     This correpsonds to the branch indices that have to be outaged for the relevant
@@ -306,6 +309,12 @@ class NetworkData:
     to the number of busbars to be outaged. Corresponding to each busbar is an integer representing the
     nodal index of the busbar.
     """
+
+    rel_bb_outage_slot_ids: Optional[list[list[str]]] = None
+    """Physical busbar ids per relevant station slot, aligned with rel_bb_outage_* slot order."""
+
+    rel_bb_outage_valid_slot_mask: Optional[list[list[bool]]] = None
+    """Visible relevant busbar slots per station after preprocessing-side filtering."""
 
     controllable_pst_node_mask: Optional[Bool[np.ndarray, " n_node"]] = None
     """The mask over nodes that are a controllable phase shifter. When adding the PSDF matrix, bogus

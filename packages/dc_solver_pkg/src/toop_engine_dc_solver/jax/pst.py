@@ -13,7 +13,6 @@ updates, while the helpers here prepare requested tap states and write the corre
 angles into the nodal injection tensor.
 """
 
-import jax
 import jax.numpy as jnp
 from beartype.typing import Optional
 from jaxtyping import Array, Float, Int
@@ -91,21 +90,5 @@ def update_n0_for_pst_taps(
     nodal_inj_info: NodalInjectionInformation,
 ) -> Float[Array, " batch_size n_timesteps n_branches"]:
     """Update N-0 flows after PST taps have been applied to nodal injections."""
-
-    def _nonlinear_branch(_args: None) -> Float[Array, " batch_size n_timesteps n_branches"]:
-        return jnp.einsum("bij,btj->bti", topo_res.ptdf, updated_nodal_injections)
-
-    def _linear_branch(_args: None) -> Float[Array, " batch_size n_timesteps n_branches"]:
-        new_shift_angles = _gather_pst_table(nodal_inj_info.pst_tap_values, pst_tap_indices)
-        current_shift_angles = nodal_injections[:, :, nodal_inj_info.controllable_pst_indices]
-        delta_shift_angles = -new_shift_angles + current_shift_angles
-        psdf_columns = topo_res.ptdf[:, :, nodal_inj_info.controllable_pst_indices]
-        delta_flows = jnp.einsum("bij,btj->bti", psdf_columns, delta_shift_angles)
-        return n_0 - delta_flows
-
-    return jax.lax.cond(
-        jnp.any(~nodal_inj_info.phase_shift_linearity),
-        _nonlinear_branch,
-        _linear_branch,
-        operand=None,
-    )
+    del n_0, nodal_injections, pst_tap_indices, nodal_inj_info
+    return jnp.einsum("bij,btj->bti", topo_res.ptdf, updated_nodal_injections)

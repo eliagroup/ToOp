@@ -290,13 +290,6 @@ def validate_static_information(
     )
 
     if di.nodal_injection_information is not None:
-        assert di.nodal_injection_information.phase_shift_branch_indices.ndim == 1
-        assert di.nodal_injection_information.phase_shift_susceptance.shape == (
-            di.nodal_injection_information.phase_shift_branch_indices.shape[0],
-        )
-        assert di.nodal_injection_information.phase_shift_degree_to_flow_factor.shape == ()
-        assert jnp.all(di.nodal_injection_information.phase_shift_branch_indices >= 0)
-        assert jnp.all(di.nodal_injection_information.phase_shift_branch_indices < n_branch)
         assert jnp.all(di.nodal_injection_information.controllable_pst_indices >= 0)
         assert jnp.all(di.nodal_injection_information.controllable_pst_indices < n_bus)
         assert (
@@ -305,19 +298,6 @@ def validate_static_information(
         )
         assert jnp.all(di.nodal_injection_information.controllable_pst_branch_indices >= 0)
         assert jnp.all(di.nodal_injection_information.controllable_pst_branch_indices < n_branch)
-        assert (
-            di.nodal_injection_information.controllable_pst_indices.shape
-            == di.nodal_injection_information.shift_degree_min.shape
-        )
-        assert (
-            di.nodal_injection_information.controllable_pst_indices.shape
-            == di.nodal_injection_information.shift_degree_max.shape
-        )
-        assert jnp.isfinite(di.nodal_injection_information.shift_degree_min).all()
-        assert jnp.isfinite(di.nodal_injection_information.shift_degree_max).all()
-        assert jnp.all(
-            di.nodal_injection_information.shift_degree_min <= di.nodal_injection_information.shift_degree_max
-        )  # not used for now, needs a preprocessing step
         assert jnp.all(di.nodal_injection_information.pst_n_taps > 0)  # If not, this would not a controllable PST
         assert (
             di.nodal_injection_information.pst_n_taps.shape == di.nodal_injection_information.controllable_pst_indices.shape
@@ -330,14 +310,9 @@ def validate_static_information(
             di.nodal_injection_information.pst_tap_susceptance_values.shape
             == di.nodal_injection_information.pst_tap_values.shape
         )
-        assert jnp.equal(
-            di.nodal_injection_information.shift_degree_min,
-            jnp.nanmin(di.nodal_injection_information.pst_tap_values, axis=1),
-        ).all(), "Error in phase shift tap data: Cached minima do not equal true minima!"
-        assert jnp.equal(
-            di.nodal_injection_information.shift_degree_max,
-            jnp.nanmax(di.nodal_injection_information.pst_tap_values, axis=1),
-        ).all(), "Error in phase shift tap data: Cached maxima do not equal true maxima!"
+        for pst_idx, n_taps in enumerate(np.asarray(di.nodal_injection_information.pst_n_taps, dtype=int)):
+            assert jnp.isfinite(di.nodal_injection_information.pst_tap_values[pst_idx, :n_taps]).all()
+            assert jnp.isfinite(di.nodal_injection_information.pst_tap_susceptance_values[pst_idx, :n_taps]).all()
 
         assert (
             di.nodal_injection_information.starting_tap_idx.shape
@@ -345,10 +320,6 @@ def validate_static_information(
         )
         assert (
             di.nodal_injection_information.grid_model_low_tap.shape
-            == di.nodal_injection_information.controllable_pst_indices.shape
-        )
-        assert (
-            di.nodal_injection_information.phase_shift_linearity.shape
             == di.nodal_injection_information.controllable_pst_indices.shape
         )
         assert jnp.all(di.nodal_injection_information.starting_tap_idx >= 0)
@@ -552,32 +523,12 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
         if dynamic_information.nodal_injection_information is not None:
             nodal_inj_opt = dynamic_information.nodal_injection_information
             file.create_dataset(
-                "phase_shift_branch_indices",
-                data=nodal_inj_opt.phase_shift_branch_indices,
-            )
-            file.create_dataset(
-                "phase_shift_susceptance",
-                data=nodal_inj_opt.phase_shift_susceptance,
-            )
-            file.create_dataset(
-                "phase_shift_degree_to_flow_factor",
-                data=nodal_inj_opt.phase_shift_degree_to_flow_factor,
-            )
-            file.create_dataset(
                 "controllable_pst_indices",
                 data=nodal_inj_opt.controllable_pst_indices,
             )
             file.create_dataset(
                 "controllable_pst_branch_indices",
                 data=nodal_inj_opt.controllable_pst_branch_indices,
-            )
-            file.create_dataset(
-                "shift_degree_min",
-                data=nodal_inj_opt.shift_degree_min,
-            )
-            file.create_dataset(
-                "shift_degree_max",
-                data=nodal_inj_opt.shift_degree_max,
             )
             file.create_dataset(
                 "pst_n_taps",
@@ -598,10 +549,6 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             file.create_dataset(
                 "grid_model_low_tap",
                 data=nodal_inj_opt.grid_model_low_tap,
-            )
-            file.create_dataset(
-                "phase_shift_linearity",
-                data=nodal_inj_opt.phase_shift_linearity,
             )
             if nodal_inj_opt.parallel_pst_group_mask is not None:
                 file.create_dataset(
@@ -915,50 +862,18 @@ def load_nodal_injection_optimization(
                 "No parallel PST group mask found in the file. "
                 "Using identity matrix as default, which means no parallel groups."
             )
-        phase_shift_branch_indices = (
-            jnp.array(file["phase_shift_branch_indices"][:])
-            if "phase_shift_branch_indices" in file
-            else jnp.array([], dtype=int)
-        )
-        phase_shift_susceptance = (
-            jnp.array(file["phase_shift_susceptance"][:])
-            if "phase_shift_susceptance" in file
-            else jnp.array([], dtype=float)
-        )
-        phase_shift_degree_to_flow_factor = (
-            jnp.array(file["phase_shift_degree_to_flow_factor"][()])
-            if "phase_shift_degree_to_flow_factor" in file
-            else jnp.array(1.0)
-        )
-        controllable_pst_branch_indices = (
-            jnp.array(file["controllable_pst_branch_indices"][:])
-            if "controllable_pst_branch_indices" in file
-            else jnp.array(file["controllable_pst_indices"][:], dtype=int)
-        )
-        pst_tap_susceptance_values = (
-            jnp.array(file["pst_tap_susceptance_values"][:])
-            if "pst_tap_susceptance_values" in file
-            else jnp.full_like(jnp.array(file["pst_tap_values"][:]), jnp.nan, dtype=float)
-        )
-        phase_shift_linearity = (
-            jnp.array(file["phase_shift_linearity"][:])
-            if "phase_shift_linearity" in file
-            else jnp.ones(file["pst_n_taps"].shape[0], dtype=bool)
-        )
+        if "controllable_pst_branch_indices" not in file:
+            raise KeyError("Missing required dataset 'controllable_pst_branch_indices' in static information file.")
+        if "pst_tap_susceptance_values" not in file:
+            raise KeyError("Missing required dataset 'pst_tap_susceptance_values' in static information file.")
         return NodalInjectionInformation(
-            phase_shift_branch_indices=phase_shift_branch_indices,
-            phase_shift_susceptance=phase_shift_susceptance,
-            phase_shift_degree_to_flow_factor=phase_shift_degree_to_flow_factor,
             controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
-            controllable_pst_branch_indices=controllable_pst_branch_indices,
-            shift_degree_min=jnp.array(file["shift_degree_min"][:]),
-            shift_degree_max=jnp.array(file["shift_degree_max"][:]),
+            controllable_pst_branch_indices=jnp.array(file["controllable_pst_branch_indices"][:]),
             pst_n_taps=jnp.array(file["pst_n_taps"][:]),
             pst_tap_values=jnp.array(file["pst_tap_values"][:]),
-            pst_tap_susceptance_values=pst_tap_susceptance_values,
+            pst_tap_susceptance_values=jnp.array(file["pst_tap_susceptance_values"][:]),
             starting_tap_idx=jnp.array(file["starting_tap_idx"][:]),
             grid_model_low_tap=jnp.array(file["grid_model_low_tap"][:]),
-            phase_shift_linearity=phase_shift_linearity,
             parallel_pst_group_mask=parallel_pst_group_mask,
         )
     return None
@@ -1000,10 +915,10 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool]:
 
     nodal_injection_optimization_present = (
         "controllable_pst_indices" in file
-        and "shift_degree_min" in file
-        and "shift_degree_max" in file
+        and "controllable_pst_branch_indices" in file
         and "pst_n_taps" in file
         and "pst_tap_values" in file
+        and "pst_tap_susceptance_values" in file
         and "starting_tap_idx" in file
         and "grid_model_low_tap" in file
     )

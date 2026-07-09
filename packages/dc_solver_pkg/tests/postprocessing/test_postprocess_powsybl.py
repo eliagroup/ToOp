@@ -305,11 +305,18 @@ def test_change_pst_matches_loadflows(
 
     assert di.nodal_injection_information is not None, "Grid should have nodal injection information for this test"
 
+    valid_mask = jnp.arange(di.nodal_injection_information.pst_tap_values.shape[1])[None, :] < pst_n_taps[:, None]
+    first_susceptance = di.nodal_injection_information.pst_tap_susceptance_values[:, :1]
+    nonlinear_mask = jnp.any(
+        valid_mask & (di.nodal_injection_information.pst_tap_susceptance_values != first_susceptance),
+        axis=1,
+    )
+
     # Get PST branch IDs from the action set (which knows about controllable PSTs)
     action_set = extract_action_set(network_data)
     pst_indices = [pst.id for pst in action_set.pst_ranges]
 
-    if bool(np.any(~np.array(di.nodal_injection_information.phase_shift_linearity))):
+    if bool(np.any(np.array(nonlinear_mask))):
         tap_scenarios = [jnp.minimum(di.nodal_injection_information.starting_tap_idx + 1, pst_n_taps - 1)]
     else:
         tap_scenarios = [
@@ -368,7 +375,16 @@ def test_nonlinear_pst_extreme_taps_change_loadflow_and_succeed(
     di = static_information.dynamic_information
     solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
     assert di.nodal_injection_information is not None
-    assert bool(np.any(~np.array(di.nodal_injection_information.phase_shift_linearity)))
+    valid_mask = (
+        jnp.arange(di.nodal_injection_information.pst_tap_values.shape[1])[None, :]
+        < di.nodal_injection_information.pst_n_taps[:, None]
+    )
+    first_susceptance = di.nodal_injection_information.pst_tap_susceptance_values[:, :1]
+    nonlinear_mask = jnp.any(
+        valid_mask & (di.nodal_injection_information.pst_tap_susceptance_values != first_susceptance),
+        axis=1,
+    )
+    assert bool(np.any(np.array(nonlinear_mask)))
 
     base_res, base_success = compute_symmetric_batch(
         topology_batch=default_topology(solver_config),

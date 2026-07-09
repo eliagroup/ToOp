@@ -192,7 +192,13 @@ def test_pst_helpers_handle_nonlinear_psts(tmp_path: Path) -> None:
     di = static_information.dynamic_information
     inj_info = di.nodal_injection_information
     assert inj_info is not None, "Grid should have PSTs"
-    assert bool(jnp.any(~inj_info.phase_shift_linearity)), "Grid should contain nonlinear PSTs"
+    valid_mask = jnp.arange(inj_info.pst_tap_values.shape[1])[None, :] < inj_info.pst_n_taps[:, None]
+    first_susceptance = inj_info.pst_tap_susceptance_values[:, :1]
+    nonlinear_mask = jnp.any(
+        valid_mask & (inj_info.pst_tap_susceptance_values != first_susceptance),
+        axis=1,
+    )
+    assert bool(jnp.any(nonlinear_mask)), "Grid should contain nonlinear PSTs"
 
     _n_timesteps, n_branches = di.unsplit_flow.shape
     n_0_batched = di.unsplit_flow[None, :, :]

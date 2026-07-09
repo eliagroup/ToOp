@@ -57,20 +57,7 @@ class MODFMatrix(eqx.Module):
 
 
 class NodalInjectionInformation(eqx.Module):
-    """Holds the nodal injection optimization data required by the DC solver."""
-
-    phase_shift_branch_indices: Int[Array, " n_phase_shifters"]
-    """Indices of all phase-shifter branches in branch space.
-
-    These indices align with the prepended PSDF columns and PST pseudo-nodes in the full PTDF / nodal injection
-    representation.
-    """
-
-    phase_shift_susceptance: Float[Array, " n_phase_shifters"]
-    """Current effective susceptance of all phase-shifter branches, aligned with phase_shift_branch_indices."""
-
-    phase_shift_degree_to_flow_factor: Float[Array, " "]
-    """Global factor converting susceptance-based PST sensitivities to MW per degree."""
+    """Holds controllable PST runtime data required by the DC solver."""
 
     controllable_pst_indices: Int[Array, " n_controllable_pst"]
     """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
@@ -78,12 +65,6 @@ class NodalInjectionInformation(eqx.Module):
 
     controllable_pst_branch_indices: Int[Array, " n_controllable_pst"]
     """Branch indices of controllable PSTs in branch space."""
-
-    shift_degree_min: Float[Array, " n_controllable_pst"]
-    """The minimum shift angle for each controllable PST. Cached here to avoid repeated access."""
-
-    shift_degree_max: Float[Array, " n_controllable_pst"]
-    """The maximum shift angle for each controllable PST. Cached here to avoid repeated access."""
 
     pst_n_taps: Int[Array, " n_controllable_pst"]
     """The number of discrete taps for each controllable PST"""
@@ -93,7 +74,11 @@ class NodalInjectionInformation(eqx.Module):
     pst_n_taps."""
 
     pst_tap_susceptance_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
-    """Effective branch susceptance for every discrete tap of every controllable PST."""
+    """Effective branch susceptance for every discrete tap of every controllable PST.
+
+    This is the canonical nonlinear PST runtime payload. Rows are padded to max_n_tap_positions;
+    pst_n_taps defines the valid prefix of each row.
+    """
 
     starting_tap_idx: Int[Array, " n_controllable_pst"]
     """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
@@ -102,9 +87,6 @@ class NodalInjectionInformation(eqx.Module):
     """The lowest tap position for each controllable PST but in the original grid model. If original
     taps are to be reconstructed from indices into pst_tap_values then tap + grid_model_low_tap gives the actual tap position
     in the original grid model."""
-
-    phase_shift_linearity: Bool[Array, " n_controllable_pst"]
-    """Whether the tap changes only the phase angle and leaves the effective branch parameters unchanged."""
 
     parallel_pst_group_mask: Optional[Bool[Array, " n_parallel_pst_groups n_controllable_pst"]] = None
     """Boolean masks describing groups of controllable PSTs that must move together."""

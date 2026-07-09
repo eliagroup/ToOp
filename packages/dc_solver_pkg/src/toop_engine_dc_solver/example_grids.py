@@ -786,7 +786,7 @@ def case9241_pandapower(data_folder: Path) -> None:
             "trafo_for_nminus1": trafo_for_nminus1,
             "trafo_for_reward": np.ones(len(net.trafo), dtype=bool),
             "relevant_subs": all_relevant_subs,
-            "trafo_pst_linear": np.ones(len(net.trafo), dtype=bool),
+            "trafo_controllable": np.ones(len(net.trafo), dtype=bool),
         }
     )
 
@@ -1069,8 +1069,6 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     pst_ids = net.get_phase_tap_changers().index
     trafo_mask = np.ones(len(trafos), dtype=bool)
     trafo_has_pst_tap = trafos.index.isin(pst_ids)
-    trafo_pst_linear = np.zeros(len(trafos), dtype=bool)
-    trafo_pst_linear[-2:] = True
     trafo_mask_groups = np.full(len(trafos), -1, dtype=int)
     trafo_mask_groups[trafo_has_pst_tap] = np.arange(np.sum(trafo_has_pst_tap))
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)

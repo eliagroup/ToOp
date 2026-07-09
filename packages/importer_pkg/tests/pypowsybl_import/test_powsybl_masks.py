@@ -306,7 +306,7 @@ def test_update_masks_apply_ignore_list(ucte_file_with_border, ucte_importer_par
     assert not trafo_masks_ignored.trafo_for_nminus1[ignored_trafo_idx]
     assert not trafo_masks_ignored.trafo_for_reward[ignored_trafo_idx]
     assert not trafo_masks_ignored.trafo_disconnectable[ignored_trafo_idx]
-    assert not trafo_masks_ignored.trafo_pst_linear[ignored_trafo_idx]
+    assert not trafo_masks_ignored.trafo_controllable[ignored_trafo_idx]
 
     assert not tie_and_dangling_masks_ignored.tie_line_for_nminus1[ignored_tie_idx]
     assert not tie_and_dangling_masks_ignored.tie_line_for_reward[ignored_tie_idx]
@@ -461,7 +461,7 @@ def test_update_masks_apply_ignore_list_cgmes(
         assert not trafo_masks_ignored.trafo_for_nminus1[ignored_trafo_idx]
         assert not trafo_masks_ignored.trafo_for_reward[ignored_trafo_idx]
         assert not trafo_masks_ignored.trafo_disconnectable[ignored_trafo_idx]
-        assert not trafo_masks_ignored.trafo_pst_linear[ignored_trafo_idx]
+        assert not trafo_masks_ignored.trafo_controllable[ignored_trafo_idx]
 
     if ignored_tie_id is not None:
         ignored_tie_idx = tie_df.index.get_loc(ignored_tie_id)
@@ -677,7 +677,7 @@ def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: Uct
         np.array([False, False, False, False, False, False]),
     )
     assert np.array_equal(
-        network_masks.trafo_pst_linear,
+        network_masks.trafo_controllable,
         np.array([False, False, False, False, False, False]),
     )
 

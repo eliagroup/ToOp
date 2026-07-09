@@ -45,6 +45,7 @@ def test_create_default_network_masks():
     assert isinstance(masks.trafo_for_reward, np.ndarray)
     assert isinstance(masks.trafo_overload_weight, np.ndarray)
     assert isinstance(masks.trafo_disconnectable, np.ndarray)
+    assert isinstance(masks.trafo_controllable, np.ndarray)
     assert isinstance(masks.trafo_n0_n1_max_diff_factor, np.ndarray)
     assert isinstance(masks.tie_line_for_reward, np.ndarray)
     assert isinstance(masks.tie_line_for_nminus1, np.ndarray)
@@ -55,9 +56,6 @@ def test_create_default_network_masks():
     assert isinstance(masks.load_for_nminus1, np.ndarray)
     assert isinstance(masks.switch_for_nminus1, np.ndarray)
     assert isinstance(masks.switch_for_reward, np.ndarray)
-    assert isinstance(masks.pst_group_labels, np.ndarray)
-    # Default group labels are -1 (no parallel-PST grouping identified yet).
-    assert np.all(masks.pst_group_labels == -1)
 
 
 def test_validate_network_masks(ucte_importer_parameters: UcteImporterParameters):
@@ -678,7 +676,7 @@ def test_update_trafo_masks(ucte_file_with_border, ucte_importer_parameters: Uct
     )
     assert np.array_equal(
         network_masks.trafo_controllable,
-        np.array([False, False, False, False, False, False]),
+        np.array([False, False, True, False, False, False]),
     )
 
     ucte_importer_parameters.area_settings.nminus1_area = ["D8"]

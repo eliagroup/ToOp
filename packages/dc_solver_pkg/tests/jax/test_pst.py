@@ -9,6 +9,7 @@ from pathlib import Path
 
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.example_grids import (
     case30_with_psts_powsybl,
@@ -48,6 +49,14 @@ def _build_start_options(pst_tap_idx: jnp.ndarray) -> NodalInjStartOptions:
     """Create PST start options with explicit batch and timestep dimensions."""
     return NodalInjStartOptions(
         previous_results=NodalInjOptimResults(pst_tap_idx=pst_tap_idx[None, None, :]),
+        precision_percent=jnp.array(1.0),
+    )
+
+
+def _build_start_options_2d(pst_tap_idx: jnp.ndarray) -> NodalInjStartOptions:
+    """Create PST start options with timestep and PST dimensions only."""
+    return NodalInjStartOptions(
+        previous_results=NodalInjOptimResults(pst_tap_idx=pst_tap_idx[None, :]),
         precision_percent=jnp.array(1.0),
     )
 
@@ -127,6 +136,53 @@ def test_pst_helpers_preserve_starting_case_and_change_flows(tmp_path: Path) -> 
     assert not jnp.allclose(nodal_injections_changed, nodal_injections_batched)
     assert not jnp.allclose(n_0_changed, n_0_batched)
     assert n_0_changed.shape == n_0_batched.shape
+
+
+def test_prepare_pst_tap_state_promotes_2d_indices(tmp_path: Path) -> None:
+    """2D PST tap inputs should be promoted to a single-batch 3D tensor."""
+    case30_with_psts_powsybl(tmp_path)
+
+    filesystem_dir = DirFileSystem(str(tmp_path))
+    _, static_information, _ = load_grid(filesystem_dir, pandapower=False)
+
+    inj_info = static_information.dynamic_information.nodal_injection_information
+    assert inj_info is not None, "Grid should have PSTs"
+
+    pst_tap_indices, pst_tap_susceptance_values, optimized_results = prepare_pst_tap_state(
+        start_options=_build_start_options_2d(inj_info.starting_tap_idx),
+        nodal_inj_info=inj_info,
+    )
+
+    assert pst_tap_indices is not None
+    assert pst_tap_susceptance_values is not None
+    assert optimized_results is not None
+    assert pst_tap_indices.shape == (1, 1, inj_info.starting_tap_idx.shape[0])
+    assert jnp.array_equal(pst_tap_indices[0, 0], inj_info.starting_tap_idx)
+    assert jnp.array_equal(optimized_results.pst_tap_idx, pst_tap_indices)
+
+
+def test_prepare_pst_tap_state_rejects_zero_timestep_batches(tmp_path: Path) -> None:
+    """PST tap inputs without a timestep dimension should fail fast."""
+    case30_with_psts_powsybl(tmp_path)
+
+    filesystem_dir = DirFileSystem(str(tmp_path))
+    _, static_information, _ = load_grid(filesystem_dir, pandapower=False)
+
+    inj_info = static_information.dynamic_information.nodal_injection_information
+    assert inj_info is not None, "Grid should have PSTs"
+
+    start_options = NodalInjStartOptions(
+        previous_results=NodalInjOptimResults(
+            pst_tap_idx=jnp.empty((1, 0, inj_info.starting_tap_idx.shape[0]), dtype=inj_info.starting_tap_idx.dtype)
+        ),
+        precision_percent=jnp.array(1.0),
+    )
+
+    with pytest.raises(ValueError, match="must include at least one timestep"):
+        prepare_pst_tap_state(
+            start_options=start_options,
+            nodal_inj_info=inj_info,
+        )
 
 
 def test_pst_helpers_handle_parallel_psts(tmp_path: Path) -> None:

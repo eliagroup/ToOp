@@ -503,6 +503,8 @@ class PowsyblBackend(BackendInterface):
             current_effective_x = float(controllable_branches.at[pst_id, "x"])
 
             current_step_factor = (1.0 + current_step_x / 100.0) / current_step_rho
+            # This can happen for intentionally constructed or malformed tap tables where the
+            # step definition cancels out the normalized reactance at the active tap.
             if np.isclose(current_step_factor, 0.0):
                 effective_x_taps = np.full(steps_df.shape[0], current_effective_x, dtype=float)
             else:

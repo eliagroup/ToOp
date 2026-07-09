@@ -206,8 +206,7 @@ class BackendInterface(ABC):
         Bool[np.ndarray, " n_node"]
             The mask of controllable phase shifters over nodes
         """
-        # TODO: Implement in backends
-        return np.zeros([], dtype=bool)
+        return np.zeros(self.get_relevant_node_mask().shape, dtype=bool)
 
     @abstractmethod
     def get_shift_angles(self) -> Float[np.ndarray, " n_timestep n_branch"]:

@@ -275,9 +275,9 @@ def mutate(
         action = action.at[replacement_indices].set(random_action)
         disconnections_topo = disconnections_topo.at[replacement_indices].set(random_disconnections)
 
-    nodal_injections_optimized = mutate_nodal_injections(
+    pst_tap_results = mutate_nodal_injections(
         random_key=pst_key,
-        nodal_inj_info=repeated_topologies.nodal_injections_optimized,
+        nodal_inj_info=repeated_topologies.pst_tap_results,
         nodal_mutation_config=mutation_config.nodal_injection_mutation_config,
     )
 
@@ -286,7 +286,7 @@ def mutate(
     topologies_mutated = Genotype(
         action_index=jnp.sort(action, axis=1),
         disconnections=jnp.sort(disconnections_topo, axis=1),
-        nodal_injections_optimized=nodal_injections_optimized,
+        pst_tap_results=pst_tap_results,
     )
     if mutation_config.mutation_repetition > 1:
         topologies_mutated, _ = deduplicate_genotypes(

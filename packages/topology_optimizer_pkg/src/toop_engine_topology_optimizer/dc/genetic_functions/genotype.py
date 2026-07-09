@@ -25,8 +25,8 @@ class Genotype(eqx.Module):
     """The disconnections to apply, padded with int_max for disconnection slots that are unused.
     These are indices into the disconnectable branches set."""
 
-    nodal_injections_optimized: Optional[NodalInjOptimResults]
-    """The results of the nodal injection optimization, if any was performed."""
+    pst_tap_results: Optional[NodalInjOptimResults]
+    """The PST tap results associated with this topology, if PST control is enabled."""
 
 
 def deduplicate_genotypes(
@@ -56,13 +56,13 @@ def deduplicate_genotypes(
         genotypes.action_index,
         genotypes.disconnections,
     ]
-    # Include nodal_injections_optimized (PST taps) in deduplication when present
-    if genotypes.nodal_injections_optimized is not None and genotypes.nodal_injections_optimized.pst_tap_idx.shape[0] > 0:
+    # Include PST tap results in deduplication when present.
+    if genotypes.pst_tap_results is not None and genotypes.pst_tap_results.pst_tap_idx.shape[0] > 0:
         # Flatten the nodal injection optimization results into the comparison
         # Shape: (batch_size, n_timesteps, n_controllable_pst)
         # -> (batch_size, n_timesteps * n_controllable_pst)
-        pst_tap_idx = genotypes.nodal_injections_optimized.pst_tap_idx
-        pst_taps_flat = genotypes.nodal_injections_optimized.pst_tap_idx.reshape(pst_tap_idx.shape[0], -1)
+        pst_tap_idx = genotypes.pst_tap_results.pst_tap_idx
+        pst_taps_flat = genotypes.pst_tap_results.pst_tap_idx.reshape(pst_tap_idx.shape[0], -1)
         genotype_parts.append(pst_taps_flat)
 
     genotype_flat = jnp.concatenate(genotype_parts, axis=1)
@@ -97,7 +97,7 @@ def fix_dtypes(genotypes: Genotype) -> Genotype:
     return Genotype(
         action_index=genotypes.action_index.astype(int),
         disconnections=genotypes.disconnections.astype(int),
-        nodal_injections_optimized=genotypes.nodal_injections_optimized,
+        pst_tap_results=genotypes.pst_tap_results,
     )
 
 
@@ -121,8 +121,8 @@ def empty_repertoire(
     n_timesteps : int
         The number of timesteps in the optimization horizon, used for the nodal injection optimization results
     starting_taps : Optional[Int[Array, " n_controllable_pst"]]
-        The starting taps for the psts. If None, no nodal inj optimization will be enabled and nodal_injections_optimized
-        will be set to None. If provided, nodal_injections_optimized will be initialized with these starting taps.
+        The starting taps for the psts. If None, PST control will be disabled and pst_tap_results
+        will be set to None. If provided, pst_tap_results will be initialized with these starting taps.
 
     Returns
     -------
@@ -130,14 +130,14 @@ def empty_repertoire(
         The initial genotype
     """
     if starting_taps is not None:
-        nodal_injections_optimized = NodalInjOptimResults(
+        pst_tap_results = NodalInjOptimResults(
             pst_tap_idx=jnp.tile(starting_taps[None, None, :], (batch_size, n_timesteps, 1))
         )
     else:
-        nodal_injections_optimized = None
+        pst_tap_results = None
 
     return Genotype(
         action_index=jnp.full((batch_size, max_num_splits), int_max(), dtype=int),
         disconnections=jnp.full((batch_size, max_num_disconnections), int_max(), dtype=int),
-        nodal_injections_optimized=nodal_injections_optimized,
+        pst_tap_results=pst_tap_results,
     )

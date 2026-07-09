@@ -142,7 +142,7 @@ def compute_overloads(
     aggregates["top_k_overloads_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
     aggregates["case_indices"] = worst_k_res.case_indices[:, 0, :]
 
-    return aggregates, lf_res.nodal_injections_optimized, success
+    return aggregates, lf_res.pst_tap_results, success
 
 
 def scoring_function(
@@ -197,12 +197,11 @@ def scoring_function(
     PRNGKeyArray
         The random key that was passed in, unused
     Genotype
-        The genotypes that were passed in, but updated to account for in-the-loop optimizations such as the nodal
-        injection optimization.
+        The genotypes that were passed in, but updated to account for in-the-loop PST tap results.
     """
     n_topologies = len(topologies.action_index)
 
-    metrics, nodal_injections_optimized, success = compute_overloads(
+    metrics, pst_tap_results, success = compute_overloads(
         topologies=topologies,
         dynamic_information=dynamic_informations[0],
         solver_config=solver_configs[0],
@@ -211,7 +210,7 @@ def scoring_function(
     )
     # Sequentially compute each subsequent timestep
     for dynamic_information, solver_config in zip(dynamic_informations[1:], solver_configs[1:], strict=True):
-        metrics_local, _nodal_injections_optimized_local, success_local = compute_overloads(
+        metrics_local, _pst_tap_results_local, success_local = compute_overloads(
             topologies=topologies,
             dynamic_information=dynamic_information,
             solver_config=solver_config,
@@ -219,7 +218,7 @@ def scoring_function(
         )
         success = success & success_local
 
-        # TODO figure out how to stack nodal_inj optim results for multiple timesteps
+        # TODO figure out how to stack PST tap results for multiple timesteps.
         for key in observed_metrics:
             combine_fn = METRICS[key]
             metrics[key] = combine_fn(metrics[key], metrics_local[key])
@@ -234,7 +233,7 @@ def scoring_function(
 
     descriptors = jnp.stack([metrics[key].astype(int) for key in descriptor_metrics], axis=1)
 
-    topologies = replace(topologies, nodal_injections_optimized=nodal_injections_optimized)
+    topologies = replace(topologies, pst_tap_results=pst_tap_results)
 
     return (
         fitness,
@@ -279,7 +278,7 @@ def translate_topology(
         pad_mask=jnp.ones((batch_size,), dtype=bool),
     )
 
-    nodal_inj_start = make_start_options(topology.nodal_injections_optimized)
+    nodal_inj_start = make_start_options(topology.pst_tap_results)
 
     return topo_comp, topology.disconnections, nodal_inj_start
 
@@ -352,12 +351,10 @@ def convert_to_topologies(
 
         disconnections = [int(disc) for disc in iter_repertoire.genotypes.disconnections if disc != int_max()]
 
-        nodal_inj = iter_repertoire.genotypes.nodal_injections_optimized
+        nodal_inj = iter_repertoire.genotypes.pst_tap_results
         pst_setpoints = None
         if nodal_inj is not None:
-            assert grid_model_low_tap is not None, (
-                "grid_model_low_tap must be provided if nodal_injections_optimized is present"
-            )
+            assert grid_model_low_tap is not None, "grid_model_low_tap must be provided if pst_tap_results is present"
             assert len(nodal_inj.pst_tap_idx.shape) == 2
             assert nodal_inj.pst_tap_idx.shape[0] == 1, "Only one timestep is supported, but found shape " + str(
                 nodal_inj.pst_tap_idx.shape

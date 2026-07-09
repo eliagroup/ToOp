@@ -35,7 +35,7 @@ from toop_engine_dc_solver.jax.injections import (
 )
 from toop_engine_dc_solver.jax.lodf import calc_lodf_matrix, get_failure_cases_to_zero
 from toop_engine_dc_solver.jax.multi_outages import build_modf_matrices
-from toop_engine_dc_solver.jax.nodal_inj_optim import nodal_inj_optimization
+from toop_engine_dc_solver.jax.pst import prepare_pst_tap_state, update_n0_for_pst_taps, write_pst_taps_to_nodal_injections
 from toop_engine_dc_solver.jax.topology_computations import (
     convert_action_set_index_to_topo,
     pad_action_with_unsplit_action_indices,
@@ -409,20 +409,10 @@ def compute_symmetric_batch(
         bitvector_topology.sub_ids,
         int_max(),
     )
-    pst_tap_susceptance_values = None
-    if nodal_inj_start_options is not None and dynamic_information.nodal_injection_information is not None:
-        pst_tap_indices = nodal_inj_start_options.previous_results.pst_tap_idx
-        if pst_tap_indices.ndim == 2:
-            pst_tap_indices = pst_tap_indices[None, :, :]
-        if pst_tap_indices.shape[1] == 0:
-            raise ValueError("PST tap index batches must include at least one timestep.")
-        starting_tap_idx = dynamic_information.nodal_injection_information.starting_tap_idx
-        requested_diff_mask = jnp.any(pst_tap_indices != starting_tap_idx[None, None, :], axis=-1)
-        topology_level_step = jnp.argmax(requested_diff_mask, axis=1)
-        topology_level_tap_idx = pst_tap_indices[jnp.arange(pst_tap_indices.shape[0]), topology_level_step]
-        pst_tap_susceptance_values = dynamic_information.nodal_injection_information.pst_tap_susceptance_values[
-            jnp.arange(topology_level_tap_idx.shape[-1]), topology_level_tap_idx
-        ]
+    pst_tap_indices, pst_tap_susceptance_values, pst_tap_results = prepare_pst_tap_state(
+        start_options=nodal_inj_start_options,
+        nodal_inj_info=dynamic_information.nodal_injection_information,
+    )
 
     topo_res = compute_bsdf_lodf_static_flows(
         bitvector_topology,
@@ -469,17 +459,22 @@ def compute_symmetric_batch(
 
     n_0 = jax.vmap(update_n0_flows_after_disconnections)(n_0, topo_res.disconnection_modf)
 
-    nodal_injections_optimized = None
-    if nodal_inj_start_options is not None:
-        # TODO replace N-1 computation below with the results from optimization as soon as the optimization is halfway stable
-        # It might be a good debug aid to have the original code below still available.
-        n_0, _n_1, nodal_injections_optimized, topo_res, nodal_injections = nodal_inj_optimization(
+    if pst_tap_indices is not None and dynamic_information.nodal_injection_information is not None:
+        nodal_inj_info = dynamic_information.nodal_injection_information
+        nodal_injections_with_pst = write_pst_taps_to_nodal_injections(
+            nodal_injections=nodal_injections,
+            pst_tap_indices=pst_tap_indices,
+            nodal_inj_info=nodal_inj_info,
+        )
+        n_0 = update_n0_for_pst_taps(
             n_0=n_0,
             nodal_injections=nodal_injections,
+            updated_nodal_injections=nodal_injections_with_pst,
+            pst_tap_indices=pst_tap_indices,
             topo_res=topo_res,
-            start_options=nodal_inj_start_options,
-            dynamic_information=dynamic_information,
+            nodal_inj_info=nodal_inj_info,
         )
+        nodal_injections = nodal_injections_with_pst
 
     # Compute the N-1 matrix
     batched_params = BatchedContingencyAnalysisParams(
@@ -552,7 +547,7 @@ def compute_symmetric_batch(
             bb_outage_penalty=bb_outage_penalty,
             bb_outage_overload=overload if bb_outage_as_penalty else None,
             bb_outage_splits=n_grid_splits if bb_outage_as_penalty else None,
-            nodal_injections_optimized=nodal_injections_optimized,
+            pst_tap_results=pst_tap_results,
         ),
         topo_res.success,
     )

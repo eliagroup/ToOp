@@ -1179,8 +1179,8 @@ class SolverLoadflowResults(eqx.Module):
     bb_outage_overload: Optional[Float[Array, " ... "]] = None
     """The overload energy caused due to busbar outages"""
 
-    nodal_injections_optimized: Optional[NodalInjOptimResults] = None
-    """The results of the nodal injection optimization, if any was performed."""
+    pst_tap_results: Optional[NodalInjOptimResults] = None
+    """The applied PST tap results, if any PST state was provided for the loadflow."""
 
     contingency_success: Optional[Bool[ArrayLike, " ... n_failures"]] = None
     """Whether each N-1 contingency case converged for the corresponding topology."""
@@ -1201,9 +1201,7 @@ class SolverLoadflowResults(eqx.Module):
             bb_outage_splits=(self.bb_outage_splits[key] if self.bb_outage_splits is not None else None),
             bb_outage_overload=(self.bb_outage_overload[key] if self.bb_outage_overload is not None else None),
             disconnections=(self.disconnections[key] if self.disconnections is not None else None),
-            nodal_injections_optimized=(
-                self.nodal_injections_optimized[key] if self.nodal_injections_optimized is not None else None
-            ),
+            pst_tap_results=(self.pst_tap_results[key] if self.pst_tap_results is not None else None),
         )
 
 

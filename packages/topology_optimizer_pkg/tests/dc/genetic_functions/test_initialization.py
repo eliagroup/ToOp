@@ -287,7 +287,7 @@ def test_get_repertoire_metrics():
     genotypes = Genotype(  # 4 topologies
         action_index=jnp.array([[0], [1], [2], [0]]),
         disconnections=jnp.array([[0], [1], [2], [0]]),
-        nodal_injections_optimized=None,
+        pst_tap_results=None,
     )
     test_repertoire = DiscreteMapElitesRepertoire(
         genotypes=genotypes,

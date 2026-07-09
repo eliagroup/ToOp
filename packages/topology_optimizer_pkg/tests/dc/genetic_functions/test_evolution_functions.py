@@ -605,8 +605,8 @@ def test_deduplicate_genotypes_jitted(synthetic_action_set: ActionSet) -> None:
         )
 
         assert deduplicated_topologies.action_index.shape[0] == batch_size * 2
-        assert deduplicated_topologies.nodal_injections_optimized is not None
-        assert deduplicated_topologies.nodal_injections_optimized.pst_tap_idx.shape[0] == batch_size * 2
+        assert deduplicated_topologies.pst_tap_results is not None
+        assert deduplicated_topologies.pst_tap_results.pst_tap_idx.shape[0] == batch_size * 2
 
         # Case 2 : desired_size < batch_size
         deduplicated_topologies, indices = deduplicate_genotypes(
@@ -615,8 +615,8 @@ def test_deduplicate_genotypes_jitted(synthetic_action_set: ActionSet) -> None:
         )
 
         assert deduplicated_topologies.action_index.shape[0] == batch_size // 2
-        assert deduplicated_topologies.nodal_injections_optimized is not None
-        assert deduplicated_topologies.nodal_injections_optimized.pst_tap_idx.shape[0] == batch_size // 2
+        assert deduplicated_topologies.pst_tap_results is not None
+        assert deduplicated_topologies.pst_tap_results.pst_tap_idx.shape[0] == batch_size // 2
 
     # also test jittability
     partial_fun = partial(

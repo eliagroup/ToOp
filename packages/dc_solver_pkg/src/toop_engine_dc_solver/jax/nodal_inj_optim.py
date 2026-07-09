@@ -12,19 +12,14 @@ Nodal injection optimization includes PST Optimization routines.
 
 import jax
 import jax.numpy as jnp
-from jax_dataclasses import replace
-from jaxtyping import Array, Bool, Float, Int
-from toop_engine_dc_solver.jax.lodf import calc_lodf_matrix
-from toop_engine_dc_solver.jax.multi_outages import build_modf_matrices
+from jaxtyping import Array, Float, Int
 from toop_engine_dc_solver.jax.types import (
     DynamicInformation,
     NodalInjectionInformation,
     NodalInjOptimResults,
     NodalInjStartOptions,
-    SolverConfig,
     TopologyResults,
 )
-from toop_engine_dc_solver.jax.unrolled_linalg import solve_and_check_det
 
 
 def make_start_options(
@@ -137,128 +132,12 @@ def _update_nodal_injections_with_pst_taps(
     return updated_nodal_injections, new_shift_angles
 
 
-def _apply_branch_parameter_update_in_ptdf_world_single(
-    full_ptdf: Float[Array, " n_branches n_buses"],
-    from_node: Int[Array, " n_branches"],
-    to_node: Int[Array, " n_branches"],
-    base_susceptance: Float[Array, " n_branches"],
-    updated_controllable_pst_susceptance: Float[Array, " n_controllable_pst"],
-    nodal_inj_info: NodalInjectionInformation,
-) -> tuple[Float[Array, " n_branches n_buses"], Bool[Array, " "]]:
-    """Apply a generalized branch-parameter update in PTDF space.
-
-    This treats parameter updates like a MODF-style correction with a small coupled solve over only
-    the changed branches. Branch outages are the special case with alpha=-1.
-    """
-    changed_branch_indices = nodal_inj_info.controllable_pst_branch_indices
-    n_changed = changed_branch_indices.shape[0]
-    if n_changed == 0:
-        return full_ptdf, jnp.array(True)
-
-    base_changed_susceptance = base_susceptance[changed_branch_indices]
-    delta_susceptance = updated_controllable_pst_susceptance - base_changed_susceptance
-    alpha = delta_susceptance / base_changed_susceptance
-
-    changed_from = from_node[changed_branch_indices]
-    changed_to = to_node[changed_branch_indices]
-    h_columns = full_ptdf[:, changed_from] - full_ptdf[:, changed_to]
-    h_oo = h_columns[changed_branch_indices, :]
-
-    d_alpha = jnp.diag(alpha)
-    coupling_matrix = jnp.eye(n_changed, dtype=full_ptdf.dtype) + d_alpha @ h_oo
-    rhs = d_alpha @ full_ptdf[changed_branch_indices, :]
-    correction, success = solve_and_check_det(coupling_matrix, rhs)
-
-    branch_parameter_influence = -h_columns
-    branch_parameter_influence = branch_parameter_influence.at[changed_branch_indices, jnp.arange(n_changed)].add(1.0)
-    updated_ptdf = full_ptdf + branch_parameter_influence @ correction
-    return updated_ptdf, success
-
-
-def _recompute_topology_results_for_nonlinear_psts(
-    topo_res: TopologyResults,
-    dynamic_information: DynamicInformation,
-    solver_config: SolverConfig,
-    pst_tap_susceptance_values: Float[Array, " batch_size n_timesteps n_controllable_pst"],
-    nodal_inj_info: NodalInjectionInformation,
-) -> TopologyResults:
-    """Recompute PTDF and contingency sensitivities after nonlinear PST updates."""
-    updated_ptdf, ptdf_update_success = jax.vmap(
-        _apply_branch_parameter_update_in_ptdf_world_single,
-        in_axes=(0, 0, 0, None, 0, None),
-    )(
-        topo_res.ptdf,
-        topo_res.from_node,
-        topo_res.to_node,
-        dynamic_information.susceptance,
-        pst_tap_susceptance_values[:, 0, :],
-        nodal_inj_info,
-    )
-
-    lodf, lodf_success = jax.vmap(calc_lodf_matrix, in_axes=(None, 0, 0, 0, None))(
-        dynamic_information.branches_to_fail,
-        updated_ptdf,
-        topo_res.from_node,
-        topo_res.to_node,
-        dynamic_information.branches_monitored,
-    )
-    if topo_res.failure_cases_to_zero is not None:
-        single_outage_cases_to_zero = topo_res.failure_cases_to_zero[:, : lodf_success.shape[1]]
-        lodf_success = jnp.where(single_outage_cases_to_zero, True, lodf_success)
-    lodf_success = lodf_success & ptdf_update_success[:, None]
-
-    outage_modf, outage_modf_success = jax.vmap(
-        build_modf_matrices,
-        in_axes=(0, 0, 0, None),
-    )(
-        updated_ptdf,
-        topo_res.from_node,
-        topo_res.to_node,
-        dynamic_information.multi_outage_branches,
-    )
-    outage_modf_success = outage_modf_success & ptdf_update_success[:, None]
-
-    base_success = topo_res.success & ptdf_update_success
-    injection_outage_success = jnp.broadcast_to(
-        base_success[:, None],
-        (topo_res.success.shape[0], dynamic_information.n_inj_failures),
-    )
-    bb_outage_success = jnp.broadcast_to(
-        base_success[:, None],
-        (
-            topo_res.success.shape[0],
-            dynamic_information.n_bb_outages
-            if solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1
-            else 0,
-        ),
-    )
-    contingency_success = jnp.concatenate(
-        [
-            lodf_success,
-            outage_modf_success,
-            injection_outage_success,
-            bb_outage_success,
-        ],
-        axis=1,
-    )
-
-    return replace(
-        topo_res,
-        ptdf=updated_ptdf,
-        lodf=lodf,
-        outage_modf=outage_modf,
-        contingency_success=contingency_success,
-        success=base_success & jnp.all(contingency_success, axis=1),
-    )
-
-
 def nodal_inj_optimization(
     n_0: Float[Array, " batch_size n_timesteps n_branches"],
     nodal_injections: Float[Array, " batch_size n_timesteps n_buses"],
     topo_res: TopologyResults,
     start_options: NodalInjStartOptions,
     dynamic_information: DynamicInformation,
-    solver_config: SolverConfig,
 ) -> tuple[
     Float[Array, " batch_size n_timesteps n_branches"],
     Float[Array, " batch_size n_timesteps n_outages n_branches_monitored"],
@@ -283,8 +162,6 @@ def nodal_inj_optimization(
         Contains previous PST tap results to apply
     dynamic_information : DynamicInformation
         Contains PST information and grid data
-    solver_config : SolverConfig
-        Contains the slack bus and contingency toggles required to rebuild sensitivity matrices.
 
     Returns
     -------
@@ -313,81 +190,26 @@ def nodal_inj_optimization(
         nodal_inj_info=nodal_inj_info,
     )
 
-    can_recompute_contingencies = (
-        topo_res.contingency_success is not None and topo_res.lodf is not None and topo_res.outage_modf is not None
-    )
+    def _nonlinear_branch(_args: None) -> tuple[Float[Array, " batch_size n_timesteps n_branches"], TopologyResults]:
+        n_0_updated = jnp.einsum("bij,btj->bti", topo_res.ptdf, updated_nodal_injections)
+        return n_0_updated, topo_res
 
-    if not can_recompute_contingencies:
-        if bool(jnp.any(~nodal_inj_info.phase_shift_linearity)):
-            pst_tap_susceptance_values = _gather_pst_table(
-                nodal_inj_info.pst_tap_susceptance_values,
-                pst_tap_indices,
-            )
-            updated_ptdf, ptdf_update_success = jax.vmap(
-                _apply_branch_parameter_update_in_ptdf_world_single,
-                in_axes=(0, 0, 0, None, 0, None),
-            )(
-                topo_res.ptdf,
-                topo_res.from_node,
-                topo_res.to_node,
-                dynamic_information.susceptance,
-                pst_tap_susceptance_values[:, 0, :],
-                nodal_inj_info,
-            )
-            updated_topo_res = replace(topo_res, ptdf=updated_ptdf, success=topo_res.success & ptdf_update_success)
-            n_0_updated = jnp.einsum("bij,btj->bti", updated_ptdf, updated_nodal_injections)
-        else:
-            updated_topo_res = topo_res
-            n_0_updated = apply_pst_taps(
-                n_0=n_0,
-                nodal_injections=nodal_injections,
-                pst_tap_indices=pst_tap_indices,
-                topo_res=topo_res,
-                nodal_inj_info=nodal_inj_info,
-            )
-    else:
-
-        def _nonlinear_branch(
-            _args: None,
-        ) -> tuple[
-            Float[Array, " batch_size n_timesteps n_branches"],
-            TopologyResults,
-        ]:
-            pst_tap_susceptance_values = _gather_pst_table(
-                nodal_inj_info.pst_tap_susceptance_values,
-                pst_tap_indices,
-            )
-            updated_topo_res = _recompute_topology_results_for_nonlinear_psts(
-                topo_res=topo_res,
-                dynamic_information=dynamic_information,
-                solver_config=solver_config,
-                pst_tap_susceptance_values=pst_tap_susceptance_values,
-                nodal_inj_info=nodal_inj_info,
-            )
-            n_0_updated = jnp.einsum("bij,btj->bti", updated_topo_res.ptdf, updated_nodal_injections)
-            return n_0_updated, updated_topo_res
-
-        def _linear_branch(
-            _args: None,
-        ) -> tuple[
-            Float[Array, " batch_size n_timesteps n_branches"],
-            TopologyResults,
-        ]:
-            n_0_updated = apply_pst_taps(
-                n_0=n_0,
-                nodal_injections=nodal_injections,
-                pst_tap_indices=pst_tap_indices,
-                topo_res=topo_res,
-                nodal_inj_info=nodal_inj_info,
-            )
-            return n_0_updated, topo_res
-
-        n_0_updated, updated_topo_res = jax.lax.cond(
-            jnp.any(~nodal_inj_info.phase_shift_linearity),
-            _nonlinear_branch,
-            _linear_branch,
-            operand=None,
+    def _linear_branch(_args: None) -> tuple[Float[Array, " batch_size n_timesteps n_branches"], TopologyResults]:
+        n_0_updated = apply_pst_taps(
+            n_0=n_0,
+            nodal_injections=nodal_injections,
+            pst_tap_indices=pst_tap_indices,
+            topo_res=topo_res,
+            nodal_inj_info=nodal_inj_info,
         )
+        return n_0_updated, topo_res
+
+    n_0_updated, updated_topo_res = jax.lax.cond(
+        jnp.any(~nodal_inj_info.phase_shift_linearity),
+        _nonlinear_branch,
+        _linear_branch,
+        operand=None,
+    )
 
     # Create dummy N-1 matrix (will be properly implemented later)
     # Shape should be (batch_size, n_timesteps, n_outages, n_branches_monitored)

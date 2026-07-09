@@ -18,6 +18,7 @@ from beartype.typing import Optional
 from jax import numpy as jnp
 from jax_dataclasses import replace
 from jaxtyping import Array, Bool, Float, Int
+from toop_engine_dc_solver.jax.branch_parameter_changes import update_ptdf_with_branch_parameter_change
 from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
 from toop_engine_dc_solver.jax.busbar_outage import get_busbar_outage_penalty_batched
 from toop_engine_dc_solver.jax.contingency_analysis import (
@@ -83,6 +84,7 @@ def compute_bsdf_lodf_static_flows(
     disconnection_batch: Optional[Int[Array, " batch_size_bsdf n_disconnections"]],
     dynamic_information: DynamicInformation,
     solver_config: SolverConfig,
+    pst_tap_susceptance_values: Optional[Float[Array, " batch_size_bsdf n_controllable_pst"]] = None,
 ) -> TopologyResults:
     """Compute all topology-related results
 
@@ -101,6 +103,9 @@ def compute_bsdf_lodf_static_flows(
         The dynamic information about the grid
     solver_config : SolverConfig
         The solver configuration
+    pst_tap_susceptance_values : Optional[Float[Array, " batch_size_bsdf n_controllable_pst"]]
+        The updated PST susceptance values for each batch item when nonlinear PST changes should
+        be applied.
 
     Returns
     -------
@@ -174,6 +179,27 @@ def compute_bsdf_lodf_static_flows(
             failure_cases_to_zero=failure_cases_to_zero,
         )
         del disc_res
+
+    has_pst_change = pst_tap_susceptance_values is not None and dynamic_information.nodal_injection_information is not None
+    if has_pst_change:
+        nodal_inj_info = dynamic_information.nodal_injection_information
+        assert nodal_inj_info is not None
+        updated_ptdf, ptdf_update_success = jax.vmap(
+            update_ptdf_with_branch_parameter_change,
+            in_axes=(0, 0, 0, None, 0, None),
+        )(
+            topo_res.ptdf,
+            topo_res.from_node,
+            topo_res.to_node,
+            dynamic_information.susceptance,
+            pst_tap_susceptance_values,
+            nodal_inj_info.controllable_pst_branch_indices,
+        )
+        topo_res = replace(
+            topo_res,
+            ptdf=updated_ptdf,
+            success=topo_res.success & ptdf_update_success,
+        )
 
     # Compute the LODF matrix
     # This again is only necessary once per topology batch
@@ -383,7 +409,28 @@ def compute_symmetric_batch(
         bitvector_topology.sub_ids,
         int_max(),
     )
-    topo_res = compute_bsdf_lodf_static_flows(bitvector_topology, disconnection_batch, dynamic_information, solver_config)
+    pst_tap_susceptance_values = None
+    if nodal_inj_start_options is not None and dynamic_information.nodal_injection_information is not None:
+        pst_tap_indices = nodal_inj_start_options.previous_results.pst_tap_idx
+        if pst_tap_indices.ndim == 2:
+            pst_tap_indices = pst_tap_indices[None, :, :]
+        if pst_tap_indices.shape[1] == 0:
+            raise ValueError("PST tap index batches must include at least one timestep.")
+        starting_tap_idx = dynamic_information.nodal_injection_information.starting_tap_idx
+        requested_diff_mask = jnp.any(pst_tap_indices != starting_tap_idx[None, None, :], axis=-1)
+        topology_level_step = jnp.argmax(requested_diff_mask, axis=1)
+        topology_level_tap_idx = pst_tap_indices[jnp.arange(pst_tap_indices.shape[0]), topology_level_step]
+        pst_tap_susceptance_values = dynamic_information.nodal_injection_information.pst_tap_susceptance_values[
+            jnp.arange(topology_level_tap_idx.shape[-1]), topology_level_tap_idx
+        ]
+
+    topo_res = compute_bsdf_lodf_static_flows(
+        bitvector_topology,
+        disconnection_batch,
+        dynamic_information,
+        solver_config,
+        pst_tap_susceptance_values=pst_tap_susceptance_values,
+    )
 
     unbatched_params = UnBatchedContingencyAnalysisParams(
         branches_to_fail=dynamic_information.branches_to_fail,
@@ -432,7 +479,6 @@ def compute_symmetric_batch(
             topo_res=topo_res,
             start_options=nodal_inj_start_options,
             dynamic_information=dynamic_information,
-            solver_config=solver_config,
         )
 
     # Compute the N-1 matrix

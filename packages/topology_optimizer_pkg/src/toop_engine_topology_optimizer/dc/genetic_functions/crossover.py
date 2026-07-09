@@ -176,7 +176,7 @@ def crossover_unbatched(
     return Genotype(
         action_index=actions,
         disconnections=disconnections,
-        pst_tap_results=topologies_a.pst_tap_results,
+        nodal_injections_optimized=topologies_a.nodal_injections_optimized,
     ), random_key
 
 

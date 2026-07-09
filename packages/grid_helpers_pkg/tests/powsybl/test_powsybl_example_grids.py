@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import numpy as np
 import pandapower
 import pytest
 from pypowsybl.loadflow import run_ac, run_dc
@@ -75,6 +76,22 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_converges():
     assert result_dc[0].status_text == "Converged"
     result_ac = run_ac(net)
     assert result_ac[0].status_text == "Converged"
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_nonlinear_psts_vary_rho() -> None:
+    nonlinear_net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=np.array([False, False]))
+    nonlinear_steps = nonlinear_net.get_phase_tap_changer_steps(attributes=["rho"])
+
+    for pst_id in nonlinear_steps.index.get_level_values("id").unique():
+        rho_values = nonlinear_steps.loc[pst_id]["rho"].to_numpy(dtype=float)
+        assert not np.allclose(rho_values, rho_values[0])
+
+    linear_net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=np.array([True, True]))
+    linear_steps = linear_net.get_phase_tap_changer_steps(attributes=["rho"])
+
+    for pst_id in linear_steps.index.get_level_values("id").unique():
+        rho_values = linear_steps.loc[pst_id]["rho"].to_numpy(dtype=float)
+        assert np.allclose(rho_values, rho_values[0])
 
 
 def test_create_complex_substation_layout_grid_converges():

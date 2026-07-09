@@ -280,6 +280,9 @@ def test_validate_loadflows_with_nonlinear_psts(
     assert neutral_tap_setpoints.shape[0] == len(runner.net.get_phase_tap_changer_steps().reset_index()["id"].unique())
     # check that the psts are non linear
     assert ~np.isclose(runner.net.get_phase_tap_changer_steps()["x"].sum(), 0.0)
+    assert ~np.isclose(runner.net.get_phase_tap_changer_steps()["rho"].min(), 1.0) | ~np.isclose(
+        runner.net.get_phase_tap_changer_steps()["rho"].max(), 1.0
+    )
 
     for pst_taps in tap_scenarios.values():
         pst_setpoints = pst_taps.tolist()

@@ -10,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import jax.numpy as jnp
+import numpy as np
 import pypowsybl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
@@ -261,37 +262,57 @@ def test_validate_loadflows_with_nonlinear_psts(
 
     di = static_information.dynamic_information
     assert di.nodal_injection_information is not None
-    pst_setpoints = (
-        (
-            jnp.minimum(
-                di.nodal_injection_information.starting_tap_idx + 1,
-                di.nodal_injection_information.pst_n_taps - 1,
-            )
-            + di.nodal_injection_information.grid_model_low_tap
-        )
-        .astype(int)
-        .tolist()
-    )
-    wrong_pst_setpoints = [tap + 1 for tap in pst_setpoints]
+    pst_n_taps = di.nodal_injection_information.pst_n_taps.astype(int)
+    low_tap = di.nodal_injection_information.grid_model_low_tap.astype(int)
+    min_tap_setpoints = low_tap
+    max_tap_setpoints = low_tap + pst_n_taps - 1
+    neutral_tap_setpoints = (di.nodal_injection_information.starting_tap_idx + low_tap).astype(int)
+    midpoint_tap_setpoints = (low_tap + ((pst_n_taps - 1) // 2)).astype(int)
+    tap_scenarios = {
+        "min": min_tap_setpoints,
+        "max": max_tap_setpoints,
+        "neutral": neutral_tap_setpoints,
+        "midpoint": midpoint_tap_setpoints,
+    }
 
-    lfs = runner.run_dc_loadflow([], [], pst_setpoints)
-    validate_loadflow_results(
-        static_information=static_information,
-        nminus1_definition=nminus1_definition,
-        loadflows=lfs,
-        active_topology_network=runner.build_topology_network([], [], pst_setpoints),
-        actions=[],
-        disconnections=[],
-        pst_setpoints=pst_setpoints,
-        validation_parameters=LoadflowValidationParameters(atol=1e-9, rtol=1e-9),
-    )
+    assert neutral_tap_setpoints.shape[0] == di.nodal_injection_information.pst_n_taps.shape[0]
+    # make sure the pst are set
+    assert neutral_tap_setpoints.shape[0] == len(runner.net.get_phase_tap_changer_steps().reset_index()["id"].unique())
+    # check that the psts are non linear
+    assert ~np.isclose(runner.net.get_phase_tap_changer_steps()["x"].sum(), 0.0)
 
-    with pytest.raises(AssertionError):
+    for pst_taps in tap_scenarios.values():
+        pst_setpoints = pst_taps.tolist()
+        lfs = runner.run_dc_loadflow([], [], pst_setpoints)
         validate_loadflow_results(
             static_information=static_information,
             nminus1_definition=nminus1_definition,
             loadflows=lfs,
             active_topology_network=runner.build_topology_network([], [], pst_setpoints),
+            actions=[],
+            disconnections=[],
+            pst_setpoints=pst_setpoints,
+            validation_parameters=LoadflowValidationParameters(atol=1e-9, rtol=1e-9),
+        )
+
+    tap_span = pst_n_taps - 1
+    assert bool(jnp.any(tap_span > 0))
+    modifiable_idx = int(jnp.argmax(tap_span))
+    wrong_pst_setpoints = neutral_tap_setpoints.tolist()
+    if neutral_tap_setpoints[modifiable_idx] < max_tap_setpoints[modifiable_idx]:
+        wrong_pst_setpoints[modifiable_idx] += 1
+    else:
+        wrong_pst_setpoints[modifiable_idx] -= 1
+
+    neutral_setpoints = neutral_tap_setpoints.tolist()
+    lfs_neutral = runner.run_dc_loadflow([], [], neutral_setpoints)
+
+    with pytest.raises(AssertionError):
+        validate_loadflow_results(
+            static_information=static_information,
+            nminus1_definition=nminus1_definition,
+            loadflows=lfs_neutral,
+            active_topology_network=runner.build_topology_network([], [], neutral_setpoints),
             actions=[],
             disconnections=[],
             pst_setpoints=wrong_pst_setpoints,

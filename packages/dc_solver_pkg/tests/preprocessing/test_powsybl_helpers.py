@@ -14,13 +14,18 @@ import pandas as pd
 import pypowsybl
 import pytest
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
+    _build_pst_group_labels,
+    _identify_pst_buckets,
+    _is_linear_pst_step_table,
     add_missing_branch_model_columns,
+    get_linear_pst,
     get_lines,
     get_network_as_pu,
     get_p_max,
     get_tie_lines,
     get_trafos,
 )
+from toop_engine_grid_helpers.powsybl.example_grids import parallel_pst_example
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
@@ -247,6 +252,75 @@ def test_get_trafos_hybrid(ucte_file: Path) -> None:
 
     trafos_orig["cgmes_name"] = trafos_orig["name"]
     assert np.array_equal(trafos["name"].values, trafos_orig["cgmes_name"].values)
+
+
+def test_get_trafos_groups_parallel_psts() -> None:
+    net = parallel_pst_example()
+
+    trafos = get_trafos(net)
+    label_by_id = dict(zip(trafos.index, trafos["pst_group"].to_numpy(dtype=int), strict=True))
+
+    assert label_by_id["PST1"] == label_by_id["PST2"]
+    assert label_by_id["PST3"] >= 0
+    assert label_by_id["PST3"] != label_by_id["PST1"]
+
+
+def _get_raw_trafos_with_pst_metadata(net: pypowsybl.network.Network) -> pd.DataFrame:
+    """Prepare the raw transformer dataframe expected by the PST grouping helpers."""
+    trafos = net.get_2_windings_transformers(all_attributes=True).copy()
+    linear_psts = get_linear_pst(net, mode="dc")
+    trafos["pst_linear"] = False
+    trafos["has_pst_tap"] = False
+    trafos.loc[linear_psts.index, "pst_linear"] = linear_psts.values
+    trafos.loc[linear_psts.index, "has_pst_tap"] = True
+    return trafos
+
+
+def test_identify_pst_buckets_groups_parallel_candidates() -> None:
+    net = parallel_pst_example()
+    trafos = _get_raw_trafos_with_pst_metadata(net)
+
+    step_tables, buckets = _identify_pst_buckets(trafos=trafos, net=net)
+
+    assert set(step_tables) == {"PST1", "PST2", "PST3"}
+    bucket_members = {frozenset(trafos.index[positions]) for positions in buckets.values()}
+
+    assert frozenset({"PST1", "PST2"}) in bucket_members
+    assert frozenset({"PST3"}) in bucket_members
+
+
+def test_build_pst_group_labels_marks_non_psts_and_groups_parallel_psts() -> None:
+    net = parallel_pst_example()
+    trafos = _get_raw_trafos_with_pst_metadata(net)
+    trafos.loc["NON_PST"] = trafos.loc["PST1"]
+    trafos.loc["NON_PST", "has_pst_tap"] = False
+    trafos.loc["NON_PST", "pst_linear"] = False
+
+    group_labels = _build_pst_group_labels(trafos=trafos, net=net)
+    label_by_id = dict(zip(trafos.index, group_labels, strict=True))
+
+    assert label_by_id["PST1"] == label_by_id["PST2"]
+    assert label_by_id["PST3"] != label_by_id["PST1"]
+    assert label_by_id["PST3"] >= 0
+    assert label_by_id["NON_PST"] == -1
+
+
+def test_is_linear_pst_step_table_detects_variable_impedance() -> None:
+    linear_step_table = pd.DataFrame(
+        {
+            "rho": [1.0, 1.0, 1.0],
+            "x": [1.0, 1.0, 1.0],
+            "r": [0.1, 0.1, 0.1],
+            "g": [0.0, 0.0, 0.0],
+            "b": [0.0, 0.0, 0.0],
+            "alpha": [-0.1, 0.0, 0.1],
+        }
+    )
+    non_linear_step_table = linear_step_table.copy()
+    non_linear_step_table.loc[2, "x"] = 1.2
+
+    assert _is_linear_pst_step_table(linear_step_table) is True
+    assert _is_linear_pst_step_table(non_linear_step_table) is False
 
 
 def test_get_lines_hybrid(ucte_file: Path) -> None:

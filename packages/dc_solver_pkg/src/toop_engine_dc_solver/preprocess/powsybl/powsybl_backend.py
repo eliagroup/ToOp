@@ -214,17 +214,6 @@ class PowsyblBackend(BackendInterface):
         except FileNotFoundError:
             return np.full(default_shape, default_value)
 
-    def _get_mask_or_default(
-        self, mask_filename: str, default_mask: Bool[np.ndarray, " n_masked_element"] | Int[np.ndarray, " n_masked_element"]
-    ) -> Bool[np.ndarray, " n_masked_element"] | Int[np.ndarray, " n_masked_element"]:
-        """Load a mask file or return a provided default mask."""
-        try:
-            return load_numpy_filesystem(
-                filesystem=self.data_folder_dirfs, file_path=str(self._get_masks_path() / mask_filename)
-            )
-        except FileNotFoundError:
-            return default_mask
-
     @functools.lru_cache
     def _get_lines(self) -> pat.DataFrame[BranchModel]:
         """Add N-1 and observation masks to the lines"""
@@ -238,6 +227,7 @@ class PowsyblBackend(BackendInterface):
         lines["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["line_for_nminus1"], False, n_lines)
         lines["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["line_overload_weight"], 1.0, n_lines)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
+        lines["controllable"] = np.zeros(n_lines, dtype=bool)
         lines.sort_index(inplace=True)
 
         return lines
@@ -261,17 +251,10 @@ class PowsyblBackend(BackendInterface):
         trafos["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_nminus1"], False, n_trafos)
         trafos["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["trafo_overload_weight"], 1.0, n_trafos)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
+        trafos["pst_controllable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_controllable"], False, n_trafos)
         trafos["n0_n1_max_diff_factor"] = self._get_mask(NETWORK_MASK_NAMES["trafo_n0_n1_max_diff_factor"], -1.0, n_trafos)
-        default_has_pst_tap = trafos["has_pst_tap"].to_numpy(dtype=bool)
-        trafos["has_pst_tap"] = self._get_mask_or_default(NETWORK_MASK_NAMES["trafo_has_pst_tap"], default_has_pst_tap)
-        default_pst_linear = trafos["pst_linear"].to_numpy(dtype=bool)
-        trafos["pst_linear"] = self._get_mask_or_default(NETWORK_MASK_NAMES["trafo_pst_linear"], default_pst_linear)
-        # Parallel-PST group label per trafo. Identified during importing.
-        # Default mask sets -1 for all non-PSTs and assigns unique groups per PST.
-        default_pst_groups = np.full(n_trafos, -1, dtype=int)
-        groups_for_psts = np.arange(np.sum(trafos["has_pst_tap"]), dtype=int)
-        default_pst_groups[trafos["has_pst_tap"]] = groups_for_psts
-        trafos["pst_group"] = self._get_mask_or_default(NETWORK_MASK_NAMES["pst_group_labels"], default_pst_groups)
+        trafos["has_pst_tap"] = trafos["has_pst_tap"].to_numpy(dtype=bool)
+        trafos["pst_linear"] = trafos["pst_linear"].to_numpy(dtype=bool)
 
         return trafos
 
@@ -287,7 +270,7 @@ class PowsyblBackend(BackendInterface):
         tie_lines["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["tie_line_for_nminus1"], False, n_tie_lines)
         tie_lines["overload_weight"] = np.ones(n_tie_lines)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)
-
+        tie_lines["controllable"] = np.zeros(n_tie_lines, dtype=bool)
         tie_lines.sort_index(inplace=True)
 
         return tie_lines
@@ -465,7 +448,7 @@ class PowsyblBackend(BackendInterface):
 
     def get_controllable_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of controllable PSTs"""
-        return self._get_branches()["pst_linear"].values
+        return self._get_branches()["controllable"].astype(bool).values & self.get_phase_shift_mask()
 
     def get_phase_shift_linearity(self) -> Bool[np.ndarray, " n_controllable_psts"]:
         """Get the linearity of the phase shift for each controllable PST.

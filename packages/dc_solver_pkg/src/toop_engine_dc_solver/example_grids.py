@@ -1042,8 +1042,7 @@ def case30_with_psts_pandapower(folder: Path) -> None:
     trafo_mask = np.ones(len(net.trafo), dtype=bool)
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-    np.save(masks_path / NETWORK_MASK_NAMES["trafo_has_pst_tap"], trafo_mask)
-    np.save(masks_path / NETWORK_MASK_NAMES["trafo_pst_linear"], trafo_mask)
+    np.save(masks_path / NETWORK_MASK_NAMES["trafo_controllable"], trafo_mask)
     random_topology_info(folder)
     save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
@@ -1076,9 +1075,7 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     trafo_mask_groups[trafo_has_pst_tap] = np.arange(np.sum(trafo_has_pst_tap))
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_has_pst_tap"], trafo_has_pst_tap)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_linear"], trafo_pst_linear)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["pst_group_labels"], trafo_mask_groups)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_controllable"], trafo_has_pst_tap)
 
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
@@ -1117,13 +1114,9 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
     trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
     trafo_has_pst_tap = np.array([True, True], dtype=bool)
-    trafo_pst_linear = np.array([True, True], dtype=bool)
-    trafo_mask_groups = np.array([0, 1], dtype=int)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_has_pst_tap"], trafo_has_pst_tap)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_linear"], trafo_pst_linear)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["pst_group_labels"], trafo_mask_groups)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_controllable"], trafo_has_pst_tap)
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(
@@ -1157,13 +1150,13 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
         grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         data_folder=folder,
         area_settings=AreaSettings(
-            cutoff_voltage=1,
-            control_area=[""],
-            view_area=[""],
-            nminus1_area=[""],
-            dso_trafo_factors=LimitAdjustmentParameters(),
+            cutoff_voltage=110.0,
+            control_area=["BE"],
+            view_area=["BE"],
+            nminus1_area=["BE"],
+            dso_trafo_factors=None,  # We deactivate this so the limits are the same in runner and solver
             dso_trafo_weight=1.0,
-            border_line_factors=LimitAdjustmentParameters(),
+            border_line_factors=None,
             border_line_weight=1.0,
         ),
     )

@@ -251,7 +251,7 @@ class PowsyblBackend(BackendInterface):
         trafos["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_nminus1"], False, n_trafos)
         trafos["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["trafo_overload_weight"], 1.0, n_trafos)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
-        trafos["pst_controllable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_controllable"], False, n_trafos)
+        trafos["controllable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_controllable"], False, n_trafos)
         trafos["n0_n1_max_diff_factor"] = self._get_mask(NETWORK_MASK_NAMES["trafo_n0_n1_max_diff_factor"], -1.0, n_trafos)
         trafos["has_pst_tap"] = trafos["has_pst_tap"].to_numpy(dtype=bool)
         trafos["pst_linear"] = trafos["pst_linear"].to_numpy(dtype=bool)

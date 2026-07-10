@@ -232,6 +232,29 @@ def test_convert_rel_bb_outage_data(network_data_preprocessed: NetworkData, ober
     assert len(network_data_preprocessed.non_rel_bb_outage_nodal_indices) == 0
 
 
+def test_convert_rel_bb_outage_data_uses_physical_busbar_width_for_articulation_mask(
+    network_data_preprocessed: NetworkData,
+) -> None:
+    n_timesteps = network_data_preprocessed.nodal_injection.shape[0]
+    rel_bb_outage_data = convert_rel_bb_outage_data(
+        replace(
+            network_data_preprocessed,
+            branch_action_set=[np.zeros((1, 1), dtype=bool)],
+            rel_bb_outage_br_indices=[[[[], [], [], []]]],
+            rel_bb_outage_deltap=[
+                [[np.zeros(n_timesteps), np.zeros(n_timesteps), np.zeros(n_timesteps), np.zeros(n_timesteps)]]
+            ],
+            rel_bb_outage_nodal_indices=[[[0, 1, 2, 3]]],
+            rel_bb_articulation_nodes=[[[4]]],
+        )
+    )
+
+    assert rel_bb_outage_data.branch_outage_set.shape[1] == 5
+    assert rel_bb_outage_data.nodal_indices.shape[1] == 5
+    assert rel_bb_outage_data.articulation_node_mask.shape[1] == 5
+    assert rel_bb_outage_data.articulation_node_mask[0, 4]
+
+
 def test_get_bb_outage_baseline_analysis(jax_inputs_oberrhein):
     static_information = jax_inputs_oberrhein[1]
     result = get_bb_outage_baseline_analysis(

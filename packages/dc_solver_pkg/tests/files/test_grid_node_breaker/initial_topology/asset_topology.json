@@ -1,6 +1,6 @@
 {
-    "topology_id": "test_ucte_powsybl_example.xiidm",
-    "grid_model_file": "/workspaces/AICoE_HPC_RL_Grid_Model_Importing/data/Test_Grid_asset_topo/test_ucte_powsybl_example.xiidm",
+    "topology_id": "grid.xiidm",
+    "grid_model_file": "grid.xiidm",
     "name": null,
     "stations": [
         {
@@ -15,21 +15,24 @@
                     "type": "busbar",
                     "name": "bus1",
                     "int_id": 0,
-                    "in_service": true
+                    "in_service": true,
+                    "bus_branch_bus_id": "VL2_0"
                 },
                 {
                     "grid_model_id": "BBS2_2",
                     "type": "busbar",
                     "name": "bus2",
                     "int_id": 1,
-                    "in_service": true
+                    "in_service": true,
+                    "bus_branch_bus_id": "VL2_0"
                 },
                 {
                     "grid_model_id": "BBS2_3",
                     "type": "busbar",
                     "name": "bus3",
                     "int_id": 2,
-                    "in_service": true
+                    "in_service": true,
+                    "bus_branch_bus_id": "VL2_0"
                 }
             ],
             "couplers": [
@@ -218,28 +221,16 @@
                     "type": "busbar",
                     "name": "bus1",
                     "int_id": 0,
-                    "in_service": true
+                    "in_service": true,
+                    "bus_branch_bus_id": "VL3_0"
                 },
                 {
                     "grid_model_id": "BBS3_2",
                     "type": "busbar",
                     "name": "bus2",
                     "int_id": 1,
-                    "in_service": true
-                },
-                {
-                    "grid_model_id": "BBS3_3",
-                    "type": "busbar",
-                    "name": "bus3",
-                    "int_id": 2,
-                    "in_service": true
-                },
-                {
-                    "grid_model_id": "BBS3_4",
-                    "type": "busbar",
-                    "name": "bus4",
-                    "int_id": 3,
-                    "in_service": true
+                    "in_service": true,
+                    "bus_branch_bus_id": "VL3_0"
                 }
             ],
             "couplers": [
@@ -249,26 +240,6 @@
                     "name": "VL3_BREAKER",
                     "busbar_from_id": 0,
                     "busbar_to_id": 1,
-                    "open": false,
-                    "in_service": true,
-                    "asset_bay": null
-                },
-                {
-                    "grid_model_id": "VL3_BREAKER#0",
-                    "type": "BREAKER",
-                    "name": "VL3_BREAKER#0",
-                    "busbar_from_id": 0,
-                    "busbar_to_id": 2,
-                    "open": false,
-                    "in_service": true,
-                    "asset_bay": null
-                },
-                {
-                    "grid_model_id": "VL3_BREAKER#1",
-                    "type": "BREAKER",
-                    "name": "VL3_BREAKER#1",
-                    "busbar_from_id": 1,
-                    "busbar_to_id": 3,
                     "open": false,
                     "in_service": true,
                     "asset_bay": null
@@ -365,20 +336,6 @@
                     true,
                     false,
                     true
-                ],
-                [
-                    false,
-                    false,
-                    false,
-                    false,
-                    false
-                ],
-                [
-                    false,
-                    false,
-                    false,
-                    false,
-                    false
                 ]
             ],
             "asset_connectivity": [
@@ -395,26 +352,182 @@
                     true,
                     true,
                     true
+                ]
+            ],
+            "model_log": []
+        },
+        {
+            "grid_model_id": "VL4_0",
+            "name": "VLevel4",
+            "type": null,
+            "region": "BE",
+            "voltage_level": 225.0,
+            "busbars": [
+                {
+                    "grid_model_id": "BBS4_1",
+                    "type": "busbar",
+                    "name": "bus1",
+                    "int_id": 0,
+                    "in_service": true,
+                    "bus_branch_bus_id": "VL4_0"
+                },
+                {
+                    "grid_model_id": "BBS4_2",
+                    "type": "busbar",
+                    "name": "bus2",
+                    "int_id": 1,
+                    "in_service": true,
+                    "bus_branch_bus_id": "VL4_0"
+                }
+            ],
+            "couplers": [
+                {
+                    "grid_model_id": "VL4_BREAKER",
+                    "type": "BREAKER",
+                    "name": "VL4_BREAKER",
+                    "busbar_from_id": 0,
+                    "busbar_to_id": 1,
+                    "open": false,
+                    "in_service": true,
+                    "asset_bay": null
+                }
+            ],
+            "assets": [
+                {
+                    "grid_model_id": "L4",
+                    "type": "LINE",
+                    "name": "",
+                    "in_service": true,
+                    "branch_end": null,
+                    "asset_bay": {
+                        "sl_switch_grid_model_id": null,
+                        "dv_switch_grid_model_id": "L42_BREAKER",
+                        "sr_switch_grid_model_id": {
+                            "BBS4_1": "L42_DISCONNECTOR_3_0",
+                            "BBS4_2": "L42_DISCONNECTOR_3_1"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "L5",
+                    "type": "LINE",
+                    "name": "",
+                    "in_service": true,
+                    "branch_end": null,
+                    "asset_bay": {
+                        "sl_switch_grid_model_id": null,
+                        "dv_switch_grid_model_id": "L52_BREAKER",
+                        "sr_switch_grid_model_id": {
+                            "BBS4_1": "L52_DISCONNECTOR_5_0",
+                            "BBS4_2": "L52_DISCONNECTOR_5_1"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "L8",
+                    "type": "LINE",
+                    "name": "",
+                    "in_service": true,
+                    "branch_end": null,
+                    "asset_bay": {
+                        "sl_switch_grid_model_id": null,
+                        "dv_switch_grid_model_id": "L82_BREAKER",
+                        "sr_switch_grid_model_id": {
+                            "BBS4_1": "L82_DISCONNECTOR_7_0",
+                            "BBS4_2": "L82_DISCONNECTOR_7_1"
+                        }
+                    }
+                }
+            ],
+            "asset_switching_table": [
+                [
+                    true,
+                    false,
+                    true
                 ],
                 [
                     false,
-                    false,
-                    false,
-                    false,
+                    true,
                     false
+                ]
+            ],
+            "asset_connectivity": [
+                [
+                    true,
+                    true,
+                    true
                 ],
                 [
-                    false,
-                    false,
-                    false,
-                    false,
-                    false
+                    true,
+                    true,
+                    true
+                ]
+            ],
+            "model_log": []
+        },
+        {
+            "grid_model_id": "VL5_0",
+            "name": "VLevel5",
+            "type": null,
+            "region": "BE",
+            "voltage_level": 225.0,
+            "busbars": [
+                {
+                    "grid_model_id": "BBS5_1",
+                    "type": "busbar",
+                    "name": "bus1",
+                    "int_id": 0,
+                    "in_service": true,
+                    "bus_branch_bus_id": "VL5_0"
+                }
+            ],
+            "couplers": [],
+            "assets": [
+                {
+                    "grid_model_id": "L9",
+                    "type": "LINE",
+                    "name": "",
+                    "in_service": true,
+                    "branch_end": null,
+                    "asset_bay": {
+                        "sl_switch_grid_model_id": null,
+                        "dv_switch_grid_model_id": "L92_BREAKER",
+                        "sr_switch_grid_model_id": {
+                            "BBS5_1": "L92_DISCONNECTOR_2_0"
+                        }
+                    }
+                },
+                {
+                    "grid_model_id": "generator3",
+                    "type": "GENERATOR",
+                    "name": "",
+                    "in_service": true,
+                    "branch_end": null,
+                    "asset_bay": {
+                        "sl_switch_grid_model_id": null,
+                        "dv_switch_grid_model_id": "generator3_BREAKER",
+                        "sr_switch_grid_model_id": {
+                            "BBS5_1": "generator3_DISCONNECTOR_4_0"
+                        }
+                    }
+                }
+            ],
+            "asset_switching_table": [
+                [
+                    true,
+                    true
+                ]
+            ],
+            "asset_connectivity": [
+                [
+                    true,
+                    true
                 ]
             ],
             "model_log": []
         }
     ],
     "asset_setpoints": null,
-    "timestamp": "2025-05-16T15:25:10.814573",
+    "timestamp": "2026-07-02T10:35:24.879394",
     "metrics": null
 }

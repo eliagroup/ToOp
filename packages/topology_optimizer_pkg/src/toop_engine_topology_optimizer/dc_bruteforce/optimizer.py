@@ -651,16 +651,18 @@ def _chunk_to_topologies(
     """
     action_index = np.full((chunk_size, max_num_splits), int_max(), dtype=int)
     disconnections = np.full((chunk_size, max_num_disconnections), int_max(), dtype=int)
+    pad_mask = np.zeros(chunk_size, dtype=bool)
 
     for row_index, entry in enumerate(chunk):
         if entry.action_indices:
             action_index[row_index, : len(entry.action_indices)] = np.asarray(entry.action_indices, dtype=int)
         if entry.disconnections:
             disconnections[row_index, : len(entry.disconnections)] = np.asarray(entry.disconnections, dtype=int)
+        pad_mask[row_index] = True
 
     return ActionIndexComputations(
         action=jnp.asarray(action_index),
-        pad_mask=jnp.ones((chunk_size,), dtype=bool),
+        pad_mask=jnp.asarray(pad_mask),
     ), jnp.asarray(disconnections)
 
 

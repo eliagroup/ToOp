@@ -95,5 +95,5 @@ def idle_loop(
             ):
                 return command.command
 
-        logger.warning(f"Received unknown command, dropping: {command} / {message.value}")
+        logger.warning("Received unknown command, dropping!", command=command, payload=message.value())
         consumer.commit()

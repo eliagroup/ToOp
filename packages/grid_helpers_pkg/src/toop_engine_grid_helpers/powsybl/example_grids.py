@@ -13,6 +13,7 @@ import numpy as np
 import pandapower
 import pandas as pd
 import pypowsybl
+from beartype.typing import Optional
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_stations_bus_breaker
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_pandapower_net_for_powsybl
@@ -2480,5 +2481,210 @@ def parallel_pst_example() -> Network:
         index="element_id",
     )
     net.create_operational_limits(df=limits)
+
+    return net
+
+
+def grouped_pst_grid_example(linear_pst: Optional[list[bool]]) -> pypowsybl.network.Network:
+    """Create an extended node breaker network with parallel PSTs in a two-sided station.
+
+    Base setup: two lines are overloaded.
+
+    Solution 1: PST only, one line overloaded, other reduced
+        net.update_phase_tap_changers(id="PST_1_group_1", tap=-7)
+        net.update_phase_tap_changers(id="PST_2_group_1", tap=-7)
+        net.update_phase_tap_changers(id="PST_3_group_2", tap=-7)
+        net.update_phase_tap_changers(id="PST_4_group_2", tap=-7)
+
+    Solution 2: PST + bus split, no overloads
+        net.open_switch("VL2_BREAKER#0")
+        net.update_phase_tap_changers(id="PST_1_group_1", tap=-7)
+        net.update_phase_tap_changers(id="PST_2_group_1", tap=-7)
+        net.update_phase_tap_changers(id="PST_3_group_2", tap=-6)
+        net.update_phase_tap_changers(id="PST_4_group_2", tap=-6)
+
+    Parameters
+    ----------
+    linear_pst : list[bool] | None
+        A boolean list of length 4 indicating whether each of the four PSTs should be linear (True)
+        or non-linear (False). If None, all PSTs are linear.
+
+    Returns
+    -------
+    pypowsybl.network.Network
+        The created Powsybl network.
+    """
+    if linear_pst is None:
+        linear_pst = [True, True, True, True]
+    if len(linear_pst) != 4:
+        msg = "linear_pst must contain exactly 4 boolean values."
+        raise ValueError(msg)
+    # substation_id : number of buses
+    n_buses = {1: 3, 2: 0, 3: 2, 4: 2, 5: 1}
+    net = _prepare_basic_node_breaker_network_powsybl(n_subs=5, n_vls=5, n_buses=n_buses)
+
+    pypowsybl.network.create_voltage_level_topology(
+        net,
+        id="VL2",
+        aligned_buses_or_busbar_count=2,
+        switch_kinds="BREAKER, DISCONNECTOR, BREAKER",
+        bus_or_busbar_section_prefix_id="BBS2_",
+    )
+    # remove switches to create a two sided station for the PST
+    net.remove_elements(["VL2_DISCONNECTOR_2_4", "VL2_DISCONNECTOR_3_5"])
+    lines = pd.DataFrame.from_records(
+        data=[
+            {"bus_or_busbar_section_id_1": "BBS1_1", "bus_or_busbar_section_id_2": "VL2_1_1"},
+            {"bus_or_busbar_section_id_1": "BBS1_2", "bus_or_busbar_section_id_2": "VL2_1_2"},
+            {"bus_or_busbar_section_id_1": "BBS1_3", "bus_or_busbar_section_id_2": "BBS3_1"},
+            {"bus_or_busbar_section_id_1": "BBS3_1", "bus_or_busbar_section_id_2": "BBS4_1"},
+            {"bus_or_busbar_section_id_1": "VL2_1_3", "bus_or_busbar_section_id_2": "BBS3_1"},
+            {"bus_or_busbar_section_id_1": "VL2_2_3", "bus_or_busbar_section_id_2": "BBS3_2"},
+            {"bus_or_busbar_section_id_1": "VL2_1_4", "bus_or_busbar_section_id_2": "BBS4_1"},
+            {"bus_or_busbar_section_id_1": "VL2_2_4", "bus_or_busbar_section_id_2": "BBS4_2"},
+            {"bus_or_busbar_section_id_1": "BBS3_1", "bus_or_busbar_section_id_2": "BBS5_1"},
+        ]
+    )
+    lines["r"] = 0.1
+    lines["x"] = 10
+    lines["g1"] = 0
+    lines["b1"] = 0
+    lines["g2"] = 0
+    lines["b2"] = 0
+    lines["position_order_1"] = 1
+    lines["position_order_2"] = 1
+    for i, _ in lines.iterrows():
+        lines.loc[i, "id"] = f"L{i + 1}"
+    lines = lines.set_index("id")
+    pypowsybl.network.create_line_bays(net, lines)
+
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["BBS1_1", "BBS1_2"], bus_or_busbar_section_id_2=["BBS1_2", "BBS1_3"]
+    )
+    # pst station
+    # vertical busbars
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL2_1_1"], bus_or_busbar_section_id_2=["VL2_2_1"]
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["VL2_1_3"], bus_or_busbar_section_id_2=["VL2_2_3"]
+    )
+
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["BBS3_1"], bus_or_busbar_section_id_2=["BBS3_2"]
+    )
+    pypowsybl.network.create_coupling_device(
+        net, bus_or_busbar_section_id_1=["BBS4_1"], bus_or_busbar_section_id_2=["BBS4_2"]
+    )
+    pypowsybl.network.create_load_bay(net, id="load1", bus_or_busbar_section_id="BBS4_1", p0=100, q0=10, position_order=2)
+    pypowsybl.network.create_load_bay(net, id="load2", bus_or_busbar_section_id="BBS5_1", p0=100, q0=10, position_order=2)
+    pypowsybl.network.create_generator_bay(
+        net,
+        id="generator1",
+        max_p=1000,
+        min_p=0,
+        voltage_regulator_on=True,
+        target_p=200,
+        target_q=30,
+        target_v=225,
+        bus_or_busbar_section_id="BBS1_1",
+        position_order=1,
+    )
+
+    def _create_pst_df(
+        id: str, bus_or_busbar_section_id_1: str, bus_or_busbar_section_id_2: str, linear: bool = False
+    ) -> None:
+        """Helper function to create a phase tap changer with a given id and associated steps."""
+
+        pypowsybl.network.create_2_windings_transformer_bays(
+            net,
+            id=id,
+            b=1e-6,
+            g=5e-7,
+            r=0.1,
+            x=12.0,
+            rated_u1=225.0,
+            rated_u2=225.0,
+            bus_or_busbar_section_id_1=bus_or_busbar_section_id_1,
+            position_order_1=50,
+            direction_1="BOTTOM",
+            bus_or_busbar_section_id_2=bus_or_busbar_section_id_2,
+            position_order_2=50,
+            direction_2="BOTTOM",
+        )
+        ptc_df = pd.DataFrame.from_records(
+            index="id",
+            columns=["id", "target_deadband", "regulation_mode", "low_tap", "tap"],
+            data=[(id, 2, "CURRENT_LIMITER", -30, -20)],
+        )
+        # base/min/max values (keep b,g,r,x constant as before, interpolate rho and alpha)
+        taps = np.arange(-30, 20)
+        b_val, g_val, rho_val = 0, 0, 1
+        alpha_min, alpha_max = -21.0, 28.0
+        x_min, x_max = -20.0, 30.0
+        r_min, r_max = -15.0, 25.0
+
+        alphas = np.linspace(alpha_min, alpha_max, len(taps))
+        x_vals = abs(np.linspace(x_min, x_max, len(taps)))
+        r_vals = abs(np.linspace(r_min, r_max, len(taps)))
+
+        if linear:
+            x_vals = np.zeros_like(x_vals)
+            r_vals = np.zeros_like(r_vals)
+
+        rows = [
+            (id, b_val, g_val, r_val, x_val, rho_val, alpha)
+            for r_val, x_val, alpha in zip(r_vals, x_vals, alphas, strict=True)
+        ]
+
+        steps_df = pd.DataFrame.from_records(data=rows, index="id", columns=["id", "b", "g", "r", "x", "rho", "alpha"])
+
+        net.create_phase_tap_changers(ptc_df, steps_df)
+
+    _create_pst_df(
+        id="PST_1_group_1", bus_or_busbar_section_id_1="VL2_1_1", bus_or_busbar_section_id_2="VL2_1_3", linear=linear_pst[0]
+    )
+    _create_pst_df(
+        id="PST_2_group_1", bus_or_busbar_section_id_1="VL2_2_1", bus_or_busbar_section_id_2="VL2_2_3", linear=linear_pst[1]
+    )
+    _create_pst_df(
+        id="PST_3_group_2", bus_or_busbar_section_id_1="VL2_1_2", bus_or_busbar_section_id_2="VL2_1_4", linear=linear_pst[2]
+    )
+    _create_pst_df(
+        id="PST_4_group_2", bus_or_busbar_section_id_1="VL2_2_2", bus_or_busbar_section_id_2="VL2_2_4", linear=linear_pst[3]
+    )
+
+    limits = pd.DataFrame.from_records(
+        data=[
+            {
+                "element_id": "L3",
+                "value": 50,
+                "side": "ONE",
+                "name": "permanent_limit",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "L4",
+                "value": 20,
+                "side": "ONE",
+                "name": "permanent_limit",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+        ],
+        index="element_id",
+    )
+    net.create_operational_limits(limits)
+    slack_voltage_id = "VL1"
+    slack_bus_id = "VL1_0"
+    dict_slack = {"voltage_level_id": slack_voltage_id, "bus_id": slack_bus_id}
+    pypowsybl.network.Network.create_extensions(net, extension_name="slackTerminal", **dict_slack)
+    # set taps to neutral position
+    net.update_phase_tap_changers(id="PST_1_group_1", tap=-9)
+    net.update_phase_tap_changers(id="PST_2_group_1", tap=-9)
+    net.update_phase_tap_changers(id="PST_3_group_2", tap=-9)
+    net.update_phase_tap_changers(id="PST_4_group_2", tap=-9)
+    pypowsybl.loadflow.run_ac(net)
 
     return net

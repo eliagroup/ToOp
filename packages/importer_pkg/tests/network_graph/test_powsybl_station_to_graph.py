@@ -114,6 +114,16 @@ def test_get_helper_branches(basic_node_breaker_network_powsybl_grid):
 def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
+    branches_df = net.get_branches(attributes=["connected1", "connected2"])
+    injections_df = net.get_injections(attributes=["connected"])
+    asset_in_service = pd.concat(
+        [
+            (branches_df["connected1"].fillna(False) & branches_df["connected2"].fillna(False)).rename("in_service"),
+            injections_df["connected"].fillna(False).rename("in_service"),
+        ]
+    )
+    asset_in_service.loc["L1"] = False
+    asset_in_service.loc["generator1"] = False
     names_dict = {
         "L1": "",
         "L2": "",
@@ -143,8 +153,11 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
         switches_df=switches_df,
         substation_info=substation_information,
     )
-    node_assets_df = get_node_assets(nodes_df=nodes_df, all_names_df=all_names_df)
-    node_assets_df["in_service"] = True
+    node_assets_df = get_node_assets(nodes_df=nodes_df, all_names_df=all_names_df, asset_in_service=asset_in_service)
+
+    assert not node_assets_df.loc[node_assets_df["grid_model_id"] == "L1", "in_service"].item()
+    assert not node_assets_df.loc[node_assets_df["grid_model_id"] == "generator1", "in_service"].item()
+    assert node_assets_df.loc[node_assets_df["grid_model_id"] == "L2", "in_service"].item()
     NodeAssetSchema.validate(node_assets_df)
 
 
@@ -733,6 +746,10 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     #     'VL_2W_MV_HV_HV_0', large station
     #     'VL_HV_gen_0',  large station, slack bus -> not relevant
     #     'VL_HV_vsc_0', 4 branches, 1 injection, 1 HVDC
+    #     'VL_DE_1_0', 2 busbar sections and an internal PST -> relevant
+    #     'VL_DE_2_0', connected to BE and DE_1 -> relevant
+    #     'VL_FR_1_0', 2 busbar sections and an internal PST in the isolated FR island -> relevant
+    #     'VL_FR_2_0', connected to FR_1 in the isolated FR island -> relevant
     #     '3W-Star-VL_0' not relevant
     #    ]
     expected = [
@@ -748,6 +765,10 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_2W_MV_HV_MV",
         "VL_2W_MV_HV_HV",
         "VL_HV_vsc",
+        "VL_DE_1",
+        "VL_DE_2",
+        "VL_FR_1",
+        "VL_FR_2",
     ]
     # 'VL_HV_gen_0' not included as it is the slack
 

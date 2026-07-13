@@ -29,7 +29,7 @@ The AC optimizer validates promising DC solutions using full AC loadflow calcula
 ### Topology Representation
 - **Actions**: List of substation switching indices from the [`ActionSet`][toop_engine_dc_solver.preprocess.action_set]
 - **Disconnections**: Branch outage specifications for N-1 analysis
-- **PST Setpoints**: Phase-shifting transformer positions as described in the [`ActionSet`][toop_engine_dc_solver.preprocess.action_set]. Parallel PST group optimization is supported only when Powsybl-imported preprocessing artifacts provide valid `pst_group` metadata.
+- **PST Setpoints**: Phase-shifting transformer positions as described in the [`ActionSet`][toop_engine_dc_solver.preprocess.action_set]. Parallel PST group optimization is supported only when Powsybl preprocessing artifacts provide valid `pst_group` metadata.
 - **Metrics**: Multi-objective fitness values and constraint violations
 
 ### Strategy Collections
@@ -41,7 +41,7 @@ The AC optimizer validates promising DC solutions using full AC loadflow calcula
 The optimization process requires preprocessed grid data from the **[`Importer`](https://eliagroup.github.io/ToOp/importer/intro/)** package:
 
 1. **Static Information**: Grid electrical parameters and topology
-2. **Action Set**: Enumerated switching possibilities and controllable asset ranges. For supported Powsybl-imported grids, `pst_ranges[*].pst_group` keeps grouped PSTs synchronized during optimization. Parallel PST group optimization is not supported for PandaPower preprocessing artifacts.
+2. **Action Set**: Enumerated switching possibilities and controllable asset ranges. For supported Powsybl grids, `pst_ranges[*].pst_group` keeps grouped PSTs synchronized during optimization. Parallel PST group optimization is not supported for PandaPower preprocessing artifacts.
 3. **N-1 Definition**: Contingency analysis specifications aligned with the preprocessed network data
 
 ## Running an Optimization

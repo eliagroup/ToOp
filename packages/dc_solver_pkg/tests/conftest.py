@@ -1224,7 +1224,7 @@ def overlapping_monitored_and_disconnected_branch_data(
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid")
-    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, False]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, False, False]))
     save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
@@ -1232,7 +1232,7 @@ def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path(tmp_path
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_0")
-    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, False]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, False, False]))
     save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
@@ -1240,7 +1240,7 @@ def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path(tmp_path
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_1_1")
-    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, True]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([True, True, False]))
     save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 
@@ -1248,7 +1248,7 @@ def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_path(tmp_path
 @pytest.fixture(scope="session")
 def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     tmp_path = tmp_path_factory.mktemp("complex_grid_linear_0_1")
-    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, True]))
+    network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, True, False]))
     save_network_data(tmp_path / "network_data.pkl", network_data)
     return tmp_path
 

@@ -746,6 +746,10 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     #     'VL_2W_MV_HV_HV_0', large station
     #     'VL_HV_gen_0',  large station, slack bus -> not relevant
     #     'VL_HV_vsc_0', 4 branches, 1 injection, 1 HVDC
+    #     'VL_DE_1_0', 2 busbar sections and an internal PST -> relevant
+    #     'VL_DE_2_0', connected to BE and DE_1 -> relevant
+    #     'VL_FR_1_0', 2 busbar sections and an internal PST in the isolated FR island -> relevant
+    #     'VL_FR_2_0', connected to FR_1 in the isolated FR island -> relevant
     #     '3W-Star-VL_0' not relevant
     #    ]
     expected = [
@@ -761,6 +765,10 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_2W_MV_HV_MV",
         "VL_2W_MV_HV_HV",
         "VL_HV_vsc",
+        "VL_DE_1",
+        "VL_DE_2",
+        "VL_FR_1",
+        "VL_FR_2",
     ]
     # 'VL_HV_gen_0' not included as it is the slack
 

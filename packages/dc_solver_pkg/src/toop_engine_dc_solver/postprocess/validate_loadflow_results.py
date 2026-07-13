@@ -213,8 +213,6 @@ def validate_loadflow_results(
         n_0_solver = np.abs(n_0_solver)
         n_1_solver = np.abs(n_1_solver)
 
-    messages = []
-
     allclose = partial(
         np.allclose,
         atol=validation_parameters.atol,
@@ -224,7 +222,7 @@ def validate_loadflow_results(
 
     if not allclose(n_0, n_0_solver):
         error = np.abs(n_0 - n_0_solver)
-        messages.append(f"N-0 does not match, mean error: {error.mean()}, max error: {error.max()}")
+        raise AssertionError(f"N-0 does not match, mean error: {error.mean()}, max error: {error.max()}")
 
     case_contingencies = [contingency for contingency in nminus1_definition.contingencies if not contingency.is_basecase()]
 
@@ -240,16 +238,34 @@ def validate_loadflow_results(
         net=active_topology_network,
         nminus1_definition=nminus1_definition,
     )
-    # Check happy case
+    # Check happy case. Compare branch contingencies first to surface the primary mismatch group before other cases.
     both_converged = success & success_solver
-    if not allclose(n_1[both_converged, :], n_1_solver[both_converged, :]):
-        error = np.abs(n_1[both_converged, :] - n_1_solver[both_converged, :])
-        high_diff_mask = np.any(error > validation_parameters.atol, axis=1)
-        converged_case_ids = [contingency.id for i, contingency in enumerate(case_contingencies) if both_converged[i]]
-        high_diff_cases = [case_id for case_id, mismatch in zip(converged_case_ids, high_diff_mask, strict=True) if mismatch]
-        messages.append(
-            f"N-1 for cases: {high_diff_cases} does not match, mean error: {error.mean()}, max error: {error.max()}"
-        )
+    solver_branch_contingency_ids = set(solver_config.contingency_ids[: dynamic_information.n_outages])
+    branch_case_mask = np.array(
+        [contingency.id in solver_branch_contingency_ids for contingency in case_contingencies], dtype=bool
+    )
+    remaining_case_mask = ~branch_case_mask
+
+    branch_messages = get_n1_mismatch_message(
+        n_1=n_1,
+        n_1_solver=n_1_solver,
+        case_contingencies=case_contingencies,
+        case_mask=both_converged & branch_case_mask,
+        allclose=allclose,
+        atol=validation_parameters.atol,
+        label="branch contingencies",
+    )
+    assert len(branch_messages) == 0, "Mismatch for branch contingencies detected: " + "\n".join(branch_messages)
+    remaining_messages = get_n1_mismatch_message(
+        n_1=n_1,
+        n_1_solver=n_1_solver,
+        case_contingencies=case_contingencies,
+        case_mask=both_converged & remaining_case_mask,
+        allclose=allclose,
+        atol=validation_parameters.atol,
+        label="remaining contingencies",
+    )
+    assert len(remaining_messages) == 0, "Mismatch for remaining contingencies detected: " + "\n".join(remaining_messages)
 
     contingency_leads_to_solver_islanding = np.array(
         [contingency.id in islanding_contingency_ids_solver for contingency in case_contingencies]
@@ -262,7 +278,7 @@ def validate_loadflow_results(
     neither_converged = ~success & ~success_solver
     neither_islanded = ~contingency_leads_to_solver_islanding & ~contingency_leads_to_powsybl_islanding
     if any(neither_converged & neither_islanded):
-        messages.append(
+        raise AssertionError(
             f"N-1 for cases: "
             f"{[contingency.id for contingency in case_contingencies[neither_converged & neither_islanded]]} "
             f"failed, but there is no islanding."
@@ -271,20 +287,44 @@ def validate_loadflow_results(
     # Check only powsybl converged, since they have smarter functionalities for islanding
     only_powsybl_converged = success & ~success_solver
     if any(only_powsybl_converged & neither_islanded):
-        messages.append(
+        raise AssertionError(
             f"N-1 for cases: "
             f"{[contingency.id for contingency in case_contingencies[only_powsybl_converged & neither_islanded]]} "
             f"failed only in solver, but there is no islanding."
         )
     only_solver_converged = ~success & success_solver
     if any(only_solver_converged):
-        messages.append(
+        raise AssertionError(
             f"N-1 for cases: "
             f"{[contingency.id for contingency in case_contingencies[only_solver_converged]]} "
             f"succeeded only in solver. This should not happen. Please have a look."
         )
 
-    assert len(messages) == 0, "\n".join(messages)
+
+def get_n1_mismatch_message(
+    n_1: Float[ArrayLike, " n_cases n_branches"],
+    n_1_solver: Float[ArrayLike, " n_cases n_branches"],
+    case_contingencies: list[Contingency],
+    case_mask: Bool[ArrayLike, " n_cases"],
+    allclose: partial,
+    atol: float,
+    label: str,
+) -> list[str]:
+    """Append a mismatch message for a selected contingency subset if the solver and loadflow differ."""
+    if not np.any(case_mask):
+        return []
+
+    if allclose(n_1[case_mask, :], n_1_solver[case_mask, :]):
+        return []
+    messages = []
+    error = np.abs(n_1[case_mask, :] - n_1_solver[case_mask, :])
+    high_diff_mask = np.any(error > atol, axis=1)
+    case_ids = [contingency.id for i, contingency in enumerate(case_contingencies) if case_mask[i]]
+    high_diff_cases = [case_id for case_id, mismatch in zip(case_ids, high_diff_mask, strict=True) if mismatch]
+    messages.append(
+        f"N-1 {label} for cases: {high_diff_cases} does not match, mean error: {error.mean()}, max error: {error.max()}"
+    )
+    return messages
 
 
 def assert_shapes(

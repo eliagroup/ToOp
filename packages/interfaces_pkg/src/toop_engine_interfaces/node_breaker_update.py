@@ -26,6 +26,8 @@ class SwitchUpdateSchema(pa.DataFrameModel):
     open: pat.Series[bool] = pa.Field(coerce=True, nullable=True)
     """The value to be set for the switch, True for open, False for closed."""
 
+    # TODO: Tagging - which action caused this switch update
+
 
 class PSTUpdateSchema(pa.DataFrameModel):
     """Schema for PST tap changes"""

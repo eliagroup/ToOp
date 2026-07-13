@@ -25,7 +25,7 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_tie_lines,
     get_trafos,
 )
-from toop_engine_grid_helpers.powsybl.example_grids import parallel_pst_example
+from toop_engine_grid_helpers.powsybl.example_grids import grouped_pst_grid_example, parallel_pst_example
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
@@ -263,6 +263,52 @@ def test_get_trafos_groups_parallel_psts() -> None:
     assert label_by_id["PST1"] == label_by_id["PST2"]
     assert label_by_id["PST3"] >= 0
     assert label_by_id["PST3"] != label_by_id["PST1"]
+
+
+@pytest.mark.parametrize(
+    ("linear_pst", "split_pst_station", "expected_group_count", "expected_grouped_pairs"),
+    [
+        (
+            [True, True, True, True],
+            False,
+            1,
+            [("PST_1_group_1", "PST_2_group_1"), ("PST_3_group_2", "PST_4_group_2")],
+        ),
+        (
+            [True, True, True, True],
+            True,
+            2,
+            [("PST_1_group_1", "PST_3_group_2"), ("PST_2_group_1", "PST_4_group_2")],
+        ),
+        (
+            [True, False, True, False],
+            False,
+            2,
+            [("PST_1_group_1", "PST_3_group_2"), ("PST_2_group_1", "PST_4_group_2")],
+        ),
+    ],
+)
+def test_get_trafos_grouped_pst_grid_assigns_expected_pst_groups(
+    linear_pst: list[bool],
+    split_pst_station: bool,
+    expected_group_count: int,
+    expected_grouped_pairs: list[tuple[str, str]],
+) -> None:
+    net = grouped_pst_grid_example(linear_pst=linear_pst)
+    if split_pst_station:
+        net.open_switch("VL2_BREAKER#0")
+
+    trafos = get_trafos(net)
+    label_by_id = dict(zip(trafos.index, trafos["pst_group"].to_numpy(dtype=int), strict=True))
+
+    unique_labels = set(label_by_id.values())
+    assert len(unique_labels) == expected_group_count
+    if expected_group_count == 2:
+        assert unique_labels == {0, 1}
+    else:
+        assert unique_labels == {0}
+    for first_pst_id, second_pst_id in expected_grouped_pairs:
+        assert label_by_id[first_pst_id] == label_by_id[second_pst_id]
 
 
 def _get_raw_trafos_with_pst_metadata(net: pypowsybl.network.Network) -> pd.DataFrame:

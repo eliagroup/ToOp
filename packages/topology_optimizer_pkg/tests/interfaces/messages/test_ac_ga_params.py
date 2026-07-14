@@ -13,6 +13,7 @@ def test_acga_parameters_default():
     params = ACGAParameters()
     assert params.runtime_seconds == 180
     assert params.n_worst_contingencies == 20
+    assert params.include_non_converging_loadflows_in_worst_k is True
     assert params.seed == 42
     assert params.worst_k_runner_processes == 1
     assert params.runner_processes == 1

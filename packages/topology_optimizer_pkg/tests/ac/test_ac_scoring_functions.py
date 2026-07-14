@@ -361,6 +361,19 @@ def test_score_strategy_worst_k_handles_disconnections_sensibly(grid_folder: Pat
 
     nminus1_definition = load_nminus1_definition(case_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
 
+    scoring_params = ACScoringParameters(
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=1.0,
+        reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.0,
+        reject_critical_va_diff_threshold=1.0,
+        enable_critical_voltage_rejection=False,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
+        base_case_id="BASECASE",
+        early_stop_validation=True,
+    )
+
     unsplit_topology = ACOptimTopology(
         actions=[],
         disconnections=[],
@@ -384,28 +397,20 @@ def test_score_strategy_worst_k_handles_disconnections_sensibly(grid_folder: Pat
         runner=unsplit_runner,
         topology=unsplit_topology,
         base_case_id=None,
+        critical_va_diff_degree=scoring_params.critical_va_diff_degree,
+        critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
     )
     worst_k_contingencies, _overload = get_worst_k_contingencies_ac(
         loadflow_results_unsplit.branch_results, loadflow_results_unsplit.converged, k=30
     )
 
-    scoring_params = ACScoringParameters(
-        reject_convergence_threshold=1.0,
-        reject_overload_threshold=1.0,
-        reject_critical_branch_threshold=1.0,
-        reject_voltage_jump_threshold=1.0,
-        reject_critical_va_diff_threshold=1.0,
-        enable_critical_voltage_rejection=False,
-        critical_voltage_jump_percent=5.0,
-        max_allowed_va_diff=20.0,
-        base_case_id="BASECASE",
-        early_stop_validation=True,
-    )
     loadflow_results_unsplit, _, metrics_unsplit_worst_k = compute_loadflow_and_metrics(
         runner=unsplit_runner,
         topology=unsplit_topology,
         base_case_id=None,
         cases_subset=["BASECASE"] + worst_k_contingencies[0] if worst_k_contingencies else [],
+        critical_va_diff_degree=scoring_params.critical_va_diff_degree,
+        critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
     )
     for disc_idx in range(len(action_set.disconnectable_branches)):
         disconnections = [disc_idx]

@@ -76,6 +76,7 @@ def update_initial_metrics_with_worst_k_contingencies(
     initial_loadflow: LoadflowResultsPolars,
     initial_metrics: Metrics,
     worst_k: int,
+    include_non_converging_loadflows: bool = True,
 ) -> None:
     """Update the initial metrics with the worst k contingencies.
 
@@ -92,11 +93,15 @@ def update_initial_metrics_with_worst_k_contingencies(
         The initial metrics for each timestep.
     worst_k : int
         The number of worst contingencies to consider for the initial metrics.
+    include_non_converging_loadflows : bool, optional
+        Whether non-converging contingencies should be appended to the worst-k contingency list,
+        by default True.
     """
     case_ids, top_k_overloads_n_1 = get_worst_k_contingencies_ac(
         initial_loadflow.branch_results,
         initial_loadflow.converged,
         k=worst_k,
+        include_non_converging_loadflows=include_non_converging_loadflows,
     )
 
     # case_ids is an empty list if the loadflow didn't converge -> the initial_loadflow.branch_results is full of NaNs
@@ -327,7 +332,10 @@ def initialize_optimization(
 
     # Update the initial metrics with the worst k contingencies
     update_initial_metrics_with_worst_k_contingencies(
-        initial_loadflow, initial_metrics, params.ga_config.n_worst_contingencies
+        initial_loadflow,
+        initial_metrics,
+        params.ga_config.n_worst_contingencies,
+        include_non_converging_loadflows=params.ga_config.include_non_converging_loadflows_in_worst_k,
     )
 
     logger.debug(

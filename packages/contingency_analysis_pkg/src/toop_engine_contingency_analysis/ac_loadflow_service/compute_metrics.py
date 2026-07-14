@@ -229,6 +229,7 @@ def get_worst_k_contingencies_ac(
     k: int = 10,
     field: Literal["p", "i"] = "p",
     base_case_id: str = "BASECASE",
+    include_non_converging_loadflows: bool = True,
 ) -> tuple[list[list[str]], list[float]]:
     """Get the worst k contingencies based on overload energy.
 
@@ -246,6 +247,9 @@ def get_worst_k_contingencies_ac(
         The field to use for the overload calculation, either "p" for power or "i" for current, by default "p".
     base_case_id : str, optional
         The contingency ID for the base case (N-0), by default "BASECASE".
+    include_non_converging_loadflows : bool, optional
+        Whether contingencies with non-converged loadflows should be appended to the worst-k list,
+        by default True.
 
     Returns
     -------
@@ -272,14 +276,17 @@ def get_worst_k_contingencies_ac(
             overload_per_cont.filter(pl.col("timestep") == t).sort("overload", descending=True).head(k)
         )
         contingencies_with_high_overload = contingencies_sorted_by_overloads.get_column("contingency").cast(str).to_list()
-        non_converging_contingencies = (
-            convergence_results.filter(pl.col("timestep") == t)
-            .filter(pl.col("status") != "CONVERGED")
-            .collect()
-            .get_column("contingency")
-            .cast(str)
-            .to_list()
-        )
+        if include_non_converging_loadflows:
+            non_converging_contingencies = (
+                convergence_results.filter(pl.col("timestep") == t)
+                .filter(pl.col("status") != "CONVERGED")
+                .collect()
+                .get_column("contingency")
+                .cast(str)
+                .to_list()
+            )
+        else:
+            non_converging_contingencies = []
 
         contingencies.append(contingencies_with_high_overload + non_converging_contingencies)
 

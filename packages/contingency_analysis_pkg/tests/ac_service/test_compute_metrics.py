@@ -184,6 +184,31 @@ def test_get_worst_k_contingencies_ac_k_greater_than_available(
         assert overload_n_minus_1 == o
 
 
+def test_get_worst_k_contingencies_ac_can_disable_non_converging_append(
+    branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars
+):
+    df = branch_results_df_fast_failing_polars
+
+    contingencies_with_non_converging, _ = get_worst_k_contingencies_ac(
+        df,
+        convergence_results_df_fast_failing_polars,
+        k=2,
+        field="p",
+        include_non_converging_loadflows=True,
+    )
+    contingencies_without_non_converging, _ = get_worst_k_contingencies_ac(
+        df,
+        convergence_results_df_fast_failing_polars,
+        k=2,
+        field="p",
+        include_non_converging_loadflows=False,
+    )
+
+    assert all("cont4" in contingencies for contingencies in contingencies_with_non_converging)
+    assert all("cont4" not in contingencies for contingencies in contingencies_without_non_converging)
+    assert all(len(contingencies) == 2 for contingencies in contingencies_without_non_converging)
+
+
 def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
     branch_results_df_fast_failing_polars: pl.LazyFrame,
     convergence_results_df_fast_failing_polars: pl.LazyFrame,

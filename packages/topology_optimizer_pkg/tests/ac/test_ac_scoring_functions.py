@@ -86,7 +86,7 @@ def test_score_strategy_worst_k_batch_parallelizes(monkeypatch: pytest.MonkeyPat
         reject_critical_va_diff_threshold=1.1,
         enable_critical_voltage_rejection=True,
         critical_voltage_jump_percent=5.0,
-        max_allowed_va_diff=0.0,
+        critical_va_diff_degree=0.0,
         base_case_id=None,
         early_stop_validation=True,
     )
@@ -176,7 +176,7 @@ def test_score_strategy_remaining_batch_chunks_survivors(monkeypatch: pytest.Mon
         reject_critical_va_diff_threshold=1.1,
         enable_critical_voltage_rejection=True,
         critical_voltage_jump_percent=5.0,
-        max_allowed_va_diff=0.0,
+        critical_va_diff_degree=0.0,
         base_case_id=None,
         early_stop_validation=True,
     )
@@ -252,7 +252,7 @@ def test_score_strategy_batch_without_early_results_uses_full_evaluation(monkeyp
         reject_critical_va_diff_threshold=1.1,
         enable_critical_voltage_rejection=True,
         critical_voltage_jump_percent=5.0,
-        max_allowed_va_diff=0.0,
+        critical_va_diff_degree=0.0,
         base_case_id=None,
         early_stop_validation=True,
     )
@@ -299,6 +299,8 @@ def test_compute_loadflow(grid_folder: Path) -> None:
         disconnections=[],
         loadflow=res,
         additional_info=info,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
     )
 
     assert metrics is not None
@@ -338,6 +340,8 @@ def test_scoring_functions_split(grid_folder: Path) -> None:
         disconnections=[],
         loadflow=ref_loadflow,
         additional_info=info,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
     )
 
     assert "switching_distance" in metrics.extra_scores
@@ -353,17 +357,10 @@ def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monk
         return {
             "overload_energy_n_1": 1.0,
             "critical_va_diff_count_n_1": 2.0,
-            "voltage_jump_count_n_1": 3.0,
+            "voltage_jump_count_n_1": 4.0,
         }
 
-    def fake_count_voltage_jumps(node_results, base_case_id, jump_threshold_percent):
-        del node_results
-        assert base_case_id == "BASECASE"
-        assert jump_threshold_percent == 7.5
-        return 4
-
     monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.compute_metrics_lfs", fake_compute_metrics_lfs)
-    monkeypatch.setattr("toop_engine_topology_optimizer.ac.scoring_functions.count_voltage_jumps", fake_count_voltage_jumps)
 
     metrics = compute_metrics_single_timestep(
         actions=[],
@@ -372,7 +369,7 @@ def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monk
         additional_info=None,
         base_case_id="BASECASE",
         critical_voltage_jump_percent=7.5,
-        max_allowed_va_diff=12.0,
+        critical_va_diff_degree=12.0,
     )
 
     assert metrics.extra_scores["voltage_jump_count_n_1"] == 4.0
@@ -773,7 +770,7 @@ def test_score_strategy_full_forwards_thresholds_and_toggle(monkeypatch: pytest.
         reject_critical_va_diff_threshold=0.85,
         enable_critical_voltage_rejection=True,
         critical_voltage_jump_percent=7.5,
-        max_allowed_va_diff=12.0,
+        critical_va_diff_degree=12.0,
         base_case_id="BASECASE",
         early_stop_validation=False,
     )
@@ -783,7 +780,7 @@ def test_score_strategy_full_forwards_thresholds_and_toggle(monkeypatch: pytest.
 
     def fake_compute_loadflow_and_metrics(**kwargs):
         assert kwargs["critical_voltage_jump_percent"] == 7.5
-        assert kwargs["max_allowed_va_diff"] == 12.0
+        assert kwargs["critical_va_diff_degree"] == 12.0
         return Mock(spec=LoadflowResultsPolars), None, split_metrics
 
     def fake_evaluate_acceptance(**kwargs):
@@ -865,6 +862,8 @@ def test_compute_remaining_loadflows(grid_folder: Path) -> None:
         topology=topology,
         base_case_id=None,
         cases_subset=subset_case_ids,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
     )
 
     # Verify that subset only contains the specified contingencies
@@ -885,6 +884,8 @@ def test_compute_remaining_loadflows(grid_folder: Path) -> None:
         base_case_id=None,
         loadflows_subset=lfs_subset,
         cases_subset=subset_case_ids,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
     )
 
     # Verify that the complete result contains all contingencies

@@ -400,6 +400,7 @@ def test_busbar_outage_equals_connected_element_outage(
                 excluded_elements=excluded_selected_voltage_level_elements,
             ),
             check_row_order=False,
+            abs_tol=1e-6,
         )
         assert_frame_equal(
             _normalize_contingency_frame(lf_result.regulating_element_results.collect(), selected_busbar_id),

@@ -381,7 +381,9 @@ def dc_config(
 
 def build_ac_config() -> DictConfig:
     """AC validation configuration to test the optimiser."""
-    return DictConfig({"n_processes": 1, "k_best_topos": 5})
+    return DictConfig(
+        {"n_processes": 1, "k_best_topos": 5, "critical_voltage_jump_percent": 5.0, "critical_va_diff_degree": 20.0}
+    )
 
 
 def build_pipeline_cfg(complex_grid_dst: Path, iteration_name: str, file_name: str) -> DictConfig:

@@ -13,6 +13,7 @@ import polars as pl
 import pytest
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
+from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
@@ -27,6 +28,7 @@ from toop_engine_topology_optimizer.ac.scoring_functions import (
     extract_switching_distance,
     score_remaining_contingency_batch,
     score_strategy_full,
+    score_strategy_worst_k,
     score_strategy_worst_k_batch,
     score_topology_batch,
 )
@@ -341,6 +343,85 @@ def test_scoring_functions_split(grid_folder: Path) -> None:
     )
 
     assert "switching_distance" in metrics.extra_scores
+
+
+def test_score_strategy_worst_k_handles_disconnections_sensibly(grid_folder: Path) -> None:
+    case_path = grid_folder / "case57"
+
+    action_set = load_action_set(
+        case_path / PREPROCESSING_PATHS["action_set_file_path"],
+        case_path / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
+    assert len(action_set.disconnectable_branches) > 2
+
+    nminus1_definition = load_nminus1_definition(case_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+    contingency_ids = [contingency.id for contingency in nminus1_definition.contingencies if contingency.id != "BASECASE"]
+
+    unsplit_topology = ACOptimTopology(
+        actions=[],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=True,
+        timestep=0,
+        strategy_hash=b"unsplit",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=[],
+    )
+
+    unsplit_runner = PowsyblRunner()
+    unsplit_runner.load_base_grid(case_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    unsplit_runner.store_action_set(action_set)
+    unsplit_runner.store_nminus1_definition(nminus1_definition)
+
+    _loadflow_results_unsplit, _, metrics_unsplit = compute_loadflow_and_metrics(
+        runner=unsplit_runner,
+        topology=unsplit_topology,
+        base_case_id=None,
+    )
+    scoring_params = ACScoringParameters(
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=1.0,
+        reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.0,
+        reject_critical_va_diff_threshold=1.0,
+        enable_critical_voltage_rejection=False,
+        critical_voltage_jump_percent=5.0,
+        max_allowed_va_diff=20.0,
+        base_case_id=None,
+        early_stop_validation=True,
+    )
+
+    rng = np.random.default_rng(42)
+    action_candidates = [[]]
+    for n_split_subs in [1, 2]:
+        for _ in range(6):
+            action_candidates.append(random_actions(action_set=action_set, rng=rng, n_split_subs=n_split_subs))
+    split_topology = ACOptimTopology(
+        actions=[],
+        disconnections=[1],
+        pst_setpoints=None,
+        unsplit=False,
+        timestep=0,
+        strategy_hash=b"split",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=contingency_ids[:20],
+    )
+    result = score_strategy_worst_k(
+        topology=split_topology,
+        runner=unsplit_runner,
+        metrics_unsplit=metrics_unsplit,
+        scoring_params=scoring_params,
+    )
+
+    assert result.rejection_reason is None, (
+        "Expected split topology to be accepted when unsplit metrics are recomputed correctly."
+    )
 
 
 def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:

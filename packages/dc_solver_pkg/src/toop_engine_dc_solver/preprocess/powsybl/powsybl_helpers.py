@@ -12,6 +12,7 @@ for general powsybl net (and frankly, these should be implemented in pypowsybl i
 """
 
 import math
+from collections import defaultdict
 from copy import deepcopy
 
 import numpy as np
@@ -278,7 +279,123 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
     trafos["has_pst_tap"] = False
     trafos.loc[linear_psts.index, "pst_linear"] = linear_psts.values
     trafos.loc[linear_psts.index, "has_pst_tap"] = True
-    return add_missing_branch_model_columns(trafos[["x", "r", "rho", "alpha", "name", "pst_linear", "has_pst_tap"]])
+    trafos["pst_group"] = _build_pst_group_labels(trafos, net)
+    return add_missing_branch_model_columns(
+        trafos[["x", "r", "rho", "alpha", "name", "pst_linear", "has_pst_tap", "pst_group"]]
+    )
+
+
+def _build_pst_group_labels(trafos: pd.DataFrame, net: Network) -> np.ndarray:
+    """Build per-transformer parallel PST group labels from the current network model.
+
+    Parameters
+    ----------
+    trafos : pd.DataFrame
+        Transformer dataframe indexed by transformer id. Must include the PST metadata
+        columns produced in get_trafos.
+    net : Network
+        Powsybl network providing phase-tap-changer and voltage-level metadata.
+
+    Returns
+    -------
+    np.ndarray
+        Integer array aligned with trafos rows. Parallel PSTs share the same non-negative
+        group label, while non-PST transformers keep the sentinel value -1.
+    """
+    pst_group_labels = np.full(len(trafos), -1, dtype=int)
+    step_tables, buckets = _identify_pst_buckets(trafos=trafos, net=net)
+    if not buckets:
+        return pst_group_labels
+
+    next_label = 0
+    for positions in buckets.values():
+        representatives: list[tuple[int, np.ndarray]] = []
+        for position in positions:
+            table = step_tables[str(trafos.index[position])]
+            matching_label = next(
+                (label for label, representative in representatives if np.allclose(representative, table)),
+                None,
+            )
+            if matching_label is None:
+                matching_label = next_label
+                representatives.append((matching_label, table))
+                next_label += 1
+            pst_group_labels[position] = matching_label
+
+    return pst_group_labels
+
+
+def _identify_pst_buckets(
+    trafos: pd.DataFrame, net: Network
+) -> tuple[dict[str, np.ndarray], dict[tuple[object, ...], list[int]]]:
+    """Collect PST comparison buckets keyed by structural transformer properties.
+
+    Parameters
+    ----------
+    trafos : pd.DataFrame
+        Transformer dataframe indexed by transformer id. Must contain has_pst_tap,
+        bus1_id, bus2_id and voltage_level1_id.
+    net : Network
+        Powsybl network providing phase-tap-changer and voltage-level metadata.
+
+    Returns
+    -------
+    tuple[dict[str, np.ndarray], dict[tuple[object, ...], list[int]]]
+        Two items:
+        1. Mapping from PST id to its numeric phase-tap-changer step table.
+        2. Mapping from bucket keys to row positions in trafos. Buckets group PSTs that
+           already match on unordered bus pair, nominal voltage, tap range, number of
+           steps and linearity, before the full step-table comparison.
+    """
+    tap_changers = net.get_phase_tap_changers()
+    pst_positions = np.flatnonzero(trafos["has_pst_tap"].to_numpy(dtype=bool))
+    if pst_positions.size == 0:
+        return {}, defaultdict(list)
+
+    pst_ids = trafos.index[pst_positions]
+    voltage_levels = net.get_voltage_levels(attributes=["nominal_v"])
+    nominal_v = trafos.loc[pst_ids, "voltage_level1_id"].map(voltage_levels["nominal_v"]).to_numpy()
+    steps = net.get_phase_tap_changer_steps(attributes=["alpha", "rho", "x", "r", "g", "b"])
+
+    step_tables: dict[str, np.ndarray] = {}
+    buckets: dict[tuple[object, ...], list[int]] = defaultdict(list)
+    for local_idx, (position, pst_id) in enumerate(zip(pst_positions, pst_ids, strict=True)):
+        pst_id_str = str(pst_id)
+        low_tap = int(tap_changers.at[pst_id_str, "low_tap"])
+        high_tap = int(tap_changers.at[pst_id_str, "high_tap"])
+        bus_pair = frozenset({trafos.at[pst_id_str, "bus1_id"], trafos.at[pst_id_str, "bus2_id"]})
+        step_table = steps.loc[pst_id_str].sort_index()
+        step_tables[pst_id_str] = step_table.to_numpy(dtype=float)
+        bucket_key = (
+            bus_pair,
+            round(float(nominal_v[local_idx])),
+            low_tap,
+            high_tap,
+            step_table.shape[0],
+            _is_linear_pst_step_table(step_table),
+        )
+        buckets[bucket_key].append(int(position))
+
+    return step_tables, buckets
+
+
+def _is_linear_pst_step_table(step_table: pd.DataFrame) -> bool:
+    """Return whether a phase-tap-changer step table is linear.
+
+    Parameters
+    ----------
+    step_table : pd.DataFrame
+        Phase-tap-changer step table for a single PST.
+
+    Returns
+    -------
+    bool
+        True if rho, x, r, g and b stay constant across all tap positions, otherwise False.
+    """
+    for column in ["rho", "x", "r", "g", "b"]:
+        if column in step_table.columns and not np.allclose(step_table[column], step_table[column].iloc[0]):
+            return False
+    return True
 
 
 @pa.check_types

@@ -14,6 +14,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl_v2,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     create_complex_substation_layout_grid,
+    grouped_pst_grid_example,
     parallel_pst_example,
     powsybl_case30_with_psts,
     powsybl_case1354,
@@ -104,6 +105,10 @@ def test_create_complex_substation_layout_grid_converges():
 
 def test_powsybl_case1354_converges():
     net = powsybl_case1354()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
 
 
 def test_three_node_pst_example_converges():
@@ -117,6 +122,19 @@ def test_three_node_pst_example_converges():
 
 def test_parallel_pst_example_converges():
     net = parallel_pst_example()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
+    assert len(net.get_operational_limits())
+
+
+@pytest.mark.parametrize(
+    "linear_pst",
+    [[True, True, True, True], [False, False, False, False], [True, False, True, False], [False, True, False, True], None],
+)
+def test_grouped_pst_grid_example(linear_pst):
+    net = grouped_pst_grid_example(linear_pst=linear_pst)
     result_dc = run_dc(net)
     assert result_dc[0].status_text == "Converged"
     result_ac = run_ac(net)

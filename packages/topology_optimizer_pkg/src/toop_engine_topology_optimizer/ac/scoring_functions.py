@@ -26,6 +26,7 @@ from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRu
 from toop_engine_interfaces.asset_topology import RealizedTopology
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
     concatenate_loadflow_results_polars,
+    subset_contingencies_polars,
 )
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
@@ -348,12 +349,7 @@ def evaluate_acceptance(
     Optional[TopologyRejectionReason]
         A TopologyRejectionReason if the split results are rejected, None if accepted.
     """
-    n_non_converged_unsplit = np.array(
-        [
-            metrics_unsplit.extra_scores.get("non_converging_loadflows", 0)
-            - metrics_unsplit.extra_scores.get("disconnected_branches", 0)
-        ]
-    )
+    n_non_converged_unsplit = np.array([metrics_unsplit.extra_scores.get("non_converging_loadflows", 0)])
     n_non_converged_split = np.array(
         [
             metrics_split.extra_scores.get("non_converging_loadflows", 0)
@@ -596,6 +592,7 @@ def _error_result_for_topology(description: str, early_stopping: bool) -> Topolo
 def score_strategy_worst_k(
     topology: ACOptimTopology,
     runner: AbstractLoadflowRunner,
+    loadflow_results_unsplit: LoadflowResultsPolars,
     metrics_unsplit: Metrics,
     scoring_params: ACScoringParameters,
 ) -> EarlyStoppingStageResult:
@@ -607,6 +604,8 @@ def score_strategy_worst_k(
         The topology to evaluate, length n_timesteps
     runner : AbstractLoadflowRunner
         The loadflow runner to use for the evaluation of the strategy
+    loadflow_results_unsplit : LoadflowResultsPolars
+        The loadflow results for the unsplit case, used for comparison in the acceptance evaluation.
     metrics_unsplit : Metrics
         The metrics for the unsplit case, used for comparison in the acceptance evaluation.
     scoring_params : ACScoringParameters
@@ -625,7 +624,7 @@ def score_strategy_worst_k(
             "Early stopping enabled but no contingency case ids found for early stopping."
             "This might happen when the DC optimizer pushes topologies without worst_k entries."
         )
-        lfs_early_stop, _additional_info, metrics_early_stop = compute_loadflow_and_metrics(
+        lfs_early_stop, additional_info, metrics_early_stop = compute_loadflow_and_metrics(
             runner=runner,
             topology=topology,
             base_case_id=scoring_params.base_case_id,
@@ -633,10 +632,19 @@ def score_strategy_worst_k(
             critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
             max_allowed_va_diff=scoring_params.max_allowed_va_diff,
         )
-
+        lfs_early_stop_unsplit = subset_contingencies_polars(loadflow_results_unsplit, cases_subset)
+        metrics_early_stop_unsplit = compute_metrics_single_timestep(
+            actions=[],
+            disconnections=[],
+            loadflow=lfs_early_stop_unsplit,
+            additional_info=additional_info,
+            base_case_id=scoring_params.base_case_id,
+            critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
+            max_allowed_va_diff=scoring_params.max_allowed_va_diff,
+        )
         rejection_reason = evaluate_acceptance(
             metrics_split=metrics_early_stop,
-            metrics_unsplit=metrics_unsplit,
+            metrics_unsplit=metrics_early_stop_unsplit,
             reject_convergence_threshold=scoring_params.reject_convergence_threshold,
             reject_overload_threshold=scoring_params.reject_overload_threshold,
             reject_critical_branch_threshold=scoring_params.reject_critical_branch_threshold,
@@ -718,6 +726,7 @@ def score_strategy_worst_k_batch(
                 score_strategy_worst_k,
                 topology,
                 runner,
+                loadflow_results_unsplit,
                 metrics_unsplit,
                 scoring_params,
             ): index

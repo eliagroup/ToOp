@@ -283,7 +283,7 @@ def get_worst_k_contingencies_ac(
 
     for t in overload_per_cont.get_column("timestep").unique().to_list():
         df_t = overload_per_cont.filter(pl.col("timestep") == t).sort("overload", descending=True).head(k)
-        cont_ids = df_t.get_column("contingency").to_list()
+        cont_ids = df_t.get_column("contingency").cast(str).to_list()
         contingencies.append(cont_ids)
 
         if cont_ids:

@@ -394,11 +394,6 @@ def test_score_strategy_worst_k_handles_disconnections_sensibly(grid_folder: Pat
         early_stop_validation=True,
     )
 
-    rng = np.random.default_rng(42)
-    action_candidates = [[]]
-    for n_split_subs in [1, 2]:
-        for _ in range(6):
-            action_candidates.append(random_actions(action_set=action_set, rng=rng, n_split_subs=n_split_subs))
     split_topology = ACOptimTopology(
         actions=[],
         disconnections=[1],

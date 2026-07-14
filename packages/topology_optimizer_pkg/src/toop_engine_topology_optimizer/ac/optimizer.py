@@ -10,10 +10,8 @@
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import cast
 
 import numpy as np
-import pandera.typing.polars as patpl
 import pypowsybl
 import structlog
 from beartype.typing import Callable, Optional
@@ -32,7 +30,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
-from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars, LoadflowResultsPolars
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
@@ -96,7 +94,8 @@ def update_initial_metrics_with_worst_k_contingencies(
         The number of worst contingencies to consider for the initial metrics.
     """
     case_ids, top_k_overloads_n_1 = get_worst_k_contingencies_ac(
-        cast("patpl.LazyFrame[BranchResultSchemaPolars]", initial_loadflow.branch_results),
+        initial_loadflow.branch_results,
+        initial_loadflow.converged,
         k=worst_k,
     )
 

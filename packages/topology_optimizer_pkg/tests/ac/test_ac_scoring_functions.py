@@ -381,7 +381,9 @@ def test_score_strategy_worst_k_handles_disconnections_sensibly(grid_folder: Pat
         topology=unsplit_topology,
         base_case_id=None,
     )
-    worst_k_contingencies, _overload = get_worst_k_contingencies_ac(loadflow_results_unsplit.branch_results, k=30)
+    worst_k_contingencies, _overload = get_worst_k_contingencies_ac(
+        loadflow_results_unsplit.branch_results, loadflow_results_unsplit.converged, k=30
+    )
 
     scoring_params = ACScoringParameters(
         reject_convergence_threshold=1.0,

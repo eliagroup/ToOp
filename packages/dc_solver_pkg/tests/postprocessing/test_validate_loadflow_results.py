@@ -277,7 +277,11 @@ def test_validate_loadflows_with_nonlinear_psts(
 
     assert neutral_tap_setpoints.shape[0] == di.nodal_injection_information.pst_n_taps.shape[0]
     # make sure the pst are set
-    assert neutral_tap_setpoints.shape[0] == len(runner.net.get_phase_tap_changer_steps().reset_index()["id"].unique())
+    # hardcoded 2 = two psts are controllable and non linear in the test grid
+    # at the time of writing this test, additionally two pst are outside of the control area due to the settings of this test
+    # see cgmes import parameter in def complex_grid_battery_hvdc_svc_3w_trafo_data_folder()
+    # this should not dynamically be tested against the network mask, to be sure there are non linear pst in the test grid
+    assert neutral_tap_setpoints.shape[0] == 2
     # check that the psts are non linear
     assert ~np.isclose(runner.net.get_phase_tap_changer_steps()["x"].sum(), 0.0)
     assert ~np.isclose(runner.net.get_phase_tap_changer_steps()["rho"].min(), 1.0) | ~np.isclose(

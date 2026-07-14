@@ -240,7 +240,7 @@ def test_pst_helpers_handle_parallel_psts(tmp_path: Path) -> None:
 
 def test_pst_helpers_handle_nonlinear_psts(tmp_path: Path) -> None:
     """PST helpers should exercise the nonlinear PTDF branch on nonlinear PST grids."""
-    _ = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, False]))
+    _ = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(tmp_path, linear_pst=np.array([False, False, False]))
 
     filesystem_dir = DirFileSystem(str(tmp_path))
     _, static_information, _ = load_grid(filesystem_dir, pandapower=False)

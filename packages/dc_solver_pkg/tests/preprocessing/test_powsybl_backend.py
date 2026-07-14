@@ -517,6 +517,7 @@ def test_get_phase_shift_susceptance_taps_handles_zero_current_step_factor() -> 
     branches = pd.DataFrame(
         {
             "x": [12.0],
+            "controllable": [True],
             "has_pst_tap": [True],
         },
         index=pd.Index(["PST_1"], name="id"),

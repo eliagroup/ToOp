@@ -44,7 +44,7 @@ You can follow our installation guide on our [Contributing page](./contribution_
 In order to understand the functionalities of this repo, please have a look at our examples in `notebooks/`.
 There you can find several Jupyter notebooks that explain how to use the engine.
 For example, you can import a grid file, build the preprocessing artifacts, and compute the DC loadflow using our GPU-based loadflow solver.
-Or you can load an example grid and minimise the branch overload by running the topology optimizer.
+Or you can load an example grid, including the grouped-PST Powsybl example, and minimise the branch overload by running the topology optimizer.
 
 You can also build the documentation and open it on your web browser by running
 ```bash

@@ -18,7 +18,7 @@ Implementations can be found in the repository: [`powsybl_backend.py`][toop_engi
 
 [N-minus-1 Definition][toop_engine_interfaces.nminus1_definition] - Defines contingency scenarios for reliability analysis where one component is out of service.
 
-[Stored Action Set][toop_engine_interfaces.stored_action_set] - Contains pre-computed optimization actions and controllable asset ranges. For supported Powsybl-imported grids, it can include PST grouping metadata used to keep grouped PSTs synchronized.
+[Stored Action Set][toop_engine_interfaces.stored_action_set] - Contains pre-computed optimization actions and controllable asset ranges. For supported Powsybl grids, it can include PST grouping metadata derived during preprocessing and used to keep grouped PSTs synchronized.
 
 [Types][toop_engine_interfaces.types] - Provides type definitions and metric types used throughout the optimization engine.
 

@@ -29,12 +29,12 @@ The same processed grid folder is therefore both an input and an output of [`loa
 
 ## Parallel PST grouping
 
-Parallel PST group optimization is currently supported only for Powsybl-imported grids. The groups are identified from the imported Powsybl grid data before solver preprocessing. PSTs are considered part of the same supported group only when they connect the same voltage magnitude, share the same bus pair regardless of orientation, and have matching tap and phase-shifter parameters.
+Parallel PST group optimization is currently supported only for Powsybl grids. The groups are identified during DC solver preprocessing from the imported Powsybl backend grid data. PSTs are considered part of the same supported group only when they connect the same voltage magnitude, share the same bus pair regardless of orientation, and have matching tap and phase-shifter parameters.
 
-Controllable PSTs are serialized in `ActionSet.pst_ranges`. Each PST range carries a `pst_group` field that persists the import-derived group used by downstream tooling.
+Controllable PSTs are serialized in `ActionSet.pst_ranges`. Each PST range carries a `pst_group` field that persists the preprocessing-derived group used by downstream tooling.
 
 - PSTs with the same `pst_group` are treated as one optimization group.
-- Group metadata is imported and carried in static information when available, but grouped behavior is applied only when `enable_parallel_pst_group_optim=True`.
+- Group metadata is carried in static information when available, but grouped behavior is applied only when `enable_parallel_pst_group_optim=True`.
 - Group members share the same tap delta during solver execution and optimization, then each member is clipped to its own tap domain.
 - Different initial taps inside one group trigger a warning.
 - Mixed linear and non-linear PSTs are not supported in one group when grouped optimization is enabled. We currently do not support optimization of non-linear/asymmetric PSTs.
@@ -89,7 +89,7 @@ The [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_t
 
 The [`load_grid`][toop_engine_dc_solver.preprocess.convert_to_jax.load_grid] routine performs the following tasks:
 
-- Instantiate the backend, depending on whether it is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] or [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] grid. The backend reads the normalized grid files, masks, and loadflow parameters from the processed grid folder. For Powsybl grids, import-derived PST grouping metadata is also exposed to preprocessing. (`load_grid_into_loadflow_solver_backend`)
+- Instantiate the backend, depending on whether it is a [`PandaPowerBackend`][toop_engine_dc_solver.preprocess.pandapower.pandapower_backend.PandaPowerBackend] or [`PowsyblBackend`][toop_engine_dc_solver.preprocess.powsybl.powsybl_backend.PowsyblBackend] grid. The backend reads the normalized grid files, masks, and loadflow parameters from the processed grid folder. For Powsybl grids, PST grouping metadata is also derived and exposed during preprocessing. (`load_grid_into_loadflow_solver_backend`)
 - Call the [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] routine.
 - Call the [`convert_to_jax`][toop_engine_dc_solver.preprocess.convert_to_jax.convert_to_jax] routine.
 - [`Validate`][toop_engine_dc_solver.jax.inputs.validate_static_information] the resulting static information.

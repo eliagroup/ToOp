@@ -556,7 +556,8 @@ def save_ac_metrics_summary(
     disconnections: list[int],
     additional_info: Optional[AdditionalActionInfo],
     dc_info: dict,
-    output_file_name: str = "ac_metrics.json",
+    output_file_name: str,
+    ac_validation_cfg: DictConfig,
 ) -> Metrics:
     """Save the AC metrics for a topology as JSON.
 
@@ -576,8 +577,10 @@ def save_ac_metrics_summary(
         Additional action metadata captured during the AC loadflow.
     dc_info: dict
         Any additional data from the DC run that is added for awareness
-    output_file_name : str, optional
-        The name of the JSON file to write, by default "ac_metrics.json".
+    output_file_name : str
+        The name of the JSON file to write.
+    ac_validation_cfg:
+        The config of the ac run
 
     Returns
     -------
@@ -592,6 +595,8 @@ def save_ac_metrics_summary(
         loadflow=loadflow_results,
         additional_info=additional_info,
         base_case_id=base_case_id,
+        critical_va_diff_degree=ac_validation_cfg["critical_va_diff_degree"],
+        critical_voltage_jump_percent=ac_validation_cfg["critical_voltage_jump_percent"],
     )
 
     res_dict = metrics.model_dump()
@@ -851,6 +856,8 @@ def perform_ac_analysis(
             disconnections=disconnections,
             additional_info=ac_action_info,
             dc_info=best_topos[topology_index],
+            output_file_name="ac_metrics.json",
+            ac_validation_cfg=ac_validation_cfg,
         )
         accepted = evaluate_acceptance(metrics_split=ac_metrics, metrics_unsplit=unsplit_metrics)
         logger.info(f"Accepted Topology: {accepted}. Fitness: {ac_metrics.fitness}")
@@ -935,6 +942,7 @@ def run_unsplit_ac_analysis(
             "metrics": res.get("initial_metrics", {}),
         },
         output_file_name="unsplit_ac_metrics.json",
+        ac_validation_cfg=ac_validation_cfg,
     )
 
     return unsplit_metrics

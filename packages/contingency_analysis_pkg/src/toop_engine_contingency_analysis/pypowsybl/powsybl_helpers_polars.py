@@ -109,6 +109,8 @@ def get_node_results_polars(
 
     # Calculate the values
 
+    basecase_contingency_id = ""
+
     if method == "dc":
         node_results = node_results.with_columns(
             pl.when(pl.col("va").is_not_null())
@@ -116,6 +118,12 @@ def get_node_results_polars(
             .otherwise(pl.col("vm"))  # keep original vm
             .alias("vm")
         )
+    basecase_vm = (
+        node_results.filter(pl.col("contingency") == basecase_contingency_id)
+        .select("timestep", "element", pl.col("vm").alias("vm_basecase"))
+        .unique(subset=["timestep", "element"], keep="first")
+    )
+    node_results = node_results.join(basecase_vm, on=["timestep", "element"], how="left")
     node_results = node_results.with_columns((pl.col("vm") - pl.col("nominal_v")).alias("vm_deviation"))
     node_results = node_results.with_columns(
         (pl.col("vm_deviation") / (pl.col("high_voltage_limit") - pl.col("nominal_v"))).alias("deviation_to_max")
@@ -129,6 +137,18 @@ def get_node_results_polars(
         .otherwise(pl.col("deviation_to_min"))  # keep original vm
         .alias("vm_loading")
     )
+    node_results = node_results.with_columns(
+        pl.when(
+            pl.col("vm").is_not_null()
+            & pl.col("vm").is_not_nan()
+            & pl.col("vm_basecase").is_not_null()
+            & pl.col("vm_basecase").is_not_nan()
+            & (pl.col("vm_basecase") != 0)
+        )
+        .then(((pl.col("vm") - pl.col("vm_basecase")).abs() / pl.col("vm_basecase").abs()) * 100.0)
+        .otherwise(pl.lit(float("nan")))
+        .alias("vm_basecase_deviation")
+    )
 
     failed_node_results = get_failed_node_results_polars(timestep, failed_outages, monitored_buses)
 
@@ -139,7 +159,6 @@ def get_node_results_polars(
     node_results = node_results.with_columns(
         p=pl.lit(float("nan")),  # TODO
         q=pl.lit(float("nan")),  # TODO
-        vm_basecase_deviation=pl.lit(float("nan")),  # TODO
         element_name=pl.lit(""),  # will be filled later
         contingency_name=pl.lit(""),  # will be filled later
     )

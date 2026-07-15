@@ -225,9 +225,11 @@ def count_voltage_jumps(
 
 def get_worst_k_contingencies_ac(
     branch_results: patpl.LazyFrame[BranchResultSchemaPolars],
+    convergence_results: patpl.LazyFrame[NodeResultSchemaPolars],
     k: int = 10,
     field: Literal["p", "i"] = "p",
     base_case_id: str = "BASECASE",
+    include_non_converging_loadflows: bool = True,
 ) -> tuple[list[list[str]], list[float]]:
     """Get the worst k contingencies based on overload energy.
 
@@ -237,12 +239,17 @@ def get_worst_k_contingencies_ac(
     ----------
     branch_results : DataFrame[BranchResultSchemaPolars]
         The branch results dataframe containing the loading information.
+    convergence_results : DataFrame[NodeResultSchemaPolars]
+        The convergence results dataframe containing the convergence information.
     k : int, optional
         The number of worst contingencies to return, by default 10.
     field : Literal["p", "i"], optional
         The field to use for the overload calculation, either "p" for power or "i" for current, by default "p".
     base_case_id : str, optional
         The contingency ID for the base case (N-0), by default "BASECASE".
+    include_non_converging_loadflows : bool, optional
+        Whether contingencies with non-converged loadflows should be appended to the worst-k list,
+        by default True.
 
     Returns
     -------
@@ -265,12 +272,26 @@ def get_worst_k_contingencies_ac(
     overloads: list[float] = []
 
     for t in overload_per_cont.get_column("timestep").unique().to_list():
-        df_t = overload_per_cont.filter(pl.col("timestep") == t).sort("overload", descending=True).head(k)
-        cont_ids = df_t.get_column("contingency").to_list()
-        contingencies.append(cont_ids)
+        contingencies_sorted_by_overloads = (
+            overload_per_cont.filter(pl.col("timestep") == t).sort("overload", descending=True).head(k)
+        )
+        contingencies_with_high_overload = contingencies_sorted_by_overloads.get_column("contingency").cast(str).to_list()
+        if include_non_converging_loadflows:
+            non_converging_contingencies = (
+                convergence_results.filter(pl.col("timestep") == t)
+                .filter(pl.col("status") != "CONVERGED")
+                .collect()
+                .get_column("contingency")
+                .cast(str)
+                .to_list()
+            )
+        else:
+            non_converging_contingencies = []
 
-        if cont_ids:
-            br_results_top_k = branch_results.filter(pl.col("contingency").is_in(cont_ids))
+        contingencies.append(contingencies_with_high_overload + non_converging_contingencies)
+
+        if contingencies_with_high_overload:
+            br_results_top_k = branch_results.filter(pl.col("contingency").is_in(contingencies_with_high_overload))
             overload_top_k = compute_overload_energy(br_results_top_k, field=field)
         else:
             overload_top_k = 0.0

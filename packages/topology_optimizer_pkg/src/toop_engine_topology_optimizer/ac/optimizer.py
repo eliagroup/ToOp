@@ -10,10 +10,8 @@
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import cast
 
 import numpy as np
-import pandera.typing.polars as patpl
 import pypowsybl
 import structlog
 from beartype.typing import Callable, Optional
@@ -32,7 +30,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from
 from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_result_helpers_polars import load_loadflow_results_polars, save_loadflow_results_polars
-from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars, LoadflowResultsPolars
+from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.loadflow_results import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set_fs
@@ -78,6 +76,7 @@ def update_initial_metrics_with_worst_k_contingencies(
     initial_loadflow: LoadflowResultsPolars,
     initial_metrics: Metrics,
     worst_k: int,
+    include_non_converging_loadflows: bool = True,
 ) -> None:
     """Update the initial metrics with the worst k contingencies.
 
@@ -94,10 +93,15 @@ def update_initial_metrics_with_worst_k_contingencies(
         The initial metrics for each timestep.
     worst_k : int
         The number of worst contingencies to consider for the initial metrics.
+    include_non_converging_loadflows : bool, optional
+        Whether non-converging contingencies should be appended to the worst-k contingency list,
+        by default True.
     """
     case_ids, top_k_overloads_n_1 = get_worst_k_contingencies_ac(
-        cast("patpl.LazyFrame[BranchResultSchemaPolars]", initial_loadflow.branch_results),
+        initial_loadflow.branch_results,
+        initial_loadflow.converged,
         k=worst_k,
+        include_non_converging_loadflows=include_non_converging_loadflows,
     )
 
     # case_ids is an empty list if the loadflow didn't converge -> the initial_loadflow.branch_results is full of NaNs
@@ -328,7 +332,10 @@ def initialize_optimization(
 
     # Update the initial metrics with the worst k contingencies
     update_initial_metrics_with_worst_k_contingencies(
-        initial_loadflow, initial_metrics, params.ga_config.n_worst_contingencies
+        initial_loadflow,
+        initial_metrics,
+        params.ga_config.n_worst_contingencies,
+        include_non_converging_loadflows=params.ga_config.include_non_converging_loadflows_in_worst_k,
     )
 
     logger.debug(

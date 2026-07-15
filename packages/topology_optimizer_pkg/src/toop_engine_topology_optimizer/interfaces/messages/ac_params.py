@@ -27,6 +27,13 @@ class ACGAParameters(BaseModel):
     """How many worst contingencies to consider for the initial metrics, i.e. the top k contingencies
     that are used to compute the initial metrics. This is used to compute the top_k_overloads_n_1"""
 
+    include_non_converging_loadflows_in_worst_k: bool = True
+    """Whether non-converging contingencies should always be appended to the worst-k contingency cases.
+    These will be added on top of the worst-k contingencies that are selected based on the overload energy.
+    So if k=20 and there are 3 non-converging contingencies, the worst-k will contain 23 contingencies in total.
+    If this is set to False, the non-converging contingencies will be ignored and the worst-k will only contain
+    the contingencies with the highest overload energy."""
+
     seed: int = 42
     """The seed for the random number generator"""
 

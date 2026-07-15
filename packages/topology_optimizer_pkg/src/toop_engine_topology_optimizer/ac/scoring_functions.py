@@ -342,12 +342,7 @@ def evaluate_acceptance(
     Optional[TopologyRejectionReason]
         A TopologyRejectionReason if the split results are rejected, None if accepted.
     """
-    n_non_converged_unsplit = np.array(
-        [
-            metrics_unsplit.extra_scores.get("non_converging_loadflows", 0)
-            - metrics_unsplit.extra_scores.get("disconnected_branches", 0)
-        ]
-    )
+    n_non_converged_unsplit = np.array([metrics_unsplit.extra_scores.get("non_converging_loadflows", 0)])
     n_non_converged_split = np.array(
         [
             metrics_split.extra_scores.get("non_converging_loadflows", 0)
@@ -632,8 +627,8 @@ def score_strategy_worst_k(
         )
         lfs_early_stop_unsplit = subset_contingencies_polars(loadflow_results_unsplit, cases_subset)
         metrics_early_stop_unsplit = compute_metrics_single_timestep(
-            actions=topology.actions,
-            disconnections=topology.disconnections,
+            actions=[],
+            disconnections=[],
             loadflow=lfs_early_stop_unsplit,
             additional_info=additional_info,
             base_case_id=scoring_params.base_case_id,

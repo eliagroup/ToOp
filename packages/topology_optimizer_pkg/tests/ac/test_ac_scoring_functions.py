@@ -11,8 +11,10 @@ from unittest.mock import Mock
 import numpy as np
 import polars as pl
 import pytest
+from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import get_worst_k_contingencies_ac
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.postprocess_pandapower import PandapowerRunner
+from toop_engine_dc_solver.postprocess.postprocess_powsybl import PowsyblRunner
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
@@ -27,6 +29,7 @@ from toop_engine_topology_optimizer.ac.scoring_functions import (
     extract_switching_distance,
     score_remaining_contingency_batch,
     score_strategy_full,
+    score_strategy_worst_k,
     score_strategy_worst_k_batch,
     score_topology_batch,
 )
@@ -51,7 +54,7 @@ def test_score_strategy_worst_k_batch_parallelizes(monkeypatch: pytest.MonkeyPat
         worst_k_contingency_cases=["c1"],
     )
     topology_b = ACOptimTopology(
-        actions=[2],
+        actions=[1],
         disconnections=[],
         pst_setpoints=None,
         unsplit=False,
@@ -345,6 +348,124 @@ def test_scoring_functions_split(grid_folder: Path) -> None:
     )
 
     assert "switching_distance" in metrics.extra_scores
+
+
+def test_score_strategy_worst_k_handles_disconnections_sensibly(grid_folder: Path) -> None:
+    case_path = grid_folder / "case57"
+
+    action_set = load_action_set(
+        case_path / PREPROCESSING_PATHS["action_set_file_path"],
+        case_path / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
+    assert len(action_set.disconnectable_branches) > 2
+
+    nminus1_definition = load_nminus1_definition(case_path / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+
+    scoring_params = ACScoringParameters(
+        reject_convergence_threshold=1.0,
+        reject_overload_threshold=1.0,
+        reject_critical_branch_threshold=1.0,
+        reject_voltage_jump_threshold=1.0,
+        reject_critical_va_diff_threshold=1.0,
+        enable_critical_voltage_rejection=False,
+        critical_voltage_jump_percent=5.0,
+        critical_va_diff_degree=20.0,
+        base_case_id="BASECASE",
+        early_stop_validation=True,
+    )
+
+    unsplit_topology = ACOptimTopology(
+        actions=[],
+        disconnections=[],
+        pst_setpoints=None,
+        unsplit=True,
+        timestep=0,
+        strategy_hash=b"unsplit",
+        optimization_id="test",
+        optimizer_type=OptimizerType.AC,
+        fitness=0.0,
+        metrics={},
+        worst_k_contingency_cases=[],
+    )
+
+    unsplit_runner = PowsyblRunner()
+    unsplit_runner.load_base_grid(case_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    unsplit_runner.store_action_set(action_set)
+    unsplit_runner.store_nminus1_definition(nminus1_definition)
+
+    loadflow_results_unsplit, _, metrics_unsplit = compute_loadflow_and_metrics(
+        runner=unsplit_runner,
+        topology=unsplit_topology,
+        base_case_id=None,
+        critical_va_diff_degree=scoring_params.critical_va_diff_degree,
+        critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
+    )
+    worst_k_contingencies, _overload = get_worst_k_contingencies_ac(
+        loadflow_results_unsplit.branch_results, loadflow_results_unsplit.converged, k=30
+    )
+
+    loadflow_results_unsplit, _, metrics_unsplit_worst_k = compute_loadflow_and_metrics(
+        runner=unsplit_runner,
+        topology=unsplit_topology,
+        base_case_id=None,
+        cases_subset=["BASECASE"] + worst_k_contingencies[0] if worst_k_contingencies else [],
+        critical_va_diff_degree=scoring_params.critical_va_diff_degree,
+        critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
+    )
+    for disc_idx in range(len(action_set.disconnectable_branches)):
+        disconnections = [disc_idx]
+        split_topology = ACOptimTopology(
+            actions=[],
+            disconnections=disconnections,
+            pst_setpoints=None,
+            unsplit=False,
+            timestep=0,
+            strategy_hash=b"split",
+            optimization_id="test",
+            optimizer_type=OptimizerType.AC,
+            fitness=0.0,
+            metrics={},
+            worst_k_contingency_cases=worst_k_contingencies[0] if worst_k_contingencies else [],
+        )
+        split_result = score_strategy_worst_k(
+            topology=split_topology,
+            runner=unsplit_runner,
+            loadflow_results_unsplit=loadflow_results_unsplit,
+            metrics_unsplit=metrics_unsplit,
+            scoring_params=scoring_params,
+        )
+        convergence_success = (
+            split_result.metrics.extra_scores["non_converging_loadflows"] - len(disconnections)
+            <= metrics_unsplit_worst_k.extra_scores["non_converging_loadflows"]
+        )
+        overload_success = (
+            split_result.metrics.extra_scores["overload_energy_n_1"]
+            <= metrics_unsplit_worst_k.extra_scores["overload_energy_n_1"]
+        )
+        branch_count_success = (
+            split_result.metrics.extra_scores["critical_branch_count_n_1"]
+            <= metrics_unsplit_worst_k.extra_scores["critical_branch_count_n_1"]
+        )
+        if all([convergence_success, overload_success, branch_count_success]):
+            assert split_result.rejection_reason is None, (
+                "Expected split topology to be accepted when unsplit metrics are recomputed correctly."
+            )
+        elif not convergence_success:
+            assert split_result.rejection_reason.criterion == "convergence", (
+                "Expected split topology to be rejected due to non-converging cases."
+            )
+        elif not overload_success:
+            assert split_result.rejection_reason.criterion == "overload-energy", (
+                "Expected split topology to be rejected due to overload energy."
+            )
+        elif not branch_count_success:
+            assert split_result.rejection_reason.criterion == "critical-branch-count", (
+                "Expected split topology to be rejected due to critical branch count."
+            )
+        else:
+            assert split_result.rejection_reason is not None, (
+                "Expected split topology to be rejected when unsplit metrics are recomputed correctly."
+            )
 
 
 def test_compute_metrics_single_timestep_uses_configured_voltage_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:

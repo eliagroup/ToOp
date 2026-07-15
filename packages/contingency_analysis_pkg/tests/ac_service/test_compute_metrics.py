@@ -125,11 +125,21 @@ def test_compute_metrics_powsybl(powsybl_bus_breaker_net: pypowsybl.network.Netw
     assert "max_flow_n_0" not in metrics_2
 
 
-def test_get_worst_k_contingencies_basic(branch_results_df_fast_failing_polars):
+def test_get_worst_k_contingencies_basic(branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars):
     df = branch_results_df_fast_failing_polars
-    contingencies, overloads = get_worst_k_contingencies_ac(df, k=2, field="p")
+    n_non_converging = (
+        convergence_results_df_fast_failing_polars.filter((pl.col("status") != "CONVERGED") & (pl.col("timestep") == 0))
+        .collect()
+        .shape[0]
+    )
+    k = 2
+    contingencies, overloads = get_worst_k_contingencies_ac(df, convergence_results_df_fast_failing_polars, k=k, field="p")
     # Should return 2 contingencies per timestep, and overloads per timestep
-    assert len(contingencies) == 2 and len(contingencies[0]) == 2
+    assert (
+        len(contingencies) == 2
+        and len(contingencies[0]) == k + n_non_converging
+        and len(contingencies[1]) == k + n_non_converging
+    )
     assert len(overloads) == 2
     # For timestep 0, cont2 and cont3 should have higher overloads than cont1
     assert "cont2" in contingencies[0] and "cont3" in contingencies[0]
@@ -137,33 +147,71 @@ def test_get_worst_k_contingencies_basic(branch_results_df_fast_failing_polars):
     assert "cont2" in contingencies[1] and "cont3" in contingencies[1]
     # Overloads should be positive and in decreasing order
     assert overloads[0] >= 0 and overloads[1] >= 0
+    assert "cont4" in contingencies[0] and "cont4" in contingencies[1]  # Non-converging contingency should be included
 
 
-def test_get_worst_k_contingencies_ac_returns_expected_shape(branch_results_df_fast_failing_polars):
+def test_get_worst_k_contingencies_ac_returns_expected_shape(
+    branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars
+):
     df = branch_results_df_fast_failing_polars
-    contingencies, overloads = get_worst_k_contingencies_ac(df, k=2, field="p")
+    contingencies, overloads = get_worst_k_contingencies_ac(df, convergence_results_df_fast_failing_polars, k=2, field="p")
     # There are 2 timesteps in the test data
     assert isinstance(contingencies, list)
     assert isinstance(overloads, list)
     assert len(contingencies) == 2
     assert len(overloads) == 2
     # Each timestep should have k contingencies
-    assert all(len(c) == 2 for c in contingencies)
+    assert all(
+        len(c)
+        == 2
+        + convergence_results_df_fast_failing_polars.filter((pl.col("status") != "CONVERGED") & (pl.col("timestep") == i))
+        .collect()
+        .shape[0]
+        for i, c in enumerate(contingencies)
+    )
 
 
-def test_get_worst_k_contingencies_ac_k_greater_than_available(branch_results_df_fast_failing_polars):
+def test_get_worst_k_contingencies_ac_k_greater_than_available(
+    branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars
+):
     df = branch_results_df_fast_failing_polars
     # There are 3 contingencies per timestep, so k=5 should return all
-    contingencies, overloads = get_worst_k_contingencies_ac(df, k=5, field="p")
+    contingencies, overloads = get_worst_k_contingencies_ac(df, convergence_results_df_fast_failing_polars, k=5, field="p")
 
     overload_n_minus_1 = compute_overload_energy(df, field="p")
-    assert all(len(c) == 3 for c in contingencies)
+    assert all(len(c) == 4 for c in contingencies)
     for o in overloads:
         assert overload_n_minus_1 == o
 
 
+def test_get_worst_k_contingencies_ac_can_disable_non_converging_append(
+    branch_results_df_fast_failing_polars, convergence_results_df_fast_failing_polars
+):
+    df = branch_results_df_fast_failing_polars
+
+    contingencies_with_non_converging, _ = get_worst_k_contingencies_ac(
+        df,
+        convergence_results_df_fast_failing_polars,
+        k=2,
+        field="p",
+        include_non_converging_loadflows=True,
+    )
+    contingencies_without_non_converging, _ = get_worst_k_contingencies_ac(
+        df,
+        convergence_results_df_fast_failing_polars,
+        k=2,
+        field="p",
+        include_non_converging_loadflows=False,
+    )
+
+    assert all("cont4" in contingencies for contingencies in contingencies_with_non_converging)
+    assert all("cont4" not in contingencies for contingencies in contingencies_without_non_converging)
+    assert all(len(contingencies) == 2 for contingencies in contingencies_without_non_converging)
+
+
 def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
     branch_results_df_fast_failing_polars: pl.LazyFrame,
+    convergence_results_df_fast_failing_polars: pl.LazyFrame,
 ) -> None:
     # Choose strongly overloaded basecase values so inclusion in N-1 metrics is easy to detect.
     basecase_power = 500.0
@@ -206,7 +254,7 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
         va_diff_results=va_diff_results,
         node_results=node_results,
         regulating_element_results=pl.LazyFrame(),
-        converged=pl.LazyFrame(),
+        converged=convergence_results_df_fast_failing_polars,
     )
 
     metrics_without_basecase_filter = compute_metrics(loadflow_results)

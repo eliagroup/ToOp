@@ -18,6 +18,7 @@ from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
 from pandapower.pypower.makePTDF import makePTDF
 from tests.network_data_pickle import load_network_data
+from toop_engine_dc_solver.example_grids import complex_grid_battery_hvdc_svc_3w_trafo_data_folder
 from toop_engine_dc_solver.jax.inputs import (
     load_static_information,
     save_static_information,
@@ -684,6 +685,41 @@ def test_simplify_asset_topology(
         asset_ids = [a.grid_model_id for a in station.assets]
         assert branch_ids == asset_ids[: len(branch_ids)]
         assert inj_ids == asset_ids[len(branch_ids) :]
+
+
+def test_complex_grid_be_ch_tie_line_stays_in_simplified_station_topology(tmp_path: Path) -> None:
+    tie_line_id = "Dangling_outbound + Dangling_ch_inbound"
+
+    with structlog.testing.capture_logs() as cap_logs:
+        network_data = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(
+            tmp_path,
+            linear_pst=np.array([False, False, False]),
+        )
+
+    assert tie_line_id in network_data.branch_ids
+
+    monitored_branch_ids = [
+        branch_id
+        for branch_id, is_monitored in zip(network_data.branch_ids, network_data.monitored_branch_mask, strict=True)
+        if is_monitored
+    ]
+    assert tie_line_id in monitored_branch_ids
+
+    relevant_node_ids = [network_data.node_ids[i] for i in network_data.relevant_nodes]
+    assert "VL_3W_HV_0" in relevant_node_ids
+
+    assert network_data.simplified_asset_topology is not None
+    hv_station = next(
+        station for station in network_data.simplified_asset_topology.stations if station.grid_model_id == "VL_3W_HV_0"
+    )
+    hv_station_asset_ids = [asset.grid_model_id for asset in hv_station.assets]
+    assert tie_line_id in hv_station_asset_ids
+
+    assert not any(
+        entry.get("event", "").startswith("Station VL_3W_HV_0/VL_3W_HV could not be simplified")
+        and tie_line_id in entry.get("event", "")
+        for entry in cap_logs
+    )
 
 
 def test_exclude_bridges_from_outage_masks(

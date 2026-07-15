@@ -78,6 +78,17 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_converges():
     assert result_ac[0].status_text == "Converged"
 
 
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_has_be_ch_tie_line():
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+    tie_lines = net.get_tie_lines(all_attributes=True)
+    assert "Dangling_outbound + Dangling_ch_inbound" in tie_lines.index
+
+    tie_line = tie_lines.loc["Dangling_outbound + Dangling_ch_inbound"]
+    assert tie_line["boundary_line1_id"] == "Dangling_outbound"
+    assert tie_line["boundary_line2_id"] == "Dangling_ch_inbound"
+
+
 def test_create_complex_substation_layout_grid_converges():
     net = create_complex_substation_layout_grid()
     result_dc = run_dc(net)

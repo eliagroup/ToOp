@@ -8,6 +8,7 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pypowsybl
 import pypowsybl.loadflow.impl
 import pypowsybl.loadflow.impl.loadflow
@@ -508,3 +509,49 @@ def test_psts(tmp_path_factory: pytest.TempPathFactory) -> None:
                 tap_found = True
                 break
         assert tap_found
+
+
+def test_get_phase_shift_susceptance_taps_handles_zero_current_step_factor() -> None:
+    backend = object.__new__(PowsyblBackend)
+
+    branches = pd.DataFrame(
+        {
+            "x": [12.0],
+            "controllable": [True],
+            "has_pst_tap": [True],
+        },
+        index=pd.Index(["PST_1"], name="id"),
+    )
+    backend._get_branches = lambda: branches  # type: ignore[method-assign]
+
+    tap_steps = pd.DataFrame(
+        {
+            "x": [-120.0, -100.0, -80.0],
+            "rho": [1.0, 1.0, 1.0],
+        },
+        index=pd.MultiIndex.from_tuples(
+            [("PST_1", -1), ("PST_1", 0), ("PST_1", 1)],
+            names=["id", "tap"],
+        ),
+    )
+    tap_changers = pd.DataFrame(
+        {
+            "tap": [0],
+        },
+        index=pd.Index(["PST_1"], name="id"),
+    )
+
+    class _FakeNet:
+        def get_phase_tap_changer_steps(self, attributes: list[str]) -> pd.DataFrame:
+            assert attributes == ["x", "rho"]
+            return tap_steps
+
+        def get_phase_tap_changers(self) -> pd.DataFrame:
+            return tap_changers
+
+    backend.net = _FakeNet()
+
+    susceptance_taps = backend.get_phase_shift_susceptance_taps()
+
+    assert len(susceptance_taps) == 1
+    assert np.allclose(susceptance_taps[0], np.full(3, 1.0 / 12.0))

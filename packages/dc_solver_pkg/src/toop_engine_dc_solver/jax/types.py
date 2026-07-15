@@ -57,17 +57,14 @@ class MODFMatrix(eqx.Module):
 
 
 class NodalInjectionInformation(eqx.Module):
-    """Holds the nodal injection optimization data required by the DC solver."""
+    """Holds controllable PST runtime data required by the DC solver."""
 
     controllable_pst_indices: Int[Array, " n_controllable_pst"]
     """An index over controllable PSTs indexing into all nodes. The injections of these nodes are
     actually shift angles and can be varied between shift_min and shift_max."""
 
-    shift_degree_min: Float[Array, " n_controllable_pst"]
-    """The minimum shift angle for each controllable PST. Cached here to avoid repeated access."""
-
-    shift_degree_max: Float[Array, " n_controllable_pst"]
-    """The maximum shift angle for each controllable PST. Cached here to avoid repeated access."""
+    controllable_pst_branch_indices: Int[Array, " n_controllable_pst"]
+    """Branch indices of controllable PSTs in branch space."""
 
     pst_n_taps: Int[Array, " n_controllable_pst"]
     """The number of discrete taps for each controllable PST"""
@@ -75,6 +72,13 @@ class NodalInjectionInformation(eqx.Module):
     pst_tap_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
     """Discrete individual taps (in degrees) of controllable PSTs. The array is zero-padded to the maximum number of
     pst_n_taps."""
+
+    pst_tap_susceptance_values: Float[Array, " n_controllable_pst max_n_tap_positions"]
+    """Effective branch susceptance for every discrete tap of every controllable PST.
+
+    This is the canonical nonlinear PST runtime payload. Rows are padded to max_n_tap_positions;
+    pst_n_taps defines the valid prefix of each row.
+    """
 
     starting_tap_idx: Int[Array, " n_controllable_pst"]
     """The starting tap position for each controllable PST, given as an integer index into pst_tap_values."""
@@ -1157,8 +1161,8 @@ class SolverLoadflowResults(eqx.Module):
     bb_outage_overload: Optional[Float[Array, " ... "]] = None
     """The overload energy caused due to busbar outages"""
 
-    nodal_injections_optimized: Optional[NodalInjOptimResults] = None
-    """The results of the nodal injection optimization, if any was performed."""
+    pst_tap_results: Optional[NodalInjOptimResults] = None
+    """The applied PST tap results, if any PST state was provided for the loadflow."""
 
     contingency_success: Optional[Bool[ArrayLike, " ... n_failures"]] = None
     """Whether each N-1 contingency case converged for the corresponding topology."""
@@ -1179,9 +1183,7 @@ class SolverLoadflowResults(eqx.Module):
             bb_outage_splits=(self.bb_outage_splits[key] if self.bb_outage_splits is not None else None),
             bb_outage_overload=(self.bb_outage_overload[key] if self.bb_outage_overload is not None else None),
             disconnections=(self.disconnections[key] if self.disconnections is not None else None),
-            nodal_injections_optimized=(
-                self.nodal_injections_optimized[key] if self.nodal_injections_optimized is not None else None
-            ),
+            pst_tap_results=(self.pst_tap_results[key] if self.pst_tap_results is not None else None),
         )
 
 

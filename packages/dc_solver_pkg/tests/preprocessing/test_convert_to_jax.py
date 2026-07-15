@@ -166,7 +166,9 @@ def test_load_grid_case30(tmp_path_factory: pytest.TempPathFactory) -> None:
     _, static_information, _ = load_grid(data_folder_dirfs=filesystem_dir, pandapower=True)
     validate_static_information(static_information)
     nodal_injection_information = static_information.dynamic_information.nodal_injection_information
-    assert nodal_injection_information.shift_degree_max.shape == (3,)
+    assert nodal_injection_information is not None
+    assert nodal_injection_information.controllable_pst_branch_indices.shape == (3,)
+    assert nodal_injection_information.pst_tap_susceptance_values.shape == nodal_injection_information.pst_tap_values.shape
 
     loaded_static_information = load_static_information(folder / PREPROCESSING_PATHS["static_information_file_path"])
     validate_static_information(loaded_static_information)
@@ -186,7 +188,8 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
         data_folder_dirfs=filesystem_dir, pandapower=False, lf_params=CGMES_DISTRIBUTED_SLACK
     )
     validate_static_information(static_information)
-    assert static_information.dynamic_information.nodal_injection_information.shift_degree_max.shape == (2,)
+    assert static_information.dynamic_information.nodal_injection_information is not None
+    assert static_information.dynamic_information.nodal_injection_information.controllable_pst_branch_indices.shape == (2,)
 
     assert static_information.dynamic_information.nodal_injection_information.pst_n_taps.shape == (2,)
     pst_n_taps = static_information.dynamic_information.nodal_injection_information.pst_n_taps
@@ -194,6 +197,10 @@ def test_load_grid_case30_powsybl(tmp_path_factory: pytest.TempPathFactory) -> N
     assert static_information.dynamic_information.nodal_injection_information.pst_tap_values.shape == (
         2,
         jnp.max(pst_n_taps),
+    )
+    assert (
+        static_information.dynamic_information.nodal_injection_information.pst_tap_susceptance_values.shape
+        == static_information.dynamic_information.nodal_injection_information.pst_tap_values.shape
     )
 
     action_set = load_action_set(

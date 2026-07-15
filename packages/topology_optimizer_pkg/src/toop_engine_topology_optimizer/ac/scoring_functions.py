@@ -19,9 +19,6 @@ from beartype.typing import Collection, Optional
 from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
     compute_metrics as compute_metrics_lfs,
 )
-from toop_engine_contingency_analysis.ac_loadflow_service.compute_metrics import (
-    count_voltage_jumps,
-)
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_interfaces.asset_topology import RealizedTopology
 from toop_engine_interfaces.loadflow_result_helpers_polars import (
@@ -105,9 +102,9 @@ def compute_loadflow_and_metrics(
     runner: AbstractLoadflowRunner,
     topology: ACOptimTopology,
     base_case_id: Optional[str],
+    critical_voltage_jump_percent: float,
+    critical_va_diff_degree: float,
     cases_subset: Optional[Collection[str]] = None,
-    critical_voltage_jump_percent: float = 5.0,
-    max_allowed_va_diff: float = 20.0,
 ) -> tuple[LoadflowResultsPolars, Optional[AdditionalActionInfo], Metrics]:
     """Compute loadflow results and associated metrics for a given set of strategies.
 
@@ -122,12 +119,13 @@ def compute_loadflow_and_metrics(
         The topology to evaluate.
     base_case_id : Optional[str]
         The base case identifier for the topology. Can be None.
-    cases_subset : Optional[Collection[str]]
-        Subset of contingency cases to use for loadflow computation. If None, all available contingencies are used.
     critical_voltage_jump_percent : float, optional
         Voltage jumps larger than this percentage are counted as critical in the AC metrics.
-    max_allowed_va_diff : float, optional
+    critical_va_diff_degree : float, optional
         Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics.
+
+    cases_subset : Optional[Collection[str]]
+        Subset of contingency cases to use for loadflow computation. If None, all available contingencies are used.
 
     Returns
     -------
@@ -155,7 +153,7 @@ def compute_loadflow_and_metrics(
         additional_info=additional_info,
         base_case_id=base_case_id,
         critical_voltage_jump_percent=critical_voltage_jump_percent,
-        max_allowed_va_diff=max_allowed_va_diff,
+        critical_va_diff_degree=critical_va_diff_degree,
     )
 
     if cases_subset is not None:
@@ -190,9 +188,9 @@ def compute_metrics_single_timestep(
     disconnections: list[int],
     loadflow: LoadflowResultsPolars,
     additional_info: Optional[AdditionalActionInfo],
+    critical_voltage_jump_percent: float,
+    critical_va_diff_degree: float,
     base_case_id: Optional[str] = None,
-    critical_voltage_jump_percent: float = 5.0,
-    max_allowed_va_diff: float = 20.0,
 ) -> Metrics:
     """Compute the metrics for a single timestep
 
@@ -206,12 +204,12 @@ def compute_metrics_single_timestep(
         The loadflow results for the timestep, use select_timestep to get the results for a specific timestep
     additional_info : Optional[AdditionalActionInfo]
         Additional information about the actions taken, such as switching distance or other metrics.
+    critical_voltage_jump_percent : float
+        Voltage jumps larger than this percentage are counted as critical in the AC metrics.
+    critical_va_diff_degree : float
+        Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics.
     base_case_id: Optional[str]
         The base case id from the nminus1 definition, to separate N-0 flows from N-1
-    critical_voltage_jump_percent : float, optional
-        Voltage jumps larger than this percentage are counted as critical in the AC metrics.
-    max_allowed_va_diff : float, optional
-        Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics.
 
     Returns
     -------
@@ -221,14 +219,9 @@ def compute_metrics_single_timestep(
     metrics = compute_metrics_lfs(
         loadflow_results=loadflow,
         base_case_id=base_case_id,
-        critical_va_diff_threshold=max_allowed_va_diff,
+        critical_va_diff_threshold=critical_va_diff_degree,
+        critical_voltage_jump_threshold=critical_voltage_jump_percent,
     )
-    if base_case_id is not None:
-        metrics["voltage_jump_count_n_1"] = count_voltage_jumps(
-            loadflow.node_results,
-            base_case_id=base_case_id,
-            jump_threshold_percent=critical_voltage_jump_percent,
-        )
     metrics = {
         key: (0.0 if value is None else np.nan_to_num(value, nan=0, posinf=INF_FITNESS, neginf=-INF_FITNESS).item())
         for key, value in metrics.items()
@@ -438,8 +431,8 @@ def compute_remaining_loadflows(
     base_case_id: Optional[str],
     loadflows_subset: LoadflowResultsPolars,
     cases_subset: list[str],
-    critical_voltage_jump_percent: float = 5.0,
-    max_allowed_va_diff: float = 20.0,
+    critical_voltage_jump_percent: float,
+    critical_va_diff_degree: float,
 ) -> tuple[LoadflowResultsPolars, Metrics]:
     """Compute the loadflows for the remaining contingencies that were not included in the early stopping subset.
 
@@ -462,7 +455,7 @@ def compute_remaining_loadflows(
         from the loadflows_subset but as it is available it is faster to pass it in.
     critical_voltage_jump_percent : float, optional
         Voltage jumps larger than this percentage are counted as critical in the AC metrics.
-    max_allowed_va_diff : float, optional
+    critical_va_diff_degree : float, optional
         Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics.
 
     Returns
@@ -498,7 +491,7 @@ def compute_remaining_loadflows(
         additional_info=additional_info_remaining,
         base_case_id=base_case_id,
         critical_voltage_jump_percent=critical_voltage_jump_percent,
-        max_allowed_va_diff=max_allowed_va_diff,
+        critical_va_diff_degree=critical_va_diff_degree,
     )
 
     # Restore the original N-1 definitions in the runners
@@ -540,7 +533,7 @@ class ACScoringParameters:
     critical_voltage_jump_percent: float
     """Voltage jumps larger than this percentage are counted as critical in the AC metrics."""
 
-    max_allowed_va_diff: float
+    critical_va_diff_degree: float
     """Voltage angle differences larger than this value in degrees are counted as critical in the AC metrics."""
 
     # --- Parameters for early stopping during N-1 analysis --- #
@@ -635,7 +628,7 @@ def score_strategy_worst_k(
             base_case_id=scoring_params.base_case_id,
             cases_subset=cases_subset,
             critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
-            max_allowed_va_diff=scoring_params.max_allowed_va_diff,
+            critical_va_diff_degree=scoring_params.critical_va_diff_degree,
         )
         lfs_early_stop_unsplit = subset_contingencies_polars(loadflow_results_unsplit, cases_subset)
         metrics_early_stop_unsplit = compute_metrics_single_timestep(
@@ -645,7 +638,7 @@ def score_strategy_worst_k(
             additional_info=additional_info,
             base_case_id=scoring_params.base_case_id,
             critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
-            max_allowed_va_diff=scoring_params.max_allowed_va_diff,
+            critical_va_diff_degree=scoring_params.critical_va_diff_degree,
         )
         rejection_reason = evaluate_acceptance(
             metrics_split=metrics_early_stop,
@@ -670,7 +663,7 @@ def score_strategy_worst_k(
         topology=topology,
         base_case_id=scoring_params.base_case_id,
         critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
-        max_allowed_va_diff=scoring_params.max_allowed_va_diff,
+        critical_va_diff_degree=scoring_params.critical_va_diff_degree,
     )
     rejection_reason = evaluate_acceptance(
         metrics_split=metrics,
@@ -801,7 +794,7 @@ def score_topology_remaining(
             loadflows_subset=early_stage_result.loadflow_results,
             cases_subset=early_stage_result.cases_subset,
             critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
-            max_allowed_va_diff=scoring_params.max_allowed_va_diff,
+            critical_va_diff_degree=scoring_params.critical_va_diff_degree,
         )
     else:
         lfs = early_stage_result.loadflow_results
@@ -850,7 +843,7 @@ def score_strategy_full(
         topology=topology,
         base_case_id=scoring_params.base_case_id,
         critical_voltage_jump_percent=scoring_params.critical_voltage_jump_percent,
-        max_allowed_va_diff=scoring_params.max_allowed_va_diff,
+        critical_va_diff_degree=scoring_params.critical_va_diff_degree,
     )
     rejection_reason = evaluate_acceptance(
         metrics_split=metrics,

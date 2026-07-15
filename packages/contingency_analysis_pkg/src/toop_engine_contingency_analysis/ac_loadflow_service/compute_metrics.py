@@ -193,47 +193,30 @@ def count_critical_va_diff_cases(
 
 def count_voltage_jumps(
     node_results: patpl.LazyFrame[NodeResultSchemaPolars],
-    base_case_id: Optional[str],
-    jump_threshold_percent: float = 5.0,
+    critical_voltage_jump_threshold: float = 100.0,
 ) -> int | None:
     """Count nodal voltage jumps above the basecase deviation threshold.
 
     Parameters
     ----------
     node_results : patpl.LazyFrame[NodeResultSchemaPolars]
-        The node results dataframe containing both basecase and N-1 node voltages.
-    base_case_id : Optional[str]
-        The contingency id of the base case. If None, the voltage jump metric cannot be computed.
-    jump_threshold_percent : float, optional
-        The minimum relative voltage jump in percent that counts as a voltage jump, by default 5.0.
+        The node results dataframe containing `vm_basecase_deviation` values.
+    critical_voltage_jump_threshold : float, optional
+        The minimum relative voltage jump in percent that counts as a voltage jump.
 
     Returns
     -------
     int | None
-        The number of N-1 node results whose voltage deviation from the basecase is strictly above the threshold.
-        None if the required columns are not available or if no base case id is provided.
+        The number of node results whose voltage deviation from the basecase is strictly above the threshold.
+        None if the required columns are not available.
     """
-    if base_case_id is None:
+    schema_names = set(node_results.collect_schema().names())
+    if "vm_basecase_deviation" not in schema_names:
         return None
-
-    required_columns = {"timestep", "contingency", "element", "vm"}
-    if not required_columns.issubset(node_results.collect_schema().names()):
-        return None
-
-    basecase_vm = (
-        node_results.filter(pl.col("contingency") == base_case_id)
-        .select("timestep", "element", pl.col("vm").alias("vm_basecase"))
-        .unique(subset=["timestep", "element"], keep="first")
-    )
-    n_1_node_results = node_results.filter(pl.col("contingency") != base_case_id)
 
     return int(
-        n_1_node_results.join(basecase_vm, on=["timestep", "element"], how="left")
-        .filter(pl.col("vm").is_not_null() & pl.col("vm_basecase").is_not_null() & (pl.col("vm_basecase") != 0))
-        .with_columns(
-            voltage_jump_percent=((pl.col("vm") - pl.col("vm_basecase")).abs() / pl.col("vm_basecase").abs()) * 100.0
-        )
-        .filter(pl.col("voltage_jump_percent") > jump_threshold_percent)
+        node_results.filter(pl.col("vm_basecase_deviation").is_not_null() & pl.col("vm_basecase_deviation").is_not_nan())
+        .filter(pl.col("vm_basecase_deviation") > critical_voltage_jump_threshold)
         .select(pl.len())
         .collect()
         .item()
@@ -299,7 +282,8 @@ def get_worst_k_contingencies_ac(
 def compute_metrics(
     loadflow_results: LoadflowResultsPolars,
     base_case_id: Optional[str] = None,
-    critical_va_diff_threshold: float = 0.0,
+    critical_va_diff_threshold: float = 360.0,
+    critical_voltage_jump_threshold: float = 100.0,
 ) -> dict[MetricType, float | None]:
     """Compute the metrics from the loadflow results.
 
@@ -315,8 +299,13 @@ def compute_metrics(
         The loadflow results containing the branch results.
     base_case_id : Optional[str], optional
         The contingency ID for the base case (N-0). If not provided, no n-0 metrics will be computed.
-    critical_va_diff_threshold : float, optional
+    critical_va_diff_threshold : float
         Threshold in degrees above which a contingency case is counted in the voltage-angle-difference count metrics.
+        Defaults to 360. ie there will never be a critical diff
+    critical_voltage_jump_threshold: float
+        Threshold in percent on when a voltage jump between n0 and n1 is considered critical.
+        voltage-jump count metric. Defaults to 100.
+
 
     Returns
     -------
@@ -342,7 +331,10 @@ def compute_metrics(
         ),
         "overload_current_n_1": compute_overload_energy(n_1_branch_res, field="i"),
         "critical_branch_count_n_1": count_critical_branches(n_1_branch_res),
-        "voltage_jump_count_n_1": count_voltage_jumps(loadflow_results.node_results, base_case_id=base_case_id),
+        "voltage_jump_count_n_1": count_voltage_jumps(
+            loadflow_results.node_results,
+            critical_voltage_jump_threshold=critical_voltage_jump_threshold,
+        ),
     }
 
     if base_case_id is not None:

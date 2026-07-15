@@ -196,6 +196,7 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
             "contingency": ["BASECASE", "BASECASE", "cont1", "cont1"],
             "element": ["node1", "node2", "node1", "node2"],
             "vm": [100.0, 100.0, 105.0, 105.1],
+            "vm_basecase_deviation": [0.0, 0.0, 5.0, 5.1],
         }
     ).lazy()
 
@@ -209,14 +210,22 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
     )
 
     metrics_without_basecase_filter = compute_metrics(loadflow_results)
-    metrics_with_basecase_filter = compute_metrics(loadflow_results, base_case_id="BASECASE", critical_va_diff_threshold=5.0)
+    metrics_with_basecase_filter = compute_metrics(
+        loadflow_results,
+        base_case_id="BASECASE",
+        critical_va_diff_threshold=5.0,
+        critical_voltage_jump_threshold=5.0,
+    )
     n_1_only_branch_results = branch_results.filter(pl.col("contingency") != "BASECASE")
 
     expected_overload_energy_n_1 = compute_overload_energy(n_1_only_branch_results, field="p")
     expected_overload_current_n_1 = compute_overload_energy(n_1_only_branch_results, field="i")
     expected_max_flow_n_1 = compute_max_load(n_1_only_branch_results)
     expected_critical_branch_count_n_1 = count_critical_branches(n_1_only_branch_results)
-    expected_voltage_jump_count_n_1 = count_voltage_jumps(node_results, base_case_id="BASECASE")
+    expected_voltage_jump_count_n_1 = count_voltage_jumps(
+        node_results,
+        critical_voltage_jump_threshold=5.0,
+    )
     expected_critical_va_diff_count_n_1 = count_critical_va_diff_cases(
         va_diff_results.filter(pl.col("contingency") != "BASECASE"), critical_threshold=5.0
     )
@@ -237,7 +246,7 @@ def test_compute_metrics_excludes_basecase_from_n_1_when_base_case_id_is_given(
 
 
 def test_count_voltage_jumps_returns_none_without_node_deviation_column() -> None:
-    assert count_voltage_jumps(pl.LazyFrame(), base_case_id="BASECASE") is None
+    assert count_voltage_jumps(pl.LazyFrame()) is None
 
 
 def test_count_critical_va_diff_cases_uses_configurable_threshold() -> None:

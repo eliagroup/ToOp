@@ -485,6 +485,8 @@ class PowsyblBackend(BackendInterface):
             current_step_rho = float(current_step["rho"])
             current_effective_x = float(controllable_branches.at[pst_id, "x"])
 
+            # x / rho: transformer tap ratios are used in DC susceptance calculations
+            # equal pypowsybls to dc_use_transformer_ratio = True
             current_step_factor = (1.0 + current_step_x / 100.0) / current_step_rho
             # This can happen for intentionally constructed or malformed tap tables where the
             # step definition cancels out the normalized reactance at the active tap.

@@ -181,7 +181,7 @@ def compute_overloads(
         n_worst_contingencies=n_worst_contingencies,
     )
 
-    return aggregates, lf_res.nodal_injections_optimized, success
+    return aggregates, lf_res.pst_tap_results, success
 
 
 def scoring_function(

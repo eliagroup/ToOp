@@ -731,6 +731,30 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         linear_pst = np.array([False, False, False])
     n = pypowsybl.network.create_empty("TESTGRID_NODE_BREAKER_HVDC_BAT_SVC_3W_TRAFO")
 
+    def build_pst_steps(pst_id: str, taps: np.ndarray, is_linear: bool) -> pd.DataFrame:
+        """Build phase tap changer step data for one PST."""
+        b_val, g_val = 0.0, 0.0
+        alpha_min, alpha_max = -21.0, 28.0
+        x_min, x_max = -20.0, 30.0
+        r_min, r_max = -15.0, 25.0
+        rho_min, rho_max = 0.9975, 1.0025
+
+        alphas = np.linspace(alpha_min, alpha_max, len(taps))
+        x_vals = np.abs(np.linspace(x_min, x_max, len(taps)))
+        r_vals = np.abs(np.linspace(r_min, r_max, len(taps)))
+        rho_vals = np.ones(len(taps)) if is_linear else np.linspace(rho_min, rho_max, len(taps))
+
+        if is_linear:
+            x_vals = np.zeros_like(x_vals)
+            r_vals = np.zeros_like(r_vals)
+
+        rows = [
+            (pst_id, b_val, g_val, r_val, x_val, rho_val, alpha)
+            for r_val, x_val, rho_val, alpha in zip(r_vals, x_vals, rho_vals, alphas, strict=True)
+        ]
+
+        return pd.DataFrame.from_records(data=rows, index="id", columns=["id", "b", "g", "r", "x", "rho", "alpha"])
+
     # ---------------------------------------------------------------------
     # 1) Substations
     # ---------------------------------------------------------------------
@@ -1224,28 +1248,8 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         data=[("2W_MV_HV_PST", 2, "CURRENT_LIMITER", -30, -20)],
     )
 
-    # base/min/max values (keep b,g,r,x constant as before, interpolate rho and alpha)
     taps = np.arange(-30, 24)
-    b_val, g_val, rho_val = 0, 0, 1
-    alpha_min, alpha_max = -21.0, 28.0
-    x_min, x_max = -20.0, 30.0
-    r_min, r_max = -15.0, 25.0
-
-    alphas = np.linspace(alpha_min, alpha_max, len(taps))
-    x_vals = abs(np.linspace(x_min, x_max, len(taps)))
-    r_vals = abs(np.linspace(r_min, r_max, len(taps)))
-
-    if linear_pst[0]:
-        x_vals = np.zeros_like(x_vals)
-        r_vals = np.zeros_like(r_vals)
-
-    rows = [
-        ("2W_MV_HV_PST", b_val, g_val, r_val, x_val, rho_val, alpha)
-        for r_val, x_val, alpha in zip(r_vals, x_vals, alphas, strict=True)
-    ]
-
-    steps_df = pd.DataFrame.from_records(data=rows, index="id", columns=["id", "b", "g", "r", "x", "rho", "alpha"])
-
+    steps_df = build_pst_steps("2W_MV_HV_PST", taps=taps, is_linear=bool(linear_pst[0]))
     n.create_phase_tap_changers(ptc_df, steps_df)
 
     pypowsybl.network.create_2_windings_transformer_bays(
@@ -1352,26 +1356,8 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         data=[("MV_load_PST_no_limit", 2, "CURRENT_LIMITER", -30, -20)],
     )
 
-    # base/min/max values (keep b,g,r,x constant as before, interpolate rho and alpha)
     taps = np.arange(-30, 19)
-    b_val, g_val, rho_val = 0, 0, 1
-    alpha_min, alpha_max = -21.0, 28.0
-    x_min, x_max = -20.0, 30.0
-    r_min, r_max = -15.0, 25.0
-
-    alphas = np.linspace(alpha_min, alpha_max, len(taps))
-    x_vals = abs(np.linspace(x_min, x_max, len(taps)))
-    r_vals = abs(np.linspace(r_min, r_max, len(taps)))
-
-    if linear_pst[1]:
-        x_vals = np.zeros_like(x_vals)
-        r_vals = np.zeros_like(r_vals)
-    rows = [
-        ("MV_load_PST_no_limit", b_val, g_val, r_val, x_val, rho_val, alpha)
-        for r_val, x_val, alpha in zip(r_vals, x_vals, alphas, strict=True)
-    ]
-
-    steps_df = pd.DataFrame.from_records(data=rows, index="id", columns=["id", "b", "g", "r", "x", "rho", "alpha"])
+    steps_df = build_pst_steps("MV_load_PST_no_limit", taps=taps, is_linear=bool(linear_pst[1]))
     n.create_phase_tap_changers(ptc_df, steps_df)
     # ---------------------------------------------------------------------
     # 5) HVDC

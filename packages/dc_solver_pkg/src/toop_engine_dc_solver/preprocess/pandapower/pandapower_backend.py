@@ -482,6 +482,20 @@ class PandaPowerBackend(BackendInterface):
         _mask, taps = self._get_controllable_phase_shift_data()
         return taps
 
+    def get_phase_shift_susceptance_taps(self) -> list[Float[np.ndarray, " n_tap_positions"]]:
+        """Return per-tap susceptances of controllable PSTs.
+
+        PandaPower PST optimization currently uses only the linear path, so the effective susceptance is constant across
+        taps for the solver-facing representation.
+        """
+        controllable_branch_indices = np.flatnonzero(self.get_controllable_phase_shift_mask())
+        taps = self.get_phase_shift_taps()
+        susceptances = self.get_susceptances()
+        return [
+            np.full_like(tap_values, fill_value=float(susceptances[branch_idx]), dtype=float)
+            for tap_values, branch_idx in zip(taps, controllable_branch_indices, strict=True)
+        ]
+
     def get_phase_shift_linearity(self) -> Bool[np.ndarray, " n_controllable_psts"]:
         """Return which controllable pandapower PSTs have linear phase shift behaviour."""
         controllable_trafo_mask = self._get_controllable_phase_shift_trafo_mask()

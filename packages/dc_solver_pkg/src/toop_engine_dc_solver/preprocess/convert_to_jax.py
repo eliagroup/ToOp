@@ -208,15 +208,18 @@ def convert_to_jax(  # noqa: PLR0913
     overload_weights = jnp.array(network_data.overload_weights[branches_monitored])
     n0_n1_max_diff_factors = jnp.array(network_data.n0_n1_max_diff_factors[branches_monitored])
     susceptance = jnp.array(network_data.susceptances)
-    shift_degree_min = jnp.array([min(taps) for taps in network_data.phase_shift_taps])
-    shift_degree_max = jnp.array([max(taps) for taps in network_data.phase_shift_taps])
-
     pst_n_taps = jnp.array([len(taps) for taps in network_data.phase_shift_taps])
     max_pst_n_taps = int(jnp.max(pst_n_taps) if pst_n_taps.size > 0 else 0)
     pst_tap_values = jnp.array(
         [
             jnp.pad(jnp.array(taps), (0, max_pst_n_taps - len(taps)), "constant", constant_values=jnp.nan)
             for taps in network_data.phase_shift_taps
+        ]
+    )
+    pst_tap_susceptance_values = jnp.array(
+        [
+            jnp.pad(jnp.array(taps), (0, max_pst_n_taps - len(taps)), "constant", constant_values=jnp.nan)
+            for taps in network_data.phase_shift_susceptance_taps
         ]
     )
     parallel_pst_group_mask = _get_parallel_pst_group_mask(network_data)
@@ -286,10 +289,10 @@ def convert_to_jax(  # noqa: PLR0913
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
                 controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
-                shift_degree_min=shift_degree_min,
-                shift_degree_max=shift_degree_max,
+                controllable_pst_branch_indices=jnp.flatnonzero(network_data.controllable_phase_shift_mask),
                 pst_n_taps=pst_n_taps,
                 pst_tap_values=pst_tap_values,
+                pst_tap_susceptance_values=pst_tap_susceptance_values,
                 starting_tap_idx=jnp.array(network_data.phase_shift_starting_tap_idx, dtype=int),
                 grid_model_low_tap=jnp.array(network_data.phase_shift_low_tap, dtype=int),
                 parallel_pst_group_mask=parallel_pst_group_mask,

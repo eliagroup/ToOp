@@ -102,6 +102,12 @@ class NetworkData:
     value representing the angle shift for the given tap position.
     The taps are ordered smallest to largest angle shift."""
 
+    phase_shift_susceptance_taps: list[Float[np.ndarray, " n_tap_positions"]]
+    """The effective branch susceptance of the controllable PSTs for each tap position.
+
+    The list order matches phase_shift_taps and controllable_phase_shift_mask.
+    """
+
     phase_shift_linearity: Bool[np.ndarray, " n_controllable_pst"]
     """Whether the shift angle of each controllable PST is linear to the tap position."""
 
@@ -432,6 +438,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         asset_topology=interface.get_asset_topology(),
         controllable_phase_shift_mask=interface.get_controllable_phase_shift_mask(),
         phase_shift_taps=interface.get_phase_shift_taps(),
+        phase_shift_susceptance_taps=interface.get_phase_shift_susceptance_taps(),
         phase_shift_starting_tap_idx=interface.get_phase_shift_starting_taps(),
         phase_shift_low_tap=interface.get_phase_shift_low_taps(),
         phase_shift_linearity=interface.get_phase_shift_linearity(),
@@ -551,7 +558,17 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert network_data.controllable_pst_node_mask.shape == (n_nodes,)
     assert np.sum(network_data.controllable_phase_shift_mask) == np.sum(network_data.controllable_pst_node_mask)
     assert len(network_data.phase_shift_taps) == network_data.controllable_phase_shift_mask.sum()
+    assert len(network_data.phase_shift_susceptance_taps) == network_data.controllable_phase_shift_mask.sum()
     assert all(len(tap) > 0 for tap in network_data.phase_shift_taps)
+    assert all(len(tap) > 0 for tap in network_data.phase_shift_susceptance_taps)
+    assert all(
+        len(angle_taps) == len(susceptance_taps)
+        for angle_taps, susceptance_taps in zip(
+            network_data.phase_shift_taps,
+            network_data.phase_shift_susceptance_taps,
+            strict=True,
+        )
+    )
     if network_data.parallel_pst_group_mask is not None:
         assert network_data.parallel_pst_group_mask.shape[1] == network_data.controllable_phase_shift_mask.sum()
         if network_data.parallel_pst_group_ids is not None:

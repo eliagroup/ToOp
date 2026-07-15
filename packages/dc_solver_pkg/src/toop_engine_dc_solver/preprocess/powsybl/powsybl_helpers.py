@@ -253,6 +253,8 @@ def get_trafos(net: Network, net_pu: Optional[Network] = None) -> pat.DataFrame[
     trafos["x"] = trafos_pu["x_at_current_tap"]
     trafos["r"] = trafos_pu["r_at_current_tap"]
     trafos["rho"] = trafos_pu["rho"]
+    # x / rho: transformer tap ratios are used in DC susceptance calculations
+    # equal pypowsybls to dc_use_transformer_ratio = True
     trafos["x"] = trafos["x"] / trafos["rho"]
 
     if net._source_format == "UCTE":

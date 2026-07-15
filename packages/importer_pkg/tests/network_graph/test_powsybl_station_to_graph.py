@@ -115,7 +115,9 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     branches_df = net.get_branches(attributes=["connected1", "connected2"])
+    boundary_line_tie_ids = net.get_boundary_lines(attributes=["tie_line_id"])["tie_line_id"]
     injections_df = net.get_injections(attributes=["connected"])
+
     asset_in_service = pd.concat(
         [
             (branches_df["connected1"].fillna(False) & branches_df["connected2"].fillna(False)).rename("in_service"),
@@ -153,7 +155,12 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
         switches_df=switches_df,
         substation_info=substation_information,
     )
-    node_assets_df = get_node_assets(nodes_df=nodes_df, all_names_df=all_names_df, asset_in_service=asset_in_service)
+    node_assets_df = get_node_assets(
+        nodes_df=nodes_df,
+        all_names_df=all_names_df,
+        asset_in_service=asset_in_service,
+        boundary_line_tie_ids=boundary_line_tie_ids,
+    )
 
     assert not node_assets_df.loc[node_assets_df["grid_model_id"] == "L1", "in_service"].item()
     assert not node_assets_df.loc[node_assets_df["grid_model_id"] == "generator1", "in_service"].item()

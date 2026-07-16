@@ -13,11 +13,9 @@ from pathlib import Path
 import numpy as np
 import pandapower as pp
 import pytest
-import structlog.testing
 from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
 from pandapower.pypower.makePTDF import makePTDF
-from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.example_grids import complex_grid_battery_hvdc_svc_3w_trafo_data_folder
 from toop_engine_dc_solver.jax.inputs import (
     load_static_information,
@@ -56,7 +54,6 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     compute_separation_set_for_stations,
     convert_multi_outages,
     exclude_bridges_from_outage_masks,
-    exclude_nonlinear_psts_from_controllable,
     filter_disconnectable_branches_nminus2,
     filter_inactive_injections,
     filter_relevant_nodes_branch_count,
@@ -174,65 +171,6 @@ def test_add_nodal_injections_to_network_data(data_folder: str, network_data: Ne
     assert len(network_data.node_names) == len(nodal_injections)
     assert len(network_data.node_types) == len(nodal_injections)
     assert len(network_data.relevant_node_mask) == len(nodal_injections)
-
-
-def test_exclude_nonlinear_psts_from_controllable_keeps_member_tap_domains(
-    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
-) -> None:
-    """Grouped linear PSTs keep their own (identical) tap domains; differing start taps only warn.
-
-    The runtime applies a shared tap delta and clips each member to its own domain, so preprocessing
-    must not pre-shrink the domains. This uses a fixture with exactly two controllable PSTs.
-    """
-    grid_folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder
-    network_data = load_network_data(grid_folder / "network_data.pkl")
-    assert network_data.controllable_phase_shift_mask.sum() == 2
-
-    network_data = replace(
-        network_data,
-        phase_shift_linearity=np.array([True, True]),
-        phase_shift_low_tap=np.array([0, 0]),
-        # Identical domains but different starting taps -> warning only, no clipping.
-        phase_shift_starting_tap_idx=np.array([3, 1]),
-        phase_shift_taps=[np.array([0.0, 1.0, 2.0, 3.0]), np.array([0.0, 1.0, 2.0, 3.0])],
-        parallel_pst_group_mask=np.array([[True, True]], dtype=bool),
-        parallel_pst_group_ids=["group_1"],
-    )
-
-    with structlog.testing.capture_logs() as cap_logs:
-        network_data = exclude_nonlinear_psts_from_controllable(network_data)
-
-    assert np.array_equal(network_data.phase_shift_low_tap, np.array([0, 0]))
-    assert np.array_equal(network_data.phase_shift_starting_tap_idx, np.array([3, 1]))
-    assert np.array_equal(network_data.phase_shift_taps[0], np.array([0.0, 1.0, 2.0, 3.0]))
-    assert np.array_equal(network_data.phase_shift_taps[1], np.array([0.0, 1.0, 2.0, 3.0]))
-    assert any("do not share the same starting tap" in entry["event"] for entry in cap_logs)
-
-
-def test_exclude_nonlinear_psts_from_controllable_drops_nonlinear_group_member(
-    complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder: Path,
-) -> None:
-    """A non-linear member is dropped from a group rather than rejected.
-
-    We load two linear PSTs but configure one as non-linear; it is excluded from the controllable
-    set and the group row shrinks to the remaining linear member.
-    """
-    grid_folder = complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder
-    network_data = load_network_data(grid_folder / "network_data.pkl")
-    assert network_data.controllable_phase_shift_mask.sum() == 2
-
-    network_data = replace(
-        network_data,
-        phase_shift_linearity=np.array([False, True]),
-        parallel_pst_group_mask=np.array([[True, True]], dtype=bool),
-        parallel_pst_group_ids=["group_1"],
-    )
-
-    network_data = exclude_nonlinear_psts_from_controllable(network_data)
-
-    assert network_data.controllable_phase_shift_mask.sum() == 1
-    assert np.array_equal(network_data.parallel_pst_group_mask, np.array([[True]], dtype=bool))
-    assert network_data.parallel_pst_group_ids == ["group_1"]
 
 
 def test_compute_bridging_branches(data_folder: str, network_data: NetworkData) -> None:

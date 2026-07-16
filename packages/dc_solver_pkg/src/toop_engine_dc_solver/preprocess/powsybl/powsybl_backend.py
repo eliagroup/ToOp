@@ -468,6 +468,42 @@ class PowsyblBackend(BackendInterface):
             shift_taps.append(taps)
         return shift_taps
 
+    def get_phase_shift_susceptance_taps(self) -> list[Float[np.ndarray, " n_controllable_psts"]]:
+        """Get the effective branch susceptance for each controllable PST tap."""
+        controllable_branches = self._get_branches()[self.get_controllable_phase_shift_mask()]
+        if controllable_branches.empty:
+            return []
+
+        tap_steps = self.net.get_phase_tap_changer_steps(attributes=["x", "rho"])
+        tap_changers = self.net.get_phase_tap_changers().loc[controllable_branches.index]
+        susceptance_taps: list[np.ndarray] = []
+        for pst_id in controllable_branches.index:
+            steps_df = tap_steps.loc[pst_id].sort_index()
+            current_tap = int(tap_changers.at[pst_id, "tap"])
+            current_step = steps_df.loc[current_tap]
+            current_step_x = float(current_step["x"])
+            current_step_rho = float(current_step["rho"])
+            current_effective_x = float(controllable_branches.at[pst_id, "x"])
+
+            # x / rho: transformer tap ratios are used in DC susceptance calculations
+            # equal pypowsybls to dc_use_transformer_ratio = True
+            current_step_factor = (1.0 + current_step_x / 100.0) / current_step_rho
+            # This can happen for intentionally constructed or malformed tap tables where the
+            # step definition cancels out the normalized reactance at the active tap.
+            if np.isclose(current_step_factor, 0.0):
+                effective_x_taps = np.full(steps_df.shape[0], current_effective_x, dtype=float)
+            else:
+                reactance_reference = current_effective_x / current_step_factor
+                effective_x_taps = (
+                    reactance_reference
+                    * (1.0 + steps_df["x"].to_numpy(dtype=float) / 100.0)
+                    / steps_df["rho"].to_numpy(dtype=float)
+                )
+
+            susceptance_taps.append(1.0 / effective_x_taps)
+
+        return susceptance_taps
+
     def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_psts"]:
         """Get the starting setpoint of each controllable PST as an integer index into the tap values"""
         psts = self._get_branches()[self.get_controllable_phase_shift_mask()].index

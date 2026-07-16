@@ -553,9 +553,9 @@ def test_aggregate_to_metric(mocker) -> None:
     assert jnp.array_equal(res, ref)
 
     initial_pst_tap_idx = jnp.array([2, 3, 4, 5, 6], dtype=int)
-    pst_optimized = replace(
+    pst_tap_results_case = replace(
         lf_res,
-        nodal_injections_optimized=NodalInjOptimResults(
+        pst_tap_results=NodalInjOptimResults(
             pst_tap_idx=jnp.array(
                 [
                     [3, 4, 5, 6, 7],
@@ -566,7 +566,7 @@ def test_aggregate_to_metric(mocker) -> None:
         ),
     )
     res = aggregate_to_metric(
-        pst_optimized,
+        pst_tap_results_case,
         branch_limits,
         reassignment_distance,
         n_subs_rel,
@@ -574,7 +574,7 @@ def test_aggregate_to_metric(mocker) -> None:
         initial_pst_tap_idx=initial_pst_tap_idx,
     )
     ref = get_pst_switching_distance_squared(
-        optimized_taps=pst_optimized.nodal_injections_optimized,
+        optimized_taps=pst_tap_results_case.pst_tap_results,
         initial_tap_idx=initial_pst_tap_idx,
     )
     assert jnp.allclose(res, ref)
@@ -1081,7 +1081,7 @@ def test_aggregate_to_metric_pst_activated() -> None:
         branch_topology=branch_topologies,
         sub_ids=sub_ids,
         injection_topology=injections,
-        nodal_injections_optimized=NodalInjOptimResults(pst_tap_idx=jnp.array([[1, 0, 3]], dtype=int)),
+        pst_tap_results=NodalInjOptimResults(pst_tap_idx=jnp.array([[1, 0, 3]], dtype=int)),
         disconnections=None,
         bb_outage_penalty=None,
         bb_outage_overload=None,
@@ -1192,7 +1192,7 @@ def test_aggregate_to_metric_pst_switching_distance() -> None:
         branch_topology=branch_topologies,
         sub_ids=sub_ids,
         injection_topology=injections,
-        nodal_injections_optimized=NodalInjOptimResults(pst_tap_idx=jnp.array([[1, 0, 5]], dtype=int)),
+        pst_tap_results=NodalInjOptimResults(pst_tap_idx=jnp.array([[1, 0, 5]], dtype=int)),
         disconnections=None,
         bb_outage_penalty=None,
         bb_outage_overload=None,

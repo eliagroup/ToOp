@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandapower as pp
 import pytest
+import structlog
 from beartype.typing import Optional, get_args
 from fsspec.implementations.dirfs import DirFileSystem
 from pandapower.pypower.makePTDF import makePTDF

@@ -73,6 +73,28 @@ def test_remove_double_connections():
         assert np.array_equal(result, expected_result), f"Expected {expected_result}, but got {result}"
 
 
+def test_remove_double_connections_prefers_busbar_with_higher_priority() -> None:
+    switching_table = np.array(
+        [
+            [False, True],
+            [True, True],
+            [False, False],
+        ]
+    )
+    busbar_priority = np.array([0, 3, 1])
+
+    result = remove_double_connections(switching_table, busbar_priority=busbar_priority)
+
+    expected_result = np.array(
+        [
+            [False, False],
+            [True, True],
+            [False, False],
+        ]
+    )
+    assert np.array_equal(result, expected_result), f"Expected {expected_result}, but got {result}"
+
+
 def test_get_busbar_df(network_graph_data_test1: NetworkGraphData):
     graph = generate_graph(network_graph_data_test1)
     nodes = network_graph_data_test1.nodes

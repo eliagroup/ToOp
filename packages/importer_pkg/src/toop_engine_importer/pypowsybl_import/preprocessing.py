@@ -20,7 +20,7 @@ from pathlib import Path
 import pypowsybl
 import structlog
 from beartype.typing import (
-    Any,  # noqa: F401
+    Any,
     Callable,
     Optional,
     Union,
@@ -69,6 +69,73 @@ logger = structlog.get_logger(__name__)
 
 
 CONVERTED_TRAFO3W_ENDING = "-Leg[123]$"
+
+
+def _fix_multiple_busbar_connections_in_network(network: Network) -> None:
+    """Resolve assets connected to multiple busbars by opening competing selector switches.
+
+    Parameters
+    ----------
+    network : Network
+        Powsybl network to normalize in place.
+    """
+    voltage_levels = network.get_voltage_levels(attributes=["name", "nominal_v", "topology_kind"])
+    node_breaker_voltage_levels = voltage_levels[voltage_levels["topology_kind"] == "NODE_BREAKER"].copy()
+    node_breaker_voltage_levels["region"] = ""
+    node_breaker_voltage_levels["voltage_level_id"] = node_breaker_voltage_levels.index
+
+    switch_updates = powsybl_station_to_graph.get_busbar_connection_fixes(
+        network=network,
+        relevant_voltage_level_with_region=node_breaker_voltage_levels,
+    )
+    for switch_id, open_state in switch_updates.items():
+        network.update_switches(id=switch_id, open=open_state)
+
+
+def _get_node_breaker_voltage_levels(network: Network) -> Any:
+    """Return a minimal voltage-level dataframe for node-breaker stations."""
+    voltage_levels = network.get_voltage_levels(attributes=["name", "nominal_v", "topology_kind"])
+    node_breaker_voltage_levels = voltage_levels[voltage_levels["topology_kind"] == "NODE_BREAKER"].copy()
+    node_breaker_voltage_levels["region"] = ""
+    node_breaker_voltage_levels["voltage_level_id"] = node_breaker_voltage_levels.index
+    return node_breaker_voltage_levels
+
+
+def _get_stations_with_double_connections(network: Network) -> set[str]:
+    """Inspect node-breaker stations for double busbar connections."""
+    return powsybl_station_to_graph.get_stations_with_double_connections(
+        network=network,
+        relevant_voltage_level_with_region=_get_node_breaker_voltage_levels(network),
+    )
+
+
+def _apply_double_connection_handling(
+    network: Network,
+    importer_parameters: BaseImporterParameters,
+    statistics: PreProcessingStatistics,
+) -> None:
+    """Apply the configured handling for stations with multiple busbar connections."""
+    if importer_parameters.data_type != "cgmes":
+        return
+    stations_with_double_connections = _get_stations_with_double_connections(network)
+    if not stations_with_double_connections:
+        return
+
+    if importer_parameters.double_connection_handling == "raise":
+        raise ValueError("Double connections detected in stations: " + ", ".join(sorted(stations_with_double_connections)))
+    if importer_parameters.double_connection_handling == "ignore_station":
+        black_list = statistics.id_lists.setdefault("black_list", [])
+        voltage_levels = network.get_voltage_levels(attributes=["name"])
+        ignored_voltage_level_ids = voltage_levels[
+            voltage_levels["name"].isin(stations_with_double_connections)
+        ].index.tolist()
+        for station_id in sorted(stations_with_double_connections.union(set(ignored_voltage_level_ids))):
+            if station_id not in black_list:
+                black_list.append(station_id)
+        statistics.network_changes["double_connection_ignored_stations"] = sorted(stations_with_double_connections)
+        return
+
+    _fix_multiple_busbar_connections_in_network(network)
 
 
 def save_preprocessing_statistics_filesystem(
@@ -342,6 +409,7 @@ def convert_file(
         import_result=ImportResult(data_folder=importer_parameters.data_folder, grid_type=importer_parameters.data_type),
         import_parameter=importer_parameters,
     )
+    _apply_double_connection_handling(network, importer_parameters, statistics)
     status_update_fn("apply_cb_list", "Applying Whitelists")
     if importer_parameters.data_type == "ucte":
         # TODO: move to UCTE Toolset after all PRs are merged
@@ -366,6 +434,14 @@ def convert_file(
             ignore_list_file=importer_parameters.ignore_list_file,
             filesystem=unprocessed_gridfile_fs,
         )
+        ignored_stations = statistics.network_changes.get("double_connection_ignored_stations", [])
+        if ignored_stations:
+            black_list = statistics.id_lists.setdefault("black_list", [])
+            voltage_levels = network.get_voltage_levels(attributes=["name"])
+            ignored_voltage_level_ids = voltage_levels[voltage_levels["name"].isin(ignored_stations)].index.tolist()
+            for station_id in sorted(set(ignored_stations).union(set(ignored_voltage_level_ids))):
+                if station_id not in black_list:
+                    black_list.append(station_id)
 
     # Save and reload Network due to powsybl changing order during save
     grid_file_path = importer_parameters.data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
@@ -431,7 +507,15 @@ def convert_file(
     )
 
     status_update_fn("get_topology_model", "Creating Pydantic Topology Model")
-    topology_model = get_topology_model(network, network_masks, importer_parameters)
+    topology_model, switch_updates = get_topology_model(network, network_masks, importer_parameters)
+
+    for switch_id, open_state in switch_updates.items():
+        network.update_switches(id=switch_id, open=open_state)
+    save_powsybl_to_fs(
+        network,
+        filesystem=processed_gridfile_fs,
+        file_path=grid_file_path,
+    )
 
     save_pydantic_model_fs(
         filesystem=processed_gridfile_fs,
@@ -556,7 +640,7 @@ def get_topology_model(
     network: Network,
     network_masks: NetworkMasks,
     importer_parameters: Union[UcteImporterParameters, CgmesImporterParameters],
-) -> Topology:
+) -> tuple[Topology, dict[str, bool]]:
     """Get the initial asset topology.
 
     Parameters
@@ -570,7 +654,7 @@ def get_topology_model(
 
     Returns
     -------
-    None
+    tuple[Topology, dict[str, bool]]
     """
     if importer_parameters.data_type == "ucte":
         topology_model = get_topology(
@@ -579,10 +663,13 @@ def get_topology_model(
             topology_id=importer_parameters.grid_model_file.name,
             grid_model_file=str(importer_parameters.grid_model_file),
         )
+        switch_updates: dict[str, bool] = {}
     elif importer_parameters.data_type == "cgmes":
-        topology_model = powsybl_station_to_graph.get_topology(network, network_masks, importer_parameters)
+        topology_model, switch_updates = powsybl_station_to_graph.get_topology_with_busbar_connection_fixes(
+            network, network_masks, importer_parameters
+        )
 
-    return topology_model
+    return topology_model, switch_updates
 
 
 def apply_preprocessing_changes_to_network(

@@ -121,6 +121,11 @@ class RelBBOutageData(eqx.Module):
     For ex, if bus_a: 1 - 2 - 3 ; bus_b: 4
     Here busbar 2 is an articulation node as if it is outaged, bus_a will be split into 1 and 3.
     """
+    visible_flat_slot_indices: Int[Array, " n_visible_rel_bb_outages"]
+    """
+    Flattened indices into the per-topology relevant busbar outage slots that correspond to actual configured
+    busbar outage contingencies. Padding-only slots are excluded.
+    """
 
     def __eq__(self, other: object) -> bool:
         """Equality is defined by array_equals checks
@@ -142,6 +147,7 @@ class RelBBOutageData(eqx.Module):
             and jnp.array_equal(self.deltap_set, other.deltap_set)
             and jnp.array_equal(self.nodal_indices, other.nodal_indices)
             and jnp.array_equal(self.articulation_node_mask, other.articulation_node_mask)
+            and jnp.array_equal(self.visible_flat_slot_indices, other.visible_flat_slot_indices)
         )
 
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "RelBBOutageData":
@@ -151,6 +157,7 @@ class RelBBOutageData(eqx.Module):
             deltap_set=self.deltap_set[key],
             nodal_indices=self.nodal_indices[key],
             articulation_node_mask=self.articulation_node_mask[key],
+            visible_flat_slot_indices=self.visible_flat_slot_indices,
         )
 
 
@@ -613,6 +620,9 @@ class DynamicInformation(eqx.Module):
     """If provided, contains the information about nodal injections (e.g. PSTs).
     This is required for nodal injection optimization (and thus PST optimization)"""
 
+    bb_outage_contingency_ids: Static[tuple[str, ...]] = eqx.field(static=True, default_factory=tuple)
+    """Contingency ids for busbar outages in solver output order."""
+
     @property
     def n_timesteps(self) -> int:
         """The number of timesteps in the data"""
@@ -671,9 +681,7 @@ class DynamicInformation(eqx.Module):
             n_bb_outages += self.non_rel_bb_outage_data.nodal_indices.shape[0]
 
         if self.action_set.rel_bb_outage_data is not None:
-            max_bbs_per_sub = self.action_set.rel_bb_outage_data.nodal_indices.shape[1]
-            max_n_rel_bbs = self.n_sub_relevant * max_bbs_per_sub
-            n_bb_outages += max_n_rel_bbs
+            n_bb_outages += self.action_set.rel_bb_outage_data.visible_flat_slot_indices.shape[0]
         return n_bb_outages
 
     @property

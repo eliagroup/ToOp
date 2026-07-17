@@ -57,7 +57,7 @@ from toop_engine_dc_solver.postprocess.write_aux_data import write_aux_data_fs
 from toop_engine_dc_solver.preprocess.action_set import (
     pad_out_action_set,
 )
-from toop_engine_dc_solver.preprocess.network_data import NetworkData
+from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_busbar_outage_ids
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
@@ -286,6 +286,7 @@ def convert_to_jax(  # noqa: PLR0913
             ),
             branches_monitored=branches_monitored,
             non_rel_bb_outage_data=convert_non_rel_bb_outage(network_data) if preprocess_bb_outages else None,
+            bb_outage_contingency_ids=tuple(extract_busbar_outage_ids(network_data)) if preprocess_bb_outages else (),
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
                 controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
@@ -478,6 +479,7 @@ def convert_rel_bb_outage_data(  # noqa: C901
     padded_delta_p_set = np.zeros((n_actions, n_max_bb_to_outage_per_sub, n_timesteps), dtype=float)
     padded_nodal_index_set = max_val * np.ones((n_actions, n_max_bb_to_outage_per_sub), dtype=int)
     padded_articulation_node_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
+    visible_flat_slot_indices: list[int] = []
 
     def fill_padded_array(
         padded_array: np.ndarray,
@@ -606,6 +608,22 @@ def convert_rel_bb_outage_data(  # noqa: C901
                 padded_array[action_idx, bb_idx] = nodal_index
         return padded_array
 
+    for sub_idx, sub_combis in enumerate(rel_bb_outage_nodal_indices):
+        if len(sub_combis) == 0:
+            continue
+        n_visible_slots_for_sub = max(len(nodal_idx_all_bbs) for nodal_idx_all_bbs in sub_combis)
+        always_articulation_indices: set[int] = set()
+        if network_data.rel_bb_articulation_nodes is not None and sub_idx < len(network_data.rel_bb_articulation_nodes):
+            articulation_by_action = network_data.rel_bb_articulation_nodes[sub_idx]
+            if articulation_by_action:
+                always_articulation_indices = set(articulation_by_action[0])
+                for articulation_indices in articulation_by_action[1:]:
+                    always_articulation_indices &= set(articulation_indices)
+
+        for bb_idx in range(n_visible_slots_for_sub):
+            if bb_idx not in always_articulation_indices:
+                visible_flat_slot_indices.append(sub_idx * n_max_bb_to_outage_per_sub + bb_idx)
+
     def fill_articulation_node_mask(
         padded_array: Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"], action_idx: int, articulation_bbs: list[int]
     ) -> Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"]:
@@ -642,6 +660,7 @@ def convert_rel_bb_outage_data(  # noqa: C901
         deltap_set=padded_delta_p_set,
         nodal_indices=padded_nodal_index_set,
         articulation_node_mask=padded_articulation_node_mask,
+        visible_flat_slot_indices=jnp.array(visible_flat_slot_indices, dtype=int),
     )
 
 

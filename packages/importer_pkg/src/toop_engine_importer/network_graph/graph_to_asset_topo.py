@@ -733,17 +733,23 @@ def get_station_connection_tables(
 
 def remove_double_connections(
     switching_table: Bool[np.ndarray, " n_bus n_asset"],
+    busbar_priority: Optional[np.ndarray] = None,
     substation_id: Optional[str] = None,
 ) -> Bool[np.ndarray, " n_bus n_asset"]:
     """Remove double connections from the switching table.
 
-    An Asset can be connected to multiple busbars.
-    This function removes the double connections, by keeping the first connection and removing the others.
+    An asset can be connected to multiple busbars.
+    This function removes the double connections by selecting a single target busbar per asset.
+    If busbar priorities are given, the first connected busbar with the highest priority is kept.
+    Ties fall back to the first connected busbar.
 
     Parameters
     ----------
     switching_table: Bool[Array, " n_bus n_asset"]
         The switching table with the connections.
+    busbar_priority: Optional[np.ndarray]
+        Priority per busbar row. Higher values are preferred when an asset is connected to multiple
+        busbars. If None, the first connected busbar is kept.
     substation_id: Optional[str]
         The substation id for which the switching table is created.
         If given, a warning is logged if double connections are detected.
@@ -754,9 +760,14 @@ def remove_double_connections(
         The switching table with the double connections removed.
     """
     results = np.zeros_like(switching_table).T
+    if busbar_priority is None:
+        busbar_priority = np.zeros(switching_table.shape[0], dtype=int)
     for i, col in enumerate(switching_table.T):
-        if np.any(col):
-            results[i, np.argmax(col)] = True
+        connected_busbars = np.flatnonzero(col)
+        if connected_busbars.size == 0:
+            continue
+        selected_busbar = connected_busbars[np.argmax(busbar_priority[connected_busbars])]
+        results[i, selected_busbar] = True
     switching_table_mod = results.T
     if not np.array_equal(switching_table, switching_table_mod):
         if substation_id is None:

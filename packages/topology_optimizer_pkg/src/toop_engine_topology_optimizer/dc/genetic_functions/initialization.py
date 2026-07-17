@@ -478,9 +478,9 @@ def update_single_pair_bb_outage_information(
     if len(contingency_ids) < expected_nminus1_cases:
         if len(contingency_ids) < base_nminus1_cases:
             contingency_ids.extend(f"nminus1_case_{i}" for i in range(len(contingency_ids), base_nminus1_cases))
+        busbar_contingency_ids = list(dynamic_information.bb_outage_contingency_ids)
         contingency_ids.extend(
-            f"bb_outage_case_{i}"
-            for i in range(len(contingency_ids) - base_nminus1_cases, expected_nminus1_cases - base_nminus1_cases)
+            busbar_contingency_ids[len(contingency_ids) - base_nminus1_cases : expected_nminus1_cases - base_nminus1_cases]
         )
 
     updated_solver_config = replace(

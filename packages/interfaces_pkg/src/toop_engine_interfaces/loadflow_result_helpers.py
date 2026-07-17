@@ -25,6 +25,7 @@ from toop_engine_interfaces.loadflow_results import (
     BranchResultSchema,
     BranchSide,
     CascadeResultSchema,
+    ConnectivityResultSchema,
     ConvergedSchema,
     ConvergenceStatus,
     LoadflowResults,
@@ -36,6 +37,29 @@ from toop_engine_interfaces.loadflow_results import (
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
+
+
+def _get_disconnected_branch_elements_by_contingency(
+    connectivity_result: pat.DataFrame[ConnectivityResultSchema] | None,
+    monitored_branches: list[GridElement],
+    contingencies: list[str],
+) -> dict[str, set[str]]:
+    """Map contingencies to monitored branch elements disconnected by propagated connectivity outages."""
+    if connectivity_result is None or connectivity_result.empty:
+        return {}
+
+    monitored_branch_ids = {element.id for element in monitored_branches}
+    connectivity_df = connectivity_result.reset_index()
+    relevant_rows = connectivity_df[
+        connectivity_df["contingency"].isin(contingencies) & connectivity_df["element"].isin(monitored_branch_ids)
+    ]
+    if relevant_rows.empty:
+        return {}
+
+    return {
+        contingency_id: set(group["element"].tolist())
+        for contingency_id, group in relevant_rows.groupby("contingency", sort=False)
+    }
 
 
 def save_loadflow_results(
@@ -315,6 +339,7 @@ def extract_branch_results(
     contingencies: list[str],
     monitored_branches: list[GridElement],
     basecase: str,
+    connectivity_result: pat.DataFrame[ConnectivityResultSchema] | None = None,
 ) -> tuple[Float[np.ndarray, " n_branches_monitored"], Float[np.ndarray, " n_contingencies n_branches_monitored"]]:
     """Extract the branch results for a specific timestep.
 
@@ -331,6 +356,8 @@ def extract_branch_results(
     monitored_branches : list[GridElement]
         The list of monitored branches to extract the results for.
         buses switches etc should not be included here, only branches.
+    connectivity_result : pat.DataFrame[ConnectivityResultSchema] | None
+        The connectivity result dataframe to extract the connectivity results from.
 
     Returns
     -------
@@ -376,6 +403,24 @@ def extract_branch_results(
 
     n_1_index = pd.MultiIndex.from_product([contingencies, monitored_branches_order], names=["contingency", "element"])
     n_1_results = p_results.reindex(n_1_index, fill_value=0.0)
+    disconnected_branch_elements = _get_disconnected_branch_elements_by_contingency(
+        connectivity_result=connectivity_result,
+        monitored_branches=monitored_branches,
+        contingencies=contingencies,
+    )
+    if disconnected_branch_elements:
+        disconnected_index = pd.MultiIndex.from_tuples(
+            [
+                (contingency_id, element_id)
+                for contingency_id, element_ids in disconnected_branch_elements.items()
+                for element_id in element_ids
+            ],
+            names=["contingency", "element"],
+        )
+        overlapping_index = n_1_results.index.intersection(disconnected_index)
+        if len(overlapping_index) > 0:
+            n_1_results.loc[overlapping_index] = 0.0
+
     n_1_array = n_1_results.fillna(0.0).values.reshape(len(contingencies), len(monitored_branches_order))
     return n_0_vector, n_1_array
 
@@ -500,6 +545,7 @@ def extract_solver_matrices(
         contingencies=contingency_order,
         monitored_branches=branch_elements,
         basecase=basecase.id,
+        connectivity_result=loadflow_results.connectivity_result,
     )
 
     return n_0_vector, n1_matrix, success

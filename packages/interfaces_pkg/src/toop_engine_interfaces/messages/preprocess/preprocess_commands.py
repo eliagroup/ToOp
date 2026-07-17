@@ -42,6 +42,7 @@ CustomRegionType: TypeAlias = Literal["S3"]
 
 RegionType: TypeAlias = Union[UCTERegionType, CGMESRegionType, AllCountriesRegionType, CustomRegionType]
 GridModelType: TypeAlias = Literal["ucte", "cgmes"]
+DoubleConnectionHandling: TypeAlias = Literal["choose_first_busbar", "ignore_station", "raise"]
 
 
 class LimitAdjustmentParameters(BaseModel):
@@ -221,6 +222,14 @@ class BaseImporterParameters(BaseModel):
     loadflow_parameters_file: Optional[Path] = None
     """The path to the loadflow parameters file if present.
     This file should contain the loadflow parameters in the format defined by the data_type.
+    """
+
+    double_connection_handling: DoubleConnectionHandling = "choose_first_busbar"
+    """How to handle stations with assets connected to multiple busbars.
+
+    - choose_first_busbar: normalize the station by keeping one busbar connection
+    - ignore_station: exclude the station from relevant substations and busbar N-1 outages
+    - raise: abort preprocessing with an error
     """
 
 

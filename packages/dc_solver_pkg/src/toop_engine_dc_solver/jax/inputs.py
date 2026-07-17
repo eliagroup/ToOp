@@ -588,6 +588,11 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 "non_rel_bb_outage_data_deltap",
                 data=dynamic_information.non_rel_bb_outage_data.deltap,
             )
+        if dynamic_information.bb_outage_contingency_ids:
+            file.create_dataset(
+                "bb_outage_contingency_ids",
+                data=np.asarray(dynamic_information.bb_outage_contingency_ids, dtype=h5py.string_dtype(encoding="utf-8")),
+            )
         if dynamic_information.action_set.rel_bb_outage_data is not None:
             file.create_dataset(
                 "action_set_rel_bb_outage_data_branch_outage_set",
@@ -604,6 +609,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             file.create_dataset(
                 "action_set_rel_bb_outage_data_critical_node_mask",
                 data=dynamic_information.action_set.rel_bb_outage_data.articulation_node_mask,
+            )
+            file.create_dataset(
+                "action_set_rel_bb_outage_data_visible_flat_slot_indices",
+                data=dynamic_information.action_set.rel_bb_outage_data.visible_flat_slot_indices,
             )
         if dynamic_information.bb_outage_baseline_analysis is not None:
             file.create_dataset(
@@ -742,6 +751,23 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                             nodal_indices=jnp.array(file["action_set_rel_bb_outage_data_nodal_indices"][:]),
                             deltap_set=jnp.array(file["action_set_rel_bb_outage_data_deltap_set"][:]),
                             articulation_node_mask=jnp.array(file["action_set_rel_bb_outage_data_critical_node_mask"][:]),
+                            visible_flat_slot_indices=(
+                                jnp.array(file["action_set_rel_bb_outage_data_visible_flat_slot_indices"][:])
+                                if "action_set_rel_bb_outage_data_visible_flat_slot_indices" in file
+                                else jnp.nonzero(
+                                    jnp.ravel(
+                                        jnp.array(file["action_set_rel_bb_outage_data_nodal_indices"][:]) != int_max()
+                                    ),
+                                    size=int(
+                                        jnp.sum(
+                                            jnp.ravel(
+                                                jnp.array(file["action_set_rel_bb_outage_data_nodal_indices"][:])
+                                                != int_max()
+                                            )
+                                        )
+                                    ),
+                                )[0]
+                            ),
                         )
                         if rel_bb_outage_data_present
                         else None,
@@ -757,6 +783,11 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 branches_monitored=jnp.array(file["branches_monitored"][:]),
                 nodal_injection_information=load_nodal_injection_optimization(file, nodal_injection_optimization_present),
                 non_rel_bb_outage_data=load_non_rel_bb_outage_data(file, non_rel_bb_outage_data_present),
+                bb_outage_contingency_ids=(
+                    tuple(file["bb_outage_contingency_ids"].asstr()[:].tolist())
+                    if "bb_outage_contingency_ids" in file
+                    else ()
+                ),
                 bb_outage_baseline_analysis=load_bb_outage_baseline_analysis(file, bb_outage_baseline_analysis_present),
             ),
             solver_config=SolverConfig(

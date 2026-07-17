@@ -25,6 +25,85 @@ from toop_engine_interfaces.asset_topology_helpers import find_station_by_id, ge
 logger = structlog.get_logger(__name__)
 
 
+def _is_breaker_coupler(coupler_type: Optional[str], coupler_id: str) -> bool:
+    """Return whether a coupler should block busbar-outage propagation.
+
+    Parameters
+    ----------
+    coupler_type : Optional[str]
+        The explicit coupler type if available.
+    coupler_id : str
+        The grid model identifier used as a fallback when the type is missing.
+
+    Returns
+    -------
+    bool
+        True if the coupler is a breaker, otherwise False.
+    """
+    coupler_type_upper = coupler_type.upper() if coupler_type is not None else ""
+    coupler_id_upper = coupler_id.upper()
+    return "BREAKER" in coupler_type_upper or "BREAKER" in coupler_id_upper or coupler_type_upper == "CB"
+
+
+def _get_connected_busbar_indices_for_outage(station: Station, busbar_index: int) -> list[int]:
+    """Get busbars electrically merged with a busbar through closed non-breaker couplers.
+
+    Parameters
+    ----------
+    station : Station
+        Physical station topology.
+    busbar_index : int
+        Index of the outaged busbar in ``station.busbars``.
+
+    Returns
+    -------
+    list[int]
+        Busbar indices that belong to the same outage area.
+    """
+    busbar_int_id_to_index = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
+    indices_to_visit = [busbar_index]
+    connected_indices = {busbar_index}
+
+    while indices_to_visit:
+        current_index = indices_to_visit.pop()
+        current_int_id = station.busbars[current_index].int_id
+        for coupler in station.couplers:
+            if coupler.open or not coupler.in_service or _is_breaker_coupler(coupler.type, coupler.grid_model_id):
+                continue
+            if coupler.busbar_from_id == current_int_id:
+                other_int_id = coupler.busbar_to_id
+            elif coupler.busbar_to_id == current_int_id:
+                other_int_id = coupler.busbar_from_id
+            else:
+                continue
+
+            other_index = busbar_int_id_to_index[other_int_id]
+            if other_index not in connected_indices:
+                connected_indices.add(other_index)
+                indices_to_visit.append(other_index)
+
+    return sorted(connected_indices)
+
+
+def _should_propagate_connected_busbar(station: Station, busbar_index: int) -> bool:
+    """Return whether a coupled busbar should be merged into the outage asset set.
+
+    Parameters
+    ----------
+    station : Station
+        Physical station topology.
+    busbar_index : int
+        Index of the candidate coupled busbar in ``station.busbars``.
+
+    Returns
+    -------
+    bool
+        True when the coupled busbar carries any in-service asset.
+    """
+    connected_assets = [asset for asset in get_connected_assets(station, busbar_index) if asset.in_service]
+    return len(connected_assets) > 0
+
+
 def get_total_injection_along_stub_branch(
     stub_branch_index: int, current_nodal_index: int, network_data: NetworkData
 ) -> Float[np.ndarray, " n_timestep"]:
@@ -324,12 +403,39 @@ def extract_busbar_outage_data(
         - node_index: The index of the node to be outaged.
     """
     busbar_index = get_busbar_index(station, busbar_id)
+    connected_assets_station = station
+    connected_assets_busbar_index = busbar_index
+
+    if branch_action_combi_index == 0 and network.asset_topology is not None:
+        try:
+            physical_station = find_station_by_id(network.asset_topology.stations, station.grid_model_id)
+            connected_assets_busbar_index = get_busbar_index(physical_station, busbar_id)
+            connected_assets_station = physical_station
+        except ValueError:
+            connected_assets_station = station
+            connected_assets_busbar_index = busbar_index
 
     assert station.busbars[busbar_index].grid_model_id == busbar_id, "Busbar index is not correct."
     assert station.busbars[busbar_index].in_service, f"Busbar {busbar_id} is not in service. Cannot outage it."
 
     connected_branches_to_outage = []
-    connected_assets = get_connected_assets(station, busbar_index)
+    connected_assets = get_connected_assets(connected_assets_station, connected_assets_busbar_index)
+    if branch_action_combi_index == 0 and connected_assets_station is not station:
+        connected_assets = []
+        connected_asset_ids = set()
+        connected_busbar_indices = _get_connected_busbar_indices_for_outage(
+            connected_assets_station, connected_assets_busbar_index
+        )
+        for connected_busbar_index in connected_busbar_indices:
+            if connected_busbar_index != connected_assets_busbar_index and not _should_propagate_connected_busbar(
+                connected_assets_station, connected_busbar_index
+            ):
+                continue
+            for asset in get_connected_assets(connected_assets_station, connected_busbar_index):
+                if asset.grid_model_id in connected_asset_ids:
+                    continue
+                connected_assets.append(asset)
+                connected_asset_ids.add(asset.grid_model_id)
     node_indices_to_outage = np.nonzero(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
 
     # Determine the nodal_index of the physical busbar.
@@ -404,7 +510,11 @@ def update_network_data_with_non_rel_bb_outages(
 
     for station in asset_topology.stations:
         if station.grid_model_id in outage_station_busbars_map:
-            for bb_id in outage_station_busbars_map[station.grid_model_id]:
+            configured_busbars = set(outage_station_busbars_map[station.grid_model_id])
+            for busbar in station.busbars:
+                bb_id = busbar.grid_model_id
+                if bb_id not in configured_busbars:
+                    continue
                 (branch_indices_to_outage, nodal_injection_to_outage, node_index_to_outage) = extract_busbar_outage_data(
                     station, bb_id, network, stub_power_map={}, branch_action_combi_index=None
                 )

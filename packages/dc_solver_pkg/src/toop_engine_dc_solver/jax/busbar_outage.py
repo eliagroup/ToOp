@@ -401,9 +401,11 @@ def perform_rel_bb_outage_single_topo(
         "Mismatch in branch action set and branch outage set."
     )
 
-    branch_outages, nodal_indices_outages, deltap_outages = remove_articulation_nodes_from_bb_outage(
-        action_set.rel_bb_outage_data, action_indices
-    )
+    branch_outages = action_set.rel_bb_outage_data.branch_outage_set.at[action_indices].get()
+    nodal_indices_outages = action_set.rel_bb_outage_data.nodal_indices.at[action_indices].get()
+    deltap_outages = action_set.rel_bb_outage_data.deltap_set.at[action_indices].get()
+    n_bb_slots_per_action = action_set.rel_bb_outage_data.nodal_indices.shape[1]
+    visible_flat_slot_indices = action_set.rel_bb_outage_data.visible_flat_slot_indices
     # Note: branch_indices with value -1 or int_max are automatically ignored in the  build_modf_matrix  function
     branch_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub max_branches_per_sub"] = jnp.concatenate(
         branch_outages, axis=0
@@ -414,6 +416,14 @@ def perform_rel_bb_outage_single_topo(
     nodal_indices_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub "] = jnp.concatenate(
         nodal_indices_outages, axis=0
     )
+
+    rel_sub_indices = visible_flat_slot_indices // n_bb_slots_per_action
+    bb_slot_indices = visible_flat_slot_indices % n_bb_slots_per_action
+    visible_indices = rel_sub_indices * n_bb_slots_per_action + bb_slot_indices
+
+    branch_outages = branch_outages.at[visible_indices].get(mode="fill", fill_value=int_max())
+    deltap_outages = deltap_outages.at[visible_indices].get(mode="fill", fill_value=0.0)
+    nodal_indices_outages = nodal_indices_outages.at[visible_indices].get(mode="fill", fill_value=-1)
 
     lfs_list, success = perform_outage_multi_busbars(
         branch_outages,

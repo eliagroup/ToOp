@@ -42,6 +42,7 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
 from toop_engine_grid_helpers.powsybl.polars.get_dataframe import (
     get_ca_branch_results,
     get_ca_bus_results,
+    get_ca_connectivity_results,
     get_ca_three_windings_transformer_results,
 )
 from toop_engine_interfaces.loadflow_result_helpers import convert_polars_loadflow_results_to_pandas
@@ -181,7 +182,7 @@ def run_powsybl_analysis(
         lf_params.distributed_slack = False
     security_params = pypowsybl.security.impl.parameters.Parameters(
         load_flow_parameters=lf_params,
-        provider_parameters={"threadCount": str(n_processes), "contingencyPropagation": "false"},
+        provider_parameters={"threadCount": str(n_processes)},
     )
 
     res = analysis.run_ac(net, security_params) if method == "ac" else analysis.run_dc(net, security_params)
@@ -232,6 +233,7 @@ def run_contingency_analysis_polars(
     bus_results = get_ca_bus_results(ca_result, lazy=True)
     branch_results = get_ca_branch_results(ca_result, lazy=True)
     three_windings_transformer_results = get_ca_three_windings_transformer_results(ca_result, lazy=True)
+    connectivity_results = get_ca_connectivity_results(ca_result, lazy=True)
     post_contingency_results = ca_result.post_contingency_results
     pre_contingency_result = ca_result.pre_contingency_result
 
@@ -310,6 +312,7 @@ def run_contingency_analysis_polars(
         regulating_element_results=regulating_elements_df,
         va_diff_results=va_diff_results_df,
         converged=convergence_df,
+        connectivity_result=connectivity_results,
         warnings=[],
         lazy=True,
     )

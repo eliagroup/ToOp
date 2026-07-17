@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import numpy as np
+import pandas as pd
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from test_loadflow_results_new import get_loadflow_results_example
@@ -19,6 +20,7 @@ from toop_engine_interfaces.loadflow_result_helpers import (
     save_loadflow_results,
     select_timestep,
 )
+from toop_engine_interfaces.loadflow_results import ConnectivityResultSchema
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
@@ -69,6 +71,49 @@ def test_extract_branch_results():
     assert np.all(np.isfinite(matrix_2))
 
     assert np.all(matrix == matrix_2[::-1, :])  # Check that the order of contingencies does not change the result
+
+
+def test_extract_branch_results_zeroes_propagated_disconnected_monitored_branches() -> None:
+    branch_results = pd.DataFrame(
+        {
+            "timestep": [0, 0, 0, 0],
+            "contingency": ["BASECASE", "BASECASE", "contingency", "contingency"],
+            "element": ["L1", "T1", "L1", "T1"],
+            "side": [1, 1, 1, 1],
+            "p": [10.0, 20.0, 11.0, 21.0],
+            "q": [0.0, 0.0, 0.0, 0.0],
+            "i": [0.0, 0.0, 0.0, 0.0],
+            "loading": [0.0, 0.0, 0.0, 0.0],
+            "element_name": ["", "", "", ""],
+            "contingency_name": ["", "", "", ""],
+        }
+    ).set_index(["timestep", "contingency", "element", "side"])
+
+    connectivity_result = pd.DataFrame(
+        {
+            "contingency": ["contingency"],
+            "element": ["T1"],
+            "outage_group_id": ["group-1"],
+        }
+    ).set_index(["contingency", "element"])
+    ConnectivityResultSchema.validate(connectivity_result)
+
+    monitored_branches = [
+        MonitoredElement(id="L1", name="L1", kind="branch", type="line"),
+        MonitoredElement(id="T1", name="T1", kind="branch", type="trafo3w_hv"),
+    ]
+
+    n_0, n_1 = extract_branch_results(
+        branch_results=branch_results,
+        timestep=0,
+        contingencies=["contingency"],
+        monitored_branches=monitored_branches,
+        basecase="BASECASE",
+        connectivity_result=connectivity_result,
+    )
+
+    np.testing.assert_allclose(n_0, np.array([10.0, 20.0]))
+    np.testing.assert_allclose(n_1, np.array([[11.0, 0.0]]))
 
 
 def test_select_timestep():

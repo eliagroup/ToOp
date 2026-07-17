@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import numpy as np
 import polars as pl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
@@ -20,6 +21,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     save_loadflow_results_polars,
     subset_contingencies_polars,
 )
+from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
@@ -62,12 +64,97 @@ def test_extract_branch_results():
     )
     branch_results, matrix = extract_branch_results_polars(
         lf_polars.branch_results,
+        lf_polars.converged,
         basecase="BASECASE",
         timestep=0,
         contingencies=[contingency.id for contingency in nminus1_def.contingencies if not contingency.is_basecase()],
         monitored_branches=[element for element in nminus1_def.monitored_elements if element.kind == "branch"],
     )
     assert matrix.shape == (len(nminus1_def.contingencies) - 1, len(nminus1_def.monitored_elements))
+
+
+def test_extract_branch_results_no_calculation_uses_basecase() -> None:
+    branch_results = pl.LazyFrame(
+        {
+            "timestep": [0, 0],
+            "contingency": ["BASECASE", "BASECASE"],
+            "element": ["L1", "L2"],
+            "side": [1, 1],
+            "p": [10.0, 20.0],
+        }
+    )
+    converged = pl.LazyFrame(
+        {
+            "timestep": [0, 0],
+            "contingency": ["BASECASE", "contingency"],
+            "status": [ConvergenceStatus.CONVERGED.value, ConvergenceStatus.NO_CALCULATION.value],
+            "iteration_count": [1.0, None],
+            "warnings": ["", ""],
+            "contingency_name": ["BASECASE", "contingency"],
+        }
+    )
+    monitored_branches = [
+        MonitoredElement(id="L1", name="L1", kind="branch", type="line"),
+        MonitoredElement(id="L2", name="L2", kind="branch", type="line"),
+    ]
+
+    n_0, n_1 = extract_branch_results_polars(
+        branch_results=branch_results,
+        converged=converged,
+        timestep=0,
+        contingencies=["contingency"],
+        monitored_branches=monitored_branches,
+        basecase="BASECASE",
+    )
+
+    np.testing.assert_allclose(n_0, np.array([10.0, 20.0]))
+    np.testing.assert_allclose(n_1, np.array([[10.0, 20.0]]))
+
+
+def test_extract_branch_results_zeroes_propagated_disconnected_monitored_branches_polars() -> None:
+    branch_results = pl.LazyFrame(
+        {
+            "timestep": [0, 0, 0, 0],
+            "contingency": ["BASECASE", "BASECASE", "contingency", "contingency"],
+            "element": ["L1", "T1", "L1", "T1"],
+            "side": [1, 1, 1, 1],
+            "p": [10.0, 20.0, 11.0, 21.0],
+        }
+    )
+    converged = pl.LazyFrame(
+        {
+            "timestep": [0, 0],
+            "contingency": ["BASECASE", "contingency"],
+            "status": [ConvergenceStatus.CONVERGED.value, ConvergenceStatus.CONVERGED.value],
+            "iteration_count": [1.0, 1.0],
+            "warnings": ["", ""],
+            "contingency_name": ["BASECASE", "contingency"],
+        }
+    )
+    connectivity_result = pl.LazyFrame(
+        {
+            "contingency": ["contingency"],
+            "element": ["T1"],
+            "outage_group_id": ["group-1"],
+        }
+    )
+    monitored_branches = [
+        MonitoredElement(id="L1", name="L1", kind="branch", type="line"),
+        MonitoredElement(id="T1", name="T1", kind="branch", type="trafo3w_hv"),
+    ]
+
+    n_0, n_1 = extract_branch_results_polars(
+        branch_results=branch_results,
+        converged=converged,
+        timestep=0,
+        contingencies=["contingency"],
+        monitored_branches=monitored_branches,
+        basecase="BASECASE",
+        connectivity_result=connectivity_result,
+    )
+
+    np.testing.assert_allclose(n_0, np.array([10.0, 20.0]))
+    np.testing.assert_allclose(n_1, np.array([[11.0, 0.0]]))
 
 
 def test_concatenate_loadflow_results_polars():

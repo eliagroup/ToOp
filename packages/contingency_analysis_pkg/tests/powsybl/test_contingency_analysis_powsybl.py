@@ -225,6 +225,9 @@ def test_run_ac_contingency_analysis_powsybl_with_busbar_outage(
 
     converged = lf_result.converged.collect()
     assert selected_busbar_id in converged["contingency"].to_list()
+    assert lf_result.connectivity_result is not None
+    connectivity_rows = lf_result.connectivity_result.collect().filter(pl.col("contingency") == selected_busbar_id)
+    assert connectivity_rows.height > 0
     assert not any(selected_busbar_id in warning for warning in lf_result.warnings)
 
 

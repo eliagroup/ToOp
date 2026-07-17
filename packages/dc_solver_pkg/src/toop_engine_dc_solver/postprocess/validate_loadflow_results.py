@@ -19,7 +19,10 @@ from toop_engine_dc_solver.jax import (
     run_solver_symmetric,
 )
 from toop_engine_dc_solver.jax.compute_batch import compute_bsdf_lodf_static_flows
-from toop_engine_dc_solver.jax.topology_computations import convert_action_set_index_to_topo
+from toop_engine_dc_solver.jax.topology_computations import (
+    convert_action_set_index_to_topo,
+    pad_action_with_unsplit_action_indices,
+)
 from toop_engine_dc_solver.jax.types import (
     ActionIndexComputations,
     DynamicInformation,
@@ -27,6 +30,7 @@ from toop_engine_dc_solver.jax.types import (
     NodalInjStartOptions,
     SolverConfig,
     StaticInformation,
+    int_max,
 )
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import get_islanding_contingency_ids
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import find_bridges
@@ -207,6 +211,13 @@ def validate_loadflow_results(
         dynamic_information,
         solver_config,
     )
+    n_1_solver, success_solver = _align_solver_busbar_cases(
+        n_1_solver=n_1_solver,
+        success_solver=success_solver,
+        dynamic_information=dynamic_information,
+        solver_config=solver_config,
+        actions=actions,
+    )
     if not validation_parameters.compare_signs:
         n_0 = np.abs(n_0)
         n_1 = np.abs(n_1)
@@ -380,6 +391,64 @@ def assert_shapes(
     assert len(case_contingencies) == len(success_solver), (
         f"Number of solver success entries ({len(success_solver)}) does not match number of contingencies"
     )
+
+
+def _align_solver_busbar_cases(
+    n_1_solver: Float[ArrayLike, " n_cases n_branches"],
+    success_solver: Bool[ArrayLike, " n_cases"],
+    dynamic_information: DynamicInformation,
+    solver_config: SolverConfig,
+    actions: list[int],
+) -> tuple[Float[ArrayLike, " n_cases n_branches"], Bool[ArrayLike, " n_cases"]]:
+    """Backward-compatible busbar case alignment for solver payloads without visible-slot compaction."""
+    if not (solver_config.enable_bb_outages and solver_config.bb_outage_as_nminus1):
+        return n_1_solver, success_solver
+
+    rel_bb_outage_data = dynamic_information.action_set.rel_bb_outage_data
+    non_rel_bb_outage_data = dynamic_information.non_rel_bb_outage_data
+    if rel_bb_outage_data is None:
+        return n_1_solver, success_solver
+
+    expected_solver_bb_rows = dynamic_information.n_bb_outages
+    if (
+        n_1_solver.shape[0]
+        == dynamic_information.n_outages
+        + dynamic_information.n_multi_outages
+        + dynamic_information.n_inj_failures
+        + expected_solver_bb_rows
+    ):
+        return n_1_solver, success_solver
+
+    n_branch_like_cases = (
+        dynamic_information.n_outages + dynamic_information.n_multi_outages + dynamic_information.n_inj_failures
+    )
+    n_non_rel_bb_outages = 0 if non_rel_bb_outage_data is None else non_rel_bb_outage_data.nodal_indices.shape[0]
+
+    solver_busbar_rows = n_1_solver[n_branch_like_cases:]
+    solver_busbar_success = success_solver[n_branch_like_cases:]
+    if solver_busbar_rows.shape[0] == 0:
+        return n_1_solver, success_solver
+
+    padded_action_indices = np.asarray(
+        pad_action_with_unsplit_action_indices(
+            dynamic_information.action_set,
+            jnp.array(actions if len(actions) > 0 else [int_max()], dtype=int),
+        )
+    )
+    n_rel_solver_rows = solver_busbar_rows.shape[0] - n_non_rel_bb_outages
+    n_visible_rel_rows = int(np.asarray(rel_bb_outage_data.visible_flat_slot_indices).shape[0])
+    aligned_rel_rows = solver_busbar_rows[:n_rel_solver_rows][:n_visible_rel_rows]
+    aligned_rel_success = solver_busbar_success[:n_rel_solver_rows][:n_visible_rel_rows]
+
+    aligned_non_rel_rows = solver_busbar_rows[n_rel_solver_rows:]
+    aligned_non_rel_success = solver_busbar_success[n_rel_solver_rows:]
+
+    aligned_busbar_rows = np.concatenate([aligned_rel_rows, aligned_non_rel_rows], axis=0)
+    aligned_busbar_success = np.concatenate([aligned_rel_success, aligned_non_rel_success], axis=0)
+
+    aligned_n_1_solver = np.concatenate([n_1_solver[:n_branch_like_cases], aligned_busbar_rows], axis=0)
+    aligned_success_solver = np.concatenate([success_solver[:n_branch_like_cases], aligned_busbar_success], axis=0)
+    return aligned_n_1_solver, aligned_success_solver
 
 
 def get_solver_results(

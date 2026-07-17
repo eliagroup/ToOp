@@ -13,16 +13,20 @@ from tempfile import TemporaryDirectory
 import pandapower as pp
 import pandas as pd
 import pypowsybl
+import pytest
 import structlog
 from beartype.typing import Optional
 from fsspec.implementations.dirfs import DirFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.network import Network
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 from toop_engine_importer.pandapower_import.preprocessing import modify_constan_z_load
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.preprocessing import create_nminus1_definition_from_masks
+from toop_engine_interfaces.asset_topology import Topology
+from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -383,3 +387,111 @@ def test_create_nminus1_definition_from_masks_busbars(basic_node_breaker_network
     busbar_sections = network.get_busbar_sections(attributes=["name"])
 
     assert busbar_sections.index[0] in contingency_ids
+
+
+def test_fix_multiple_busbar_connections_in_network_prefers_busbar_with_other_elements() -> None:
+    network = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(network)
+
+    preprocessing._fix_multiple_busbar_connections_in_network(network)
+
+    switches = network.get_switches(attributes=["open"])
+    assert not bool(switches.loc["DISCONNECTOR_3W_HV_1", "open"])
+    assert bool(switches.loc["DISCONNECTOR_3W_HV_2", "open"])
+    assert not bool(switches.loc["DISCONNECTOR_3W_MV_1", "open"])
+    assert bool(switches.loc["DISCONNECTOR_3W_MV_2", "open"])
+
+
+def test_convert_file_persists_multiple_busbar_connection_fix_to_saved_grid() -> None:
+    with TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        temp_grid_file = temp_dir_path / "complex_grid_3w.xiidm"
+        create_complex_grid_battery_hvdc_svc_3w_trafo().save(temp_grid_file)
+
+        importer_parameters = CgmesImporterParameters(
+            grid_model_file=temp_grid_file,
+            data_folder=temp_dir_path,
+            white_list_file=None,
+            black_list_file=None,
+            area_settings=AreaSettings(
+                cutoff_voltage=110,
+                control_area=[""],
+                view_area=[""],
+                nminus1_area=[""],
+            ),
+            fail_on_non_convergence=False,
+        )
+
+        preprocessing.convert_file(importer_parameters=importer_parameters)
+
+        saved_grid = pypowsybl.network.load(temp_dir_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+        switches = saved_grid.get_switches(attributes=["open"])
+        assert not bool(switches.loc["DISCONNECTOR_3W_HV_1", "open"])
+        assert bool(switches.loc["DISCONNECTOR_3W_HV_2", "open"])
+        assert not bool(switches.loc["DISCONNECTOR_3W_MV_1", "open"])
+        assert bool(switches.loc["DISCONNECTOR_3W_MV_2", "open"])
+
+
+def test_convert_file_raises_on_double_connections() -> None:
+    with TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        temp_grid_file = temp_dir_path / "complex_grid_3w_raise.xiidm"
+        create_complex_grid_battery_hvdc_svc_3w_trafo().save(temp_grid_file)
+
+        importer_parameters = CgmesImporterParameters(
+            grid_model_file=temp_grid_file,
+            data_folder=temp_dir_path,
+            white_list_file=None,
+            black_list_file=None,
+            area_settings=AreaSettings(
+                cutoff_voltage=110,
+                control_area=[""],
+                view_area=[""],
+                nminus1_area=[""],
+            ),
+            fail_on_non_convergence=False,
+            double_connection_handling="raise",
+        )
+
+        with pytest.raises(ValueError, match="Double connections detected"):
+            preprocessing.convert_file(importer_parameters=importer_parameters)
+
+
+def test_convert_file_ignore_station_removes_station_and_busbar_outages() -> None:
+    with TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        temp_grid_file = temp_dir_path / "complex_grid_3w_ignore.xiidm"
+        create_complex_grid_battery_hvdc_svc_3w_trafo().save(temp_grid_file)
+
+        importer_parameters = CgmesImporterParameters(
+            grid_model_file=temp_grid_file,
+            data_folder=temp_dir_path,
+            white_list_file=None,
+            black_list_file=None,
+            area_settings=AreaSettings(
+                cutoff_voltage=110,
+                control_area=[""],
+                view_area=[""],
+                nminus1_area=[""],
+            ),
+            fail_on_non_convergence=False,
+            double_connection_handling="ignore_station",
+        )
+
+        preprocessing.convert_file(importer_parameters=importer_parameters)
+
+        topology = load_pydantic_model_fs(
+            filesystem=LocalFileSystem(),
+            file_path=temp_dir_path / PREPROCESSING_PATHS["asset_topology_file_path"],
+            model_class=Topology,
+        )
+        station_names = {station.name for station in topology.stations}
+        assert "VL_3W_HV" not in station_names
+        assert "VL_3W_MV" not in station_names
+
+        with open(temp_dir_path / PREPROCESSING_PATHS["nminus1_definition_file_path"], "r") as f:
+            nminus1_definition = f.read()
+        assert "VL_3W_HV_1_1" not in nminus1_definition
+        assert "VL_3W_HV_2_1" not in nminus1_definition
+        assert "VL_3W_MV_1_1" not in nminus1_definition
+        assert "VL_3W_MV_2_1" not in nminus1_definition

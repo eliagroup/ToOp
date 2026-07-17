@@ -25,6 +25,7 @@ from toop_engine_importer.network_graph.data_classes import (
 )
 from toop_engine_importer.network_graph.network_graph_helper_functions import add_suffix_to_duplicated_grid_model_id
 from toop_engine_importer.network_graph.powsybl_station_to_graph import (
+    filter_relevant_voltage_levels_for_double_connections,
     get_helper_branches,
     get_node_assets,
     get_node_breaker_topology_graph,
@@ -785,3 +786,23 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
     assert isinstance(res, Topology)
     assert len(res.stations) == len(expected)
+
+
+def test_filter_relevant_voltage_levels_for_double_connections_ignore_station() -> None:
+    relevant_voltage_levels = pd.DataFrame(
+        {
+            "name": ["VL_3W_HV", "VL_3W_MV", "VL_MV"],
+            "region": ["", "", ""],
+            "nominal_v": [380, 110, 110],
+            "voltage_level_id": ["VL_3W_HV", "VL_3W_MV", "VL_MV"],
+        },
+        index=["VL_3W_HV_0", "VL_3W_MV_0", "VL_MV_0"],
+    )
+
+    filtered = filter_relevant_voltage_levels_for_double_connections(
+        relevant_voltage_levels,
+        ignored_station_ids={"VL_3W_HV", "VL_3W_MV"},
+        handling="ignore_station",
+    )
+
+    assert filtered["name"].tolist() == ["VL_MV"]

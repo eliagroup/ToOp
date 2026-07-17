@@ -25,6 +25,7 @@ from toop_engine_interfaces.loadflow_results import (
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchResultSchemaPolars,
     CascadeResultSchemaPolars,
+    ConnectivityResultSchemaPolars,
     ConvergedSchemaPolars,
     LoadflowResultsPolars,
     NodeResultSchemaPolars,
@@ -33,6 +34,28 @@ from toop_engine_interfaces.loadflow_results_polars import (
 )
 from toop_engine_interfaces.messages.lf_service.stored_loadflow_reference import StoredLoadflowReference
 from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Definition
+
+
+def _get_disconnected_branch_elements_by_contingency_polars(
+    connectivity_result: patpl.LazyFrame[ConnectivityResultSchemaPolars] | pl.LazyFrame | None,
+    monitored_branches: list[GridElement],
+    contingencies: list[str],
+) -> dict[str, set[str]]:
+    """Map contingencies to monitored branch elements disconnected by propagated connectivity outages."""
+    if connectivity_result is None:
+        return {}
+
+    monitored_branch_ids = [element.id for element in monitored_branches]
+    relevant_rows = connectivity_result.filter(
+        pl.col("contingency").is_in(contingencies) & pl.col("element").is_in(monitored_branch_ids)
+    ).collect()
+    if relevant_rows.height == 0:
+        return {}
+
+    return {
+        (contingency_id[0] if isinstance(contingency_id, tuple) else contingency_id): set(group["element"].to_list())
+        for contingency_id, group in relevant_rows.partition_by("contingency", as_dict=True).items()
+    }
 
 
 def save_loadflow_results_polars(
@@ -79,6 +102,9 @@ def save_loadflow_results_polars(
         loadflows.converged.sink_parquet(f)
     with fs.open(file_path + "/va_diff_results.parquet", "wb") as f:
         loadflows.va_diff_results.sink_parquet(f)
+    if loadflows.connectivity_result is not None:
+        with fs.open(file_path + "/connectivity_result.parquet", "wb") as f:
+            loadflows.connectivity_result.sink_parquet(f)
     if loadflows.cascade_results is not None:
         with fs.open(file_path + "/cascade_results.parquet", "wb") as f:
             loadflows.cascade_results.sink_parquet(f)
@@ -125,6 +151,11 @@ def load_loadflow_results_polars(
         converged = pl.scan_parquet(f)
     with fs.open(file_path + "/va_diff_results.parquet", "rb") as f:
         va_diff_results = pl.scan_parquet(f)
+    if fs.exists(file_path + "/connectivity_result.parquet"):
+        with fs.open(file_path + "/connectivity_result.parquet", "rb") as f:
+            connectivity_result = pl.scan_parquet(f)
+    else:
+        connectivity_result = None
     if fs.exists(file_path + "/cascade_results.parquet"):
         with fs.open(file_path + "/cascade_results.parquet", "rb") as f:
             cascade_results = pl.scan_parquet(f)
@@ -139,6 +170,9 @@ def load_loadflow_results_polars(
             regulating_element_results=RegulatingElementResultSchemaPolars.validate(regulating_element_results),
             converged=ConvergedSchemaPolars.validate(converged),
             va_diff_results=VADiffResultSchemaPolars.validate(va_diff_results),
+            connectivity_result=(
+                ConnectivityResultSchemaPolars.validate(connectivity_result) if connectivity_result is not None else None
+            ),
             cascade_results=(CascadeResultSchemaPolars.validate(cascade_results) if cascade_results is not None else None),
             warnings=warnings,
         )
@@ -150,6 +184,7 @@ def load_loadflow_results_polars(
         regulating_element_results=regulating_element_results,
         converged=converged,
         va_diff_results=va_diff_results,
+        connectivity_result=connectivity_result,
         cascade_results=cascade_results,
         warnings=warnings,
     )
@@ -182,6 +217,9 @@ def concatenate_loadflow_results_polars(
     ]
     converged_list = [res.converged for res in loadflow_results_list if res.converged is not None]
     va_diff_results_list = [res.va_diff_results for res in loadflow_results_list if res.va_diff_results is not None]
+    connectivity_result_list = [
+        res.connectivity_result for res in loadflow_results_list if res.connectivity_result is not None
+    ]
     cascade_results_list = [res.cascade_results for res in loadflow_results_list if res.cascade_results is not None]
 
     branch_results = pl.concat(branch_results_list, how="vertical")
@@ -189,6 +227,7 @@ def concatenate_loadflow_results_polars(
     regulating_element_results = pl.concat(regulating_element_results_list, how="vertical")
     converged = pl.concat(converged_list, how="vertical")
     va_diff_results = pl.concat(va_diff_results_list, how="vertical")
+    connectivity_result = pl.concat(connectivity_result_list, how="vertical") if connectivity_result_list else None
     cascade_results = pl.concat(cascade_results_list, how="vertical") if cascade_results_list else None
     warnings = [warning for lf_results in loadflow_results_list for warning in lf_results.warnings]
     return LoadflowResultsPolars(
@@ -198,6 +237,7 @@ def concatenate_loadflow_results_polars(
         regulating_element_results=regulating_element_results,
         converged=converged,
         va_diff_results=va_diff_results,
+        connectivity_result=connectivity_result,
         cascade_results=cascade_results,
         warnings=warnings,
     )
@@ -269,10 +309,12 @@ def subset_contingencies_polars(loadflow_results: LoadflowResultsPolars, conting
 
 def extract_branch_results_polars(
     branch_results: patpl.LazyFrame[BranchResultSchemaPolars],
+    converged: patpl.LazyFrame[ConvergedSchemaPolars],
     timestep: int,
     contingencies: list[str],
     monitored_branches: list[GridElement],
     basecase: str,
+    connectivity_result: patpl.LazyFrame[ConnectivityResultSchemaPolars] | pl.LazyFrame | None = None,
 ) -> tuple[Float[np.ndarray, " n_branches_monitored"], Float[np.ndarray, " n_contingencies n_branches_monitored"]]:
     """Extract the branch results for a specific timestep.
 
@@ -280,6 +322,8 @@ def extract_branch_results_polars(
     ----------
     branch_results: patpl.LazyFrame[BranchResultSchemaPolars],
         The branch results dataframe to extract the branch results from.
+    converged: patpl.LazyFrame[ConvergedSchemaPolars]
+        The converged dataframe to extract the converged results from.
     timestep : int
         The selected timestep to pull from the loadflow results.
     basecase : str
@@ -331,16 +375,54 @@ def extract_branch_results_polars(
     all_branches_df = pl.concat([normal_branch_df, *trafo3w_dfs], how="vertical")
 
     merge_columns = ["timestep", "contingency", "element", "side"]
-    all_p_results = (
-        all_branches_df.join(
-            branch_results.filter(pl.col("timestep") == timestep).select([*merge_columns, "p"]), on=merge_columns, how="left"
-        )
-        .fill_null(0.0)
-        .fill_nan(0.0)
+    all_p_results = all_branches_df.join(
+        branch_results.filter(pl.col("timestep") == timestep).select([*merge_columns, "p"]), on=merge_columns, how="left"
     )
 
     n_0_results = all_p_results.filter(pl.col("contingency") == basecase).collect()
     n_0_vector = n_0_results["p"].to_numpy()
+
+    no_calculation_contingencies = (
+        converged.filter((pl.col("timestep") == timestep) & (pl.col("status") == ConvergenceStatus.NO_CALCULATION.value))
+        .select("contingency")
+        .collect()["contingency"]
+        .to_list()
+    )
+    if no_calculation_contingencies:
+        basecase_lookup = n_0_results.select(["element", "side", "p"]).lazy().rename({"p": "basecase_p"})
+        all_p_results = (
+            all_p_results.join(basecase_lookup, on=["element", "side"], how="left")
+            .with_columns(
+                pl.when(
+                    pl.col("contingency").is_in(no_calculation_contingencies)
+                    & (pl.col("p").is_null() | pl.col("p").is_nan())
+                )
+                .then(pl.col("basecase_p"))
+                .otherwise(pl.col("p"))
+                .alias("p")
+            )
+            .drop("basecase_p")
+        )
+
+    all_p_results = all_p_results.fill_null(0.0).fill_nan(0.0)
+
+    disconnected_branch_elements = _get_disconnected_branch_elements_by_contingency_polars(
+        connectivity_result=connectivity_result,
+        monitored_branches=monitored_branches,
+        contingencies=contingencies,
+    )
+    if disconnected_branch_elements:
+        disconnected_rows = [
+            {"contingency": contingency_id, "element": element_id}
+            for contingency_id, element_ids in disconnected_branch_elements.items()
+            for element_id in element_ids
+        ]
+        disconnected_df = pl.DataFrame(disconnected_rows).lazy().with_columns(pl.lit(True).alias("force_zero"))
+        all_p_results = (
+            all_p_results.join(disconnected_df, on=["contingency", "element"], how="left")
+            .with_columns(pl.when(pl.col("force_zero")).then(0.0).otherwise(pl.col("p")).alias("p"))
+            .drop("force_zero")
+        )
 
     sort_by = [
         pl.col("contingency").cast(pl.Enum(contingencies)),
@@ -478,10 +560,12 @@ def extract_solver_matrices_polars(
     branch_elements = [elem for elem in nminus1_definition.monitored_elements if elem.kind == "branch"]
     n_0_vector, n1_matrix = extract_branch_results_polars(
         branch_results=loadflow_results.branch_results,
+        converged=loadflow_results.converged,
         timestep=timestep,
         contingencies=contingency_order,
         monitored_branches=branch_elements,
         basecase=basecase.id,
+        connectivity_result=loadflow_results.connectivity_result,
     )
 
     return n_0_vector, n1_matrix, success

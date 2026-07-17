@@ -7,6 +7,7 @@
 
 from collections import Counter
 from dataclasses import replace
+from types import SimpleNamespace
 
 import numpy as np
 from tests.deprecated.assignment import realise_bus_split_single_station
@@ -15,6 +16,7 @@ from toop_engine_dc_solver.preprocess.preprocess import compute_separation_set_f
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     extract_busbar_outage_data,
     extract_outage_index_injection_from_asset,
+    get_all_rel_bb_outage_data,
     get_articulation_nodes,
     get_branch_injection_outages_for_rel_subs,
     get_busbar_branches_map,
@@ -258,7 +260,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     branch_indices_to_outage, nodal_injection_to_outage, node_index_to_outage = extract_busbar_outage_data(
         station, "busbar_0", network_data_dummy, {}
     )
-    multi_branch_outages.append(list(set(branch_indices_to_outage)))
+    multi_branch_outages.append(branch_indices_to_outage)
     multi_injection_outages.append(nodal_injection_to_outage.tolist())
     multi_node_outages.append(node_index_to_outage)
 
@@ -280,7 +282,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         station, "busbar_1", network_data_dummy, {}
     )
 
-    multi_branch_outages.append(list(set(branch_indices_to_outage)))
+    multi_branch_outages.append(branch_indices_to_outage)
     multi_injection_outages.append(nodal_injection_to_outage.tolist())
     multi_node_outages.append(node_index_to_outage)
 
@@ -302,7 +304,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         station, "busbar_1", network_data_dummy, {}
     )
 
-    multi_branch_outages.append(list(set(branch_indices_to_outage)))
+    multi_branch_outages.append(branch_indices_to_outage)
     multi_injection_outages.append(nodal_injection_to_outage.tolist())
     multi_node_outages.append(node_index_to_outage)
 
@@ -318,6 +320,40 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
 
     # Test case 4: Outage a node (node 0) with stub branch (asset_1)
     # Create a mock Station object for node_0. Node_0 is a non relevant unsplit station. Therefore, there is just 1 busbar
+
+
+def test_extract_busbar_outage_data_preserves_branch_order(network_data_preprocessed: NetworkData) -> None:
+    network_data_dummy = replace(
+        network_data_preprocessed,
+        from_nodes=np.array([0, 0, 1]),
+        to_nodes=np.array([1, 2, 2]),
+        nodal_injection=np.array([[0.0, 0.0, 0.0]], dtype=float),
+        node_ids=["node_0", "node_1", "node_2"],
+        branch_ids=["branch_a", "branch_b", "branch_c"],
+        bridging_branch_mask=np.array([False, False, False]),
+        injection_ids=[],
+        mw_injections=np.zeros((1, 0), dtype=float),
+        relevant_node_mask=np.array([False, False, False]),
+        asset_topology=None,
+        split_multi_outage_branches=None,
+    )
+
+    busbar_0 = Busbar(grid_model_id="busbar_0", int_id=0)
+    station = Station(
+        grid_model_id="node_0",
+        busbars=[busbar_0],
+        couplers=[],
+        assets=[
+            SwitchableAsset(grid_model_id="branch_b", in_service=True, branch_end="from", type="line"),
+            SwitchableAsset(grid_model_id="branch_a", in_service=True, branch_end="from", type="line"),
+            SwitchableAsset(grid_model_id="branch_b", in_service=True, branch_end="from", type="line"),
+        ],
+        asset_switching_table=np.array([[True, True, True]], dtype=bool),
+    )
+
+    branch_indices_to_outage, _, _ = extract_busbar_outage_data(station, "busbar_0", network_data_dummy, {})
+
+    assert branch_indices_to_outage == [1, 0], f"Expected branch order [1, 0], but got {branch_indices_to_outage}"
 
     multi_branch_outages = []
     multi_injection_outages = []
@@ -343,7 +379,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     branch_indices_to_outage, nodal_injection_to_outage, node_index_to_outage = extract_busbar_outage_data(
         station, "busbar_0", network_data_dummy, {}
     )
-    multi_branch_outages.append(list(set(branch_indices_to_outage)))
+    multi_branch_outages.append(branch_indices_to_outage)
     multi_injection_outages.append(nodal_injection_to_outage.tolist())
     multi_node_outages.append(node_index_to_outage)
 
@@ -354,6 +390,37 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     # As asset1 is a stub branch, the injection of node_0 (10) + the injection of node_1 (50) should be outaged
     expected_multi_injection_outages = [[60]]
     expected_node_outage_indices = [0]
+
+
+def test_get_all_rel_bb_outage_data_preserves_physical_busbar_slots_for_out_of_service_busbars() -> None:
+    station = Station(
+        grid_model_id="node_0",
+        busbars=[
+            Busbar(grid_model_id="busbar_0", int_id=0, in_service=True),
+            Busbar(grid_model_id="busbar_1", int_id=1, in_service=False),
+        ],
+        couplers=[],
+        assets=[],
+        asset_switching_table=np.zeros((2, 0), dtype=bool),
+    )
+    network_data = SimpleNamespace(
+        node_ids=["node_0"],
+        nodal_injection=np.zeros((1, 1), dtype=float),
+        relevant_nodes=np.array([], dtype=int),
+        busbar_a_mappings=None,
+        branch_ids=[],
+        bridging_branch_mask=np.array([], dtype=bool),
+        from_nodes=np.array([], dtype=int),
+        to_nodes=np.array([], dtype=int),
+        injection_ids=[],
+        mw_injections=np.zeros((1, 0), dtype=float),
+        asset_topology=None,
+    )
+
+    outage_data = get_all_rel_bb_outage_data([[rel_station]], network_data, {"busbar_0", "busbar_1"})
+
+    assert len(outage_data[0][0]) == 2
+    assert outage_data[0][0][1] is None
     expected_multi_branch_outages = [2, 3]
     assert len(multi_branch_outages[0]) == len_expected_multi_branch_outages, (
         f"Expected {len_expected_multi_branch_outages} branch outage, but got {len(multi_branch_outages)}"

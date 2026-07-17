@@ -25,6 +25,90 @@ from toop_engine_interfaces.asset_topology_helpers import find_station_by_id, ge
 logger = structlog.get_logger(__name__)
 
 
+def _deduplicate_branch_indices_preserving_order(branch_indices: list[int]) -> list[int]:
+    """Deduplicate branch indices while keeping their first-seen order."""
+    return list(dict.fromkeys(branch_indices))
+
+
+def _is_breaker_coupler(coupler_type: Optional[str], coupler_id: str) -> bool:
+    """Return whether a coupler should block busbar-outage propagation.
+
+    Parameters
+    ----------
+    coupler_type : Optional[str]
+        The explicit coupler type if available.
+    coupler_id : str
+        The grid model identifier used as a fallback when the type is missing.
+
+    Returns
+    -------
+    bool
+        True if the coupler is a breaker, otherwise False.
+    """
+    coupler_type_upper = coupler_type.upper() if coupler_type is not None else ""
+    coupler_id_upper = coupler_id.upper()
+    return "BREAKER" in coupler_type_upper or "BREAKER" in coupler_id_upper or coupler_type_upper == "CB"
+
+
+def _get_connected_busbar_indices_for_outage(station: Station, busbar_index: int) -> list[int]:
+    """Get busbars electrically merged with a busbar through closed non-breaker couplers.
+
+    Parameters
+    ----------
+    station : Station
+        Physical station topology.
+    busbar_index : int
+        Index of the outaged busbar in ``station.busbars``.
+
+    Returns
+    -------
+    list[int]
+        Busbar indices that belong to the same outage area.
+    """
+    busbar_int_id_to_index = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
+    indices_to_visit = [busbar_index]
+    connected_indices = {busbar_index}
+
+    while indices_to_visit:
+        current_index = indices_to_visit.pop()
+        current_int_id = station.busbars[current_index].int_id
+        for coupler in station.couplers:
+            if coupler.open or not coupler.in_service or _is_breaker_coupler(coupler.type, coupler.grid_model_id):
+                continue
+            if coupler.busbar_from_id == current_int_id:
+                other_int_id = coupler.busbar_to_id
+            elif coupler.busbar_to_id == current_int_id:
+                other_int_id = coupler.busbar_from_id
+            else:
+                continue
+
+            other_index = busbar_int_id_to_index[other_int_id]
+            if other_index not in connected_indices:
+                connected_indices.add(other_index)
+                indices_to_visit.append(other_index)
+
+    return sorted(connected_indices)
+
+
+def _should_propagate_connected_busbar(station: Station, busbar_index: int) -> bool:
+    """Return whether a coupled busbar should be merged into the outage asset set.
+
+    Parameters
+    ----------
+    station : Station
+        Physical station topology.
+    busbar_index : int
+        Index of the candidate coupled busbar in ``station.busbars``.
+
+    Returns
+    -------
+    bool
+        True when the coupled busbar carries any in-service asset.
+    """
+    connected_assets = [asset for asset in get_connected_assets(station, busbar_index) if asset.in_service]
+    return len(connected_assets) > 0
+
+
 def get_total_injection_along_stub_branch(
     stub_branch_index: int, current_nodal_index: int, network_data: NetworkData
 ) -> Float[np.ndarray, " n_timestep"]:
@@ -289,6 +373,73 @@ def get_phy_bb_nodal_index(
     return possible_node_indices[1]
 
 
+def _get_connected_assets_for_busbar_outage(
+    station: Station,
+    busbar_id: str,
+    network: NetworkData,
+    branch_action_combi_index: Optional[Union[Int[Array, " "] | int | np.integer]],
+) -> tuple[int, list[SwitchableAsset]]:
+    """Get the assets whose removal models a busbar outage for the current topology."""
+    busbar_index = get_busbar_index(station, busbar_id)
+    connected_assets_station = station
+    connected_assets_busbar_index = busbar_index
+
+    if branch_action_combi_index == 0 and network.asset_topology is not None:
+        try:
+            physical_station = find_station_by_id(network.asset_topology.stations, station.grid_model_id)
+            connected_assets_busbar_index = get_busbar_index(physical_station, busbar_id)
+            connected_assets_station = physical_station
+        except ValueError:
+            connected_assets_station = station
+            connected_assets_busbar_index = busbar_index
+
+    connected_assets = get_connected_assets(connected_assets_station, connected_assets_busbar_index)
+    if branch_action_combi_index != 0 or connected_assets_station is station:
+        return busbar_index, connected_assets
+
+    connected_assets = []
+    connected_asset_ids = set()
+    connected_busbar_indices = _get_connected_busbar_indices_for_outage(
+        connected_assets_station, connected_assets_busbar_index
+    )
+    for connected_busbar_index in connected_busbar_indices:
+        if connected_busbar_index != connected_assets_busbar_index and not _should_propagate_connected_busbar(
+            connected_assets_station, connected_busbar_index
+        ):
+            continue
+        for asset in get_connected_assets(connected_assets_station, connected_busbar_index):
+            if asset.grid_model_id in connected_asset_ids:
+                continue
+            connected_assets.append(asset)
+            connected_asset_ids.add(asset.grid_model_id)
+    return busbar_index, connected_assets
+
+
+def _get_busbar_outage_node_index(
+    station: Station,
+    busbar_index: int,
+    network: NetworkData,
+    branch_action_combi_index: Optional[Union[Int[Array, " "] | int | np.integer]],
+) -> Union[int, np.int64]:
+    """Resolve the nodal index that represents the physical busbar being outaged."""
+    node_indices_to_outage = np.nonzero(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
+    node_indices_to_outage = tuple(sorted(node_indices_to_outage))
+
+    if len(node_indices_to_outage) == 1:
+        return node_indices_to_outage[0]
+
+    rel_sub_index = np.argmax(network.relevant_nodes == network.node_ids.index(station.grid_model_id)).item()
+    assert network.busbar_a_mappings is not None, "busbar_a_mappings is not defined."
+    assert branch_action_combi_index is not None, "branch_action_combi_index is not defined."
+    return get_phy_bb_nodal_index(
+        busbar_index,
+        node_indices_to_outage,
+        network,
+        rel_sub_index,
+        branch_action_combi_index,
+    )
+
+
 def extract_busbar_outage_data(
     station: Station,
     busbar_id: str,
@@ -323,31 +474,23 @@ def extract_busbar_outage_data(
         - nodal_injection: An array of nodal injections to be outaged.
         - node_index: The index of the node to be outaged.
     """
-    busbar_index = get_busbar_index(station, busbar_id)
+    busbar_index, connected_assets = _get_connected_assets_for_busbar_outage(
+        station,
+        busbar_id,
+        network,
+        branch_action_combi_index,
+    )
 
     assert station.busbars[busbar_index].grid_model_id == busbar_id, "Busbar index is not correct."
     assert station.busbars[busbar_index].in_service, f"Busbar {busbar_id} is not in service. Cannot outage it."
 
     connected_branches_to_outage = []
-    connected_assets = get_connected_assets(station, busbar_index)
-    node_indices_to_outage = np.nonzero(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
-
-    # Determine the nodal_index of the physical busbar.
-    node_index_to_outage = None
-    node_indices_to_outage = tuple(sorted(node_indices_to_outage))
-
-    if len(node_indices_to_outage) == 1:
-        # The station is not a relevant substation. In this case, node_index_to_outage will be a list of length 1
-        node_index_to_outage = node_indices_to_outage[0]
-    else:
-        # The station is a relevant substation. In this case, the nodal_index of the physical busbar would depend on the
-        # branch action combination.
-        rel_sub_index = np.argmax(network.relevant_nodes == network.node_ids.index(station.grid_model_id)).item()
-        assert network.busbar_a_mappings is not None, "busbar_a_mappings is not defined."
-        assert branch_action_combi_index is not None, "branch_action_combi_index is not defined."
-        node_index_to_outage = get_phy_bb_nodal_index(
-            busbar_index, node_indices_to_outage, network, rel_sub_index, branch_action_combi_index
-        )
+    node_index_to_outage = _get_busbar_outage_node_index(
+        station,
+        busbar_index,
+        network,
+        branch_action_combi_index,
+    )
 
     nodal_injection_to_outage = np.zeros(network.nodal_injection.shape[0], float)
     for asset in connected_assets:
@@ -362,7 +505,7 @@ def extract_busbar_outage_data(
         nodal_injection_to_outage += delta_p
 
     return OutageData(
-        branch_indices=list(set(connected_branches_to_outage)),
+        branch_indices=_deduplicate_branch_indices_preserving_order(connected_branches_to_outage),
         nodal_injection=nodal_injection_to_outage,
         node_index=node_index_to_outage,
     )
@@ -408,7 +551,7 @@ def update_network_data_with_non_rel_bb_outages(
                 (branch_indices_to_outage, nodal_injection_to_outage, node_index_to_outage) = extract_busbar_outage_data(
                     station, bb_id, network, stub_power_map={}, branch_action_combi_index=None
                 )
-                branch_indices.append(list(set(branch_indices_to_outage)))
+                branch_indices.append(_deduplicate_branch_indices_preserving_order(branch_indices_to_outage))
                 delta_p.append(nodal_injection_to_outage)
                 nodal_indices.append(node_index_to_outage)
 
@@ -606,6 +749,8 @@ def get_all_rel_bb_outage_data(
                         branch_action_combi_index=branch_action_combi_index,
                     )
                     busbar_outages.append(outage_data)
+                else:
+                    busbar_outages.append(None)
 
             station_outages.append(busbar_outages)
 

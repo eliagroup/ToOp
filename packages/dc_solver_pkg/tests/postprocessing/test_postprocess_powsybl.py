@@ -41,10 +41,14 @@ from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
 from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
 from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
+    extract_busbar_outage_ids,
     extract_nminus1_definition,
+    get_relevant_stations,
     load_lf_params,
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
+from toop_engine_dc_solver.preprocess.preprocess import PreprocessParameters, preprocess
+from toop_engine_dc_solver.preprocess.preprocess_bb_outage import preprocess_bb_outages
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import (
     OUTPUT_FILE_NAMES,
@@ -236,6 +240,364 @@ def test_apply_disconnections_matches_loadflows(
 
         assert n_0_single.shape == n_0_ref.shape
         assert np.allclose(n_0_single, n_0_ref)
+
+
+@pytest.mark.parametrize(
+    ("busbar_id", "atol"),
+    [
+        pytest.param("BBS2_1", 1e-9, id="BBS2_1"),
+        pytest.param(
+            "BBS2_2",
+            1e-9,
+            id="BBS2_2",
+        ),
+        pytest.param("BBS2_3", 1e-9, id="BBS2_3"),
+        pytest.param("BBS3_1", 1e-9, id="BBS3_1"),
+        pytest.param("BBS3_2", 1e-9, id="BBS3_2"),
+        pytest.param("BBS4_1", 1e-9, id="BBS4_1"),
+        pytest.param("BBS4_2", 1e-9, id="BBS4_2"),
+        pytest.param(
+            "BBS5_1",
+            1e-9,
+            id="BBS5_1",
+            marks=pytest.mark.xfail(
+                reason="Non-relevant busbar outage over a bridging branch is approximated by delta-p compensation in solver, not physical branch removal."
+            ),
+        ),
+    ],
+)
+def test_busbar_outages_match_loadflows_node_breaker(
+    test_grid_folder_path: Path,
+    network_data_test_grid,
+    busbar_id: str,
+    atol: float,
+) -> None:
+    net = pypowsybl.network.load(test_grid_folder_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    network_data = network_data_test_grid
+    lf_params = load_lf_params(test_grid_folder_path / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    runner = PowsyblRunner(lf_params=lf_params)
+    runner.replace_grid(net)
+    runner.store_action_set(extract_action_set(network_data))
+    full_nminus1_definition = extract_nminus1_definition(network_data)
+
+    static_information = convert_to_jax(
+        network_data,
+        preprocess_bb_outages=True,
+    )
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            batch_size_bsdf=1,
+            enable_bb_outages=True,
+            bb_outage_as_nminus1=True,
+        ),
+        dynamic_information=replace(
+            static_information.dynamic_information,
+            bb_outage_baseline_analysis=None,
+        ),
+    )
+
+    busbar_outage_ids = extract_busbar_outage_ids(network_data)
+    assert busbar_outage_ids, "Expected exported busbar outages for the node-breaker grid"
+    assert busbar_id in busbar_outage_ids
+
+    (n_0, n_1), success = run_solver_symmetric(
+        default_topology(static_information.solver_config),
+        None,
+        None,
+        static_information.dynamic_information,
+        static_information.solver_config,
+        lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+    )
+    n_0 = np.abs(n_0[0, 0])
+    n_1 = np.abs(n_1[0, 0])
+    assert np.all(success)
+
+    contingency_order = [
+        contingency.id for contingency in full_nminus1_definition.contingencies if not contingency.is_basecase()
+    ]
+    busbar_row_index = contingency_order.index(busbar_id)
+    busbar_contingency = next(
+        contingency for contingency in full_nminus1_definition.contingencies if contingency.id == busbar_id
+    )
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=full_nminus1_definition.monitored_elements,
+        contingencies=[full_nminus1_definition.contingencies[0], busbar_contingency],
+    )
+    runner.store_nminus1_definition(nminus1_definition)
+
+    ref_result = runner.run_dc_loadflow([], [])
+    n_0_ref, n_1_ref, success_ref = extract_solver_matrices_polars(ref_result, nminus1_definition, 0)
+    n_0_ref = np.abs(n_0_ref)
+    n_1_ref = np.abs(n_1_ref)
+
+    assert n_0.shape == n_0_ref.shape
+    assert np.allclose(n_0, n_0_ref)
+    assert success_ref.shape == (1,)
+    assert success_ref[0]
+
+    n_1_busbar = n_1[busbar_row_index]
+    n_1_ref_busbar = n_1_ref[0]
+
+    assert n_1_busbar.shape == n_1_ref_busbar.shape
+    assert np.allclose(n_1_busbar, n_1_ref_busbar, atol=atol, rtol=0.0)
+
+
+def test_busbar_outages_execute_complex_grid(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
+) -> None:
+    data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path
+    lf_params = load_lf_params(data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    backend = PowsyblBackend(DirFileSystem(str(data_folder)), lf_params=lf_params)
+    network_data = preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=True))
+
+    busbar_outage_ids = extract_busbar_outage_ids(network_data)
+    assert busbar_outage_ids
+
+    selected_busbar_ids = [
+        busbar.grid_model_id
+        for station in get_relevant_stations(network_data)
+        for busbar in station.busbars
+        if busbar.grid_model_id in busbar_outage_ids
+    ]
+    assert selected_busbar_ids
+
+    static_information = convert_to_jax(
+        network_data,
+        preprocess_bb_outages=True,
+    )
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            batch_size_bsdf=1,
+            enable_bb_outages=True,
+            bb_outage_as_nminus1=True,
+        ),
+        dynamic_information=replace(
+            static_information.dynamic_information,
+            bb_outage_baseline_analysis=None,
+        ),
+    )
+
+    (n_0, n_1), success = run_solver_symmetric(
+        default_topology(static_information.solver_config),
+        None,
+        None,
+        static_information.dynamic_information,
+        static_information.solver_config,
+        lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+    )
+    n_0 = np.abs(n_0[0, 0])
+    n_1 = np.abs(n_1[0, 0])
+    assert np.all(success)
+    assert np.isfinite(n_0).all()
+
+    full_nminus1_definition = extract_nminus1_definition(network_data)
+    contingency_order = [
+        contingency.id for contingency in full_nminus1_definition.contingencies if not contingency.is_basecase()
+    ]
+    selected_row_indices = [contingency_order.index(busbar_id) for busbar_id in selected_busbar_ids]
+    assert np.isfinite(n_1[selected_row_indices]).all()
+
+    runner = PowsyblRunner(lf_params=lf_params)
+    runner.replace_grid(pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
+    runner.store_action_set(extract_action_set(network_data))
+    selected_contingencies = [
+        next(contingency for contingency in full_nminus1_definition.contingencies if contingency.id == busbar_id)
+        for busbar_id in selected_busbar_ids
+    ]
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=full_nminus1_definition.monitored_elements,
+        contingencies=[full_nminus1_definition.contingencies[0], *selected_contingencies],
+    )
+    runner.store_nminus1_definition(nminus1_definition)
+
+    ref_result = runner.run_dc_loadflow([], [])
+    n_0_ref, n_1_ref, success_ref = extract_solver_matrices_polars(ref_result, nminus1_definition, 0)
+    n_0_ref = np.abs(n_0_ref)
+    n_1_ref = np.abs(n_1_ref)
+
+    assert np.isfinite(n_0_ref).all()
+    assert np.isfinite(n_1_ref).all()
+    assert success_ref.shape == (len(selected_busbar_ids),)
+    assert np.all(success_ref)
+
+
+def test_busbar_outages_execute_busbar_outage_edge_case_grid(
+    create_busbar_outage_edge_case_grid_data_path: Path,
+) -> None:
+    data_folder = create_busbar_outage_edge_case_grid_data_path
+    lf_params = load_lf_params(data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    backend = PowsyblBackend(DirFileSystem(str(data_folder)), lf_params=lf_params)
+    network_data = preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=True))
+
+    busbar_outage_ids = extract_busbar_outage_ids(network_data)
+    assert busbar_outage_ids
+
+    selected_busbar_ids = [
+        busbar.grid_model_id
+        for station in get_relevant_stations(network_data)
+        for busbar in station.busbars
+        if busbar.grid_model_id in busbar_outage_ids
+    ]
+    assert selected_busbar_ids
+    print(selected_busbar_ids)
+
+    static_information = convert_to_jax(
+        network_data,
+        preprocess_bb_outages=True,
+    )
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            batch_size_bsdf=1,
+            enable_bb_outages=True,
+            bb_outage_as_nminus1=True,
+        ),
+        dynamic_information=replace(
+            static_information.dynamic_information,
+            bb_outage_baseline_analysis=None,
+        ),
+    )
+
+    (n_0, n_1), success = run_solver_symmetric(
+        default_topology(static_information.solver_config),
+        None,
+        None,
+        static_information.dynamic_information,
+        static_information.solver_config,
+        lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+    )
+    n_0 = np.abs(n_0[0, 0])
+    n_1 = np.abs(n_1[0, 0])
+    assert np.all(success)
+    assert np.isfinite(n_0).all()
+
+    full_nminus1_definition = extract_nminus1_definition(network_data)
+    contingency_order = [
+        contingency.id for contingency in full_nminus1_definition.contingencies if not contingency.is_basecase()
+    ]
+    selected_row_indices = [contingency_order.index(busbar_id) for busbar_id in selected_busbar_ids]
+    assert np.isfinite(n_1[selected_row_indices]).all()
+
+    runner = PowsyblRunner(lf_params=lf_params)
+    runner.replace_grid(pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
+    runner.store_action_set(extract_action_set(network_data))
+    selected_contingencies = [
+        next(contingency for contingency in full_nminus1_definition.contingencies if contingency.id == busbar_id)
+        for busbar_id in selected_busbar_ids
+    ]
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=full_nminus1_definition.monitored_elements,
+        contingencies=[full_nminus1_definition.contingencies[0], *selected_contingencies],
+    )
+    runner.store_nminus1_definition(nminus1_definition)
+
+    ref_result = runner.run_dc_loadflow([], [])
+    n_0_ref, n_1_ref, success_ref = extract_solver_matrices_polars(ref_result, nminus1_definition, 0)
+    n_0_ref = np.abs(n_0_ref)
+    n_1_ref = np.abs(n_1_ref)
+
+    assert np.isfinite(n_0_ref).all()
+    assert np.isfinite(n_1_ref).all()
+    assert success_ref.shape == (len(selected_busbar_ids),)
+    assert np.all(success_ref)
+
+
+def test_busbar_outages_match_loadflows_with_missing_asset_types(
+    create_busbar_outage_edge_case_grid_data_path: Path,
+) -> None:
+    data_folder = create_busbar_outage_edge_case_grid_data_path
+    lf_params = load_lf_params(data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    backend = PowsyblBackend(DirFileSystem(str(data_folder)), lf_params=lf_params)
+    network_data = preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=True))
+
+    selected_busbar_id = "VL13_untyped_branch_mix_1_1"
+    untyped_branch_ids = {
+        "L1300_untyped_branch_exit",
+        "T2W1305_untyped_branch_mv_1",
+        "T2W1306_untyped_branch_mv_2",
+    }
+
+    for station in network_data.asset_topology.stations:
+        for asset in station.assets:
+            if asset.grid_model_id in untyped_branch_ids:
+                asset.type = None
+    for station in network_data.simplified_asset_topology.stations:
+        for asset in station.assets:
+            if asset.grid_model_id in untyped_branch_ids:
+                asset.type = None
+    for station_combinations in network_data.realised_stations:
+        for station in station_combinations:
+            for asset in station.assets:
+                if asset.grid_model_id in untyped_branch_ids:
+                    asset.type = None
+
+    network_data = preprocess_bb_outages(network_data)
+
+    full_nminus1_definition = extract_nminus1_definition(network_data)
+    busbar_outage_ids = extract_busbar_outage_ids(network_data)
+    assert selected_busbar_id in busbar_outage_ids
+
+    static_information = convert_to_jax(
+        network_data,
+        preprocess_bb_outages=True,
+    )
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            batch_size_bsdf=1,
+            enable_bb_outages=True,
+            bb_outage_as_nminus1=True,
+        ),
+        dynamic_information=replace(
+            static_information.dynamic_information,
+            bb_outage_baseline_analysis=None,
+        ),
+    )
+
+    (n_0, n_1), success = run_solver_symmetric(
+        default_topology(static_information.solver_config),
+        None,
+        None,
+        static_information.dynamic_information,
+        static_information.solver_config,
+        lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+    )
+    n_0 = np.abs(n_0[0, 0])
+    n_1 = np.abs(n_1[0, 0])
+    assert np.all(success)
+
+    contingency_order = [
+        contingency.id for contingency in full_nminus1_definition.contingencies if not contingency.is_basecase()
+    ]
+    busbar_row_index = contingency_order.index(selected_busbar_id)
+    busbar_contingency = next(
+        contingency for contingency in full_nminus1_definition.contingencies if contingency.id == selected_busbar_id
+    )
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=full_nminus1_definition.monitored_elements,
+        contingencies=[full_nminus1_definition.contingencies[0], busbar_contingency],
+    )
+
+    runner = PowsyblRunner(lf_params=lf_params)
+    runner.replace_grid(pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
+    runner.store_action_set(extract_action_set(network_data))
+    runner.store_nminus1_definition(nminus1_definition)
+
+    ref_result = runner.run_dc_loadflow([], [])
+    n_0_ref, n_1_ref, success_ref = extract_solver_matrices_polars(ref_result, nminus1_definition, 0)
+    n_0_ref = np.abs(n_0_ref)
+    n_1_ref = np.abs(n_1_ref)
+
+    assert np.allclose(n_0, n_0_ref)
+    assert success_ref.shape == (1,)
+    assert success_ref[0]
+    assert np.allclose(n_1[busbar_row_index], n_1_ref[0], atol=1e-9, rtol=0.0)
 
 
 @pytest.mark.parametrize(

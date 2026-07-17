@@ -401,9 +401,24 @@ def perform_rel_bb_outage_single_topo(
         "Mismatch in branch action set and branch outage set."
     )
 
+    selected_branch_actions = branch_action_set.at[action_indices].get(mode="fill", fill_value=False)
     branch_outages, nodal_indices_outages, deltap_outages = remove_articulation_nodes_from_bb_outage(
         action_set.rel_bb_outage_data, action_indices
     )
+
+    # In the unsplit topology, the station-level articulation filter is too aggressive for
+    # physical busbar outages like BBS2_2 on the node-breaker test grid. The outage solver
+    # already retries with a preserved skeleton branch when a direct outage would split the
+    # station, so keep the original outage data for no-op branch actions.
+    unsplit_action_mask = jnp.logical_not(jnp.any(selected_branch_actions, axis=1))
+    original_branch_outages = action_set.rel_bb_outage_data.branch_outage_set.at[action_indices].get()
+    original_nodal_indices = action_set.rel_bb_outage_data.nodal_indices.at[action_indices].get()
+    original_deltap = action_set.rel_bb_outage_data.deltap_set.at[action_indices].get()
+
+    branch_outages = jnp.where(unsplit_action_mask[:, None, None], original_branch_outages, branch_outages)
+    nodal_indices_outages = jnp.where(unsplit_action_mask[:, None], original_nodal_indices, nodal_indices_outages)
+    deltap_outages = jnp.where(unsplit_action_mask[:, None, None], original_deltap, deltap_outages)
+
     # Note: branch_indices with value -1 or int_max are automatically ignored in the  build_modf_matrix  function
     branch_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub max_branches_per_sub"] = jnp.concatenate(
         branch_outages, axis=0

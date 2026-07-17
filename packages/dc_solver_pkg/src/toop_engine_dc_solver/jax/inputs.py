@@ -605,6 +605,14 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 "action_set_rel_bb_outage_data_critical_node_mask",
                 data=dynamic_information.action_set.rel_bb_outage_data.articulation_node_mask,
             )
+            file.create_dataset(
+                "action_set_rel_bb_outage_data_valid_busbar_mask",
+                data=dynamic_information.action_set.rel_bb_outage_data.valid_busbar_mask,
+            )
+            file.create_dataset(
+                "action_set_rel_bb_outage_data_valid_busbar_flat_indices",
+                data=dynamic_information.action_set.rel_bb_outage_data.valid_busbar_flat_indices,
+            )
         if dynamic_information.bb_outage_baseline_analysis is not None:
             file.create_dataset(
                 "bb_outage_baseline_analysis_overload",
@@ -742,6 +750,10 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                             nodal_indices=jnp.array(file["action_set_rel_bb_outage_data_nodal_indices"][:]),
                             deltap_set=jnp.array(file["action_set_rel_bb_outage_data_deltap_set"][:]),
                             articulation_node_mask=jnp.array(file["action_set_rel_bb_outage_data_critical_node_mask"][:]),
+                            valid_busbar_mask=jnp.array(file["action_set_rel_bb_outage_data_valid_busbar_mask"][:]),
+                            valid_busbar_flat_indices=jnp.array(
+                                file["action_set_rel_bb_outage_data_valid_busbar_flat_indices"][:]
+                            ),
                         )
                         if rel_bb_outage_data_present
                         else None,

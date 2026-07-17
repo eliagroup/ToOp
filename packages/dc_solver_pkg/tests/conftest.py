@@ -39,6 +39,7 @@ from toop_engine_dc_solver.example_classes import (
     get_basic_node_breaker_topology,
 )
 from toop_engine_dc_solver.example_grids import (
+    busbar_outage_always_articulation_data_folder,
     case14_pandapower,
     case30_with_psts_pandapower,
     case57_data_powsybl,
@@ -1253,6 +1254,14 @@ def _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_path(tmp_path
     return tmp_path
 
 
+@pytest.fixture(scope="session")
+def _create_busbar_outage_always_articulation_data_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp_path = tmp_path_factory.mktemp("busbar_outage_always_articulation")
+    network_data = busbar_outage_always_articulation_data_folder(tmp_path)
+    save_network_data(tmp_path / "network_data.pkl", network_data)
+    return tmp_path
+
+
 @pytest.fixture(scope="function")
 def complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder(
     _create_complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_path: Path, tmp_path_factory: pytest.TempPathFactory
@@ -1284,6 +1293,20 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path(
         dirs_exist_ok=True,
     )
 
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def create_busbar_outage_always_articulation_data_path(
+    _create_busbar_outage_always_articulation_data_path: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    powsybl_data_folder = _create_busbar_outage_always_articulation_data_path
+    tmp_path = tmp_path_factory.mktemp("busbar_outage_always_articulation", numbered=True)
+    shutil.copytree(
+        powsybl_data_folder,
+        tmp_path,
+        dirs_exist_ok=True,
+    )
     return tmp_path
 
 

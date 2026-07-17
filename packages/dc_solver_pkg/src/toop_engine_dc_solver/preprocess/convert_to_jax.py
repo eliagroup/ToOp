@@ -436,7 +436,7 @@ def convert_non_rel_bb_outage(
 
 
 # TODO: refactor due to C901
-def convert_rel_bb_outage_data(  # noqa: C901
+def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     network_data: NetworkData,
 ) -> RelBBOutageData:
     """Convert busbar rel_bb_outage data to a structured format suitable for JAX operations.
@@ -478,6 +478,7 @@ def convert_rel_bb_outage_data(  # noqa: C901
     padded_delta_p_set = np.zeros((n_actions, n_max_bb_to_outage_per_sub, n_timesteps), dtype=float)
     padded_nodal_index_set = max_val * np.ones((n_actions, n_max_bb_to_outage_per_sub), dtype=int)
     padded_articulation_node_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
+    padded_valid_busbar_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
 
     def fill_padded_array(
         padded_array: np.ndarray,
@@ -630,18 +631,44 @@ def convert_rel_bb_outage_data(  # noqa: C901
         padded_array[action_idx, articulation_bbs] = True
         return padded_array
 
+    def fill_valid_busbar_mask(
+        padded_array: Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"],
+        action_idx: int,
+        branch_indices_all_bbs: list[list[int]],
+    ) -> Bool[np.ndarray, "n_actions n_max_bb_to_outage_per_sub"]:
+        """Mark physical busbar slots that are present before padding."""
+        padded_array[action_idx, : len(branch_indices_all_bbs)] = True
+        return padded_array
+
     padded_branch_outage_set = fill_padded_array(padded_branch_outage_set, rel_bb_outage_br_indices, fill_branch_outage_set)
     padded_delta_p_set = fill_padded_array(padded_delta_p_set, rel_bb_outage_deltap, fill_delta_p_set)
     padded_nodal_index_set = fill_padded_array(padded_nodal_index_set, rel_bb_outage_nodal_indices, fill_nodal_index_set)
-    padded_articulation_node_mask = fill_padded_array(
-        padded_articulation_node_mask, network_data.rel_bb_articulation_nodes, fill_articulation_node_mask
+    padded_articulation_node_mask = np.array(
+        fill_padded_array(padded_articulation_node_mask, network_data.rel_bb_articulation_nodes, fill_articulation_node_mask)
+    )
+    padded_valid_busbar_mask = np.array(
+        fill_padded_array(padded_valid_busbar_mask, rel_bb_outage_br_indices, fill_valid_busbar_mask)
     )
 
+    action_start_indices = [
+        0 if sub_idx == 0 else cum_sum_actions_per_sub[sub_idx - 1] for sub_idx in range(len(actions_per_sub))
+    ]
+    for sub_idx, n_actions_sub in enumerate(actions_per_sub):
+        start_idx = action_start_indices[sub_idx]
+        end_idx = start_idx + n_actions_sub
+        always_articulation_mask = np.all(padded_articulation_node_mask[start_idx:end_idx], axis=0)
+        padded_valid_busbar_mask[start_idx:end_idx, always_articulation_mask] = False
+
+    representative_action_indices = np.array(action_start_indices, dtype=int)
+    valid_busbar_flat_indices = np.flatnonzero(padded_valid_busbar_mask[representative_action_indices].reshape(-1))
+
     return RelBBOutageData(
-        branch_outage_set=padded_branch_outage_set,
-        deltap_set=padded_delta_p_set,
-        nodal_indices=padded_nodal_index_set,
-        articulation_node_mask=padded_articulation_node_mask,
+        branch_outage_set=jnp.array(padded_branch_outage_set),
+        deltap_set=jnp.array(padded_delta_p_set),
+        nodal_indices=jnp.array(padded_nodal_index_set),
+        articulation_node_mask=jnp.array(padded_articulation_node_mask),
+        valid_busbar_mask=jnp.array(padded_valid_busbar_mask),
+        valid_busbar_flat_indices=jnp.array(valid_busbar_flat_indices, dtype=int),
     )
 
 

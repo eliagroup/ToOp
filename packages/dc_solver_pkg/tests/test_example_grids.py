@@ -550,6 +550,18 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo(
     assert len(network_data.branch_action_set)
 
 
+def test_create_busbar_outage_always_articulation_data_path(
+    _create_busbar_outage_always_articulation_data_path: Path,
+) -> None:
+    tmp_dir = _create_busbar_outage_always_articulation_data_path
+    filesystem_dir = DirFileSystem(str(tmp_dir))
+    backend = PowsyblBackend(filesystem_dir)
+    assert sum(backend.get_relevant_node_mask())
+    network_data = preprocess(backend)
+    assert sum(network_data.relevant_node_mask) > 0
+    assert len(network_data.branch_action_set)
+
+
 def test_create_ucte_data_folder(create_ucte_data_path) -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir = create_ucte_data_path

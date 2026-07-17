@@ -441,6 +441,11 @@ def perform_rel_bb_outage_single_topo(
     nodal_indices_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub "] = jnp.concatenate(
         nodal_indices_outages, axis=0
     )
+    valid_busbar_flat_indices = action_set.rel_bb_outage_data.valid_busbar_flat_indices
+
+    branch_outages = branch_outages.at[valid_busbar_flat_indices].get()
+    deltap_outages = deltap_outages.at[valid_busbar_flat_indices].get()
+    nodal_indices_outages = nodal_indices_outages.at[valid_busbar_flat_indices].get()
 
     lfs_list, success = perform_outage_multi_busbars(
         branch_outages,

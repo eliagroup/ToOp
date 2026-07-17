@@ -1948,6 +1948,108 @@ def create_complex_substation_layout_grid() -> Network:
     return net
 
 
+def create_busbar_outage_always_articulation_grid() -> Network:
+    """Create a node-breaker grid with one always-articulation relevant busbar.
+
+    The first station has four physical busbars with a star-shaped coupler layout centered on
+    `BBS1_2`. Outaging that busbar would split the station in every branch-action realization,
+    so preprocessing exports only three relevant busbar outages although the raw outage payload
+    still has four physical slots.
+
+    This grid is intended to regress busbar-outage case counting and ordering bugs where padded
+    or always-articulation relevant busbar slots accidentally become runtime N-1 cases.
+
+    Returns
+    -------
+    Network
+        The created Powsybl network.
+    """
+    n_buses = {1: 1, 2: 4, 3: 1, 4: 1, 5: 1}
+    net = _prepare_basic_node_breaker_network_powsybl(n_subs=5, n_vls=5, n_buses=n_buses)
+
+    lines = pd.DataFrame.from_records(
+        data=[
+            {"bus_or_busbar_section_id_1": "BBS2_1", "bus_or_busbar_section_id_2": "BBS1_1"},
+            {"bus_or_busbar_section_id_1": "BBS2_2", "bus_or_busbar_section_id_2": "BBS3_1"},
+            {"bus_or_busbar_section_id_1": "BBS2_3", "bus_or_busbar_section_id_2": "BBS4_1"},
+            {"bus_or_busbar_section_id_1": "BBS2_4", "bus_or_busbar_section_id_2": "BBS5_1"},
+            {"bus_or_busbar_section_id_1": "BBS1_1", "bus_or_busbar_section_id_2": "BBS3_1"},
+            {"bus_or_busbar_section_id_1": "BBS3_1", "bus_or_busbar_section_id_2": "BBS4_1"},
+            {"bus_or_busbar_section_id_1": "BBS4_1", "bus_or_busbar_section_id_2": "BBS5_1"},
+            {"bus_or_busbar_section_id_1": "BBS5_1", "bus_or_busbar_section_id_2": "BBS1_1"},
+        ]
+    )
+    lines["r"] = 0.1
+    lines["x"] = 10.0
+    lines["g1"] = 0.0
+    lines["b1"] = 0.0
+    lines["g2"] = 0.0
+    lines["b2"] = 0.0
+    lines["position_order_1"] = 1
+    lines["position_order_2"] = 1
+    lines["id"] = [f"L{i + 1}" for i in range(len(lines))]
+    lines = lines.set_index("id")
+    pypowsybl.network.create_line_bays(net, lines)
+
+    pypowsybl.network.create_coupling_device(
+        net,
+        bus_or_busbar_section_id_1=["BBS2_1", "BBS2_2", "BBS2_2"],
+        bus_or_busbar_section_id_2=["BBS2_2", "BBS2_3", "BBS2_4"],
+    )
+
+    pypowsybl.network.create_generator_bay(
+        net,
+        id="generator_outer",
+        max_p=1000.0,
+        min_p=0.0,
+        voltage_regulator_on=True,
+        target_p=220.0,
+        target_q=20.0,
+        target_v=225.0,
+        bus_or_busbar_section_id="BBS1_1",
+        position_order=1,
+    )
+    pypowsybl.network.create_generator_bay(
+        net,
+        id="generator_ring",
+        max_p=1000.0,
+        min_p=0.0,
+        voltage_regulator_on=True,
+        target_p=160.0,
+        target_q=15.0,
+        target_v=225.0,
+        bus_or_busbar_section_id="BBS4_1",
+        position_order=1,
+    )
+    pypowsybl.network.create_load_bay(
+        net,
+        id="load_ring_1",
+        bus_or_busbar_section_id="BBS3_1",
+        p0=180.0,
+        q0=25.0,
+        position_order=1,
+        direction="TOP",
+    )
+    pypowsybl.network.create_load_bay(
+        net,
+        id="load_ring_2",
+        bus_or_busbar_section_id="BBS5_1",
+        p0=170.0,
+        q0=20.0,
+        position_order=1,
+        direction="TOP",
+    )
+
+    pypowsybl.network.Network.create_extensions(
+        net,
+        extension_name="slackTerminal",
+        voltage_level_id="VL1",
+        bus_id="VL1_0",
+    )
+
+    return net
+
+
 def three_node_pst_example() -> Network:
     """Creates a 3 node example grid with 2 PSTs in it
 

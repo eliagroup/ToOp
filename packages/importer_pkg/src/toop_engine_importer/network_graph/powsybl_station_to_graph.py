@@ -36,7 +36,6 @@ from toop_engine_importer.network_graph.graph_to_asset_topo import (
     get_coupler_df,
     get_station_connection_tables,
     get_switchable_asset,
-    remove_double_connections,
 )
 from toop_engine_importer.network_graph.network_graph import (
     generate_graph,
@@ -94,12 +93,14 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
         ]
     )
     nbt = net.get_node_breaker_topology(substation_info.voltage_level_id)
+    bbt = net.get_bus_breaker_topology(substation_info.voltage_level_id)
 
     switches_df = get_switches(switches_df=nbt.switches)
-    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service", "bus_id"])
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
     nodes_df = get_nodes(
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
+        bus_breaker_elements_df=bbt.elements,
         switches_df=switches_df,
         substation_info=substation_info,
     )
@@ -177,6 +178,7 @@ def get_switches(switches_df: pd.DataFrame) -> pat.DataFrame[SwitchSchema]:
 def get_nodes(
     busbar_sections_names_df: pd.DataFrame,
     nodes_df: pd.DataFrame,
+    bus_breaker_elements_df: pd.DataFrame,
     switches_df: pd.DataFrame,
     substation_info: SubstationInformation,
 ) -> pat.DataFrame[NodeSchema]:
@@ -192,6 +194,8 @@ def get_nodes(
         from get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
     nodes_df : pd.DataFrame
         The nodes DataFrame from the net.get_node_breaker_topology(voltage_level_id).nodes
+    bus_breaker_elements_df : pd.DataFrame
+        The elements DataFrame from the bus-breaker topology of the same voltage level.
     switches_df : pd.DataFrame
         The switches DataFrame from the node NodeBreakerTopology.
     substation_info : SubstationInformation
@@ -203,6 +207,10 @@ def get_nodes(
         The nodes as a DataFrame, with renamed columns for the NetworkGraph.
     """
     nodes_df = nodes_df.merge(busbar_sections_names_df, left_on="connectable_id", right_index=True, how="left")
+    busbar_bus_ids = bus_breaker_elements_df.loc[bus_breaker_elements_df["type"] == "BUSBAR_SECTION", ["bus_id"]].rename(
+        columns={"bus_id": "bus_breaker_bus_id"}
+    )
+    nodes_df = nodes_df.merge(busbar_bus_ids, left_on="connectable_id", right_index=True, how="left")
     nodes_df["grid_model_id"] = ""
     nodes_df["node_type"] = "node"
     nodes_df["substation_id"] = substation_info.name
@@ -215,6 +223,7 @@ def get_nodes(
     cond_busbar = nodes_df["connectable_type"] == "BUSBAR_SECTION"
     nodes_df.loc[cond_busbar, "node_type"] = "busbar"
     nodes_df.loc[cond_busbar, "grid_model_id"] = nodes_df.loc[cond_busbar, "connectable_id"]
+    nodes_df.loc[cond_busbar, "bus_id"] = nodes_df.loc[cond_busbar, "bus_breaker_bus_id"]
     cond_helper_node = (nodes_df["connectable_type"] == "") & (
         ~nodes_df.index.isin(switches_df["from_node"].to_list() + switches_df["to_node"].to_list())
     )
@@ -224,6 +233,7 @@ def get_nodes(
     nodes_df.loc[cond, "foreign_id"] = nodes_df.loc[cond, "grid_model_id"]
     nodes_df["helper_node"] = nodes_df["helper_node"].astype("boolean").fillna(False).astype(bool)
     nodes_df["in_service"] = nodes_df["in_service"].astype("boolean").fillna(True).astype(bool)
+    nodes_df.drop(columns=["bus_breaker_bus_id"], inplace=True)
 
     return NodeSchema.validate(nodes_df)
 
@@ -338,8 +348,6 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     asset_connectivity, asset_switching_table, busbar_connectivity, busbar_switching_table = get_station_connection_tables(
         busbar_connection_info, busbar_df=busbar_df, switchable_assets_df=switchable_assets_df
     )
-    # remove connections that are at two busbars simultaneously
-    asset_switching_table = remove_double_connections(asset_switching_table, substation_id=substation_id)
     busbars = get_list_of_busbars_from_df(busbar_df)
     couplers = get_list_of_coupler_from_df(coupler_df)
     assets = get_list_of_switchable_assets_from_df(station_branches=switchable_assets_df, asset_bay_dict=asset_bay_dict)

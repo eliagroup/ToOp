@@ -117,13 +117,15 @@ def test_validate_loadflow_results_unsplit_complex_grid_with_busbar_outages(
     create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
 ) -> None:
     data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path
-    excluded_busbar_ids = {"VL_3W_HV_1_1", "VL_MV_1_1"}
+    excluded_busbar_ids = {}
     # this list makes sure some edge cases are for sure in the outage list
     minimal_expected_busbar_ids_list = {
         "VL_2W_MV_HV_HV_1_1",
         "VL_2W_MV_HV_HV_1_2",
         "VL_2W_MV_HV_HV_2_1",
         "VL_2W_MV_HV_HV_2_2",
+        "VL_3W_HV_1_1",
+        "VL_MV_1_1",
     }
 
     network_data, static_information, runner, nminus1_definition = _load_validation_inputs(data_folder)

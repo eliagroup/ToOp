@@ -16,7 +16,6 @@ from enum import Enum
 
 import pandapower as pp
 import pandas as pd
-import pandera as pa
 import pandera.typing as pat
 import polars as pl
 import ray
@@ -537,9 +536,7 @@ def get_element_results_df(
         # expensive step here, so it is paid once, on the filtered frames, at the end.
         full_branch_results_pl = get_branch_results_polars(net, contingency, timestep, result_constants)
         node_results_pl = get_node_results_polars(net, contingency, timestep, result_constants)
-        va_diff_results = get_va_diff_results(
-            net, timestep, monitored_elements, contingency, result_constants.graph_cache
-        )
+        va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency, result_constants.graph_cache)
         # IMPORTANT:
         # Do NOT filter branch/node results before this step.
         # Switch result calculation depends on connectivity and may require data
@@ -566,9 +563,7 @@ def get_element_results_df(
         branch_results_df = to_pandas_results(
             filter_to_monitored(full_branch_results_pl, monitored_element_ids), BRANCH_RESULT_INDEX
         )
-        node_results_df = to_pandas_results(
-            filter_to_monitored(node_results_pl, monitored_element_ids), NODE_RESULT_INDEX
-        )
+        node_results_df = to_pandas_results(filter_to_monitored(node_results_pl, monitored_element_ids), NODE_RESULT_INDEX)
         full_branch_results_df = to_pandas_results(full_branch_results_pl, BRANCH_RESULT_INDEX)
 
     else:

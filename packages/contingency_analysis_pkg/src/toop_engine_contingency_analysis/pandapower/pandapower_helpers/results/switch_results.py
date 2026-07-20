@@ -534,14 +534,8 @@ def _orient_switch_results_to_relay_side(net: pp.pandapowerNet, switch_results: 
     element_side_switch_ids = relay_sides.index[relay_sides.eq("element")].to_list()
 
     return switch_results.with_columns(
-        pl.when(pl.col("switch_id").is_in(element_side_switch_ids))
-        .then(-pl.col("p"))
-        .otherwise(pl.col("p"))
-        .alias("p"),
-        pl.when(pl.col("switch_id").is_in(element_side_switch_ids))
-        .then(-pl.col("q"))
-        .otherwise(pl.col("q"))
-        .alias("q"),
+        pl.when(pl.col("switch_id").is_in(element_side_switch_ids)).then(-pl.col("p")).otherwise(pl.col("p")).alias("p"),
+        pl.when(pl.col("switch_id").is_in(element_side_switch_ids)).then(-pl.col("q")).otherwise(pl.col("q")).alias("q"),
     )
 
 

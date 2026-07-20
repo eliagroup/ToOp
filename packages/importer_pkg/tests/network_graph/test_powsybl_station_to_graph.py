@@ -290,20 +290,20 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     # make sure the int ids match for the following tests
     expected_busbars = [
         Busbar(
-            grid_model_id="VL1_1_1", type="busbar", name="VL1_1_1", int_id=0, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
+            grid_model_id="VL1_1_1", type="busbar", name="VL1_1_1", int_id=0, in_service=False, bus_branch_bus_id="VL1_0"
+        ),
         Busbar(
-            grid_model_id="VL1_1_2", type="busbar", name="VL1_1_2", int_id=1, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
+            grid_model_id="VL1_1_2", type="busbar", name="VL1_1_2", int_id=1, in_service=False, bus_branch_bus_id="VL1_0"
+        ),
         Busbar(
-            grid_model_id="VL1_1_3", type="busbar", name="VL1_1_3", int_id=2, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
+            grid_model_id="VL1_1_3", type="busbar", name="VL1_1_3", int_id=2, in_service=False, bus_branch_bus_id="VL1_6"
+        ),
         Busbar(grid_model_id="VL1_2_1", type="busbar", name="VL1_2_1", int_id=3, in_service=True, bus_branch_bus_id="VL1_1"),
         Busbar(grid_model_id="VL1_2_2", type="busbar", name="VL1_2_2", int_id=4, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_2_3", type="busbar", name="VL1_2_3", int_id=5, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_1", type="busbar", name="VL1_3_1", int_id=6, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_2", type="busbar", name="VL1_3_2", int_id=7, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_3", type="busbar", name="VL1_3_3", int_id=8, in_service=True, bus_branch_bus_id="VL1_1"),
+        Busbar(grid_model_id="VL1_2_3", type="busbar", name="VL1_2_3", int_id=5, in_service=True, bus_branch_bus_id="VL1_7"),
+        Busbar(grid_model_id="VL1_3_1", type="busbar", name="VL1_3_1", int_id=6, in_service=True, bus_branch_bus_id="VL1_2"),
+        Busbar(grid_model_id="VL1_3_2", type="busbar", name="VL1_3_2", int_id=7, in_service=True, bus_branch_bus_id="VL1_2"),
+        Busbar(grid_model_id="VL1_3_3", type="busbar", name="VL1_3_3", int_id=8, in_service=True, bus_branch_bus_id="VL1_8"),
     ]
     assert res.busbars == expected_busbars
     assert isinstance(res, Station)

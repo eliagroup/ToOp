@@ -380,7 +380,7 @@ def test_extract_busbar_outage_data_extends_over_double_connections(network_data
     assert zero_flow_branch_indices == []
 
 
-def test_extract_busbar_outage_data_does_not_propagate_over_disconnector(
+def test_extract_busbar_outage_data_propagates_over_disconnector(
     network_data_preprocessed: NetworkData,
 ) -> None:
     network_data_dummy = replace(
@@ -431,8 +431,8 @@ def test_extract_busbar_outage_data_does_not_propagate_over_disconnector(
         extract_busbar_outage_data(station, "busbar_0", network_data_dummy, {})
     )
 
-    assert branch_indices_to_outage == [0]
-    assert np.allclose(nodal_injection_to_outage, np.array([0.0]))
+    assert branch_indices_to_outage == [0, 1]
+    assert np.allclose(nodal_injection_to_outage, np.array([-80.0]))
     assert zero_flow_branch_indices == []
 
 

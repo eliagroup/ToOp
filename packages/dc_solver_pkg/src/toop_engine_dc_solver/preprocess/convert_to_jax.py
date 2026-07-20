@@ -422,16 +422,22 @@ def convert_non_rel_bb_outage(
     """
     outage_deltap = jnp.array(network_data.non_rel_bb_outage_deltap)
     outage_branches = network_data.non_rel_bb_outage_br_indices
+    zero_flow_branches = network_data.non_rel_bb_outage_zero_flow_br_indices or [[] for _ in outage_branches]
     max_branches_per_sub = max(len(branches) for branches in network_data.branches_at_nodes)
     padded_outage_branches = np.full((outage_deltap.shape[0], max_branches_per_sub), int_max(), dtype=int)
+    max_zero_flow_branches = max((len(branches) for branches in zero_flow_branches), default=0)
+    padded_zero_flow_branches = np.full((outage_deltap.shape[0], max_zero_flow_branches), int_max(), dtype=int)
 
     for i, branches in enumerate(outage_branches):
         padded_outage_branches[i, : len(branches)] = branches
+    for i, branches in enumerate(zero_flow_branches):
+        padded_zero_flow_branches[i, : len(branches)] = branches
 
     return NonRelBBOutageData(
         branch_outages=jnp.array(padded_outage_branches),
         deltap=outage_deltap,
         nodal_indices=jnp.array(network_data.non_rel_bb_outage_nodal_indices),
+        zero_flow_branches=jnp.array(padded_zero_flow_branches),
     )
 
 
@@ -457,6 +463,9 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     rel_bb_outage_br_indices = network_data.rel_bb_outage_br_indices
     rel_bb_outage_deltap = network_data.rel_bb_outage_deltap
     rel_bb_outage_nodal_indices = network_data.rel_bb_outage_nodal_indices
+    rel_bb_outage_zero_flow_br_indices = network_data.rel_bb_outage_zero_flow_br_indices or [
+        [[[] for _ in combi] for combi in sub] for sub in rel_bb_outage_br_indices
+    ]
     n_timesteps = network_data.nodal_injection.shape[0]
 
     # Determine dimensions for padding of branch_outage_set
@@ -471,6 +480,10 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     )
     n_max_bb_to_outage_per_sub = max(n_max_bb_slots_from_outages, n_max_bb_slots_from_articulation)
     max_branches_per_sub = max(len(branches) for branches in network_data.branches_at_nodes)
+    max_zero_flow_branches_per_sub = max(
+        (len(branches) for sub in rel_bb_outage_zero_flow_br_indices for combi in sub for branches in combi),
+        default=0,
+    )
 
     # Initialize the padded array with a sentinel value (int_max)
     max_val = int_max()
@@ -479,6 +492,9 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     padded_nodal_index_set = max_val * np.ones((n_actions, n_max_bb_to_outage_per_sub), dtype=int)
     padded_articulation_node_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
     padded_valid_busbar_mask = np.zeros((n_actions, n_max_bb_to_outage_per_sub), dtype=bool)
+    padded_zero_flow_branch_set = max_val * np.ones(
+        (n_actions, n_max_bb_to_outage_per_sub, max_zero_flow_branches_per_sub), dtype=int
+    )
 
     def fill_padded_array(
         padded_array: np.ndarray,
@@ -640,6 +656,15 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
         padded_array[action_idx, : len(branch_indices_all_bbs)] = True
         return padded_array
 
+    def fill_zero_flow_branch_set(
+        padded_array: Int[np.ndarray, " n_actions n_max_bb_to_outage_per_sub max_zero_flow_branches_per_sub"],
+        action_idx: int,
+        zero_flow_branch_indices_all_bbs: list[list[int]],
+    ) -> Int[np.ndarray, " n_actions n_max_bb_to_outage_per_sub max_zero_flow_branches_per_sub"]:
+        for bb_idx, branch_indices in enumerate(zero_flow_branch_indices_all_bbs):
+            padded_array[action_idx, bb_idx, : len(branch_indices)] = branch_indices
+        return padded_array
+
     padded_branch_outage_set = fill_padded_array(padded_branch_outage_set, rel_bb_outage_br_indices, fill_branch_outage_set)
     padded_delta_p_set = fill_padded_array(padded_delta_p_set, rel_bb_outage_deltap, fill_delta_p_set)
     padded_nodal_index_set = fill_padded_array(padded_nodal_index_set, rel_bb_outage_nodal_indices, fill_nodal_index_set)
@@ -648,6 +673,9 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
     )
     padded_valid_busbar_mask = np.array(
         fill_padded_array(padded_valid_busbar_mask, rel_bb_outage_br_indices, fill_valid_busbar_mask)
+    )
+    padded_zero_flow_branch_set = fill_padded_array(
+        padded_zero_flow_branch_set, rel_bb_outage_zero_flow_br_indices, fill_zero_flow_branch_set
     )
 
     action_start_indices = [
@@ -669,6 +697,7 @@ def convert_rel_bb_outage_data(  # noqa: C901, PLR0915
         articulation_node_mask=jnp.array(padded_articulation_node_mask),
         valid_busbar_mask=jnp.array(padded_valid_busbar_mask),
         valid_busbar_flat_indices=jnp.array(valid_busbar_flat_indices, dtype=int),
+        zero_flow_branch_set=jnp.array(padded_zero_flow_branch_set),
     )
 
 

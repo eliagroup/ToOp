@@ -296,6 +296,7 @@ def test_convert_rel_bb_outage_data_uses_physical_busbar_width_for_articulation_
             network_data_preprocessed,
             branch_action_set=[np.zeros((1, 1), dtype=bool)],
             rel_bb_outage_br_indices=[[[[], [], [], []]]],
+            rel_bb_outage_zero_flow_br_indices=[[[[], [], [], []]]],
             rel_bb_outage_deltap=[
                 [[np.zeros(n_timesteps), np.zeros(n_timesteps), np.zeros(n_timesteps), np.zeros(n_timesteps)]]
             ],

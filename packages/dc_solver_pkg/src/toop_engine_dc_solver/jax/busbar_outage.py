@@ -49,6 +49,7 @@ def perform_outage_single_busbar(
     to_node: Int[Array, " n_branches"],
     n_0_flows: Float[Array, " n_timesteps n_branches"],
     branches_monitored: Int[Array, " n_branches_monitored"],
+    zero_flow_branches: Optional[Int[Array, " max_zero_flow_branches_failed"]] = None,
 ) -> tuple[Float[Array, " n_timesteps n_branches_monitored"], Bool[Array, " "]]:
     """Perform an outage on a single busbar and calculate the resulting load flows.
 
@@ -90,6 +91,10 @@ def perform_outage_single_busbar(
         Initial load flows for each branch and timestep.
     branches_monitored : Int[Array, " n_branches_monitored"]
         Array of branch indices being monitored.
+    zero_flow_branches : Optional[Int[Array, " max_zero_flow_branches_failed"]], optional
+        Branch indices whose monitored flows should be forced to zero after the outage because the
+        physical busbar outage disconnects their bridge-fed subtree without representing them as
+        direct MODF outages.
 
     Returns
     -------
@@ -131,6 +136,13 @@ def perform_outage_single_busbar(
     success = jnp.logical_or(success, success_retry)
 
     lfs = jnp.where(success, lfs, jnp.nan)
+    if zero_flow_branches is not None:
+        valid_zero_flow_branches = (zero_flow_branches >= 0) & (zero_flow_branches < from_node.shape[0])
+        zero_flow_mask = jnp.any(
+            branches_monitored[None, :] == jnp.where(valid_zero_flow_branches, zero_flow_branches, int_max())[:, None],
+            axis=0,
+        )
+        lfs = jnp.where(zero_flow_mask[None, :] & success, 0.0, lfs)
     lfs = jnp.where(node_index_busbar <= nodal_injections.shape[1], lfs, 0.0)
 
     return lfs, success
@@ -147,6 +159,7 @@ def perform_outage_multi_busbars(
     branches_monitored: Int[Array, " n_branches_monitored"],
     n_0_flows: Float[Array, " n_timesteps n_branches"],
     disconnections: Optional[Int[Array, " n_disconnections"]] = None,
+    zero_flow_branches: Optional[Int[Array, " n_bb_outages max_zero_flow_branches_failed"]] = None,
 ) -> tuple[Float[Array, " n_bb_outages n_timesteps n_branches_monitored"], Bool[Array, " n_bb_outages"]]:
     """Simulate outages for multiple busbars and computes the resulting load flow solutions.
 
@@ -174,6 +187,10 @@ def perform_outage_multi_busbars(
         Array of disconnection actions which were performed before the busbar outage as part of
         topological actions. If provided, branches that are already outaged by these disconnections
         will not be outaged again in the busbar outage.
+    zero_flow_branches : Optional[Int[Array, " n_bb_outages max_zero_flow_branches_failed"]], optional
+        Branch indices whose monitored flows should be forced to zero after each outage because the
+        physical busbar outage disconnects their bridge-fed subtree without representing them as
+        direct MODF outages.
 
     Returns
     -------
@@ -194,7 +211,15 @@ def perform_outage_multi_busbars(
             connected_branches_to_outage, disconnections
         )
 
-    lfs_list, sucess_list = jax.vmap(perform_outage_single_busbar, in_axes=(0, 0, 0, None, None, None, None, None, None))(
+    if zero_flow_branches is None:
+        zero_flow_branches = jnp.full(
+            (connected_branches_to_outage.shape[0], 0), int_max(), dtype=connected_branches_to_outage.dtype
+        )
+
+    lfs_list, sucess_list = jax.vmap(
+        perform_outage_single_busbar,
+        in_axes=(0, 0, 0, None, None, None, None, None, None, 0),
+    )(
         connected_branches_to_outage,
         injection_deltap_to_outage,
         node_index_busbar,
@@ -204,6 +229,7 @@ def perform_outage_multi_busbars(
         to_nodes,
         n_0_flows,
         branches_monitored,
+        zero_flow_branches,
     )
     return lfs_list, sucess_list
 
@@ -261,6 +287,7 @@ def perform_non_rel_bb_outages(
     connected_branches_to_outage = non_rel_bb_outage_data.branch_outages
     injection_deltap_to_outage = non_rel_bb_outage_data.deltap
     node_index_busbar = non_rel_bb_outage_data.nodal_indices
+    zero_flow_branches = non_rel_bb_outage_data.zero_flow_branches
 
     lfs, success = perform_outage_multi_busbars(
         connected_branches_to_outage,
@@ -273,6 +300,7 @@ def perform_non_rel_bb_outages(
         branches_monitored,
         n_0_flows=n_0_flows,
         disconnections=disconnections,
+        zero_flow_branches=zero_flow_branches,
     )
     return lfs, success
 
@@ -283,6 +311,7 @@ def remove_articulation_nodes_from_bb_outage(
     Int[Array, " n_rel_subs max_n_physical_bb_per_sub max_branches_per_sub"],
     Int[Array, " n_rel_subs max_n_physical_bb_per_sub"],
     Float[Array, " n_rel_subs max_n_physical_bb_per_sub n_timesteps"],
+    Int[Array, " n_rel_subs max_n_physical_bb_per_sub max_zero_flow_branches_per_sub"],
 ]:
     """
     Remove critical busbars from outage data.
@@ -302,6 +331,8 @@ def remove_articulation_nodes_from_bb_outage(
         Updated nodal indices with critical busbars removed.
     deltap_outages : Float[Array, "n_rel_subs max_n_physical_bb_per_sub n_timesteps"]
         Updated delta power outages with critical busbars removed.
+    zero_flow_branches : Int[Array, " n_rel_subs max_n_physical_bb_per_sub max_zero_flow_branches_per_sub"]
+        Updated zero-flow branch sets with critical busbars removed.
     """
     articulation_node_mask: Bool[Array, " n_rel_subs n_max_bb_to_outage_per_sub"] = (
         rel_bb_outage_data.articulation_node_mask.at[branch_action_indices].get()
@@ -319,7 +350,15 @@ def remove_articulation_nodes_from_bb_outage(
     deltap_outages = rel_bb_outage_data.deltap_set.at[branch_action_indices].get()
     deltap_outages = jnp.where(articulation_node_mask[..., None], 0.0, deltap_outages)
 
-    return branch_outages, nodal_indices, deltap_outages
+    zero_flow_branches = rel_bb_outage_data.zero_flow_branch_set.at[branch_action_indices].get()
+    max_zero_flow_branches_per_sub = zero_flow_branches.shape[2]
+    zero_flow_branches = jnp.where(
+        jnp.repeat(articulation_node_mask[..., None], max_zero_flow_branches_per_sub, 2),
+        int_max(),
+        zero_flow_branches,
+    )
+
+    return branch_outages, nodal_indices, deltap_outages, zero_flow_branches
 
 
 def filter_already_outaged_branches_single_outage(
@@ -353,6 +392,7 @@ def filter_already_outaged_branches_single_outage(
     return filtered_branches
 
 
+# ruff: noqa: PLR0913
 def perform_rel_bb_outage_single_topo(
     n_0_flows: Float[Array, " n_timesteps n_branches"],
     action_indices: Int[Array, " n_rel_subs"],
@@ -390,6 +430,10 @@ def perform_rel_bb_outage_single_topo(
     disconnections : Int[Array, "n_disconnections"], optional
         Array of disconnection actions which were performed before the busbar outage as part of
         topological actions.
+    zero_flow_branches : Int[Array, " n_bb_outages max_zero_flow_branches_per_sub"], optional
+        Array of branch indices whose monitored flows should be forced to zero after the outage because the
+        physical busbar outage disconnects their bridge-fed subtree without representing them as
+        direct MODF outages. If not provided, no branches will be forced to zero flow.
 
     Returns
     -------
@@ -414,8 +458,8 @@ def perform_rel_bb_outage_single_topo(
     )
 
     selected_branch_actions = branch_action_set.at[action_indices].get(mode="fill", fill_value=False)
-    branch_outages, nodal_indices_outages, deltap_outages = remove_articulation_nodes_from_bb_outage(
-        action_set.rel_bb_outage_data, action_indices
+    branch_outages, nodal_indices_outages, deltap_outages, zero_flow_branch_outages = (
+        remove_articulation_nodes_from_bb_outage(action_set.rel_bb_outage_data, action_indices)
     )
 
     # In the unsplit topology, the station-level articulation filter is too aggressive for
@@ -426,10 +470,14 @@ def perform_rel_bb_outage_single_topo(
     original_branch_outages = action_set.rel_bb_outage_data.branch_outage_set.at[action_indices].get()
     original_nodal_indices = action_set.rel_bb_outage_data.nodal_indices.at[action_indices].get()
     original_deltap = action_set.rel_bb_outage_data.deltap_set.at[action_indices].get()
+    original_zero_flow_branch_outages = action_set.rel_bb_outage_data.zero_flow_branch_set.at[action_indices].get()
 
     branch_outages = jnp.where(unsplit_action_mask[:, None, None], original_branch_outages, branch_outages)
     nodal_indices_outages = jnp.where(unsplit_action_mask[:, None], original_nodal_indices, nodal_indices_outages)
     deltap_outages = jnp.where(unsplit_action_mask[:, None, None], original_deltap, deltap_outages)
+    zero_flow_branch_outages = jnp.where(
+        unsplit_action_mask[:, None, None], original_zero_flow_branch_outages, zero_flow_branch_outages
+    )
 
     # Note: branch_indices with value -1 or int_max are automatically ignored in the  build_modf_matrix  function
     branch_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub max_branches_per_sub"] = jnp.concatenate(
@@ -441,11 +489,15 @@ def perform_rel_bb_outage_single_topo(
     nodal_indices_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub "] = jnp.concatenate(
         nodal_indices_outages, axis=0
     )
+    zero_flow_branch_outages: Int[Array, " n_rel_subs*max_n_physical_bb_per_sub max_zero_flow_branches_per_sub"] = (
+        jnp.concatenate(zero_flow_branch_outages, axis=0)
+    )
     valid_busbar_flat_indices = action_set.rel_bb_outage_data.valid_busbar_flat_indices
 
     branch_outages = branch_outages.at[valid_busbar_flat_indices].get()
     deltap_outages = deltap_outages.at[valid_busbar_flat_indices].get()
     nodal_indices_outages = nodal_indices_outages.at[valid_busbar_flat_indices].get()
+    zero_flow_branch_outages = zero_flow_branch_outages.at[valid_busbar_flat_indices].get()
 
     lfs_list, success = perform_outage_multi_busbars(
         branch_outages,
@@ -458,6 +510,7 @@ def perform_rel_bb_outage_single_topo(
         branches_monitored=branches_monitored,
         n_0_flows=n_0_flows,
         disconnections=disconnections,
+        zero_flow_branches=zero_flow_branch_outages,
     )
     return lfs_list, success
 

@@ -581,6 +581,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 data=dynamic_information.non_rel_bb_outage_data.branch_outages,
             )
             file.create_dataset(
+                "non_rel_bb_outage_data_zero_flow_branches",
+                data=dynamic_information.non_rel_bb_outage_data.zero_flow_branches,
+            )
+            file.create_dataset(
                 "non_rel_bb_outage_data_nodal_indices",
                 data=dynamic_information.non_rel_bb_outage_data.nodal_indices,
             )
@@ -612,6 +616,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
             file.create_dataset(
                 "action_set_rel_bb_outage_data_valid_busbar_flat_indices",
                 data=dynamic_information.action_set.rel_bb_outage_data.valid_busbar_flat_indices,
+            )
+            file.create_dataset(
+                "action_set_rel_bb_outage_data_zero_flow_branch_set",
+                data=dynamic_information.action_set.rel_bb_outage_data.zero_flow_branch_set,
             )
         if dynamic_information.bb_outage_baseline_analysis is not None:
             file.create_dataset(
@@ -703,8 +711,8 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
             yield jnp.array(file[f"multi_outage_nodes_{idx}"][:])
             idx += 1
 
-    def _get_array_if_exists(file: h5py.File, key: str) -> Optional[Array]:
-        return jnp.array(file[key][:]) if key in file else None
+    def _get_array_if_exists(file: h5py.File, key: str, default: Optional[Array] = None) -> Optional[Array]:
+        return jnp.array(file[key][:]) if key in file else default
 
     with h5py.File(binaryio, mode="r") as file:
         (
@@ -753,6 +761,19 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                             valid_busbar_mask=jnp.array(file["action_set_rel_bb_outage_data_valid_busbar_mask"][:]),
                             valid_busbar_flat_indices=jnp.array(
                                 file["action_set_rel_bb_outage_data_valid_busbar_flat_indices"][:]
+                            ),
+                            zero_flow_branch_set=_get_array_if_exists(
+                                file,
+                                "action_set_rel_bb_outage_data_zero_flow_branch_set",
+                                default=jnp.full(
+                                    (
+                                        file["action_set_rel_bb_outage_data_branch_outage_set"].shape[0],
+                                        file["action_set_rel_bb_outage_data_branch_outage_set"].shape[1],
+                                        0,
+                                    ),
+                                    fill_value=jnp.iinfo(jnp.array([1], dtype=int).dtype).max,
+                                    dtype=int,
+                                ),
                             ),
                         )
                         if rel_bb_outage_data_present
@@ -810,10 +831,18 @@ def load_non_rel_bb_outage_data(file: h5py.File, non_rel_bb_outage_data_present:
         The loaded NonRelBBOutageData or None if not present
     """
     if non_rel_bb_outage_data_present:
+        default_zero_flow = jnp.full(
+            (file["non_rel_bb_outage_data_branch_outages"].shape[0], 0),
+            fill_value=jnp.iinfo(jnp.array([1], dtype=int).dtype).max,
+            dtype=int,
+        )
         return NonRelBBOutageData(
             branch_outages=jnp.array(file["non_rel_bb_outage_data_branch_outages"][:]),
             nodal_indices=jnp.array(file["non_rel_bb_outage_data_nodal_indices"][:]),
             deltap=jnp.array(file["non_rel_bb_outage_data_deltap"][:]),
+            zero_flow_branches=jnp.array(file["non_rel_bb_outage_data_zero_flow_branches"][:])
+            if "non_rel_bb_outage_data_zero_flow_branches" in file
+            else default_zero_flow,
         )
     return None
 

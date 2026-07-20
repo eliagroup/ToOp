@@ -36,6 +36,14 @@ class OutageData(NamedTuple):
     node_index: int
     """The index of the node that is outaged"""
 
+    zero_flow_branch_indices: list[int]
+    """Branches whose monitored flows should be zeroed after the outage.
+
+    These branches are physically disconnected by the busbar outage but cannot be passed to the
+    MODF outage solver directly, e.g. bridge-fed stub-subtree branches that would split the reduced
+    network.
+    """
+
 
 @dataclass(frozen=True)
 class NetworkData:
@@ -284,6 +292,14 @@ class NetworkData:
     non_rel_bb_outage_nodal_indices: Optional[Int[np.ndarray, " n_busbar_outages"]] = None
     """The node index of the the busbar that will be outaged . Will be computed during busbar-outage cases"""
 
+    non_rel_bb_outage_zero_flow_br_indices: Optional[list[list[int]]] = None
+    """Branches that should be forced to zero flow for each non-relevant busbar outage.
+
+    The outer list matches ``non_rel_bb_outage_br_indices`` and stores branch indices that are
+    physically disconnected by the busbar outage but modeled via compensation instead of MODF branch
+    outages.
+    """
+
     rel_bb_outage_br_indices: Optional[list[list[list[list[int]]]]] = None
     """
     This correpsonds to the branch indices that have to be outaged for the relevant
@@ -311,6 +327,14 @@ class NetworkData:
     branch_action combinations for the substation. Each element of the list has a list of length equal
     to the number of busbars to be outaged. Corresponding to each busbar is an integer representing the
     nodal index of the busbar.
+    """
+
+    rel_bb_outage_zero_flow_br_indices: Optional[list[list[list[list[int]]]]] = None
+    """
+    Branch indices whose monitored flows should be forced to zero for relevant busbar outages.
+
+    The nesting mirrors ``rel_bb_outage_br_indices``: relevant station -> branch-action combination ->
+    physical busbar -> branch indices.
     """
 
     controllable_pst_node_mask: Optional[Bool[np.ndarray, " n_node"]] = None

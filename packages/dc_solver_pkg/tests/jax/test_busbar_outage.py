@@ -203,6 +203,7 @@ def test_perform_rel_bb_outage_single_topo_filters_padded_busbar_slots() -> None
         articulation_node_mask=jnp.array([[False, False]], dtype=bool),
         valid_busbar_mask=jnp.array([[True, False]], dtype=bool),
         valid_busbar_flat_indices=jnp.array([0], dtype=int),
+        zero_flow_branch_set=jnp.full((1, 2, 0), int_max(), dtype=int),
     )
     action_set = ActionSet(
         branch_actions=jnp.zeros((1, 1), dtype=bool),
@@ -763,6 +764,13 @@ def create_dummy_rel_bb_outage_data(
         ),
         valid_busbar_mask=valid_busbar_mask,
         valid_busbar_flat_indices=jnp.flatnonzero(valid_busbar_mask[0]),
+        zero_flow_branch_set=jax.random.randint(
+            jax.random.PRNGKey(seed + 5),
+            (n_br_combis, n_max_bb_to_outage_per_sub, 2),
+            0,
+            100,
+            dtype=jnp.int64,
+        ),
     )
 
 
@@ -775,7 +783,7 @@ def test_remove_critical_busbars_from_outage():
         seed=42,
     )
     branch_action_indices = jnp.array([3, 7, 8, 10])
-    branch_outages, nodal_indices, deltap_outages = remove_articulation_nodes_from_bb_outage(
+    branch_outages, nodal_indices, deltap_outages, zero_flow_branch_outages = remove_articulation_nodes_from_bb_outage(
         rel_outage_data, branch_action_indices
     )
     assert rel_outage_data.branch_outage_set[branch_action_indices].shape == branch_outages.shape, (
@@ -799,6 +807,15 @@ def test_remove_critical_busbars_from_outage():
             rel_outage_data.articulation_node_mask[branch_action_indices],
         )
     ), "Nodal indices are incorrect"
+    assert rel_outage_data.zero_flow_branch_set[branch_action_indices].shape == zero_flow_branch_outages.shape, (
+        "Shape of zero_flow_branch_outages is incorrect"
+    )
+    assert jnp.all(
+        jnp.isclose(
+            ~jnp.all(rel_outage_data.zero_flow_branch_set[branch_action_indices] == zero_flow_branch_outages, axis=2),
+            rel_outage_data.articulation_node_mask[branch_action_indices],
+        )
+    ), "Zero-flow branch data is incorrect"
 
 
 def test_perform_rel_bb_outage_for_unsplit_grid(
@@ -1094,7 +1111,7 @@ def perform_rel_bb_outage_single_topo_unjaxed(
         "Mismatch in branch action set and branch outage set."
     )
 
-    branch_outages, nodal_indices_outages, deltap_outages = remove_articulation_nodes_from_bb_outage(
+    branch_outages, nodal_indices_outages, deltap_outages, _ = remove_articulation_nodes_from_bb_outage(
         action_set.rel_bb_outage_data, action_indices
     )
     # Note: branch_indices with value -1 or int_max are automatically ignored in the  build_modf_matrix  function

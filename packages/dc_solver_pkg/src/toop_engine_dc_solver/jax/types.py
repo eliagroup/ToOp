@@ -136,6 +136,13 @@ class RelBBOutageData(eqx.Module):
     JAX contingency execution and avoid boolean indexing inside traced code.
     """
 
+    zero_flow_branch_set: Int[Array, " n_actions n_max_bb_to_outage_per_sub max_zero_flow_branches_per_sub"]
+    """Branches whose monitored flows should be forced to zero for each busbar outage slot.
+
+    These correspond to bridge-fed subtree branches that are physically disconnected by the busbar
+    outage but cannot be represented as direct MODF outages in the reduced grid.
+    """
+
     def __eq__(self, other: object) -> bool:
         """Equality is defined by array_equals checks
 
@@ -158,6 +165,7 @@ class RelBBOutageData(eqx.Module):
             and jnp.array_equal(self.articulation_node_mask, other.articulation_node_mask)
             and jnp.array_equal(self.valid_busbar_mask, other.valid_busbar_mask)
             and jnp.array_equal(self.valid_busbar_flat_indices, other.valid_busbar_flat_indices)
+            and jnp.array_equal(self.zero_flow_branch_set, other.zero_flow_branch_set)
         )
 
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "RelBBOutageData":
@@ -169,6 +177,7 @@ class RelBBOutageData(eqx.Module):
             articulation_node_mask=self.articulation_node_mask[key],
             valid_busbar_mask=self.valid_busbar_mask[key],
             valid_busbar_flat_indices=self.valid_busbar_flat_indices,
+            zero_flow_branch_set=self.zero_flow_branch_set[key],
         )
 
 
@@ -187,6 +196,9 @@ class NonRelBBOutageData(eqx.Module):
     deltap: Float[Array, " n_non_rel_bb_outages n_timesteps"]
     """For every busbar outage, the delta in power that has to be subtracted from
     the nodal injection."""
+
+    zero_flow_branches: Int[Array, " n_non_rel_bb_outages max_zero_flow_branches_failed"]
+    """Branches whose monitored flows should be forced to zero for each non-relevant busbar outage."""
 
 
 class BBOutageBaselineAnalysis(eqx.Module):

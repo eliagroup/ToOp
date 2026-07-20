@@ -85,7 +85,7 @@ def test_get_busbar_df(network_graph_data_test1: NetworkGraphData):
             "name": "ab",
             "int_id": 0,
             "in_service": True,
-            "bus_branch_bus_id": "BBS3_1_bus_id",
+            "bus_breaker_bus_id": "BBS3_1_bus_id",
         },
         {
             "grid_model_id": "BBS3_2",
@@ -93,7 +93,7 @@ def test_get_busbar_df(network_graph_data_test1: NetworkGraphData):
             "name": "cd",
             "int_id": 1,
             "in_service": True,
-            "bus_branch_bus_id": "BBS3_2_bus_id",
+            "bus_breaker_bus_id": "BBS3_2_bus_id",
         },
     ]
     assert busbar_df.to_dict(orient="records") == expected

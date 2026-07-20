@@ -51,11 +51,11 @@ def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd
     busbar_df = (
         busbar_df.sort_values(by="grid_model_id")
         .reset_index()
-        .rename(columns={"foreign_id": "name", "node_type": "type", "bus_id": "bus_branch_bus_id"})
+        .rename(columns={"foreign_id": "name", "node_type": "type", "bus_id": "bus_breaker_bus_id"})
     )
     busbar_df["int_id"] = busbar_df.index
 
-    busbar_df = busbar_df[["grid_model_id", "type", "name", "int_id", "in_service", "bus_branch_bus_id"]]
+    busbar_df = busbar_df[["grid_model_id", "type", "name", "int_id", "in_service", "bus_breaker_bus_id"]]
 
     return busbar_df
 

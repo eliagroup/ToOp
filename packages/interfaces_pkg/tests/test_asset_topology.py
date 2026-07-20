@@ -209,8 +209,8 @@ def test_station() -> None:
 
     station = Station(
         busbars=[
-            Busbar(int_id=1, grid_model_id="busbar1", bus_branch_bus_id="bus_id1"),
-            Busbar(int_id=2, grid_model_id="busbar2", bus_branch_bus_id="bus_id1"),
+            Busbar(int_id=1, grid_model_id="busbar1", bus_breaker_bus_id="bus_id1"),
+            Busbar(int_id=2, grid_model_id="busbar2", bus_breaker_bus_id="bus_id1"),
         ],
         couplers=[
             BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
@@ -228,8 +228,8 @@ def test_station() -> None:
     with pytest.raises(ValidationError):
         station = Station(
             busbars=[
-                Busbar(int_id=1, grid_model_id="busbar1", bus_branch_bus_id="bus_id1"),
-                Busbar(int_id=2, grid_model_id="busbar2", bus_branch_bus_id="bus_id1"),
+                Busbar(int_id=1, grid_model_id="busbar1", bus_breaker_bus_id="bus_id1"),
+                Busbar(int_id=2, grid_model_id="busbar2", bus_breaker_bus_id="bus_id1"),
             ],
             couplers=[
                 BusbarCoupler(

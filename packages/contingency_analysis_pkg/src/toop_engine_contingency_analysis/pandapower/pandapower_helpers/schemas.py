@@ -494,6 +494,13 @@ class SingleOutageContext(BaseModel):
     connectivity of monitored elements.
     """
 
+    result_constants: Any = None
+    """Optional :class:`ResultConstants` for branch/node result extraction.
+
+    Element ids, rated currents, bus voltage levels and base-case voltages are identical
+    for every outage, so they are computed once per run and reused here.
+    """
+
     spps: SingleOutageSppsContext
     """SpPS conditions, actions, and engine settings for this outage."""
 

@@ -13,6 +13,7 @@ import pandapower as pp
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
+import polars as pl
 from beartype.typing import Literal
 from toop_engine_contingency_analysis.pandapower.cascade.models import (
     CascadeSppsBranchSwitchResults,
@@ -154,13 +155,18 @@ def run_spps_with_branch_switch_results(
 
     branch_results = get_branch_results(net, contingency, timestep)
     node_results = get_node_result_df(net, contingency, timestep, basecase_net)
-    switch_results: pat.DataFrame[SwitchResultsSchema] = get_switch_results(
+    # ``get_switch_results`` runs on polars; convert the pandas inputs to flat polars frames
+    # and the polars output back to the indexed pandas frame the caller expects.
+    switch_results_pl = get_switch_results(
         net,
         contingency,
         timestep,
-        branch_results,
-        node_results,
-        switch_element_mapping,
+        pl.from_pandas(branch_results.reset_index()),
+        pl.from_pandas(node_results.reset_index()),
+        pl.from_pandas(switch_element_mapping),
+    )
+    switch_results: pat.DataFrame[SwitchResultsSchema] = switch_results_pl.to_pandas().set_index(
+        ["timestep", "contingency", "element"]
     )
 
     monitored_index = monitored_elements.index

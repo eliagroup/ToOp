@@ -21,6 +21,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
 )
 from toop_engine_grid_helpers.pandapower.outage_group import (
     OUTAGE_GROUP_SEPARATOR,
+    ConnectivityGraphCache,
     build_connectivity_graph_for_contingency,
     elem_node_id,
     get_node_table_id,
@@ -167,6 +168,11 @@ def _build_side(df: pd.DataFrame, deenergized_sw_side: str, energized_sw_side: s
     return out[["comp", "switch", "bus", "deenergized_sw_side"]]
 
 
+def _build_node_to_component(connected_components: list) -> dict:
+    """Map every node to the index of the connected component it belongs to."""
+    return {node: cmp_idx for cmp_idx, component in enumerate(connected_components) for node in component}
+
+
 def get_outage_groups_with_pst(net: pandapowerNet, connected_components: list) -> tuple[list, list[int]]:
     """
     Find connected component groups that contain at least one element with a PST.
@@ -201,6 +207,7 @@ def _make_one_sided_rows(
     open_cb_rest: pd.DataFrame,
     va_deg: pd.Series,
     connected_components: list,
+    graph_cache: Optional[ConnectivityGraphCache] = None,
 ) -> pd.DataFrame:
     """
     Build the intermediate row table for "one-sided" VA-diff inference.
@@ -230,6 +237,9 @@ def _make_one_sided_rows(
     connected_components : list
         List of connected components, where each component is an iterable of node ids.
         The position in the list is used as the component index (``comp``).
+    graph_cache : ConnectivityGraphCache, optional
+        Cache used to share the node-to-component map and the PST component ids across
+        contingencies. ``None`` recomputes both on every call.
 
     Returns
     -------
@@ -237,7 +247,20 @@ def _make_one_sided_rows(
         DataFrame with columns ``['switch', 'bus', 'comp', 'pst']`` suitable for subsequent
         VA-diff computation. ``pst`` is True if the opposite-side component contains a PST.
     """
-    node_to_component = {node: cmp_idx for cmp_idx, component in enumerate(connected_components) for node in component}
+    # Both of these derive purely from the connected components (PST membership is a
+    # structural property of the trafo tables, not of the current tap position), so they
+    # are shared across contingencies whenever the graph itself is.
+    if graph_cache is None:
+        node_to_component = _build_node_to_component(connected_components)
+        out_gr_with_pst_ids = get_outage_groups_with_pst(net, connected_components)[1]
+    else:
+        node_to_component = graph_cache.derive(
+            net, "node_to_component", lambda: _build_node_to_component(connected_components)
+        )
+        out_gr_with_pst_ids = graph_cache.derive(
+            net, "pst_component_ids", lambda: get_outage_groups_with_pst(net, connected_components)[1]
+        )
+
     mask_bus_side = open_cb_rest["bus"].isin(va_deg.index)  # bus side has va
     mask_element_side = open_cb_rest["element"].isin(va_deg.index)  # element side has va
 
@@ -259,8 +282,6 @@ def _make_one_sided_rows(
         energized_sw_side="bus",
         node_to_component=node_to_component,
     )
-    _, out_gr_with_pst_ids = get_outage_groups_with_pst(net, connected_components)
-
     result = pd.concat([cb_bus_side, cb_element_side], ignore_index=True)
     result["pst"] = result["comp"].isin(out_gr_with_pst_ids)
     return result
@@ -1379,8 +1400,15 @@ def _apply_contingency_va_diff_info(
 def get_va_diff_results(
     net: pandapowerNet,
     timestep: int,
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
+    # Deliberately annotated as a plain DataFrame rather than
+    # ``pat.DataFrame[PandapowerMonitoredElementSchema]``: this table is built and validated
+    # once by ``translate_nminus1_for_pandapower`` and then passed unchanged to every
+    # contingency, so letting ``@pa.check_types`` re-validate its tens of thousands of rows
+    # per outage costs more than the rest of this function put together. The return value is
+    # still validated below.
+    monitored_elements: pd.DataFrame,
     contingency: PandapowerContingency,
+    graph_cache: Optional[ConnectivityGraphCache] = None,
 ) -> pat.DataFrame[VADiffResultSchema]:
     """Get the voltage angle difference results for the given network and contingency.
 
@@ -1395,6 +1423,11 @@ def get_va_diff_results(
     contingency : PandapowerContingency
         The contingency to compute the voltage angle difference results for.
         Will also calculate the va_diff of the outaged elements if they are lines or transformers
+    graph_cache : ConnectivityGraphCache, optional
+        Shared cache for the connectivity graph and its connected components. Building the
+        graph dominates this function's runtime and its result is normally identical for
+        every outage in a run, so passing one cache for the whole run avoids rebuilding it.
+        ``None`` builds the graph on every call.
 
     Returns
     -------
@@ -1406,9 +1439,14 @@ def get_va_diff_results(
     va_deg = _get_bus_va_series(net)
 
     va_diff_both, open_cb_rest = _compute_va_diff_both_ends(open_cb, va_deg)
-    graph = build_connectivity_graph_for_contingency(net)
-    connected_components = list(nx.connected_components(graph))
-    rows_df = _make_one_sided_rows(net, open_cb_rest, va_deg, connected_components)
+    if graph_cache is None:
+        graph = build_connectivity_graph_for_contingency(net)
+        connected_components = list(nx.connected_components(graph))
+    else:
+        # Normally a cache hit: outages only open CB switches and de-energize elements,
+        # neither of which changes this graph.
+        graph, connected_components = graph_cache.get(net)
+    rows_df = _make_one_sided_rows(net, open_cb_rest, va_deg, connected_components, graph_cache)
 
     not_pst_rows_df = rows_df[~rows_df["pst"]]
     va_diff_one_side = _compute_va_diff_one_side(not_pst_rows_df, va_deg)

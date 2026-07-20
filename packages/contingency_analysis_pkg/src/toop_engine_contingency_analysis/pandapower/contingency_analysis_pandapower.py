@@ -18,6 +18,7 @@ import pandapower as pp
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
+import polars as pl
 import ray
 from beartype.typing import Any, Union
 from toop_engine_contingency_analysis.pandapower.cascade.simulation import (
@@ -30,10 +31,8 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerMonitoredElementSchema,
     PandapowerNMinus1Definition,
     SlackAllocationConfig,
-    get_branch_results,
     get_convergence_df,
     get_failed_va_diff_results,
-    get_node_result_df,
     get_regulating_element_results,
     get_switch_results,
     get_va_diff_results,
@@ -41,6 +40,15 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.contingency_outage_group import (
     get_outage_group_for_contingency,
+)
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.polars_results import (
+    BRANCH_RESULT_INDEX,
+    NODE_RESULT_INDEX,
+    ResultConstants,
+    filter_to_monitored,
+    get_branch_results_polars,
+    get_node_results_polars,
+    to_pandas_results,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.switch_results import (
     SwitchElementMappingSchema,
@@ -142,7 +150,6 @@ class OutageElementResults:
     switch_results: pat.DataFrame[SwitchResultsSchema]
 
 
-@pa.check_types
 def run_single_outage(
     net: pp.pandapowerNet,
     grouped_contingency: PandapowerContingencyGroup,
@@ -199,7 +206,12 @@ def run_single_outage(
         switch_results_df=element_results.switch_results,
     )
 
-    return LoadflowResults(
+    # ``model_construct`` skips pydantic/pandera validation of the result frames, which is
+    # by far the most expensive part of a single outage (it re-validates tens of thousands
+    # of rows per contingency). Nothing is lost: these per-outage frames are concatenated by
+    # ``concatenate_loadflow_results``, whose own ``LoadflowResults(...)`` call validates
+    # every row against the same schemas once, at the end of the run.
+    return LoadflowResults.model_construct(
         job_id=ctx.job_id,
         branch_results=element_results.branch_results,
         node_results=element_results.node_results,
@@ -277,6 +289,7 @@ def _collect_element_results(
         status,
         ctx.basecase_net,
         ctx.switch_element_mapping,
+        ctx.result_constants,
     )
 
     regulating_element_results_df = get_regulating_element_results(
@@ -312,6 +325,7 @@ def _collect_element_results(
     _update_result_names(
         results=results,
         monitored_elements=ctx.monitored_elements,
+        element_name_map=ctx.result_constants.element_name_map if ctx.result_constants is not None else None,
     )
 
     return results
@@ -332,8 +346,12 @@ def _copy_results_for_all_contingencies(
 def _update_result_names(
     results: OutageElementResults,
     monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema],
+    element_name_map: dict[str, str] | None = None,
 ) -> None:
-    element_name_map = monitored_elements["name"].to_dict()
+    # The name map is the same for every outage, so callers should pass the precomputed one;
+    # building it here means rebuilding a dict of every monitored element per contingency.
+    if element_name_map is None:
+        element_name_map = monitored_elements["name"].to_dict()
 
     update_results_with_names(results.branch_results, element_name_map)
     update_results_with_names(results.node_results, element_name_map)
@@ -471,6 +489,7 @@ def get_element_results_df(
     status: ConvergenceStatus,
     basecase_net: pp.pandapowerNet,
     switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
+    result_constants: ResultConstants | None = None,
 ) -> tuple[
     pat.DataFrame[BranchResultSchema],
     pat.DataFrame[BranchResultSchema],
@@ -498,6 +517,10 @@ def get_element_results_df(
     switch_element_mapping : pat.DataFrame[SwitchElementMappingSchema]
         Mapping between switches and connected elements, used to compute
         switch-level results during each outage.
+    result_constants : ResultConstants, optional
+        Outage-invariant inputs for branch/node result extraction (element ids, rated
+        currents, voltage levels, base-case voltages). Built once per run; ``None``
+        rebuilds them on every call.
 
     Returns
     -------
@@ -506,22 +529,47 @@ def get_element_results_df(
         difference results, and switch results.
     """
     if status == ConvergenceStatus.CONVERGED:
-        full_branch_results_df = get_branch_results(net, contingency, timestep)
-        node_results_df = get_node_result_df(net, contingency, timestep, basecase_net)
-        va_diff_results = get_va_diff_results(net, timestep, monitored_elements, contingency)
+        if result_constants is None:
+            result_constants = ResultConstants(net, basecase_net)
+
+        # Branch and node results are produced as flat polars frames and stay that way
+        # until they are filtered: building the pandas MultiIndex is the single most
+        # expensive step here, so it is paid once, on the filtered frames, at the end.
+        full_branch_results_pl = get_branch_results_polars(net, contingency, timestep, result_constants)
+        node_results_pl = get_node_results_polars(net, contingency, timestep, result_constants)
+        va_diff_results = get_va_diff_results(
+            net, timestep, monitored_elements, contingency, result_constants.graph_cache
+        )
         # IMPORTANT:
         # Do NOT filter branch/node results before this step.
         # Switch result calculation depends on connectivity and may require data
         # from non-monitored branches/nodes (e.g. a monitored switch connected to
         # an unmonitored line/trafo). Therefore we pass full result sets here.
-        sw_results_df = get_switch_results(
-            net, contingency, timestep, full_branch_results_df, node_results_df, switch_element_mapping
-        )
+        # Both of these are constant for the whole run; ResultConstants holds the converted
+        # forms so the (very large) switch mapping is not re-converted for every outage.
+        switch_element_mapping_pl = result_constants.switch_element_mapping_pl
+        if switch_element_mapping_pl is None:
+            switch_element_mapping_pl = pl.from_pandas(switch_element_mapping)
+        monitored_element_ids = result_constants.monitored_element_ids
+        if monitored_element_ids is None:
+            monitored_element_ids = pl.Series("element", monitored_elements.index.to_numpy(), dtype=pl.String)
 
-        branch_results_df = full_branch_results_df[
-            full_branch_results_df.index.isin(monitored_elements.index, level="element")
-        ]
-        node_results_df = node_results_df[node_results_df.index.isin(monitored_elements.index, level="element")]
+        sw_results_pl = get_switch_results(
+            net,
+            contingency,
+            timestep,
+            full_branch_results_pl,
+            node_results_pl,
+            switch_element_mapping_pl,
+        )
+        sw_results_df = sw_results_pl.to_pandas().set_index(["timestep", "contingency", "element"])
+        branch_results_df = to_pandas_results(
+            filter_to_monitored(full_branch_results_pl, monitored_element_ids), BRANCH_RESULT_INDEX
+        )
+        node_results_df = to_pandas_results(
+            filter_to_monitored(node_results_pl, monitored_element_ids), NODE_RESULT_INDEX
+        )
+        full_branch_results_df = to_pandas_results(full_branch_results_pl, BRANCH_RESULT_INDEX)
 
     else:
         monitored_trafo3w = monitored_elements.query("table == 'trafo3w'").index.to_list()
@@ -559,6 +607,14 @@ def run_contingency_analysis_sequential(
         runpp_kwargs=ctx.runpp_kwargs,
         basecase_net=ctx.basecase_net,
         switch_element_mapping=ctx.switch_element_mapping,
+        # Element ids, rated currents, base-case voltages, the polars switch mapping and the
+        # element-name map are the same for every outage in this run, so resolve them once here.
+        result_constants=ResultConstants(
+            net,
+            ctx.basecase_net,
+            monitored_elements=n_minus_1_definition.monitored_elements,
+            switch_element_mapping=ctx.switch_element_mapping,
+        ),
         spps=SingleOutageSppsContext(
             conditions=ctx.spps_conditions,
             actions=ctx.spps_actions,

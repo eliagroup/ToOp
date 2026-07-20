@@ -22,6 +22,7 @@ import pandapower as pp
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
+import polars as pl
 from beartype.typing import Literal
 from pandera.typing import Series
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
@@ -29,10 +30,15 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
     PandapowerMonitoredElementSchema,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import (
+    SEPARATOR,
     get_globally_unique_id,
     get_globally_unique_id_from_index,
 )
-from toop_engine_interfaces.loadflow_results import BranchResultSchema, BranchSide, NodeResultSchema, SwitchResultsSchema
+from toop_engine_interfaces.loadflow_results import BranchSide, SwitchResultsSchema
+
+# ``sqrt(3)`` as a plain Python float so polars expressions reuse the exact value the
+# previous numpy-based implementation used, keeping current results bit-for-bit comparable.
+_SQRT3 = float(np.sqrt(3))
 
 
 class SwitchElementMappingSchema(pa.DataFrameModel):
@@ -373,10 +379,10 @@ def _get_switch_mapped_elements_by_origin_ids(
 
 
 def _compute_switch_flow_and_injection_results(
-    branch_results: pat.DataFrame[BranchResultSchema],
-    node_results: pat.DataFrame[NodeResultSchema],
-    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
-) -> pd.DataFrame:
+    branch_results: pl.DataFrame,
+    node_results: pl.DataFrame,
+    switch_element_mapping: pl.DataFrame,
+) -> pl.DataFrame:
     """Compute aggregated switch results from branch flows and node injections.
 
     This function maps branch- and node-level load-flow results to switches using
@@ -437,44 +443,61 @@ def _compute_switch_flow_and_injection_results(
         - ``s``: apparent power
         - ``i``: current
     """
-    # Branch contribution
-    if branch_results.empty:
-        switch_flow = pd.DataFrame(
-            {
-                "switch_id": pd.Series(dtype="int64"),
-                "p": pd.Series(dtype="float64"),
-                "q": pd.Series(dtype="float64"),
-            }
-        )
+    # Branch- and mapping-side share a join key ``side`` which is integer on the branch
+    # results but nullable float on the mapping (buses carry NaN); cast to a common float
+    # so the polars join matches, mirroring pandas' int/float key up-casting.
+    mapping = switch_element_mapping.with_columns(pl.col("side").cast(pl.Float64))
+
+    # Branch flow aggregation: match branch results to the mapping on (element, side)
+    # and sum active/reactive power per switch.
+    if branch_results.height == 0:
+        switch_flow = pl.DataFrame(schema={"switch_id": pl.Int64, "p": pl.Float64, "q": pl.Float64})
     else:
-        merged = branch_results.merge(
-            switch_element_mapping,
-            on=["element", "side"],
-            how="inner",
+        switch_flow = (
+            branch_results.select("element", pl.col("side").cast(pl.Float64), "p", "q")
+            .join(mapping.select("switch_id", "element", "side"), on=["element", "side"], how="inner")
+            .group_by("switch_id")
+            .agg(pl.col("p").sum(), pl.col("q").sum())
         )
-        switch_flow = merged.groupby("switch_id", as_index=False)[["p", "q"]].sum()
-        switch_flow = switch_flow[["switch_id", "p", "q"]]
 
-    merged = node_results.merge(switch_element_mapping, on="element", how="inner")
-    merged = merged[["switch_id", "p", "q", "vm"]]
-    switch_inj = merged.groupby(["switch_id"], as_index=False).agg({"p": "sum", "q": "sum", "vm": "last"})
-    switch_inj = switch_inj[["switch_id", "p", "q", "vm"]]
+    # Node injection aggregation: match node results to the mapping on ``element`` only
+    # (bus mapping rows), sum p/q per switch and take the last voltage magnitude in group
+    # order. ``__row`` preserves the input node order so ``last`` matches the pandas result.
+    switch_inj = (
+        node_results.select("element", "p", "q", "vm")
+        .with_row_index("__row")
+        .join(mapping.select("switch_id", "element"), on="element", how="inner")
+        .sort("__row")
+        .group_by("switch_id", maintain_order=True)
+        .agg(
+            pl.col("p").sum(),
+            pl.col("q").sum(),
+            # pandas' groupby "last" skips NaN, so drop nulls before taking the last value.
+            pl.col("vm").drop_nulls().last(),
+        )
+    )
 
-    switch_inj = switch_inj.set_index(["switch_id"]).fillna(0)
-    switch_flow = switch_flow.set_index(["switch_id"]).fillna(0)
-    res = switch_inj.add(switch_flow, fill_value=0)
-    switch_results = res.reset_index()
+    # Combine branch-flow and node-injection contributions per switch. A full join keeps
+    # switches present in either source; missing contributions count as zero, matching the
+    # pandas ``add(fill_value=0)`` step. ``vm`` only comes from injections, so a switch with
+    # branch flow but no injection ends up with vm == 0 and is dropped below.
+    combined = switch_inj.join(switch_flow, on="switch_id", how="full", suffix="_flow", coalesce=True)
+    combined = combined.with_columns(
+        (pl.col("p").fill_null(0.0) + pl.col("p_flow").fill_null(0.0)).alias("p"),
+        (pl.col("q").fill_null(0.0) + pl.col("q_flow").fill_null(0.0)).alias("q"),
+        pl.col("vm").fill_null(0.0).alias("vm"),
+    ).select("switch_id", "p", "q", "vm")
 
-    switch_results["s"] = np.sqrt(switch_results["p"] ** 2 + switch_results["q"] ** 2)
-    switch_results = switch_results[switch_results["vm"] != 0]
-    switch_results["i"] = switch_results["s"] / (np.sqrt(3) * switch_results["vm"])
+    switch_results = (
+        combined.with_columns((pl.col("p").pow(2) + pl.col("q").pow(2)).sqrt().alias("s"))
+        .filter(pl.col("vm") != 0)
+        .with_columns((pl.col("s") / (_SQRT3 * pl.col("vm"))).alias("i"))
+    )
 
     return switch_results
 
 
-def _orient_switch_results_to_relay_side(
-    net: pp.pandapowerNet, switch_results: pat.DataFrame[SwitchResultsSchema]
-) -> pat.DataFrame[SwitchResultsSchema]:
+def _orient_switch_results_to_relay_side(net: pp.pandapowerNet, switch_results: pl.DataFrame) -> pl.DataFrame:
     """Make switch power values use the relay point of view.
 
     Some relays measure from the bus side and some from the element side. For
@@ -501,15 +524,25 @@ def _orient_switch_results_to_relay_side(
     if not required_columns.issubset(net.sw_characteristics.columns):
         return switch_results
 
-    origin_ids = switch_results["switch_id"].map(net.switch["origin_id"])
+    # Resolve, from the (pandas) network metadata, which switch ids belong to relays that
+    # measure from the element side. Their active/reactive power is flipped so every row is
+    # expressed in the same (bus-side) direction.
     relay_side_by_origin = net.sw_characteristics.drop_duplicates(subset="breaker_uuid").set_index("breaker_uuid")[
         "relay_side"
     ]
-    relay_sides = origin_ids.map(relay_side_by_origin)
+    relay_sides = net.switch["origin_id"].map(relay_side_by_origin)
+    element_side_switch_ids = relay_sides.index[relay_sides.eq("element")].to_list()
 
-    mask = relay_sides.eq("element")
-    switch_results.loc[mask, ["p", "q"]] *= -1
-    return switch_results
+    return switch_results.with_columns(
+        pl.when(pl.col("switch_id").is_in(element_side_switch_ids))
+        .then(-pl.col("p"))
+        .otherwise(pl.col("p"))
+        .alias("p"),
+        pl.when(pl.col("switch_id").is_in(element_side_switch_ids))
+        .then(-pl.col("q"))
+        .otherwise(pl.col("q"))
+        .alias("q"),
+    )
 
 
 def get_switch_mapped_elements(
@@ -587,10 +620,10 @@ def get_switch_results(
     net: pp.pandapowerNet,
     contingency: PandapowerContingency,
     timestep: int,
-    branch_results: pat.DataFrame[BranchResultSchema],
-    node_results: pat.DataFrame[NodeResultSchema],
-    switch_element_mapping: pat.DataFrame[SwitchElementMappingSchema],
-) -> pat.DataFrame[SwitchResultsSchema]:
+    branch_results: pl.DataFrame,
+    node_results: pl.DataFrame,
+    switch_element_mapping: pl.DataFrame,
+) -> pl.DataFrame:
     """Compute final switch-level results for a given contingency and timestep.
 
     This function aggregates branch flows and node injections per switch and
@@ -602,6 +635,12 @@ def get_switch_results(
     - computing apparent power and current (performed in the helper function)
     - attaching identifiers, names, and indexing information
 
+    The whole computation runs on polars. Inputs and output are flat polars
+    ``DataFrame`` objects (no index): ``branch_results`` and ``node_results`` carry the
+    ``timestep``/``contingency``/``element`` (and ``side`` for branches) key values as
+    ordinary columns, and callers holding pandas frames should convert with
+    ``pl.from_pandas(df.reset_index())`` before calling.
+
     Parameters
     ----------
     net : pp.pandapowerNet
@@ -609,32 +648,34 @@ def get_switch_results(
         Used to map ``switch_id`` to human-readable switch names.
     contingency : PandapowerContingency
         Contingency for which the results are computed. Provides:
-        - ``unique_id``: used as index level
+        - ``unique_id``: used as ``contingency`` column
         - ``name``: stored in ``contingency_name`` column
     timestep : int
         Timestep associated with the results.
-    branch_results : pat.DataFrame[BranchResultSchema]
-        Branch-level load-flow results.
-    node_results : pat.DataFrame[NodeResultSchema]
-        Node-level load-flow results.
-    switch_element_mapping : pat.DataFrame[SwitchElementMappingSchema]
+    branch_results : pl.DataFrame
+        Branch-level load-flow results (columns follow ``BranchResultSchema``,
+        including ``element``, ``side``, ``p`` and ``q``).
+    node_results : pl.DataFrame
+        Node-level load-flow results (columns follow ``NodeResultSchema``,
+        including ``element``, ``p``, ``q`` and ``vm``).
+    switch_element_mapping : pl.DataFrame
          Mapping between switches and connected elements, used to compute
          switch-level results during each outage.
 
     Returns
     -------
-    pat.DataFrame[SwitchResultsSchema]
-        Switch-level results indexed by:
+    pl.DataFrame
+        Switch-level results as a flat polars frame with the key columns
 
         - ``timestep``
         - ``contingency``
         - ``element`` (globally unique switch identifier)
 
-        The DataFrame includes:
+        and the value columns:
         - aggregated active/reactive power (``p``, ``q``)
         - voltage magnitude (``vm``)
-        - current (``i``)
-        - apparent power (``s``)
+        - apparent power (``s``) and current (``i``)
+        - the pandapower ``switch_id``
         - metadata columns (``element_name``, ``contingency_name``)
     """
     switch_results = _compute_switch_flow_and_injection_results(
@@ -643,12 +684,40 @@ def get_switch_results(
         switch_element_mapping=switch_element_mapping,
     )
     switch_results = _orient_switch_results_to_relay_side(net, switch_results)
-    switch_results["element"] = get_globally_unique_id_from_index(switch_results["switch_id"], element_type="switch")
-    switch_results["element_name"] = switch_results["switch_id"].map(net.switch["name"])
-    switch_results["contingency"] = contingency.unique_id
-    switch_results["contingency_name"] = contingency.name
-    switch_results["timestep"] = timestep
-    switch_results.set_index(["timestep", "contingency", "element"], inplace=True)
+
+    # Look up switch display names from the (pandas) network metadata as a small polars
+    # frame we can join on ``switch_id``.
+    name_map = pl.from_pandas(
+        pd.DataFrame(
+            {
+                "switch_id": net.switch.index.to_numpy(),
+                "element_name": net.switch["name"].to_numpy(),
+            }
+        )
+    )
+
+    switch_results = (
+        switch_results.with_columns(
+            (pl.col("switch_id").cast(pl.Utf8) + pl.lit(f"{SEPARATOR}switch")).alias("element"),
+            pl.lit(contingency.unique_id).alias("contingency"),
+            pl.lit(contingency.name).alias("contingency_name"),
+            pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
+        )
+        .join(name_map, on="switch_id", how="left")
+        .select(
+            "timestep",
+            "contingency",
+            "element",
+            "switch_id",
+            "p",
+            "q",
+            "vm",
+            "s",
+            "i",
+            "element_name",
+            "contingency_name",
+        )
+    )
 
     return switch_results
 

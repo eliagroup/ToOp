@@ -14,6 +14,9 @@ from toop_engine_contingency_analysis.pandapower.outaged_topology import (
     set_outaged_elements_out_of_service,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import PandapowerElements
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.polars_results import (
+    cache_res_tables_as_polars,
+)
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     SingleOutageSppsContext,
     SlackAllocationConfig,
@@ -77,6 +80,7 @@ def run_outage_power_flow(
                 method=method,
                 runpp_kwargs=merged_runpp,
             )
+            cache_res_tables_as_polars(net)
             return ConvergenceStatus.CONVERGED, None
 
         spps_result = run_spps(
@@ -95,6 +99,8 @@ def run_outage_power_flow(
         if spps_result.power_flow_failed or spps_result.max_iterations_reached:
             return ConvergenceStatus.FAILED, spps_result
 
+        # Snapshot the freshly solved res_* tables so result extraction can read polars.
+        cache_res_tables_as_polars(net)
         return ConvergenceStatus.CONVERGED, spps_result
 
     except (pp.LoadflowNotConverged, SppsPowerFlowError):

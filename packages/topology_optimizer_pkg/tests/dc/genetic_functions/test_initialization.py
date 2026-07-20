@@ -163,6 +163,7 @@ def test_update_static_information_extends_contingency_ids_for_bb_outage_nminus1
                 branch_outages=jnp.zeros((2, 1), dtype=int),
                 nodal_indices=jnp.zeros((2,), dtype=int),
                 deltap=jnp.zeros((2, n_timesteps), dtype=float),
+                zero_flow_branches=jnp.zeros((2, 0), dtype=int),
             ),
             bb_outage_baseline_analysis=BBOutageBaselineAnalysis(
                 overload=jnp.array(1.0),

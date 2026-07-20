@@ -430,10 +430,6 @@ def perform_rel_bb_outage_single_topo(
     disconnections : Int[Array, "n_disconnections"], optional
         Array of disconnection actions which were performed before the busbar outage as part of
         topological actions.
-    zero_flow_branches : Int[Array, " n_bb_outages max_zero_flow_branches_per_sub"], optional
-        Array of branch indices whose monitored flows should be forced to zero after the outage because the
-        physical busbar outage disconnects their bridge-fed subtree without representing them as
-        direct MODF outages. If not provided, no branches will be forced to zero flow.
 
     Returns
     -------

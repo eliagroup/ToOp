@@ -1217,7 +1217,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         id="DISCONNECTOR_3W_HV_1", voltage_level_id="VL_3W_HV", node1=0, node2=31, kind="DISCONNECTOR", open=False
     )
     n.create_switches(
-        id="DISCONNECTOR_3W_HV_2", voltage_level_id="VL_3W_HV", node1=1, node2=31, kind="DISCONNECTOR", open=False
+        id="DISCONNECTOR_3W_HV_2", voltage_level_id="VL_3W_HV", node1=1, node2=31, kind="DISCONNECTOR", open=True
     )
     n.create_switches(id="BREAKER_3W_MV", voltage_level_id="VL_3W_MV", node1=30, node2=31, kind="BREAKER", open=False)
     n.create_switches(
@@ -1456,7 +1456,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "energy_source": "THERMAL",
                 "min_p": 0.0,
                 "max_p": 1200.0,
-                "target_p": 700.0,
+                "target_p": 1060.0,
                 "voltage_regulator_on": True,
                 "target_v": 380.0,
                 "bus_or_busbar_section_id": "VL_HV_gen_1_1",
@@ -1495,7 +1495,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
             {
                 "id": "load_HV_vsc",
                 "name": "HV local load",
-                "p0": 350.0,
+                "p0": 300.0,
                 "q0": 120.0,
                 "bus_or_busbar_section_id": "VL_HV_vsc_1_1",
                 "position_order": 20,
@@ -1715,6 +1715,10 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         id="Dangling_outbound + Dangling_ch_inbound",
         boundary_line1_id="Dangling_outbound",
         boundary_line2_id="Dangling_ch_inbound",
+    )
+    # since they are now coupled we need an injection for p0 an q0
+    pypowsybl.network.create_load_bay(
+        network=n, id="LOAD_CH", bus_or_busbar_section_id="VL_CH_1_1_1", p0=300.0, q0=100.0, position_order=1
     )
 
     # line limits
@@ -1994,6 +1998,47 @@ def create_complex_substation_layout_grid() -> Network:
         net, id="Load2", bus_or_busbar_section_id="VL4_1_1", p0=250.0, q0=20.0, position_order=1, direction="TOP"
     )
 
+    return net
+
+
+def create_empty_switch_station_repro_grid() -> Network:
+    """Create a node-breaker grid that reproduces the empty-switch schema bug.
+
+    The voltage level keeps a connected load node after its bay switches are
+    removed, leaving ``nbt.switches`` empty while node assets still exist.
+
+    Returns
+    -------
+    Network
+        A small node-breaker network whose graph conversion fails in
+        ``SwitchSchema`` validation.
+    """
+    net = pypowsybl.network.create_empty("EMPTY_SWITCH_STATION_REPRO")
+    net.create_substations(id="S1", name="Station 1", country="BE")
+    net.create_voltage_levels(
+        id="VL1",
+        substation_id="S1",
+        nominal_v=220.0,
+        topology_kind="NODE_BREAKER",
+        name="VL1",
+    )
+    pypowsybl.network.create_voltage_level_topology(
+        network=net,
+        id="VL1",
+        aligned_buses_or_busbar_count=1,
+        section_count=1,
+        switch_kinds="",
+    )
+    pypowsybl.network.create_load_bay(
+        net,
+        id="LOAD1",
+        bus_or_busbar_section_id="VL1_1_1",
+        p0=10.0,
+        q0=1.0,
+        position_order=1,
+        direction="TOP",
+    )
+    net.remove_elements(list(net.get_switches().index))
     return net
 
 

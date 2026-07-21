@@ -848,6 +848,13 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "topology_kind": "NODE_BREAKER",
             },
             {
+                "id": "VL_2W_MV_HV_MV_INT",
+                "name": "VL_2W_MV_HV_MV_INT",
+                "substation_id": "S_2W_MV_HV",
+                "nominal_v": 110.0,
+                "topology_kind": "NODE_BREAKER",
+            },
+            {
                 "id": "VL_2W_MV_HV_HV",
                 "name": "VL_2W_MV_HV_HV",
                 "substation_id": "S_2W_MV_HV",
@@ -947,6 +954,13 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     _create_busbars(four_busbar_layout_list, kwargs_four_busbar_layout)
     _create_busbars(four_busbar_disconnector_layout_list, kwargs_four_busbar_disconnector_layout)
     _create_busbars(three_busbar_layout_list, kwargs_three_busbar_layout)
+    pypowsybl.network.create_voltage_level_topology(
+        network=n,
+        id="VL_2W_MV_HV_MV_INT",
+        aligned_buses_or_busbar_count=2,
+        section_count=1,
+        switch_kinds="",
+    )
 
     # refine busbar layouts for specific voltage levels
     pypowsybl.network.create_coupling_device(
@@ -1010,6 +1024,16 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
             {"bus_or_busbar_section_id_1": "VL_2W_MV_LV_MV_1_1", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_short},
             {"bus_or_busbar_section_id_1": "VL_MV_load_1_1", "bus_or_busbar_section_id_2": "VL_MV_2_2", **mv_short},
             {"bus_or_busbar_section_id_1": "VL_2W_MV_HV_MV_3_1", "bus_or_busbar_section_id_2": "VL_MV_2_1", **mv_short},
+            {
+                "bus_or_busbar_section_id_1": "VL_2W_MV_HV_MV_INT_1_1",
+                "bus_or_busbar_section_id_2": "VL_2W_MV_HV_MV_1_1",
+                **mv_short,
+            },
+            {
+                "bus_or_busbar_section_id_1": "VL_2W_MV_HV_MV_INT_2_1",
+                "bus_or_busbar_section_id_2": "VL_2W_MV_HV_MV_2_1",
+                **mv_short,
+            },
             {"bus_or_busbar_section_id_1": "VL_MV_load_1_1", "bus_or_busbar_section_id_2": "VL_2W_MV_LV_MV_1_1", **mv_long},
             {"bus_or_busbar_section_id_1": "VL_MV_1_1", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_long},
             {"bus_or_busbar_section_id_1": "VL_MV_1_2", "bus_or_busbar_section_id_2": "VL_3W_MV_1_1", **mv_long},
@@ -1140,7 +1164,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         bus_or_busbar_section_id_1="VL_2W_MV_HV_HV_1_2",
         position_order_1=35,
         direction_1="BOTTOM",
-        bus_or_busbar_section_id_2="VL_2W_MV_HV_MV_1_1",
+        bus_or_busbar_section_id_2="VL_2W_MV_HV_MV_INT_1_1",
         position_order_2=5,
         direction_2="TOP",
     )
@@ -1156,7 +1180,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         bus_or_busbar_section_id_1="VL_2W_MV_HV_HV_2_1",
         position_order_1=35,
         direction_1="BOTTOM",
-        bus_or_busbar_section_id_2="VL_2W_MV_HV_MV_2_1",
+        bus_or_busbar_section_id_2="VL_2W_MV_HV_MV_INT_2_1",
         position_order_2=5,
         direction_2="TOP",
     )
@@ -1367,6 +1391,16 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     taps = np.arange(-30, 19)
     steps_df = build_pst_steps("MV_load_PST_no_limit", taps=taps, is_linear=bool(linear_pst[1]))
     n.create_phase_tap_changers(ptc_df, steps_df)
+
+    # Keep the intermediate HV/MV busbars fixed to their assigned feeders.
+    n.remove_elements(
+        [
+            "L81_DISCONNECTOR_3_1",
+            "L91_DISCONNECTOR_5_0",
+            "2W_MV_HV_12_DISCONNECTOR_7_1",
+            "2W_MV_HV_22_DISCONNECTOR_9_0",
+        ]
+    )
     # ---------------------------------------------------------------------
     # 5) HVDC
     # ---------------------------------------------------------------------

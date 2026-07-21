@@ -265,7 +265,7 @@ def test_apply_disconnections_matches_loadflows(
         ),
     ],
 )
-def test_busbar_outages_match_loadflows_node_breaker(
+def test_busbar_outages_matches_loadflows_node_breaker(
     test_grid_folder_path: Path,
     network_data_test_grid,
     busbar_id: str,
@@ -343,7 +343,7 @@ def test_busbar_outages_match_loadflows_node_breaker(
     assert np.allclose(n_1_busbar, n_1_ref_busbar, atol=atol, rtol=0.0)
 
 
-def test_busbar_outages_execute_complex_grid(
+def test_busbar_outages_matches_loadflows_complex_grid(
     create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
 ) -> None:
     data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path

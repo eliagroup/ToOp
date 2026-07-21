@@ -88,13 +88,13 @@ class Busbar(BaseModel):
     in_service: bool = True
     """ Whether the busbar is in service. If False, it will be ignored in the switching table"""
 
-    bus_branch_bus_id: Optional[str] = None
-    """ The bus_branch_bus_id refers to the bus-branch model bus id.
+    bus_breaker_bus_id: Optional[str] = None
+    """ The bus_breaker_bus_id refers to the bus-breaker view bus id.
     There might be a difference between the busbar grid_model_id (a physical busbar)
-    and the bus_branch_bus_id from the bus-branch model.
-    Use this bus_branch_bus_id to store the bus-branch model bus id.
-    Note: the Station grid_model_id also a bus-branch bus_branch_bus_id. This id is the most splitable bus_branch_bus_id.
-    Other bus_branch_bus_ids are part of the physical station, but are separated by a coupler or branch."""
+    and the bus_breaker_bus_id used in the switching model.
+    Use this bus_breaker_bus_id to store the bus-breaker bus represented by the busbar.
+    Multiple physical busbars can share the same bus_breaker_bus_id when they belong to the same
+    bus-breaker bus, while other bus_breaker_bus_ids in the same station are separated by a coupler or branch."""
 
 
 class AssetBay(BaseModel):
@@ -303,14 +303,14 @@ class AssetSetpoint(BaseModel):
 class Station(BaseModel):
     """Station data describing a single station.
 
-    The minimal station model refers to a single bus-brach model bus_id, which contains a splitable bus.
-    A physical representation may have multiple bus-brach model bus_ids.
+    The minimal station model refers to a single station identifier used by the switching model.
+    A physical representation may contain multiple bus-breaker buses within the same station.
     """
 
     grid_model_id: str
     """ The unique identifier of the station.
     Corresponds to the stations's id in the grid model.
-    Expects the bus-branch model bus_id, which is the most splitable bus_id."""
+    Expects the station identifier used by the switching model."""
 
     name: Optional[str] = None
     """ The name of the station. """
@@ -498,17 +498,17 @@ class Station(BaseModel):
 
     @model_validator(mode="after")
     def check_bus_id(self: "Station") -> "Station":
-        """Check if station grid_model_id is in the busbar.bus_branch_bus_id.
+        """Check if station grid_model_id is in the busbar.bus_breaker_bus_id.
 
         Returns
         -------
         Station
             The station itself.
         """
-        busbar_grid_model_id = [busbar.bus_branch_bus_id for busbar in self.busbars if busbar.bus_branch_bus_id is not None]
-        if len(busbar_grid_model_id) > 0 and self.grid_model_id not in busbar_grid_model_id:
+        busbar_bus_ids = [busbar.bus_breaker_bus_id for busbar in self.busbars if busbar.bus_breaker_bus_id is not None]
+        if len(busbar_bus_ids) > 0 and self.grid_model_id not in busbar_bus_ids:
             raise ValueError(
-                f"Station grid_model_id {self.grid_model_id} does not exist in busbars bus_branch_bus_id"
+                f"Station grid_model_id {self.grid_model_id} does not exist in busbars bus_breaker_bus_id"
                 f" Station_id: {self.grid_model_id}, Name: {self.name}"
             )
 

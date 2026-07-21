@@ -213,6 +213,41 @@ def filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> Network
     return remove_relevant_subs(network_data, keep_mask=keep_mask)
 
 
+def _switching_table_has_double_connections(switching_table: np.ndarray) -> bool:
+    """Return whether a switching table contains assets connected to multiple busbars."""
+    return bool(switching_table.size > 0 and np.any(np.sum(switching_table, axis=0) > 1))
+
+
+def filter_relevant_nodes_no_double_connections(network_data: NetworkData) -> NetworkData:
+    """Filter relevant nodes whose asset-topology station contains double connections.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        The network data to filter.
+
+    Returns
+    -------
+    NetworkData
+        The network data with relevant nodes removed when their station has double connections.
+    """
+    assert network_data.asset_topology is not None, "Asset topology has to be passed in"
+    relevant_node_ids = np.array(network_data.node_ids)[np.flatnonzero(network_data.relevant_node_mask)]
+    station_ids_without_double_connections = np.array(
+        [
+            station.grid_model_id
+            for station in network_data.asset_topology.stations
+            if not _switching_table_has_double_connections(station.asset_switching_table)
+        ]
+    )
+    keep_mask = np.isin(relevant_node_ids, station_ids_without_double_connections)
+
+    for node_id in relevant_node_ids[~keep_mask]:
+        logger.warning(f"Removed relevant node {node_id}, since its asset topology station has double connections")
+
+    return remove_relevant_subs(network_data, keep_mask=keep_mask)
+
+
 def compute_bridging_branches(network_data: NetworkData) -> NetworkData:
     """Identify branches whose outages would lead to islanding of the network (like bridges to islands).
 
@@ -1342,6 +1377,7 @@ def preprocess(  # noqa: PLR0915
     logging_fn("filter_relevant_nodes", None)
     network_data = filter_relevant_nodes_branch_count(network_data)
     network_data = filter_relevant_nodes_no_asset_station(network_data)
+    network_data = filter_relevant_nodes_no_double_connections(network_data)
 
     logging_fn("assert_network_data", None)
     assert_network_data(network_data)

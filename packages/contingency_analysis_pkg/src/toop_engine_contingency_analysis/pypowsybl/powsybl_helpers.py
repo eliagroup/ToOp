@@ -194,7 +194,9 @@ class PowsyblNMinus1Definition(BaseModel):
 
 
 def translate_contingency_to_powsybl(
-    contingencies: list[Contingency], identifiables: pd.Index
+    contingencies: list[Contingency],
+    identifiables: pd.Index,
+    bus_contingency_expansions: Optional[dict[str, list[str]]] = None,
 ) -> tuple[list[PowsyblContingency], list[Contingency]]:
     """Translate the contingencies to a format that can be used in Powsybl.
 
@@ -205,6 +207,9 @@ def translate_contingency_to_powsybl(
     identifiables : pd.DataFrame
         A dataframe containing the identifiables of the network.
         This is used to check if the elements are present in the network.
+    bus_contingency_expansions : Optional[dict[str, list[str]]], optional
+        A mapping from busbar section ids to the busbar section ids that share its bus-breaker bus identifier.
+        Used for contingency propagation of busbars
 
     Returns
     -------
@@ -218,19 +223,63 @@ def translate_contingency_to_powsybl(
     for contingency in contingencies:
         outaged_elements = []
         for element in contingency.elements:
-            if element.id not in identifiables:
+            expanded_element_ids = (
+                bus_contingency_expansions.get(element.id, [element.id])
+                if bus_contingency_expansions is not None and element.kind == "bus"
+                else [element.id]
+            )
+            if any(expanded_element_id not in identifiables for expanded_element_id in expanded_element_ids):
                 missing_contingencies.append(contingency)
                 break
-            outaged_elements.append(element.id)
+            outaged_elements.extend(expanded_element_ids)
         else:
             pp_contingency = PowsyblContingency(
                 id=contingency.id,
                 name=contingency.name or "",
-                elements=outaged_elements,
+                elements=list(dict.fromkeys(outaged_elements)),
             )
             pow_contingencies.append(pp_contingency)
 
     return pow_contingencies, missing_contingencies
+
+
+def _get_bus_contingency_expansions(bus_map: pd.DataFrame, switches: Optional[pd.DataFrame] = None) -> dict[str, list[str]]:
+    """Expand busbar contingencies to all busbars on the same bus-breaker bus.
+
+    Parameters
+    ----------
+    bus_map : pd.DataFrame
+        Mapping between busbar sections, bus-breaker buses and electrical buses.
+    switches : Optional[pd.DataFrame], optional
+        Unused placeholder kept for API compatibility with existing call sites.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Mapping from each busbar section id to the sorted busbar section ids that share its
+        bus-breaker bus identifier within the same voltage level.
+    """
+    del switches
+
+    if bus_map.empty:
+        return {}
+
+    busbar_sections = bus_map.loc[bus_map.index != bus_map["bus_breaker_bus_id"]]
+    if busbar_sections.empty:
+        return {}
+
+    expansions: dict[str, list[str]] = {}
+    grouped_busbars = (
+        busbar_sections.rename_axis("busbar_id")
+        .reset_index()
+        .groupby(["voltage_level_id", "bus_breaker_bus_id"])["busbar_id"]
+        .agg(lambda busbar_ids: sorted(busbar_ids.tolist()))
+    )
+    for expanded_busbar_ids in grouped_busbars.tolist():
+        for busbar_id in expanded_busbar_ids:
+            expansions[busbar_id] = expanded_busbar_ids
+
+    return expansions
 
 
 def translate_monitored_elements_to_powsybl(
@@ -705,8 +754,9 @@ def translate_nminus1_components_for_powsybl(
         attributes=["open", "retained", "voltage_level_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
     )
     identifiables = net.get_identifiables(attributes=[]).index
+    bus_contingency_expansions = _get_bus_contingency_expansions(busmap)
     pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
-        n_minus_1_definition.contingencies, identifiables
+        n_minus_1_definition.contingencies, identifiables, bus_contingency_expansions=bus_contingency_expansions
     )
     contingency_name_map = {contingency.id: contingency.name or "" for contingency in n_minus_1_definition.contingencies}
     (monitored_elements, element_name_map, missing_elements) = translate_monitored_elements_to_powsybl(

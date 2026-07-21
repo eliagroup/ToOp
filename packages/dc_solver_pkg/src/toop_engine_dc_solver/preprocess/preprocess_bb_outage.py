@@ -30,7 +30,7 @@ def _deduplicate_branch_indices_preserving_order(branch_indices: list[int]) -> l
     return list(dict.fromkeys(branch_indices))
 
 
-def _is_breaker_coupler(coupler_type: Optional[str], coupler_id: str) -> bool:
+def _coupler_blocks_busbar_outage_propagation(coupler_type: Optional[str], coupler_id: str) -> bool:
     """Return whether a coupler should block busbar-outage propagation.
 
     Parameters
@@ -43,15 +43,129 @@ def _is_breaker_coupler(coupler_type: Optional[str], coupler_id: str) -> bool:
     Returns
     -------
     bool
-        True if the coupler is a breaker, otherwise False.
+        True if the coupler should not propagate the busbar outage, otherwise False.
     """
     coupler_type_upper = coupler_type.upper() if coupler_type is not None else ""
     coupler_id_upper = coupler_id.upper()
     return "BREAKER" in coupler_type_upper or "BREAKER" in coupler_id_upper or coupler_type_upper == "CB"
 
 
+def _get_coupler_neighbor_indices(
+    station: Station,
+    current_busbar_int_id: int,
+    busbar_int_id_to_index: dict[int, int],
+) -> list[int]:
+    """Get neighboring busbars reached through propagating couplers.
+
+    Parameters
+    ----------
+    station : Station
+        Station topology containing the couplers to traverse.
+    current_busbar_int_id : int
+        Integer id of the busbar currently being expanded in the outage traversal.
+    busbar_int_id_to_index : dict[int, int]
+        Mapping from physical busbar integer ids to their indices in ``station.busbars``.
+
+    Returns
+    -------
+    list[int]
+        Indices of neighboring busbars that are connected through in-service couplers which are
+        allowed to propagate the busbar outage.
+    """
+    neighbor_indices: list[int] = []
+    for coupler in station.couplers:
+        if (
+            coupler.open
+            or not coupler.in_service
+            or _coupler_blocks_busbar_outage_propagation(coupler.type, coupler.grid_model_id)
+        ):
+            continue
+
+        if coupler.busbar_from_id == current_busbar_int_id:
+            neighbor_int_id = coupler.busbar_to_id
+        elif coupler.busbar_to_id == current_busbar_int_id:
+            neighbor_int_id = coupler.busbar_from_id
+        else:
+            continue
+
+        neighbor_indices.append(busbar_int_id_to_index[neighbor_int_id])
+
+    return neighbor_indices
+
+
+def _get_shared_asset_neighbor_indices(
+    station: Station,
+    current_busbar_index: int,
+    asset_id_to_index: dict[str, int],
+) -> list[int]:
+    """Get neighboring busbars reached through shared in-service assets.
+
+    Parameters
+    ----------
+    station : Station
+        Station topology containing the switching table used to detect multi-busbar asset
+        connections.
+    current_busbar_index : int
+        Index of the busbar currently being expanded in the outage traversal.
+    asset_id_to_index : dict[str, int]
+        Mapping from asset grid model ids to their column indices in
+        ``station.asset_switching_table``.
+
+    Returns
+    -------
+    list[int]
+        Indices of busbars that share an in-service asset with the current busbar. Assets connected
+        to only one busbar do not contribute to propagation.
+    """
+    neighbor_indices: list[int] = []
+    for asset in get_connected_assets(station, current_busbar_index):
+        if not asset.in_service:
+            continue
+
+        asset_index = asset_id_to_index.get(asset.grid_model_id)
+        if asset_index is None:
+            continue
+
+        connected_busbar_indices = np.flatnonzero(station.asset_switching_table[:, asset_index]).tolist()
+        if len(connected_busbar_indices) <= 1:
+            continue
+
+        neighbor_indices.extend(connected_busbar_indices)
+
+    return neighbor_indices
+
+
+def _add_unseen_neighbor_indices(
+    neighbor_indices: list[int],
+    connected_indices: set[int],
+    indices_to_visit: list[int],
+) -> None:
+    """Add unseen neighbor indices to the outage traversal frontier.
+
+    Parameters
+    ----------
+    neighbor_indices : list[int]
+        Candidate neighboring busbar indices discovered in the current traversal step.
+    connected_indices : set[int]
+        Set of busbar indices that are already part of the outage area.
+    indices_to_visit : list[int]
+        Stack of busbar indices whose neighbors still need to be explored.
+    """
+    for neighbor_index in neighbor_indices:
+        if neighbor_index in connected_indices:
+            continue
+        connected_indices.add(neighbor_index)
+        indices_to_visit.append(neighbor_index)
+
+
 def _get_connected_busbar_indices_for_outage(station: Station, busbar_index: int) -> list[int]:
-    """Get busbars electrically merged with a busbar through closed non-breaker couplers.
+    """Get busbars electrically merged with a busbar through outage propagation.
+
+    The outage area grows in two steps:
+
+    1. Closed couplers that are allowed to propagate a busbar outage merge busbars directly.
+    2. In-service assets connected to more than one busbar extend the outage area over shared
+       asset connectivity, which is how double connections are propagated.
 
     Parameters
     ----------
@@ -66,26 +180,18 @@ def _get_connected_busbar_indices_for_outage(station: Station, busbar_index: int
         Busbar indices that belong to the same outage area.
     """
     busbar_int_id_to_index = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
+    asset_id_to_index = {asset.grid_model_id: index for index, asset in enumerate(station.assets)}
     indices_to_visit = [busbar_index]
     connected_indices = {busbar_index}
 
     while indices_to_visit:
         current_index = indices_to_visit.pop()
         current_int_id = station.busbars[current_index].int_id
-        for coupler in station.couplers:
-            if coupler.open or not coupler.in_service or _is_breaker_coupler(coupler.type, coupler.grid_model_id):
-                continue
-            if coupler.busbar_from_id == current_int_id:
-                other_int_id = coupler.busbar_to_id
-            elif coupler.busbar_to_id == current_int_id:
-                other_int_id = coupler.busbar_from_id
-            else:
-                continue
+        coupler_neighbor_indices = _get_coupler_neighbor_indices(station, current_int_id, busbar_int_id_to_index)
+        _add_unseen_neighbor_indices(coupler_neighbor_indices, connected_indices, indices_to_visit)
 
-            other_index = busbar_int_id_to_index[other_int_id]
-            if other_index not in connected_indices:
-                connected_indices.add(other_index)
-                indices_to_visit.append(other_index)
+        shared_asset_neighbor_indices = _get_shared_asset_neighbor_indices(station, current_index, asset_id_to_index)
+        _add_unseen_neighbor_indices(shared_asset_neighbor_indices, connected_indices, indices_to_visit)
 
     return sorted(connected_indices)
 
@@ -390,38 +496,38 @@ def get_phy_bb_nodal_index(
 def _get_connected_assets_for_busbar_outage(
     station: Station,
     busbar_id: str,
-    network: NetworkData,
-    branch_action_combi_index: Optional[Union[Int[Array, " "] | int | np.integer]],
 ) -> tuple[int, list[SwitchableAsset]]:
-    """Get the assets whose removal models a busbar outage for the current topology."""
+    """Collect all assets that belong to the propagated outage area of a busbar.
+
+    Parameters
+    ----------
+    station : Station
+        The realised station topology whose switching table defines the current connectivity.
+    busbar_id : str
+        Grid model id of the busbar whose outage is being evaluated.
+
+    Returns
+    -------
+    tuple[int, list[SwitchableAsset]]
+        The index of the outaged busbar in ``station.busbars`` and the deduplicated in-service
+        assets connected to any busbar in the propagated outage area.
+
+    Notes
+    -----
+    This helper no longer decides the propagation itself. The outage area is resolved by
+    ``_get_connected_busbar_indices_for_outage`` and this function only gathers the assets that
+    have to be translated into branch outages or nodal injection removals.
+    """
     busbar_index = get_busbar_index(station, busbar_id)
-    connected_assets_station = station
-    connected_assets_busbar_index = busbar_index
-
-    if branch_action_combi_index == 0 and network.asset_topology is not None:
-        try:
-            physical_station = find_station_by_id(network.asset_topology.stations, station.grid_model_id)
-            connected_assets_busbar_index = get_busbar_index(physical_station, busbar_id)
-            connected_assets_station = physical_station
-        except ValueError:
-            connected_assets_station = station
-            connected_assets_busbar_index = busbar_index
-
-    connected_assets = get_connected_assets(connected_assets_station, connected_assets_busbar_index)
-    if branch_action_combi_index != 0 or connected_assets_station is station:
-        return busbar_index, connected_assets
-
+    outage_busbar_indices = _get_connected_busbar_indices_for_outage(station, busbar_index)
     connected_assets = []
     connected_asset_ids = set()
-    connected_busbar_indices = _get_connected_busbar_indices_for_outage(
-        connected_assets_station, connected_assets_busbar_index
-    )
-    for connected_busbar_index in connected_busbar_indices:
-        if connected_busbar_index != connected_assets_busbar_index and not _should_propagate_connected_busbar(
-            connected_assets_station, connected_busbar_index
+    for connected_busbar_index in outage_busbar_indices:
+        if connected_busbar_index != busbar_index and not _should_propagate_connected_busbar(
+            station, connected_busbar_index
         ):
             continue
-        for asset in get_connected_assets(connected_assets_station, connected_busbar_index):
+        for asset in get_connected_assets(station, connected_busbar_index):
             if asset.grid_model_id in connected_asset_ids:
                 continue
             connected_assets.append(asset)
@@ -435,7 +541,12 @@ def _get_busbar_outage_node_index(
     network: NetworkData,
     branch_action_combi_index: Optional[Union[Int[Array, " "] | int | np.integer]],
 ) -> Union[int, np.int64]:
-    """Resolve the nodal index that represents the physical busbar being outaged."""
+    """Resolve the solver node that represents the physical busbar being outaged.
+
+    For non-relevant stations there is a single node for the station and the mapping is direct.
+    For relevant stations the physical busbar must be mapped to busbar A or busbar B depending on
+    the realised branch-action combination.
+    """
     node_indices_to_outage = np.nonzero(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
     node_indices_to_outage = tuple(sorted(node_indices_to_outage))
 
@@ -487,12 +598,16 @@ def extract_busbar_outage_data(
         - branch_indices: A list of indices of the connected branches to be outaged.
         - nodal_injection: An array of nodal injections to be outaged.
         - node_index: The index of the node to be outaged.
+
+    Notes
+    -----
+    The busbar outage is resolved in two stages: first the propagated outage area and its assets are
+    determined on the station topology, then these assets are converted into solver-facing branch and
+    injection changes for the node representing the outaged physical busbar.
     """
     busbar_index, connected_assets = _get_connected_assets_for_busbar_outage(
         station,
         busbar_id,
-        network,
-        branch_action_combi_index,
     )
 
     assert station.busbars[busbar_index].grid_model_id == busbar_id, "Busbar index is not correct."

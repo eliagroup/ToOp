@@ -121,7 +121,7 @@ def test_get_busbar_outage_map(powsybl_data_folder: Path) -> None:
             busbar.grid_model_id: station.grid_model_id for station in asset_topology.stations for busbar in station.busbars
         }
         bus_id_to_station_id = {
-            busbar.bus_branch_bus_id: station.grid_model_id
+            busbar.bus_breaker_bus_id: station.grid_model_id
             for station in asset_topology.stations
             for busbar in station.busbars
         }
@@ -160,7 +160,7 @@ def test_get_busbar_outage_map_case57(powsybl_case57_folder_xiidm: Path) -> None
             busbar.grid_model_id: station.grid_model_id for station in asset_topology.stations for busbar in station.busbars
         }
         bus_id_to_station_id = {
-            busbar.bus_branch_bus_id: station.grid_model_id
+            busbar.bus_breaker_bus_id: station.grid_model_id
             for station in asset_topology.stations
             for busbar in station.busbars
         }

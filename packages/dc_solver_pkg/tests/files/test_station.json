@@ -11,7 +11,7 @@
          "name": "VL2_1_1",
          "int_id": 0,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_1_2",
@@ -19,7 +19,7 @@
          "name": "VL2_1_2",
          "int_id": 1,
          "in_service": false,
-         "bus_branch_bus_id": ""
+         "bus_breaker_bus_id": ""
       },
       {
          "grid_model_id": "VL2_1_3",
@@ -27,7 +27,7 @@
          "name": "VL2_1_3",
          "int_id": 2,
          "in_service": false,
-         "bus_branch_bus_id": ""
+         "bus_breaker_bus_id": ""
       },
       {
          "grid_model_id": "VL2_1_4",
@@ -35,7 +35,7 @@
          "name": "VL2_1_4",
          "int_id": 3,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_1_5",
@@ -43,7 +43,7 @@
          "name": "VL2_1_5",
          "int_id": 4,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_1_6",
@@ -51,7 +51,7 @@
          "name": "VL2_1_6",
          "int_id": 5,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_1_7",
@@ -59,7 +59,7 @@
          "name": "VL2_1_7",
          "int_id": 6,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_1_8",
@@ -67,7 +67,7 @@
          "name": "VL2_1_8",
          "int_id": 7,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_14"
+         "bus_breaker_bus_id": "VL2_14"
       },
       {
          "grid_model_id": "VL2_2_1",
@@ -75,7 +75,7 @@
          "name": "VL2_2_1",
          "int_id": 8,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_2_2",
@@ -83,7 +83,7 @@
          "name": "VL2_2_2",
          "int_id": 9,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_2_3",
@@ -91,7 +91,7 @@
          "name": "VL2_2_3",
          "int_id": 10,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_2_4",
@@ -99,7 +99,7 @@
          "name": "VL2_2_4",
          "int_id": 11,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_2_5",
@@ -107,7 +107,7 @@
          "name": "VL2_2_5",
          "int_id": 12,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_2_6",
@@ -115,7 +115,7 @@
          "name": "VL2_2_6",
          "int_id": 13,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_2_7",
@@ -123,7 +123,7 @@
          "name": "VL2_2_7",
          "int_id": 14,
          "in_service": true,
-         "bus_branch_bus_id": "VL2_0"
+         "bus_breaker_bus_id": "VL2_0"
       },
       {
          "grid_model_id": "VL2_2_8",
@@ -131,7 +131,7 @@
          "name": "VL2_2_8",
          "int_id": 15,
          "in_service": false,
-         "bus_branch_bus_id": ""
+         "bus_breaker_bus_id": ""
       }
    ],
    "couplers": [

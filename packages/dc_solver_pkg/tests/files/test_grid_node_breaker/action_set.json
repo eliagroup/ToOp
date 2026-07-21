@@ -17,7 +17,7 @@
             "name": "bus1",
             "int_id": 0,
             "in_service": true,
-            "bus_branch_bus_id": "VL2_0"
+            "bus_breaker_bus_id": "VL2_0"
           },
           {
             "grid_model_id": "BBS2_2",
@@ -25,7 +25,7 @@
             "name": "bus2",
             "int_id": 1,
             "in_service": true,
-            "bus_branch_bus_id": "VL2_0"
+            "bus_breaker_bus_id": "VL2_0"
           },
           {
             "grid_model_id": "BBS2_3",
@@ -33,7 +33,7 @@
             "name": "bus3",
             "int_id": 2,
             "in_service": true,
-            "bus_branch_bus_id": "VL2_0"
+            "bus_breaker_bus_id": "VL2_0"
           }
         ],
         "couplers": [
@@ -223,7 +223,7 @@
             "name": "bus1",
             "int_id": 0,
             "in_service": true,
-            "bus_branch_bus_id": "VL3_0"
+            "bus_breaker_bus_id": "VL3_0"
           },
           {
             "grid_model_id": "BBS3_2",
@@ -231,7 +231,7 @@
             "name": "bus2",
             "int_id": 1,
             "in_service": true,
-            "bus_branch_bus_id": "VL3_0"
+            "bus_breaker_bus_id": "VL3_0"
           }
         ],
         "couplers": [
@@ -370,7 +370,7 @@
             "name": "bus1",
             "int_id": 0,
             "in_service": true,
-            "bus_branch_bus_id": "VL4_0"
+            "bus_breaker_bus_id": "VL4_0"
           },
           {
             "grid_model_id": "BBS4_2",
@@ -378,7 +378,7 @@
             "name": "bus2",
             "int_id": 1,
             "in_service": true,
-            "bus_branch_bus_id": "VL4_0"
+            "bus_breaker_bus_id": "VL4_0"
           }
         ],
         "couplers": [
@@ -479,7 +479,7 @@
             "name": "bus1",
             "int_id": 0,
             "in_service": true,
-            "bus_branch_bus_id": "VL5_0"
+            "bus_breaker_bus_id": "VL5_0"
           }
         ],
         "couplers": [],
@@ -550,7 +550,7 @@
             "name": "bus1",
             "int_id": 0,
             "in_service": true,
-            "bus_branch_bus_id": "VL2_0"
+            "bus_breaker_bus_id": "VL2_0"
           },
           {
             "grid_model_id": "BBS2_2",
@@ -558,7 +558,7 @@
             "name": "bus2",
             "int_id": 1,
             "in_service": true,
-            "bus_branch_bus_id": "VL2_0"
+            "bus_breaker_bus_id": "VL2_0"
           },
           {
             "grid_model_id": "BBS2_3",
@@ -566,7 +566,7 @@
             "name": "bus3",
             "int_id": 2,
             "in_service": true,
-            "bus_branch_bus_id": "VL2_0"
+            "bus_breaker_bus_id": "VL2_0"
           }
         ],
         "couplers": [

@@ -28,6 +28,22 @@ from toop_engine_grid_helpers.pandapower.slack_allocation import assign_slack_pe
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 
 
+def _with_warm_start(net: pp.pandapowerNet, method: str, runpp_kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Add ``init="results"`` for AC runs when the net carries usable base-case voltages.
+
+    The outage net is a deep copy of the *solved* base case, so its ``res_bus`` voltages
+    are a far better Newton-Raphson start than the default DC initialization (measured:
+    6 iterations from DC init vs 0-4 warm-started). The caller's explicit ``init`` always
+    wins, and DC runs are left untouched (``rundcpp`` takes no init).
+    """
+    if method != "ac" or "init" in runpp_kwargs:
+        return runpp_kwargs
+    res_bus = net.res_bus
+    if len(res_bus) != len(net.bus) or not res_bus["vm_pu"].notna().any():
+        return runpp_kwargs
+    return {**runpp_kwargs, "init": "results"}
+
+
 def run_outage_power_flow(
     net: pp.pandapowerNet,
     spps: SingleOutageSppsContext,
@@ -75,11 +91,21 @@ def run_outage_power_flow(
 
     try:
         if spps.conditions.empty:
-            _run_power_flow(
-                net=net,
-                method=method,
-                runpp_kwargs=merged_runpp,
-            )
+            try:
+                _run_power_flow(
+                    net=net,
+                    method=method,
+                    runpp_kwargs=_with_warm_start(net, method, merged_runpp),
+                )
+            except pp.LoadflowNotConverged:
+                # The warm start changes the solver trajectory; a contingency that would
+                # have converged from the cold (DC) start must not be reported as failed
+                # because of it. Retry once with the caller's original settings.
+                _run_power_flow(
+                    net=net,
+                    method=method,
+                    runpp_kwargs=merged_runpp,
+                )
             cache_res_tables_as_polars(net)
             return ConvergenceStatus.CONVERGED, None
 

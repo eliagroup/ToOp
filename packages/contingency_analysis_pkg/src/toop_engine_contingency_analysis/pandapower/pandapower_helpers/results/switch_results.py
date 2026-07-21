@@ -298,6 +298,149 @@ def _get_elements_for_buses(
     return [(switch_id, element_uid, side) for element_uid, side in matches]
 
 
+# Branch tables and their terminal columns, in the same order _build_bus_to_branch_map uses.
+_BRANCH_TERMINALS: tuple[tuple[str, str, int], ...] = (
+    ("impedance", "from_bus", BranchSide.ONE.value),
+    ("impedance", "to_bus", BranchSide.TWO.value),
+    ("line", "from_bus", BranchSide.ONE.value),
+    ("line", "to_bus", BranchSide.TWO.value),
+    ("trafo", "hv_bus", BranchSide.ONE.value),
+    ("trafo", "lv_bus", BranchSide.TWO.value),
+    ("trafo3w", "hv_bus", BranchSide.ONE.value),
+    ("trafo3w", "mv_bus", BranchSide.TWO.value),
+    ("trafo3w", "lv_bus", BranchSide.THREE.value),
+)
+
+
+def _build_branch_terminal_frame(net: pp.pandapowerNet) -> pd.DataFrame:
+    """Vectorized ``(bus, element, side)`` table of every branch terminal.
+
+    Same content as :func:`_build_bus_to_branch_map`, built with array ops instead of
+    ``itertuples`` so it stays cheap on nets with tens of thousands of branches.
+    """
+    frames = []
+    for table, bus_col, side in _BRANCH_TERMINALS:
+        df = net[table]
+        if df.empty:
+            continue
+        frames.append(
+            pd.DataFrame(
+                {
+                    "bus": df[bus_col].to_numpy(dtype=np.int64),
+                    "element": get_globally_unique_id_from_index(df.index, table).to_numpy(dtype=object),
+                    "side": np.full(len(df), side, dtype=np.int64),
+                }
+            )
+        )
+
+    if not frames:
+        return pd.DataFrame({"bus": np.array([], dtype=np.int64), "element": [], "side": np.array([], dtype=np.int64)})
+
+    return pd.concat(frames, ignore_index=True)
+
+
+class _BusBranchIndex:
+    """CSR-style lookup from bus position to the branch terminals at that bus.
+
+    ``element[indptr[p]:indptr[p + 1]]`` are the branch uids at bus position ``p``, with
+    matching sides in ``side``. Positions index into ``bus_ids`` (``net.bus.index``), which
+    is the space the traversal below works in, so no per-bus dict lookups are needed.
+    """
+
+    def __init__(self, bus_ids: np.ndarray, terminals: pd.DataFrame) -> None:
+        n_buses = len(bus_ids)
+        bus_index = pd.Index(bus_ids)
+
+        # Terminals on buses that are not in net.bus are dropped, as before.
+        positions = bus_index.get_indexer(terminals["bus"].to_numpy(dtype=np.int64))
+        keep = positions >= 0
+        positions = positions[keep]
+
+        # A stable sort keeps the element-type / side order within each bus.
+        order = np.argsort(positions, kind="stable")
+        positions = positions[order]
+
+        self.element = terminals["element"].to_numpy(dtype=object)[keep][order]
+        self.side = terminals["side"].to_numpy(dtype=np.int64)[keep][order]
+        self.indptr = np.zeros(n_buses + 1, dtype=np.int64)
+        np.cumsum(np.bincount(positions, minlength=n_buses), out=self.indptr[1:])
+
+    def gather(self, bus_positions: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Branch terminals on *bus_positions*.
+
+        Returns ``(elements, sides, counts)``, where ``counts[i]`` is how many terminals
+        ``bus_positions[i]`` contributed, so callers can expand their own per-bus columns
+        onto the terminal rows.
+        """
+        starts = self.indptr[bus_positions]
+        counts = self.indptr[bus_positions + 1] - starts
+        total = int(counts.sum())
+        if total == 0:
+            return self.element[:0], self.side[:0], counts
+
+        # Ragged gather: expand each [start, start + count) range without a Python loop.
+        offsets = np.repeat(starts - np.concatenate(([0], np.cumsum(counts)[:-1])), counts)
+        flat = offsets + np.arange(total, dtype=np.int64)
+        return self.element[flat], self.side[flat], counts
+
+
+def _build_bus_branch_index(net: pp.pandapowerNet, bus_ids: np.ndarray) -> _BusBranchIndex:
+    """Build the CSR bus -> branch-terminal index used by the switch mapping."""
+    return _BusBranchIndex(bus_ids, _build_branch_terminal_frame(net))
+
+
+def _build_bus_adjacency(net: pp.pandapowerNet, bus_ids: np.ndarray) -> list[list[int]]:
+    """Adjacency list of the closed bus-bus switch graph, in bus-position space.
+
+    Same graph as :func:`create_closed_bb_switches_graph`, but as plain Python lists of
+    positions instead of an ``nx.Graph``: the traversal below walks it per switch, and
+    networkx's adjacency views dominate the runtime at that call count.
+    """
+    bus_index = pd.Index(bus_ids)
+    closed_busbus = net.switch.loc[(net.switch.et == "b") & (net.switch.closed), ["bus", "element"]]
+
+    adjacency: list[list[int]] = [[] for _ in range(len(bus_ids))]
+    if closed_busbus.empty:
+        return adjacency
+
+    from_pos = bus_index.get_indexer(closed_busbus["bus"].to_numpy(dtype=np.int64))
+    to_pos = bus_index.get_indexer(closed_busbus["element"].to_numpy(dtype=np.int64))
+
+    for u, v in zip(from_pos.tolist(), to_pos.tolist(), strict=True):
+        if u < 0 or v < 0:  # switch on a bus outside net.bus: no edge, as in the nx graph
+            continue
+        adjacency[u].append(v)
+        adjacency[v].append(u)
+
+    return adjacency
+
+
+def _reachable_positions(
+    adjacency: list[list[int]],
+    source: int,
+    blocked_edge: tuple[int, int] | None,
+) -> list[int]:
+    """Positions reachable from *source*, ignoring *blocked_edge* in both directions.
+
+    Array-based twin of :func:`_connected_component_without_edge`; the traversal stays
+    inside *source*'s connected component, so cost scales with that component, not the net.
+    """
+    seen = {source}
+    stack = [source]
+    u_blocked, v_blocked = blocked_edge if blocked_edge is not None else (-1, -1)
+
+    while stack:
+        node = stack.pop()
+        for nbr in adjacency[node]:
+            if (node == u_blocked and nbr == v_blocked) or (node == v_blocked and nbr == u_blocked):
+                continue
+            if nbr not in seen:
+                seen.add(nbr)
+                stack.append(nbr)
+
+    return list(seen)
+
+
 def _get_switch_mapped_elements_by_origin_ids(
     net: pp.pandapowerNet, switches_ids: list[int], side: Literal["bus", "element"]
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -309,6 +452,11 @@ def _get_switch_mapped_elements_by_origin_ids(
       (treating the switch itself as open)
     - collects all branch-like elements connected to those buses
     - collects all reachable buses
+
+    Same result as walking :func:`create_closed_bb_switches_graph` with networkx per
+    switch, but the graph is built as flat arrays and the per-switch traversal only
+    touches its own connected component - the graph rebuild and repeated adjacency-view
+    lookups otherwise dominate the runtime on large nets.
 
     Parameters
     ----------
@@ -341,10 +489,6 @@ def _get_switch_mapped_elements_by_origin_ids(
             - ``switch_id`` (int): pandapower switch index
             - ``element`` (str): globally unique ID of the bus
     """
-    sw_els_map: list[tuple[int, str, int]] = []
-    buses_map: list[tuple[int, str]] = []
-    graph = create_closed_bb_switches_graph(net)
-
     switch_mask = net.switch.index.isin(switches_ids)
     closed_mask = net.switch.closed
 
@@ -355,26 +499,75 @@ def _get_switch_mapped_elements_by_origin_ids(
             pd.DataFrame(columns=["switch_id", "element"]),
         )
 
-    bus_to_branch_map = _build_bus_to_branch_map(net)
-    bus_uid_map = {int(bus): get_globally_unique_id(int(bus), "bus") for bus in net.bus.index}
+    bus_ids = net.bus.index.to_numpy(dtype=np.int64)
+    bus_index = pd.Index(bus_ids)
+    bus_uids = get_globally_unique_id_from_index(net.bus.index, "bus").to_numpy(dtype=object)
 
-    for sw in switches.itertuples():
-        candidate_bus = sw.bus if side == "bus" else sw.element
+    adjacency = _build_bus_adjacency(net, bus_ids)
+    bus_branch_index = _build_bus_branch_index(net, bus_ids)
 
-        blocked_edge = (sw.bus, sw.element) if graph.has_edge(sw.bus, sw.element) else None
-        reachable_buses = _connected_component_without_edge(graph, candidate_bus, blocked_edge)
+    switch_ids = switches.index.to_numpy(dtype=np.int64)
+    bus_pos = bus_index.get_indexer(switches["bus"].to_numpy(dtype=np.int64))
+    element_pos = bus_index.get_indexer(switches["element"].to_numpy(dtype=np.int64))
+    source_pos = bus_pos if side == "bus" else element_pos
 
-        sw_els_map.extend(
-            _get_elements_for_buses(
-                switch_id=sw.Index,
-                sw_buses=reachable_buses,
-                bus_to_branch_map=bus_to_branch_map,
-            )
+    # The loop does the graph traversal only: it collects, per switch, the buses reachable
+    # on the chosen side. Turning those into rows is a single vectorized pass afterwards,
+    # because per-switch numpy calls cost more in overhead than the work they do.
+    reached_switch_ids: list[int] = []
+    reached_bus_counts: list[int] = []
+    reached_bus_positions: list[int] = []
+    # A switch whose (bus, element) pair is not an edge of the graph blocks nothing and so
+    # reaches its whole component; switches sharing such a source bus reach the same buses.
+    full_component_cache: dict[int, list[int]] = {}
+
+    for switch_id, source, u, v in zip(
+        switch_ids.tolist(), source_pos.tolist(), bus_pos.tolist(), element_pos.tolist(), strict=True
+    ):
+        if source < 0:  # switch side is not a bus in net.bus -> nothing reachable
+            continue
+
+        has_edge = u >= 0 and v >= 0 and v in adjacency[u]
+        if has_edge:
+            reachable = _reachable_positions(adjacency, source, (u, v))
+        else:
+            reachable = full_component_cache.get(source)
+            if reachable is None:
+                reachable = _reachable_positions(adjacency, source, None)
+                full_component_cache[source] = reachable
+
+        if not reachable:
+            continue
+
+        reached_switch_ids.append(switch_id)
+        reached_bus_counts.append(len(reachable))
+        reached_bus_positions.extend(reachable)
+
+    if not reached_switch_ids:
+        return (
+            pd.DataFrame(columns=["switch_id", "element", "side"]),
+            pd.DataFrame(columns=["switch_id", "element"]),
         )
-        buses_map.extend((sw.Index, bus_uid_map[int(bus)]) for bus in reachable_buses)
 
-    branch_map_df = pd.DataFrame(sw_els_map, columns=["switch_id", "element", "side"])
-    bus_map_df = pd.DataFrame(buses_map, columns=["switch_id", "element"])
+    bus_positions = np.fromiter(reached_bus_positions, dtype=np.int64, count=len(reached_bus_positions))
+    # One row per (switch, reachable bus).
+    switch_per_bus = np.repeat(
+        np.fromiter(reached_switch_ids, dtype=np.int64, count=len(reached_switch_ids)),
+        np.fromiter(reached_bus_counts, dtype=np.int64, count=len(reached_bus_counts)),
+    )
+
+    bus_map_df = pd.DataFrame({"switch_id": switch_per_bus, "element": bus_uids[bus_positions]})
+
+    # One row per (switch, branch terminal on a reachable bus).
+    elements, sides, branches_per_bus = bus_branch_index.gather(bus_positions)
+    branch_map_df = pd.DataFrame(
+        {
+            "switch_id": np.repeat(switch_per_bus, branches_per_bus),
+            "element": elements,
+            "side": sides,
+        }
+    )
+
     return branch_map_df, bus_map_df
 
 

@@ -678,6 +678,17 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
         The network data with the briding branches removed from n-1 and disconnection-masks
     """
     assert network_data.bridging_branch_mask is not None, "Please compute bridges first!"
+    excluded_outaged_branch_ids = np.array(network_data.branch_ids)[
+        network_data.outaged_branch_mask & network_data.bridging_branch_mask
+    ].tolist()
+    if excluded_outaged_branch_ids:
+        logger.info(
+            "Excluded branches from mask",
+            mask_name="outaged_branch_mask",
+            reason="bridging_branch",
+            n_excluded=len(excluded_outaged_branch_ids),
+            excluded_branch_ids=excluded_outaged_branch_ids,
+        )
     return replace(
         network_data,
         outaged_branch_mask=network_data.outaged_branch_mask & ~network_data.bridging_branch_mask,

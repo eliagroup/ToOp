@@ -48,6 +48,39 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 logger = structlog.get_logger(__name__)
 
 
+def log_branch_mask_exclusions(
+    element_ids: pd.Index,
+    before_mask: np.ndarray,
+    after_mask: np.ndarray,
+    mask_name: str,
+    reason: str,
+) -> None:
+    """Log branch ids that were excluded from a monitored or n-1 mask.
+
+    Parameters
+    ----------
+    element_ids: pd.Index
+        Element ids aligned with the masks.
+    before_mask: np.ndarray
+        Candidate mask before the exclusion step.
+    after_mask: np.ndarray
+        Mask after the exclusion step.
+    mask_name: str
+        Name of the affected mask.
+    reason: str
+        Reason for the exclusion.
+    """
+    excluded_ids = element_ids[np.asarray(before_mask, dtype=bool) & ~np.asarray(after_mask, dtype=bool)].to_list()
+    if excluded_ids:
+        logger.info(
+            "Excluded branches from mask",
+            mask_name=mask_name,
+            reason=reason,
+            n_excluded=len(excluded_ids),
+            excluded_branch_ids=excluded_ids,
+        )
+
+
 @dataclass(frozen=True)
 class NetworkMasks:
     """Class to hold the network masks.
@@ -399,8 +432,18 @@ def update_line_masks(
     # Create N-1 and Reward masks based on nminus1_area
     nminus1_area_mask = side_1_in_n1_area | side_2_in_n1_area
     view_area_mask = side_1_in_view_area | side_2_in_view_area
-    outage_mask = nminus1_area_mask & hv_line_mask
-    reward_mask = view_area_mask & lines_with_limits & hv_line_mask
+    candidate_outage_mask = nminus1_area_mask & hv_line_mask
+    candidate_reward_mask = view_area_mask & hv_line_mask
+    outage_mask = candidate_outage_mask.copy()
+    reward_mask = candidate_reward_mask & lines_with_limits
+
+    log_branch_mask_exclusions(
+        lines_df.index,
+        candidate_reward_mask,
+        reward_mask,
+        mask_name="line_for_reward",
+        reason="missing_operational_limits",
+    )
 
     # Create disconnectable mask based on control_area
     control_area_mask = get_mask_for_area_codes(
@@ -410,9 +453,26 @@ def update_line_masks(
     disconnectable_mask = control_area_mask & hv_line_mask & is_disconnectable
 
     blacklisted_lines = lines_df.index.isin(blacklisted_ids)
+    outage_mask_before_blacklist = outage_mask.copy()
+    reward_mask_before_blacklist = reward_mask.copy()
     outage_mask = outage_mask & ~blacklisted_lines
     reward_mask = reward_mask & ~blacklisted_lines
     disconnectable_mask = disconnectable_mask & ~blacklisted_lines
+
+    log_branch_mask_exclusions(
+        lines_df.index,
+        outage_mask_before_blacklist,
+        outage_mask,
+        mask_name="line_for_nminus1",
+        reason="blacklisted",
+    )
+    log_branch_mask_exclusions(
+        lines_df.index,
+        reward_mask_before_blacklist,
+        reward_mask,
+        mask_name="line_for_reward",
+        reason="blacklisted",
+    )
 
     # Identify border lines inside the observed area and outside of it
     external_border_mask, _ = get_border_line_mask(
@@ -456,6 +516,29 @@ def get_element_has_limits_mask(network: Network, element_df: pd.DataFrame) -> n
     """
     limits = network.get_operational_limits(attributes=[]).index.get_level_values("element_id")
     return element_df.index.isin(limits)
+
+
+def get_tie_line_has_limits_mask(network: Network, tie_line_df: pd.DataFrame) -> np.ndarray:
+    """Return a mask for tie lines that have limits either directly or via their paired boundary lines.
+
+    Parameters
+    ----------
+    network: Network
+        The network to get the limits from.
+    tie_line_df: pd.DataFrame
+        The DataFrame with the tie lines. Must include boundary_line1_id and boundary_line2_id.
+
+    Returns
+    -------
+    np.ndarray
+        The mask for the tie lines that have operational limits.
+    """
+    limits = network.get_operational_limits(attributes=[]).index.get_level_values("element_id")
+    return (
+        tie_line_df.index.isin(limits)
+        | tie_line_df["boundary_line1_id"].isin(limits)
+        | tie_line_df["boundary_line2_id"].isin(limits)
+    ).to_numpy(dtype=bool)
 
 
 def update_trafo_masks(
@@ -523,8 +606,25 @@ def update_trafo_masks(
     is_disconnectable = _is_disconnectable(network=network, grid_model_id=trafos_df.index.tolist())
     disconnectable_mask = control_area_mask & hv_trafos & is_disconnectable & ~is_3w_lower_leg
     control_area_hv_trafo_mask = control_area_mask & hv_trafos
-    outage_mask = nminus1_area_mask & hv_trafos & ~is_3w_lower_leg
-    reward_mask = view_area_mask & trafos_with_limits & hv_trafos
+    candidate_outage_mask = nminus1_area_mask & hv_trafos
+    candidate_reward_mask = view_area_mask & hv_trafos
+    outage_mask = candidate_outage_mask & ~is_3w_lower_leg
+    reward_mask = candidate_reward_mask & trafos_with_limits
+
+    log_branch_mask_exclusions(
+        trafos_df.index,
+        candidate_outage_mask,
+        outage_mask,
+        mask_name="trafo_for_nminus1",
+        reason="three_winding_lower_leg",
+    )
+    log_branch_mask_exclusions(
+        trafos_df.index,
+        candidate_reward_mask,
+        reward_mask,
+        mask_name="trafo_for_reward",
+        reason="missing_operational_limits",
+    )
 
     # If only one side is in HV its a trafo from TSO to DSO
     trafo_dso_border = (side_one_in_hv != side_two_in_hv) & nminus1_area_mask
@@ -540,8 +640,25 @@ def update_trafo_masks(
     disconnectable_mask = disconnectable_mask & ~blacklisted_trafos
     control_area_hv_trafo_mask = control_area_hv_trafo_mask & ~blacklisted_trafos
 
+    outage_mask_before_blacklist = outage_mask.copy()
+    reward_mask_before_blacklist = reward_mask.copy()
     outage_mask = outage_mask & ~blacklisted_trafos
     reward_mask = reward_mask & ~blacklisted_trafos
+
+    log_branch_mask_exclusions(
+        trafos_df.index,
+        outage_mask_before_blacklist,
+        outage_mask,
+        mask_name="trafo_for_nminus1",
+        reason="blacklisted",
+    )
+    log_branch_mask_exclusions(
+        trafos_df.index,
+        reward_mask_before_blacklist,
+        reward_mask,
+        mask_name="trafo_for_reward",
+        reason="blacklisted",
+    )
 
     return replace(
         network_masks,
@@ -669,8 +786,8 @@ def update_tie_and_dangling_line_masks(
         The updated network mask object including the tie line and dangling line masks.
     """
     # Get relevant data from tie lines
-    tie_line_df = network.get_tie_lines(attributes=[])
-    tie_lines_with_limits = get_element_has_limits_mask(network, tie_line_df)
+    tie_line_df = network.get_tie_lines(attributes=["boundary_line1_id", "boundary_line2_id"])
+    tie_lines_with_limits = get_tie_line_has_limits_mask(network, tie_line_df)
 
     # Get relevant data from dangling lines.
     dangling_lines_df = network.get_boundary_lines(attributes=["voltage_level_id", "tie_line_id"])
@@ -698,6 +815,14 @@ def update_tie_and_dangling_line_masks(
     # If dangling lines are part of a tieline, they can be part of the reward
     tie_line_for_reward = tie_line_for_nminus1 & tie_lines_with_limits
 
+    log_branch_mask_exclusions(
+        tie_line_df.index,
+        tie_line_for_nminus1,
+        tie_line_for_reward,
+        mask_name="tie_line_for_reward",
+        reason="missing_operational_limits",
+    )
+
     # All tie lines are by definition border lines
     tie_line_tso_border = tie_line_for_nminus1.copy()
     tie_line_overload_weight = np.where(
@@ -710,9 +835,26 @@ def update_tie_and_dangling_line_masks(
     blacklisted_tie_lines = tie_line_df.index.isin(blacklisted_ids)
 
     boundary_line_for_nminus1 = boundary_line_for_nminus1 & ~blacklisted_dangling
+    tie_line_for_nminus1_before_blacklist = tie_line_for_nminus1.copy()
+    tie_line_for_reward_before_blacklist = tie_line_for_reward.copy()
     tie_line_for_nminus1 = tie_line_for_nminus1 & ~blacklisted_tie_lines
     tie_line_for_reward = tie_line_for_reward & ~blacklisted_tie_lines
     tie_line_tso_border = tie_line_tso_border & ~blacklisted_tie_lines
+
+    log_branch_mask_exclusions(
+        tie_line_df.index,
+        tie_line_for_nminus1_before_blacklist,
+        tie_line_for_nminus1,
+        mask_name="tie_line_for_nminus1",
+        reason="blacklisted",
+    )
+    log_branch_mask_exclusions(
+        tie_line_df.index,
+        tie_line_for_reward_before_blacklist,
+        tie_line_for_reward,
+        mask_name="tie_line_for_reward",
+        reason="blacklisted",
+    )
 
     return replace(
         network_masks,

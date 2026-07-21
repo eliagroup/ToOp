@@ -17,6 +17,7 @@ import polars as pl
 from beartype.typing import Literal, Optional
 from toop_engine_interfaces.loadflow_results_polars import (
     BranchResultSchemaPolars,
+    ConvergedSchemaPolars,
     LoadflowResultsPolars,
     NodeResultSchemaPolars,
     VADiffResultSchemaPolars,
@@ -225,7 +226,7 @@ def count_voltage_jumps(
 
 def get_worst_k_contingencies_ac(
     branch_results: patpl.LazyFrame[BranchResultSchemaPolars],
-    convergence_results: patpl.LazyFrame[NodeResultSchemaPolars],
+    convergence_results: patpl.LazyFrame[ConvergedSchemaPolars],
     k: int = 10,
     field: Literal["p", "i"] = "p",
     base_case_id: str = "BASECASE",
@@ -237,9 +238,9 @@ def get_worst_k_contingencies_ac(
 
     Parameters
     ----------
-    branch_results : DataFrame[BranchResultSchemaPolars]
+    branch_results : patpl.LazyFrame[BranchResultSchemaPolars]
         The branch results dataframe containing the loading information.
-    convergence_results : DataFrame[NodeResultSchemaPolars]
+    convergence_results : patpl.LazyFrame[ConvergedSchemaPolars]
         The convergence results dataframe containing the convergence information.
     k : int, optional
         The number of worst contingencies to return, by default 10.

@@ -70,6 +70,7 @@ class CascadeSimulator:
         *,
         method: Literal["ac", "dc"] = "ac",
         runpp_kwargs: dict[str, Any] | None = None,
+        bus_couplers_mrids: set[str] | None = None,
     ) -> None:
         """Create a cascade simulator.
 
@@ -83,12 +84,16 @@ class CascadeSimulator:
             Load-flow method, either ac or dc.
         runpp_kwargs : dict[str, Any] | None
             Extra arguments forwarded to pandapower load flow.
+        bus_couplers_mrids : set[str] | None
+            Base-case busbar-coupler origin ids precomputed once per run. Filtered
+            to the currently closed switches when the cascade context is built.
         """
         self._cfg: CascadeConfig = cfg
         self._cascade_context: CascadeContext | None = None
         self._spps = spps
         self._lf_method = method
         self._runpp_kwargs = runpp_kwargs
+        self._all_cb_couplers: set[str] = bus_couplers_mrids or set()
 
     @property
     def _context(self) -> CascadeContext:
@@ -145,7 +150,7 @@ class CascadeSimulator:
             Ordered list of cascade events. The list is empty when no cascade
             trigger is found.
         """
-        self._cascade_context = build_cascade_context(net)
+        self._cascade_context = build_cascade_context(net, self._all_cb_couplers)
         # Only protection switches can trip during cascading, so we limit flow computation to them.
         monitored_breakers = monitored_elements[
             monitored_elements["monitoring_scope"].apply(lambda s: s is not None and SwitchMonitoringScope.PROTECTION in s)

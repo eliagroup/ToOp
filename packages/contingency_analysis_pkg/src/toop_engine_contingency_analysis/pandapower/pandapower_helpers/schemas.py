@@ -540,6 +540,14 @@ class SingleOutageContext(BaseModel):
     cascade: Optional[CascadeConfig] = Field(default=None)
     """Optional cascading protection screening (:class:`CascadeSimulator`) after a converged outage PF."""
 
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run.
+
+    Computed by :func:`prepare_cascade_run_constants` on the base-case topology and
+    reused across outages; per outage it is filtered to the currently closed switches
+    inside :func:`build_cascade_context`. Empty when cascade screening is disabled.
+    """
+
 
 class SequentialContingencyAnalysisContext(BaseModel):
     """Shared context for sequential N-1 contingency analysis.
@@ -641,6 +649,10 @@ class SequentialContingencyAnalysisContext(BaseModel):
     SpPS tables are copied into :attr:`~SingleOutageContext.spps`.
     """
 
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run and forwarded
+    into each :class:`SingleOutageContext`. Empty when cascade screening is disabled."""
+
 
 class ParallelContingencyAnalysisContext(BaseModel):
     """Shared context for parallel N-1 contingency analysis.
@@ -734,3 +746,8 @@ class ParallelContingencyAnalysisContext(BaseModel):
 
     cascade: Optional[CascadeConfig] = Field(default=None)
     """Forwarded into :class:`SequentialContingencyAnalysisContext` when building parallel worker jobs."""
+
+    bus_couplers_mrids: set[str] = Field(default_factory=set)
+    """Base-case busbar-coupler origin ids, precomputed once per run and forwarded
+    into each :class:`SequentialContingencyAnalysisContext` worker job. Empty when
+    cascade screening is disabled."""

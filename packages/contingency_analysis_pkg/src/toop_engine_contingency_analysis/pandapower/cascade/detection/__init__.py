@@ -5,7 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from .context import build_cascade_context, get_switch_characteristics
+from .context import build_cascade_context, get_switch_characteristics, prepare_cascade_run_constants
 from .distance_protection import (
     evaluate_distance_protection_triggers,
     get_danger_area,
@@ -31,5 +31,6 @@ __all__ = [
     "get_warning_area",
     "pick_highest_loading_row",
     "prepare_branch_results_for_overload",
+    "prepare_cascade_run_constants",
     "prepare_switch_results_for_protection",
 ]

@@ -21,6 +21,9 @@ import pandera.typing as pat
 import polars as pl
 import ray
 from beartype.typing import Any, Union
+from toop_engine_contingency_analysis.pandapower.cascade.detection import (
+    prepare_cascade_run_constants,
+)
 from toop_engine_contingency_analysis.pandapower.cascade.simulation import (
     CascadeSimulator,
 )
@@ -386,6 +389,7 @@ def _collect_cascade_results(
         ctx.spps,
         method=ctx.method,
         runpp_kwargs=ctx.runpp_kwargs,
+        bus_couplers_mrids=ctx.bus_couplers_mrids,
     )
 
     cascade_events = simulator.simulate(
@@ -621,6 +625,7 @@ def run_contingency_analysis_sequential(
             on_power_flow_error=ctx.on_power_flow_error,
         ),
         cascade=ctx.cascade,
+        bus_couplers_mrids=ctx.bus_couplers_mrids,
     )
 
     for grouped_contingency in n_minus_1_definition.grouped_contingencies:
@@ -679,6 +684,7 @@ def run_contingency_analysis_parallel(
         spps_rules_max_iterations=ctx.spps_rules_max_iterations,
         on_power_flow_error=ctx.on_power_flow_error,
         cascade=ctx.cascade,
+        bus_couplers_mrids=ctx.bus_couplers_mrids,
     )
 
     for batch in work:
@@ -838,6 +844,11 @@ def run_contingency_analysis_pandapower(
         side="bus",
     )
 
+    # Cascade run-invariants: convert sw_characteristics once and precompute the
+    # base-case busbar-coupler set, so neither is redone per outage. Skipped when
+    # cascade screening is disabled.
+    bus_couplers_mrids: set[str] = prepare_cascade_run_constants(net) if cfg.cascade is not None else set()
+
     if cfg.parallel.n_processes == 1 and cfg.parallel.batch_size is None:
         results = run_contingency_analysis_sequential(
             net=net,
@@ -855,6 +866,7 @@ def run_contingency_analysis_pandapower(
                 spps_rules_max_iterations=cfg.spps_rules_max_iterations,
                 on_power_flow_error=cfg.on_power_flow_error,
                 cascade=cfg.cascade,
+                bus_couplers_mrids=bus_couplers_mrids,
             ),
         )
     else:
@@ -875,6 +887,7 @@ def run_contingency_analysis_pandapower(
                 on_power_flow_error=cfg.on_power_flow_error,
                 parallel=cfg.parallel,
                 cascade=cfg.cascade,
+                bus_couplers_mrids=bus_couplers_mrids,
             ),
         )
     lf_result = concatenate_loadflow_results(results)

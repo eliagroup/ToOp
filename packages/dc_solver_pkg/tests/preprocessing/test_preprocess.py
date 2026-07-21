@@ -57,6 +57,7 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     filter_inactive_injections,
     filter_relevant_nodes_branch_count,
     filter_relevant_nodes_no_asset_station,
+    filter_relevant_nodes_no_double_connections,
     preprocess,
     process_injection_outages,
     reduce_branch_dimension,
@@ -794,6 +795,43 @@ def test_filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> No
     # Compute the relevant nodes based on the new asset topology
     network_data = filter_relevant_nodes_no_asset_station(network_data)
     assert network_data.relevant_node_mask.sum() == 2  # Only the first two nodes should remain relevant
+
+
+def test_filter_relevant_nodes_no_double_connections(network_data: NetworkData) -> None:
+    relevant_node_ids = np.array(network_data.node_ids)[np.flatnonzero(network_data.relevant_node_mask)]
+
+    station_index = None
+    modified_station = None
+    for index, station in enumerate(network_data.asset_topology.stations):
+        if station.grid_model_id not in relevant_node_ids:
+            continue
+
+        if station.asset_switching_table.shape[0] < 2 or station.asset_switching_table.shape[1] == 0:
+            continue
+
+        switching_table = station.asset_switching_table.copy()
+        switching_table[0, 0] = True
+        switching_table[1, 0] = True
+        modified_station = station.model_copy(update={"asset_switching_table": switching_table})
+        station_index = index
+        break
+
+    assert station_index is not None
+    assert modified_station is not None
+
+    stations = list(network_data.asset_topology.stations)
+    stations[station_index] = modified_station
+    expected_removed_node_id = modified_station.grid_model_id
+    network_data = replace(
+        network_data,
+        asset_topology=network_data.asset_topology.model_copy(update={"stations": stations}),
+    )
+
+    network_data = filter_relevant_nodes_no_double_connections(network_data)
+
+    expected_removed_node_index = network_data.node_ids.index(expected_removed_node_id)
+    assert not network_data.relevant_node_mask[expected_removed_node_index]
+    assert network_data.relevant_node_mask.sum() == len(relevant_node_ids) - 1
 
 
 def test_reduce_node_dimension(network_data_filled):

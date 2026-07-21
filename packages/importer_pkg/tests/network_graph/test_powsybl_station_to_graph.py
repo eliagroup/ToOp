@@ -783,6 +783,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     #     'VL_2W_MV_HV_MV_0', large station + pst
     #     'VL_2W_MV_HV_MV_2', other side of pst -> not relevant
     #     'VL_2W_MV_HV_HV_0', large station
+    #     'VL_2W_MV_HV_MV_INT_0', VL where two trafos are connected to two lines -> not relevant
     #     'VL_HV_gen_0',  large station, slack bus -> not relevant
     #     'VL_HV_vsc_0', 4 branches, 1 injection, 1 HVDC
     #     'VL_CH_1_0', connected to the BE border via a tie line -> relevant
@@ -804,6 +805,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_MV",
         "VL_2W_MV_HV_MV",
         "VL_2W_MV_HV_HV",
+        "VL_2W_MV_HV_MV_INT",
         "VL_HV_vsc",
         "VL_CH_1",
         "VL_DE_1",

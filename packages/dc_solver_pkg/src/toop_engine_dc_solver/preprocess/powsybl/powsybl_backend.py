@@ -18,6 +18,7 @@ import structlog
 from beartype.typing import Optional, Sequence, Union
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
+from toop_engine_dc_solver.preprocess.parallel_pst_groups import build_2d_pst_group_mask_and_labels
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     BranchModel,
     get_lines,
@@ -26,8 +27,8 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_tie_lines,
     get_trafos,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, sort_powsybl_element_frame_by_id
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
@@ -100,7 +101,7 @@ class PowsyblBackend(BackendInterface):
         )
 
         if lf_params is None:
-            lf_params = DISTRIBUTED_SLACK
+            lf_params = CGMES_DISTRIBUTED_SLACK
         self.lf_params = lf_params
         ac_results, *_ = pp.loadflow.run_ac(net, lf_params)
         if ac_results.status != pp.loadflow.ComponentStatus.CONVERGED:
@@ -113,7 +114,7 @@ class PowsyblBackend(BackendInterface):
             self.ac_p_values = net.get_branches(attributes=["p1"])["p1"]
 
         dc_results = pp.loadflow.run_dc(net, lf_params)
-        self.slack_id = dc_results[0].reference_bus_id
+        self.slack_id = net.get_extension("slackTerminal").iloc[0].bus_id
         self.net = net
         self.net_pu = get_network_as_pu(net)
 
@@ -186,8 +187,10 @@ class PowsyblBackend(BackendInterface):
         return injections
 
     def _get_mask(
-        self, mask_filename: str, default_value: Union[bool, float], default_shape: int
-    ) -> Bool[np.ndarray, " n_masked_element"] | Float[np.ndarray, " n_masked_element"]:
+        self, mask_filename: str, default_value: Union[bool, float, int], default_shape: int
+    ) -> (
+        Bool[np.ndarray, " n_masked_element"] | Float[np.ndarray, " n_masked_element"] | Int[np.ndarray, " n_masked_element"]
+    ):
         """Load a given mask or return a default mask.
 
         Parameters
@@ -224,7 +227,8 @@ class PowsyblBackend(BackendInterface):
         lines["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["line_for_nminus1"], False, n_lines)
         lines["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["line_overload_weight"], 1.0, n_lines)
         lines["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["line_disconnectable"], False, n_lines)
-        lines.sort_values("name", inplace=True)
+        lines["controllable"] = np.zeros(n_lines, dtype=bool)
+        lines.sort_index(inplace=True)
 
         return lines
 
@@ -238,6 +242,7 @@ class PowsyblBackend(BackendInterface):
         trafos = get_trafos(self.net, self.net_pu)
         if trafos.empty:
             return trafos
+        trafos = sort_powsybl_element_frame_by_id(trafos)
 
         n_trafos = len(trafos)
 
@@ -246,12 +251,10 @@ class PowsyblBackend(BackendInterface):
         trafos["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["trafo_for_nminus1"], False, n_trafos)
         trafos["overload_weight"] = self._get_mask(NETWORK_MASK_NAMES["trafo_overload_weight"], 1.0, n_trafos)
         trafos["disconnectable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_disconnectable"], False, n_trafos)
+        trafos["controllable"] = self._get_mask(NETWORK_MASK_NAMES["trafo_controllable"], False, n_trafos)
         trafos["n0_n1_max_diff_factor"] = self._get_mask(NETWORK_MASK_NAMES["trafo_n0_n1_max_diff_factor"], -1.0, n_trafos)
-        trafos["pst_controllable"] = (
-            self._get_mask(NETWORK_MASK_NAMES["trafo_pst_controllable"], False, n_trafos) & trafos["has_pst_tap"]
-        )
-
-        trafos.sort_values("name", inplace=True)
+        trafos["has_pst_tap"] = trafos["has_pst_tap"].to_numpy(dtype=bool)
+        trafos["pst_linear"] = trafos["pst_linear"].to_numpy(dtype=bool)
 
         return trafos
 
@@ -267,8 +270,8 @@ class PowsyblBackend(BackendInterface):
         tie_lines["for_nminus1"] = self._get_mask(NETWORK_MASK_NAMES["tie_line_for_nminus1"], False, n_tie_lines)
         tie_lines["overload_weight"] = np.ones(n_tie_lines)
         tie_lines["disconnectable"] = np.zeros(n_tie_lines, dtype=bool)
-
-        tie_lines.sort_values("name", inplace=True)
+        tie_lines["controllable"] = np.zeros(n_tie_lines, dtype=bool)
+        tie_lines.sort_index(inplace=True)
 
         return tie_lines
 
@@ -445,25 +448,61 @@ class PowsyblBackend(BackendInterface):
 
     def get_controllable_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         """Get a mask of controllable PSTs"""
-        return self._get_branches()["pst_controllable"].values
+        return self._get_branches()["controllable"].astype(bool).values & self.get_phase_shift_mask()
 
     def get_phase_shift_linearity(self) -> Bool[np.ndarray, " n_controllable_psts"]:
         """Get the linearity of the phase shift for each controllable PST.
 
         i.e. whether the shift angle is linear to the tap position
         """
-        return self._get_branches()[self.get_controllable_phase_shift_mask()]["has_pst_linear_tap"].values
+        return self._get_branches()[self.get_controllable_phase_shift_mask()]["pst_linear"].values
 
     def get_phase_shift_taps(self) -> list[Float[np.ndarray, " n_controllable_psts"]]:
-        """Get a list of taps for each pst"""
+        """Get a list of taps for each controllable PST"""
         shift_taps = []
         steps = self.net.get_phase_tap_changer_steps(attributes=["alpha"])
 
         for pst_id in self._get_branches()[self.get_controllable_phase_shift_mask()].index:
             taps_df = steps.loc[pst_id].sort_index()
-            taps = -np.squeeze(taps_df.values)
+            taps = -taps_df["alpha"].to_numpy()
             shift_taps.append(taps)
         return shift_taps
+
+    def get_phase_shift_susceptance_taps(self) -> list[Float[np.ndarray, " n_controllable_psts"]]:
+        """Get the effective branch susceptance for each controllable PST tap."""
+        controllable_branches = self._get_branches()[self.get_controllable_phase_shift_mask()]
+        if controllable_branches.empty:
+            return []
+
+        tap_steps = self.net.get_phase_tap_changer_steps(attributes=["x", "rho"])
+        tap_changers = self.net.get_phase_tap_changers().loc[controllable_branches.index]
+        susceptance_taps: list[np.ndarray] = []
+        for pst_id in controllable_branches.index:
+            steps_df = tap_steps.loc[pst_id].sort_index()
+            current_tap = int(tap_changers.at[pst_id, "tap"])
+            current_step = steps_df.loc[current_tap]
+            current_step_x = float(current_step["x"])
+            current_step_rho = float(current_step["rho"])
+            current_effective_x = float(controllable_branches.at[pst_id, "x"])
+
+            # x / rho: transformer tap ratios are used in DC susceptance calculations
+            # equal pypowsybls to dc_use_transformer_ratio = True
+            current_step_factor = (1.0 + current_step_x / 100.0) / current_step_rho
+            # This can happen for intentionally constructed or malformed tap tables where the
+            # step definition cancels out the normalized reactance at the active tap.
+            if np.isclose(current_step_factor, 0.0):
+                effective_x_taps = np.full(steps_df.shape[0], current_effective_x, dtype=float)
+            else:
+                reactance_reference = current_effective_x / current_step_factor
+                effective_x_taps = (
+                    reactance_reference
+                    * (1.0 + steps_df["x"].to_numpy(dtype=float) / 100.0)
+                    / steps_df["rho"].to_numpy(dtype=float)
+                )
+
+            susceptance_taps.append(1.0 / effective_x_taps)
+
+        return susceptance_taps
 
     def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_psts"]:
         """Get the starting setpoint of each controllable PST as an integer index into the tap values"""
@@ -480,6 +519,35 @@ class PowsyblBackend(BackendInterface):
         psts = self._get_branches()[self.get_controllable_phase_shift_mask()].index
         tap_changers = self.net.get_phase_tap_changers().loc[psts]
         return tap_changers["low_tap"].values.astype(int)
+
+    @functools.lru_cache
+    def _get_parallel_pst_groups(self) -> tuple[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"], list[str]]:
+        """Get parallel PST grouping metadata aligned with controllable PST arrays.
+
+        The parallel PSTs and their group labels are identified during importing and stored per PST (branch):
+          1. BranchModel.``pst_linear``
+          2. BranchModel.``pst_group``
+        Use the masks to create a 2-d boolean array with rows as parallel PST groups and columns as controllable PSTs, where
+        True indicates that a PST belongs to a group. The order of the columns is aligned with the order of controllable PSTs
+        in get_controllable_phase_shift_mask(), so that the resulting 2-d array can be used as a mask consumed downstream.
+        """
+        controllable_branches = self._get_branches()[self.get_controllable_phase_shift_mask()]
+        group_labels = controllable_branches["pst_group"].to_numpy(dtype=int)
+        return build_2d_pst_group_mask_and_labels(
+            group_labels=group_labels,
+            pst_id_list=self.get_controllable_phase_shift_ids(),
+        )
+
+    def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
+        """Get the parallel PST groups aligned with the controllable PST arrays."""
+        return self._get_parallel_pst_groups()[0]
+
+    def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
+        """Get the parallel PST group ids aligned with the group mask rows.
+
+        The group ids are derived from the branch names of the first PST (first-seen order) in the group.
+        """
+        return self._get_parallel_pst_groups()[1]
 
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         """Get a mask of relevant nodes"""
@@ -592,6 +660,43 @@ class PowsyblBackend(BackendInterface):
                 model_class=Topology,
             )
         return None
+
+    def get_busbar_outage_map(self) -> Optional[dict[str, Sequence[str]]]:
+        """Get busbar outages grouped by asset-topology station id."""
+        mask_path = self._get_masks_path() / NETWORK_MASK_NAMES["busbar_for_nminus1"]
+        if not self.data_folder_dirfs.exists(str(mask_path)):
+            return None
+
+        busbar_sections = self.net.get_busbar_sections(attributes=["bus_id"])
+        busbar_for_nminus1 = load_numpy_filesystem(filesystem=self.data_folder_dirfs, file_path=str(mask_path))
+        selected_busbars = busbar_sections[busbar_for_nminus1]
+        selected_busbars = selected_busbars[selected_busbars["bus_id"].isin(self.get_node_ids())]
+
+        asset_topology = self.get_asset_topology()
+        busbar_to_station_id = {}
+        bus_id_to_station_id = {}
+        if asset_topology is not None:
+            busbar_to_station_id = {
+                busbar.grid_model_id: station.grid_model_id
+                for station in asset_topology.stations
+                for busbar in station.busbars
+            }
+            bus_id_to_station_id = {
+                busbar.bus_branch_bus_id: station.grid_model_id
+                for station in asset_topology.stations
+                for busbar in station.busbars
+            }
+
+        outage_map: dict[str, list[str]] = {}
+        for busbar_id, busbar in selected_busbars.iterrows():
+            station_id = busbar_to_station_id.get(str(busbar_id))
+            if station_id is None:
+                station_id = bus_id_to_station_id.get(str(busbar["bus_id"]))
+            if station_id is None:
+                continue
+            outage_map.setdefault(station_id, []).append(str(busbar_id))
+
+        return outage_map
 
     def get_metadata(self) -> dict:
         """Get the path to the data_folder, masks_folder and the start datetime of the case"""

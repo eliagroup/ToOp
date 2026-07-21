@@ -24,7 +24,7 @@ from beartype.typing import Dict, List, Literal, Optional
 from fsspec import AbstractFileSystem
 from pypowsybl.network import Network
 from pypowsybl.report import ReportNode
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 
 
 def extract_single_injection_loadflow_result(injections: pd.DataFrame, injection_id: str) -> tuple[float, float]:
@@ -115,6 +115,22 @@ def get_branches_with_i(branches: pd.DataFrame, net: Network) -> pd.DataFrame:
     del branches["nominal_v_1"]
     del branches["nominal_v_2"]
     return branches
+
+
+def sort_powsybl_element_frame_by_id(element_frame: pd.DataFrame) -> pd.DataFrame:
+    """Sort a PowSyBl element dataframe by its grid model id index.
+
+    Parameters
+    ----------
+    element_frame : pd.DataFrame
+        A PowSyBl element dataframe with the index being the grid model id.
+
+    Returns
+    -------
+    pd.DataFrame
+        The sorted PowSyBl element dataframe.
+    """
+    return element_frame.sort_index()
 
 
 def get_injections_with_i(injections: pd.DataFrame, net: Network) -> pd.DataFrame:
@@ -652,6 +668,6 @@ def check_powsybl_import(pypowsybl_network: pypowsybl.network.Network, check_tra
     if not all(line_voltage["nominal_v_vl1"] == line_voltage["nominal_v_vl2"]):
         raise ValueError("A Line in the converted pandapower net has two different voltage levels")
 
-    loadflow_res = pypowsybl.loadflow.run_ac(pypowsybl_network, DISTRIBUTED_SLACK)[0]
+    loadflow_res = pypowsybl.loadflow.run_ac(pypowsybl_network, CGMES_DISTRIBUTED_SLACK)[0]
     if loadflow_res.status != pypowsybl._pypowsybl.LoadFlowComponentStatus.CONVERGED:
         raise ValueError(f"Load flow failed: {loadflow_res.status_text}")

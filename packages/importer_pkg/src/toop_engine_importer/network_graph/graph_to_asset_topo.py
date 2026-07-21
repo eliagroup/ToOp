@@ -13,7 +13,7 @@ import pandas as pd
 import pandera.typing as pat
 import structlog
 from beartype.typing import Literal, Optional, Union
-from jaxtyping import ArrayLike, Bool
+from jaxtyping import Bool
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     BusbarConnectionInfo,
@@ -732,9 +732,9 @@ def get_station_connection_tables(
 
 
 def remove_double_connections(
-    switching_table: Bool[ArrayLike, " n_bus n_asset"],
+    switching_table: Bool[np.ndarray, " n_bus n_asset"],
     substation_id: Optional[str] = None,
-) -> Bool[ArrayLike, " n_bus n_asset"]:
+) -> Bool[np.ndarray, " n_bus n_asset"]:
     """Remove double connections from the switching table.
 
     An Asset can be connected to multiple busbars.

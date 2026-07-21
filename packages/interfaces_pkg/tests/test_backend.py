@@ -6,13 +6,13 @@
 # Mozilla Public License, version 2.0
 
 import numpy as np
-from beartype.typing import Sequence, Union
+from beartype.typing import Optional, Sequence, Union
 from jaxtyping import Bool, Float, Int
 from toop_engine_interfaces.backend import BackendInterface
 
 
 class TestBackend(BackendInterface):
-    """An AI generated implentation so we can test the functions that infer from others"""
+    """An AI generated implementation so we can test the functions that infer from others"""
 
     def get_slack(self) -> int:
         return 0
@@ -34,6 +34,12 @@ class TestBackend(BackendInterface):
 
     def get_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
         return np.array([True, False])
+
+    def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
+        return None
+
+    def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
+        return None
 
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:
         return np.array([True, False, True])
@@ -110,6 +116,16 @@ class TestBackend(BackendInterface):
         return {"key": "value"}
 
 
+class TestBackendWithControllablePst(TestBackend):
+    """Backend with one controllable PST to exercise inferred PST defaults."""
+
+    def get_shift_angles(self) -> Float[np.ndarray, " n_timestep n_branch"]:
+        return np.array([[3.5, 0.0], [3.5, 0.0]], dtype=float)
+
+    def get_controllable_phase_shift_mask(self) -> Bool[np.ndarray, " n_branch"]:
+        return np.array([True, False])
+
+
 def test_backend():
     backend = TestBackend()
 
@@ -119,9 +135,13 @@ def test_backend():
     n_branch = backend.get_max_mw_flows().shape[1]
     n_bus = backend.get_relevant_node_mask().shape[0]
     assert backend.get_max_mw_flows_n_1().shape == backend.get_max_mw_flows().shape
+    assert backend.get_ac_dc_mismatch().shape == backend.get_max_mw_flows().shape
+    assert np.allclose(backend.get_ac_dc_mismatch(), 0.0)
     assert backend.get_overload_weights().shape == (n_branch,)
     assert backend.get_n0_n1_max_diff_factors().shape == (n_branch,)
     assert backend.get_cross_coupler_limits().shape == (n_bus,)
+    assert backend.get_controllable_pst_node_mask().shape == (n_bus,)
+    assert not backend.get_controllable_pst_node_mask().any()
     assert backend.get_slack() == 0
     assert backend.get_max_mw_flows().shape == (2, n_branch)
     assert backend.get_susceptances().shape == (n_branch,)
@@ -129,6 +149,16 @@ def test_backend():
     assert backend.get_to_nodes().shape == (n_branch,)
     assert backend.get_shift_angles().shape == (2, n_branch)
     assert backend.get_phase_shift_mask().shape == (n_branch,)
+    assert backend.get_controllable_phase_shift_mask().shape == (n_branch,)
+    assert not backend.get_controllable_phase_shift_mask().any()
+    assert backend.get_phase_shift_linearity().shape == (0,)
+    assert backend.get_phase_shift_taps() == []
+    assert backend.get_phase_shift_susceptance_taps() == []
+    assert backend.get_phase_shift_starting_taps().shape == (0,)
+    assert backend.get_phase_shift_low_taps().shape == (0,)
+    assert backend.get_controllable_phase_shift_ids() == []
+    assert backend.get_parallel_pst_group_mask() is None
+    assert backend.get_parallel_pst_group_ids() is None
     assert backend.get_relevant_node_mask().shape == (n_bus,)
     assert backend.get_monitored_branch_mask().shape == (n_branch,)
     assert backend.get_branches_in_maintenance().shape == (2, n_branch)
@@ -152,3 +182,25 @@ def test_backend():
     assert backend.get_node_types() == ["Type A", "Type B", "Type C"]
     assert backend.get_injection_types() == ["Type X", "Type Y"]
     assert backend.get_multi_outage_types() == ["Type M1", "Type M2"]
+    assert backend.get_asset_topology() is None
+    assert backend.get_metadata() == {"key": "value"}
+    assert backend.get_busbar_outage_map() is None
+
+
+def test_backend_infers_controllable_pst_defaults() -> None:
+    backend = TestBackendWithControllablePst()
+
+    assert np.array_equal(backend.get_controllable_phase_shift_mask(), np.array([True, False]))
+    assert np.array_equal(backend.get_phase_shift_linearity(), np.array([False]))
+
+    pst_taps = backend.get_phase_shift_taps()
+    assert len(pst_taps) == 1
+    assert np.array_equal(pst_taps[0], np.array([3.5]))
+
+    pst_susceptance_taps = backend.get_phase_shift_susceptance_taps()
+    assert len(pst_susceptance_taps) == 1
+    assert np.array_equal(pst_susceptance_taps[0], np.array([0.1]))
+
+    assert np.array_equal(backend.get_phase_shift_starting_taps(), np.array([0]))
+    assert np.array_equal(backend.get_phase_shift_low_taps(), np.array([0]))
+    assert backend.get_controllable_phase_shift_ids() == ["branch1"]

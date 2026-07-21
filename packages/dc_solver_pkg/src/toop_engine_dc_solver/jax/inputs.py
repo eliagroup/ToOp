@@ -22,6 +22,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import structlog
 from beartype.typing import Iterator, Optional
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
@@ -39,6 +40,8 @@ from toop_engine_dc_solver.jax.types import (
     StaticInformation,
 )
 from toop_engine_dc_solver.jax.utils import HashableArrayWrapper
+
+logger = structlog.get_logger(__name__)
 
 
 def convert_tot_stat(
@@ -290,18 +293,11 @@ def validate_static_information(
         assert jnp.all(di.nodal_injection_information.controllable_pst_indices >= 0)
         assert jnp.all(di.nodal_injection_information.controllable_pst_indices < n_bus)
         assert (
-            di.nodal_injection_information.controllable_pst_indices.shape
-            == di.nodal_injection_information.shift_degree_min.shape
+            di.nodal_injection_information.controllable_pst_branch_indices.shape
+            == di.nodal_injection_information.controllable_pst_indices.shape
         )
-        assert (
-            di.nodal_injection_information.controllable_pst_indices.shape
-            == di.nodal_injection_information.shift_degree_max.shape
-        )
-        assert jnp.isfinite(di.nodal_injection_information.shift_degree_min).all()
-        assert jnp.isfinite(di.nodal_injection_information.shift_degree_max).all()
-        assert jnp.all(
-            di.nodal_injection_information.shift_degree_min <= di.nodal_injection_information.shift_degree_max
-        )  # not used for now, needs a preprocessing step
+        assert jnp.all(di.nodal_injection_information.controllable_pst_branch_indices >= 0)
+        assert jnp.all(di.nodal_injection_information.controllable_pst_branch_indices < n_branch)
         assert jnp.all(di.nodal_injection_information.pst_n_taps > 0)  # If not, this would not a controllable PST
         assert (
             di.nodal_injection_information.pst_n_taps.shape == di.nodal_injection_information.controllable_pst_indices.shape
@@ -310,14 +306,13 @@ def validate_static_information(
             di.nodal_injection_information.pst_tap_values.shape[0]
             == di.nodal_injection_information.controllable_pst_indices.shape[0]
         )
-        assert jnp.equal(
-            di.nodal_injection_information.shift_degree_min,
-            jnp.nanmin(di.nodal_injection_information.pst_tap_values, axis=1),
-        ).all(), "Error in phase shift tap data: Cached minima do not equal true minima!"
-        assert jnp.equal(
-            di.nodal_injection_information.shift_degree_max,
-            jnp.nanmax(di.nodal_injection_information.pst_tap_values, axis=1),
-        ).all(), "Error in phase shift tap data: Cached maxima do not equal true maxima!"
+        assert (
+            di.nodal_injection_information.pst_tap_susceptance_values.shape
+            == di.nodal_injection_information.pst_tap_values.shape
+        )
+        for pst_idx, n_taps in enumerate(np.asarray(di.nodal_injection_information.pst_n_taps, dtype=int)):
+            assert jnp.isfinite(di.nodal_injection_information.pst_tap_values[pst_idx, :n_taps]).all()
+            assert jnp.isfinite(di.nodal_injection_information.pst_tap_susceptance_values[pst_idx, :n_taps]).all()
 
         assert (
             di.nodal_injection_information.starting_tap_idx.shape
@@ -329,6 +324,15 @@ def validate_static_information(
         )
         assert jnp.all(di.nodal_injection_information.starting_tap_idx >= 0)
         assert jnp.all(di.nodal_injection_information.starting_tap_idx < di.nodal_injection_information.pst_n_taps)
+        if di.nodal_injection_information.parallel_pst_group_mask is not None:
+            assert (
+                di.nodal_injection_information.parallel_pst_group_mask.shape[1]
+                == (di.nodal_injection_information.controllable_pst_indices.shape[0])
+            )
+            # Sum of each column must be 1, as each PST can only belong to one parallel group
+            assert jnp.all(jnp.sum(di.nodal_injection_information.parallel_pst_group_mask, axis=0) == 1), (
+                "PST group mask implies that a PST belongs to more than one parallel group. Error during mask creation step."
+            )
 
 
 def save_static_information_fs(filename: str, static_information: StaticInformation, filesystem: AbstractFileSystem) -> None:
@@ -439,6 +443,7 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
         file.attrs["enable_bb_outages"] = solver_config.enable_bb_outages
         file.attrs["bb_outage_as_nminus1"] = solver_config.bb_outage_as_nminus1
         file.attrs["clip_bb_outage_penalty"] = solver_config.clip_bb_outage_penalty
+        file.attrs["enable_parallel_pst_group_optim"] = solver_config.enable_parallel_pst_group_optim
         file.create_dataset("susceptance", data=dynamic_information.susceptance)
         file.create_dataset("relevant_injections", data=dynamic_information.relevant_injections)
         file.create_dataset(
@@ -522,12 +527,8 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 data=nodal_inj_opt.controllable_pst_indices,
             )
             file.create_dataset(
-                "shift_degree_min",
-                data=nodal_inj_opt.shift_degree_min,
-            )
-            file.create_dataset(
-                "shift_degree_max",
-                data=nodal_inj_opt.shift_degree_max,
+                "controllable_pst_branch_indices",
+                data=nodal_inj_opt.controllable_pst_branch_indices,
             )
             file.create_dataset(
                 "pst_n_taps",
@@ -538,6 +539,10 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 data=nodal_inj_opt.pst_tap_values,
             )
             file.create_dataset(
+                "pst_tap_susceptance_values",
+                data=nodal_inj_opt.pst_tap_susceptance_values,
+            )
+            file.create_dataset(
                 "starting_tap_idx",
                 data=nodal_inj_opt.starting_tap_idx,
             )
@@ -545,6 +550,11 @@ def _save_static_information(binaryio: io.IOBase, static_information: StaticInfo
                 "grid_model_low_tap",
                 data=nodal_inj_opt.grid_model_low_tap,
             )
+            if nodal_inj_opt.parallel_pst_group_mask is not None:
+                file.create_dataset(
+                    "parallel_pst_group_mask",
+                    data=nodal_inj_opt.parallel_pst_group_mask,
+                )
 
         for idx, (branches, nodes) in enumerate(
             zip(
@@ -766,6 +776,7 @@ def _load_static_information(binaryio: io.IOBase) -> StaticInformation:
                 enable_bb_outages=bool(file.attrs.get("enable_bb_outages", False)),
                 bb_outage_as_nminus1=bool(file.attrs.get("bb_outage_as_nminus1", True)),
                 clip_bb_outage_penalty=bool(file.attrs.get("clip_bb_outage_penalty", False)),
+                enable_parallel_pst_group_optim=bool(file.attrs.get("enable_parallel_pst_group_optim", False)),
                 contingency_ids=file["contingency_ids"].asstr()[:].tolist(),
             ),
         )
@@ -843,14 +854,27 @@ def load_nodal_injection_optimization(
         The loaded NodalInjectionOptimization or None if not present
     """
     if nodal_injection_optimization_present:
+        if "parallel_pst_group_mask" in file:
+            parallel_pst_group_mask = jnp.array(file["parallel_pst_group_mask"][:])
+        else:
+            parallel_pst_group_mask = jnp.eye(file["pst_n_taps"].shape[0], dtype=bool)
+            logger.warning(
+                "No parallel PST group mask found in the file. "
+                "Using identity matrix as default, which means no parallel groups."
+            )
+        if "controllable_pst_branch_indices" not in file:
+            raise KeyError("Missing required dataset 'controllable_pst_branch_indices' in static information file.")
+        if "pst_tap_susceptance_values" not in file:
+            raise KeyError("Missing required dataset 'pst_tap_susceptance_values' in static information file.")
         return NodalInjectionInformation(
             controllable_pst_indices=jnp.array(file["controllable_pst_indices"][:]),
-            shift_degree_min=jnp.array(file["shift_degree_min"][:]),
-            shift_degree_max=jnp.array(file["shift_degree_max"][:]),
+            controllable_pst_branch_indices=jnp.array(file["controllable_pst_branch_indices"][:]),
             pst_n_taps=jnp.array(file["pst_n_taps"][:]),
             pst_tap_values=jnp.array(file["pst_tap_values"][:]),
+            pst_tap_susceptance_values=jnp.array(file["pst_tap_susceptance_values"][:]),
             starting_tap_idx=jnp.array(file["starting_tap_idx"][:]),
             grid_model_low_tap=jnp.array(file["grid_model_low_tap"][:]),
+            parallel_pst_group_mask=parallel_pst_group_mask,
         )
     return None
 
@@ -891,10 +915,10 @@ def check_data_availability(file: h5py.File) -> tuple[bool, bool, bool, bool]:
 
     nodal_injection_optimization_present = (
         "controllable_pst_indices" in file
-        and "shift_degree_min" in file
-        and "shift_degree_max" in file
+        and "controllable_pst_branch_indices" in file
         and "pst_n_taps" in file
         and "pst_tap_values" in file
+        and "pst_tap_susceptance_values" in file
         and "starting_tap_idx" in file
         and "grid_model_low_tap" in file
     )

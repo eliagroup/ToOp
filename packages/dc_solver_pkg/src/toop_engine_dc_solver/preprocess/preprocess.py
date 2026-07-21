@@ -83,6 +83,15 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 logger = structlog.get_logger(__name__)
 
 
+def disable_busbar_outage_contingencies(network_data: NetworkData) -> NetworkData:
+    """Clear busbar-outage configuration from network data.
+
+    The importer may provide a busbar outage map unconditionally, but when preprocessing-side
+    busbar outages are disabled we must not reconstruct bus contingencies from it later on.
+    """
+    return replace(network_data, busbar_outage_map=None)
+
+
 def compute_ptdf_if_not_given(network_data: NetworkData) -> NetworkData:
     """Compute the PTDF if not given.
 
@@ -560,8 +569,25 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
     relevant_phase_shift_taps = list(
         [taps for taps, keep in zip(network_data.phase_shift_taps, kept_pst_branches, strict=True) if keep]
     )
+    relevant_phase_shift_susceptance_taps = list(
+        [
+            susceptance_taps
+            for susceptance_taps, keep in zip(network_data.phase_shift_susceptance_taps, kept_pst_branches, strict=True)
+            if keep
+        ]
+    )
     relevant_phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[kept_pst_branches]
     relevant_phase_shift_low_tap = network_data.phase_shift_low_tap[kept_pst_branches]
+    relevant_parallel_pst_group_mask = None
+    relevant_parallel_pst_group_ids = None
+    if network_data.parallel_pst_group_mask is not None:
+        relevant_parallel_pst_group_mask = network_data.parallel_pst_group_mask[:, kept_pst_branches]
+        kept_group_rows = np.any(relevant_parallel_pst_group_mask, axis=1)
+        relevant_parallel_pst_group_mask = relevant_parallel_pst_group_mask[kept_group_rows]
+        if network_data.parallel_pst_group_ids is not None:
+            relevant_parallel_pst_group_ids = [
+                group_id for group_id, keep in zip(network_data.parallel_pst_group_ids, kept_group_rows, strict=True) if keep
+            ]
     # PST branches carry a node injection as well, so we need to adjust the injection indices
     pst_node_indices = np.flatnonzero(network_data.controllable_pst_node_mask)
     # Assert that the number of PST branches and nodes is the same
@@ -593,8 +619,11 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         phase_shift_mask=network_data.phase_shift_mask[relevant_branches],
         controllable_phase_shift_mask=network_data.controllable_phase_shift_mask[relevant_branches],
         phase_shift_taps=relevant_phase_shift_taps,
+        phase_shift_susceptance_taps=relevant_phase_shift_susceptance_taps,
         phase_shift_starting_tap_idx=relevant_phase_shift_starting_tap_idx,
         phase_shift_low_tap=relevant_phase_shift_low_tap,
+        parallel_pst_group_mask=relevant_parallel_pst_group_mask,
+        parallel_pst_group_ids=relevant_parallel_pst_group_ids,
         controllable_pst_node_mask=kept_controllable_pst_node_mask,
         monitored_branch_mask=network_data.monitored_branch_mask[relevant_branches],
         disconnectable_branch_mask=network_data.disconnectable_branch_mask[relevant_branches],
@@ -649,6 +678,17 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
         The network data with the briding branches removed from n-1 and disconnection-masks
     """
     assert network_data.bridging_branch_mask is not None, "Please compute bridges first!"
+    excluded_outaged_branch_ids = np.array(network_data.branch_ids)[
+        network_data.outaged_branch_mask & network_data.bridging_branch_mask
+    ].tolist()
+    if excluded_outaged_branch_ids:
+        logger.info(
+            "Excluded branches from mask",
+            mask_name="outaged_branch_mask",
+            reason="bridging_branch",
+            n_excluded=len(excluded_outaged_branch_ids),
+            excluded_branch_ids=excluded_outaged_branch_ids,
+        )
     return replace(
         network_data,
         outaged_branch_mask=network_data.outaged_branch_mask & ~network_data.bridging_branch_mask,
@@ -1264,46 +1304,6 @@ def compute_separation_set_for_stations(
     )
 
 
-def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> NetworkData:
-    """Exclude nonlinear phase shifters from the controllable phase shifter mask.
-
-    This is necessary because nonlinear phase shifters cannot be handled correctly in the backend
-    at this moment.
-
-    Parameters
-    ----------
-    network_data : NetworkData
-        The network data to exclude the nonlinear phase shifters from the controllable mask for
-
-    Returns
-    -------
-    NetworkData
-        The network data with the nonlinear phase shifters excluded from the controllable mask
-    """
-    if network_data.phase_shift_mask is None or network_data.controllable_phase_shift_mask is None:
-        return network_data
-    logger.info(
-        "Excluding nonlinear phase shifters from the controllable mask, "
-        "since they cannot be handled correctly in the backend."
-    )
-    pst_linearity = network_data.phase_shift_linearity
-    phase_shift_low_tap = network_data.phase_shift_low_tap[pst_linearity]
-    phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[pst_linearity]
-    phase_shift_taps = [taps for taps, linear in zip(network_data.phase_shift_taps, pst_linearity, strict=True) if linear]
-
-    controllable_pst_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
-    controllable_phase_shift_mask = np.zeros_like(network_data.controllable_phase_shift_mask, dtype=bool)
-    controllable_phase_shift_mask[controllable_pst_indices[pst_linearity]] = True
-    return replace(
-        network_data,
-        controllable_phase_shift_mask=controllable_phase_shift_mask,
-        phase_shift_low_tap=phase_shift_low_tap,
-        phase_shift_starting_tap_idx=phase_shift_starting_tap_idx,
-        phase_shift_taps=phase_shift_taps,
-        phase_shift_linearity=np.ones_like(phase_shift_low_tap, dtype=bool),
-    )
-
-
 def preprocess(  # noqa: PLR0915
     interface: BackendInterface,
     logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
@@ -1335,9 +1335,6 @@ def preprocess(  # noqa: PLR0915
 
     logging_fn("extract_network_data_from_interface", None)
     network_data = extract_network_data_from_interface(interface)
-
-    logging_fn("exclude_nonlinear_psts_from_controllable", None)
-    network_data = exclude_nonlinear_psts_from_controllable(network_data)
 
     logging_fn("compute_bridging_branches", None)
     network_data = compute_bridging_branches(network_data)
@@ -1431,6 +1428,7 @@ def preprocess(  # noqa: PLR0915
         network_data = preprocess_bb_outages(network_data)
     else:
         logging_fn("preprocess_bb_outage", "BB-Outages disabled, skipping preprocessing step")
+        network_data = disable_busbar_outage_contingencies(network_data)
 
     logging_fn("preprocess_done", None)
     return network_data

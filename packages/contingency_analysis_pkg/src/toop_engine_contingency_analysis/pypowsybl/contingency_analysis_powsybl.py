@@ -36,7 +36,7 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers_polars import (
     update_basename_polars,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
-    DISTRIBUTED_SLACK,
+    CGMES_DISTRIBUTED_SLACK,
     SINGLE_SLACK,
 )
 from toop_engine_grid_helpers.powsybl.polars.get_dataframe import (
@@ -362,7 +362,7 @@ def run_contingency_analysis_powsybl(
     """
     if lf_params is None:
         if method == "ac":
-            lf_params = DISTRIBUTED_SLACK
+            lf_params = CGMES_DISTRIBUTED_SLACK
         else:
             lf_params = SINGLE_SLACK
 

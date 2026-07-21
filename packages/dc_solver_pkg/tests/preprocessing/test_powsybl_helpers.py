@@ -14,13 +14,18 @@ import pandas as pd
 import pypowsybl
 import pytest
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
+    _build_pst_group_labels,
+    _identify_pst_buckets,
+    _is_linear_pst_step_table,
     add_missing_branch_model_columns,
+    get_linear_pst,
     get_lines,
     get_network_as_pu,
     get_p_max,
     get_tie_lines,
     get_trafos,
 )
+from toop_engine_grid_helpers.powsybl.example_grids import grouped_pst_grid_example, parallel_pst_example
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
@@ -46,14 +51,17 @@ def test_add_missing_branch_model_columns() -> None:
     assert pd.isna(normalized_branches.loc["branch_id", "rho"])
     assert pd.isna(normalized_branches.loc["branch_id", "alpha"])
     assert bool(normalized_branches.loc["branch_id", "has_pst_tap"]) is False
-    assert bool(normalized_branches.loc["branch_id", "has_pst_linear_tap"]) is False
     assert bool(normalized_branches.loc["branch_id", "for_reward"]) is False
     assert bool(normalized_branches.loc["branch_id", "for_nminus1"]) is False
     assert normalized_branches.loc["branch_id", "overload_weight"] == 1.0
     assert pd.isna(normalized_branches.loc["branch_id", "p_max_mw"])
     assert pd.isna(normalized_branches.loc["branch_id", "p_max_mw_n_1"])
     assert bool(normalized_branches.loc["branch_id", "disconnectable"]) is False
-    assert bool(normalized_branches.loc["branch_id", "pst_controllable"]) is False
+    assert bool(normalized_branches.loc["branch_id", "pst_linear"]) is False
+    # pst_group must be a recognized BranchModel column so it survives normalization (incl. the
+    # empty-trafo path) and reaches _get_branches; non-PST branches default to -1.
+    assert "pst_group" in normalized_branches.columns
+    assert normalized_branches.loc["branch_id", "pst_group"] == -1
     assert normalized_branches.loc["branch_id", "n0_n1_max_diff_factor"] == -1.0
 
 
@@ -244,6 +252,121 @@ def test_get_trafos_hybrid(ucte_file: Path) -> None:
 
     trafos_orig["cgmes_name"] = trafos_orig["name"]
     assert np.array_equal(trafos["name"].values, trafos_orig["cgmes_name"].values)
+
+
+def test_get_trafos_groups_parallel_psts() -> None:
+    net = parallel_pst_example()
+
+    trafos = get_trafos(net)
+    label_by_id = dict(zip(trafos.index, trafos["pst_group"].to_numpy(dtype=int), strict=True))
+
+    assert label_by_id["PST1"] == label_by_id["PST2"]
+    assert label_by_id["PST3"] >= 0
+    assert label_by_id["PST3"] != label_by_id["PST1"]
+
+
+@pytest.mark.parametrize(
+    ("linear_pst", "split_pst_station", "expected_group_count", "expected_grouped_pairs"),
+    [
+        (
+            [True, True, True, True],
+            False,
+            1,
+            [("PST_1_group_1", "PST_2_group_1"), ("PST_3_group_2", "PST_4_group_2")],
+        ),
+        (
+            [True, True, True, True],
+            True,
+            2,
+            [("PST_1_group_1", "PST_3_group_2"), ("PST_2_group_1", "PST_4_group_2")],
+        ),
+        (
+            [True, False, True, False],
+            False,
+            2,
+            [("PST_1_group_1", "PST_3_group_2"), ("PST_2_group_1", "PST_4_group_2")],
+        ),
+    ],
+)
+def test_get_trafos_grouped_pst_grid_assigns_expected_pst_groups(
+    linear_pst: list[bool],
+    split_pst_station: bool,
+    expected_group_count: int,
+    expected_grouped_pairs: list[tuple[str, str]],
+) -> None:
+    net = grouped_pst_grid_example(linear_pst=linear_pst)
+    if split_pst_station:
+        net.open_switch("VL2_BREAKER#0")
+
+    trafos = get_trafos(net)
+    label_by_id = dict(zip(trafos.index, trafos["pst_group"].to_numpy(dtype=int), strict=True))
+
+    unique_labels = set(label_by_id.values())
+    assert len(unique_labels) == expected_group_count
+    if expected_group_count == 2:
+        assert unique_labels == {0, 1}
+    else:
+        assert unique_labels == {0}
+    for first_pst_id, second_pst_id in expected_grouped_pairs:
+        assert label_by_id[first_pst_id] == label_by_id[second_pst_id]
+
+
+def _get_raw_trafos_with_pst_metadata(net: pypowsybl.network.Network) -> pd.DataFrame:
+    """Prepare the raw transformer dataframe expected by the PST grouping helpers."""
+    trafos = net.get_2_windings_transformers(all_attributes=True).copy()
+    linear_psts = get_linear_pst(net, mode="dc")
+    trafos["pst_linear"] = False
+    trafos["has_pst_tap"] = False
+    trafos.loc[linear_psts.index, "pst_linear"] = linear_psts.values
+    trafos.loc[linear_psts.index, "has_pst_tap"] = True
+    return trafos
+
+
+def test_identify_pst_buckets_groups_parallel_candidates() -> None:
+    net = parallel_pst_example()
+    trafos = _get_raw_trafos_with_pst_metadata(net)
+
+    step_tables, buckets = _identify_pst_buckets(trafos=trafos, net=net)
+
+    assert set(step_tables) == {"PST1", "PST2", "PST3"}
+    bucket_members = {frozenset(trafos.index[positions]) for positions in buckets.values()}
+
+    assert frozenset({"PST1", "PST2"}) in bucket_members
+    assert frozenset({"PST3"}) in bucket_members
+
+
+def test_build_pst_group_labels_marks_non_psts_and_groups_parallel_psts() -> None:
+    net = parallel_pst_example()
+    trafos = _get_raw_trafos_with_pst_metadata(net)
+    trafos.loc["NON_PST"] = trafos.loc["PST1"]
+    trafos.loc["NON_PST", "has_pst_tap"] = False
+    trafos.loc["NON_PST", "pst_linear"] = False
+
+    group_labels = _build_pst_group_labels(trafos=trafos, net=net)
+    label_by_id = dict(zip(trafos.index, group_labels, strict=True))
+
+    assert label_by_id["PST1"] == label_by_id["PST2"]
+    assert label_by_id["PST3"] != label_by_id["PST1"]
+    assert label_by_id["PST3"] >= 0
+    assert label_by_id["NON_PST"] == -1
+
+
+def test_is_linear_pst_step_table_detects_variable_impedance() -> None:
+    linear_step_table = pd.DataFrame(
+        {
+            "rho": [1.0, 1.0, 1.0],
+            "x": [1.0, 1.0, 1.0],
+            "r": [0.1, 0.1, 0.1],
+            "g": [0.0, 0.0, 0.0],
+            "b": [0.0, 0.0, 0.0],
+            "alpha": [-0.1, 0.0, 0.1],
+        }
+    )
+    non_linear_step_table = linear_step_table.copy()
+    non_linear_step_table.loc[2, "x"] = 1.2
+
+    assert _is_linear_pst_step_table(linear_step_table) is True
+    assert _is_linear_pst_step_table(non_linear_step_table) is False
 
 
 def test_get_lines_hybrid(ucte_file: Path) -> None:

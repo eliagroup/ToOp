@@ -20,7 +20,7 @@ import numpy as np
 import structlog
 from beartype.typing import Callable, Literal, Optional
 from fsspec import AbstractFileSystem
-from jaxtyping import Bool, Float, Int
+from jaxtyping import Array, Bool, Float, Int
 from pypowsybl.loadflow import Parameters as LoadflowParameters
 from toop_engine_dc_solver.jax.aggregate_results import (
     aggregate_to_metric,
@@ -61,7 +61,7 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
@@ -208,9 +208,6 @@ def convert_to_jax(  # noqa: PLR0913
     overload_weights = jnp.array(network_data.overload_weights[branches_monitored])
     n0_n1_max_diff_factors = jnp.array(network_data.n0_n1_max_diff_factors[branches_monitored])
     susceptance = jnp.array(network_data.susceptances)
-    shift_degree_min = jnp.array([min(taps) for taps in network_data.phase_shift_taps])
-    shift_degree_max = jnp.array([max(taps) for taps in network_data.phase_shift_taps])
-
     pst_n_taps = jnp.array([len(taps) for taps in network_data.phase_shift_taps])
     max_pst_n_taps = int(jnp.max(pst_n_taps) if pst_n_taps.size > 0 else 0)
     pst_tap_values = jnp.array(
@@ -219,6 +216,13 @@ def convert_to_jax(  # noqa: PLR0913
             for taps in network_data.phase_shift_taps
         ]
     )
+    pst_tap_susceptance_values = jnp.array(
+        [
+            jnp.pad(jnp.array(taps), (0, max_pst_n_taps - len(taps)), "constant", constant_values=jnp.nan)
+            for taps in network_data.phase_shift_susceptance_taps
+        ]
+    )
+    parallel_pst_group_mask = _get_parallel_pst_group_mask(network_data)
 
     logging_fn("pad_out_branch_actions", None)
     assert network_data.branch_action_set is not None, "Please compute branch action set first!"
@@ -238,6 +242,11 @@ def convert_to_jax(  # noqa: PLR0913
     logging_fn("create_static_information", None)
     ptdf = jnp.array(network_data.ptdf)
     nodal_injection = jnp.array(network_data.nodal_injection, dtype=float)
+    parallel_pst_group_mask = (
+        jnp.array(network_data.parallel_pst_group_mask, dtype=bool)
+        if network_data.parallel_pst_group_mask is not None
+        else None
+    )
     static_information = StaticInformation(
         dynamic_information=DynamicInformation(
             # Network Data arguments
@@ -280,12 +289,13 @@ def convert_to_jax(  # noqa: PLR0913
             bb_outage_baseline_analysis=None,
             nodal_injection_information=NodalInjectionInformation(
                 controllable_pst_indices=jnp.flatnonzero(network_data.controllable_pst_node_mask),
-                shift_degree_min=shift_degree_min,
-                shift_degree_max=shift_degree_max,
+                controllable_pst_branch_indices=jnp.flatnonzero(network_data.controllable_phase_shift_mask),
                 pst_n_taps=pst_n_taps,
                 pst_tap_values=pst_tap_values,
+                pst_tap_susceptance_values=pst_tap_susceptance_values,
                 starting_tap_idx=jnp.array(network_data.phase_shift_starting_tap_idx, dtype=int),
                 grid_model_low_tap=jnp.array(network_data.phase_shift_low_tap, dtype=int),
+                parallel_pst_group_mask=parallel_pst_group_mask,
             )
             if network_data.controllable_pst_node_mask.any()
             else None,
@@ -329,6 +339,26 @@ def convert_to_jax(  # noqa: PLR0913
         )
 
     return static_information
+
+
+def _get_parallel_pst_group_mask(network_data: NetworkData) -> Bool[Array, " n_parallel_pst_groups n_controllable_pst"]:
+    """Build a mask that groups controllable PSTs sharing the same branch endpoints."""
+    controllable_pst_branch_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
+    n_controllable_pst = len(controllable_pst_branch_indices)
+    if n_controllable_pst == 0:
+        return jnp.zeros((0, 0), dtype=bool)
+
+    pst_endpoint_groups: dict[tuple[int, int], list[int]] = {}
+    for pst_idx, branch_idx in enumerate(controllable_pst_branch_indices):
+        branch_endpoints = tuple(sorted((int(network_data.from_nodes[branch_idx]), int(network_data.to_nodes[branch_idx]))))
+        pst_endpoint_groups.setdefault(branch_endpoints, []).append(pst_idx)
+
+    parallel_groups = [pst_indices for pst_indices in pst_endpoint_groups.values() if len(pst_indices) > 1]
+    group_mask = np.zeros((len(parallel_groups), n_controllable_pst), dtype=bool)
+    for group_idx, pst_indices in enumerate(parallel_groups):
+        group_mask[group_idx, pst_indices] = True
+
+    return jnp.array(group_mask, dtype=bool)
 
 
 def get_bb_outage_baseline_analysis(di: DynamicInformation, more_splits_penalty: float) -> BBOutageBaselineAnalysis:
@@ -431,7 +461,15 @@ def convert_rel_bb_outage_data(  # noqa: C901
 
     # Determine dimensions for padding of branch_outage_set
     n_actions = sum(actions_per_sub)  # Total number of combinations
-    n_max_bb_to_outage_per_sub = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    n_max_bb_slots_from_outages = max(len(combi) for sub in rel_bb_outage_br_indices for combi in sub)
+    n_max_bb_slots_from_articulation = max(
+        (
+            max((max(articulation_bbs, default=-1) + 1) for articulation_bbs in sub_articulation_nodes)
+            for sub_articulation_nodes in network_data.rel_bb_articulation_nodes
+        ),
+        default=0,
+    )
+    n_max_bb_to_outage_per_sub = max(n_max_bb_slots_from_outages, n_max_bb_slots_from_articulation)
     max_branches_per_sub = max(len(branches) for branches in network_data.branches_at_nodes)
 
     # Initialize the padded array with a sentinel value (int_max)
@@ -654,7 +692,7 @@ def load_grid(
     if parameters is None:
         parameters = PreprocessParameters()
     if lf_params is None and not pandapower:
-        lf_params = DISTRIBUTED_SLACK
+        lf_params = CGMES_DISTRIBUTED_SLACK
     elif lf_params is None and pandapower:
         lf_params = {}
 

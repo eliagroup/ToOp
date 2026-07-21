@@ -5,6 +5,7 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import numpy as np
 import pandapower
 import pytest
 from pypowsybl.loadflow import run_ac, run_dc
@@ -13,6 +14,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl_v2,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     create_complex_substation_layout_grid,
+    grouped_pst_grid_example,
     parallel_pst_example,
     powsybl_case30_with_psts,
     powsybl_case1354,
@@ -77,6 +79,37 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_converges():
     assert result_ac[0].status_text == "Converged"
 
 
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_has_be_ch_tie_line():
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+    tie_lines = net.get_tie_lines(all_attributes=True)
+    assert "Dangling_outbound + Dangling_ch_inbound" in tie_lines.index
+
+    tie_line = tie_lines.loc["Dangling_outbound + Dangling_ch_inbound"]
+    assert tie_line["boundary_line1_id"] == "Dangling_outbound"
+    assert tie_line["boundary_line2_id"] == "Dangling_ch_inbound"
+
+
+def test_create_complex_grid_battery_hvdc_svc_3w_trafo_nonlinear_psts_vary_rho() -> None:
+    nonlinear_net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=np.array([False, False, False]))
+    nonlinear_steps = nonlinear_net.get_phase_tap_changer_steps(attributes=["rho"])
+
+    found_rho_values = 0
+    for pst_id in nonlinear_steps.index.get_level_values("id").unique():
+        rho_values = nonlinear_steps.loc[pst_id]["rho"].to_numpy(dtype=float)
+        if not np.allclose(rho_values, rho_values[0]):
+            found_rho_values += 1
+    assert found_rho_values >= 2, "Expected at least 2 phase tap changers with varying rho values with this configuration."
+
+    linear_net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=np.array([True, True, True]))
+    linear_steps = linear_net.get_phase_tap_changer_steps(attributes=["rho"])
+
+    # Note, if rho changes, it is not linear anymore and therefore tests that expect linearity would fail.
+    for pst_id in linear_steps.index.get_level_values("id").unique():
+        rho_values = linear_steps.loc[pst_id]["rho"].to_numpy(dtype=float)
+        assert np.allclose(rho_values, rho_values[0])
+
+
 def test_create_complex_substation_layout_grid_converges():
     net = create_complex_substation_layout_grid()
     result_dc = run_dc(net)
@@ -87,6 +120,10 @@ def test_create_complex_substation_layout_grid_converges():
 
 def test_powsybl_case1354_converges():
     net = powsybl_case1354()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
 
 
 def test_three_node_pst_example_converges():
@@ -100,6 +137,19 @@ def test_three_node_pst_example_converges():
 
 def test_parallel_pst_example_converges():
     net = parallel_pst_example()
+    result_dc = run_dc(net)
+    assert result_dc[0].status_text == "Converged"
+    result_ac = run_ac(net)
+    assert result_ac[0].status_text == "Converged"
+    assert len(net.get_operational_limits())
+
+
+@pytest.mark.parametrize(
+    "linear_pst",
+    [[True, True, True, True], [False, False, False, False], [True, False, True, False], [False, True, False, True], None],
+)
+def test_grouped_pst_grid_example(linear_pst):
+    net = grouped_pst_grid_example(linear_pst=linear_pst)
     result_dc = run_dc(net)
     assert result_dc[0].status_text == "Converged"
     result_ac = run_ac(net)

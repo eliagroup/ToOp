@@ -40,7 +40,7 @@ from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     apply_topology_bus_branch,
     is_node_breaker_grid,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     extract_single_branch_loadflow_result,
     extract_single_injection_loadflow_result,
@@ -103,12 +103,11 @@ def get_islanding_contingency_ids(net: Network, nminus1_definition: Nminus1Defin
         branch = branches.loc[element.id]
         if not bool(branch["connected1"] or branch["connected2"]):
             continue
-
-        contingency_net = deepcopy(net)
-        contingency_net.update_branches(id=element.id, connected1=False, connected2=False)
-        if count_connected_components(contingency_net) > base_connected_components:
+        was_connected = net.disconnect(element.id)
+        if count_connected_components(net) > base_connected_components:
             islanding_contingency_ids.add(contingency.id)
-
+        if was_connected:
+            net.connect(element.id)
     return islanding_contingency_ids
 
 
@@ -323,7 +322,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self.variant_id = "InitialState"
         self._variant_counter = 0
         if lf_params is None:
-            lf_params = DISTRIBUTED_SLACK
+            lf_params = CGMES_DISTRIBUTED_SLACK
         self.lf_params = deepcopy(lf_params)
 
     def _refresh_branch_limit_cache(self) -> Optional[PowsyblBranchLimitCache]:

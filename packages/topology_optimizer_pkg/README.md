@@ -19,8 +19,8 @@ Entry point: [`initialize_optimization`][toop_engine_topology_optimizer.dc.worke
 ### 2. AC Stage (Validation and Refinement)
 The AC optimizer validates promising DC solutions using full AC loadflow calculations and applies further evolutionary refinements:
 
-- **Validation**: Full AC power flow analysis with N-1 contingency checking. Use [`optimization_loop`][toop_engine_topology_optimizer.ac.worker.optimization_loop]  
-- **Evolution operators**: Pull (from DC), reconnection, coupler closing: Use [`evolution_try`][toop_engine_topology_optimizer.ac.evolution_functions.evolution_try]  
+- **Validation**: Full AC power flow analysis with N-1 contingency checking. Use [`optimization_loop`][toop_engine_topology_optimizer.ac.worker.optimization_loop]
+- **Evolution operators**: Pull (from DC), reconnection, coupler closing: Use [`evolution_try`][toop_engine_topology_optimizer.ac.evolution_functions.evolution_try]
 - **[Early stopping](https://eliagroup.github.io/ToOp/topology_optimizer/ac/early_stopping/)**: Rejection based on worst-case overload comparison
 - **[Selection strategy](https://eliagroup.github.io/ToOp/topology_optimizer/ac/select_strategy/)**: Filtering method using median, dominator, and discriminator filters
 
@@ -29,10 +29,10 @@ The AC optimizer validates promising DC solutions using full AC loadflow calcula
 ### Topology Representation
 - **Actions**: List of substation switching indices from the [`ActionSet`][toop_engine_dc_solver.preprocess.action_set]
 - **Disconnections**: Branch outage specifications for N-1 analysis
-- **PST Setpoints**: Phase-shifting transformer positions
+- **PST Setpoints**: Phase-shifting transformer positions as described in the [`ActionSet`][toop_engine_dc_solver.preprocess.action_set]. Parallel PST group optimization is supported only when Powsybl preprocessing artifacts provide valid `pst_group` metadata.
 - **Metrics**: Multi-objective fitness values and constraint violations
 
-### Strategy Collections  
+### Strategy Collections
 - **DC Repertoire**: Map-Elites grid maintaining diversity across descriptor dimensions
 - **AC Database**: SQLite storage for validated topologies with loadflow references
 - **Message Protocols**: Standardized formats for inter-optimizer communication
@@ -41,8 +41,8 @@ The AC optimizer validates promising DC solutions using full AC loadflow calcula
 The optimization process requires preprocessed grid data from the **[`Importer`](https://eliagroup.github.io/ToOp/importer/intro/)** package:
 
 1. **Static Information**: Grid electrical parameters and topology
-2. **Action Set**: Enumerated switching possibilities  
-3. **N-1 Definition**: Contingency analysis specifications
+2. **Action Set**: Enumerated switching possibilities and controllable asset ranges. For supported Powsybl grids, `pst_ranges[*].pst_group` keeps grouped PSTs synchronized during optimization. Parallel PST group optimization is not supported for PandaPower preprocessing artifacts.
+3. **N-1 Definition**: Contingency analysis specifications aligned with the preprocessed network data
 
 ## Running an Optimization
 
@@ -57,7 +57,7 @@ cd packages/topology_optimizer_pkg
 python -m topology_optimizer.dc.worker.worker \
     --processed_gridfile_folder=/path/to/preprocessed/data
 
-# Launch AC optimizer worker  
+# Launch AC optimizer worker
 python -m topology_optimizer.ac.worker \
     --processed_gridfile_folder=/path/to/preprocessed/data \
     --loadflow_result_folder=/path/to/results
@@ -77,7 +77,7 @@ params = DCOptimizerParameters(
 # Initialize and run optimization
 optimizer_data, stats, initial_strategy = initialize_optimization(
     params=params,
-    optimization_id="my_optimization", 
+    optimization_id="my_optimization",
     static_information_files=tuple(["grid_data.pkl"])
 )
 ```
@@ -85,6 +85,6 @@ optimizer_data, stats, initial_strategy = initialize_optimization(
 ## Advanced Topics
 
 - **[AC Selection Strategy](https://eliagroup.github.io/ToOp/topology_optimizer/ac/select_strategy/)**: Sophisticated filtering for AC candidate selection
-- **[Early Stopping](https://eliagroup.github.io/ToOp/topology_optimizer/ac/early_stopping/)**: Efficient topology rejection in N-1 analysis  
+- **[Early Stopping](https://eliagroup.github.io/ToOp/topology_optimizer/ac/early_stopping/)**: Efficient topology rejection in N-1 analysis
 - **[DC Solver Configuration](https://eliagroup.github.io/ToOp/dc_solver/intro/)**: GPU optimization and batch processing parameters
 - **[Interface Definitions](https://eliagroup.github.io/ToOp/interfaces/intro/)**: Data structure specifications and message protocols

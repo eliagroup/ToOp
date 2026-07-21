@@ -206,8 +206,7 @@ class BackendInterface(ABC):
         Bool[np.ndarray, " n_node"]
             The mask of controllable phase shifters over nodes
         """
-        # TODO: Implement in backends
-        return np.zeros([], dtype=bool)
+        return np.zeros(self.get_relevant_node_mask().shape, dtype=bool)
 
     @abstractmethod
     def get_shift_angles(self) -> Float[np.ndarray, " n_timestep n_branch"]:
@@ -271,6 +270,21 @@ class BackendInterface(ABC):
         viable_shifts = self.get_shift_angles()[0, self.get_controllable_phase_shift_mask()]
         return [np.array([shift]) for shift in viable_shifts]
 
+    def get_phase_shift_susceptance_taps(self) -> list[Float[np.ndarray, " n_tap_positions"]]:
+        """Return the effective branch susceptance at every controllable PST tap.
+
+        The returned lists must align with get_phase_shift_taps() and get_controllable_phase_shift_mask().
+        By default, repeat the current branch susceptance for every tap, which is correct for PSTs whose
+        effective branch parameters do not vary with the tap.
+        """
+        controllable_pst_indices = np.flatnonzero(self.get_controllable_phase_shift_mask())
+        susceptances = self.get_susceptances()
+        tap_values = self.get_phase_shift_taps()
+        return [
+            np.full_like(taps, fill_value=float(susceptances[branch_idx]), dtype=float)
+            for taps, branch_idx in zip(tap_values, controllable_pst_indices, strict=True)
+        ]
+
     def get_phase_shift_starting_taps(self) -> Int[np.ndarray, " n_controllable_pst"]:
         """Get the starting tap position for each controllable PST, given as an integer index into pst_tap_values.
 
@@ -295,6 +309,36 @@ class BackendInterface(ABC):
         If this function is not overloaded, it is assumed that all controllable PSTs have a low tap of 0.
         """
         return np.zeros(sum(self.get_controllable_phase_shift_mask()), dtype=int)
+
+    def get_controllable_phase_shift_ids(self) -> list[str]:
+        """Get branch ids of controllable PSTs aligned with controllable PST arrays."""
+        branch_ids = self.get_branch_ids()
+        controllable_pst_mask = self.get_controllable_phase_shift_mask()
+        return [
+            str(branch_id)
+            for branch_id, is_controllable in zip(branch_ids, controllable_pst_mask, strict=True)
+            if is_controllable
+        ]
+
+    @abstractmethod
+    def get_parallel_pst_group_mask(self) -> Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]]:
+        """Get a PST group mask aligned with the controllable PST arrays.
+
+        Returns
+        -------
+        Optional[Bool[np.ndarray, " n_parallel_pst_groups n_controllable_pst"]
+            The mask for parallel PST groups, or None if no explicit grouping metadata is available.
+        """
+
+    @abstractmethod
+    def get_parallel_pst_group_ids(self) -> Optional[list[str]]:
+        """Get PST group identifiers aligned with rows of get_parallel_pst_group_mask().
+
+        Returns
+        -------
+        Optional[list[str]]
+            The identifiers for parallel PST groups, or None if no explicit grouping metadata is available.
+        """
 
     @abstractmethod
     def get_relevant_node_mask(self) -> Bool[np.ndarray, " n_node"]:

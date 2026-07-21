@@ -43,6 +43,9 @@ class BatchedMEParameters(BaseModel):
     """Whether to enable the nodal injection optimization stage. This can optimize PSTs (currently) and soon HVDC and
     potentially even redispatch clusters. Using this will increase runtime."""
 
+    enable_parallel_pst_group_optim: bool = False
+    """Whether grouped PST optimization should enforce shared tap updates for configured parallel PST groups."""
+
     plot: bool = False
     """Whether to plot the repertoire"""
 
@@ -182,6 +185,13 @@ class BatchedMEParameters(BaseModel):
             raise ValueError("The sum of the disconnection mutation probabilities cannot be larger than 1.")
         if self.random_topo_prob > 1.0:
             raise ValueError("The random topology probability cannot be larger than 1.")
+        return self
+
+    @model_validator(mode="after")
+    def grouped_pst_optimization_requires_nodal_optimization(self) -> "BatchedMEParameters":
+        """Ensure grouped PST optimization is only enabled together with nodal injection optimization."""
+        if self.enable_parallel_pst_group_optim and not self.enable_nodal_inj_optim:
+            raise ValueError("Grouped PST optimization requires enable_nodal_inj_optim=True.")
         return self
 
     @model_validator(mode="after")

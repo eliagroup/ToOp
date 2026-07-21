@@ -21,6 +21,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.swit
     _connected_component_without_edge,
     _get_elements_for_buses,
     _get_switch_mapped_elements_by_origin_ids,
+    compute_current_a,
     get_failed_switch_results,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
@@ -735,19 +736,6 @@ def test_get_switch_mapped_elements_by_origin_ids_empty_when_no_matching_switche
     assert bus_map_df.empty
 
 
-def test_get_switch_mapped_elements_by_origin_ids_ignores_open_switches():
-    net, _ = create_test_net_for_switch_mapped_elements()
-
-    branch_map_df, bus_map_df = _get_switch_mapped_elements_by_origin_ids(
-        net=net,
-        switches_ids=[3],
-        side="bus",
-    )
-
-    assert branch_map_df.empty
-    assert bus_map_df.empty
-
-
 def test_get_switch_mapped_elements_by_origin_ids_bus_side_single_switch():
     net, ids = create_test_net_for_switch_mapped_elements()
 
@@ -977,7 +965,7 @@ def test_get_switch_results_basic_aggregation():
     expected_q = 4.0 + 6.0 + 2.0
     expected_vm = 110.0
     expected_s = np.sqrt(expected_p**2 + expected_q**2)
-    expected_i = expected_s / (np.sqrt(3) * expected_vm)
+    expected_i = expected_s / (np.sqrt(3) * expected_vm) * 1000
 
     assert row["switch_id"] == ids["sw1"]
     assert row["p"] == expected_p
@@ -987,6 +975,7 @@ def test_get_switch_results_basic_aggregation():
     assert np.isclose(row["i"], expected_i)
     assert row["element_name"] == "switch_1"
     assert row["contingency_name"] == contingency.name
+    assert pd.isna(row["side"])
 
 
 def test_get_switch_results_multiple_switches():
@@ -1105,6 +1094,7 @@ def test_get_switch_results_multiple_switches():
     assert row2["vm"] == 111.0
     assert row2["element_name"] == "switch_2"
     assert row2["contingency_name"] == contingency.name
+    assert result["side"].isna().all()
 
 
 def test_get_switch_results_vm_zero_row_removed():
@@ -1301,10 +1291,11 @@ def test_get_switch_results_uses_last_vm_from_node_group():
     assert row["vm"] == 111.0
 
     expected_s = np.sqrt(4.0**2 + 6.0**2)
-    expected_i = expected_s / (np.sqrt(3) * 111.0)
+    expected_i = expected_s / (np.sqrt(3) * 111.0) * 1000
 
     assert np.isclose(row["s"], expected_s)
     assert np.isclose(row["i"], expected_i)
+    assert pd.isna(row["side"])
 
 
 def test_get_failed_switch_results_basic():
@@ -1347,3 +1338,300 @@ def test_get_failed_switch_results_basic():
 
     assert (result["element_name"] == "").all()
     assert (result["contingency_name"] == "").all()
+    assert result["side"].isna().all()
+
+
+# ---------------------------------------------------------------------------
+# compute_current_a
+# ---------------------------------------------------------------------------
+
+
+def test_compute_current_a_pure_active():
+    result = compute_current_a(np.array([10.0]), np.array([0.0]), np.array([110.0]))
+    expected = 10.0 / (np.sqrt(3) * 110.0) * 1000
+    assert np.isclose(result[0], expected)
+
+
+def test_compute_current_a_pure_reactive():
+    result = compute_current_a(np.array([0.0]), np.array([6.0]), np.array([110.0]))
+    expected = 6.0 / (np.sqrt(3) * 110.0) * 1000
+    assert np.isclose(result[0], expected)
+
+
+def test_compute_current_a_mixed():
+    p, q, vm = 3.0, 4.0, 110.0
+    result = compute_current_a(np.array([p]), np.array([q]), np.array([vm]))
+    expected = np.sqrt(p**2 + q**2) / (np.sqrt(3) * vm) * 1000
+    assert np.isclose(result[0], expected)
+
+
+def test_compute_current_a_zero_voltage_returns_nan():
+    result = compute_current_a(np.array([10.0]), np.array([5.0]), np.array([0.0]))
+    assert np.isnan(result[0])
+
+
+def test_compute_current_a_array_input():
+    p = np.array([10.0, 0.0, 3.0])
+    q = np.array([0.0, 6.0, 4.0])
+    vm = np.array([110.0, 110.0, 220.0])
+    result = compute_current_a(p, q, vm)
+    expected = np.sqrt(p**2 + q**2) / (np.sqrt(3) * vm) * 1000
+    assert result.shape == (3,)
+    assert np.allclose(result, expected)
+
+
+# ---------------------------------------------------------------------------
+# get_switch_results — direct path (net.res_switch populated)
+# ---------------------------------------------------------------------------
+
+
+def create_test_net_for_direct_switch_results():
+    net = pp.create_empty_network()
+
+    b1 = pp.create_bus(net, vn_kv=110, name="bus_1")
+    b2 = pp.create_bus(net, vn_kv=110, name="bus_2")
+    sw1 = pp.create_switch(net, bus=b1, element=b2, et="b", closed=True, type="CB", name="switch_1")
+
+    net.res_switch = pd.DataFrame(
+        {
+            "p_from_mw": [5.0],
+            "q_from_mvar": [2.0],
+            "p_to_mw": [-5.0],
+            "q_to_mvar": [-2.0],
+        },
+        index=pd.Index([int(sw1)]),
+    )
+    net.res_bus = pd.DataFrame(
+        {"vm_pu": [1.0, 0.99]},
+        index=pd.Index([int(b1), int(b2)]),
+    )
+
+    return net, {"b1": int(b1), "b2": int(b2), "sw1": int(sw1)}
+
+
+def test_get_switch_results_direct_from_res_switch():
+    net, ids = create_test_net_for_direct_switch_results()
+
+    contingency = PandapowerContingency(unique_id="c_direct", name="c_direct_name", elements=[])
+    timestep = 10
+
+    switch_element_mapping = pd.DataFrame(
+        [{"switch_id": ids["sw1"], "element": get_globally_unique_id(ids["b1"], "bus"), "side": np.nan}]
+    )
+    branch_results = pd.DataFrame(
+        columns=["timestep", "contingency", "element", "side", "i", "p", "q", "loading", "element_name", "contingency_name"]
+    ).set_index(["timestep", "contingency", "element", "side"])
+    node_results = pd.DataFrame(
+        columns=[
+            "timestep",
+            "contingency",
+            "element",
+            "vm",
+            "vm_loading",
+            "va",
+            "p",
+            "q",
+            "vm_basecase_deviation",
+            "element_name",
+            "contingency_name",
+        ]
+    ).set_index(["timestep", "contingency", "element"])
+
+    result = _switch_results_from_pandas(
+        net=net,
+        contingency=contingency,
+        timestep=timestep,
+        branch_results=branch_results,
+        node_results=node_results,
+        switch_element_mapping=switch_element_mapping,
+    )
+
+    sw_element = get_globally_unique_id(ids["sw1"], "switch")
+
+    assert not result.empty
+    assert result.index.names == ["timestep", "contingency", "element"]
+
+    rows = result.loc[(timestep, contingency.unique_id, sw_element)]
+    assert len(rows) == 2
+
+    from_row = rows[rows["side"] == "from"].iloc[0]
+    to_row = rows[rows["side"] == "to"].iloc[0]
+
+    expected_vm_from = 1.0 * 110.0
+    expected_vm_to = 0.99 * 110.0
+
+    assert from_row["p"] == 5.0
+    assert from_row["q"] == 2.0
+    assert np.isclose(from_row["vm"], expected_vm_from)
+    assert np.isclose(
+        from_row["i"],
+        compute_current_a(np.array([5.0]), np.array([2.0]), np.array([expected_vm_from]))[0],
+    )
+
+    assert to_row["p"] == -5.0
+    assert to_row["q"] == -2.0
+    assert np.isclose(to_row["vm"], expected_vm_to)
+    assert np.isclose(
+        to_row["i"],
+        compute_current_a(np.array([-5.0]), np.array([-2.0]), np.array([expected_vm_to]))[0],
+    )
+
+    assert from_row["element_name"] == "switch_1"
+    assert to_row["contingency_name"] == contingency.name
+
+
+def test_get_switch_results_direct_path_open_switch_excluded():
+    net, ids = create_test_net_for_direct_switch_results()
+    net.switch.loc[ids["sw1"], "closed"] = False
+
+    contingency = PandapowerContingency(unique_id="c_open", name="c_open_name", elements=[])
+    timestep = 1
+
+    switch_element_mapping = pd.DataFrame(
+        [{"switch_id": ids["sw1"], "element": get_globally_unique_id(ids["b1"], "bus"), "side": np.nan}]
+    )
+    branch_results = pd.DataFrame(
+        columns=["timestep", "contingency", "element", "side", "i", "p", "q", "loading", "element_name", "contingency_name"]
+    ).set_index(["timestep", "contingency", "element", "side"])
+    node_results = pd.DataFrame(
+        columns=[
+            "timestep",
+            "contingency",
+            "element",
+            "vm",
+            "vm_loading",
+            "va",
+            "p",
+            "q",
+            "vm_basecase_deviation",
+            "element_name",
+            "contingency_name",
+        ]
+    ).set_index(["timestep", "contingency", "element"])
+
+    result = _switch_results_from_pandas(
+        net=net,
+        contingency=contingency,
+        timestep=timestep,
+        branch_results=branch_results,
+        node_results=node_results,
+        switch_element_mapping=switch_element_mapping,
+    )
+
+    assert result.empty
+
+
+def create_test_net_for_mixed_switch_results():
+    net = pp.create_empty_network()
+
+    b1 = pp.create_bus(net, vn_kv=110, name="bus_1")
+    b2 = pp.create_bus(net, vn_kv=110, name="bus_2")
+    b3 = pp.create_bus(net, vn_kv=110, name="bus_3")
+
+    sw1 = pp.create_switch(net, bus=b1, element=b2, et="b", closed=True, type="CB", name="switch_1")
+    sw2 = pp.create_switch(net, bus=b2, element=b3, et="b", closed=True, type="CB", name="switch_2")
+
+    # Only sw1 has res_switch data; sw2 will use the calc path
+    net.res_switch = pd.DataFrame(
+        {
+            "p_from_mw": [8.0],
+            "q_from_mvar": [3.0],
+            "p_to_mw": [-8.0],
+            "q_to_mvar": [-3.0],
+        },
+        index=pd.Index([int(sw1)]),
+    )
+    net.res_bus = pd.DataFrame(
+        {"vm_pu": [1.0, 1.01, 1.02]},
+        index=pd.Index([int(b1), int(b2), int(b3)]),
+    )
+
+    return net, {
+        "b1": int(b1),
+        "b2": int(b2),
+        "b3": int(b3),
+        "sw1": int(sw1),
+        "sw2": int(sw2),
+    }
+
+
+def test_get_switch_results_mixed_direct_and_calc():
+    net, ids = create_test_net_for_mixed_switch_results()
+
+    contingency = PandapowerContingency(unique_id="c_mixed", name="c_mixed_name", elements=[])
+    timestep = 5
+
+    bus2_uid = get_globally_unique_id(ids["b2"], "bus")
+    line_uid = get_globally_unique_id(10, "line")
+
+    branch_results = pd.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency.unique_id,
+                "element": line_uid,
+                "side": BranchSide.ONE.value,
+                "i": 0.0,
+                "p": 4.0,
+                "q": 1.0,
+                "loading": 0.0,
+                "element_name": "line_10",
+                "contingency_name": contingency.name,
+            }
+        ]
+    ).set_index(["timestep", "contingency", "element", "side"])
+
+    node_results = pd.DataFrame(
+        [
+            {
+                "timestep": timestep,
+                "contingency": contingency.unique_id,
+                "element": bus2_uid,
+                "vm": 111.1,
+                "vm_loading": 0.0,
+                "va": 0.0,
+                "p": 2.0,
+                "q": 1.0,
+                "vm_basecase_deviation": 0.0,
+                "element_name": "bus_2",
+                "contingency_name": contingency.name,
+            }
+        ]
+    ).set_index(["timestep", "contingency", "element"])
+
+    switch_element_mapping = pd.DataFrame(
+        [
+            # sw1 is in res_switch → direct path; mapping entry still needed for id discovery
+            {"switch_id": ids["sw1"], "element": get_globally_unique_id(ids["b1"], "bus"), "side": np.nan},
+            # sw2 uses the calc path
+            {"switch_id": ids["sw2"], "element": line_uid, "side": BranchSide.ONE.value},
+            {"switch_id": ids["sw2"], "element": bus2_uid, "side": np.nan},
+        ]
+    )
+
+    result = _switch_results_from_pandas(
+        net=net,
+        contingency=contingency,
+        timestep=timestep,
+        branch_results=branch_results,
+        node_results=node_results,
+        switch_element_mapping=switch_element_mapping,
+    )
+
+    sw1_element = get_globally_unique_id(ids["sw1"], "switch")
+    sw2_element = get_globally_unique_id(ids["sw2"], "switch")
+
+    # sw1: direct path → two rows, one per side
+    sw1_rows = result[result.index.get_level_values("element") == sw1_element]
+    assert len(sw1_rows) == 2
+    assert set(sw1_rows["side"]) == {"from", "to"}
+
+    # sw2: calc path → single row, side is None
+    # Use boolean mask rather than .loc to avoid pandas returning a DataFrame
+    # vs Series depending on MultiIndex sort state.
+    sw2_rows = result[result.index.get_level_values("element") == sw2_element]
+    assert len(sw2_rows) == 1
+    sw2_row = sw2_rows.iloc[0]
+    assert pd.isna(sw2_row["side"])
+    assert sw2_row["p"] == 6.0
+    assert sw2_row["q"] == 2.0

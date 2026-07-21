@@ -44,7 +44,7 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     case14_matching_asset_topo_powsybl,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import assert_station_in_network
 from toop_engine_interfaces.asset_topology import Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -386,7 +386,7 @@ def test_case9241_powsybl() -> None:
         folder = Path(folder)
         case9241_powsybl(folder)
         filesystem_dir = DirFileSystem(str(folder))
-        backend = PowsyblBackend(filesystem_dir, lf_params=DISTRIBUTED_SLACK)
+        backend = PowsyblBackend(filesystem_dir, lf_params=CGMES_DISTRIBUTED_SLACK)
         assert len(backend.net.get_buses()) == 9241
         assert sum(backend.get_relevant_node_mask()) == 400
         assert np.isfinite(backend.get_susceptances()).all()

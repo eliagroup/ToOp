@@ -865,17 +865,17 @@ def aggregate_to_metric(  # noqa: C901, PLR0912 # Conditions of the same type pe
             )
         case "pst_switching_distance":
             retval = get_pst_switching_distance(
-                optimized_taps=lf_res.nodal_injections_optimized,
+                optimized_taps=lf_res.pst_tap_results,
                 initial_tap_idx=initial_pst_tap_idx,
             )
         case "pst_switching_distance_squared":
             retval = get_pst_switching_distance_squared(
-                optimized_taps=lf_res.nodal_injections_optimized,
+                optimized_taps=lf_res.pst_tap_results,
                 initial_tap_idx=initial_pst_tap_idx,
             )
         case "pst_activated":
             retval = get_pst_activated(
-                optimized_taps=lf_res.nodal_injections_optimized,
+                optimized_taps=lf_res.pst_tap_results,
                 initial_tap_idx=initial_pst_tap_idx,
             )
         case "split_subs":

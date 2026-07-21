@@ -636,6 +636,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_3pst(tmp_path_factory: pytes
             disconnections=disconnections,
             loadflow=dc_loadflow,
             additional_info=None,
+            critical_voltage_jump_percent=5.0,
+            critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
         runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
@@ -771,6 +773,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_parallel_pst(tmp_path_factor
             disconnections=disconnections,
             loadflow=dc_loadflow,
             additional_info=None,
+            critical_voltage_jump_percent=5.0,
+            critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
         runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])
@@ -792,7 +796,7 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
     grid_folder = tmp_path_factory.mktemp("grid_folder")
     fixture_folder = grid_folder / fixture_name
     fixture_folder.mkdir()
-    _ = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(fixture_folder, np.array([True, True]))
+    _ = complex_grid_battery_hvdc_svc_3w_trafo_data_folder(fixture_folder, np.array([True, True, True]))
     net = pypowsybl.network.load(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
     pypowsybl.loadflow.run_dc(net, SINGLE_SLACK)
     net.save(str(fixture_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
@@ -897,6 +901,8 @@ def test_dc_optimizer_fitness_ac_validation_fitness_complex(tmp_path_factory: py
             disconnections=disconnections,
             loadflow=dc_loadflow,
             additional_info=None,
+            critical_voltage_jump_percent=5.0,
+            critical_va_diff_degree=20.0,
             base_case_id=base_case_id,
         )
         runner_metric = float(dc_metrics_validation.extra_scores["overload_energy_n_1"])

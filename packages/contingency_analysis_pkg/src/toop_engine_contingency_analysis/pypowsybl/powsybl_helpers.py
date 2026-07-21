@@ -40,6 +40,7 @@ from toop_engine_interfaces.nminus1_definition import (
     POWSYBL_SUPPORTED_ID_TYPES,
     Contingency,
     GridElement,
+    MonitoredElement,
     Nminus1Definition,
 )
 from typing_extensions import TypedDict
@@ -469,7 +470,7 @@ def get_va_diff_results(
     pd.DataFrame
         The dataframe containing the voltage angle difference results for the given outages.
     """
-    if len(outages) == 0 or len(va_diff_with_buses) == 0:
+    if len(va_diff_with_buses) == 0:
         return get_empty_dataframe_from_model(VADiffResultSchema)
     basecase_in_result = ""
     iteration_va_diff = va_diff_with_buses.loc[
@@ -477,22 +478,25 @@ def get_va_diff_results(
     ]
     iteration_va_diff["timestep"] = timestep
     # Map busbar sections where there are any. For the rest use the bus_breaker_bus_id from the results (here the bus id)
-    bus_results = bus_results.merge(
-        bus_map.bus_breaker_bus_id, left_on=bus_results.index.get_level_values("bus_id"), right_index=True, how="left"
+    bus_results = bus_results.reset_index().merge(
+        bus_map.bus_breaker_bus_id,
+        left_on="bus_id",
+        right_index=True,
+        how="left",
     )
 
     iteration_va_diff = iteration_va_diff.reset_index()
     # Map the values from the results to the buses of the switches and the outaged branches
     iteration_va_diff = iteration_va_diff.merge(
-        bus_results[["v_angle"]].add_suffix("_1"),
+        bus_results[["contingency_id", "bus_breaker_bus_id", "v_angle"]].rename(columns={"v_angle": "v_angle_1"}),
         left_on=["contingency", "bus_breaker_bus1_id"],
-        right_on=[bus_results.index.get_level_values("contingency_id"), bus_results.bus_breaker_bus_id],
+        right_on=["contingency_id", "bus_breaker_bus_id"],
         how="left",
     )
     iteration_va_diff = iteration_va_diff.merge(
-        bus_results[["v_angle"]].add_suffix("_2"),
+        bus_results[["contingency_id", "bus_breaker_bus_id", "v_angle"]].rename(columns={"v_angle": "v_angle_2"}),
         left_on=["contingency", "bus_breaker_bus2_id"],
-        right_on=[bus_results.index.get_level_values("contingency_id"), bus_results.bus_breaker_bus_id],
+        right_on=["contingency_id", "bus_breaker_bus_id"],
         how="left",
     )
     iteration_va_diff.drop_duplicates(inplace=True)
@@ -500,7 +504,16 @@ def get_va_diff_results(
     iteration_va_diff["va_diff"] = iteration_va_diff["v_angle_1"] - iteration_va_diff["v_angle_2"]
 
     iteration_va_diff = iteration_va_diff.drop(
-        columns=["bus_breaker_bus1_id", "bus_breaker_bus2_id", "v_angle_1", "v_angle_2"]
+        columns=[
+            "bus_breaker_bus1_id",
+            "bus_breaker_bus2_id",
+            "contingency_id_x",
+            "bus_breaker_bus_id_x",
+            "contingency_id_y",
+            "bus_breaker_bus_id_y",
+            "v_angle_1",
+            "v_angle_2",
+        ]
     )
 
     # set empty columns to NaN
@@ -770,17 +783,35 @@ def get_regulating_element_results(
         The regulating element results for the given outages and timestep
     """
     regulating_elements = get_empty_dataframe_from_model(RegulatingElementResultSchema)
-    # TODO dont fake this
-    if basecase_name and len(monitored_buses) > 0:
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "value"] = -9999.0
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "regulating_element_type"] = (
-            RegulatingElementType.GENERATOR_Q.value
+    if not basecase_name or not monitored_buses:
+        return regulating_elements
+
+    fake_rows = [
+        {
+            "timestep": timestep,
+            "contingency": basecase_name,
+            "element": monitored_buses[0],
+            "value": -9999.0,
+            "regulating_element_type": RegulatingElementType.GENERATOR_Q.value,
+            "element_name": "",
+            "contingency_name": "",
+        }
+    ]
+    if len(monitored_buses) > 1:
+        fake_rows.append(
+            {
+                "timestep": timestep,
+                "contingency": basecase_name,
+                "element": monitored_buses[1],
+                "value": 9999.0,
+                "regulating_element_type": RegulatingElementType.SLACK_P.value,
+                "element_name": "",
+                "contingency_name": "",
+            }
         )
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "value"] = 9999.0
-        regulating_elements.loc[(timestep, basecase_name, monitored_buses[0]), "regulating_element_type"] = (
-            RegulatingElementType.SLACK_P.value
-        )
-    return regulating_elements
+
+    fake_regulating_elements = pd.DataFrame(fake_rows).set_index(["timestep", "contingency", "element"])
+    return pd.concat([regulating_elements, fake_regulating_elements], axis=0)
 
 
 @pa.check_types
@@ -837,37 +868,55 @@ def get_node_results(
     # Merge the actual voltage level in kV
     voltage_columns = voltage_levels.columns.to_list()
     node_results[voltage_columns] = voltage_levels.loc[node_results.index.get_level_values("voltage_level_id")].values
-    node_results = node_results.assign(timestep=0)
     node_results.index = pd.MultiIndex.from_arrays(
         [
-            node_results.timestep.values,
+            np.ones(len(node_results), dtype=int) * timestep,
             node_results.index.get_level_values("contingency_id").values,
             node_results.element.values,
         ],
         names=["timestep", "contingency", "element"],
     )
-
+    node_results.drop(columns=["element"], inplace=True)
     node_results.rename(columns={"v_mag": "vm", "v_angle": "va"}, inplace=True)
 
     # Calculate the values
+    # Basecase id is empty string, because the basecase is not a contingency in powsybl
+    # The variable is used in the query below
+    basecase_contingency_id = ""  # noqa: F841
+
     if method == "dc":
         has_va = node_results["va"].notna().values
         node_results.loc[has_va, "vm"] = node_results.loc[has_va, "nominal_v"]
+    basecase_vm = (
+        node_results.reset_index()[["timestep", "contingency", "element", "vm"]]
+        .query("contingency == @basecase_contingency_id")
+        .drop_duplicates(subset=["timestep", "element"])
+        .rename(columns={"vm": "vm_basecase"})[["timestep", "element", "vm_basecase"]]
+    )
+    node_results = (
+        node_results.reset_index()
+        .merge(basecase_vm, on=["timestep", "element"], how="left")
+        .set_index(["timestep", "contingency", "element"])
+    )
     vm_deviation = node_results["vm"].values - node_results["nominal_v"].values
     deviation_to_max = vm_deviation / (node_results["high_voltage_limit"].values - node_results["nominal_v"].values)
     deviation_to_min = vm_deviation / (node_results["nominal_v"].values - node_results["low_voltage_limit"].values)
     higher_voltage = vm_deviation > 0
     node_results.loc[higher_voltage, "vm_loading"] = deviation_to_max[higher_voltage]
     node_results.loc[~higher_voltage, "vm_loading"] = deviation_to_min[~higher_voltage]
+    node_results["vm_basecase_deviation"] = (
+        (node_results["vm"] - node_results["vm_basecase"]).abs() / node_results["vm_basecase"].replace(0, np.nan).abs()
+    ) * 100.0
     # TODO Add sum of p and q at the node
     failed_node_results = get_failed_node_results(timestep, failed_outages, monitored_buses)
 
-    all_node_results = pd.concat([node_results, failed_node_results], axis=0)[["vm", "va", "vm_loading"]]
+    all_node_results = pd.concat([node_results, failed_node_results], axis=0)[
+        ["vm", "va", "vm_loading", "vm_basecase_deviation"]
+    ]
 
     # set empty dataframe columns to NaN
     all_node_results["p"] = np.nan
     all_node_results["q"] = np.nan
-    all_node_results["vm_basecase_deviation"] = np.nan
     all_node_results["element_name"] = ""
     all_node_results["contingency_name"] = ""
 
@@ -946,6 +995,8 @@ def get_branch_results(
     failed_branch_results = get_failed_branch_results(timestep, failed_outages, monitored_branches, monitored_trafo3w)
 
     converted_branch_results = pd.concat([converted_branch_results, failed_branch_results], axis=0)
+    converted_branch_results["element_name"] = converted_branch_results["element_name"].fillna("")
+    converted_branch_results["contingency_name"] = converted_branch_results["contingency_name"].fillna("")
     return converted_branch_results
 
 
@@ -1011,7 +1062,6 @@ def get_convergence_result_df(
     return converge_converted_df, failed_outages
 
 
-@pa.check_types(inplace=True)
 def update_basename(
     result_df: LoadflowResultTable,
     basecase_name: Optional[str] = None,
@@ -1048,7 +1098,6 @@ def update_basename(
     return result_df
 
 
-@pa.check_types(inplace=True)
 def add_name_column(
     result_df: LoadflowResultTable,
     name_map: dict[str, str],
@@ -1138,28 +1187,28 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
         The complete N-1 definition for the given Powsybl network.
     """
     lines = [
-        GridElement(id=id, name=getattr(row, "name", ""), type="LINE", kind="branch")
+        MonitoredElement(id=id, name=getattr(row, "name", ""), type="LINE", kind="branch")
         for id, row in net.get_lines(attributes=["name"]).iterrows()
     ]
     trafo2w = [
-        GridElement(id=id, name=getattr(row, "name", ""), type="TWO_WINDINGS_TRANSFORMER", kind="branch")
+        MonitoredElement(id=id, name=getattr(row, "name", ""), type="TWO_WINDINGS_TRANSFORMER", kind="branch")
         for id, row in net.get_2_windings_transformers(attributes=["name"]).iterrows()
     ]
     trafos3w = [
-        GridElement(id=id, name=getattr(row, "name", ""), type="THREE_WINDINGS_TRANSFORMER", kind="branch")
+        MonitoredElement(id=id, name=getattr(row, "name", ""), type="THREE_WINDINGS_TRANSFORMER", kind="branch")
         for id, row in net.get_3_windings_transformers(attributes=["name"]).iterrows()
     ]
 
     branch_elements = [*lines, *trafo2w, *trafos3w]
 
     switches = [
-        GridElement(id=id, name=getattr(row, "name", ""), type="SWITCH", kind="switch")
+        MonitoredElement(id=id, name=getattr(row, "name", ""), type="SWITCH", kind="switch")
         for id, row in net.get_switches(attributes=["name"]).iterrows()
     ]
     buses = net.get_busbar_sections(attributes=[])
     if buses.empty:
         buses = net.get_bus_breaker_view_buses(attributes=[])
-    buses = [GridElement(id=id, name=getattr(row, "name", ""), type="BUS", kind="bus") for id, row in buses.iterrows()]
+    buses = [MonitoredElement(id=id, name=getattr(row, "name", ""), type="BUS", kind="bus") for id, row in buses.iterrows()]
     monitored_elements = [*branch_elements, *switches, *buses]
 
     generators = [

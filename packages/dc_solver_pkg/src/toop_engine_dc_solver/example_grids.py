@@ -48,9 +48,10 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     powsybl_extended_case57,
     three_node_pst_example,
 )
-from toop_engine_grid_helpers.powsybl.loadflow_parameters import DISTRIBUTED_SLACK
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs, sort_powsybl_element_frame_by_id
 from toop_engine_importer.pypowsybl_import import preprocessing
+from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology import (
     Busbar,
     BusbarCoupler,
@@ -502,9 +503,9 @@ def case57_data_powsybl(folder: Path) -> None:
     """Create a powsybl test grid with a PST and some operational limits"""
     net = powsybl_extended_case57()
     create_busbar_b_in_ieee(net)
-    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
     output_path_grid = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
@@ -559,8 +560,28 @@ def case57_data_powsybl(folder: Path) -> None:
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
+
+
+def case57_data_powsybl_xiidm(folder: Path) -> None:
+    """Load a powsybl xiidm grid and save importing masks to the given folder path."""
+    net = pypowsybl.network.load(folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    lf_result, *_ = pypowsybl.loadflow.run_ac(net, CGMES_DISTRIBUTED_SLACK)
+    dir_system = DirFileSystem(folder)
+    save_lf_params_to_fs(CGMES_DISTRIBUTED_SLACK, dir_system, Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
+
+    network_masks = make_masks(
+        network=net,
+        slack_id=lf_result.reference_bus_id,
+        importer_parameters=CgmesImporterParameters(
+            area_settings=AreaSettings(control_area=[""], view_area=[""], nminus1_area=[""], cutoff_voltage=1),
+            data_folder=folder,
+            grid_model_file=Path(folder) / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        ),
+    )
+    save_masks_to_filesystem(network_masks, Path("."), dir_system)
+    extract_station_info_powsybl(net, folder)
 
 
 def case57_non_converging(folder: Path) -> None:
@@ -668,7 +689,7 @@ def case300_powsybl(folder: Path, first_fifty_stations: bool = True) -> None:
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
 
@@ -765,7 +786,7 @@ def case9241_pandapower(data_folder: Path) -> None:
             "trafo_for_nminus1": trafo_for_nminus1,
             "trafo_for_reward": np.ones(len(net.trafo), dtype=bool),
             "relevant_subs": all_relevant_subs,
-            "trafo_pst_controllable": np.ones(len(net.trafo), dtype=bool),
+            "trafo_controllable": np.ones(len(net.trafo), dtype=bool),
         }
     )
 
@@ -912,7 +933,7 @@ def case9241_powsybl(folder: Path) -> None:
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
 
@@ -950,7 +971,7 @@ def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
 
@@ -1021,7 +1042,7 @@ def case30_with_psts_pandapower(folder: Path) -> None:
     trafo_mask = np.ones(len(net.trafo), dtype=bool)
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
     np.save(masks_path / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-    np.save(masks_path / NETWORK_MASK_NAMES["trafo_pst_controllable"], trafo_mask)
+    np.save(masks_path / NETWORK_MASK_NAMES["trafo_controllable"], trafo_mask)
     random_topology_info(folder)
     save_lf_params_to_fs({}, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]))
 
@@ -1044,17 +1065,22 @@ def case30_with_psts_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
 
-    trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
+    trafos = sort_powsybl_element_frame_by_id(net.get_2_windings_transformers())
+    pst_ids = net.get_phase_tap_changers().index
+    trafo_mask = np.ones(len(trafos), dtype=bool)
+    trafo_has_pst_tap = trafos.index.isin(pst_ids)
+    trafo_mask_groups = np.full(len(trafos), -1, dtype=int)
+    trafo_mask_groups[trafo_has_pst_tap] = np.arange(np.sum(trafo_has_pst_tap))
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_controllable"], trafo_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_controllable"], trafo_has_pst_tap)
 
     gen_mask = np.ones(len(net.get_generators()), dtype=bool)
     np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
 
@@ -1063,7 +1089,7 @@ def node_breaker_folder_powsybl(folder: Path) -> None:
     source = Path(__file__).parent.parent.parent / "tests" / "files" / "test_grid_node_breaker"
     shutil.copytree(source, folder, dirs_exist_ok=True)
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
 
@@ -1085,13 +1111,14 @@ def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
     trafo_mask = np.ones(len(net.get_2_windings_transformers()), dtype=bool)
+    trafo_has_pst_tap = np.array([True, True], dtype=bool)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_reward"], trafo_mask)
     np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_for_nminus1"], trafo_mask)
-    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_pst_controllable"], trafo_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["trafo_controllable"], trafo_has_pst_tap)
 
     extract_station_info_powsybl(net, folder)
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
 
@@ -1111,7 +1138,7 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
     """
     # Connect the out of service line to bring the second PST operational
     net = create_complex_grid_battery_hvdc_svc_3w_trafo(linear_pst=linear_pst, connect_line_out_of_service=True)
-    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
 
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1121,13 +1148,13 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
         grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
         data_folder=folder,
         area_settings=AreaSettings(
-            cutoff_voltage=1,
-            control_area=[""],
-            view_area=[""],
-            nminus1_area=[""],
-            dso_trafo_factors=LimitAdjustmentParameters(),
+            cutoff_voltage=110.0,
+            control_area=["BE"],
+            view_area=["BE"],
+            nminus1_area=["BE"],
+            dso_trafo_factors=None,  # We deactivate this so the limits are the same in runner and solver
             dso_trafo_weight=1.0,
-            border_line_factors=LimitAdjustmentParameters(),
+            border_line_factors=None,
             border_line_weight=1.0,
         ),
     )
@@ -1139,7 +1166,7 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
         pandapower=False,
     )
     save_lf_params_to_fs(
-        DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
 
     return network_data
@@ -1158,7 +1185,7 @@ def parallel_pst_data_folder(folder: Path) -> NetworkData:
         The network data after preprocessing, which can be used for testing the consistency of the preprocessing step
     """
     net = parallel_pst_example()
-    pypowsybl.loadflow.run_dc(net, DISTRIBUTED_SLACK)
+    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
 
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)

@@ -21,7 +21,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
     subset_contingencies_polars,
 )
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
-from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, Nminus1Definition
+from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
 
 
 def test_save_and_load_loadflow_results_polars(tmp_path):
@@ -55,7 +55,7 @@ def test_extract_branch_results():
         for cont in contingencies[1:]
     ]
     n1_contingencies.insert(0, Contingency(id="BASECASE", elements=[]))
-    n1_monitored_elements = [GridElement(id=elem, name=elem, kind="branch", type="line") for elem in monitored_elements]
+    n1_monitored_elements = [MonitoredElement(id=elem, name=elem, kind="branch", type="line") for elem in monitored_elements]
     nminus1_def = Nminus1Definition(
         monitored_elements=n1_monitored_elements,
         contingencies=n1_contingencies,

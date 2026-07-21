@@ -115,7 +115,9 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     branches_df = net.get_branches(attributes=["connected1", "connected2"])
+    boundary_line_tie_ids = net.get_boundary_lines(attributes=["tie_line_id"])["tie_line_id"]
     injections_df = net.get_injections(attributes=["connected"])
+
     asset_in_service = pd.concat(
         [
             (branches_df["connected1"].fillna(False) & branches_df["connected2"].fillna(False)).rename("in_service"),
@@ -153,7 +155,12 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
         switches_df=switches_df,
         substation_info=substation_information,
     )
-    node_assets_df = get_node_assets(nodes_df=nodes_df, all_names_df=all_names_df, asset_in_service=asset_in_service)
+    node_assets_df = get_node_assets(
+        nodes_df=nodes_df,
+        all_names_df=all_names_df,
+        asset_in_service=asset_in_service,
+        boundary_line_tie_ids=boundary_line_tie_ids,
+    )
 
     assert not node_assets_df.loc[node_assets_df["grid_model_id"] == "L1", "in_service"].item()
     assert not node_assets_df.loc[node_assets_df["grid_model_id"] == "generator1", "in_service"].item()
@@ -746,6 +753,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     #     'VL_2W_MV_HV_HV_0', large station
     #     'VL_HV_gen_0',  large station, slack bus -> not relevant
     #     'VL_HV_vsc_0', 4 branches, 1 injection, 1 HVDC
+    #     'VL_CH_1_0', connected to the BE border via a tie line -> relevant
     #     'VL_DE_1_0', 2 busbar sections and an internal PST -> relevant
     #     'VL_DE_2_0', connected to BE and DE_1 -> relevant
     #     'VL_FR_1_0', 2 busbar sections and an internal PST in the isolated FR island -> relevant
@@ -765,6 +773,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_2W_MV_HV_MV",
         "VL_2W_MV_HV_HV",
         "VL_HV_vsc",
+        "VL_CH_1",
         "VL_DE_1",
         "VL_DE_2",
         "VL_FR_1",
@@ -778,6 +787,12 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
     assert len(res) == len(expected)
     assert all([isinstance(station, Station) for station in res])
+
+    stations_by_name = {station.name: station for station in res}
+    hv_station_asset_ids = [asset.grid_model_id for asset in stations_by_name["VL_3W_HV"].assets]
+    ch_station_asset_ids = [asset.grid_model_id for asset in stations_by_name["VL_CH_1"].assets]
+    assert "Dangling_outbound + Dangling_ch_inbound" in hv_station_asset_ids
+    assert "Dangling_outbound + Dangling_ch_inbound" in ch_station_asset_ids
     station_names = [station.name for station in res]
     for bus_id in expected:
         assert bus_id in station_names, f"Expected station {bus_id} not found in station list"

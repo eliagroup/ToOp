@@ -773,6 +773,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
             {"id": "S_DE_2", "name": "S_DE_2", "tso": "TSO", "country": "DE"},
             {"id": "S_FR_1", "name": "S_FR_1", "tso": "TSO", "country": "FR"},
             {"id": "S_FR_2", "name": "S_FR_2", "tso": "TSO", "country": "FR"},
+            {"id": "S_CH_1", "name": "S_CH_1", "tso": "TSO", "country": "CH"},
         ]
     ).set_index("id")
     n.create_substations(df=substations_df)
@@ -895,6 +896,13 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "nominal_v": 380.0,
                 "topology_kind": "NODE_BREAKER",
             },
+            {
+                "id": "VL_CH_1",
+                "name": "VL_CH_1",
+                "substation_id": "S_CH_1",
+                "nominal_v": 380.0,
+                "topology_kind": "NODE_BREAKER",
+            },
         ]
     ).set_index("id")
     n.create_voltage_levels(df=vls_df)
@@ -913,7 +921,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
         "switch_kinds": "DISCONNECTOR",
     }
 
-    no_layout_list = ["VL_LV_load", "VL_DE_2", "VL_FR_2"]
+    no_layout_list = ["VL_LV_load", "VL_DE_2", "VL_FR_2", "VL_CH_1"]
     basic_layout_list = ["VL_2W_MV_LV_LV", "VL_3W_LV", "VL_DE_1", "VL_FR_1"]
     two_busbar_layout_list = ["VL_3W_MV", "VL_2W_MV_LV_MV", "VL_MV_svc", "VL_HV_gen"]
     three_busbar_layout_list = ["VL_2W_MV_HV_MV"]
@@ -1686,10 +1694,28 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
                 "position_order": 60,
                 "direction": "TOP",
             },
+            {
+                "id": "Dangling_ch_inbound",
+                "name": "Dangling CH inbound",
+                "p0": -300,
+                "q0": -100,
+                "r": hv_long["r"],
+                "x": hv_long["x"],
+                "g": hv_long["g1"],
+                "b": hv_long["b1"],
+                "bus_or_busbar_section_id": "VL_CH_1_1_1",
+                "position_order": 1,
+                "direction": "TOP",
+            },
         ]
     ).set_index("id")
 
     pypowsybl.network.create_boundary_line_bay(network=n, df=dangling_df)
+    n.create_tie_lines(
+        id="Dangling_outbound + Dangling_ch_inbound",
+        boundary_line1_id="Dangling_outbound",
+        boundary_line2_id="Dangling_ch_inbound",
+    )
 
     # line limits
     limits = pd.DataFrame.from_records(
@@ -1757,6 +1783,29 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     limits["acceptable_duration"] = -1
     limits.loc[limits["value"] <= 0, "value"] = 1000
     n.create_operational_limits(limits)
+
+    boundary_limits = pd.DataFrame.from_records(
+        data=[
+            {
+                "element_id": "Dangling_outbound",
+                "value": 400,
+                "side": "NONE",
+                "name": "permanent_limit",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+            {
+                "element_id": "Dangling_ch_inbound",
+                "value": 400,
+                "side": "NONE",
+                "name": "permanent_limit",
+                "type": "CURRENT",
+                "acceptable_duration": -1,
+            },
+        ],
+        index="element_id",
+    )
+    n.create_operational_limits(boundary_limits)
 
     # transformer limits
     i1 = abs(n.get_2_windings_transformers()["i1"])

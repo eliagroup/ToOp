@@ -455,7 +455,7 @@ def add_name_column_polars(
     """
     result_df = result_df.with_columns(
         pl.col(index_level)
-        .replace(name_map, default=pl.col(f"{index_level}_name").fill_null(""))
+        .replace_strict(name_map, default=pl.col(f"{index_level}_name").fill_null(""))
         .alias(f"{index_level}_name")
     )
 

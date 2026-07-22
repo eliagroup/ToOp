@@ -397,11 +397,18 @@ class NetworkData:
 
     @property
     def contingency_ids(self) -> list[str]:
-        """Get the contingency ids as per the outage masks"""
+        """Get contingency ids in the same order used by JAX N-1 processing."""
         branch_outage_ids = np.array(self.branch_ids)[self.outaged_branch_mask]
-        injection_outage_ids = np.array(self.injection_ids)[self.outaged_injection_mask]
-        # Concatenate branch_outage_ids, injection_outage_ids, and self.multi_outage_ids
-        return np.concatenate([branch_outage_ids, injection_outage_ids, np.array(self.multi_outage_ids)]).tolist()
+        nonrel_injection_outage_ids = np.array(self.injection_ids)[self.nonrel_io_global_inj_index]
+        rel_injection_outage_ids = np.array(self.injection_ids)[self.rel_io_global_inj_index]
+        return np.concatenate(
+            [
+                branch_outage_ids,
+                np.array(self.multi_outage_ids),
+                nonrel_injection_outage_ids,
+                rel_injection_outage_ids,
+            ]
+        ).tolist()
 
 
 def extract_network_data_from_interface(interface: BackendInterface) -> NetworkData:
@@ -701,21 +708,26 @@ def _get_station_articulation_busbar_ids(station: Station) -> set[str]:
 
 
 def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
-    """Extract busbar outage ids that remain after preprocessing-side filtering."""
+    """Extract busbar outage ids in the same order used by solver-side N-1 processing.
+
+    Relevant-station busbar outages follow the representative branch-action realization used
+    during conversion to JAX. Non-relevant station outages are appended afterward in the
+    configured ``busbar_outage_map`` order.
+    """
     if network_data.busbar_outage_map is None or network_data.asset_topology is None:
         return []
-
-    relevant_station_ids = {
-        node_id
-        for node_id, is_relevant in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True)
-        if is_relevant
-    }
 
     busbar_outage_ids: list[str] = []
     relevant_stations = get_relevant_stations(network_data)
     for station_index, station in enumerate(relevant_stations):
         configured_busbars = set(network_data.busbar_outage_map.get(station.grid_model_id, []))
-        always_articulation_ids: set[str] = set()
+        representative_station = station
+        if network_data.realised_stations is not None and station_index < len(network_data.realised_stations):
+            representative_realisations = network_data.realised_stations[station_index]
+            if representative_realisations:
+                representative_station = representative_realisations[0]
+
+        always_articulation_indices: set[int] = set()
         if network_data.rel_bb_articulation_nodes is not None and station_index < len(
             network_data.rel_bb_articulation_nodes
         ):
@@ -724,18 +736,19 @@ def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
                 always_articulation_indices = set(articulation_by_action[0])
                 for articulation_indices in articulation_by_action[1:]:
                     always_articulation_indices &= set(articulation_indices)
-                always_articulation_ids = {
-                    station.busbars[busbar_index].grid_model_id
-                    for busbar_index in always_articulation_indices
-                    if busbar_index < len(station.busbars)
-                }
 
         busbar_outage_ids.extend(
             busbar.grid_model_id
-            for busbar in station.busbars
-            if busbar.grid_model_id in configured_busbars and busbar.grid_model_id not in always_articulation_ids
+            for busbar_index, busbar in enumerate(representative_station.busbars)
+            if busbar.grid_model_id in configured_busbars and busbar_index not in always_articulation_indices
         )
 
+    relevant_station_ids = {
+        node_id
+        for node_id, is_relevant in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True)
+        if is_relevant
+    }
+    relevant_busbar_ids = set(busbar_outage_ids)
     articulation_ids_by_station = {
         station.grid_model_id: _get_station_articulation_busbar_ids(station)
         for station in (
@@ -747,12 +760,12 @@ def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
     for station in network_data.asset_topology.stations:
         if station.grid_model_id in relevant_station_ids:
             continue
-        configured_busbars = set(network_data.busbar_outage_map.get(station.grid_model_id, []))
+        configured_busbars = network_data.busbar_outage_map.get(station.grid_model_id, [])
         articulation_ids = articulation_ids_by_station.get(station.grid_model_id, set())
         busbar_outage_ids.extend(
-            busbar.grid_model_id
-            for busbar in station.busbars
-            if busbar.grid_model_id in configured_busbars and busbar.grid_model_id not in articulation_ids
+            busbar_id
+            for busbar_id in configured_busbars
+            if busbar_id not in articulation_ids and busbar_id not in relevant_busbar_ids
         )
 
     return busbar_outage_ids

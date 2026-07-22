@@ -13,6 +13,7 @@ import networkx as nx
 import pandas as pd
 import pandera.typing as pat
 import structlog
+from pandera.errors import SchemaError
 from pydantic import ValidationError
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
@@ -435,6 +436,11 @@ def get_station_list(network: Network, relevant_voltage_level_with_region: pd.Da
         except ValueError as e:
             logger.warning(
                 f"ValueError while getting station: {station_info} with error: {e}. "
+                "Consider checking the Station or adding to ignore list."
+            )
+        except SchemaError as e:
+            logger.warning(
+                f"SchemaError while getting station: {station_info} with error: {e}. "
                 "Consider checking the Station or adding to ignore list."
             )
 

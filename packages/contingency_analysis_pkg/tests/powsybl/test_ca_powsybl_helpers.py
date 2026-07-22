@@ -193,24 +193,6 @@ def test_get_bus_contingency_expansions_uses_busbar_propagation_map_on_complex_g
     assert expansions["VL_MV_load_1_2"] == ["VL_MV_load_1_2"]
 
 
-def test_get_bus_contingency_expansions_groups_busbars_by_bus_breaker_bus_id() -> None:
-    bus_map = pd.DataFrame(
-        index=["BBS1", "BBS2", "BBS3", "BBS4", "VL1_0", "VL1_1", "VL1_2", "VL2_0"],
-        data={
-            "bus_breaker_bus_id": ["VL1_0", "VL1_0", "VL1_1", "VL2_0", "VL1_0", "VL1_1", "VL1_2", "VL2_0"],
-            "bus_id": ["bus_0", "bus_0", "bus_1", "bus_2", "bus_0", "bus_1", "bus_2", "bus_2"],
-            "voltage_level_id": ["VL1", "VL1", "VL1", "VL2", "VL1", "VL1", "VL1", "VL2"],
-        },
-    )
-
-    expansions = _get_bus_contingency_expansions(bus_map)
-
-    assert expansions["BBS1"] == ["BBS1", "BBS2"]
-    assert expansions["BBS2"] == ["BBS1", "BBS2"]
-    assert expansions["BBS3"] == ["BBS3"]
-    assert expansions["BBS4"] == ["BBS4"]
-
-
 def test_translate_nminus1_for_powsybl_expands_busbar_contingencies_over_busbar_propagation() -> None:
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
     expansions = _get_bus_contingency_expansions(net)

@@ -12,7 +12,7 @@ from enum import Enum
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
-from beartype.typing import List, Literal, Optional, Tuple, Type, TypeAlias, Union
+from beartype.typing import List, Literal, Optional, Type, TypeAlias, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
 
@@ -315,7 +315,7 @@ class BranchSchema(AssetSchema):
     )
     """The type of the branch."""
 
-    node_tuple: Optional[pat.Series[Tuple[int, int]]] = pa.Field(nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[object]] = pa.Field(nullable=True, description="optional")
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
 
@@ -337,7 +337,7 @@ class SwitchSchema(AssetSchema):
     True: The switch is open.
     False: The switch is closed."""
 
-    node_tuple: Optional[pat.Series[Tuple[int, int]]] = pa.Field(nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[object]] = pa.Field(nullable=True, description="optional")
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
 

@@ -1202,6 +1202,9 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
         network_data.to_nodes,
         network_data.slack,
     )
+    if network_data.busbar_outage_map is not None:
+        busbar_outage_station_mask = np.isin(network_data.node_ids, list(network_data.busbar_outage_map.keys()))
+        significant_nodes |= busbar_outage_station_mask
     significant_node_ids = np.flatnonzero(significant_nodes)
     ptdf, nodal_injection = reduce_ptdf_and_nodal_injections(
         network_data.ptdf, network_data.nodal_injection, significant_nodes
@@ -1265,6 +1268,11 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
     if not_found:
         raise ValueError(f"Some stations were not found in the asset topology: {not_found}")
     stations = []
+    busbar_outage_map = (
+        {station_id: list(busbar_ids) for station_id, busbar_ids in network_data.busbar_outage_map.items()}
+        if network_data.busbar_outage_map is not None
+        else None
+    )
     keep_mask = []
     for node_index, branches_at_sub, inj_at_sub, station in zip(
         network_data.relevant_nodes,
@@ -1284,6 +1292,11 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
                 injection_ids=injection_ids_local,
                 close_couplers=close_couplers,
             )
+            if busbar_outage_map is not None and station.grid_model_id in busbar_outage_map:
+                simplified_busbar_ids = {busbar.grid_model_id for busbar in simplified_station.busbars}
+                busbar_outage_map[station.grid_model_id] = [
+                    busbar_id for busbar_id in busbar_outage_map[station.grid_model_id] if busbar_id in simplified_busbar_ids
+                ]
 
             keep_mask.append(True)
         except ValueError as e:
@@ -1301,6 +1314,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
         simplified_asset_topology=topology.model_copy(
             update={"stations": stations},
         ),
+        busbar_outage_map=busbar_outage_map,
     )
     return remove_relevant_subs(network_data, np.array(keep_mask, dtype=bool))
 

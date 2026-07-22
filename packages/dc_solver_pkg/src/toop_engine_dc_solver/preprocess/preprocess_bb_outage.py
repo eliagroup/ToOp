@@ -547,11 +547,28 @@ def _get_busbar_outage_node_index(
     For relevant stations the physical busbar must be mapped to busbar A or busbar B depending on
     the realised branch-action combination.
     """
-    node_indices_to_outage = np.nonzero(np.array(network.node_ids) == station.grid_model_id)[0].tolist()
+    node_ids = np.array(network.node_ids)
+    node_indices_to_outage = np.nonzero(node_ids == station.grid_model_id)[0].tolist()
+    if not node_indices_to_outage:
+        busbar = station.busbars[busbar_index]
+        fallback_node_ids = [
+            busbar.bus_breaker_bus_id,
+            busbar.bus_branch_bus_id,
+            busbar.grid_model_id,
+        ]
+        for fallback_node_id in dict.fromkeys(node_id for node_id in fallback_node_ids if node_id is not None):
+            node_indices_to_outage = np.nonzero(node_ids == fallback_node_id)[0].tolist()
+            if node_indices_to_outage:
+                break
     node_indices_to_outage = tuple(sorted(node_indices_to_outage))
 
     if len(node_indices_to_outage) == 1:
         return node_indices_to_outage[0]
+    if len(node_indices_to_outage) == 0:
+        raise ValueError(
+            f"Could not resolve outage node for station {station.grid_model_id}"
+            " and busbar {station.busbars[busbar_index].grid_model_id}"
+        )
 
     rel_sub_index = np.argmax(network.relevant_nodes == network.node_ids.index(station.grid_model_id)).item()
     assert network.busbar_a_mappings is not None, "busbar_a_mappings is not defined."

@@ -13,6 +13,7 @@ from tests.deprecated.assignment import realise_bus_split_single_station
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, map_branch_injection_ids
 from toop_engine_dc_solver.preprocess.preprocess import compute_separation_set_for_stations
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
+    _get_busbar_outage_node_index,
     extract_busbar_outage_data,
     extract_outage_index_injection_from_asset,
     get_all_rel_bb_outage_data,
@@ -138,7 +139,6 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     )
     assert connected_branches_to_outage == [1], f"Expected [1], but got {connected_branches_to_outage}"
     assert zero_flow_branch_indices == [], f"Expected [], but got {zero_flow_branch_indices}"
-
     # Test case 2: Process an injection (asset_7) to a relevant substation (node 2) that is in service
     nodal_injection_to_outage = np.zeros(network_data_dummy.nodal_injection.shape[0], float)
     connected_branches_to_outage = []
@@ -189,6 +189,38 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     )
     assert connected_branches_to_outage == [], f"Expected [], but got {connected_branches_to_outage}"
     assert zero_flow_branch_indices == [0], f"Expected [0], but got {zero_flow_branch_indices}"
+
+
+def test_get_busbar_outage_node_index_falls_back_to_busbar_bus_id(network_data: NetworkData) -> None:
+    station = Station(
+        grid_model_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_1",
+        busbars=[
+            Busbar(
+                grid_model_id="38861c44-57c7-5778-459d-bb997f25d415",
+                int_id=0,
+                bus_branch_bus_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_2",
+                bus_breaker_bus_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_2",
+            ),
+            Busbar(
+                grid_model_id="5fd53822-fbb9-f012-5cbb-ac2d2d6aaf6c",
+                int_id=1,
+                bus_branch_bus_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_1",
+                bus_breaker_bus_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_1",
+            ),
+        ],
+        couplers=[],
+        assets=[],
+        asset_switching_table=np.zeros((2, 0), dtype=bool),
+        asset_connectivity=np.zeros((2, 0), dtype=bool),
+    )
+    network_data_dummy = replace(
+        network_data,
+        node_ids=["ab0e0e4f-10e5-411a-bf4e-6232f521985e_2"],
+    )
+
+    node_index = _get_busbar_outage_node_index(station, 0, network_data_dummy, branch_action_combi_index=None)
+
+    assert node_index == 0
 
 
 def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):

@@ -71,6 +71,7 @@ def test_get_nodes(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     bbt = net.get_bus_breaker_topology("VL1")
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
     switches_df = get_switches(switches_df=nbt.switches)
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)
@@ -80,6 +81,7 @@ def test_get_nodes(basic_node_breaker_network_powsybl_grid):
         nodes_df=nbt.nodes,
         bus_breaker_elements_df=bbt.elements,
         switches_df=switches_df,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         substation_info=substation_information,
     )
     NodeSchema.validate(nodes_df)
@@ -89,6 +91,7 @@ def test_node_schema_validate_rejects_wrong_dtype(basic_node_breaker_network_pow
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
     bbt = net.get_bus_breaker_topology("VL1")
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
     switches_df = get_switches(switches_df=nbt.switches)
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)
@@ -98,6 +101,7 @@ def test_node_schema_validate_rejects_wrong_dtype(basic_node_breaker_network_pow
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
         bus_breaker_elements_df=bbt.elements,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_information,
     )
@@ -151,6 +155,7 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
     }
     all_names_df = pd.DataFrame.from_dict(names_dict, orient="index", columns=["name"])["name"]
     switches_df = get_switches(switches_df=nbt.switches)
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)
     busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
@@ -158,6 +163,7 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
         bus_breaker_elements_df=bbt.elements,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_information,
     )

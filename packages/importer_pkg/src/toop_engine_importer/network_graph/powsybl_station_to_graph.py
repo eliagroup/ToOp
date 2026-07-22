@@ -84,6 +84,7 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
     boundary_line_tie_ids = net.get_boundary_lines(attributes=["tie_line_id"])["tie_line_id"]
     injections_df = net.get_injections(attributes=["connected", "bus_id"])
     buses_df = net.get_buses(attributes=["connected_component"])
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
     in_main_connected_component = buses_df["connected_component"].fillna(0).eq(0)
 
     branch_in_service = (
@@ -112,6 +113,7 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
         bus_breaker_elements_df=bbt.elements,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_info,
     )
@@ -191,6 +193,7 @@ def get_nodes(
     busbar_sections_names_df: pd.DataFrame,
     nodes_df: pd.DataFrame,
     bus_breaker_elements_df: pd.DataFrame,
+    bus_breaker_view_buses_df: pd.DataFrame,
     switches_df: pd.DataFrame,
     substation_info: SubstationInformation,
 ) -> pat.DataFrame[NodeSchema]:
@@ -208,6 +211,8 @@ def get_nodes(
         The nodes DataFrame from the net.get_node_breaker_topology(voltage_level_id).nodes
     bus_breaker_elements_df : pd.DataFrame
         The elements DataFrame from the bus-breaker topology of the same voltage level.
+    bus_breaker_view_buses_df : pd.DataFrame
+        The bus breaker view buses DataFrame from the pypowsybl network.
     switches_df : pd.DataFrame
         The switches DataFrame from the node NodeBreakerTopology.
     substation_info : SubstationInformation
@@ -223,6 +228,8 @@ def get_nodes(
         columns={"bus_id": "bus_breaker_bus_id"}
     )
     nodes_df = nodes_df.merge(busbar_bus_ids, left_on="connectable_id", right_index=True, how="left")
+    if "bus_id" not in nodes_df.columns:
+        nodes_df = nodes_df.merge(bus_breaker_view_buses_df, left_on="bus_breaker_bus_id", right_index=True, how="left")
     nodes_df["grid_model_id"] = ""
     nodes_df["node_type"] = "node"
     nodes_df["substation_id"] = substation_info.name

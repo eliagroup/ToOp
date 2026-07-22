@@ -19,7 +19,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     get_blank_va_diff,
     get_blank_va_diff_with_buses,
     get_branch_results,
-    get_busbar_mapping,
+    get_busbar_propagation_map,
     get_convergence_result_df,
     get_node_results,
     get_regulating_element_results,
@@ -34,6 +34,7 @@ from toop_engine_contingency_analysis.pypowsybl import (
     update_basename,
 )
 from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import _get_bus_contingency_expansions
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchResultSchema, NodeResultSchema, VADiffResultSchema
@@ -170,6 +171,28 @@ def test_translate_contingency_to_powsybl_with_busbar(
     assert pow_contingencies[0].elements == [busbar_id]
 
 
+def test_get_busbar_propagation_map_uses_busbar_ids_on_complex_grid() -> None:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+    propagation_map = get_busbar_propagation_map(net, "VL_MV")
+
+    assert propagation_map["VL_MV_1_1"] == ["VL_MV_1_2"]
+    assert propagation_map["VL_MV_1_2"] == ["VL_MV_1_1"]
+    assert propagation_map["VL_MV_2_1"] == ["VL_MV_2_2"]
+    assert propagation_map["VL_MV_2_2"] == ["VL_MV_2_1"]
+
+
+def test_get_bus_contingency_expansions_uses_busbar_propagation_map_on_complex_grid() -> None:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+
+    expansions = _get_bus_contingency_expansions(net)
+
+    assert expansions["VL_MV_1_1"] == ["VL_MV_1_1", "VL_MV_1_2"]
+    assert expansions["VL_MV_2_1"] == ["VL_MV_2_1", "VL_MV_2_2"]
+    assert expansions["VL_MV_load_1_1"] == ["VL_MV_load_1_1"]
+    assert expansions["VL_MV_load_1_2"] == ["VL_MV_load_1_2"]
+
+
 def test_get_bus_contingency_expansions_groups_busbars_by_bus_breaker_bus_id() -> None:
     bus_map = pd.DataFrame(
         index=["BBS1", "BBS2", "BBS3", "BBS4", "VL1_0", "VL1_1", "VL1_2", "VL2_0"],
@@ -188,29 +211,12 @@ def test_get_bus_contingency_expansions_groups_busbars_by_bus_breaker_bus_id() -
     assert expansions["BBS4"] == ["BBS4"]
 
 
-def test_translate_nminus1_for_powsybl_expands_busbar_contingencies_over_bus_breaker_bus_groups(
-    powsybl_node_breaker_net: pypowsybl.network.Network,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    busbar_sections = powsybl_node_breaker_net.get_busbar_sections(attributes=["name", "bus_breaker_bus_id"])
-    selected_busbar_ids = busbar_sections.index[:2].tolist()
-    selected_bus_breaker_bus_id = busbar_sections.loc[selected_busbar_ids[0], "bus_breaker_bus_id"]
-
-    injections = powsybl_node_breaker_net.get_injections(
-        attributes=["type", "bus_breaker_bus_id", "bus_id", "voltage_level_id"]
-    )
-    patched_injections = injections.copy()
-    patched_injections.loc[selected_busbar_ids, "bus_breaker_bus_id"] = selected_bus_breaker_bus_id
-    monkeypatch.setattr(
-        powsybl_node_breaker_net,
-        "get_injections",
-        lambda attributes=None: (
-            patched_injections.reindex(columns=attributes) if attributes is not None else patched_injections
-        ),
-    )
-
-    expansions = _get_bus_contingency_expansions(get_busbar_mapping(powsybl_node_breaker_net))
+def test_translate_nminus1_for_powsybl_expands_busbar_contingencies_over_busbar_propagation() -> None:
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    expansions = _get_bus_contingency_expansions(net)
+    selected_busbar_ids = expansions["VL_MV_1_1"]
     selected_busbar_id = selected_busbar_ids[0]
+    busbar_sections = net.get_busbar_sections(attributes=["name"])
     selected_busbar = busbar_sections.loc[selected_busbar_id]
 
     nminus1_def = Nminus1Definition(
@@ -233,9 +239,9 @@ def test_translate_nminus1_for_powsybl_expands_busbar_contingencies_over_bus_bre
         id_type="powsybl",
     )
 
-    translated_nminus1 = translate_nminus1_components_for_powsybl(nminus1_def, powsybl_node_breaker_net)
+    translated_nminus1 = translate_nminus1_components_for_powsybl(nminus1_def, net)
 
-    assert translated_nminus1.contingencies[1].elements == sorted(selected_busbar_ids)
+    assert translated_nminus1.contingencies[1].elements == selected_busbar_ids
     assert translated_nminus1.contingencies[1].elements == expansions[selected_busbar_id]
 
 

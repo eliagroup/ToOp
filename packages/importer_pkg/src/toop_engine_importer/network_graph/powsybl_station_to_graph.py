@@ -107,7 +107,7 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
     bbt = net.get_bus_breaker_topology(substation_info.voltage_level_id)
 
     switches_df = get_switches(switches_df=nbt.switches)
-    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "bus_id", "in_service"])
     nodes_df = get_nodes(
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
@@ -235,7 +235,6 @@ def get_nodes(
     cond_busbar = nodes_df["connectable_type"] == "BUSBAR_SECTION"
     nodes_df.loc[cond_busbar, "node_type"] = "busbar"
     nodes_df.loc[cond_busbar, "grid_model_id"] = nodes_df.loc[cond_busbar, "connectable_id"]
-    nodes_df.loc[cond_busbar, "bus_id"] = nodes_df.loc[cond_busbar, "bus_breaker_bus_id"]
     cond_helper_node = (nodes_df["connectable_type"] == "") & (
         ~nodes_df.index.isin(switches_df["from_node"].to_list() + switches_df["to_node"].to_list())
     )
@@ -245,7 +244,6 @@ def get_nodes(
     nodes_df.loc[cond, "foreign_id"] = nodes_df.loc[cond, "grid_model_id"]
     nodes_df["helper_node"] = nodes_df["helper_node"].astype("boolean").fillna(False).astype(bool)
     nodes_df["in_service"] = nodes_df["in_service"].astype("boolean").fillna(True).astype(bool)
-    nodes_df.drop(columns=["bus_breaker_bus_id"], inplace=True)
 
     return NodeSchema.validate(nodes_df)
 

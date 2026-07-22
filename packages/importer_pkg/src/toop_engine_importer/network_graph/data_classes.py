@@ -251,6 +251,11 @@ class NodeSchema(ValidationOnlyDataFrameModel):
     """The bus_id of the node.
     The bus_id is the refers to the id in the bus-branch topology."""
 
+    bus_breaker_bus_id: Optional[pat.Series[str]] = pa.Field(nullable=True, coerce=False)
+    """The bus_breaker_bus_id of the node.
+    This is only populated for powsybl busbars when the bus-breaker topology differs from the
+    bus-branch topology."""
+
     system_operator: pat.Series[str]
     """The system operator of the node.
     Can be used to categorize the node. For instance to identify border lines."""

@@ -88,6 +88,14 @@ class Busbar(BaseModel):
     in_service: bool = True
     """ Whether the busbar is in service. If False, it will be ignored in the switching table"""
 
+    bus_branch_bus_id: Optional[str] = None
+    """ The bus_branch_bus_id refers to the bus-branch model bus id.
+    There might be a difference between the busbar grid_model_id (a physical busbar)
+    and the bus_branch_bus_id from the bus-branch model.
+    Use this bus_branch_bus_id to store the bus-branch model bus id.
+    Note: the Station grid_model_id also a bus-branch bus_branch_bus_id. This id is the most splitable bus_branch_bus_id.
+    Other bus_branch_bus_ids are part of the physical station, but are separated by a coupler or branch."""
+
     bus_breaker_bus_id: Optional[str] = None
     """ The bus_breaker_bus_id refers to the bus-breaker view bus id.
     There might be a difference between the busbar grid_model_id (a physical busbar)
@@ -498,17 +506,17 @@ class Station(BaseModel):
 
     @model_validator(mode="after")
     def check_bus_id(self: "Station") -> "Station":
-        """Check if station grid_model_id is in the busbar.bus_breaker_bus_id.
+        """Check if station grid_model_id is in the busbar.bus_branch_bus_id.
 
         Returns
         -------
         Station
             The station itself.
         """
-        busbar_bus_ids = [busbar.bus_breaker_bus_id for busbar in self.busbars if busbar.bus_breaker_bus_id is not None]
+        busbar_bus_ids = [busbar.bus_branch_bus_id for busbar in self.busbars if busbar.bus_branch_bus_id is not None]
         if len(busbar_bus_ids) > 0 and self.grid_model_id not in busbar_bus_ids:
             raise ValueError(
-                f"Station grid_model_id {self.grid_model_id} does not exist in busbars bus_breaker_bus_id"
+                f"Station grid_model_id {self.grid_model_id} does not exist in busbars bus_branch_bus_id"
                 f" Station_id: {self.grid_model_id}, Name: {self.name}"
             )
 

@@ -971,6 +971,12 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
 
     pypowsybl.network.create_coupling_device(
         n,
+        bus_or_busbar_section_id_1=["VL_HV_gen_1_1"],
+        bus_or_busbar_section_id_2=["VL_HV_gen_2_1"],
+    )
+
+    pypowsybl.network.create_coupling_device(
+        n,
         bus_or_busbar_section_id_1=["VL_MV_load_1_2"],
         bus_or_busbar_section_id_2=["VL_MV_load_1_1"],
     )
@@ -1811,7 +1817,7 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     pypowsybl.loadflow.run_ac(n)
     i1 = abs(n.get_lines()["i1"])
     i1_arr = np.asarray(i1, dtype=float)
-    rounded_i1 = (np.ceil(i1_arr / 100) * 100).astype(int)
+    rounded_i1 = np.where(np.isfinite(i1_arr), np.ceil(i1_arr / 100) * 100, 0).astype(int)
     limits = pd.Series(rounded_i1, index=i1.index, name="value").reset_index()
     limits.rename(columns={"id": "element_id"}, inplace=True)
     limits.set_index("element_id", inplace=True)

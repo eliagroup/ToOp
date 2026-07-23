@@ -14,6 +14,7 @@ the necessary data from the network, so this only has to happen once.
 import hashlib
 from copy import deepcopy
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 import pandera as pa
@@ -194,7 +195,9 @@ class PowsyblNMinus1Definition(BaseModel):
 
 
 def translate_contingency_to_powsybl(
-    contingencies: list[Contingency], identifiables: pd.Index
+    contingencies: list[Contingency],
+    identifiables: pd.Index,
+    bus_contingency_expansions: Optional[dict[str, list[str]]] = None,
 ) -> tuple[list[PowsyblContingency], list[Contingency]]:
     """Translate the contingencies to a format that can be used in Powsybl.
 
@@ -205,6 +208,9 @@ def translate_contingency_to_powsybl(
     identifiables : pd.DataFrame
         A dataframe containing the identifiables of the network.
         This is used to check if the elements are present in the network.
+    bus_contingency_expansions : Optional[dict[str, list[str]]], optional
+        A mapping from busbar section ids to the busbar section ids that share its bus-breaker bus identifier.
+        Used for contingency propagation of busbars
 
     Returns
     -------
@@ -218,19 +224,51 @@ def translate_contingency_to_powsybl(
     for contingency in contingencies:
         outaged_elements = []
         for element in contingency.elements:
-            if element.id not in identifiables:
+            expanded_element_ids = (
+                bus_contingency_expansions.get(element.id, [element.id])
+                if bus_contingency_expansions is not None and element.kind == "bus"
+                else [element.id]
+            )
+            if any(expanded_element_id not in identifiables for expanded_element_id in expanded_element_ids):
                 missing_contingencies.append(contingency)
                 break
-            outaged_elements.append(element.id)
+            outaged_elements.extend(expanded_element_ids)
         else:
             pp_contingency = PowsyblContingency(
                 id=contingency.id,
                 name=contingency.name or "",
-                elements=outaged_elements,
+                elements=list(dict.fromkeys(outaged_elements)),
             )
             pow_contingencies.append(pp_contingency)
 
     return pow_contingencies, missing_contingencies
+
+
+def _get_bus_contingency_expansions(net: Network) -> dict[str, list[str]]:
+    """Expand busbar contingencies using the node-breaker propagation topology.
+
+    Parameters
+    ----------
+    net : Network
+        The Powsybl network whose node-breaker topology should be used for busbar propagation.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Mapping from each busbar section id to the sorted busbar section ids that should be
+        jointly outaged after propagation across closed disconnectors.
+    """
+    busbar_sections = net.get_busbar_sections(attributes=["voltage_level_id"])
+    if busbar_sections.empty:
+        return {}
+
+    expansions: dict[str, list[str]] = {}
+    for voltage_level_id, busbars_at_voltage_level in busbar_sections.groupby("voltage_level_id"):
+        propagation_map = get_busbar_propagation_map(net, str(voltage_level_id))
+        for busbar_id in busbars_at_voltage_level.index.astype(str):
+            expansions[busbar_id] = sorted({busbar_id, *propagation_map.get(busbar_id, [])})
+
+    return expansions
 
 
 def translate_monitored_elements_to_powsybl(
@@ -705,8 +743,9 @@ def translate_nminus1_components_for_powsybl(
         attributes=["open", "retained", "voltage_level_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id"]
     )
     identifiables = net.get_identifiables(attributes=[]).index
+    bus_contingency_expansions = _get_bus_contingency_expansions(net)
     pow_contingencies, missing_contingencies = translate_contingency_to_powsybl(
-        n_minus_1_definition.contingencies, identifiables
+        n_minus_1_definition.contingencies, identifiables, bus_contingency_expansions=bus_contingency_expansions
     )
     contingency_name_map = {contingency.id: contingency.name or "" for contingency in n_minus_1_definition.contingencies}
     (monitored_elements, element_name_map, missing_elements) = translate_monitored_elements_to_powsybl(
@@ -1232,3 +1271,66 @@ def get_full_nminus1_definition_powsybl(net: pypowsybl.network.Network) -> Nminu
         id_type="powsybl",
     )
     return nminus1_definition
+
+
+# TODO move to network graph logic -> move Network graph logic to gird helpers
+def get_busbar_propagation_map(net: pypowsybl.network.Network, voltage_level_id: str) -> dict[str, list[str]]:
+    """Get a map of busbar sections to the busbar sections they can reach through closed DISCONNECTOR, but stops at BREAKER.
+
+    Parameters
+    ----------
+    net: pypowsybl.network.Network
+        Powsybl network object representing the electrical network.
+    voltage_level_id: str
+        voltage level id for which to compute the busbar propagation map. The voltage level must exist in the network.
+
+    Returns
+    -------
+    busbar_propagation_map: dict[str, list[str]]
+        A dictionary mapping each busbar section to a list of busbar sections it can reach through
+        key: busbar section id
+        value: list of busbar section ids that can be reached through closed DISCONNECTOR, but stops at BREAKER.
+
+    """
+    node_breaker_topo = net.get_node_breaker_topology(voltage_level_id)
+    graph = node_breaker_topo.create_graph()
+    nodes = node_breaker_topo.nodes
+    switches = node_breaker_topo.switches
+    # add weighted edges to the graph based on the switches
+    # Vectorized edge weighting + single bulk insertion (faster than iterrows + add_edge)
+    is_blocking = (switches["open"] | switches["kind"].eq("BREAKER")).astype(float).to_numpy()
+    graph.add_weighted_edges_from(
+        zip(
+            switches["node1"].to_numpy(),
+            switches["node2"].to_numpy(),
+            is_blocking,
+            strict=True,
+        ),
+        weight="weight",
+    )
+    busbar_section_nodes = nodes[nodes["connectable_type"] == "BUSBAR_SECTION"]
+    if busbar_section_nodes.empty:
+        return {}
+
+    node_to_busbar_id = busbar_section_nodes["connectable_id"].astype(str).to_dict()
+    busbar_node_ids = set(busbar_section_nodes.index.to_list())
+    # get weighted shortest path between two busbar sections,
+    # with cutoff at 1 (i.e. only consider closed switches, and disconnectors)
+
+    busbar_propagation_map: dict[str, list[str]] = {}
+    for busbar_node_id, busbar_row in busbar_section_nodes.iterrows():
+        busbar_section_id = str(busbar_row["connectable_id"])
+        if busbar_node_id not in graph:
+            busbar_propagation_map[busbar_section_id] = []
+            continue
+        shortest_path = nx.single_source_dijkstra_path(graph, source=busbar_node_id, weight="weight", cutoff=0.5)
+        # remove shortest paths that do not connect two busbar sections
+        propagated_busbar_ids = []
+        for target_node_id, path in shortest_path.items():
+            if target_node_id == busbar_node_id or target_node_id not in busbar_node_ids:
+                continue
+            if sum(1 for path_node_id in path if path_node_id in busbar_node_ids) != 2:
+                continue
+            propagated_busbar_ids.append(node_to_busbar_id[target_node_id])
+        busbar_propagation_map[busbar_section_id] = sorted(propagated_busbar_ids)
+    return busbar_propagation_map

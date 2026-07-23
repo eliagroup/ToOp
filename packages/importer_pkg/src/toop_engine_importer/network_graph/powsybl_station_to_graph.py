@@ -13,6 +13,7 @@ import networkx as nx
 import pandas as pd
 import pandera.typing as pat
 import structlog
+from pandera.errors import SchemaError
 from pydantic import ValidationError
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
@@ -36,7 +37,6 @@ from toop_engine_importer.network_graph.graph_to_asset_topo import (
     get_coupler_df,
     get_station_connection_tables,
     get_switchable_asset,
-    remove_double_connections,
 )
 from toop_engine_importer.network_graph.network_graph import (
     generate_graph,
@@ -84,6 +84,7 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
     boundary_line_tie_ids = net.get_boundary_lines(attributes=["tie_line_id"])["tie_line_id"]
     injections_df = net.get_injections(attributes=["connected", "bus_id"])
     buses_df = net.get_buses(attributes=["connected_component"])
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
     in_main_connected_component = buses_df["connected_component"].fillna(0).eq(0)
 
     branch_in_service = (
@@ -104,12 +105,15 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
         ]
     )
     nbt = net.get_node_breaker_topology(substation_info.voltage_level_id)
+    bbt = net.get_bus_breaker_topology(substation_info.voltage_level_id)
 
     switches_df = get_switches(switches_df=nbt.switches)
-    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service", "bus_id"])
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "bus_id", "in_service"])
     nodes_df = get_nodes(
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
+        bus_breaker_elements_df=bbt.elements,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_info,
     )
@@ -188,6 +192,8 @@ def get_switches(switches_df: pd.DataFrame) -> pat.DataFrame[SwitchSchema]:
 def get_nodes(
     busbar_sections_names_df: pd.DataFrame,
     nodes_df: pd.DataFrame,
+    bus_breaker_elements_df: pd.DataFrame,
+    bus_breaker_view_buses_df: pd.DataFrame,
     switches_df: pd.DataFrame,
     substation_info: SubstationInformation,
 ) -> pat.DataFrame[NodeSchema]:
@@ -203,6 +209,10 @@ def get_nodes(
         from get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
     nodes_df : pd.DataFrame
         The nodes DataFrame from the net.get_node_breaker_topology(voltage_level_id).nodes
+    bus_breaker_elements_df : pd.DataFrame
+        The elements DataFrame from the bus-breaker topology of the same voltage level.
+    bus_breaker_view_buses_df : pd.DataFrame
+        The bus breaker view buses DataFrame from the pypowsybl network.
     switches_df : pd.DataFrame
         The switches DataFrame from the node NodeBreakerTopology.
     substation_info : SubstationInformation
@@ -214,6 +224,12 @@ def get_nodes(
         The nodes as a DataFrame, with renamed columns for the NetworkGraph.
     """
     nodes_df = nodes_df.merge(busbar_sections_names_df, left_on="connectable_id", right_index=True, how="left")
+    busbar_bus_ids = bus_breaker_elements_df.loc[bus_breaker_elements_df["type"] == "BUSBAR_SECTION", ["bus_id"]].rename(
+        columns={"bus_id": "bus_breaker_bus_id"}
+    )
+    nodes_df = nodes_df.merge(busbar_bus_ids, left_on="connectable_id", right_index=True, how="left")
+    if "bus_id" not in nodes_df.columns:
+        nodes_df = nodes_df.merge(bus_breaker_view_buses_df, left_on="bus_breaker_bus_id", right_index=True, how="left")
     nodes_df["grid_model_id"] = ""
     nodes_df["node_type"] = "node"
     nodes_df["substation_id"] = substation_info.name
@@ -361,8 +377,6 @@ def get_station(network: Network, bus_id: str, station_info: SubstationInformati
     asset_connectivity, asset_switching_table, busbar_connectivity, busbar_switching_table = get_station_connection_tables(
         busbar_connection_info, busbar_df=busbar_df, switchable_assets_df=switchable_assets_df
     )
-    # remove connections that are at two busbars simultaneously
-    asset_switching_table = remove_double_connections(asset_switching_table, substation_id=substation_id)
     busbars = get_list_of_busbars_from_df(busbar_df)
     couplers = get_list_of_coupler_from_df(coupler_df)
     assets = get_list_of_switchable_assets_from_df(station_branches=switchable_assets_df, asset_bay_dict=asset_bay_dict)
@@ -427,6 +441,11 @@ def get_station_list(network: Network, relevant_voltage_level_with_region: pd.Da
         except ValueError as e:
             logger.warning(
                 f"ValueError while getting station: {station_info} with error: {e}. "
+                "Consider checking the Station or adding to ignore list."
+            )
+        except SchemaError as e:
+            logger.warning(
+                f"SchemaError while getting station: {station_info} with error: {e}. "
                 "Consider checking the Station or adding to ignore list."
             )
 

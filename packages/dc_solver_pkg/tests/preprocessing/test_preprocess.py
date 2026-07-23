@@ -8,6 +8,7 @@
 import os
 from copy import deepcopy
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +36,7 @@ from toop_engine_dc_solver.preprocess.helpers.node_grouping import (
     get_num_elements_per_node,
     group_by_node,
 )
+from toop_engine_dc_solver.preprocess.helpers.reduce_node_dimension import get_significant_nodes
 from toop_engine_dc_solver.preprocess.helpers.relevant_branches import (
     get_relevant_branches,
 )
@@ -59,6 +61,7 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     filter_inactive_injections,
     filter_relevant_nodes_branch_count,
     filter_relevant_nodes_no_asset_station,
+    filter_relevant_nodes_no_double_connections,
     preprocess,
     process_injection_outages,
     reduce_branch_dimension,
@@ -71,7 +74,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_pandapower_branch_loadflow_results_sequence,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_ids
-from toop_engine_interfaces.asset_topology import Station
+from toop_engine_interfaces.asset_topology import Busbar, BusbarCoupler, Station, SwitchableAsset, Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessStage
 
@@ -626,6 +629,74 @@ def test_simplify_asset_topology(
         assert inj_ids == asset_ids[len(branch_ids) :]
 
 
+def test_simplify_asset_topology_prunes_fused_busbar_outage_ids(
+    network_data_filled: NetworkData,
+) -> None:
+    station = Station(
+        grid_model_id="station_1",
+        busbars=[
+            Busbar(grid_model_id="busbar1", int_id=1),
+            Busbar(grid_model_id="busbar2", int_id=2),
+            Busbar(grid_model_id="busbar3", int_id=3),
+        ],
+        couplers=[
+            BusbarCoupler(
+                grid_model_id="disc_1_2",
+                type="DISCONNECTOR",
+                busbar_from_id=1,
+                busbar_to_id=2,
+                open=False,
+            ),
+            BusbarCoupler(
+                grid_model_id="breaker_2_3",
+                type="BREAKER",
+                busbar_from_id=2,
+                busbar_to_id=3,
+                open=False,
+            ),
+        ],
+        assets=[
+            SwitchableAsset(grid_model_id="line1", type="line"),
+            SwitchableAsset(grid_model_id="line2", type="line"),
+            SwitchableAsset(grid_model_id="line3", type="line"),
+        ],
+        asset_switching_table=np.array(
+            [
+                [True, False, False],
+                [False, True, False],
+                [False, False, True],
+            ]
+        ),
+        asset_connectivity=np.array(
+            [
+                [True, True, False],
+                [True, True, True],
+                [False, True, True],
+            ]
+        ),
+    )
+    network_data = replace(
+        network_data_filled,
+        node_ids=["station_1"],
+        relevant_node_mask=np.array([True]),
+        branch_ids=["line1", "line2", "line3"],
+        injection_ids=[],
+        branches_at_nodes=[np.array([0, 1, 2], dtype=int)],
+        injection_idx_at_nodes=[np.array([], dtype=int)],
+        asset_topology=Topology(topology_id="topology", stations=[station], timestamp=datetime.now()),
+        busbar_outage_map={"station_1": ["busbar1", "busbar2", "busbar3"]},
+    )
+
+    network_data = simplify_asset_topology(network_data)
+
+    assert network_data.busbar_outage_map == {"station_1": ["busbar1", "busbar3"]}
+    assert network_data.simplified_asset_topology is not None
+    assert [busbar.grid_model_id for busbar in network_data.simplified_asset_topology.stations[0].busbars] == [
+        "busbar1",
+        "busbar3",
+    ]
+
+
 def test_complex_grid_be_ch_tie_line_stays_in_simplified_station_topology(tmp_path: Path) -> None:
     tie_line_id = "Dangling_outbound + Dangling_ch_inbound"
 
@@ -833,6 +904,43 @@ def test_filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> No
     assert network_data.relevant_node_mask.sum() == 2  # Only the first two nodes should remain relevant
 
 
+def test_filter_relevant_nodes_no_double_connections(network_data: NetworkData) -> None:
+    relevant_node_ids = np.array(network_data.node_ids)[np.flatnonzero(network_data.relevant_node_mask)]
+
+    station_index = None
+    modified_station = None
+    for index, station in enumerate(network_data.asset_topology.stations):
+        if station.grid_model_id not in relevant_node_ids:
+            continue
+
+        if station.asset_switching_table.shape[0] < 2 or station.asset_switching_table.shape[1] == 0:
+            continue
+
+        switching_table = station.asset_switching_table.copy()
+        switching_table[0, 0] = True
+        switching_table[1, 0] = True
+        modified_station = station.model_copy(update={"asset_switching_table": switching_table})
+        station_index = index
+        break
+
+    assert station_index is not None
+    assert modified_station is not None
+
+    stations = list(network_data.asset_topology.stations)
+    stations[station_index] = modified_station
+    expected_removed_node_id = modified_station.grid_model_id
+    network_data = replace(
+        network_data,
+        asset_topology=network_data.asset_topology.model_copy(update={"stations": stations}),
+    )
+
+    network_data = filter_relevant_nodes_no_double_connections(network_data)
+
+    expected_removed_node_index = network_data.node_ids.index(expected_removed_node_id)
+    assert not network_data.relevant_node_mask[expected_removed_node_index]
+    assert network_data.relevant_node_mask.sum() == len(relevant_node_ids) - 1
+
+
 def test_reduce_node_dimension(network_data_filled):
     network_data_reduced = reduce_node_dimension(network_data_filled)
     # Check for consistent shapes
@@ -896,6 +1004,64 @@ def test_reduce_node_dimension(network_data_filled):
     matching_types = reduced_node_types[network_data_reduced.from_nodes] == old_node_types[network_data_filled.from_nodes]
     assert np.all(reduced_node_types[network_data_reduced.from_nodes][~matching_types] == "REDUCED_NODE")
     assert matching_types.sum() != 0
+
+
+def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_data_filled: NetworkData) -> None:
+    drop_station = Station(
+        grid_model_id="drop",
+        busbars=[Busbar(grid_model_id="drop_bb", int_id=0)],
+        couplers=[],
+        assets=[SwitchableAsset(grid_model_id="drop_inj", type="load")],
+        asset_switching_table=np.array([[True]]),
+        asset_connectivity=np.array([[True]]),
+    )
+    network_data = replace(
+        network_data_filled,
+        ptdf=np.array([[1.0, 0.0, 0.0, 0.0], [0.5, 0.5, 0.0, 0.0]]),
+        psdf=np.zeros((2, 0)),
+        nodal_injection=np.array([[1.0, -1.0, 0.0, 0.0]]),
+        slack=0,
+        relevant_node_mask=np.array([True, False, False, False]),
+        from_nodes=np.array([0, 1], dtype=int),
+        to_nodes=np.array([1, 2], dtype=int),
+        injection_nodes=np.array([0, 3], dtype=int),
+        node_ids=["keep", "mid", "far", "drop"],
+        node_names=["keep", "mid", "far", "drop"],
+        node_types=["BUS", "BUS", "BUS", "BUS"],
+        branch_ids=["b0", "b1"],
+        monitored_branch_mask=np.array([True, False]),
+        outaged_branch_mask=np.array([False, False]),
+        multi_outage_branch_mask=np.zeros((0, 2), dtype=bool),
+        multi_outage_node_mask=np.zeros((0, 4), dtype=bool),
+        controllable_phase_shift_mask=np.array([False, False]),
+        asset_topology=Topology(topology_id="topology", stations=[drop_station], timestamp=datetime.now()),
+        busbar_outage_map={"drop": ["drop_bb"]},
+    )
+
+    relevant_branches = get_relevant_branches(
+        from_node=network_data.from_nodes,
+        to_node=network_data.to_nodes,
+        relevant_node_mask=network_data.relevant_node_mask,
+        monitored_branch_mask=network_data.monitored_branch_mask,
+        outaged_branch_mask=network_data.outaged_branch_mask,
+        multi_outage_mask=network_data.multi_outage_branch_mask,
+        busbar_outage_branch_mask=get_busbar_map_adjacent_branches(network_data),
+        controllable_phase_shift_mask=network_data.controllable_phase_shift_mask,
+    )
+    significant_nodes = get_significant_nodes(
+        network_data.relevant_node_mask,
+        network_data.multi_outage_node_mask,
+        relevant_branches,
+        network_data.from_nodes,
+        network_data.to_nodes,
+        network_data.slack,
+    )
+
+    assert not significant_nodes[3]
+
+    network_data_reduced = reduce_node_dimension(network_data)
+
+    assert "drop" in network_data_reduced.node_ids
 
 
 def test_preprocess(data_folder: str, tmp_path: str) -> None:

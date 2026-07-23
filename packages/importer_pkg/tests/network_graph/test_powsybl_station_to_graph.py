@@ -70,14 +70,18 @@ def test_get_switches(basic_node_breaker_network_powsybl_grid):
 def test_get_nodes(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
+    bbt = net.get_bus_breaker_topology("VL1")
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
     switches_df = get_switches(switches_df=nbt.switches)
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)
-    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service", "bus_id"])
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
     nodes_df = get_nodes(
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
+        bus_breaker_elements_df=bbt.elements,
         switches_df=switches_df,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         substation_info=substation_information,
     )
     NodeSchema.validate(nodes_df)
@@ -86,14 +90,18 @@ def test_get_nodes(basic_node_breaker_network_powsybl_grid):
 def test_node_schema_validate_rejects_wrong_dtype(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
+    bbt = net.get_bus_breaker_topology("VL1")
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
     switches_df = get_switches(switches_df=nbt.switches)
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)
-    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service", "bus_id"])
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
 
     nodes_df = get_nodes(
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
+        bus_breaker_elements_df=bbt.elements,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_information,
     )
@@ -114,6 +122,7 @@ def test_get_helper_branches(basic_node_breaker_network_powsybl_grid):
 def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
+    bbt = net.get_bus_breaker_topology("VL1")
     branches_df = net.get_branches(attributes=["connected1", "connected2"])
     boundary_line_tie_ids = net.get_boundary_lines(attributes=["tie_line_id"])["tie_line_id"]
     injections_df = net.get_injections(attributes=["connected"])
@@ -146,12 +155,15 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
     }
     all_names_df = pd.DataFrame.from_dict(names_dict, orient="index", columns=["name"])["name"]
     switches_df = get_switches(switches_df=nbt.switches)
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
     substation_dict = {"name": "Station1", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     substation_information = SubstationInformation(**substation_dict)
-    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service", "bus_id"])
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
     nodes_df = get_nodes(
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
+        bus_breaker_elements_df=bbt.elements,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_information,
     )
@@ -291,20 +303,86 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     # make sure the int ids match for the following tests
     expected_busbars = [
         Busbar(
-            grid_model_id="VL1_1_1", type="busbar", name="VL1_1_1", int_id=0, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
+            grid_model_id="VL1_1_1",
+            type="busbar",
+            name="VL1_1_1",
+            int_id=0,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL1_0",
+        ),
         Busbar(
-            grid_model_id="VL1_1_2", type="busbar", name="VL1_1_2", int_id=1, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
+            grid_model_id="VL1_1_2",
+            type="busbar",
+            name="VL1_1_2",
+            int_id=1,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL1_0",
+        ),
         Busbar(
-            grid_model_id="VL1_1_3", type="busbar", name="VL1_1_3", int_id=2, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(grid_model_id="VL1_2_1", type="busbar", name="VL1_2_1", int_id=3, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_2_2", type="busbar", name="VL1_2_2", int_id=4, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_2_3", type="busbar", name="VL1_2_3", int_id=5, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_1", type="busbar", name="VL1_3_1", int_id=6, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_2", type="busbar", name="VL1_3_2", int_id=7, in_service=True, bus_branch_bus_id="VL1_1"),
-        Busbar(grid_model_id="VL1_3_3", type="busbar", name="VL1_3_3", int_id=8, in_service=True, bus_branch_bus_id="VL1_1"),
+            grid_model_id="VL1_1_3",
+            type="busbar",
+            name="VL1_1_3",
+            int_id=2,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL1_6",
+        ),
+        Busbar(
+            grid_model_id="VL1_2_1",
+            type="busbar",
+            name="VL1_2_1",
+            int_id=3,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_1",
+        ),
+        Busbar(
+            grid_model_id="VL1_2_2",
+            type="busbar",
+            name="VL1_2_2",
+            int_id=4,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_1",
+        ),
+        Busbar(
+            grid_model_id="VL1_2_3",
+            type="busbar",
+            name="VL1_2_3",
+            int_id=5,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_7",
+        ),
+        Busbar(
+            grid_model_id="VL1_3_1",
+            type="busbar",
+            name="VL1_3_1",
+            int_id=6,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_2",
+        ),
+        Busbar(
+            grid_model_id="VL1_3_2",
+            type="busbar",
+            name="VL1_3_2",
+            int_id=7,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_2",
+        ),
+        Busbar(
+            grid_model_id="VL1_3_3",
+            type="busbar",
+            name="VL1_3_3",
+            int_id=8,
+            in_service=True,
+            bus_branch_bus_id="VL1_1",
+            bus_breaker_bus_id="VL1_8",
+        ),
     ]
     assert res.busbars == expected_busbars
     assert isinstance(res, Station)
@@ -411,40 +489,150 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     res = get_station(net, "VL2_0", station_info)
 
     expected_busbars = [
-        Busbar(grid_model_id="VL2_1_1", type="busbar", name="VL2_1_1", int_id=0, in_service=True, bus_branch_bus_id="VL2_0"),
         Busbar(
-            grid_model_id="VL2_1_2", type="busbar", name="VL2_1_2", int_id=1, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(
-            grid_model_id="VL2_1_3", type="busbar", name="VL2_1_3", int_id=2, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
-        Busbar(grid_model_id="VL2_1_4", type="busbar", name="VL2_1_4", int_id=3, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_1_5", type="busbar", name="VL2_1_5", int_id=4, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_1_6", type="busbar", name="VL2_1_6", int_id=5, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_1_7", type="busbar", name="VL2_1_7", int_id=6, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(
-            grid_model_id="VL2_1_8", type="busbar", name="VL2_1_8", int_id=7, in_service=True, bus_branch_bus_id="VL2_14"
-        ),
-        Busbar(grid_model_id="VL2_2_1", type="busbar", name="VL2_2_1", int_id=8, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(grid_model_id="VL2_2_2", type="busbar", name="VL2_2_2", int_id=9, in_service=True, bus_branch_bus_id="VL2_0"),
-        Busbar(
-            grid_model_id="VL2_2_3", type="busbar", name="VL2_2_3", int_id=10, in_service=True, bus_branch_bus_id="VL2_0"
+            grid_model_id="VL2_1_1",
+            type="busbar",
+            name="VL2_1_1",
+            int_id=0,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
         ),
         Busbar(
-            grid_model_id="VL2_2_4", type="busbar", name="VL2_2_4", int_id=11, in_service=True, bus_branch_bus_id="VL2_0"
+            grid_model_id="VL2_1_2",
+            type="busbar",
+            name="VL2_1_2",
+            int_id=1,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL2_2",
         ),
         Busbar(
-            grid_model_id="VL2_2_5", type="busbar", name="VL2_2_5", int_id=12, in_service=True, bus_branch_bus_id="VL2_0"
+            grid_model_id="VL2_1_3",
+            type="busbar",
+            name="VL2_1_3",
+            int_id=2,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL2_4",
         ),
         Busbar(
-            grid_model_id="VL2_2_6", type="busbar", name="VL2_2_6", int_id=13, in_service=True, bus_branch_bus_id="VL2_0"
+            grid_model_id="VL2_1_4",
+            type="busbar",
+            name="VL2_1_4",
+            int_id=3,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
         ),
         Busbar(
-            grid_model_id="VL2_2_7", type="busbar", name="VL2_2_7", int_id=14, in_service=True, bus_branch_bus_id="VL2_0"
+            grid_model_id="VL2_1_5",
+            type="busbar",
+            name="VL2_1_5",
+            int_id=4,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
         ),
         Busbar(
-            grid_model_id="VL2_2_8", type="busbar", name="VL2_2_8", int_id=15, in_service=False, bus_branch_bus_id=""
-        ),  # out of service busbar -> no bus_id
+            grid_model_id="VL2_1_6",
+            type="busbar",
+            name="VL2_1_6",
+            int_id=5,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
+        ),
+        Busbar(
+            grid_model_id="VL2_1_7",
+            type="busbar",
+            name="VL2_1_7",
+            int_id=6,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
+        ),
+        Busbar(
+            grid_model_id="VL2_1_8",
+            type="busbar",
+            name="VL2_1_8",
+            int_id=7,
+            in_service=True,
+            bus_branch_bus_id="VL2_14",
+            bus_breaker_bus_id="VL2_14",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_1",
+            type="busbar",
+            name="VL2_2_1",
+            int_id=8,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_2",
+            type="busbar",
+            name="VL2_2_2",
+            int_id=9,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_1",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_3",
+            type="busbar",
+            name="VL2_2_3",
+            int_id=10,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_4",
+            type="busbar",
+            name="VL2_2_4",
+            int_id=11,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_5",
+            type="busbar",
+            name="VL2_2_5",
+            int_id=12,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_6",
+            type="busbar",
+            name="VL2_2_6",
+            int_id=13,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_7",
+            type="busbar",
+            name="VL2_2_7",
+            int_id=14,
+            in_service=True,
+            bus_branch_bus_id="VL2_0",
+            bus_breaker_bus_id="VL2_0",
+        ),
+        Busbar(
+            grid_model_id="VL2_2_8",
+            type="busbar",
+            name="VL2_2_8",
+            int_id=15,
+            in_service=False,
+            bus_branch_bus_id="",
+            bus_breaker_bus_id="VL2_15",
+        ),
     ]
     assert res.busbars == expected_busbars
 
@@ -751,6 +939,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     #     'VL_2W_MV_HV_MV_0', large station + pst
     #     'VL_2W_MV_HV_MV_2', other side of pst -> not relevant
     #     'VL_2W_MV_HV_HV_0', large station
+    #     'VL_2W_MV_HV_MV_INT_0', VL where two trafos are connected to two lines -> not relevant
     #     'VL_HV_gen_0',  large station, slack bus -> not relevant
     #     'VL_HV_vsc_0', 4 branches, 1 injection, 1 HVDC
     #     'VL_CH_1_0', connected to the BE border via a tie line -> relevant
@@ -772,6 +961,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
         "VL_MV",
         "VL_2W_MV_HV_MV",
         "VL_2W_MV_HV_HV",
+        "VL_2W_MV_HV_MV_INT",
         "VL_HV_vsc",
         "VL_CH_1",
         "VL_DE_1",

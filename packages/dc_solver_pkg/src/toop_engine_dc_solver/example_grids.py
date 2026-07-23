@@ -39,6 +39,7 @@ from toop_engine_grid_helpers.pandapower.example_grids import (
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.powsybl.example_grids import (
     create_busbar_b_in_ieee,
+    create_busbar_outage_always_articulation_grid,
     create_complex_grid_battery_hvdc_svc_3w_trafo,
     extract_station_info_powsybl,
     parallel_pst_example,
@@ -1167,6 +1168,44 @@ def complex_grid_battery_hvdc_svc_3w_trafo_data_folder(folder: Path, linear_pst:
     )
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(folder)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
+
+    return network_data
+
+
+def busbar_outage_always_articulation_data_folder(folder: Path) -> NetworkData:
+    """Create a preprocessed folder for the always-articulation busbar outage regression grid."""
+    net = create_busbar_outage_always_articulation_grid()
+    pypowsybl.loadflow.run_dc(net, CGMES_DISTRIBUTED_SLACK)
+
+    grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
+    grid_file_path.parent.mkdir(parents=True, exist_ok=True)
+    net.save(grid_file_path)
+
+    output_path_masks = folder / PREPROCESSING_PATHS["masks_path"]
+    output_path_masks.mkdir(parents=True, exist_ok=True)
+
+    rel_sub_mask = np.zeros(len(net.get_buses()), dtype=bool)
+    rel_sub_mask[net.get_buses().index.get_loc("VL2_0")] = True
+    np.save(output_path_masks / NETWORK_MASK_NAMES["relevant_subs"], rel_sub_mask)
+
+    line_mask = np.ones(len(net.get_lines()), dtype=bool)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_reward"], line_mask)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["line_for_nminus1"], line_mask)
+
+    gen_mask = np.ones(len(net.get_generators()), dtype=bool)
+    np.save(output_path_masks / NETWORK_MASK_NAMES["generator_for_nminus1"], gen_mask)
+
+    extract_station_info_powsybl(net, folder)
+
+    _info, _static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(folder)),
+        pandapower=False,
+    )
+    save_lf_params_to_fs(
+        CGMES_DISTRIBUTED_SLACK,
+        DirFileSystem(str(folder)),
+        Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"]),
     )
 
     return network_data

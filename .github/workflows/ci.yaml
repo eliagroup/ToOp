@@ -173,7 +173,7 @@ jobs:
             --quiet
 
       - id: fossa-analyze
-        uses: fossas/fossa-action@29693cc50323968e039056be419b32989fc5880c # Use a specific version if locking is preferred
+        uses: fossas/fossa-action@ff70fe9fe17cbd2040648f1c45e8ec4e4884dcf3 # Use a specific version if locking is preferred
         with:
           api-key: ${{secrets.FOSSA_API_KEY}}
           branch: ${{ env.FOSSA_BRANCH }}
@@ -181,7 +181,7 @@ jobs:
           run-tests: false # Add another run with run-tests: true if ci should fail on issues
 
       - id: fossa-test
-        uses: fossas/fossa-action@29693cc50323968e039056be419b32989fc5880c # Use a specific version if locking is preferred
+        uses: fossas/fossa-action@ff70fe9fe17cbd2040648f1c45e8ec4e4884dcf3 # Use a specific version if locking is preferred
         with:
           api-key: ${{secrets.FOSSA_API_KEY}}
           working-directory: .fossa-ci

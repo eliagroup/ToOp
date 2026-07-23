@@ -256,7 +256,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
             name=None,
             int_id=0,
             in_service=True,
-            bus_branch_bus_id=None,
+            bus_breaker_bus_id=None,
         )
     ]
     assets = [
@@ -495,7 +495,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
                 name=None,
                 int_id=1,
                 in_service=True,
-                bus_branch_bus_id=None,
+                bus_breaker_bus_id=None,
             ),
             Busbar.model_construct(
                 grid_model_id="busbar2",
@@ -503,7 +503,7 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
                 name=None,
                 int_id=2,
                 in_service=True,
-                bus_branch_bus_id=None,
+                bus_breaker_bus_id=None,
             ),
         ],
         couplers=[

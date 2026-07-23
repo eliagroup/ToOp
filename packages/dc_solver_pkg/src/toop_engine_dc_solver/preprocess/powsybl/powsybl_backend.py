@@ -682,7 +682,7 @@ class PowsyblBackend(BackendInterface):
                 for busbar in station.busbars
             }
             bus_id_to_station_id = {
-                busbar.bus_branch_bus_id: station.grid_model_id
+                busbar.bus_breaker_bus_id: station.grid_model_id
                 for station in asset_topology.stations
                 for busbar in station.busbars
             }

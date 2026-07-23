@@ -474,14 +474,21 @@ def update_single_pair_bb_outage_information(
         if should_enable_bb_outage and bb_outage_as_nminus1
         else base_nminus1_cases
     )
-    contingency_ids = list(solver_config.contingency_ids)
-    if len(contingency_ids) < expected_nminus1_cases:
-        if len(contingency_ids) < base_nminus1_cases:
-            contingency_ids.extend(f"nminus1_case_{i}" for i in range(len(contingency_ids), base_nminus1_cases))
-        contingency_ids.extend(
-            f"bb_outage_case_{i}"
-            for i in range(len(contingency_ids) - base_nminus1_cases, expected_nminus1_cases - base_nminus1_cases)
-        )
+    stored_contingency_ids = list(solver_config.contingency_ids)
+    contingency_ids = stored_contingency_ids[:base_nminus1_cases]
+    if len(contingency_ids) < base_nminus1_cases:
+        contingency_ids.extend(f"nminus1_case_{i}" for i in range(len(contingency_ids), base_nminus1_cases))
+
+    if should_enable_bb_outage and bb_outage_as_nminus1:
+        stored_bb_outage_ids = stored_contingency_ids[
+            base_nminus1_cases : base_nminus1_cases + dynamic_information.n_bb_outages
+        ]
+        if len(stored_bb_outage_ids) >= dynamic_information.n_bb_outages:
+            contingency_ids.extend(stored_bb_outage_ids)
+        else:
+            contingency_ids.extend(f"bb_outage_case_{i}" for i in range(dynamic_information.n_bb_outages))
+
+    contingency_ids = contingency_ids[:expected_nminus1_cases]
 
     updated_solver_config = replace(
         solver_config,

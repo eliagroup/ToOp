@@ -122,6 +122,27 @@ class RelBBOutageData(eqx.Module):
     Here busbar 2 is an articulation node as if it is outaged, bus_a will be split into 1 and 3.
     """
 
+    valid_busbar_mask: Bool[Array, " n_actions n_max_bb_to_outage_per_sub"]
+    """Mask identifying real busbar outage slots before JAX padding.
+
+    A True entry means the slot corresponds to a physical busbar outage exported by preprocessing.
+    A False entry marks padding introduced only to align substations to a common width.
+    """
+
+    valid_busbar_flat_indices: Int[Array, " n_rel_bb_outages"]
+    """Flattened indices of real relevant-busbar outage slots.
+
+    These index the flattened `(n_sub_relevant * n_max_bb_to_outage_per_sub)` layout used during
+    JAX contingency execution and avoid boolean indexing inside traced code.
+    """
+
+    zero_flow_branch_set: Int[Array, " n_actions n_max_bb_to_outage_per_sub max_zero_flow_branches_per_sub"]
+    """Branches whose monitored flows should be forced to zero for each busbar outage slot.
+
+    These correspond to bridge-fed subtree branches that are physically disconnected by the busbar
+    outage but cannot be represented as direct MODF outages in the reduced grid.
+    """
+
     def __eq__(self, other: object) -> bool:
         """Equality is defined by array_equals checks
 
@@ -142,6 +163,9 @@ class RelBBOutageData(eqx.Module):
             and jnp.array_equal(self.deltap_set, other.deltap_set)
             and jnp.array_equal(self.nodal_indices, other.nodal_indices)
             and jnp.array_equal(self.articulation_node_mask, other.articulation_node_mask)
+            and jnp.array_equal(self.valid_busbar_mask, other.valid_busbar_mask)
+            and jnp.array_equal(self.valid_busbar_flat_indices, other.valid_busbar_flat_indices)
+            and jnp.array_equal(self.zero_flow_branch_set, other.zero_flow_branch_set)
         )
 
     def __getitem__(self, key: Union[int, slice, jnp.ndarray]) -> "RelBBOutageData":
@@ -151,6 +175,9 @@ class RelBBOutageData(eqx.Module):
             deltap_set=self.deltap_set[key],
             nodal_indices=self.nodal_indices[key],
             articulation_node_mask=self.articulation_node_mask[key],
+            valid_busbar_mask=self.valid_busbar_mask[key],
+            valid_busbar_flat_indices=self.valid_busbar_flat_indices,
+            zero_flow_branch_set=self.zero_flow_branch_set[key],
         )
 
 
@@ -169,6 +196,9 @@ class NonRelBBOutageData(eqx.Module):
     deltap: Float[Array, " n_non_rel_bb_outages n_timesteps"]
     """For every busbar outage, the delta in power that has to be subtracted from
     the nodal injection."""
+
+    zero_flow_branches: Int[Array, " n_non_rel_bb_outages max_zero_flow_branches_failed"]
+    """Branches whose monitored flows should be forced to zero for each non-relevant busbar outage."""
 
 
 class BBOutageBaselineAnalysis(eqx.Module):
@@ -671,9 +701,7 @@ class DynamicInformation(eqx.Module):
             n_bb_outages += self.non_rel_bb_outage_data.nodal_indices.shape[0]
 
         if self.action_set.rel_bb_outage_data is not None:
-            max_bbs_per_sub = self.action_set.rel_bb_outage_data.nodal_indices.shape[1]
-            max_n_rel_bbs = self.n_sub_relevant * max_bbs_per_sub
-            n_bb_outages += max_n_rel_bbs
+            n_bb_outages += len(self.action_set.rel_bb_outage_data.valid_busbar_flat_indices)
         return n_bb_outages
 
     @property
@@ -804,7 +832,7 @@ class StaticInformation(eqx.Module):
     @property
     def n_nminus1_cases(self) -> int:
         """The number of N-1 cases to consider"""
-        return self.n_outages + self.n_multi_outages + self.n_inj_failures
+        return self.dynamic_information.n_nminus1_cases
 
     @property
     def n_actions(self) -> int:

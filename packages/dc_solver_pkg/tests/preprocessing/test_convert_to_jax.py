@@ -33,12 +33,14 @@ from toop_engine_dc_solver.preprocess.convert_to_jax import (
     load_grid,
     run_initial_loadflow,
 )
+from toop_engine_dc_solver.preprocess.network_data import extract_busbar_outage_ids
 from toop_engine_dc_solver.preprocess.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     preprocess_bb_outages,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters
 from toop_engine_interfaces.stored_action_set import load_action_set
 
 
@@ -101,6 +103,18 @@ def test_convert_to_jax_bb_outage(network_data_preprocessed: NetworkData) -> Non
     # 71%%bus is a relevant node while 67%%bus is non-relevant node
     static_information = convert_to_jax(network_data_preprocessed, preprocess_bb_outages=True)
     validate_static_information(static_information)
+    static_information_nminus1 = replace(
+        static_information,
+        dynamic_information=replace(static_information.dynamic_information, bb_outage_baseline_analysis=None),
+    )
+    expected_nminus1_cases = (
+        static_information_nminus1.dynamic_information.n_outages
+        + static_information_nminus1.dynamic_information.n_multi_outages
+        + static_information_nminus1.dynamic_information.n_inj_failures
+        + len(extract_busbar_outage_ids(network_data_preprocessed))
+    )
+    assert static_information_nminus1.dynamic_information.n_nminus1_cases == expected_nminus1_cases
+    assert static_information_nminus1.n_nminus1_cases == expected_nminus1_cases
 
     with TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
@@ -119,6 +133,14 @@ def test_convert_to_jax_bb_outage(network_data_preprocessed: NetworkData) -> Non
             static_information2.dynamic_information.action_set.rel_bb_outage_data.articulation_node_mask,
         )
         assert np.array_equal(
+            static_information.dynamic_information.action_set.rel_bb_outage_data.valid_busbar_mask,
+            static_information2.dynamic_information.action_set.rel_bb_outage_data.valid_busbar_mask,
+        )
+        assert np.array_equal(
+            static_information.dynamic_information.action_set.rel_bb_outage_data.valid_busbar_flat_indices,
+            static_information2.dynamic_information.action_set.rel_bb_outage_data.valid_busbar_flat_indices,
+        )
+        assert np.array_equal(
             static_information.dynamic_information.action_set.rel_bb_outage_data.branch_outage_set,
             static_information2.dynamic_information.action_set.rel_bb_outage_data.branch_outage_set,
         )
@@ -134,6 +156,32 @@ def test_convert_to_jax_bb_outage(network_data_preprocessed: NetworkData) -> Non
             static_information.dynamic_information.non_rel_bb_outage_data.deltap,
             static_information2.dynamic_information.non_rel_bb_outage_data.deltap,
         )
+
+
+def test_convert_to_jax_bb_outage_always_articulation_grid(
+    create_busbar_outage_always_articulation_data_path: Path,
+) -> None:
+    _, static_information, network_data = load_grid(
+        data_folder_dirfs=DirFileSystem(str(create_busbar_outage_always_articulation_data_path)),
+        pandapower=False,
+        parameters=PreprocessParameters(preprocess_bb_outages=True),
+        lf_params=CGMES_DISTRIBUTED_SLACK,
+    )
+
+    static_information = replace(
+        static_information,
+        dynamic_information=replace(static_information.dynamic_information, bb_outage_baseline_analysis=None),
+    )
+    rel_bb_outage_data = static_information.dynamic_information.action_set.rel_bb_outage_data
+    assert rel_bb_outage_data is not None
+
+    representative_action_indices = np.asarray(static_information.dynamic_information.action_set.action_start_indices)
+    articulation_mask = np.asarray(rel_bb_outage_data.articulation_node_mask)[representative_action_indices]
+    valid_busbar_mask = np.asarray(rel_bb_outage_data.valid_busbar_mask)[representative_action_indices]
+    exported_busbar_ids = extract_busbar_outage_ids(network_data)
+
+    assert np.any(articulation_mask & ~valid_busbar_mask)
+    assert static_information.dynamic_information.n_bb_outages == len(exported_busbar_ids)
 
 
 def test_load_grid(data_folder: Path) -> None:
@@ -248,6 +296,7 @@ def test_convert_rel_bb_outage_data_uses_physical_busbar_width_for_articulation_
             network_data_preprocessed,
             branch_action_set=[np.zeros((1, 1), dtype=bool)],
             rel_bb_outage_br_indices=[[[[], [], [], []]]],
+            rel_bb_outage_zero_flow_br_indices=[[[[], [], [], []]]],
             rel_bb_outage_deltap=[
                 [[np.zeros(n_timesteps), np.zeros(n_timesteps), np.zeros(n_timesteps), np.zeros(n_timesteps)]]
             ],

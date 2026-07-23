@@ -1733,19 +1733,18 @@ hdf5 = [
 
 [[package]]
 name = "pandera"
-version = "0.22.1"
+version = "0.31.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy" },
     { name = "packaging" },
-    { name = "pandas" },
     { name = "pydantic" },
     { name = "typeguard" },
+    { name = "typing-extensions" },
     { name = "typing-inspect" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/13/f2/923e5a06f0f70e28de41eca58c89e4f87b00aa7c17a3436cc09592756c43/pandera-0.22.1.tar.gz", hash = "sha256:091ebc353383ba642e5a20ee0df763ed2059ab99cb4b2ac3e83f482de8493645", size = 203085, upload-time = "2024-12-26T21:21:31.996Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/e1/aaa14c989ffd30c7acb293fb986715517ca2b5b435ca291432535bb2b111/pandera-0.31.1.tar.gz", hash = "sha256:c75aa3868af15d4f9aa613acf1a7f436a518f81f1eb658ad630c1dbe1dab0f13", size = 729785, upload-time = "2026-04-15T03:18:59.967Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/b8/ab3e1419c0f3472c23ec7323da4bc970c3620055c9475d6fe3aa1dcdcef7/pandera-0.22.1-py3-none-any.whl", hash = "sha256:2a35531b4b533ac83e606a6dcc3cd41561774ff3d872117228e931f22e72f330", size = 261370, upload-time = "2024-12-26T21:21:29.16Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/2d/6ea7cad2c2f0625c4120bef5353ab7cf749141bf1d070011cebb72f68189/pandera-0.31.1-py3-none-any.whl", hash = "sha256:f9f1ff4852804e1a181a4cb968e732a492f4b6dbefe051a8c5500da43d5c326d", size = 386913, upload-time = "2026-04-15T03:18:58.358Z" },
 ]
 
 [package.optional-dependencies]
@@ -2735,7 +2734,7 @@ dependencies = [
 requires-dist = [
     { name = "beartype", specifier = ">=0.22.0,<0.23.0" },
     { name = "confluent-kafka", specifier = ">=2.3.0,<3.0.0" },
-    { name = "numpy", specifier = ">=2.4.5,<3.0.0" },
+    { name = "numpy", specifier = ">=2.4.6,<3.0.0" },
     { name = "orjson", specifier = ">=3.11.3" },
     { name = "pandapower", marker = "extra == 'pandapower'", specifier = ">=3.0.0" },
     { name = "pandas", specifier = ">=3.0.3,<4.0.0" },
@@ -2845,7 +2844,7 @@ requires-dist = [
     { name = "kafka", specifier = ">=1.3.5,<2.0.0" },
     { name = "matpowercaseframes", specifier = ">=1.0.8,<2.0.0" },
     { name = "numba", specifier = ">=0.58.1,<0.67.0" },
-    { name = "numpy", specifier = ">=2.4.5,<3.0.0" },
+    { name = "numpy", specifier = ">=2.4.6,<3.0.0" },
     { name = "numpydantic", specifier = ">=1.6.4,<2.0.0" },
     { name = "overrides", specifier = ">=7.7.0,<8.0.0" },
     { name = "pandapower", specifier = ">=3.0.0,<4.0.0" },
@@ -2906,7 +2905,7 @@ requires-dist = [
     { name = "beartype", specifier = ">=0.22.0,<0.23.0" },
     { name = "jaxtyping", specifier = ">=0.2.22,<0.3.0" },
     { name = "kafka", specifier = ">=1.3.5,<2.0.0" },
-    { name = "numpy", specifier = ">=2.4.5,<3.0.0" },
+    { name = "numpy", specifier = ">=2.4.6,<3.0.0" },
     { name = "orjson", specifier = ">=3.11.3" },
     { name = "pandapower", marker = "extra == 'pandapower'", specifier = ">=3.0.0" },
     { name = "pandas", extras = ["hdf5"], specifier = ">=3.0.3,<4.0.0" },
@@ -2973,7 +2972,7 @@ requires-dist = [
     { name = "jaxtyping", specifier = ">=0.2.22,<0.3.0" },
     { name = "mypy-protobuf", specifier = ">=3.7.0" },
     { name = "networkx", specifier = ">=2.5.0" },
-    { name = "numpy", specifier = ">=2.4.5,<3.0.0" },
+    { name = "numpy", specifier = ">=2.4.6,<3.0.0" },
     { name = "numpydantic", specifier = ">=1.6.4,<2.0.0" },
     { name = "pandapower", marker = "extra == 'pandapower'", specifier = ">=3.0.0" },
     { name = "pandas", specifier = ">=3.0.3,<4.0.0" },

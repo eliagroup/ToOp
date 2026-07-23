@@ -320,7 +320,7 @@ class BranchSchema(AssetSchema):
     )
     """The type of the branch."""
 
-    node_tuple: Optional[pat.Series[object]] = pa.Field(nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[tuple[int, int]]] = pa.Field(nullable=True, description="optional")
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
 
@@ -342,7 +342,7 @@ class SwitchSchema(AssetSchema):
     True: The switch is open.
     False: The switch is closed."""
 
-    node_tuple: Optional[pat.Series[object]] = pa.Field(nullable=True, description="optional")
+    node_tuple: Optional[pat.Series[tuple[int, int]]] = pa.Field(nullable=True, description="optional")
     """The node tuple of the branch.
     The node tuple is a tuple of two nodes int_id that are connected by the branch."""
 

@@ -27,10 +27,10 @@ classifiers=[
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
-    "pandera (>=0.32.0,<0.33.0)",
+    "pandera (>=0.22.1,<0.23.0)",
     "beartype (>=0.22.0,<0.23.0)",
-    "numpy>=2.4.6,<3.0.0",
-    "pandas (>=3.0.3,<4.0.0)",
+    "numpy (>=2.0.0,<2.4.0)",
+    "pandas (>=2.2.3,<3.0.0)",
     "pydantic (>=1.10.3,<3.0.0)",
     "h5py>=3.0.0",
     "numpydantic (>=1.6.4,<2.0.0)",

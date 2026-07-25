@@ -9,6 +9,7 @@ import networkx as nx
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import polars as pl
 import pytest
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import (
     PandapowerContingency,
@@ -25,6 +26,39 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.swit
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.loadflow_results import BranchSide
+
+
+def _switch_results_from_pandas(
+    *,
+    net: pp.pandapowerNet,
+    contingency: PandapowerContingency,
+    timestep: int,
+    branch_results: pd.DataFrame,
+    node_results: pd.DataFrame,
+    switch_element_mapping: pd.DataFrame,
+) -> pd.DataFrame:
+    """Call the polars ``get_switch_results`` with pandas inputs and return an indexed pandas frame.
+
+    ``get_switch_results`` now works purely on polars (flat frames in and out). This mirrors
+    what the production pipeline does around the call: move any indexed key columns into plain
+    columns, convert to polars, run the computation, then rebuild the ``(timestep, contingency,
+    element)`` index on the pandas result the assertions below expect.
+    """
+
+    def _flat(df: pd.DataFrame) -> pl.DataFrame:
+        if isinstance(df.index, pd.MultiIndex) or df.index.name is not None:
+            df = df.reset_index()
+        return pl.from_pandas(df)
+
+    result_pl = get_switch_results(
+        net=net,
+        contingency=contingency,
+        timestep=timestep,
+        branch_results=_flat(branch_results),
+        node_results=_flat(node_results),
+        switch_element_mapping=pl.from_pandas(switch_element_mapping),
+    )
+    return result_pl.to_pandas().set_index(["timestep", "contingency", "element"])
 
 
 def create_test_net_for_bb_graph():
@@ -910,7 +944,7 @@ def test_get_switch_results_basic_aggregation():
         ]
     )
 
-    result = get_switch_results(
+    result = _switch_results_from_pandas(
         net=net,
         contingency=contingency,
         timestep=timestep,
@@ -1028,7 +1062,7 @@ def test_get_switch_results_multiple_switches():
         ]
     )
 
-    result = get_switch_results(
+    result = _switch_results_from_pandas(
         net=net,
         contingency=contingency,
         timestep=timestep,
@@ -1118,7 +1152,7 @@ def test_get_switch_results_vm_zero_row_removed():
         ]
     )
 
-    result = get_switch_results(
+    result = _switch_results_from_pandas(
         net=net,
         contingency=contingency,
         timestep=timestep,
@@ -1145,25 +1179,33 @@ def test_get_switch_results_empty_mapping_returns_empty_result():
         columns=["timestep", "contingency", "element", "side", "i", "p", "q", "loading", "element_name", "contingency_name"]
     ).set_index(["timestep", "contingency", "element", "side"])
 
-    node_results = pd.DataFrame(
-        columns=[
-            "timestep",
-            "contingency",
-            "element",
-            "vm",
-            "vm_loading",
-            "va",
-            "p",
-            "q",
-            "vm_basecase_deviation",
-            "element_name",
-            "contingency_name",
-        ]
-    ).set_index(["timestep", "contingency", "element"])
+    node_results = (
+        pd.DataFrame(
+            columns=[
+                "timestep",
+                "contingency",
+                "element",
+                "vm",
+                "vm_loading",
+                "va",
+                "p",
+                "q",
+                "vm_basecase_deviation",
+                "element_name",
+                "contingency_name",
+            ]
+        )
+        # Give the empty numeric columns real dtypes; the production frames always carry
+        # them, and polars needs typed columns to aggregate p/q/vm.
+        .astype({"vm": "float64", "va": "float64", "p": "float64", "q": "float64"})
+        .set_index(["timestep", "contingency", "element"])
+    )
 
-    switch_element_mapping = pd.DataFrame(columns=["switch_id", "element", "side"])
+    switch_element_mapping = pd.DataFrame(columns=["switch_id", "element", "side"]).astype(
+        {"switch_id": "int64", "element": "object", "side": "float64"}
+    )
 
-    result = get_switch_results(
+    result = _switch_results_from_pandas(
         net=net,
         contingency=contingency,
         timestep=timestep,
@@ -1231,7 +1273,7 @@ def test_get_switch_results_uses_last_vm_from_node_group():
         ]
     )
 
-    result = get_switch_results(
+    result = _switch_results_from_pandas(
         net=net,
         contingency=contingency,
         timestep=timestep,
@@ -1264,7 +1306,7 @@ def test_get_failed_switch_results_basic():
     )
     timestep = 4
 
-    switch_element_mapping = pd.DataFrame(
+    switch_element_mapping = pl.DataFrame(
         [
             {"switch_id": 0, "element": get_globally_unique_id(10, "line"), "side": 1.0},
             {"switch_id": 1, "element": get_globally_unique_id(20, "line"), "side": 2.0},
@@ -1277,26 +1319,34 @@ def test_get_failed_switch_results_basic():
         contingency=contingency,
     )
 
-    expected_index = pd.MultiIndex.from_tuples(
-        [
-            (timestep, contingency.unique_id, get_globally_unique_id(0, "switch")),
-            (timestep, contingency.unique_id, get_globally_unique_id(1, "switch")),
-        ],
-        names=["timestep", "contingency", "element"],
-    )
+    assert isinstance(result, pl.DataFrame)
+    assert result.columns == [
+        "timestep",
+        "contingency",
+        "element",
+        "p",
+        "q",
+        "vm",
+        "i",
+        "element_name",
+        "contingency_name",
+        "side",
+    ]
+    assert result["timestep"].to_list() == [timestep, timestep]
+    assert result["contingency"].to_list() == [contingency.unique_id, contingency.unique_id]
+    assert result["element"].to_list() == [
+        get_globally_unique_id(0, "switch"),
+        get_globally_unique_id(1, "switch"),
+    ]
 
-    assert isinstance(result, pd.DataFrame)
-    assert result.index.names == ["timestep", "contingency", "element"]
-    assert set(result.index.tolist()) == set(expected_index.tolist())
-
-    assert result["p"].isna().all()
-    assert result["q"].isna().all()
-    assert result["vm"].isna().all()
-    assert result["i"].isna().all()
+    assert result["p"].is_null().all()
+    assert result["q"].is_null().all()
+    assert result["vm"].is_null().all()
+    assert result["i"].is_null().all()
 
     assert (result["element_name"] == "").all()
     assert (result["contingency_name"] == "").all()
-    assert result["side"].isna().all()
+    assert result["side"].is_null().all()
 
 
 # ---------------------------------------------------------------------------
@@ -1395,7 +1445,7 @@ def test_get_switch_results_direct_from_res_switch():
         ]
     ).set_index(["timestep", "contingency", "element"])
 
-    result = get_switch_results(
+    result = _switch_results_from_pandas(
         net=net,
         contingency=contingency,
         timestep=timestep,
@@ -1467,7 +1517,7 @@ def test_get_switch_results_direct_path_open_switch_excluded():
         ]
     ).set_index(["timestep", "contingency", "element"])
 
-    result = get_switch_results(
+    result = _switch_results_from_pandas(
         net=net,
         contingency=contingency,
         timestep=timestep,
@@ -1567,7 +1617,7 @@ def test_get_switch_results_mixed_direct_and_calc():
         ]
     )
 
-    result = get_switch_results(
+    result = _switch_results_from_pandas(
         net=net,
         contingency=contingency,
         timestep=timestep,

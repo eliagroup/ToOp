@@ -11,6 +11,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import pandera.typing as pat
+import polars as pl
 import pytest
 from toop_engine_contingency_analysis.pandapower import (
     PandapowerContingency,
@@ -29,6 +30,10 @@ from toop_engine_contingency_analysis.pandapower import (
     translate_nminus1_for_pandapower,
 )
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers import VADiffInfo, match_node_to_next_switch_type
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.polars_results import ResultConstants
+from toop_engine_contingency_analysis.pandapower.pandapower_helpers.results.switch_results import (
+    SwitchElementMappingSchema,
+)
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import get_globally_unique_id
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import BranchSide
@@ -39,6 +44,46 @@ from toop_engine_interfaces.nminus1_definition import (
     Nminus1Definition,
     SwitchMonitoringScope,
 )
+
+# get_failed_va_diff_results / get_regulating_element_results now return flat polars frames;
+# these helpers rebuild the pandas (timestep, contingency, element) layout the tests assert on.
+_real_failed_va_diff_results = get_failed_va_diff_results
+_real_regulating_element_results = get_regulating_element_results
+
+
+def _failed_va_diff_pd(
+    timestep: int,
+    monitored_elements: pd.DataFrame,
+    contingency: PandapowerContingency,
+) -> pd.DataFrame:
+    """The failed path reads the monitored switches off :class:`ResultConstants`.
+
+    Only the monitored-element projections are used, so the network and the switch mapping
+    the constants are built from can be empty.
+    """
+    constants = ResultConstants.from_network(
+        net=pp.create_empty_network(),
+        basecase_net=pp.create_empty_network(),
+        monitored_elements=monitored_elements,
+        switch_element_mapping=get_empty_dataframe_from_model(SwitchElementMappingSchema),
+    )
+    result = _real_failed_va_diff_results(timestep, contingency, constants)
+    return result.to_pandas().set_index(["timestep", "contingency", "element"])
+
+
+def _regulating_pd(
+    timestep: int,
+    monitored_elements: pd.DataFrame,
+    contingency: PandapowerContingency,
+) -> pd.DataFrame:
+    """get_regulating_element_results now takes the monitored ids as a polars Series.
+
+    Build it from the pandas frame's index the same way ``ResultConstants`` does, so these
+    tests can keep constructing ``monitored_elements`` as pandas.
+    """
+    monitored_element_ids = pl.Series("element", monitored_elements.index.to_numpy(), dtype=pl.String)
+    result = _real_regulating_element_results(timestep, monitored_element_ids, contingency)
+    return result.to_pandas().set_index(["timestep", "contingency", "element"])
 
 
 @pytest.fixture
@@ -617,7 +662,7 @@ def test_get_failed_va_diff_results(pandapower_net: pp.pandapowerNet):
         [get_empty_dataframe_from_model(PandapowerMonitoredElementSchema), pd.DataFrame(rows, index=indices)]
     )
 
-    failed_va_diff_df = get_failed_va_diff_results(timestep, monitored_elements, contingency)
+    failed_va_diff_df = _failed_va_diff_pd(timestep, monitored_elements, contingency)
     assert isinstance(failed_va_diff_df, pd.DataFrame), "The result should be a DataFrame"
     assert all(failed_va_diff_df.index.get_level_values("timestep") == timestep), f"Timestep should be {timestep}"
     assert all(failed_va_diff_df.index.get_level_values("contingency") == contingency.unique_id), (
@@ -629,7 +674,7 @@ def test_get_failed_va_diff_results(pandapower_net: pp.pandapowerNet):
     assert failed_va_diff_df.va_diff.isna().all(), "All VA differences should be NaN for failed results"
 
     no_monitored_switch_elements = get_empty_dataframe_from_model(PandapowerMonitoredElementSchema)
-    failed_va_diff_df_no_monitored = get_failed_va_diff_results(timestep, no_monitored_switch_elements, contingency)
+    failed_va_diff_df_no_monitored = _failed_va_diff_pd(timestep, no_monitored_switch_elements, contingency)
     assert failed_va_diff_df_no_monitored.empty, "The result should be empty if no monitored elements are provided"
     va_diff_info = VADiffInfo(
         from_bus=pandapower_net.line.loc[1, "from_bus"],
@@ -643,7 +688,7 @@ def test_get_failed_va_diff_results(pandapower_net: pp.pandapowerNet):
         elements=[PandapowerElements(unique_id=get_globally_unique_id(1, "line"), table_id=1, table="line", name="")],
         va_diff_info=[va_diff_info],
     )
-    failed_va_diff = get_failed_va_diff_results(timestep, no_monitored_switch_elements, contingency)
+    failed_va_diff = _failed_va_diff_pd(timestep, no_monitored_switch_elements, contingency)
     assert failed_va_diff.index.get_level_values("element").tolist() == ["PW_SWITCH_ID1", "PW_SWITCH_ID2"]
 
     contingency = PandapowerContingency(
@@ -651,7 +696,7 @@ def test_get_failed_va_diff_results(pandapower_net: pp.pandapowerNet):
         name="contingency_1_name",
         elements=[PandapowerElements(unique_id=get_globally_unique_id(1, "trafo3w"), table_id=1, table="trafo3w", name="")],
     )
-    failed_va_diff = get_failed_va_diff_results(timestep, no_monitored_switch_elements, contingency)
+    failed_va_diff = _failed_va_diff_pd(timestep, no_monitored_switch_elements, contingency)
     assert failed_va_diff.empty, "Trafo3w outages without monitored switches should return no VA-diff results"
 
 
@@ -684,14 +729,14 @@ def test_get_regulating_element_results():
 
     timestep = 0
 
-    regulating_element_results = get_regulating_element_results(
+    regulating_element_results = _regulating_pd(
         timestep,
         get_empty_dataframe_from_model(PandapowerMonitoredElementSchema),
         base_case,
     )
     assert regulating_element_results.empty, "The result should be empty if no monitored elements are provided"
 
-    regulating_element_results = get_regulating_element_results(
+    regulating_element_results = _regulating_pd(
         timestep,
         monitored_elements,
         base_case,
@@ -707,14 +752,14 @@ def test_get_regulating_element_results():
         "Value should be fake values (9999.0) for regulating elements as it is not implemented yet"
     )
 
-    regulating_element_results = get_regulating_element_results(
+    regulating_element_results = _regulating_pd(
         timestep,
         monitored_elements,
         single_contingency,
     )
     assert regulating_element_results.empty, "The result should be empty for single contingency as it is not implemented yet"
 
-    regulating_element_results = get_regulating_element_results(
+    regulating_element_results = _regulating_pd(
         timestep,
         monitored_elements,
         multi_contingency,

@@ -13,7 +13,9 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import pandera as pa
+import polars as pl
 from toop_engine_contingency_analysis.pandapower import run_contingency_analysis_pandapower
+from toop_engine_contingency_analysis.pandapower.cascade.detection import prepare_cascade_run_constants
 from toop_engine_contingency_analysis.pandapower.cascade.models import CascadeReasonType, CascadeTriggers
 from toop_engine_contingency_analysis.pandapower.cascade.simulation.simulator import CascadeSimulator
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
@@ -469,6 +471,9 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
 
     net = build_cascade_test_net()
     pp.runpp(net, lightsim2grid=False)
+    # Prepare the per-run cascade constants (angle/poly on sw_characteristics), as the
+    # production path does before running the simulator.
+    prepare_cascade_run_constants(net)
 
     captured: list[pd.DataFrame] = []
 
@@ -482,8 +487,8 @@ def test_simulate_switch_results_filtered_to_protection_scope_only() -> None:
     with mock.patch.object(simulator, "_detect_triggers_from_results", side_effect=_fake_detect):
         simulator.simulate(
             net=net,
-            branch_results_df=get_empty_dataframe_from_model(BranchResultSchema),
-            switch_results_df=switch_results_df,
+            branch_results=pl.from_pandas(get_empty_dataframe_from_model(BranchResultSchema).reset_index()),
+            switch_results=pl.from_pandas(switch_results_df.reset_index()),
             initial_contingency=PandapowerContingency(unique_id="c1", name="c1", elements=[]),
             basecase_net=deepcopy(net),
             monitored_elements=monitored_elements,

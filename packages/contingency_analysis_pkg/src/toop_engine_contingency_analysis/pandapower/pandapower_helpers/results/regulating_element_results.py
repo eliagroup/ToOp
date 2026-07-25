@@ -8,58 +8,64 @@
 
 """Utilities for extracting pandapower regulating elements simulation results per contingency."""
 
-import pandera as pa
-import pandera.typing as pat
+import polars as pl
 from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas import (
     PandapowerContingency,
-    PandapowerMonitoredElementSchema,
 )
-from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.loadflow_results import (
-    RegulatingElementResultSchema,
     RegulatingElementType,
 )
 
+# Flat polars schema mirroring RegulatingElementResultSchema (index levels as columns).
+_REGULATING_RESULT_SCHEMA = {
+    "timestep": pl.Int64,
+    "contingency": pl.Utf8,
+    "element": pl.Utf8,
+    "value": pl.Float64,
+    "regulating_element_type": pl.Utf8,
+    "element_name": pl.Utf8,
+    "contingency_name": pl.Utf8,
+}
 
-@pa.check_types
+
 def get_regulating_element_results(
-    timestep: int, monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema], contingency: PandapowerContingency
-) -> pat.DataFrame[RegulatingElementResultSchema]:
+    timestep: int, monitored_element_ids: pl.Series, contingency: PandapowerContingency
+) -> pl.DataFrame:
     """Get the regulating element results for the given network and contingency.
 
-    This currently only returns fake slack bus and generator results for the basecase
+    This currently only returns fake slack bus and generator results for the basecase.
 
     Parameters
     ----------
     timestep : int
         The timestep of the results
-    monitored_elements: pat.DataFrame[PandapowerMonitoredElementSchema]
-        The dataframe containing the monitored elements
-    contingency: PandapowerContingency
+    monitored_element_ids : pl.Series
+        Globally unique ids of the monitored elements (``ResultConstants.monitored_element_ids``).
+    contingency : PandapowerContingency
         The contingency to compute the regulating element results for
 
     Returns
     -------
-    pat.DataFrame[RegulatingElementResultSchema]
-        The regulating element results for the given network and contingency
+    pl.DataFrame
+        Flat polars frame with ``timestep``/``contingency``/``element`` as ordinary columns,
+        following the RegulatingElementResultSchema layout.
     """
-    if monitored_elements.empty:
-        # If no elements are monitored, return an empty dataframe
-        return get_empty_dataframe_from_model(RegulatingElementResultSchema)
-    regulating_elements = get_empty_dataframe_from_model(RegulatingElementResultSchema)
-    # TODO dont fake this
-    if len(contingency.elements) == 0:
-        regulating_elements.loc[(timestep, contingency.unique_id, monitored_elements.index[0]), "value"] = -9999.0
-        regulating_elements.loc[
-            (timestep, contingency.unique_id, monitored_elements.index[0]), "regulating_element_type"
-        ] = RegulatingElementType.GENERATOR_Q.value
-        regulating_elements.loc[(timestep, contingency.unique_id, monitored_elements.index[1]), "value"] = 9999.0
-        regulating_elements.loc[
-            (timestep, contingency.unique_id, monitored_elements.index[1]), "regulating_element_type"
-        ] = RegulatingElementType.SLACK_P.value
-    regulating_elements["element_name"] = ""
-    regulating_elements["contingency_name"] = ""
-    regulating_elements[["element_name", "contingency_name"]] = regulating_elements[
-        ["element_name", "contingency_name"]
-    ].fillna("")
-    return regulating_elements
+    # Only the base case (no outaged elements) produces (placeholder) results today.
+    if monitored_element_ids.is_empty() or len(contingency.elements) != 0:
+        return pl.DataFrame(schema=_REGULATING_RESULT_SCHEMA)
+
+    return pl.DataFrame(
+        {
+            "timestep": [timestep, timestep],
+            "contingency": [contingency.unique_id, contingency.unique_id],
+            "element": [monitored_element_ids[0], monitored_element_ids[1]],
+            "value": [-9999.0, 9999.0],
+            "regulating_element_type": [
+                RegulatingElementType.GENERATOR_Q.value,
+                RegulatingElementType.SLACK_P.value,
+            ],
+            "element_name": ["", ""],
+            "contingency_name": ["", ""],
+        },
+        schema=_REGULATING_RESULT_SCHEMA,
+    )

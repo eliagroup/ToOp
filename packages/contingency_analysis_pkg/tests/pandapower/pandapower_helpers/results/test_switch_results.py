@@ -1339,13 +1339,15 @@ def test_get_failed_switch_results_basic():
         get_globally_unique_id(1, "switch"),
     ]
 
-    assert result["p"].is_null().all()
-    assert result["q"].is_null().all()
-    assert result["vm"].is_null().all()
-    assert result["i"].is_null().all()
+    # Numeric result columns are NaN (not null): downstream polars metrics rely on NaN semantics.
+    assert result["p"].is_nan().all()
+    assert result["q"].is_nan().all()
+    assert result["vm"].is_nan().all()
+    assert result["i"].is_nan().all()
 
     assert (result["element_name"] == "").all()
     assert (result["contingency_name"] == "").all()
+    # side carries no result, so it stays null.
     assert result["side"].is_null().all()
 
 

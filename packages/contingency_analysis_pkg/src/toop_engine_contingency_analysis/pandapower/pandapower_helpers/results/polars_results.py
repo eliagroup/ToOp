@@ -44,6 +44,12 @@ RES_TABLES_FOR_POLARS = ("res_line", "res_trafo", "res_trafo3w", "res_impedance"
 
 MAX_AMOUNT_OF_SIDES = 3
 
+#: Value for numeric result columns on the failed (non-converged) path. NaN, not null: the
+#: pandas pipeline this replaced filled these with ``np.nan``, and downstream polars metrics
+#: (``compute_metrics``: ``compute_max_load`` / ``drop_nans`` / ``fill_nan``) rely on NaN
+#: semantics - an all-missing ``max()`` must be NaN (a float), not null (which collects to None).
+_MISSING = float("nan")
+
 #: Voltage deviation treated as fully loaded when scaling ``vm_loading``.
 MAX_ALLOWED_VM_DEVIATION = 0.2
 
@@ -287,11 +293,11 @@ def get_failed_branch_results_polars(
     monitored_2_end_branches: list[str],
     monitored_3_end_branches: list[str],
 ) -> pl.DataFrame:
-    """All-null branch results for outages whose load flow did not converge.
+    """All-NaN branch results for outages whose load flow did not converge.
 
     Native-polars counterpart of :func:`get_branch_results_polars`: one row per monitored
     branch terminal (two sides for lines/2W trafos, three for 3W trafos), with the electrical
-    columns null. Same flat layout, so the two concatenate directly.
+    columns NaN (see :data:`_MISSING`). Same flat layout, so the two concatenate directly.
     """
     two_end = _failed_key_frame(
         timestep, failed_outages, monitored_2_end_branches, [BranchSide.ONE.value, BranchSide.TWO.value]
@@ -307,10 +313,10 @@ def get_failed_branch_results_polars(
         "contingency",
         "element",
         "side",
-        pl.lit(None, dtype=pl.Float64).alias("p"),
-        pl.lit(None, dtype=pl.Float64).alias("q"),
-        pl.lit(None, dtype=pl.Float64).alias("i"),
-        pl.lit(None, dtype=pl.Float64).alias("loading"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("p"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("q"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("i"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("loading"),
         pl.lit("").alias("element_name"),
         pl.lit("").alias("contingency_name"),
     )
@@ -321,21 +327,22 @@ def get_failed_node_results_polars(
     failed_outages: list[str],
     monitored_nodes: list[str],
 ) -> pl.DataFrame:
-    """All-null node results for outages whose load flow did not converge.
+    """All-NaN node results for outages whose load flow did not converge.
 
     Native-polars counterpart of :func:`get_node_results_polars`: one row per monitored bus
-    with the electrical columns null. Same flat layout, so the two concatenate directly.
+    with the electrical columns NaN (see :data:`_MISSING`). Same flat layout, so the two
+    concatenate directly.
     """
     return _failed_key_frame(timestep, failed_outages, monitored_nodes, sides=None).select(
         "timestep",
         "contingency",
         "element",
-        pl.lit(None, dtype=pl.Float64).alias("vm"),
-        pl.lit(None, dtype=pl.Float64).alias("va"),
-        pl.lit(None, dtype=pl.Float64).alias("p"),
-        pl.lit(None, dtype=pl.Float64).alias("q"),
-        pl.lit(None, dtype=pl.Float64).alias("vm_basecase_deviation"),
-        pl.lit(None, dtype=pl.Float64).alias("vm_loading"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("vm"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("va"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("p"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("q"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("vm_basecase_deviation"),
+        pl.lit(_MISSING, dtype=pl.Float64).alias("vm_loading"),
         pl.lit("").alias("element_name"),
         pl.lit("").alias("contingency_name"),
     )

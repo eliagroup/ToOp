@@ -1073,15 +1073,17 @@ def get_failed_switch_results(
     elements = (switch_ids.cast(pl.Utf8) + f"{SEPARATOR}switch").alias("element")
 
     # The scalar literals broadcast to the number of monitored switches; an empty mapping
-    # yields a 0-row frame with these columns and dtypes.
+    # yields a 0-row frame with these columns and dtypes. Numeric columns are NaN (not null):
+    # the pandas pipeline this replaced used np.nan and downstream polars metrics rely on NaN
+    # semantics (an all-missing max() is NaN, not None). ``side`` has no result, so it is null.
     return pl.select(
         pl.lit(timestep, dtype=pl.Int64).alias("timestep"),
         pl.lit(contingency.unique_id).alias("contingency"),
         elements,
-        pl.lit(None, dtype=pl.Float64).alias("p"),
-        pl.lit(None, dtype=pl.Float64).alias("q"),
-        pl.lit(None, dtype=pl.Float64).alias("vm"),
-        pl.lit(None, dtype=pl.Float64).alias("i"),
+        pl.lit(float("nan"), dtype=pl.Float64).alias("p"),
+        pl.lit(float("nan"), dtype=pl.Float64).alias("q"),
+        pl.lit(float("nan"), dtype=pl.Float64).alias("vm"),
+        pl.lit(float("nan"), dtype=pl.Float64).alias("i"),
         pl.lit("").alias("element_name"),
         pl.lit("").alias("contingency_name"),
         pl.lit(None, dtype=pl.Utf8).alias("side"),

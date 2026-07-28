@@ -7,10 +7,10 @@
 
 """Electrical circuit group helpers for Powsybl outage handling."""
 
-from toop_engine_contingency_analysis.pypowsybl.electrical_circuit_groups.electrical_circuit_groups import (
+from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.electrical_circuit_groups import (
     identify_circuit_groups,
 )
-from toop_engine_contingency_analysis.pypowsybl.electrical_circuit_groups.types import (
+from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import (
     BusbarSectionOutageGroup,
     ElectricalCircuitGroup,
     ElectricalCircuitGroupIdentification,

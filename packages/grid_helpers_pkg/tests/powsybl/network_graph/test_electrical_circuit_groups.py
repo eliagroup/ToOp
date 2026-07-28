@@ -12,18 +12,18 @@ import pytest
 from pandas.testing import assert_frame_equal
 from pydantic import BaseModel, ConfigDict
 from pypowsybl.security import Parameters as SecurityParameters
-from toop_engine_contingency_analysis.pypowsybl.electrical_circuit_groups.electrical_circuit_groups import (
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
+from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.electrical_circuit_groups import (
     identify_circuit_groups,
 )
-from toop_engine_contingency_analysis.pypowsybl.electrical_circuit_groups.helper_functions import (
+from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.helper_functions import (
     get_all_failing_elements_by_branch_id,
     get_all_failing_elements_by_busbar_section_id,
     get_all_failing_switches_by_branch_id,
     get_all_failing_switches_by_busbar_section_id,
     get_outage_group_ids_by_busbar_section_id,
 )
-from toop_engine_contingency_analysis.pypowsybl.electrical_circuit_groups.types import ElectricalCircuitGroup
-from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
+from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import ElectricalCircuitGroup
 
 
 def _drop_non_semantic_columns(branch_results):

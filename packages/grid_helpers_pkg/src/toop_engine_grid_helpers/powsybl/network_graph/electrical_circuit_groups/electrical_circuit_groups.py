@@ -11,7 +11,7 @@ import pandera as pa
 import pandera.typing as pat
 import pypowsybl
 import rustworkx as rx
-from toop_engine_contingency_analysis.pypowsybl.electrical_circuit_groups.types import (
+from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import (
     BranchElectricalCircuitGroupSchema,
     BusBreakerIdSchema,
     EdgeSchema,

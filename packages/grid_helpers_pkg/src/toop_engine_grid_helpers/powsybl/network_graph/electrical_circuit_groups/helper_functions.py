@@ -9,7 +9,7 @@
 
 import pandera as pa
 import pandera.typing as pat
-from toop_engine_contingency_analysis.pypowsybl.electrical_circuit_groups.types import (
+from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import (
     AssetBreakerSchema,
     BranchElectricalCircuitGroupSchema,
     BusbarCouplerSchema,

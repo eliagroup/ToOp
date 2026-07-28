@@ -11,7 +11,10 @@ import pandas as pd
 import pypowsybl
 import pytest
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
+from toop_engine_grid_helpers.powsybl.example_grids import (
+    basic_node_breaker_network_powsybl,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     change_dangling_to_tie,
     check_powsybl_import,
@@ -230,6 +233,20 @@ def test_save_powsybl_to_fs_cgmes(tmp_path_factory: pytest.TempPathFactory, euro
     assert net_original.get_buses().equals(net_loaded.get_buses())
     assert net_original.get_branches().equals(net_loaded.get_branches())
     assert net_original.get_injections().equals(net_loaded.get_injections())
+
+
+def test_save_and_load_complex_example_grid_as_cgmes(tmp_path_factory: pytest.TempPathFactory) -> None:
+    tmp_path = tmp_path_factory.mktemp("powsybl_save_load")
+    net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    cgmes_file = tmp_path / "cgmes.zip"
+
+    # Export the CGMES files
+    net.save(cgmes_file, format="CGMES")
+    loaded_net = pypowsybl.network.load(cgmes_file)
+
+    assert isinstance(loaded_net, pypowsybl.network.Network)
+    assert len(loaded_net.get_buses()) > 0
+    assert len(loaded_net.get_branches()) > 0
 
 
 def test_load_pandapower_net_for_powsybl_with_convert_from_pandapower():

@@ -240,7 +240,9 @@ def test_save_and_load_complex_example_grid_as_cgmes(tmp_path_factory: pytest.Te
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
     cgmes_file = tmp_path / "cgmes.zip"
 
-    # Export the CGMES files
+    # Export the CGMES files. Note that no load flow is run here on purpose: the fixture already leaves a
+    # converged state on the network, and a default-parameter run would leave a slack bus residual large
+    # enough for the SV export to emit an SvInjection, which cannot be imported into a node/breaker grid.
     net.save(
         cgmes_file,
         format="CGMES",
@@ -248,8 +250,92 @@ def test_save_and_load_complex_example_grid_as_cgmes(tmp_path_factory: pytest.Te
     loaded_net = pypowsybl.network.load(cgmes_file)
 
     assert isinstance(loaded_net, pypowsybl.network.Network)
-    assert len(loaded_net.get_buses()) > 0
-    assert len(loaded_net.get_branches()) > 0
+
+    # Element types that CGMES round trips one to one, ids included.
+    for getter in [
+        "get_loads",
+        "get_2_windings_transformers",
+        "get_3_windings_transformers",
+        "get_shunt_compensators",
+        "get_static_var_compensators",
+        "get_hvdc_lines",
+        "get_vsc_converter_stations",
+        "get_lcc_converter_stations",
+        "get_busbar_sections",
+    ]:
+        before = getattr(net, getter)()
+        after = getattr(loaded_net, getter)()
+        assert len(before) == len(after), f"{getter} changed during the CGMES round trip"
+        assert set(before.index) <= set(after.index), f"{getter} lost ids during the CGMES round trip"
+
+    n_boundary_lines = len(net.get_boundary_lines())
+    n_tie_lines = len(net.get_tie_lines())
+    n_batteries = len(net.get_batteries())
+
+    # CGMES models a boundary line as a full AC line ending in a fictitious substation/voltage level/bus.
+    # Two boundary lines coupled by a tie line share a single boundary point.
+    assert len(loaded_net.get_lines()) == len(net.get_lines()) + n_boundary_lines
+    assert set(net.get_lines().index) <= set(loaded_net.get_lines().index)
+    assert len(loaded_net.get_boundary_lines()) == 0
+    assert len(loaded_net.get_tie_lines()) == 0
+    for getter in ["get_substations", "get_voltage_levels", "get_buses"]:
+        before = getattr(net, getter)()
+        after = getattr(loaded_net, getter)()
+        assert len(after) == len(before) + n_boundary_lines - n_tie_lines, f"unexpected {getter} count"
+        assert set(before.index) <= set(after.index), f"{getter} lost ids during the CGMES round trip"
+
+    # CGMES has no battery class, so batteries come back as generators, and every boundary line adds an
+    # equivalent injection generator.
+    assert len(loaded_net.get_batteries()) == 0
+    assert len(loaded_net.get_generators()) == len(net.get_generators()) + n_batteries + n_boundary_lines
+    assert set(net.get_generators().index) | set(net.get_batteries().index) <= set(loaded_net.get_generators().index)
+
+    # The injection count is preserved, but the boundary line ids are renamed to their equivalent injections.
+    assert len(loaded_net.get_injections()) == len(net.get_injections())
+
+    # Fictitious switches are added for the open terminals of LINE_out_of_service.
+    assert set(net.get_switches().index) <= set(loaded_net.get_switches().index)
+
+    result_columns = {
+        "get_lines": ["p1", "q1", "p2", "q2", "i1", "i2"],
+        "get_2_windings_transformers": ["p1", "q1", "i1"],
+        "get_3_windings_transformers": ["p1", "p2", "p3"],
+        "get_loads": ["p", "q"],
+        "get_generators": ["p", "q"],
+        "get_shunt_compensators": ["q"],
+        "get_static_var_compensators": ["q"],
+    }
+
+    def max_abs_diff(getter: str, column: str) -> float:
+        before = getattr(net, getter)()
+        after = getattr(loaded_net, getter)()
+        common = sorted(set(before.index) & set(after.index))
+        return float(
+            np.nanmax(np.abs(before.loc[common, column].to_numpy(float) - after.loc[common, column].to_numpy(float)))
+        )
+
+    # The state variables of the exported load flow are restored on import.
+    for getter, columns in result_columns.items():
+        for column in columns:
+            assert max_abs_diff(getter, column) < 1e-6, f"{getter}.{column} changed during the CGMES round trip"
+    for column in ["v_mag", "v_angle"]:
+        assert max_abs_diff("get_buses", column) < 1e-6, f"bus {column} changed during the CGMES round trip"
+
+    # The imported grid still solves and reproduces the same operating point.
+    lf_result = pypowsybl.loadflow.run_ac(loaded_net)
+    assert lf_result[0].status == pypowsybl._pypowsybl.LoadFlowComponentStatus.CONVERGED
+    for getter, columns in result_columns.items():
+        for column in columns:
+            assert max_abs_diff(getter, column) < 0.5, f"{getter}.{column} differs after solving the imported grid"
+    assert max_abs_diff("get_buses", "v_mag") < 1e-2
+
+    # CGMES does not carry the slackTerminal extension, so the rerun picks another reference bus and the bus
+    # angles only match up to a global offset.
+    common_buses = sorted(set(net.get_buses().index) & set(loaded_net.get_buses().index))
+    angles_before = net.get_buses().loc[common_buses, "v_angle"].to_numpy(float)
+    angles_after = loaded_net.get_buses().loc[common_buses, "v_angle"].to_numpy(float)
+    # Disconnected buses have no angle at all, they are skipped by comparing with nanmax.
+    assert np.nanmax(np.abs((angles_before - angles_before[0]) - (angles_after - angles_after[0]))) < 1e-2
 
 
 def test_load_pandapower_net_for_powsybl_with_convert_from_pandapower():

@@ -314,11 +314,11 @@ def identify_circuit_groups(
         as this is not supported by the current implementation.
 
     """
-    # if len(net.get_3_windings_transformers()) > 0:
-    #     raise NotImplementedError(
-    #         "Three winding transformers are not supported by the current implementation. "
-    #         "Please replace them with equivalent two winding transformers before calling this function."
-    #     )
+    if len(net.get_3_windings_transformers()) > 0:
+        raise NotImplementedError(
+            "Three winding transformers are not supported by the current implementation. "
+            "Please replace them with equivalent two winding transformers before calling this function."
+        )
     # create a variant
     variant_name = "outage_group_identification"
     original_variant = net.get_working_variant_id()

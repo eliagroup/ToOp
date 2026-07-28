@@ -241,7 +241,10 @@ def test_save_and_load_complex_example_grid_as_cgmes(tmp_path_factory: pytest.Te
     cgmes_file = tmp_path / "cgmes.zip"
 
     # Export the CGMES files
-    net.save(cgmes_file, format="CGMES")
+    net.save(
+        cgmes_file,
+        format="CGMES",
+    )
     loaded_net = pypowsybl.network.load(cgmes_file)
 
     assert isinstance(loaded_net, pypowsybl.network.Network)

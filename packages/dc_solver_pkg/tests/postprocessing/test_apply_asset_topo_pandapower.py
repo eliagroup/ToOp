@@ -8,20 +8,22 @@
 from pathlib import Path
 
 import pandapower as pp
-from toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower import apply_station, apply_topology
+from fsspec.implementations.dirfs import DirFileSystem
+from toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower import apply_station, apply_topology_stations
+from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
-from toop_engine_interfaces.asset_topology.asset_topology import Topology
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
 def test_apply_station(case14_data_folder: Path) -> None:
     net = pp.from_json(case14_data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"])
-    with open(case14_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"]) as f:
-        asset_topo = Topology.model_validate_json(f.read())
+    runtime_topology = PandaPowerBackend(DirFileSystem(str(case14_data_folder))).get_runtime_asset_topology()
+    assert runtime_topology is not None
+    topology_stations = runtime_topology.stations
 
     # Make sure we have valid busbar ids
     # Currently only one bus exists in the station, so we expect the method to create the coupler and the missing busbar.
-    station = asset_topo.materialize_stations()[0].model_copy()
+    station = topology_stations[0].model_copy()
     station.busbars[0].grid_model_id = f"1{SEPARATOR}bus"
     station.busbars[1].grid_model_id = f"15{SEPARATOR}bus"
     station.couplers[0].grid_model_id = f"1{SEPARATOR}switch"
@@ -36,15 +38,17 @@ def test_apply_station(case14_data_folder: Path) -> None:
     assert len(realized_station.branch_disconnection_diff) == 0
     assert len(realized_station.injection_disconnection_diff) == 0
     assert len(realized_station.coupler_diff) == 0
-    assert len(realized_station.branch_reassignment_diff) + len(realized_station.injection_reassignment_diff)
+    assert len(realized_station.branch_reassignment_diff) == 0
+    assert len(realized_station.injection_reassignment_diff) == 0
 
 
 def test_apply_station_existing_buses(case14_data_folder: Path) -> None:
     net = pp.from_json(case14_data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"])
-    with open(case14_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"]) as f:
-        asset_topo = Topology.model_validate_json(f.read())
+    runtime_topology = PandaPowerBackend(DirFileSystem(str(case14_data_folder))).get_runtime_asset_topology()
+    assert runtime_topology is not None
+    topology_stations = runtime_topology.stations
 
-    station = asset_topo.materialize_stations()[0].model_copy()
+    station = topology_stations[0].model_copy()
     station.busbars[0].grid_model_id = f"1{SEPARATOR}bus"
     station.busbars[1].grid_model_id = f"15{SEPARATOR}bus"
     station.couplers[0].grid_model_id = f"1{SEPARATOR}switch"
@@ -60,15 +64,17 @@ def test_apply_station_existing_buses(case14_data_folder: Path) -> None:
     assert len(realized_station.branch_disconnection_diff) == 0
     assert len(realized_station.injection_disconnection_diff) == 0
     assert len(realized_station.coupler_diff) == 1
-    assert len(realized_station.branch_reassignment_diff) + len(realized_station.injection_reassignment_diff)
+    assert len(realized_station.branch_reassignment_diff) == 0
+    assert len(realized_station.injection_reassignment_diff) == 0
 
 
 def test_apply_station_extra_busbar(case14_data_folder: Path) -> None:
     net = pp.from_json(case14_data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"])
-    with open(case14_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"]) as f:
-        asset_topo = Topology.model_validate_json(f.read())
+    runtime_topology = PandaPowerBackend(DirFileSystem(str(case14_data_folder))).get_runtime_asset_topology()
+    assert runtime_topology is not None
+    topology_stations = runtime_topology.stations
 
-    station = asset_topo.materialize_stations()[0].model_copy()
+    station = topology_stations[0].model_copy()
     station.busbars[0].grid_model_id = f"1{SEPARATOR}bus"
     station.busbars[1].grid_model_id = f"15{SEPARATOR}bus"
     station.couplers[0].grid_model_id = f"1{SEPARATOR}switch"
@@ -86,15 +92,18 @@ def test_apply_station_extra_busbar(case14_data_folder: Path) -> None:
     assert len(realized_station.branch_disconnection_diff) == 0
     assert len(realized_station.injection_disconnection_diff) == 0
     assert len(realized_station.coupler_diff) == 1
+    assert len(realized_station.branch_reassignment_diff) == 0
+    assert len(realized_station.injection_reassignment_diff) == 0
 
 
 def test_apply_topology(case14_data_folder: Path) -> None:
     net = pp.from_json(case14_data_folder / PREPROCESSING_PATHS["grid_file_path_pandapower"])
-    with open(case14_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"]) as f:
-        asset_topo = Topology.model_validate_json(f.read())
+    runtime_topology = PandaPowerBackend(DirFileSystem(str(case14_data_folder))).get_runtime_asset_topology()
+    assert runtime_topology is not None
+    topology_stations = runtime_topology.stations
 
     # Apply the topology
-    apply_diff, realized_topology = apply_topology(net, asset_topo)
+    apply_diff, realized_topology = apply_topology_stations(net, topology_stations)
 
     for station_id, local_apply_diff in apply_diff:
         assert len(local_apply_diff.busbars_created) == 1
@@ -105,5 +114,6 @@ def test_apply_topology(case14_data_folder: Path) -> None:
     assert len(realized_topology.branch_disconnection_diff) == 0
     assert len(realized_topology.injection_disconnection_diff) == 0
     assert len(realized_topology.coupler_diff) == 0
-    assert len(realized_topology.branch_reassignment_diff) + len(realized_topology.injection_reassignment_diff)
-    assert realized_topology.topology == asset_topo
+    assert len(realized_topology.branch_reassignment_diff) == 0
+    assert len(realized_topology.injection_reassignment_diff) == 0
+    assert realized_topology.master_data is None

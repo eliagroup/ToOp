@@ -293,8 +293,8 @@ def test_change_trafos_lines_in_ucte():
 
 
 def test_get_changes_from_switching_table(ucte_asset_topology, caplog):
-    topology_model = deepcopy(ucte_asset_topology)
-    topology_stations = topology_model.materialize_stations()
+    _master_data, stations = deepcopy(ucte_asset_topology)
+    topology_stations = [station.model_copy(deep=True) for station in stations]
 
     # Test case where asset is reassigned
     station = topology_stations[0]
@@ -514,13 +514,14 @@ def test_disconnect_asset_from_ucte():
 
 
 def test_asset_topo_to_uct(ucte_asset_topology, ucte_file):
-    topology_model = deepcopy(ucte_asset_topology)
+    master_data, stations = deepcopy(ucte_asset_topology)
+    topology_stations = [station.model_copy(deep=True) for station in stations]
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         output_ucte = tmp / "output.uct"
         # test case where no changes are made -> input and output should be the same
         asset_topo_to_uct(
-            asset_topology=topology_model,
+            master_data=master_data,
             grid_model_file_output=output_ucte,
             grid_model_file_input=ucte_file,
         )
@@ -533,7 +534,7 @@ def test_asset_topo_to_uct(ucte_asset_topology, ucte_file):
 
         # test case where no input file is given -> use from asset_topology
         asset_topo_to_uct(
-            asset_topology=topology_model,
+            master_data=master_data,
             grid_model_file_output=output_ucte,
         )
         with open(output_ucte, "r") as f:
@@ -542,15 +543,15 @@ def test_asset_topo_to_uct(ucte_asset_topology, ucte_file):
         assert input_uct_contents == output_uct_contents
 
         # test not implemented
-        ucte_asset_topology.asset_setpoints = [AssetSetpoint(grid_model_id="D8SU1_11", setpoint=1.0)]
+        master_data_with_setpoints = master_data.model_copy(
+            update={"asset_setpoints": [AssetSetpoint(grid_model_id="D8SU1_11", setpoint=1.0)]}
+        )
         with pytest.raises(NotImplementedError):
             asset_topo_to_uct(
-                asset_topology=ucte_asset_topology,
+                master_data=master_data_with_setpoints,
                 grid_model_file_output=output_ucte,
                 grid_model_file_input=ucte_file,
             )
-
-        topology_stations = topology_model.materialize_stations()
 
         # Test case where asset is reassigned
         # test trafo
@@ -578,9 +579,10 @@ def test_asset_topo_to_uct(ucte_asset_topology, ucte_file):
 
         # run test
         asset_topo_to_uct(
-            asset_topology=topology_model,
+            master_data=master_data,
             grid_model_file_output=output_ucte,
             grid_model_file_input=test_ucte,
+            starting_stations=topology_stations,
         )
 
         with open(output_ucte, "r") as f:

@@ -111,6 +111,10 @@ ENABLE_BEARTYPE="true"
 
 [tool.pytest.ini_options]
 
+markers = [
+    "performance: marks performance-oriented tests",
+]
+
 pythonpath = [
     "packages/dc_solver_pkg/src",
     "packages/contingency_analysis_pkg/src",

@@ -13,10 +13,7 @@ import networkx as nx
 import numpy as np
 import pytest
 from beartype.typing import get_args
-from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
-    add_missing_asset_topology_branch_info,
-    add_missing_asset_topology_injection_info,
     identify_unnecessary_configurations,
     make_optimal_separation_set,
     make_separation_set,
@@ -43,7 +40,7 @@ def build_materialized_station(
     asset_switching_table: np.ndarray,
 ) -> MaterializedStation:
     return MaterializedStation(
-        grid_model_id=grid_model_id,
+        bus_group_id=grid_model_id,
         busbars=busbars,
         couplers=couplers,
         branch_connections=[MaterializedAssetConnection(asset=asset) for asset in assets],
@@ -201,94 +198,6 @@ def test_preprocess_station() -> None:
     assert coupler_distance.shape == (n_configs,)
     assert len(busbar_a) == n_configs
     assert all([len(a) <= 2 for a in busbar_a])
-
-
-def test_add_missing_asset_topology_branch_info(network_data: NetworkData) -> None:
-    num_assets_before = sum(
-        len(station.branch_connections) for station in network_data.asset_topology.materialize_stations()
-    )
-
-    topo = add_missing_asset_topology_branch_info(
-        asset_topology=network_data.asset_topology,
-        branch_ids=network_data.branch_ids,
-        branch_names=network_data.branch_names,
-        branch_types=network_data.branch_types,
-        branch_from_nodes=[network_data.node_ids[i] for i in network_data.from_nodes],
-        overwrite_if_present=True,
-    )
-
-    from_ends = 0
-    to_ends = 0
-    for station in topo.materialize_stations():
-        for asset_connection in station.branch_connections:
-            asset = asset_connection.asset
-            if asset.grid_model_id in network_data.branch_ids:
-                assert asset.name in network_data.branch_names
-                assert asset.asset_type in network_data.branch_types
-                assert asset_connection.branch_end in ["from", "to"]
-                if asset_connection.branch_end == "from":
-                    from_ends += 1
-                else:
-                    to_ends += 1
-
-    assert from_ends > 0
-    assert to_ends > 0
-
-    num_assets_after = sum(len(station.branch_connections) for station in topo.materialize_stations())
-    assert num_assets_before == num_assets_after
-
-
-def test_add_missing_asset_topology_injection_info(network_data: NetworkData) -> None:
-    num_assets_before = sum(
-        len(_combined_asset_connections(station)) for station in network_data.asset_topology.materialize_stations()
-    )
-    replacement_injection_type = "load"
-
-    topo = add_missing_asset_topology_injection_info(
-        asset_topology=network_data.asset_topology,
-        injection_ids=network_data.injection_ids,
-        injection_names=network_data.injection_names,
-        injection_types=network_data.injection_types,
-        overwrite_if_present=True,
-    )
-
-    for station in topo.materialize_stations():
-        for asset in [asset_connection.asset for asset_connection in _combined_asset_connections(station)]:
-            if asset.grid_model_id in network_data.injection_ids:
-                assert asset.name in network_data.injection_names
-                assert asset.asset_type in network_data.injection_types
-
-    num_assets_after = sum(len(_combined_asset_connections(station)) for station in topo.materialize_stations())
-    assert num_assets_before == num_assets_after
-
-    # Test with overwrite_if_present=False
-    topo = add_missing_asset_topology_injection_info(
-        asset_topology=topo,
-        injection_ids=network_data.injection_ids,
-        injection_names=["new_name"] * len(network_data.injection_ids),
-        injection_types=[replacement_injection_type] * len(network_data.injection_ids),
-        overwrite_if_present=False,
-    )
-
-    for station in topo.materialize_stations():
-        for asset in [asset_connection.asset for asset_connection in _combined_asset_connections(station)]:
-            if asset.grid_model_id in network_data.injection_ids:
-                assert asset.name in network_data.injection_names
-                assert asset.asset_type in network_data.injection_types
-
-    topo = add_missing_asset_topology_injection_info(
-        asset_topology=topo,
-        injection_ids=network_data.injection_ids,
-        injection_names=["new_name"] * len(network_data.injection_ids),
-        injection_types=[replacement_injection_type] * len(network_data.injection_ids),
-        overwrite_if_present=True,
-    )
-
-    for station in topo.materialize_stations():
-        for asset in [asset_connection.asset for asset_connection in _combined_asset_connections(station)]:
-            if asset.grid_model_id in network_data.injection_ids:
-                assert asset.name == "new_name"
-                assert asset.asset_type == replacement_injection_type
 
 
 def test_prepare_for_separation_set_node_breaker_test_station():

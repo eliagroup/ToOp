@@ -101,10 +101,6 @@ from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    Topology,
-)
-from toop_engine_interfaces.asset_topology.asset_topology_helpers import load_asset_topology
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     OUTPUT_FILE_NAMES,
@@ -113,6 +109,8 @@ from toop_engine_interfaces.folder_structure import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
+    CgmesImporterParameters,
+    LimitAdjustmentParameters,
     PreprocessParameters,
     UcteImporterParameters,
 )
@@ -632,14 +630,15 @@ def preprocessed_powsybl_data_folder(_preprocessed_powsybl_data_folder: Path, tm
 def oberrhein_outage_station_busbars_map(_oberrhein_data_folder: Path) -> dict:
     stations_desired = ["71%%bus", "98%%bus", "130%%bus", "8%%bus", "58%%bus", "157%%bus", "165%%bus"]
 
-    asset_topo = load_asset_topology(_oberrhein_data_folder / PREPROCESSING_PATHS["asset_topology_file_path"])
+    asset_topology = PandaPowerBackend(DirFileSystem(str(_oberrhein_data_folder))).get_runtime_asset_topology()
+    assert asset_topology is not None
     retval = {}
-    for station in asset_topo.materialize_stations():
-        if station.grid_model_id in stations_desired:
+    for station in asset_topology.stations:
+        if station.bus_group_id in stations_desired:
             # Get the busbar IDs for the station
             busbars = [bb.grid_model_id for bb in station.busbars]
             # Create a mapping of the station to its busbars
-            retval[station.grid_model_id] = busbars
+            retval[station.bus_group_id] = busbars
 
     # 71%%bus, 157%%bus, "165%%bus" are relevant subs
     return retval
@@ -710,6 +709,40 @@ def _node_breaker_grid_preprocessed_data_folder(tmp_path_factory: pytest.TempPat
 @pytest.fixture(scope="function")
 def node_breaker_grid_preprocessed_data_folder(_node_breaker_grid_preprocessed_data_folder: Path, tmp_path: Path) -> Path:
     shutil.copytree(_node_breaker_grid_preprocessed_data_folder, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+@pytest.fixture(scope="session")
+def _node_breaker_grid_imported_data_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create imported node-breaker preprocessing data once per test session."""
+    tmp_path = tmp_path_factory.mktemp("node_breaker_grid_imported")
+    node_breaker_folder_powsybl(tmp_path)
+
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        data_folder=tmp_path,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
+    save_lf_params_to_fs(
+        CGMES_DISTRIBUTED_SLACK, DirFileSystem(str(tmp_path)), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
+    return tmp_path
+
+
+@pytest.fixture(scope="function")
+def node_breaker_grid_imported_data_folder(_node_breaker_grid_imported_data_folder: Path, tmp_path: Path) -> Path:
+    """Copy the imported node-breaker fixture into an isolated per-test folder."""
+    shutil.copytree(_node_breaker_grid_imported_data_folder, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 
@@ -828,15 +861,18 @@ def case14_data_with_asset_topo_path(_case14_data_with_asset_topo_path: Path, tm
 
 
 @pytest.fixture
-def case14_data_with_asset_topo(case14_data_with_asset_topo_path: Path) -> tuple[Path, Topology]:
+def case14_data_with_asset_topo(case14_data_with_asset_topo_path: Path):
     """Fixture to create a temporary folder for the case14 test."""
-    with open(case14_data_with_asset_topo_path / PREPROCESSING_PATHS["asset_topology_file_path"], "r") as f:
-        asset_topology = Topology.model_validate_json(f.read())
-    return case14_data_with_asset_topo_path, asset_topology
+    backend = PowsyblBackend(DirFileSystem(str(case14_data_with_asset_topo_path)))
+    master_data = backend.get_master_data_asset_topology()
+    runtime_topology = backend.get_runtime_asset_topology()
+    assert master_data is not None
+    assert runtime_topology is not None
+    return case14_data_with_asset_topo_path, (master_data, runtime_topology)
 
 
 @pytest.fixture(scope="session")
-def basic_node_breaker_topology() -> Topology:
+def basic_node_breaker_topology():
     """Fixture to create a realized topology with a node breaker topology.
     Based on example_grid.basic_node_breaker_network_powsybl().
     """
@@ -863,7 +899,7 @@ def mock_station() -> MaterializedStation:
 
     # Create a mock Station object
     station = MaterializedStation(
-        grid_model_id="station_1",
+        bus_group_id="station_1",
         busbars=[busbar_0, busbar_1, busbar_2, busbar_3, busbar_4],
         couplers=[
             BusbarCoupler(

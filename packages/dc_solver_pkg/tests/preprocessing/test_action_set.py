@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 from jax_dataclasses import replace
+from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.jax.injections import get_injection_vector
 from toop_engine_dc_solver.jax.inputs import load_static_information
 from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
@@ -341,6 +342,7 @@ def test_remove_relevant_subs_without_actions(
     network_data = compute_injection_topology_info(network_data)
     network_data = convert_multi_outages(network_data)
     network_data = add_missing_asset_topo_info(network_data)
+    assert network_data.asset_topology is not None
     network_data = simplify_asset_topology(network_data)
     network_data = compute_separation_set_for_stations(network_data)
 
@@ -362,6 +364,24 @@ def test_remove_relevant_subs_without_actions(
     assert len(network_data.injection_idx_at_nodes) == n_rel_subs
     assert len(network_data.num_injections_per_node) == n_rel_subs
     assert len(network_data.active_injections) == n_rel_subs
+
+
+def test_remove_relevant_subs_without_actions_keeps_pst_only_station(
+    three_node_pst_example_data_folder: Path,
+) -> None:
+    """Verify that a PST-only relevant station survives action-based filtering without fake branch actions."""
+    network_data = load_network_data(three_node_pst_example_data_folder / "network_data.pkl")
+    network_data = replace(network_data, rel_io_sub=None)
+
+    assert [network_data.node_ids[index] for index in network_data.relevant_nodes] == ["VL_B_0"]
+    assert len(network_data.branch_action_set) == 1
+    assert network_data.branch_action_set[0].shape == (1, 4)
+    assert not np.any(network_data.branch_action_set[0])
+
+    filtered_network_data = remove_relevant_subs_without_actions(network_data)
+
+    assert [filtered_network_data.node_ids[index] for index in filtered_network_data.relevant_nodes] == ["VL_B_0"]
+    assert len(filtered_network_data.branch_action_set) == 1
 
 
 def test_enumerate_nodal_injections(

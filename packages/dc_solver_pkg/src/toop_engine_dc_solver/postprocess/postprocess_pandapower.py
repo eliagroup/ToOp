@@ -37,7 +37,6 @@ from toop_engine_interfaces.asset_topology.applied_topology import (
     RealizedTopology,
 )
 from toop_engine_interfaces.asset_topology.asset_topology_helpers import accumulate_diffs, electrical_components
-from toop_engine_interfaces.asset_topology.topology_conversion import topology_from_materialized_stations
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
@@ -96,10 +95,7 @@ def apply_topology(
         injection_disconnection_diff,
     ) = accumulate_diffs(realized_stations)
     realized_topology = RealizedTopology(
-        topology=topology_from_materialized_stations(
-            action_set.starting_topology,
-            [s.station for s in realized_stations],
-        ),
+        stations=[realized_station.station for realized_station in realized_stations],
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,

@@ -741,6 +741,43 @@ def get_station_connection_tables(
     return asset_connectivity, asset_switching_table, busbar_connectivity, busbar_switching_table
 
 
+def get_station_asset_connectivity_table(
+    busbar_connection_info: dict[str, BusbarConnectionInfo],
+    busbar_df: pd.DataFrame,
+    switchable_assets_df: pat.DataFrame[SwitchableAssetSchema],
+) -> Bool[np.ndarray, " n_bus n_asset"]:
+    """Get only the asset-connectivity table for one station view.
+
+    Parameters
+    ----------
+    busbar_connection_info: dict[str, BusbarConnectionInfo]
+        Dictionary with all busbar connections of the substation.
+        Expects NetworkGraphData.busbar_connection_info.
+    busbar_df: pd.DataFrame
+        Dataframe with all busbars of the substation.
+        Expects get_busbar_df.
+    switchable_assets_df: pd.DataFrame
+        Dataframe with all switchable assets of the substation.
+        Expects get_switchable_asset.
+
+    Returns
+    -------
+    Bool[np.ndarray, " n_bus n_asset"]
+        Asset-connectivity matrix describing which assets can physically connect
+        to which busbars, without deriving switching or busbar-to-busbar tables.
+    """
+    n_bus = busbar_df.shape[0]
+    n_asset = switchable_assets_df.shape[0]
+    asset_connectivity = np.zeros((n_bus, n_asset), dtype=bool)
+
+    for _, row in busbar_df.iterrows():
+        asset_grid_model_ids = busbar_connection_info[row["grid_model_id"]].connectable_assets
+        asset_ids = switchable_assets_df[switchable_assets_df["grid_model_id"].isin(asset_grid_model_ids)].index.to_list()
+        asset_connectivity[row["int_id"], asset_ids] = True
+
+    return asset_connectivity
+
+
 def remove_double_connections(
     switching_table: Bool[ArrayLike, " n_bus n_asset"],
     substation_id: Optional[str] = None,

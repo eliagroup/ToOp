@@ -14,7 +14,7 @@ Furthermore, there are two ways to get the switch updates that are needed - eith
 network (this file) or by comparing to the asset topology starting state (export.py). Comparing directly to the grid is safer
 in case multiple changes have been made to the grid for some reason.
 
-For the bus/branch way, see the function apply_topology_bus_branch.
+For the bus/branch way, see the function apply_topology_bus_branch_stations.
 the node/breaker way is still TODO.
 """
 
@@ -23,15 +23,10 @@ import pandas as pd
 import pandera as pa
 import pandera.typing as pat
 import structlog
-from beartype.typing import Literal, Optional, Union
+from beartype.typing import Literal, Optional
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import assert_station_in_network
 from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    RawStation,
-    Topology,
-    copy_topology_with_updates,
-)
 from toop_engine_interfaces.asset_topology.asset_topology_helpers import accumulate_diffs
 from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
@@ -39,6 +34,31 @@ from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_mo
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_station_voltage_level_id(station: MaterializedStation) -> str:
+    """Return the voltage-level identifier for one runtime station.
+
+    Parameters
+    ----------
+    station : MaterializedStation
+        Runtime station whose voltage-level identifier should be resolved.
+
+    Returns
+    -------
+    str
+        Voltage-level identifier stored on the station or derived from the synthetic bus-group id.
+
+    Raises
+    ------
+    ValueError
+        If the station carries neither an explicit voltage-level id nor a derivable synthetic bus-group id.
+    """
+    if station.voltage_level_id is not None:
+        return station.voltage_level_id
+    if "_" in station.bus_group_id:
+        return station.bus_group_id.rsplit("_", 1)[0]
+    raise ValueError(f"Station {station.bus_group_id} is missing voltage_level_id")
 
 
 @pa.check_types
@@ -319,25 +339,28 @@ def get_diff_switch_states(
 
 
 @pa.check_types
-def get_changing_switches_from_topology(network: Network, target_topology: Topology) -> pat.DataFrame[SwitchUpdateSchema]:
-    """Get switch updates needed to realize a topology on a node-breaker network.
+def get_changing_switches_from_stations(
+    network: Network,
+    stations: list[MaterializedStation],
+) -> pat.DataFrame[SwitchUpdateSchema]:
+    """Get switch updates needed to realize materialized stations on a node-breaker network.
 
     Parameters
     ----------
     network : Network
         Powsybl network whose current switch states act as the reference.
-    target_topology : Topology
-        Topology whose couplers and split branch/injection station tables define
-        the target switch states.
+    stations : list[MaterializedStation]
+        Materialized stations whose couplers and switching tables define the
+        target switch states.
 
     Returns
     -------
     pat.DataFrame[SwitchUpdateSchema]
         Switch updates required to transform the current network state into the
-        target node-breaker topology.
+        target node-breaker station states.
     """
     switch_update_df = get_empty_dataframe_from_model(SwitchUpdateSchema)
-    for station in target_topology.materialize_stations():
+    for station in stations:
         coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
         switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
         station_switch_updates = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
@@ -563,6 +586,21 @@ def _get_target_bus_index(
     return int(np.argmax(switching_column))
 
 
+def _get_station_bus_and_voltage_level_id(net: Network, station: MaterializedStation) -> tuple[str, str]:
+    """Resolve the electrical bus id and voltage level id for a runtime station."""
+    buses_df = net.get_buses(attributes=["voltage_level_id"])
+
+    candidate_bus_ids = [station.bus_group_id, *station.bus_branch_bus_ids]
+    candidate_bus_ids.extend(busbar.bus_branch_bus_id for busbar in station.busbars)
+
+    station_bus_id = next((bus_id for bus_id in candidate_bus_ids if bus_id in buses_df.index), None)
+    if station_bus_id is None:
+        raise KeyError(f"Could not resolve bus id for station {station.bus_group_id}")
+
+    voltage_level_id = station.voltage_level_id or str(buses_df.loc[station_bus_id]["voltage_level_id"])
+    return str(station_bus_id), str(voltage_level_id)
+
+
 def _apply_single_branch_bus_branch(
     net: Network,
     station: MaterializedStation,
@@ -587,13 +625,13 @@ def _apply_single_branch_bus_branch(
     list[tuple[int, int, bool]]
         A list of reassignment diffs for this branch.
     """
-    vl_id = net.get_buses(attributes=["voltage_level_id"]).loc[station.grid_model_id]["voltage_level_id"]
+    station_bus_id, vl_id = _get_station_bus_and_voltage_level_id(net, station)
 
     asset = station.branch_connections[asset_index].asset
     switching_column = station.branch_switching_table[:, asset_index]
 
     is_connected, from_side, bus_breaker_id = find_branch(
-        net=net, elem_id=asset.grid_model_id, voltage_level_id=vl_id, bus_id=station.grid_model_id
+        net=net, elem_id=asset.grid_model_id, voltage_level_id=vl_id, bus_id=station_bus_id
     )
 
     if not np.any(switching_column):
@@ -679,7 +717,7 @@ def _apply_single_injection_bus_branch(
     list[tuple[int, int, bool]]
         A list of reassignment diffs for this injection.
     """
-    vl_id = net.get_buses(attributes=["voltage_level_id"]).loc[station.grid_model_id]["voltage_level_id"]
+    _, vl_id = _get_station_bus_and_voltage_level_id(net, station)
 
     asset = station.injection_connections[asset_index].asset
     switching_column = station.injection_switching_table[:, asset_index]
@@ -829,32 +867,26 @@ def apply_station_bus_branch(net: Network, station: MaterializedStation) -> Appl
     )
 
 
-def apply_topology_bus_branch(net: Network, topology: Topology) -> RealizedTopology:
-    """Apply an asset topology to a network and return the diff.
-
-    This takes an asset topology and applies it to the network. It will return the diff that it had to do to reach
-    the asset topology in the form of a RealizedTopology
-
+def apply_topology_bus_branch_stations(
+    net: Network,
+    stations: list[MaterializedStation],
+) -> RealizedTopology:
+    """Apply materialized stations to a bus/branch powsybl network and return the diff.
 
     Parameters
     ----------
     net : Network
-        The powsybl network to apply the topology to. It is assumed that the station names correspond to busbar ids in the
-        network (busbar in terms of net.get_buses()) and that the bus-breaker buses are in the same voltage level as that
-        busbar. Furthermore, we assume to find the bus-breaker buses in the voltage level to represent the busbars in the
-        asset topology. If there are more buses, these additional buses will be ignored, if there are fewer buses, an
-        exception is raised. Will be modified in-place.
-    topology : Topology
-        The asset topology to apply to the network. The stations in the topology will be applied to the network and the
-        diff will be returned.
+        The powsybl network to apply the station states to. Will be modified in-place.
+    stations : list[MaterializedStation]
+        Materialized stations whose switching state should be realized on the network.
 
     Returns
     -------
     RealizedTopology
-        The realized topology object containing the input topology plus the
+        The realized topology object containing the applied stations plus the
         coupler, reassignment, and disconnection diffs.
     """
-    realized_stations = [apply_station_bus_branch(net, station) for station in topology.materialize_stations()]
+    realized_stations = [apply_station_bus_branch(net, station) for station in stations]
 
     (
         coupler_diff,
@@ -865,7 +897,8 @@ def apply_topology_bus_branch(net: Network, topology: Topology) -> RealizedTopol
     ) = accumulate_diffs(realized_stations)
 
     return RealizedTopology(
-        topology=topology,
+        topology=None,
+        stations=[realized_station.station for realized_station in realized_stations],
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,
@@ -875,41 +908,41 @@ def apply_topology_bus_branch(net: Network, topology: Topology) -> RealizedTopol
 
 
 @pa.check_types
-def apply_node_breaker_topology(net: Network, target_topology: Topology) -> pa.typing.DataFrame[SwitchUpdateSchema]:
-    """Apply a node-breaker topology to a powsybl network.
+def apply_node_breaker_stations(
+    net: Network, stations: list[MaterializedStation]
+) -> pa.typing.DataFrame[SwitchUpdateSchema]:
+    """Apply materialized station states to a node-breaker powsybl network.
 
     Parameters
     ----------
     net : Network
         The powsybl network to modify, will be modified in place.
-    target_topology : Topology
-        The target topology to apply to the network.
+    stations : list[MaterializedStation]
+        Materialized stations whose switch states should be applied.
 
     Returns
     -------
     pa.typing.DataFrame[SwitchUpdateSchema]
         The dataframe of switches that were updated.
     """
-    switch_update_df = get_changing_switches_from_topology(network=net, target_topology=target_topology)
+    switch_update_df = get_changing_switches_from_stations(network=net, stations=stations)
     switch_update_df.rename(columns={"grid_model_id": "id"}, inplace=True)
     switch_update_df.set_index("id", inplace=True)
-    # Update the network with the new switch states
     net.update_switches(switch_update_df)
-    # reset id to be compliant with the schema
     switch_update_df.reset_index(inplace=True)
     switch_update_df.rename(columns={"id": "grid_model_id"}, inplace=True)
     return switch_update_df
 
 
-def is_node_breaker_grid(net: Network, relevant_station: Optional[str] = None) -> bool:
+def is_node_breaker_grid(net: Network, relevant_voltage_level_id: Optional[str] = None) -> bool:
     """Check if the network is in node-breaker format.
 
     Parameters
     ----------
     net : Network
         The powsybl network to check.
-    relevant_station : Optional[str]
-        The name of any relevant station to check. It is possible that a grid has a mix of node-breaker and bus/branch but
+    relevant_voltage_level_id : Optional[str]
+        Any relevant voltage level id to check. It is possible that a grid has a mix of node-breaker and bus/branch but
         the relevant stations should be all uniform, in one of the two formats.
 
     Returns
@@ -917,19 +950,22 @@ def is_node_breaker_grid(net: Network, relevant_station: Optional[str] = None) -
     bool
         True if the network is in node-breaker format, False otherwise.
     """
-    bus = net.get_buses(attributes=["voltage_level_id"])
-    if relevant_station is not None:
-        bus = bus.loc[relevant_station]
+    voltage_levels = net.get_voltage_levels(attributes=["topology_kind"])
+
+    if relevant_voltage_level_id is None:
+        voltage_level_id = voltage_levels.index[0]
+    elif relevant_voltage_level_id in voltage_levels.index:
+        voltage_level_id = relevant_voltage_level_id
     else:
-        bus = bus.iloc[0]
-    return (
-        net.get_voltage_levels(attributes=["topology_kind"]).loc[bus["voltage_level_id"]]["topology_kind"] == "NODE_BREAKER"
-    )
+        raise KeyError(relevant_voltage_level_id)
+
+    return voltage_levels.loc[voltage_level_id]["topology_kind"] == "NODE_BREAKER"
 
 
 def apply_station(
-    net: Network, topology: Topology, raw_station: RawStation
-) -> Union[pa.typing.DataFrame[SwitchUpdateSchema], AppliedStation]:
+    net: Network,
+    station: MaterializedStation,
+) -> pa.typing.DataFrame[SwitchUpdateSchema] | AppliedStation:
     """Apply a station topology to a powsybl model.
 
     This will apply the station topology to the network. If the network is in bus/branch format, it will return the
@@ -943,11 +979,8 @@ def apply_station(
         busbar. Furthermore, we assume to find the bus-breaker buses in the voltage level to represent the busbars in the
         asset topology. If there are more buses, these additional buses will be ignored, if there are fewer buses, an
         exception is raised. Will be modified in-place.
-    topology : Topology
-        The owning topology that provides canonical assets and asset bays for the raw station.
-    raw_station : RawStation
-        The lean station view to apply. The switching state of the assets and busbar couplers shall be applied to the
-        matched station in the powsybl grid.
+    station : MaterializedStation
+        Runtime materialized station view to apply directly.
 
     Returns
     -------
@@ -960,17 +993,13 @@ def apply_station(
     ValueError
         If the station cannot be matched into the expected powsybl representation.
     """
-    station_topology = copy_topology_with_updates(
-        topology,
-        [raw_station],
-        topology.asset_bays,
-        branch_assets=topology.branch_assets,
-        injection_assets=topology.injection_assets,
-    )
+    materialized_station = station.model_copy(deep=True)
 
-    if is_node_breaker_grid(net=net, relevant_station=raw_station.grid_model_id):
-        return apply_node_breaker_topology(
+    relevant_voltage_level_id = _get_station_voltage_level_id(materialized_station)
+
+    if is_node_breaker_grid(net=net, relevant_voltage_level_id=relevant_voltage_level_id):
+        return apply_node_breaker_stations(
             net=net,
-            target_topology=station_topology,
+            stations=[materialized_station],
         )
-    return apply_station_bus_branch(net=net, station=station_topology.materialize_stations()[0])
+    return apply_station_bus_branch(net=net, station=materialized_station)

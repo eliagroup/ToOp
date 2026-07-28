@@ -19,7 +19,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     get_relevant_stations,
 )
-from toop_engine_interfaces.asset_topology.asset_topology import RawStation
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 
@@ -66,9 +66,9 @@ def enumerate_station_realisations(
     attempts to realize each action on the given station. If an action is not feasible due to grid constraints, it is
     removed from the action set.
     """
-    assert network_data.simplified_asset_topology is not None, "Simplified asset topology is not provided"
     assert network_data.branch_action_set is not None, "Branch action set is not provided"
     assert network_data.separation_sets_info is not None, "Separation set info is not provided, please compute it first"
+    assert network_data.simplified_asset_topology is not None, "Simplified asset-topology stations are not provided"
     branch_action_set = network_data.branch_action_set.copy()
     all_rel_realised_stations = []
     all_rel_subs_busbar_a_mappings = []
@@ -76,19 +76,27 @@ def enumerate_station_realisations(
 
     for index, (station, local_branch_action_set, separation_set_info) in enumerate(
         zip(
-            network_data.simplified_asset_topology.materialize_stations(),
+            network_data.simplified_asset_topology.stations,
             branch_action_set,
             network_data.separation_sets_info,
             strict=True,
         )
     ):
+        effective_reassignment_limits = reassignment_limits
+        if reassignment_limits is not None:
+            station_limit_key = station.voltage_level_id or station.bus_group_id
+            local_limit = reassignment_limits.station_specific_limits.get(
+                str(station_limit_key), reassignment_limits.max_reassignments_per_sub
+            )
+            effective_reassignment_limits = ReassignmentLimits(max_reassignments_per_sub=local_limit)
+
         (realised_stations, local_updated_branch_action_set, local_busbar_a_mappings, local_reassignment_distances) = (
             realise_ba_to_physical_topo_per_station_jax(
                 local_branch_action_set=local_branch_action_set,
                 station=station,
                 separation_set_info=separation_set_info,
                 choice_heuristic=choice_heuristic,
-                reassignment_limits=reassignment_limits,
+                reassignment_limits=effective_reassignment_limits,
                 validate=True,
             )
         )
@@ -110,7 +118,7 @@ def enumerate_station_realisations(
 
 
 def get_injections_on_physical_bb(
-    network_data: NetworkData, sub: RawStation, busbar_index: int
+    network_data: NetworkData, sub: MaterializedStation, busbar_index: int
 ) -> Float[np.ndarray, " n_timesteps"]:
     """Calculate the total connected injections in megawatts (MW) to a given physical busbar inside a substation.
 
@@ -130,7 +138,6 @@ def get_injections_on_physical_bb(
     """
     connected_assets = sub.get_connected_assets(
         busbar_index,
-        topology_assets=network_data.simplified_asset_topology.injection_assets,
         asset_scope="injection",
     )
     connected_injection_ids = [asset.grid_model_id for asset in connected_assets if asset.in_service]
@@ -149,7 +156,7 @@ def get_injections_on_physical_bb(
 
 
 def get_injections_on_electrical_busbar(
-    network_data: NetworkData, sub: RawStation, busbar_mapping: list[int]
+    network_data: NetworkData, sub: MaterializedStation, busbar_mapping: list[int]
 ) -> Float[np.ndarray, " n_timesteps"]:
     """Calculate the total injections on an electrical busbar.
 

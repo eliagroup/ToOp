@@ -10,7 +10,11 @@ from fsspec.implementations.dirfs import DirFileSystem
 from toop_engine_dc_solver.example_grids import case30_with_psts_pandapower
 from toop_engine_dc_solver.postprocess.write_aux_data import write_aux_data
 from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
-from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
+from toop_engine_dc_solver.preprocess.network_data import (
+    NetworkData,
+    extract_action_set,
+    extract_nminus1_definition,
+)
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import preprocess
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -54,12 +58,10 @@ def test_extract_data_compare_to_network_data(network_data_preprocessed: Network
     n_monitored_elements = len(n_minus_1_definition.monitored_elements)
 
     n_monitored_branches = network_data_preprocessed.monitored_branch_mask.sum()
-    n_monitored_nodes = sum(
-        [len(station.busbars) for station in network_data_preprocessed.simplified_asset_topology.raw_stations]
-    )
-    n_monitored_switches = sum(
-        [len(station.couplers) for station in network_data_preprocessed.simplified_asset_topology.raw_stations]
-    )
+    assert network_data_preprocessed.simplified_asset_topology is not None
+    simplified_stations = network_data_preprocessed.simplified_asset_topology.stations
+    n_monitored_nodes = sum(len(station.busbars) for station in simplified_stations)
+    n_monitored_switches = sum(len(station.couplers) for station in simplified_stations)
     n_expected_monitored_elements = n_monitored_branches + n_monitored_nodes + n_monitored_switches
     assert n_monitored_elements == n_expected_monitored_elements, (
         "Number of monitored elements does not match expected count"

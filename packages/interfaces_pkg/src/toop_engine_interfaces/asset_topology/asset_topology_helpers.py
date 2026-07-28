@@ -8,6 +8,7 @@
 """Common helper functions for asset topology manipulation."""
 
 import itertools
+import json
 from numbers import Integral
 from pathlib import Path
 
@@ -17,13 +18,26 @@ from beartype.typing import Literal, Optional, Union
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    Topology,
-    copy_topology_with_updates,
-)
+from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology, TopologyMasterData
 from toop_engine_interfaces.asset_topology.assets import AssetBay, Busbar, BusbarCoupler, SwitchableAsset
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
-from toop_engine_interfaces.filesystem_helper import load_pydantic_model_fs
+from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
+
+
+def _load_runtime_asset_topology_payload(raw_payload: str) -> RuntimeAssetTopology:
+    """Load a runtime-topology JSON payload.
+
+    Parameters
+    ----------
+    raw_payload : str
+        JSON payload read from disk.
+
+    Returns
+    -------
+    RuntimeAssetTopology
+        Loaded runtime-topology wrapper.
+    """
+    return RuntimeAssetTopology.model_validate(json.loads(raw_payload))
 
 
 def electrical_components(station: MaterializedStation, min_num_assets: int = 1) -> list[list[int]]:
@@ -787,14 +801,14 @@ def merge_stations(
     for station in original:
         found = False
         for new_station in new:
-            if station.grid_model_id == new_station.grid_model_id:
+            if station.bus_group_id == new_station.bus_group_id:
                 updated_station, coupler_diff_local, reassignment_diff_local = merge_station(station, new_station)
                 updated_station_list.append(updated_station)
-                new_stations_found.append(new_station.grid_model_id)
-                coupler_diff.extend([(station.grid_model_id, coupler) for coupler in coupler_diff_local])
+                new_stations_found.append(new_station.bus_group_id)
+                coupler_diff.extend([(station.bus_group_id, coupler) for coupler in coupler_diff_local])
                 reassignment_diff.extend(
                     [
-                        (station.grid_model_id, asset_idx, busbar_idx, bool(connected))
+                        (station.bus_group_id, asset_idx, busbar_idx, bool(connected))
                         for asset_idx, busbar_idx, connected in reassignment_diff_local
                     ]
                 )
@@ -805,11 +819,11 @@ def merge_stations(
 
     # Check if there are new stations that were not found in the original list
     for new_station in new:
-        if new_station.grid_model_id not in new_stations_found:
+        if new_station.bus_group_id not in new_stations_found:
             if missing_station_behavior == "append":
                 updated_station_list.append(new_station)
             else:
-                raise ValueError(f"Station {new_station.grid_model_id} was not found in the original list")
+                raise ValueError(f"Station {new_station.bus_group_id} was not found in the original list")
 
     return updated_station_list, coupler_diff, reassignment_diff
 
@@ -1155,77 +1169,113 @@ def compare_stations(
     )
 
 
-def load_asset_topology_fs(
+def save_asset_topology_stations_fs(
     filesystem: AbstractFileSystem,
-    file_path: Union[str, Path],
-) -> Topology:
-    """Load an asset topology from a file system.
+    filename: Union[str, Path],
+    stations: RuntimeAssetTopology,
+) -> None:
+    """Save runtime topology payloads to their dedicated JSON file.
 
     Parameters
     ----------
     filesystem : AbstractFileSystem
-        File system to load from.
-    file_path : Union[str, Path]
-        Path to the JSON file containing the topology.
-
-    Returns
-    -------
-    Topology
-        The loaded asset topology.
+        File system used for persistence.
+    filename : Union[str, Path]
+        Destination JSON file.
+    stations : RuntimeAssetTopology
+        Runtime topology to persist.
     """
-    return load_pydantic_model_fs(
+    save_pydantic_model_fs(
         filesystem=filesystem,
-        file_path=file_path,
-        model_class=Topology,
+        file_path=filename,
+        pydantic_model=stations,
     )
 
 
-def load_asset_topology(filename: Union[str, Path]) -> Topology:
-    """Load an asset topology from a file.
+def save_asset_topology_stations(
+    filename: Union[str, Path],
+    stations: RuntimeAssetTopology,
+) -> None:
+    """Save runtime topology payloads to their dedicated JSON file.
 
     Parameters
     ----------
     filename : Union[str, Path]
-        File name to load the topology from.
-
-    Returns
-    -------
-    Topology
-        Loaded topology.
+        Destination JSON file.
+    stations : RuntimeAssetTopology
+        Runtime topology to persist.
     """
-    return load_asset_topology_fs(
+    save_asset_topology_stations_fs(
         filesystem=LocalFileSystem(),
-        file_path=filename,
+        filename=filename,
+        stations=stations,
     )
 
 
-def save_asset_topology_fs(filesystem: AbstractFileSystem, filename: Union[str, Path], asset_topology: Topology) -> None:
-    """Save an asset topology to a file system.
+def load_asset_topology_stations_fs(
+    filesystem: AbstractFileSystem,
+    filename: Union[str, Path],
+) -> RuntimeAssetTopology:
+    """Load runtime topology payloads from their dedicated JSON file.
 
     Parameters
     ----------
     filesystem : AbstractFileSystem
-        File system to save to.
+        File system used for loading.
     filename : Union[str, Path]
-        File name to save the topology to.
-    asset_topology : Topology
-        Topology to save.
+        Source JSON file.
+
+    Returns
+    -------
+    RuntimeAssetTopology
+        Loaded runtime topology.
     """
-    with filesystem.open(str(filename), "w", encoding="utf-8") as file:
-        file.write(asset_topology.model_dump_json(indent=2))
+    with filesystem.open(str(filename), "r", encoding="utf-8") as file:
+        return _load_runtime_asset_topology_payload(file.read())
 
 
-def save_asset_topology(filename: Union[str, Path], asset_topology: Topology) -> None:
-    """Save an asset topology to a file.
+def load_asset_topology_stations(filename: Union[str, Path]) -> RuntimeAssetTopology:
+    """Load runtime topology payloads from their dedicated JSON file.
 
     Parameters
     ----------
     filename : Union[str, Path]
-        File name to save the topology to.
-    asset_topology : Topology
-        Topology to save.
+        Source JSON file.
+
+    Returns
+    -------
+    RuntimeAssetTopology
+        Loaded runtime topology.
     """
-    save_asset_topology_fs(LocalFileSystem(), filename, asset_topology)
+    return load_asset_topology_stations_fs(
+        filesystem=LocalFileSystem(),
+        filename=filename,
+    )
+
+
+def save_asset_topology_master_data_fs(
+    filesystem: AbstractFileSystem,
+    filename: Union[str, Path],
+    master_data: TopologyMasterData,
+) -> None:
+    """Save canonical asset-topology master data to its dedicated JSON file."""
+    save_pydantic_model_fs(
+        filesystem=filesystem,
+        file_path=filename,
+        pydantic_model=master_data,
+    )
+
+
+def save_asset_topology_master_data(
+    filename: Union[str, Path],
+    master_data: TopologyMasterData,
+) -> None:
+    """Save canonical asset-topology master data to its dedicated JSON file."""
+    save_asset_topology_master_data_fs(
+        filesystem=LocalFileSystem(),
+        filename=filename,
+        master_data=master_data,
+    )
 
 
 def accumulate_diffs(
@@ -1263,7 +1313,7 @@ def accumulate_diffs(
     branch_disconnection_diff = []
     injection_disconnection_diff = []
     for station in realized_stations:
-        s_id = station.station.grid_model_id
+        s_id = station.station.bus_group_id
         coupler_diff.extend([(s_id, coupler) for coupler in station.coupler_diff])
         branch_reassignment_diff.extend(
             [(s_id, asset_idx, bus_idx, connected) for (asset_idx, bus_idx, connected) in station.branch_reassignment_diff]
@@ -1352,7 +1402,7 @@ def station_diff(
             if start_disconnected and not target_disconnected:
                 raise NotImplementedError(
                     "Reconnections are not supported yet, there is no diff for that"
-                    + f" ({asset_kind} {asset_index} in station {start_station.grid_model_id})"
+                    + f" ({asset_kind} {asset_index} in station {start_station.bus_group_id})"
                 )
 
             if target_disconnected and not start_disconnected:
@@ -1395,28 +1445,29 @@ def station_diff(
 
 
 def topology_diff(
-    start_topo: Topology,
-    target_topo: Topology,
+    start_stations: list[MaterializedStation],
+    target_stations: list[MaterializedStation],
+    master_data: TopologyMasterData | None = None,
 ) -> RealizedTopology:
-    """Compute the difference between two topologies.
+    """Compute the difference between two station lists.
 
     Parameters
     ----------
-    start_topo : Topology
-        Starting topology.
-    target_topo : Topology
-        Target topology.
+    start_stations : list[MaterializedStation]
+        Starting runtime stations.
+    target_stations : list[MaterializedStation]
+        Target runtime stations.
+    master_data : TopologyMasterData | None, optional
+        Canonical master data associated with the target runtime stations.
 
     Returns
     -------
     RealizedTopology
-        Realized topology containing the target topology and all diffs from the start topology.
+        Realized topology containing the target runtime stations and all diffs from the start stations.
     """
     realized_stations = [
         station_diff(start_station, target_station)
-        for (start_station, target_station) in zip(
-            start_topo.materialize_stations(), target_topo.materialize_stations(), strict=True
-        )
+        for (start_station, target_station) in zip(start_stations, target_stations, strict=True)
     ]
     (
         coupler_diff,
@@ -1426,7 +1477,8 @@ def topology_diff(
         injection_disconnection_diff,
     ) = accumulate_diffs(realized_stations)
     return RealizedTopology(
-        topology=target_topo,
+        master_data=master_data,
+        stations=target_stations,
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,
@@ -1514,46 +1566,42 @@ def order_station_assets(
     return station, not_found, ignored
 
 
-def order_topology(topology: Topology, station_ids: list[str]) -> tuple[Topology, list[str]]:
-    """Order topology stations according to a list of ids.
+def order_topology(
+    stations: list[MaterializedStation], station_ids: list[str]
+) -> tuple[list[MaterializedStation], list[str]]:
+    """Order runtime stations according to a list of ids.
 
     Station ids not present in the topology are reported in `not_found`.
     Stations omitted from `station_ids` are dropped.
 
     Parameters
     ----------
-    topology : Topology
-        Topology to reorder.
+    stations : list[MaterializedStation]
+        Runtime stations to reorder.
     station_ids : list[str]
         Station ids in the desired order.
 
     Returns
     -------
-    Topology
-        Topology with reordered stations.
+    list[MaterializedStation]
+        Reordered runtime stations.
     list[str]
         Station ids that were not found in the topology.
     """
     new_stations = []
     not_found = []
+
     for relevant_node in station_ids:
         found = False
-        for station in topology.raw_stations:
-            if station.grid_model_id == relevant_node:
-                new_stations.append(station)
+        for station in stations:
+            if station.bus_group_id == relevant_node:
+                new_stations.append(station.model_copy(deep=True))
                 found = True
                 break
         if not found:
             not_found.append(relevant_node)
 
-    topology = copy_topology_with_updates(
-        topology,
-        new_stations,
-        topology.asset_bays,
-        branch_assets=topology.branch_assets,
-        injection_assets=topology.injection_assets,
-    )
-    return topology, not_found
+    return new_stations, not_found
 
 
 def _coupler_connects_same_busbars(coupler: BusbarCoupler, other_coupler: BusbarCoupler) -> bool:
@@ -1596,7 +1644,7 @@ def _validate_coupler_can_be_fused(station: MaterializedStation, coupler: Busbar
     ]
     if len(parallel_couplers) > 1:
         raise ValueError(
-            f"Coupler {coupler.grid_model_id} has parallel couplers in station {station.grid_model_id}, "
+            f"Coupler {coupler.grid_model_id} has parallel couplers in station {station.bus_group_id}, "
             "cannot fuse parallel couplers with the same busbars"
         )
 
@@ -1797,7 +1845,7 @@ def fuse_coupler(
     """
     coupler = next((c for c in station.couplers if c.grid_model_id == coupler_grid_model_id), None)
     if coupler is None:
-        raise ValueError(f"Coupler {coupler_grid_model_id} not found in station {station.grid_model_id}")
+        raise ValueError(f"Coupler {coupler_grid_model_id} not found in station {station.bus_group_id}")
 
     _validate_coupler_can_be_fused(station, coupler)
     busbar_from_index, busbar_to_index, keep_busbar_index, remove_busbar_index, keep_busbar, remove_busbar = (
@@ -1930,6 +1978,6 @@ def find_station_by_id(stations: list[MaterializedStation], station_id: str) -> 
         If no station with the requested identifier is present.
     """
     for station in stations:
-        if station.grid_model_id == station_id:
+        if station.bus_group_id == station_id:
             return station
     raise ValueError(f"Station {station_id} not found in the list")

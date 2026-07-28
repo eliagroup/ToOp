@@ -25,7 +25,17 @@ from toop_engine_interfaces.asset_topology.station_models import (
 
 
 class MaterializedAssetConnection(BaseModel):
-    """Station-local association between a switching-table column and a materialized asset payload."""
+    """Station-local association between a switching-table column and a materialized asset payload.
+
+    Attributes
+    ----------
+    asset : SwitchableAsset
+        Station-local runtime asset payload aligned with one switching-table column.
+    branch_end : Optional[BranchEnd]
+        Optional canonical branch-end metadata for the station-local occurrence.
+    asset_bay : Optional[AssetBay]
+        Optional station-local asset-bay payload describing the physical switch path.
+    """
 
     asset: SwitchableAsset
     """Station-local asset payload aligned with one switching-table column."""
@@ -37,7 +47,14 @@ class MaterializedAssetConnection(BaseModel):
     """Optional station-local asset bay payload for this station-local asset occurrence."""
 
     def get_sr_switch(self) -> Optional[dict[str, str]]:
-        """Return the sr_switch_grid_model_id dict from the asset bay if it exists."""
+        """Return the selector-switch mapping of the asset bay, if available.
+
+        Returns
+        -------
+        Optional[dict[str, str]]
+            Mapping from busbar id to selector-switch id, or ``None`` when the
+            station-local asset has no asset-bay payload.
+        """
         if self.asset_bay is not None:
             return self.asset_bay.sr_switch_grid_model_id
         return None
@@ -46,9 +63,8 @@ class MaterializedAssetConnection(BaseModel):
 class MaterializedStation(_StationStructure):
     """Station data describing a single materialized station.
 
-    The station identity refers to a single bus-branch model bus_id that represents one splitable
-    station view.
-    A physical substation or voltage level may contain multiple bus-branch model bus_ids.
+    The station identity refers to a bus-group or station-view identifier.
+    A physical substation or voltage level may contain multiple bus-branch model bus ids.
     The station assets are aligned with the switching tables and describe the assets visible in that
     station view; they are not intended to define a topology-owned canonical asset list.
     """
@@ -61,9 +77,21 @@ class MaterializedStation(_StationStructure):
 
     @model_validator(mode="after")
     def check_asset_shapes(self: "MaterializedStation") -> "MaterializedStation":
-        """Check if switching-table-aligned station-local assets match the matrix shapes."""
+        """Check if switching-table-aligned station-local assets match the matrix shapes.
+
+        Returns
+        -------
+        MaterializedStation
+            The validated station instance.
+
+        Raises
+        ------
+        ValueError
+            If switching tables, connectivity tables, or asset-bay busbar references
+            do not align with the station-local structure.
+        """
         _validate_station_switching_tables(
-            station_grid_model_id=self.grid_model_id,
+            station_grid_model_id=self.bus_group_id,
             station_name=self.name,
             busbar_count=len(self.busbars),
             asset_count=len(self.branch_connections),
@@ -72,14 +100,14 @@ class MaterializedStation(_StationStructure):
             asset_kind="branch",
         )
         _validate_station_physical_assignments(
-            station_grid_model_id=self.grid_model_id,
+            station_grid_model_id=self.bus_group_id,
             station_name=self.name,
             asset_switching_table=self.branch_switching_table,
             asset_connectivity=self.branch_connectivity,
             asset_kind="branch",
         )
         _validate_station_switching_tables(
-            station_grid_model_id=self.grid_model_id,
+            station_grid_model_id=self.bus_group_id,
             station_name=self.name,
             busbar_count=len(self.busbars),
             asset_count=len(self.injection_connections),
@@ -88,12 +116,21 @@ class MaterializedStation(_StationStructure):
             asset_kind="injection",
         )
         _validate_station_physical_assignments(
-            station_grid_model_id=self.grid_model_id,
+            station_grid_model_id=self.bus_group_id,
             station_name=self.name,
             asset_switching_table=self.injection_switching_table,
             asset_connectivity=self.injection_connectivity,
             asset_kind="injection",
         )
+        busbar_ids = {busbar.grid_model_id for busbar in self.busbars}
+        for asset_connection in [*self.branch_connections, *self.injection_connections]:
+            if asset_connection.asset_bay is None:
+                continue
+            for busbar_id in asset_connection.asset_bay.sr_switch_grid_model_id:
+                if busbar_id not in busbar_ids:
+                    raise ValueError(
+                        f"busbar_id {busbar_id} in asset {asset_connection.asset.grid_model_id} does not exist in busbars"
+                    )
         return self
 
     def __eq__(self, other: object) -> bool:
@@ -112,9 +149,11 @@ class MaterializedStation(_StationStructure):
         if not isinstance(other, MaterializedStation):
             return False
         return (
-            self.grid_model_id == other.grid_model_id
+            self.bus_group_id == other.bus_group_id
+            and self.voltage_level_id == other.voltage_level_id
             and self.region == other.region
             and self.busbars == other.busbars
+            and self.bus_branch_bus_ids == other.bus_branch_bus_ids
             and self.couplers == other.couplers
             and self.branch_connections == other.branch_connections
             and self.injection_connections == other.injection_connections
@@ -133,7 +172,20 @@ class MaterializedStation(_StationStructure):
         )
 
     def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "MaterializedStation":
-        """Copy and revalidate the station."""
+        """Copy and revalidate the station.
+
+        Parameters
+        ----------
+        update : Optional[dict[str, Any]], optional
+            Field updates to merge into the copied station.
+        deep : bool, default=False
+            Whether to deep-copy nested structures before validation.
+
+        Returns
+        -------
+        MaterializedStation
+            Copied and revalidated station instance.
+        """
         payload = _merged_round_trip_payload(self, update, deep=deep)
         return type(self).model_validate(payload)
 

@@ -61,18 +61,14 @@ def _select_asset_covering_action_indices(action_set: ActionSet) -> list[int]:
     actions until every branch or injection column that changes relative to the
     simplified starting topology is covered at least once.
     """
-    starting_station_by_id = {
-        station.grid_model_id: station for station in action_set.simplified_starting_topology.materialize_stations()
-    }
+    starting_station_by_id = {station.bus_group_id: station for station in action_set.get_simplified_starting_stations()}
     selected_action_indices: list[int] = []
     action_idx = 0
 
     while action_idx < len(action_set.local_actions):
-        station_id = action_set.local_actions[action_idx].grid_model_id
+        station_id = action_set.local_actions[action_idx].bus_group_id
         station_start = action_idx
-        while (
-            action_idx < len(action_set.local_actions) and action_set.local_actions[action_idx].grid_model_id == station_id
-        ):
+        while action_idx < len(action_set.local_actions) and action_set.local_actions[action_idx].bus_group_id == station_id:
             action_idx += 1
         station_end = action_idx
 

@@ -30,8 +30,53 @@ from toop_engine_importer.network_graph.network_graph import (
     get_edge_connection_info,
 )
 from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
-from toop_engine_importer.network_graph.powsybl_station_to_graph import get_station
+from toop_engine_importer.network_graph.powsybl_station_to_graph import (
+    _build_master_station_from_busbar_group,
+    _collect_station_topology_components,
+    _get_station_busbar_view,
+    get_node_breaker_topology_graph,
+    node_breaker_topology_to_graph_data,
+)
 from toop_engine_interfaces.asset_topology.assets import AssetBay, build_asset_bay_id
+
+
+def build_station_from_bus_id(net, bus_id: str, station_info: SubstationInformation):
+    """Build one canonical station view from a selected bus id in the graph-based helper tests."""
+    graph_data = node_breaker_topology_to_graph_data(net, substation_info=station_info)
+    graph = get_node_breaker_topology_graph(graph_data)
+    _busbar_df, selected_busbar_ids, _busbar_connection_info = _get_station_busbar_view(
+        graph=graph,
+        graph_data=graph_data,
+        bus_id=bus_id,
+        substation_id=station_info.name,
+    )
+    station, _branch_assets, _injection_assets, _asset_bays = _build_master_station_from_busbar_group(
+        network=net,
+        station_info=station_info,
+        selected_busbar_ids=selected_busbar_ids,
+        station_grid_model_id=bus_id,
+    )
+    (
+        _busbars,
+        _couplers,
+        _branch_assets,
+        _injection_assets,
+        _branch_connections,
+        _injection_connections,
+        _branch_mask,
+        branch_switching_table,
+        injection_switching_table,
+        _branch_connectivity,
+        _injection_connectivity,
+        _asset_bays,
+        _station_logs,
+    ) = _collect_station_topology_components(
+        network=net,
+        station_info=station_info,
+        selected_busbar_ids=selected_busbar_ids,
+        station_grid_model_id=bus_id,
+    )
+    return station, branch_switching_table, injection_switching_table
 
 
 def test_remove_double_connections():
@@ -147,7 +192,7 @@ def test_switching_tables_V2(basic_node_breaker_network_powsybl_grid_v2):
     net = basic_node_breaker_network_powsybl_grid_v2
     station_info = {"name": "Station5", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL5"}
     station_info = SubstationInformation(**station_info)
-    station = get_station(net, "VL5_0", station_info)
+    station, branch_switching_table, injection_switching_table = build_station_from_bus_id(net, "VL5_0", station_info)
     asset_connectivity = np.array([[True, True, True], [True, True, True], [True, True, True]])
     asset_switching_table = np.array([[True, True, False], [False, False, False], [False, False, True]])
 
@@ -156,16 +201,14 @@ def test_switching_tables_V2(basic_node_breaker_network_powsybl_grid_v2):
     assert np.array_equal(
         np.concatenate([station.branch_connectivity, station.injection_connectivity], axis=1), asset_connectivity
     )
-    assert np.array_equal(
-        np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1), asset_switching_table
-    )
+    assert np.array_equal(np.concatenate([branch_switching_table, injection_switching_table], axis=1), asset_switching_table)
     assert len(station.couplers) == 2
     assert station.couplers[0].coupler_type == "BREAKER"
     assert station.couplers[1].coupler_type == "BREAKER"
 
     station_info = {"name": "Station6", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL6"}
     station_info = SubstationInformation(**station_info)
-    station = get_station(net, "VL6_0", station_info)
+    station, branch_switching_table, injection_switching_table = build_station_from_bus_id(net, "VL6_0", station_info)
 
     asset_switching_table = np.array(
         [[True, True], [False, False], [False, False], [False, False], [False, False], [False, False]]
@@ -180,9 +223,7 @@ def test_switching_tables_V2(basic_node_breaker_network_powsybl_grid_v2):
     assert np.array_equal(
         np.concatenate([station.branch_connectivity, station.injection_connectivity], axis=1), asset_connectivity
     )
-    assert np.array_equal(
-        np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1), asset_switching_table
-    )
+    assert np.array_equal(np.concatenate([branch_switching_table, injection_switching_table], axis=1), asset_switching_table)
 
 
 def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
@@ -191,7 +232,7 @@ def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
     station_info = {"name": "Station2", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL2"}
     station_info = SubstationInformation(**station_info)
     # Voltage level 2
-    station = get_station(net, "VL2_0", station_info)
+    station, _branch_switching_table, _injection_switching_table = build_station_from_bus_id(net, "VL2_0", station_info)
 
     assert len(station.couplers) == 2
     assert station.couplers[0].grid_model_id == "VL2_BREAKER"
@@ -209,7 +250,7 @@ def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
     station_info = {"name": "Station6", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL6"}
     station_info = SubstationInformation(**station_info)
     # Voltage level 6
-    station = get_station(net, "VL6_0", station_info)
+    station, _branch_switching_table, _injection_switching_table = build_station_from_bus_id(net, "VL6_0", station_info)
 
     assert len(station.couplers) == 5
 
@@ -251,7 +292,7 @@ def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
     # Voltage level 4
     station_info = {"name": "Station4", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL4"}
     station_info = SubstationInformation(**station_info)
-    station = get_station(net, "VL4_0", station_info)
+    station, _branch_switching_table, _injection_switching_table = build_station_from_bus_id(net, "VL4_0", station_info)
     assert len(station.couplers) == 3
     assert station.couplers[0].grid_model_id == "VL4_BREAKER"
     assert station.couplers[0].coupler_type == "BREAKER"
@@ -277,7 +318,8 @@ def test_switching_tables_failing_edgecase(basic_node_breaker_network_powsybl_gr
     net = basic_node_breaker_network_powsybl_grid_v2
     # net.get_single_line_diagram('VL5')
 
-    station = get_station(net, "VL6_0", {"voltage_level_id": "VL6", "region": "BE", "nominal_v": 380, "name": "Station6"})
+    station_info = SubstationInformation(voltage_level_id="VL6", region="BE", nominal_v=380, name="Station6")
+    station, _branch_switching_table, _injection_switching_table = build_station_from_bus_id(net, "VL6_0", station_info)
     assert station.couplers[0].model_dump() == {
         "grid_model_id": "VL6_BREAKER",
         "type": "busbar_coupler",

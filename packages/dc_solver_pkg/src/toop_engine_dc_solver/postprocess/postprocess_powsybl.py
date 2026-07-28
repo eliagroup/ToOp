@@ -36,8 +36,9 @@ from toop_engine_contingency_analysis.pypowsybl.powsybl_helpers import (
 )
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner, AdditionalActionInfo
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
-    apply_node_breaker_topology,
-    apply_topology_bus_branch,
+    _get_station_voltage_level_id,
+    apply_node_breaker_stations,
+    apply_topology_bus_branch_stations,
     is_node_breaker_grid,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
@@ -47,7 +48,6 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     load_powsybl_from_fs,
 )
 from toop_engine_interfaces.asset_topology.asset_topology_helpers import electrical_components
-from toop_engine_interfaces.asset_topology.topology_conversion import topology_from_materialized_stations
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition
 from toop_engine_interfaces.stored_action_set import ActionSet
@@ -136,12 +136,12 @@ def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> A
         return None
 
     stations = [action_set.local_actions[action] for action in actions]
-    if is_node_breaker_grid(net, stations[0].grid_model_id):
-        changed_stations_topo = topology_from_materialized_stations(action_set.starting_topology, stations)
-        additional_info = apply_node_breaker_topology(net, changed_stations_topo)
+    relevant_voltage_level_id = _get_station_voltage_level_id(stations[0])
+
+    if is_node_breaker_grid(net, relevant_voltage_level_id):
+        additional_info = apply_node_breaker_stations(net, stations)
     else:
-        changed_stations_topo = topology_from_materialized_stations(action_set.simplified_starting_topology, stations)
-        additional_info = apply_topology_bus_branch(net, changed_stations_topo)
+        additional_info = apply_topology_bus_branch_stations(net, stations)
 
     return additional_info
 
@@ -371,14 +371,17 @@ class PowsyblRunner(AbstractLoadflowRunner):
         self._variant_counter += 1
         return f"{self.variant_id}_runner_tmp_{self._variant_counter}"
 
-    def _get_relevant_station_id(self) -> Optional[str]:
-        """Return a representative relevant station id for topology-kind detection."""
+    def _get_relevant_voltage_level_id(self) -> Optional[str]:
+        """Return a representative relevant voltage-level id for topology-kind detection."""
         if self.action_set is None:
             return None
 
-        for topology in (self.action_set.starting_topology, self.action_set.simplified_starting_topology):
-            if topology is not None and len(topology.raw_stations):
-                return topology.raw_stations[0].grid_model_id
+        for stations in (
+            self.action_set.starting_stations,
+            self.action_set.simplified_starting_stations,
+        ):
+            if stations:
+                return _get_station_voltage_level_id(stations[0])
         return None
 
     @contextmanager
@@ -398,7 +401,7 @@ class PowsyblRunner(AbstractLoadflowRunner):
             The changes will be discarded after use.
         """
         assert self.net is not None, "Base grid must be loaded before using temporary variants"
-        if is_node_breaker_grid(self.net, relevant_station=self._get_relevant_station_id()):
+        if is_node_breaker_grid(self.net, relevant_voltage_level_id=self._get_relevant_voltage_level_id()):
             temporary_variant_id = self._next_temporary_variant_id()
             self.net.clone_variant(self.variant_id, temporary_variant_id)
             self.net.set_working_variant(temporary_variant_id)

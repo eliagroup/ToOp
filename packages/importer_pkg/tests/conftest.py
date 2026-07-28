@@ -32,7 +32,10 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
     basic_node_breaker_network_powsybl,
     basic_node_breaker_network_powsybl_v2,
 )
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_topology
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
+    get_bus_breaker_topology_master_data,
+    materialize_stations_from_network_state,
+)
 from toop_engine_importer.network_graph.data_classes import BranchSchema, NetworkGraphData, SubstationInformation
 from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
 from toop_engine_importer.network_graph.network_graph import generate_graph
@@ -43,7 +46,8 @@ from toop_engine_importer.network_graph.powsybl_station_to_graph import (
 )
 from toop_engine_importer.pandapower_import import add_substation_column_to_bus
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
-from toop_engine_interfaces.asset_topology.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import TopologyMasterData
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
@@ -329,7 +333,8 @@ def imported_ucte_file_data_folder(_imported_ucte_file_data_folder: Path, tmp_pa
 
 
 @pytest.fixture(scope="session")
-def ucte_asset_topology(ucte_file: Path) -> Topology:
+def ucte_asset_topology(ucte_file: Path) -> tuple[TopologyMasterData, list[MaterializedStation]]:
+    """Build canonical master data plus runtime stations for the shared UCTE fixture."""
     network = pypowsybl.network.load(ucte_file)
     lf_result, *_ = pypowsybl.loadflow.run_dc(network)
 
@@ -347,13 +352,14 @@ def ucte_asset_topology(ucte_file: Path) -> Topology:
     network_masks = powsybl_masks.make_masks(
         network=network, slack_id=lf_result.reference_bus_id, importer_parameters=importer_parameters
     )
-    topology_model = get_topology(
-        network,
+    master_data = get_bus_breaker_topology_master_data(
+        network=network,
         relevant_stations=network_masks.relevant_subs,
         topology_id="test",
         grid_model_file=str(importer_parameters.grid_model_file),
     )
-    return topology_model
+    stations = materialize_stations_from_network_state(network=network, master_data=master_data)
+    return master_data, stations
 
 
 @pytest.fixture(scope="session")

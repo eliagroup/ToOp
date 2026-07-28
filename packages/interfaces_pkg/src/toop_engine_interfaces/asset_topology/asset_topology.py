@@ -7,20 +7,21 @@
 
 """Contains the data models for the asset topology."""
 
-from datetime import datetime
-
-from beartype.typing import Any, Optional, Union
-from pydantic import BaseModel, Field, field_validator, model_validator
+import numpy as np
+from beartype.typing import Any, Iterator, Literal, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     AssetSetpoint,
     BranchAsset,
+    Busbar,
+    BusbarCoupler,
     InjectionAsset,
-    SwitchableAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.asset_topology.station_models import (
-    RawStation,
+    StationAssetConnection,
+    StationSwitchingArray,
     _merged_round_trip_payload,
 )
 
@@ -45,65 +46,477 @@ class CircuitGroup(BaseModel):
     These can be used to apply the outage effect on the grid by opening the switches in the asset bays."""
 
 
-class Topology(BaseModel):
-    """Topology data describing a single timestep topology.
+class RuntimeAssetTopology(BaseModel):
+    """Runtime topology payload grouped independently from canonical master data.
 
-    A topology includes lean station records in raw_stations, topology-owned canonical assets and
-    asset bays, and potentially asset setpoints.
-    Use materialize_stations() to reconstruct rich Station objects.
+    The wrapper carries runtime station snapshots and optional runtime-visible
+    circuit-group metadata aligned with the same topology view.
     """
 
-    topology_id: str
-    """ The unique identifier of the topology. """
-
-    grid_model_file: Optional[str] = None
-    """ The grid model file that represents this timestep. Note that relevant folders might only
-    work on the machine they have been created, so some sort of permanent storage server should be
-    used to keep these files globally accessible"""
-
-    name: Optional[str] = None
-    """ The name of the topology. """
-
-    raw_stations: list[RawStation]
-    """The topology-owned station records without embedded asset payloads.
-
-    Each raw station represents one bus-branch bus view of a splitable station.
-    """
+    stations: list[MaterializedStation]
+    """Runtime station snapshots for the topology view."""
 
     circuit_groups: Optional[list[CircuitGroup]] = None
-    """The topology-owned circuit groups. The list contains groups of assets that are connected to each
-    other without power switches. This means in case of an outage, the fault current can flow through
-    all assets in the same circuit group, triggering their outage as well.
-    # TODO This is currently not implemented. Use a graph search to determine these."""
+    """Optional circuit-group metadata carried alongside the runtime stations."""
 
-    branch_assets: list[BranchAsset] = Field(default_factory=list)
-    """The topology-owned canonical branch payloads."""
+    @field_validator("stations")
+    @classmethod
+    def check_station_ids_unique(cls, v: list[MaterializedStation]) -> list[MaterializedStation]:
+        """Validate uniqueness of runtime station identifiers.
 
-    injection_assets: list[InjectionAsset] = Field(default_factory=list)
-    """The topology-owned canonical injection payloads.
+        Parameters
+        ----------
+        v : list[MaterializedStation]
+            Runtime stations assigned to the wrapper.
 
-    Station-local branch-end and asset-bay assignment data are stored on raw_stations instead of on
-    these canonical payloads.
+        Returns
+        -------
+        list[MaterializedStation]
+            Validated runtime stations.
+        """
+        station_ids = [station.bus_group_id for station in v]
+        if len(station_ids) != len(set(station_ids)):
+            raise ValueError("bus_group_id must be unique for runtime topology stations")
+        return v
+
+
+def _validate_master_station_connectivity(
+    station_grid_model_id: str,
+    station_name: Optional[str],
+    busbar_count: int,
+    asset_count: int,
+    asset_connectivity: Optional[np.ndarray],
+    asset_kind: str,
+) -> None:
+    """Validate master-station connectivity matrix dimensions.
+
+    Parameters
+    ----------
+    station_grid_model_id : str
+        Stable identifier of the station view.
+    station_name : Optional[str]
+        Human-readable station name used in validation errors.
+    busbar_count : int
+        Number of busbars owned by the station.
+    asset_count : int
+        Number of canonical asset references of the given kind.
+    asset_connectivity : Optional[np.ndarray]
+        Connectivity matrix to validate.
+    asset_kind : str
+        Asset kind label used in validation errors.
+
+    Returns
+    -------
+    None
+    """
+    if asset_connectivity is not None and asset_connectivity.shape != (busbar_count, asset_count):
+        raise ValueError(
+            f"{asset_kind}_connectivity shape {asset_connectivity.shape} does not match busbars "
+            f"{busbar_count} and {asset_kind} assets {asset_count}"
+            f" Station_id: {station_grid_model_id}, Name: {station_name}"
+        )
+
+
+def iter_station_asset_references(
+    stations: list[MaterializedStation],
+) -> Iterator[tuple[str, Literal["branch", "injection"], str, str | None]]:
+    """Yield normalized runtime station asset references.
+
+    Parameters
+    ----------
+    stations : list[MaterializedStation]
+        Runtime stations whose asset references should be iterated.
+
+    Yields
+    ------
+    tuple[str, Literal["branch", "injection"], str, str | None]
+        Station bus-group id, asset kind, referenced asset id, and optional asset-bay id.
+    """
+    for station in stations:
+        for asset_connection in station.branch_connections:
+            asset_bay = asset_connection.asset_bay
+            yield (
+                station.bus_group_id,
+                "branch",
+                asset_connection.asset.grid_model_id,
+                asset_bay.asset_bay_id if asset_bay is not None else None,
+            )
+        for asset_connection in station.injection_connections:
+            asset_bay = asset_connection.asset_bay
+            yield (
+                station.bus_group_id,
+                "injection",
+                asset_connection.asset.grid_model_id,
+                asset_bay.asset_bay_id if asset_bay is not None else None,
+            )
+
+
+def _validate_station_asset_references(
+    station_asset_references: Iterator[tuple[str, Literal["branch", "injection"], str, str | None]],
+    branch_assets: list[BranchAsset],
+    injection_assets: list[InjectionAsset],
+    asset_bays: list[AssetBay],
+) -> None:
+    """Validate normalized station asset references against canonical topology collections.
+
+    Parameters
+    ----------
+    station_asset_references : Iterator[tuple[str, Literal["branch", "injection"], str, str | None]]
+        Normalized station references consisting of station id, asset kind, asset id,
+        and optional asset-bay id.
+    branch_assets : list[BranchAsset]
+        Canonical branch assets available to the topology.
+    injection_assets : list[InjectionAsset]
+        Canonical injection assets available to the topology.
+    asset_bays : list[AssetBay]
+        Canonical asset bays available to the topology.
+
+    Raises
+    ------
+    ValueError
+        If a station reference points to a missing canonical asset or asset bay.
+    """
+    branch_asset_ids = {asset.grid_model_id for asset in branch_assets}
+    injection_asset_ids = {asset.grid_model_id for asset in injection_assets}
+    asset_bay_ids = {asset_bay.asset_bay_id for asset_bay in asset_bays}
+
+    allowed_asset_ids = {
+        "branch": branch_asset_ids,
+        "injection": injection_asset_ids,
+    }
+    error_prefix = {
+        "branch": "Branch",
+        "injection": "Injection",
+    }
+
+    for station_id, asset_kind, asset_id, asset_bay_id in station_asset_references:
+        if asset_id not in allowed_asset_ids[asset_kind]:
+            raise ValueError(
+                f"{error_prefix[asset_kind]} asset grid_model_id {asset_id} referenced by station "
+                f"{station_id} does not exist in topology assets"
+            )
+        if asset_bay_id is not None and asset_bay_id not in asset_bay_ids:
+            raise ValueError(
+                f"asset_bay_id {asset_bay_id} referenced by station {station_id} does not exist in topology asset bays"
+            )
+
+
+def validate_runtime_station_asset_references(
+    stations: list[MaterializedStation],
+    branch_assets: list[BranchAsset],
+    injection_assets: list[InjectionAsset],
+    asset_bays: list[AssetBay],
+) -> None:
+    """Validate runtime station references against canonical topology payloads.
+
+    Parameters
+    ----------
+    stations : list[MaterializedStation]
+        Runtime stations to validate.
+    branch_assets : list[BranchAsset]
+        Canonical branch assets available to the topology.
+    injection_assets : list[InjectionAsset]
+        Canonical injection assets available to the topology.
+    asset_bays : list[AssetBay]
+        Canonical asset bays available to the topology.
+
+    Returns
+    -------
+    None
+    """
+    _validate_station_asset_references(
+        iter_station_asset_references(stations),
+        branch_assets,
+        injection_assets,
+        asset_bays,
+    )
+
+
+def get_asset_bay_ids_for_asset(stations: list[MaterializedStation], asset_grid_model_id: str) -> list[str]:
+    """Return ordered unique asset-bay ids for one asset.
+
+    Parameters
+    ----------
+    stations : list[MaterializedStation]
+        Runtime stations to scan for asset-bay references.
+    asset_grid_model_id : str
+        Grid-model id of the asset whose asset bays should be collected.
+
+    Returns
+    -------
+    list[str]
+        Ordered unique asset-bay ids referenced by the asset across the stations.
+    """
+    asset_bay_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for _, _, asset_id, asset_bay_id in iter_station_asset_references(stations):
+        if asset_id != asset_grid_model_id or asset_bay_id is None or asset_bay_id in seen_ids:
+            continue
+        seen_ids.add(asset_bay_id)
+        asset_bay_ids.append(asset_bay_id)
+    return asset_bay_ids
+
+
+def get_asset_bays_for_asset(
+    stations: list[MaterializedStation],
+    asset_bays: list[AssetBay],
+    asset_grid_model_id: str,
+) -> list[AssetBay]:
+    """Return ordered unique asset-bay payloads for one asset.
+
+    Parameters
+    ----------
+    stations : list[MaterializedStation]
+        Runtime stations to scan for asset-bay references.
+    asset_bays : list[AssetBay]
+        Canonical asset-bay payloads indexed by asset-bay id.
+    asset_grid_model_id : str
+        Grid-model id of the asset whose asset bays should be collected.
+
+    Returns
+    -------
+    list[AssetBay]
+        Ordered unique asset-bay payloads referenced by the asset across the stations.
+    """
+    asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in asset_bays}
+    return [asset_bay_map[asset_bay_id] for asset_bay_id in get_asset_bay_ids_for_asset(stations, asset_grid_model_id)]
+
+
+class MasterStation(BaseModel):
+    """Canonical station master data without runtime switching state."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    bus_group_id: str
+    """The unique identifier of the station view or bus group."""
+
+    voltage_level_id: Optional[str] = None
+    """The voltage level identifier backing this canonical station view."""
+
+    name: Optional[str] = None
+    """The name of the station."""
+
+    station_type: Optional[str] = None
+    """The type of the station."""
+
+    region: Optional[str] = None
+    """The region of the station."""
+
+    voltage_level: Optional[float] = None
+    """The voltage level of the station."""
+
+    busbars: list[Busbar]
+    """Canonical busbars owned by the station.
+
+    Runtime outage state is stripped; all busbars are assumed in service in this model.
     """
 
+    couplers: list[BusbarCoupler]
+    """Canonical couplers owned by the station.
+
+    Runtime switch state is stripped; all couplers are assumed closed and in service.
+    """
+
+    branch_connections: list[StationAssetConnection] = Field(default_factory=list)
+    """Station-local canonical branch references aligned with ``branch_connectivity``."""
+
+    injection_connections: list[StationAssetConnection] = Field(default_factory=list)
+    """Station-local canonical injection references aligned with ``injection_connectivity``."""
+
+    branch_connectivity: Optional[StationSwitchingArray] = None
+    """Physically possible branch-to-busbar assignments for the station."""
+
+    injection_connectivity: Optional[StationSwitchingArray] = None
+    """Physically possible injection-to-busbar assignments for the station."""
+
+    def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "MasterStation":
+        """Copy and revalidate the station.
+
+        Parameters
+        ----------
+        update : Optional[dict[str, Any]], optional
+            Field updates to merge into the copied station.
+        deep : bool, default=False
+            Whether to deep-copy nested structures before validation.
+
+        Returns
+        -------
+        MasterStation
+            Copied and revalidated station instance.
+        """
+        payload = _merged_round_trip_payload(self, update, deep=deep)
+        return type(self).model_validate(payload)
+
+    @field_validator("branch_connectivity", "injection_connectivity", mode="before")
+    @classmethod
+    def normalize_connectivity_tables(cls, v: object | None) -> Optional[np.ndarray]:
+        """Normalize connectivity table inputs to boolean arrays.
+
+        Parameters
+        ----------
+        v : object | None
+            Raw connectivity table input.
+
+        Returns
+        -------
+        Optional[np.ndarray]
+            Boolean connectivity table or ``None``.
+        """
+        if v is None:
+            return None
+        return np.asarray(v, dtype=bool)
+
+    @field_validator("busbars")
+    @classmethod
+    def check_busbar_int_ids_unique(cls, v: list[Busbar]) -> list[Busbar]:
+        """Validate that station busbar integer ids are unique.
+
+        Parameters
+        ----------
+        v : list[Busbar]
+            Busbars assigned to the station.
+
+        Returns
+        -------
+        list[Busbar]
+            Validated busbars.
+        """
+        int_ids = [busbar.int_id for busbar in v]
+        if len(int_ids) != len(set(int_ids)):
+            raise ValueError("busbar int_ids must be unique per station")
+        return v
+
+    @field_validator("couplers")
+    @classmethod
+    def check_coupler_busbars_different(cls, v: list[BusbarCoupler]) -> list[BusbarCoupler]:
+        """Validate that couplers connect distinct busbars.
+
+        Parameters
+        ----------
+        v : list[BusbarCoupler]
+            Couplers assigned to the station.
+
+        Returns
+        -------
+        list[BusbarCoupler]
+            Validated couplers.
+        """
+        for coupler in v:
+            if coupler.busbar_from_id == coupler.busbar_to_id:
+                raise ValueError(f"Coupler {coupler.grid_model_id} connects the same busbar on both ends")
+        return v
+
+    @model_validator(mode="after")
+    def check_coupler_busbars_exist(self: "MasterStation") -> "MasterStation":
+        """Validate that all coupler busbar references exist on the station.
+
+        Returns
+        -------
+        MasterStation
+            Validated station instance.
+        """
+        busbar_ids = [busbar.int_id for busbar in self.busbars]
+        for coupler in self.couplers:
+            if coupler.busbar_from_id not in busbar_ids or coupler.busbar_to_id not in busbar_ids:
+                raise ValueError(
+                    f"Coupler {coupler.grid_model_id} references non-existing busbars"
+                    f" Station_id: {self.bus_group_id}, Name: {self.name}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def check_asset_reference_alignment(self: "MasterStation") -> "MasterStation":
+        """Validate connectivity matrices against canonical asset references.
+
+        Returns
+        -------
+        MasterStation
+            Validated station instance.
+        """
+        _validate_master_station_connectivity(
+            station_grid_model_id=self.bus_group_id,
+            station_name=self.name,
+            busbar_count=len(self.busbars),
+            asset_count=len(self.branch_connections),
+            asset_connectivity=self.branch_connectivity,
+            asset_kind="branch",
+        )
+        _validate_master_station_connectivity(
+            station_grid_model_id=self.bus_group_id,
+            station_name=self.name,
+            busbar_count=len(self.busbars),
+            asset_count=len(self.injection_connections),
+            asset_connectivity=self.injection_connectivity,
+            asset_kind="injection",
+        )
+        return self
+
+
+class TopologyMasterData(BaseModel):
+    """Canonical grid master data without runtime switching or outage state."""
+
+    topology_id: str
+    """The unique identifier of the topology master data."""
+
+    grid_model_file: Optional[str] = None
+    """The source grid model file the master data was derived from."""
+
+    name: Optional[str] = None
+    """The name of the topology master data."""
+
+    stations: list[MasterStation]
+    """Canonical stations with asset references and physical connectivity only."""
+
+    circuit_groups: Optional[list[CircuitGroup]] = None
+    """Topology-owned circuit groups."""
+
+    branch_assets: list[BranchAsset] = Field(default_factory=list)
+    """The canonical branch master data payloads."""
+
+    injection_assets: list[InjectionAsset] = Field(default_factory=list)
+    """The canonical injection master data payloads."""
+
     asset_bays: list[AssetBay] = Field(default_factory=list)
-    """The topology-owned asset bay payloads."""
+    """The canonical asset-bay payloads."""
 
     asset_setpoints: Optional[list[AssetSetpoint]] = None
-    """ The list of asset setpoints in the topology. """
+    """Optional topology-owned setpoint payloads."""
 
-    timestamp: datetime
-    """ The timestamp which is represented by this topology during the original optimization. I.e.
-     if this timestep was the 5 o clock timestep on the day that was optimized, then this timestamp
-      would read 5 o clock. """
+    @field_validator("stations")
+    @classmethod
+    def check_station_ids_unique(cls, v: list[MasterStation]) -> list[MasterStation]:
+        """Validate uniqueness of canonical station identifiers.
 
-    metrics: Optional[dict[str, float]] = None
-    """ The metrics of the topology. """
+        Parameters
+        ----------
+        v : list[MasterStation]
+            Canonical stations assigned to the topology master data.
+
+        Returns
+        -------
+        list[MasterStation]
+            Validated canonical stations.
+        """
+        station_ids = [station.bus_group_id for station in v]
+        if len(station_ids) != len(set(station_ids)):
+            raise ValueError("bus_group_id must be unique for topology master data stations")
+        return v
 
     @field_validator("branch_assets")
     @classmethod
     def check_branch_asset_ids_unique(cls, v: list[BranchAsset]) -> list[BranchAsset]:
-        """Check if all topology branch assets have unique grid model ids."""
+        """Validate uniqueness of canonical branch asset ids.
+
+        Parameters
+        ----------
+        v : list[BranchAsset]
+            Canonical branch assets.
+
+        Returns
+        -------
+        list[BranchAsset]
+            Validated branch assets.
+        """
         asset_ids = [asset.grid_model_id for asset in v]
         if len(asset_ids) != len(set(asset_ids)):
             raise ValueError("grid_model_id must be unique for topology branch assets")
@@ -112,7 +525,18 @@ class Topology(BaseModel):
     @field_validator("injection_assets")
     @classmethod
     def check_injection_asset_ids_unique(cls, v: list[InjectionAsset]) -> list[InjectionAsset]:
-        """Check if all topology injection assets have unique grid model ids."""
+        """Validate uniqueness of canonical injection asset ids.
+
+        Parameters
+        ----------
+        v : list[InjectionAsset]
+            Canonical injection assets.
+
+        Returns
+        -------
+        list[InjectionAsset]
+            Validated injection assets.
+        """
         asset_ids = [asset.grid_model_id for asset in v]
         if len(asset_ids) != len(set(asset_ids)):
             raise ValueError("grid_model_id must be unique for topology injection assets")
@@ -121,7 +545,18 @@ class Topology(BaseModel):
     @field_validator("asset_bays")
     @classmethod
     def check_asset_bay_ids_unique(cls, v: list[AssetBay]) -> list[AssetBay]:
-        """Check if all topology asset bay ids are unique."""
+        """Validate uniqueness and presence of canonical asset-bay ids.
+
+        Parameters
+        ----------
+        v : list[AssetBay]
+            Canonical asset-bay payloads.
+
+        Returns
+        -------
+        list[AssetBay]
+            Validated asset-bay payloads.
+        """
         asset_bay_ids = [asset_bay.asset_bay_id for asset_bay in v]
         if any(asset_bay_id is None for asset_bay_id in asset_bay_ids):
             raise ValueError("All topology asset bays must define asset_bay_id")
@@ -130,227 +565,33 @@ class Topology(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def check_station_asset_references(self: "Topology") -> "Topology":
-        """Check if all station asset references exist in the topology-owned collections."""
-        branch_asset_ids = {asset.grid_model_id for asset in self.branch_assets}
-        injection_asset_ids = {asset.grid_model_id for asset in self.injection_assets}
-        asset_bay_ids = {asset_bay.asset_bay_id for asset_bay in self.asset_bays}
+    def check_station_asset_references(self: "TopologyMasterData") -> "TopologyMasterData":
+        """Validate station asset references against canonical topology collections.
 
-        for station in self.raw_stations:
-            for asset_connection in station.branch_connections:
-                asset_id = asset_connection.asset_id
-                if asset_id not in branch_asset_ids:
-                    raise ValueError(
-                        f"Branch asset grid_model_id {asset_id} referenced by station "
-                        f"{station.grid_model_id} does not exist in topology assets"
-                    )
-            for asset_connection in station.injection_connections:
-                asset_id = asset_connection.asset_id
-                if asset_id not in injection_asset_ids:
-                    raise ValueError(
-                        f"Injection asset grid_model_id {asset_id} referenced by station "
-                        f"{station.grid_model_id} does not exist in topology assets"
-                    )
-            for asset_connection in [*station.branch_connections, *station.injection_connections]:
-                asset_bay_id = asset_connection.asset_bay_id
-                if asset_bay_id is not None and asset_bay_id not in asset_bay_ids:
-                    raise ValueError(
-                        f"asset_bay_id {asset_bay_id} referenced by station "
-                        f"{station.grid_model_id} does not exist in topology asset bays"
-                    )
+        Returns
+        -------
+        TopologyMasterData
+            Validated topology master data.
+        """
+        _validate_station_asset_references(
+            (
+                (station.bus_group_id, "branch", asset_connection.asset_id, asset_connection.asset_bay_id)
+                for station in self.stations
+                for asset_connection in station.branch_connections
+            ),
+            self.branch_assets,
+            self.injection_assets,
+            self.asset_bays,
+        )
+        _validate_station_asset_references(
+            (
+                (station.bus_group_id, "injection", asset_connection.asset_id, asset_connection.asset_bay_id)
+                for station in self.stations
+                for asset_connection in station.injection_connections
+            ),
+            self.branch_assets,
+            self.injection_assets,
+            self.asset_bays,
+        )
 
         return self
-
-    def materialize_stations(self) -> list[MaterializedStation]:
-        """Materialize station-local asset payloads from topology-owned assets and asset bays."""
-        branch_asset_map = {asset.grid_model_id: asset for asset in self.branch_assets}
-        injection_asset_map = {asset.grid_model_id: asset for asset in self.injection_assets}
-        asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in self.asset_bays}
-        materialized_stations: list[MaterializedStation] = []
-
-        for station in self.raw_stations:
-            station_branch_assets = [
-                branch_asset_map[asset_connection.asset_id].model_copy(deep=True)
-                for asset_connection in station.branch_connections
-            ]
-            station_injection_assets = [
-                injection_asset_map[asset_connection.asset_id].model_copy(deep=True)
-                for asset_connection in station.injection_connections
-            ]
-
-            station_branch_asset_bays = [
-                asset_bay_map[asset_connection.asset_bay_id].model_copy(deep=True)
-                if asset_connection.asset_bay_id is not None
-                else None
-                for asset_connection in station.branch_connections
-            ]
-            station_injection_asset_bays = [
-                asset_bay_map[asset_connection.asset_bay_id].model_copy(deep=True)
-                if asset_connection.asset_bay_id is not None
-                else None
-                for asset_connection in station.injection_connections
-            ]
-
-            materialized_stations.append(
-                MaterializedStation(
-                    grid_model_id=station.grid_model_id,
-                    name=station.name,
-                    station_type=station.station_type,
-                    region=station.region,
-                    voltage_level=station.voltage_level,
-                    busbars=station.busbars,
-                    couplers=station.couplers,
-                    branch_connections=[
-                        MaterializedAssetConnection(
-                            asset=asset,
-                            branch_end=asset_connection.branch_end,
-                            asset_bay=asset_bay,
-                        )
-                        for asset, asset_connection, asset_bay in zip(
-                            station_branch_assets,
-                            station.branch_connections,
-                            station_branch_asset_bays,
-                            strict=True,
-                        )
-                    ],
-                    injection_connections=[
-                        MaterializedAssetConnection(
-                            asset=asset,
-                            branch_end=asset_connection.branch_end,
-                            asset_bay=asset_bay,
-                        )
-                        for asset, asset_connection, asset_bay in zip(
-                            station_injection_assets,
-                            station.injection_connections,
-                            station_injection_asset_bays,
-                            strict=True,
-                        )
-                    ],
-                    branch_switching_table=station.branch_switching_table,
-                    injection_switching_table=station.injection_switching_table,
-                    branch_connectivity=station.branch_connectivity,
-                    injection_connectivity=station.injection_connectivity,
-                    model_log=station.model_log,
-                )
-            )
-
-        return materialized_stations
-
-    def get_asset_bay_ids_for_asset(self, asset_grid_model_id: str) -> list[str]:
-        """Return all station-scoped asset bay ids connected to a topology asset.
-
-        Parameters
-        ----------
-        asset_grid_model_id : str
-            Grid model id of the topology-owned asset.
-
-        Returns
-        -------
-        list[str]
-            Ordered unique asset bay ids connected to the asset across all raw stations.
-        """
-        asset_bay_ids: list[str] = []
-        seen_ids: set[str] = set()
-        for station in self.raw_stations:
-            for asset_connection in [*station.branch_connections, *station.injection_connections]:
-                asset_id = asset_connection.asset_id
-                asset_bay_id = asset_connection.asset_bay_id
-                if asset_id != asset_grid_model_id or asset_bay_id is None or asset_bay_id in seen_ids:
-                    continue
-                seen_ids.add(asset_bay_id)
-                asset_bay_ids.append(asset_bay_id)
-        return asset_bay_ids
-
-    def get_asset_bays_for_asset(self, asset_grid_model_id: str) -> list[AssetBay]:
-        """Return all station-scoped asset bays connected to a topology asset.
-
-        Parameters
-        ----------
-        asset_grid_model_id : str
-            Grid model id of the topology-owned asset.
-
-        Returns
-        -------
-        list[AssetBay]
-            Ordered unique asset bay payloads connected to the asset across all raw stations.
-        """
-        asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in self.asset_bays}
-        return [asset_bay_map[asset_bay_id] for asset_bay_id in self.get_asset_bay_ids_for_asset(asset_grid_model_id)]
-
-    def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "Topology":
-        """Copy and revalidate the topology."""
-        payload = _merged_round_trip_payload(self, update, deep=deep)
-        return type(self).model_validate(payload)
-
-
-def copy_topology_with_updates(
-    reference_topology: Topology,
-    raw_stations: list[RawStation],
-    asset_bays: list[AssetBay],
-    *,
-    branch_assets: Optional[list[SwitchableAsset]] = None,
-    injection_assets: Optional[list[SwitchableAsset]] = None,
-) -> Topology:
-    """Create a validated topology copy with updated payloads.
-
-    Parameters
-    ----------
-    reference_topology : Topology
-        Reference topology providing shared metadata.
-    raw_stations : list[RawStation]
-        Raw stations to set on the copied topology.
-    asset_bays : list[AssetBay]
-        Topology-owned asset bays to set on the copied topology.
-    branch_assets : Optional[list[SwitchableAsset]], optional
-        Topology-owned branch assets to set on the copied topology.
-    injection_assets : Optional[list[SwitchableAsset]], optional
-        Topology-owned injection assets to set on the copied topology.
-
-    Returns
-    -------
-    Topology
-        Validated topology copy with updated topology-owned payloads.
-    """
-    resolved_branch_assets = branch_assets if branch_assets is not None else reference_topology.branch_assets
-    resolved_injection_assets = injection_assets if injection_assets is not None else reference_topology.injection_assets
-
-    return Topology(
-        topology_id=reference_topology.topology_id,
-        grid_model_file=reference_topology.grid_model_file,
-        name=reference_topology.name,
-        raw_stations=raw_stations,
-        branch_assets=resolved_branch_assets,
-        injection_assets=resolved_injection_assets,
-        asset_bays=asset_bays,
-        asset_setpoints=reference_topology.asset_setpoints,
-        timestamp=reference_topology.timestamp,
-        metrics=reference_topology.metrics,
-    )
-
-
-class Strategy(BaseModel):
-    """Timestep data describing a collection of single timesteps, each represented by a Topology."""
-
-    strategy_id: str
-    """ The unique identifier of the strategy. """
-
-    timesteps: list[Topology]
-    """ The list of topologies, one for every timestep. """
-
-    name: Optional[str] = None
-    """ The name of the strategy. """
-
-    author: Optional[str] = None
-    """ The author of the strategy, i.e. who has created it. """
-
-    process_type: Optional[str] = None
-    """ The process type that created this topology, e.g. DC-solver, DC+-solver, Human etc. """
-
-    process_parameters: Optional[dict[str, Union[str, float]]] = None
-    """ The process parameters that were used to create this topology."""
-
-    date_of_creation: Optional[datetime] = None
-    """ The date of creation of this strategy, i.e. when the optimization ran. """
-
-    metadata: Optional[dict[str, Any]] = None
-    """ Additional metadata that might be useful for the strategy. """

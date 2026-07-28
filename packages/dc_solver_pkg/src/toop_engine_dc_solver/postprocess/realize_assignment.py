@@ -41,11 +41,11 @@ def _validate_realized_station_update(
     if len(action_coupler_states) != len(station.couplers):
         raise ValueError(
             f"Coupler state count {len(action_coupler_states)} does not match station coupler count "
-            f"{len(station.couplers)} for station {station.grid_model_id}."
+            f"{len(station.couplers)} for station {station.bus_group_id}."
         )
 
     _validate_station_switching_tables(
-        station_grid_model_id=station.grid_model_id,
+        station_grid_model_id=station.bus_group_id,
         station_name=station.name,
         busbar_count=len(station.busbars),
         asset_count=len(station.branch_connections),
@@ -54,7 +54,7 @@ def _validate_realized_station_update(
         asset_kind="branch",
     )
     _validate_station_physical_assignments(
-        station_grid_model_id=station.grid_model_id,
+        station_grid_model_id=station.bus_group_id,
         station_name=station.name,
         asset_switching_table=np.asarray(action_switching, dtype=bool),
         asset_connectivity=station.branch_connectivity,
@@ -443,13 +443,14 @@ def realise_ba_to_physical_topo_per_station_jax(
     )
     current_coupler_state = [c.open for c in station.couplers]
 
-    if separation_set.size == 0 or not np.any(local_branch_action_set):
-        # No separation set is possible, meaning all branch actions are infeasible.
-        # This can happen if the station has no couplers
+    if local_branch_action_set.shape[0] == 0:
+        return [], local_branch_action_set, [], []
+
+    if separation_set.size == 0 or not np.any(local_branch_action_set[1:]):
         logger.warning(
-            f"No separation set is possible for the station {station.grid_model_id}.",
+            f"No separation set is possible for the station {station.bus_group_id}.",
         )
-        return [], np.zeros((0, local_branch_action_set.shape[1]), dtype=bool), [], []
+        return [station], local_branch_action_set[:1].copy(), [list(range(len(station.busbars)))], [0]
 
     # Make an array out of busbar_a_separation
     # This is an array which is True if a phy busbar is el busbar B for that configuration
@@ -511,7 +512,7 @@ def realise_ba_to_physical_topo_per_station_jax(
     # Only keep those within the reassignment limits
     if reassignment_limits is not None:
         max_reassignments = reassignment_limits.station_specific_limits.get(
-            station.grid_model_id, reassignment_limits.max_reassignments_per_sub
+            station.bus_group_id, reassignment_limits.max_reassignments_per_sub
         )
         within_limit = phy_reassignment_distance <= max_reassignments
         switching_table = switching_table[within_limit]
@@ -533,7 +534,7 @@ def realise_ba_to_physical_topo_per_station_jax(
 
         realised_stations.append(
             MaterializedStation.model_construct(
-                grid_model_id=station.grid_model_id,
+                bus_group_id=station.bus_group_id,
                 name=station.name,
                 station_type=station.station_type,
                 region=station.region,

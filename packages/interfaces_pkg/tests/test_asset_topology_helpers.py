@@ -5,14 +5,10 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from datetime import datetime
 
 import numpy as np
 import pytest
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    RawStation,
-    Topology,
-)
+from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
 from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
     filter_disconnected_busbars,
     filter_duplicate_couplers,
@@ -28,80 +24,16 @@ from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
     station_diff,
     topology_diff,
 )
-from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import (
+    AssetBay,
+    BranchAsset,
+    Busbar,
+    BusbarCoupler,
+    InjectionAsset,
+    SwitchableAsset,
+)
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
-
-
-def build_raw_station(
-    grid_model_id: str,
-    busbars: list[Busbar],
-    couplers: list[BusbarCoupler],
-    asset_ids: list[str],
-    asset_switching_table: np.ndarray,
-    injection_asset_ids: list[str] | None = None,
-    injection_switching_table: np.ndarray | None = None,
-    asset_terminals: list[str | None] | None = None,
-    asset_bay_ids: list[str | None] | None = None,
-) -> RawStation:
-    """Build a raw station from explicit raw-topology fields.
-
-    Parameters
-    ----------
-    grid_model_id : str
-        Identifier of the station in the grid model.
-    busbars : list[Busbar]
-        Busbars belonging to the station.
-    couplers : list[BusbarCoupler]
-        Couplers belonging to the station.
-    asset_ids : list[str]
-        Grid model ids of the assets connected to the station.
-    asset_switching_table : np.ndarray
-        Busbar-to-asset switching matrix for the station.
-    asset_terminals : list[str | None] | None, optional
-        Optional branch-end metadata aligned with ``asset_ids``.
-    asset_bay_ids : list[str | None] | None, optional
-        Optional asset-bay metadata aligned with ``asset_ids``.
-
-    Returns
-    -------
-    RawStation
-        Raw station representation suitable for topology construction in tests.
-    """
-    resolved_injection_asset_ids = injection_asset_ids if injection_asset_ids is not None else []
-    resolved_injection_switching_table = (
-        injection_switching_table
-        if injection_switching_table is not None
-        else np.zeros((len(busbars), len(resolved_injection_asset_ids)), dtype=bool)
-    )
-
-    return RawStation(
-        grid_model_id=grid_model_id,
-        name=None,
-        station_type=None,
-        region=None,
-        voltage_level=None,
-        busbars=busbars,
-        couplers=couplers,
-        branch_connections=[
-            StationAssetConnection(asset_id=asset_id, branch_end=asset_terminal, asset_bay_id=asset_bay_id)
-            for asset_id, asset_terminal, asset_bay_id in zip(
-                asset_ids,
-                asset_terminals if asset_terminals is not None else [None] * len(asset_ids),
-                asset_bay_ids if asset_bay_ids is not None else [None] * len(asset_ids),
-                strict=True,
-            )
-        ],
-        injection_connections=[
-            StationAssetConnection(asset_id=asset_id, branch_end=None, asset_bay_id=None)
-            for asset_id in resolved_injection_asset_ids
-        ],
-        branch_switching_table=asset_switching_table,
-        injection_switching_table=resolved_injection_switching_table,
-        branch_connectivity=None,
-        injection_connectivity=None,
-        model_log=None,
-    )
 
 
 def build_materialized_station(
@@ -131,7 +63,7 @@ def build_materialized_station(
         for asset in resolved_injection_assets
     ]
     return MaterializedStation(
-        grid_model_id=grid_model_id,
+        bus_group_id=grid_model_id,
         name=None,
         station_type=None,
         region=None,
@@ -148,44 +80,121 @@ def build_materialized_station(
     )
 
 
-def build_test_topology(topology_id: str, raw_stations: list[RawStation], assets: list[SwitchableAsset]) -> Topology:
-    """Build a topology from raw stations and topology-owned assets.
+def build_test_topology(
+    topology_id: str, stations: list[MaterializedStation], assets: list[SwitchableAsset]
+) -> tuple[TopologyMasterData, list[MaterializedStation]]:
+    """Build topology master data with matching runtime stations.
 
     Parameters
     ----------
     topology_id : str
         Identifier of the topology.
-    raw_stations : list[RawStation]
-        Raw stations that define the topology layout.
+    stations : list[MaterializedStation]
+        Runtime stations that define the topology layout.
     assets : list[SwitchableAsset]
         Topology-owned assets referenced by the raw stations.
 
     Returns
     -------
-    Topology
-        Topology instance for helper-focused tests.
+    tuple[TopologyMasterData, list[MaterializedStation]]
+        Canonical master data and matching runtime stations for helper-focused tests.
     """
-    branch_assets = [
-        asset if isinstance(asset, BranchAsset) else BranchAsset.model_validate(asset.model_dump())
-        for asset in assets
-        if not isinstance(asset, InjectionAsset)
-    ]
-    injection_assets = [
-        asset if isinstance(asset, InjectionAsset) else InjectionAsset.model_validate(asset.model_dump())
-        for asset in assets
-        if isinstance(asset, InjectionAsset)
-    ]
+    del assets
 
-    return Topology(
-        topology_id=topology_id,
-        grid_model_file=None,
-        name=None,
-        raw_stations=raw_stations,
-        branch_assets=branch_assets,
-        injection_assets=injection_assets,
-        asset_setpoints=None,
-        timestamp=datetime.now(),
-        metrics=None,
+    master_stations: list[MasterStation] = []
+    branch_assets_by_id: dict[str, BranchAsset] = {}
+    injection_assets_by_id: dict[str, InjectionAsset] = {}
+    asset_bays_by_id: dict[str, AssetBay] = {}
+    for station in stations:
+        station_branch_connections = []
+        for asset_connection in station.branch_connections:
+            branch_asset = asset_connection.asset.model_copy(update={"in_service": True}, deep=True)
+            assert isinstance(branch_asset, BranchAsset)
+            branch_assets_by_id[branch_asset.grid_model_id] = branch_asset
+            asset_bay_id = asset_connection.asset_bay.asset_bay_id if asset_connection.asset_bay is not None else None
+            if asset_connection.asset_bay is not None and asset_bay_id is not None:
+                asset_bays_by_id[asset_bay_id] = asset_connection.asset_bay.model_copy(deep=True)
+            station_branch_connections.append(
+                StationAssetConnection(
+                    asset_id=branch_asset.grid_model_id,
+                    branch_end=asset_connection.branch_end,
+                    asset_bay_id=asset_bay_id,
+                )
+            )
+
+        station_injection_connections = []
+        for asset_connection in station.injection_connections:
+            injection_asset = asset_connection.asset.model_copy(update={"in_service": True}, deep=True)
+            assert isinstance(injection_asset, InjectionAsset)
+            injection_assets_by_id[injection_asset.grid_model_id] = injection_asset
+            asset_bay_id = asset_connection.asset_bay.asset_bay_id if asset_connection.asset_bay is not None else None
+            if asset_connection.asset_bay is not None and asset_bay_id is not None:
+                asset_bays_by_id[asset_bay_id] = asset_connection.asset_bay.model_copy(deep=True)
+            station_injection_connections.append(
+                StationAssetConnection(
+                    asset_id=injection_asset.grid_model_id,
+                    branch_end=asset_connection.branch_end,
+                    asset_bay_id=asset_bay_id,
+                )
+            )
+
+        is_bus_branch_model = all(
+            asset_connection.asset_bay_id is None
+            for asset_connection in [*station_branch_connections, *station_injection_connections]
+        )
+        branch_switching_table = np.asarray(station.branch_switching_table, dtype=bool)
+        if is_bus_branch_model:
+            branch_connectivity = np.ones_like(branch_switching_table, dtype=bool)
+        else:
+            branch_connectivity = np.array(
+                station.branch_connectivity if station.branch_connectivity is not None else branch_switching_table,
+                dtype=bool,
+                copy=True,
+            )
+            for asset_index, asset_connection in enumerate(station_branch_connections):
+                if asset_connection.asset_bay_id is None and branch_switching_table[:, asset_index].sum() == 1:
+                    branch_connectivity[:, asset_index] = branch_switching_table[:, asset_index]
+
+        injection_switching_table = np.asarray(station.injection_switching_table, dtype=bool)
+        if is_bus_branch_model:
+            injection_connectivity = np.ones_like(injection_switching_table, dtype=bool)
+        else:
+            injection_connectivity = np.array(
+                station.injection_connectivity if station.injection_connectivity is not None else injection_switching_table,
+                dtype=bool,
+                copy=True,
+            )
+            for asset_index, asset_connection in enumerate(station_injection_connections):
+                if asset_connection.asset_bay_id is None and injection_switching_table[:, asset_index].sum() == 1:
+                    injection_connectivity[:, asset_index] = injection_switching_table[:, asset_index]
+
+        master_stations.append(
+            MasterStation(
+                bus_group_id=station.bus_group_id,
+                name=station.name,
+                station_type=station.station_type,
+                region=station.region,
+                voltage_level=station.voltage_level,
+                busbars=[busbar.model_copy(update={"in_service": True}, deep=True) for busbar in station.busbars],
+                couplers=[
+                    coupler.model_copy(update={"open": False, "in_service": True}, deep=True) for coupler in station.couplers
+                ],
+                branch_connections=station_branch_connections,
+                injection_connections=station_injection_connections,
+                branch_connectivity=branch_connectivity,
+                injection_connectivity=injection_connectivity,
+            )
+        )
+
+    return (
+        TopologyMasterData(
+            topology_id=topology_id,
+            stations=master_stations,
+            branch_assets=list(branch_assets_by_id.values()),
+            injection_assets=list(injection_assets_by_id.values()),
+            asset_bays=list(asset_bays_by_id.values()),
+        ),
+        stations,
     )
 
 
@@ -243,11 +252,11 @@ def test_merge_stations():
     updated_stations, coupler_diff, reassignment_diff = merge_stations(original_stations, new_stations, "raise")
 
     assert len(updated_stations) == 2
-    assert updated_stations[0].grid_model_id == "station1"
+    assert updated_stations[0].bus_group_id == "station1"
     assert updated_stations[0].couplers[0].open
     assert coupler_diff == [("station1", new_stations[0].couplers[0])]
 
-    assert updated_stations[1].grid_model_id == "station2"
+    assert updated_stations[1].bus_group_id == "station2"
     assert np.array_equal(
         updated_stations[1].branch_switching_table,
         np.array([[False, True, True], [True, False, False]]),
@@ -309,11 +318,11 @@ def test_merge_stations_append_behavior():
     updated_stations, coupler_diff, reassignment_diff = merge_stations(original_stations, new_stations, "append")
 
     assert len(updated_stations) == 2
-    assert updated_stations[0].grid_model_id == "station1"
+    assert updated_stations[0].bus_group_id == "station1"
     assert updated_stations[0].couplers[0].open
     assert coupler_diff == [("station1", new_stations[0].couplers[0])]
 
-    assert updated_stations[1].grid_model_id == "station2"
+    assert updated_stations[1].bus_group_id == "station2"
     assert np.array_equal(
         updated_stations[1].branch_switching_table,
         np.array([[False, True, True], [True, False, False]]),
@@ -402,8 +411,8 @@ def test_merge_stations_with_new_station_append():
     updated_stations, coupler_diff, reassignment_diff = merge_stations(original_stations, new_stations, "append")
 
     assert len(updated_stations) == 2
-    assert updated_stations[0].grid_model_id == "station1"
-    assert updated_stations[1].grid_model_id == "station2"
+    assert updated_stations[0].bus_group_id == "station1"
+    assert updated_stations[1].bus_group_id == "station2"
     assert coupler_diff == []
     assert reassignment_diff == []
 
@@ -441,30 +450,6 @@ def test_get_connected_assets():
     station.branch_connections[2].asset.in_service = False
     connected_assets_busbar_0 = station.get_connected_assets(0)
     assert len(connected_assets_busbar_0) == 0
-
-
-def test_get_connected_assets_raw_station_injection_scope():
-    station = RawStation(
-        grid_model_id="station1",
-        busbars=[
-            Busbar(int_id=1, grid_model_id="busbar1"),
-            Busbar(int_id=2, grid_model_id="busbar2"),
-        ],
-        couplers=[],
-        branch_connections=[StationAssetConnection(asset_id="line1", branch_end="from", asset_bay_id=None)],
-        injection_connections=[StationAssetConnection(asset_id="gen1", branch_end=None, asset_bay_id=None)],
-        branch_switching_table=np.array([[True], [False]]),
-        injection_switching_table=np.array([[False], [True]]),
-    )
-
-    connected_assets_busbar_1 = station.get_connected_assets(
-        1,
-        topology_assets=[InjectionAsset(grid_model_id="gen1", in_service=True)],
-        asset_scope="injection",
-    )
-
-    assert len(connected_assets_busbar_1) == 1
-    assert connected_assets_busbar_1[0].grid_model_id == "gen1"
 
 
 def test_find_busbars_for_coupler():
@@ -701,50 +686,21 @@ def test_topology_diff() -> None:
         }
     )
 
-    start_topology = build_test_topology(
+    start_master_data, start_stations = build_test_topology(
         "topology1",
-        raw_stations=[
-            build_raw_station(
-                "station1",
-                station1_busbars,
-                station1_couplers,
-                ["line1", "line2"],
-                np.array([[True, False], [False, True]]),
-            ),
-            build_raw_station(
-                "station2",
-                station2_busbars,
-                station2_couplers,
-                ["station2_line1", "station2_line2"],
-                np.array([[True, False], [False, True], [False, False]]),
-            ),
-        ],
+        stations=[start_station_1, start_station_2],
         assets=station1_assets + station2_assets,
     )
-    target_topology = build_test_topology(
+    target_master_data, target_stations = build_test_topology(
         "topology1",
-        raw_stations=[
-            build_raw_station(
-                "station1",
-                station1_busbars,
-                [station1_couplers[0].model_copy(update={"open": True})],
-                ["line1", "line2"],
-                np.array([[False, True], [True, False]]),
-            ),
-            build_raw_station(
-                "station2",
-                station2_busbars,
-                station2_couplers,
-                ["station2_line1", "station2_line2"],
-                np.array([[False, False], [False, True], [False, False]]),
-            ),
-        ],
+        stations=[target_station_1, target_station_2],
         assets=station1_assets + station2_assets,
     )
 
-    realized_topo = topology_diff(start_topology, target_topology)
+    realized_topo = topology_diff(start_stations, target_stations, master_data=target_master_data)
 
-    assert realized_topo.topology == target_topology
+    assert realized_topo.master_data == target_master_data
+    assert realized_topo.stations == target_stations
     assert realized_topo.coupler_diff == [("station1", target_station_1.couplers[0])]
     assert set(realized_topo.branch_reassignment_diff) == set(
         [("station1", 0, 0, False), ("station1", 0, 1, True), ("station1", 1, 0, True), ("station1", 1, 1, False)]
@@ -967,27 +923,57 @@ def test_order_topology() -> None:
             [False, False, False, True, True],
         ]
     )
-    raw_stations = [
-        build_raw_station("station1", busbars, couplers, ["line1", "line2", "line3", "line4", "line5"], switching_table),
-        build_raw_station(
+    stations = [
+        build_materialized_station(
+            "station1",
+            busbars,
+            couplers,
+            [
+                SwitchableAsset(grid_model_id="line1"),
+                SwitchableAsset(grid_model_id="line2"),
+                SwitchableAsset(grid_model_id="line3"),
+                SwitchableAsset(grid_model_id="line4"),
+                SwitchableAsset(grid_model_id="line5"),
+            ],
+            switching_table,
+        ),
+        build_materialized_station(
             "station2",
             busbars,
             couplers,
-            ["station2_line1", "station2_line2", "station2_line3", "station2_line4", "station2_line5"],
+            [
+                SwitchableAsset(grid_model_id="station2_line1"),
+                SwitchableAsset(grid_model_id="station2_line2"),
+                SwitchableAsset(grid_model_id="station2_line3"),
+                SwitchableAsset(grid_model_id="station2_line4"),
+                SwitchableAsset(grid_model_id="station2_line5"),
+            ],
             switching_table,
         ),
-        build_raw_station(
+        build_materialized_station(
             "station3",
             busbars,
             couplers,
-            ["station3_line1", "station3_line2", "station3_line3", "station3_line4", "station3_line5"],
+            [
+                SwitchableAsset(grid_model_id="station3_line1"),
+                SwitchableAsset(grid_model_id="station3_line2"),
+                SwitchableAsset(grid_model_id="station3_line3"),
+                SwitchableAsset(grid_model_id="station3_line4"),
+                SwitchableAsset(grid_model_id="station3_line5"),
+            ],
             switching_table,
         ),
-        build_raw_station(
+        build_materialized_station(
             "station4",
             busbars,
             couplers,
-            ["station4_line1", "station4_line2", "station4_line3", "station4_line4", "station4_line5"],
+            [
+                SwitchableAsset(grid_model_id="station4_line1"),
+                SwitchableAsset(grid_model_id="station4_line2"),
+                SwitchableAsset(grid_model_id="station4_line3"),
+                SwitchableAsset(grid_model_id="station4_line4"),
+                SwitchableAsset(grid_model_id="station4_line5"),
+            ],
             switching_table,
         ),
     ]
@@ -1013,26 +999,60 @@ def test_order_topology() -> None:
         SwitchableAsset(grid_model_id="station4_line4"),
         SwitchableAsset(grid_model_id="station4_line5"),
     ]
-    topology = build_test_topology(
+    _, topology_stations = build_test_topology(
         "topo-popo",
-        raw_stations=raw_stations,
+        stations=stations,
         assets=assets,
     )
 
-    ordered, not_found = order_topology(topology, ["station4", "station2", "station1", "station3"])
-    station_ids = [station.grid_model_id for station in ordered.raw_stations]
+    ordered, not_found = order_topology(topology_stations, ["station4", "station2", "station1", "station3"])
+    station_ids = [station.bus_group_id for station in ordered]
     assert station_ids == ["station4", "station2", "station1", "station3"]
     assert not_found == []
 
-    ordered, not_found = order_topology(topology, ["station4", "station2", "station1", "station3", "station5"])
-    station_ids = [station.grid_model_id for station in ordered.raw_stations]
+    ordered, not_found = order_topology(topology_stations, ["station4", "station2", "station1", "station3", "station5"])
+    station_ids = [station.bus_group_id for station in ordered]
     assert station_ids == ["station4", "station2", "station1", "station3"]
     assert not_found == ["station5"]
 
-    ordered, not_found = order_topology(topology, ["station4", "station2", "station1"])
-    station_ids = [station.grid_model_id for station in ordered.raw_stations]
+    ordered, not_found = order_topology(topology_stations, ["station4", "station2", "station1"])
+    station_ids = [station.bus_group_id for station in ordered]
     assert station_ids == ["station4", "station2", "station1"]
     assert not_found == []
+
+
+def test_order_topology_with_materialized_stations() -> None:
+    """Verify topology ordering when the input consists of runtime materialized stations."""
+    busbars = [Busbar(int_id=1, grid_model_id="busbar1")]
+    stations = [
+        build_materialized_station(
+            "station1",
+            busbars,
+            [],
+            [SwitchableAsset(grid_model_id="line1")],
+            np.array([[True]]),
+        ),
+        build_materialized_station(
+            "station2",
+            busbars,
+            [],
+            [SwitchableAsset(grid_model_id="line2")],
+            np.array([[True]]),
+        ),
+        build_materialized_station(
+            "station3",
+            busbars,
+            [],
+            [SwitchableAsset(grid_model_id="line3")],
+            np.array([[True]]),
+        ),
+    ]
+    topology_stations = stations
+
+    ordered, not_found = order_topology(topology_stations, ["station3", "station1", "station4"])
+
+    assert [station.bus_group_id for station in ordered] == ["station3", "station1"]
+    assert not_found == ["station4"]
 
 
 def test_fuse_coupler():

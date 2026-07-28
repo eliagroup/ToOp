@@ -6,19 +6,13 @@
 # Mozilla Public License, version 2.0
 
 import time
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pytest
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    RawStation,
-    Topology,
-)
 from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
-from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set, load_action_set_fs, save_action_set
 
@@ -52,8 +46,7 @@ def _build_large_random_action_set(
     )
     asset_counts = np.tile(asset_counts, n_stations // len(asset_counts))
 
-    raw_stations: list[RawStation] = []
-    topology_assets: list[BranchAsset] = []
+    starting_stations: list[MaterializedStation] = []
     local_actions: list[MaterializedStation] = []
 
     for station_idx in range(n_stations):
@@ -100,32 +93,6 @@ def _build_large_random_action_set(
         branch_switching_table = rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool)
         injection_switching_table = np.zeros((n_busbars, 0), dtype=bool)
 
-        raw_station = RawStation.model_construct(
-            grid_model_id=grid_model_id,
-            name=None,
-            type=None,
-            region=None,
-            voltage_level=None,
-            busbars=busbars,
-            couplers=couplers,
-            branch_connections=[
-                StationAssetConnection.model_construct(
-                    asset_id=asset.grid_model_id,
-                    branch_end=None,
-                    asset_bay_id=None,
-                )
-                for asset in assets
-            ],
-            branch_switching_table=branch_switching_table,
-            branch_connectivity=None,
-            injection_connections=[],
-            injection_switching_table=injection_switching_table,
-            injection_connectivity=None,
-            model_log=None,
-        )
-        raw_stations.append(raw_station)
-        topology_assets.extend(assets)
-
         starting_station = MaterializedStation.model_construct(
             grid_model_id=grid_model_id,
             name=None,
@@ -144,6 +111,7 @@ def _build_large_random_action_set(
             injection_connectivity=None,
             model_log=None,
         )
+        starting_stations.append(starting_station)
 
         base_switching_table = np.asarray(starting_station.branch_switching_table, dtype=bool)
         for _ in range(actions_per_station):
@@ -166,21 +134,9 @@ def _build_large_random_action_set(
                 )
             )
 
-    starting_topology = Topology(
-        topology_id="performance_starting_topology",
-        grid_model_file=None,
-        name=None,
-        raw_stations=raw_stations,
-        branch_assets=topology_assets,
-        injection_assets=[],
-        asset_setpoints=None,
-        timestamp=datetime.now(),
-        metrics=None,
-    )
-
     return ActionSet(
-        starting_topology=starting_topology,
-        simplified_starting_topology=starting_topology,
+        starting_stations=starting_stations,
+        simplified_starting_stations=starting_stations,
         connectable_branches=[],
         disconnectable_branches=[],
         pst_ranges=[],
@@ -215,7 +171,7 @@ def test_stored_action_set_large_performance(tmp_path: Path, record_property) ->
     )
 
     # Sanity checks for requested test configuration.
-    starting_stations = action_set.starting_topology.materialize_stations()
+    starting_stations = action_set.get_starting_stations()
     assert len(starting_stations) == n_stations
     assert len(action_set.local_actions) == n_actions
     mean_assets = float(np.mean([len(station.branch_connections) for station in starting_stations]))

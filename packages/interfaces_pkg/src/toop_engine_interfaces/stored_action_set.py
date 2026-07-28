@@ -34,6 +34,7 @@ topology into the action set.
 
 import io
 import itertools
+import json
 from pathlib import Path
 
 import h5py
@@ -43,9 +44,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool
 from pydantic import BaseModel, ConfigDict, model_validator
-from toop_engine_interfaces.asset_topology.asset_topology import Topology
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
-from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.nminus1_definition import GridElement
 
 STATION_DIFF_ORDER_ATTR = "station_order"
@@ -88,17 +87,19 @@ class ActionSet(BaseModel):
     introspect them.
     """
 
-    starting_topology: Topology
-    """How the grid looked like when the action set was first generated. This does not include any
-    asset topology simplifications but is just a copy of the importing result"""
+    model_config = ConfigDict(extra="forbid")
 
-    simplified_starting_topology: Topology
-    """The starting topology in a preprocessed form.
+    starting_stations: list[MaterializedStation] | None = None
+    """Runtime-aware station snapshots for the starting grid state.
 
-    This includes simplifications made during preprocessing and is the reference topology for
-    ``local_actions``. Stations and their assets keep the same ordering between this topology and
-    the corresponding local actions, so consumers that compare switching tables column-wise should
-    use this topology rather than ``starting_topology``.
+    When present, these are the first-class station references for consumers that need realized
+    station payloads.
+    """
+
+    simplified_starting_stations: list[MaterializedStation] | None = None
+    """Runtime-aware station snapshots for the simplified starting grid state.
+
+    These station snapshots define the station and asset ordering contract for ``local_actions``.
     """
 
     connectable_branches: list[GridElement]
@@ -118,13 +119,37 @@ class ActionSet(BaseModel):
     """A list of split/reconfiguration actions that affect exactly one substation. These are must be ordered by station,
     i.e. actions affecting the same station are next to each other. The grid_model_id of
     the station should be used to determine which substation it affects. Within a station, asset
-    ordering matches the corresponding station in ``simplified_starting_topology``."""
+    ordering matches the corresponding station in ``simplified_starting_stations``."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_station_references(cls, data: object) -> object:
+        """Validate and normalize runtime station references."""
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+        payload["starting_stations"] = _coerce_reference_stations(payload.get("starting_stations"))
+        payload["simplified_starting_stations"] = _coerce_reference_stations(payload.get("simplified_starting_stations"))
+        if payload.get("starting_stations") is not None:
+            _validate_unique_reference_stations(payload["starting_stations"])
+        if payload.get("simplified_starting_stations") is not None:
+            _validate_unique_reference_stations(payload["simplified_starting_stations"])
+        return payload
 
     @model_validator(mode="after")
-    def _validate_local_actions_grouped(self) -> "ActionSet":
-        """Validate local actions are grouped by station."""
+    def _validate_action_grouping(self) -> "ActionSet":
+        """Validate local action grouping after reference normalization."""
         validate_actions_grouped(self.local_actions)
         return self
+
+    def get_starting_stations(self) -> list[MaterializedStation]:
+        """Return normalized runtime-aware station snapshots for the starting topology."""
+        return _require_reference_stations(self.starting_stations, context="starting topology")
+
+    def get_simplified_starting_stations(self) -> list[MaterializedStation]:
+        """Return normalized runtime-aware station snapshots for the simplified starting topology."""
+        return _require_reference_stations(self.simplified_starting_stations, context="simplified starting topology")
 
 
 class StationDiffArray(BaseModel):
@@ -213,7 +238,7 @@ def validate_actions_grouped(actions: list[MaterializedStation]) -> None:
     seen_grid_model_ids: set[str] = set()
     last_grid_model_id: str | None = None
     for action in actions:
-        grid_model_id = action.grid_model_id
+        grid_model_id = action.bus_group_id
         if grid_model_id != last_grid_model_id:
             if grid_model_id in seen_grid_model_ids:
                 raise ValueError(
@@ -221,6 +246,56 @@ def validate_actions_grouped(actions: list[MaterializedStation]) -> None:
                 )
             seen_grid_model_ids.add(grid_model_id)
             last_grid_model_id = grid_model_id
+
+
+def _require_reference_stations(
+    reference_stations: list[MaterializedStation] | None,
+    *,
+    context: str,
+) -> list[MaterializedStation]:
+    """Require explicit runtime reference stations.
+
+    Parameters
+    ----------
+    reference_stations : list[MaterializedStation] | None
+        Runtime-aware station snapshots.
+    context : str
+        Human-readable description of the caller context.
+
+    Returns
+    -------
+    list[MaterializedStation]
+        Validated reference stations.
+
+    Raises
+    ------
+    ValueError
+        If explicit reference stations are missing or contain duplicates.
+    """
+    if reference_stations is None:
+        raise ValueError(f"ActionSet requires explicit reference stations for {context}.")
+
+    _validate_unique_reference_stations(reference_stations)
+    return reference_stations
+
+
+def _validate_unique_reference_stations(reference_stations: list[MaterializedStation]) -> None:
+    """Validate that reference stations are unique by station id."""
+    seen_station_ids: set[str] = set()
+    for station in reference_stations:
+        if station.bus_group_id in seen_station_ids:
+            raise ValueError(f"Reference stations must be unique by station id, got duplicate {station.bus_group_id}.")
+        seen_station_ids.add(station.bus_group_id)
+
+
+def _coerce_reference_stations(reference_stations: object) -> list[MaterializedStation] | None:
+    """Coerce reference stations to validated materialized-station models when present."""
+    if reference_stations is None:
+        return None
+    return [
+        station if isinstance(station, MaterializedStation) else MaterializedStation.model_validate(station)
+        for station in reference_stations
+    ]
 
 
 def _validate_station_diff_hypothesis(starting_station: MaterializedStation, action: MaterializedStation) -> None:
@@ -238,10 +313,9 @@ def _validate_station_diff_hypothesis(starting_station: MaterializedStation, act
     ValueError
         If any field differs besides coupler open states and switching table values.
     """
-    if action.grid_model_id != starting_station.grid_model_id:
+    if action.bus_group_id != starting_station.bus_group_id:
         raise ValueError(
-            f"Action station grid_model_id {action.grid_model_id} does not match starting station "
-            f"{starting_station.grid_model_id}."
+            f"Action station id {action.bus_group_id} does not match starting station {starting_station.bus_group_id}."
         )
 
     def normalize_station(station: MaterializedStation) -> dict[str, object]:
@@ -255,7 +329,7 @@ def _validate_station_diff_hypothesis(starting_station: MaterializedStation, act
 
     if normalize_station(action) != normalize_station(starting_station):
         raise ValueError(
-            f"Action station {action.grid_model_id} changed fields other than coupler open states and switching tables."
+            f"Action station {action.bus_group_id} changed fields other than coupler open states and switching tables."
         )
 
 
@@ -397,26 +471,12 @@ def expand_single_station_diff_to_actions(
     return actions
 
 
-def expand_station_diffs(starting_topology: Topology, station_diffs: list[StationDiffArray]) -> list[MaterializedStation]:
-    """Expand densely stored station diffs to a list of stations with the same format as in the action set.
-
-    This expands a list of station diffs, so it can be called once per action set.
-
-    Parameters
-    ----------
-    starting_topology : Topology
-        The topology as it looks in the starting topology. The station diffs will be matched to the stations in the topology
-        based on their grid_model_id and all fields from the station will be copied except for the coupler states and
-        switching tables, which will be overwritten by the station diff.
-    station_diffs : list[StationDiffArray]
-        The station diffs to expand.
-
-    Returns
-    -------
-    list[Station]
-        A list of stations, each corresponding to an action in the station diffs action dimension.
-    """
-    grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.materialize_stations()}
+def expand_station_diffs_from_starting_stations(
+    starting_stations: list[MaterializedStation],
+    station_diffs: list[StationDiffArray],
+) -> list[MaterializedStation]:
+    """Expand densely stored station diffs from reference materialized stations."""
+    grid_model_id_to_station = {station.bus_group_id: station for station in starting_stations}
     actions = []
     for station_diff in station_diffs:
         starting_station = grid_model_id_to_station[station_diff.grid_model_id]
@@ -424,51 +484,17 @@ def expand_station_diffs(starting_topology: Topology, station_diffs: list[Statio
     return actions
 
 
-def compress_actions_to_station_diffs(
-    starting_topology: Topology, actions: list[MaterializedStation], validate_diff_hypothesis: bool = False
+def compress_actions_to_station_diffs_from_starting_stations(
+    starting_stations: list[MaterializedStation],
+    actions: list[MaterializedStation],
+    validate_diff_hypothesis: bool = False,
 ) -> list[StationDiffArray]:
-    """Compress a list of stations with the same format as in the action set to densely stored station diffs.
-
-    This compresses a list of stations, so it can be called once per action set.
-    Note that this assumes
-    - The list of actions is grouped by station, i.e. all actions for the same station are next to each other in the list.
-    - The change between actions for the same station only regards the coupler states and switching table. If
-      validate_diff_hypothesis is True, then this will be checked and it will raise a Value Error
-
-
-    Parameters
-    ----------
-    starting_topology : Topology
-        The topology as it looks in the starting topology. The stations will be matched to the stations in the topology
-        based on their grid_model_id and the coupler states and switching tables will be compared to the ones in the topology
-        to create the station diffs.
-        Note that this should be the simplified starting topology if simplifications have been applies, as they will also be
-        present in all stations in the action set.
-    actions : list[Station]
-        A list of stations, each corresponding to an action in the station diffs action dimension.
-    validate_diff_hypothesis : bool
-        Whether to validate the hypothesis that the change between actions for the same station only regards the coupler
-        states and switching table. If True, this will check the actions and raise a Value Error if this is not the case.
-        Note that this will make the compression significantly slower, so it should only be used for debugging purposes.
-
-    Returns
-    -------
-    list[StationDiffArray]
-        The station diffs corresponding to the actions.
-
-    Raises
-    ------
-    ValueError
-        If the actions are not grouped by station
-    ValueError
-        If validate_diff_hypothesis is True and the change between actions for the same station regards fields other than the
-        coupler states and switching tables.
-    """
-    grid_model_id_to_station = {station.grid_model_id: station for station in starting_topology.materialize_stations()}
+    """Compress action stations to station diffs using reference materialized stations."""
+    grid_model_id_to_station = {station.bus_group_id: station for station in starting_stations}
     station_diffs = {}
-    for grid_model_id, group in itertools.groupby(actions, key=lambda action: action.grid_model_id):
+    for grid_model_id, group in itertools.groupby(actions, key=lambda action: action.bus_group_id):
         if grid_model_id not in grid_model_id_to_station:
-            raise ValueError(f"Action station grid_model_id {grid_model_id} not found in starting topology.")
+            raise ValueError(f"Action station id {grid_model_id} not found in starting topology.")
         starting_station = grid_model_id_to_station[grid_model_id]
 
         coupler_open = []
@@ -525,11 +551,13 @@ def load_action_set_fs(
         The action set loaded from the file.
     """
     with filesystem.open(str(json_file_path), "r") as f:
-        action_set = ActionSet.model_validate_json(f.read())
+        payload = json.loads(f.read())
+    action_set = ActionSet.model_validate(_drop_legacy_reference_master_data_fields(payload))
     if diff_file_path is not None:
         station_diffs = load_station_diff_fs(filesystem, diff_file_path)
-        local_actions = expand_station_diffs(
-            starting_topology=action_set.simplified_starting_topology, station_diffs=station_diffs
+        local_actions = expand_station_diffs_from_starting_stations(
+            starting_stations=action_set.get_simplified_starting_stations(),
+            station_diffs=station_diffs,
         )
         action_set = action_set.model_copy(update={"local_actions": local_actions})
     return action_set
@@ -577,18 +605,17 @@ def save_action_set_fs(
         Whether to validate that local action changes only affect coupler open states and switching tables.
         This is intended for debugging and can make saving slower.
     """
-    station_diffs = compress_actions_to_station_diffs(
-        # Station diffs are computed against the simplified topology used to generate local actions.
-        starting_topology=action_set.simplified_starting_topology,
+    action_set = ActionSet.model_validate(action_set.model_dump(mode="python", round_trip=True))
+    station_diffs = compress_actions_to_station_diffs_from_starting_stations(
+        starting_stations=action_set.get_simplified_starting_stations(),
         actions=action_set.local_actions,
         validate_diff_hypothesis=validate_diff_hypothesis,
     )
 
     # local_actions are persisted in the HDF5 file as compressed station diffs.
     action_set_without_local_actions = action_set.model_copy(update={"local_actions": []})
-    save_pydantic_model_fs(
-        filesystem=filesystem, file_path=str(json_file_path), pydantic_model=action_set_without_local_actions
-    )
+    with filesystem.open(str(json_file_path), "w") as f:
+        f.write(action_set_without_local_actions.model_dump_json(indent=2, exclude_none=True))
     store_station_diff_fs(filesystem, station_diffs, diff_file_path)
 
 
@@ -622,6 +649,16 @@ def save_action_set(
     )
 
 
+def _drop_legacy_reference_master_data_fields(payload: object) -> object:
+    """Drop legacy master-data references from serialized ActionSet payloads."""
+    if not isinstance(payload, dict):
+        return payload
+    sanitized_payload = dict(payload)
+    sanitized_payload.pop("starting_master_data", None)
+    sanitized_payload.pop("simplified_starting_master_data", None)
+    return sanitized_payload
+
+
 def random_actions(action_set: ActionSet, rng: np.random.Generator, n_split_subs: int) -> list[int]:
     """Sample a random topology from the action set.
 
@@ -643,7 +680,7 @@ def random_actions(action_set: ActionSet, rng: np.random.Generator, n_split_subs
         A list of indices of the action set with substations to split.
     """
     # First sample the substations to split
-    substations = list(set(station.grid_model_id for station in action_set.local_actions))
+    substations = list(set(station.bus_group_id for station in action_set.local_actions))
     substations.sort()  # Sort to make sure the order is deterministic for the same random seed
     sub_choice = rng.choice(substations, size=min(n_split_subs, len(substations)), replace=False).tolist()
 
@@ -651,7 +688,7 @@ def random_actions(action_set: ActionSet, rng: np.random.Generator, n_split_subs
     actions = []
     for grid_model_id in sub_choice:
         applicable_indices = [
-            i for i, station in enumerate(action_set.local_actions) if station.grid_model_id == grid_model_id
+            i for i, station in enumerate(action_set.local_actions) if station.bus_group_id == grid_model_id
         ]
         actions.append(rng.choice(applicable_indices).item())
     return actions

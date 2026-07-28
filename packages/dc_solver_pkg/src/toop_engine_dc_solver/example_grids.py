@@ -51,14 +51,14 @@ from toop_engine_grid_helpers.powsybl.example_grids import (
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_fs
 from toop_engine_importer.pypowsybl_import import preprocessing
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    Topology,
+from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, RuntimeAssetTopology, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
+    save_asset_topology_master_data,
+    save_asset_topology_stations,
 )
-from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset
+from toop_engine_interfaces.asset_topology.assets import AssetBay, BranchAsset, Busbar, BusbarCoupler, InjectionAsset
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
-from toop_engine_interfaces.asset_topology.topology_conversion import (
-    topology_parts_from_materialized_station,
-)
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
@@ -264,7 +264,7 @@ def random_station_info_backend(
         switch_id = global_id + "_coupler"
 
     return MaterializedStation(
-        grid_model_id=global_id,
+        bus_group_id=global_id,
         busbars=[
             Busbar(
                 grid_model_id=bus_a_id,
@@ -294,9 +294,124 @@ def random_station_info_backend(
     ), pp_counters
 
 
-# ruff: noqa: C901
-def random_topology_info_backend(backend: BackendInterface, pp_counters: Optional[PandapowerCounters]) -> Topology:
-    """Generate a random topology for any backend
+def _build_random_topology_master_data(stations: list[MaterializedStation]) -> TopologyMasterData:
+    """Build canonical master data for the random example topology."""
+    master_stations: list[MasterStation] = []
+    branch_assets_by_id: dict[str, BranchAsset] = {}
+    injection_assets_by_id: dict[str, InjectionAsset] = {}
+    asset_bays_by_id: dict[str, AssetBay] = {}
+    for station in stations:
+        station_branch_connections = _copy_station_asset_connections(
+            asset_connections=station.branch_connections,
+            expected_type=BranchAsset,
+            assets_by_id=branch_assets_by_id,
+            asset_bays_by_id=asset_bays_by_id,
+        )
+        station_injection_connections = _copy_station_asset_connections(
+            asset_connections=station.injection_connections,
+            expected_type=InjectionAsset,
+            assets_by_id=injection_assets_by_id,
+            asset_bays_by_id=asset_bays_by_id,
+        )
+
+        is_bus_branch_model = all(
+            asset_connection.asset_bay_id is None
+            for asset_connection in [*station_branch_connections, *station_injection_connections]
+        )
+        branch_connectivity = _build_station_connectivity(
+            switching_table=np.asarray(station.branch_switching_table, dtype=bool),
+            connectivity=station.branch_connectivity,
+            station_connections=station_branch_connections,
+            is_bus_branch_model=is_bus_branch_model,
+        )
+        injection_connectivity = _build_station_connectivity(
+            switching_table=np.asarray(station.injection_switching_table, dtype=bool),
+            connectivity=station.injection_connectivity,
+            station_connections=station_injection_connections,
+            is_bus_branch_model=is_bus_branch_model,
+        )
+
+        master_stations.append(
+            MasterStation(
+                bus_group_id=station.bus_group_id,
+                voltage_level_id=station.voltage_level_id,
+                name=station.name,
+                station_type=station.station_type,
+                region=station.region,
+                voltage_level=station.voltage_level,
+                busbars=[busbar.model_copy(update={"in_service": True}, deep=True) for busbar in station.busbars],
+                couplers=[
+                    coupler.model_copy(update={"open": False, "in_service": True}, deep=True) for coupler in station.couplers
+                ],
+                branch_connections=station_branch_connections,
+                injection_connections=station_injection_connections,
+                branch_connectivity=branch_connectivity,
+                injection_connectivity=injection_connectivity,
+            )
+        )
+
+    return TopologyMasterData(
+        topology_id="random_topology",
+        stations=master_stations,
+        branch_assets=list(branch_assets_by_id.values()),
+        injection_assets=list(injection_assets_by_id.values()),
+        asset_bays=list(asset_bays_by_id.values()),
+    )
+
+
+def _copy_station_asset_connections(
+    asset_connections: list[MaterializedAssetConnection],
+    expected_type: type[BranchAsset] | type[InjectionAsset],
+    assets_by_id: dict[str, BranchAsset] | dict[str, InjectionAsset],
+    asset_bays_by_id: dict[str, AssetBay],
+) -> list[StationAssetConnection]:
+    """Copy runtime station connections into canonical station references."""
+    station_connections: list[StationAssetConnection] = []
+    for asset_connection in asset_connections:
+        asset = asset_connection.asset.model_copy(update={"in_service": True}, deep=True)
+        assert isinstance(asset, expected_type)
+        assets_by_id[asset.grid_model_id] = asset
+
+        asset_bay_id = asset_connection.asset_bay.asset_bay_id if asset_connection.asset_bay is not None else None
+        if asset_connection.asset_bay is not None and asset_bay_id is not None:
+            asset_bays_by_id[asset_bay_id] = asset_connection.asset_bay.model_copy(deep=True)
+
+        station_connections.append(
+            StationAssetConnection(
+                asset_id=asset.grid_model_id,
+                branch_end=asset_connection.branch_end,
+                asset_bay_id=asset_bay_id,
+            )
+        )
+
+    return station_connections
+
+
+def _build_station_connectivity(
+    switching_table: np.ndarray,
+    connectivity: Optional[np.ndarray],
+    station_connections: list[StationAssetConnection],
+    is_bus_branch_model: bool,
+) -> np.ndarray:
+    """Build canonical connectivity while preserving single-bus assignments."""
+    if is_bus_branch_model:
+        return np.ones_like(switching_table, dtype=bool)
+
+    normalized_connectivity = np.array(
+        connectivity if connectivity is not None else switching_table,
+        dtype=bool,
+        copy=True,
+    )
+    for asset_index, asset_connection in enumerate(station_connections):
+        if asset_connection.asset_bay_id is None and switching_table[:, asset_index].sum() == 1:
+            normalized_connectivity[:, asset_index] = switching_table[:, asset_index]
+    return normalized_connectivity
+
+
+def random_topology_info_backend(
+    backend: BackendInterface, pp_counters: Optional[PandapowerCounters]
+) -> list[MaterializedStation]:
+    """Generate random runtime stations for any backend.
 
     This will create an AssetTopology with a station created for each relevant node in the network
 
@@ -309,51 +424,15 @@ def random_topology_info_backend(backend: BackendInterface, pp_counters: Optiona
 
     Returns
     -------
-    Topology
-        The generated topology
+    list[MaterializedStation]
+        Ordered runtime station snapshots.
     """
     relevant_nodes = np.flatnonzero(backend.get_relevant_node_mask())
     stations = []
     for node_idx in relevant_nodes:
         new_station, pp_counters = random_station_info_backend(backend, node_idx, pp_counters)
         stations.append(new_station)
-
-    raw_stations = []
-    branch_assets: dict[str, BranchAsset] = {}
-    injection_assets: dict[str, InjectionAsset] = {}
-    asset_bays = {}
-    for station in stations:
-        raw_station, station_branch_assets, station_injection_assets, station_asset_bays = (
-            topology_parts_from_materialized_station(station)
-        )
-        raw_stations.append(raw_station)
-        for asset in station_branch_assets:
-            existing_asset = branch_assets.get(asset.grid_model_id)
-            if existing_asset is None:
-                branch_assets[asset.grid_model_id] = asset
-            elif existing_asset != asset:
-                raise ValueError(f"Conflicting branch asset payload for grid_model_id {asset.grid_model_id}")
-        for asset in station_injection_assets:
-            existing_asset = injection_assets.get(asset.grid_model_id)
-            if existing_asset is None:
-                injection_assets[asset.grid_model_id] = asset
-            elif existing_asset != asset:
-                raise ValueError(f"Conflicting injection asset payload for grid_model_id {asset.grid_model_id}")
-        for asset_bay in station_asset_bays:
-            existing_asset_bay = asset_bays.get(asset_bay.asset_bay_id)
-            if existing_asset_bay is None:
-                asset_bays[asset_bay.asset_bay_id] = asset_bay
-            elif existing_asset_bay != asset_bay:
-                raise ValueError(f"Conflicting asset bay payload for asset_bay_id {asset_bay.asset_bay_id}")
-
-    return Topology(
-        topology_id="random_topology",
-        raw_stations=raw_stations,
-        branch_assets=list(branch_assets.values()),
-        injection_assets=list(injection_assets.values()),
-        asset_bays=list(asset_bays.values()),
-        timestamp=datetime.datetime.now(),
-    )
+    return stations
 
 
 def random_topology_info(folder: Path, pandapower: bool = True) -> None:
@@ -377,12 +456,19 @@ def random_topology_info(folder: Path, pandapower: bool = True) -> None:
     else:
         backend = PowsyblBackend(filesystem_dir)
         pp_counters = None
-    topo_info = random_topology_info_backend(backend, pp_counters)
+    stations = random_topology_info_backend(backend, pp_counters)
+    master_data = _build_random_topology_master_data(stations)
 
-    destination = folder / PREPROCESSING_PATHS["asset_topology_file_path"]
+    destination = folder / PREPROCESSING_PATHS["asset_topology_runtime_file_path"]
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with open(destination, "w", encoding="utf-8") as f:
-        f.write(topo_info.model_dump_json(indent=2))
+    save_asset_topology_stations(
+        filename=destination,
+        stations=RuntimeAssetTopology(stations=stations),
+    )
+    save_asset_topology_master_data(
+        filename=folder / PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
+        master_data=master_data,
+    )
 
 
 # ruff/sonar: noqa: PLR0915, S3776
@@ -959,6 +1045,15 @@ def case9241_powsybl(folder: Path) -> None:
 
 
 def case1354_powsybl(folder: Path, n_stations: int = 1354) -> None:
+    """Create a powsybl case1354 scenario.
+
+    Parameters
+    ----------
+    folder : Path
+        Target folder that receives the generated grid, masks, and topology data.
+    n_stations : int, default=1354
+        Number of initial stations to keep relevant before excluding the slack station.
+    """
     net = powsybl_case1354()
     create_busbar_b_in_ieee(net)
     os.makedirs(folder, exist_ok=True)
@@ -1042,6 +1137,13 @@ def case14_pandapower(folder: Path) -> None:
 
 
 def case30_with_psts_pandapower(folder: Path) -> None:
+    """Create the pandapower case30 PST example scenario.
+
+    Parameters
+    ----------
+    folder : Path
+        Target folder that receives the generated grid, masks, and topology data.
+    """
     net = pandapower_case30_with_psts_and_weak_branches()
 
     pp.runpp(net)
@@ -1069,6 +1171,13 @@ def case30_with_psts_pandapower(folder: Path) -> None:
 
 
 def case30_with_psts_powsybl(folder: Path) -> None:
+    """Create the powsybl case30 PST example scenario.
+
+    Parameters
+    ----------
+    folder : Path
+        Target folder that receives the generated grid, masks, and topology data.
+    """
     net = powsybl_case30_with_psts()
     create_busbar_b_in_ieee(net)
 
@@ -1104,6 +1213,21 @@ def node_breaker_folder_powsybl(folder: Path) -> None:
     """Copy over all data from the data folder"""
     source = Path(__file__).parent.parent.parent / "tests" / "files" / "test_grid_node_breaker"
     shutil.copytree(source, folder, dirs_exist_ok=True)
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+        data_folder=folder,
+        area_settings=AreaSettings(
+            cutoff_voltage=1,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+            dso_trafo_factors=LimitAdjustmentParameters(),
+            dso_trafo_weight=1.0,
+            border_line_factors=LimitAdjustmentParameters(),
+            border_line_weight=1.0,
+        ),
+    )
+    _ = preprocessing.convert_file(importer_parameters=importer_parameters)
     save_lf_params_to_fs(
         CGMES_DISTRIBUTED_SLACK, DirFileSystem(folder), Path(PREPROCESSING_PATHS["loadflow_parameters_file_path"])
     )
@@ -1112,7 +1236,6 @@ def node_breaker_folder_powsybl(folder: Path) -> None:
 def three_node_pst_example_folder_powsybl(folder: Path) -> None:
     """Create a simple 3 node example to test PST optimization"""
     net = three_node_pst_example()
-    create_busbar_b_in_ieee(net)
 
     grid_file_path = folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]
     grid_file_path.parent.mkdir(parents=True, exist_ok=True)

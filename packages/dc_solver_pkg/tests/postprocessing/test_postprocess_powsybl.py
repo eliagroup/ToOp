@@ -46,7 +46,10 @@ from toop_engine_dc_solver.preprocess.network_data import (
     load_lf_params,
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
+from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.folder_structure import (
     OUTPUT_FILE_NAMES,
     POSTPROCESSING_PATHS,
@@ -93,6 +96,91 @@ def test_apply_topology(preprocessed_powsybl_data_folder: Path) -> None:
         # Check that the loadflow still converges
         dc_res = pypowsybl.loadflow.run_dc(net)
         assert dc_res[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED
+
+
+def test_apply_topology_node_breaker_uses_materialized_stations_directly(
+    basic_node_breaker_topology,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify that node-breaker apply_topology forwards runtime stations directly."""
+    stations = basic_node_breaker_topology
+    action_set = ActionSet.model_construct(
+        starting_stations=stations,
+        simplified_starting_stations=stations,
+        connectable_branches=[],
+        disconnectable_branches=[],
+        pst_ranges=[],
+        hvdc_ranges=[],
+        local_actions=stations,
+    )
+    observed_stations: list[MaterializedStation] = []
+
+    monkeypatch.setattr(
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.is_node_breaker_grid",
+        lambda *_args, **_kwargs: True,
+    )
+
+    def fake_apply_node_breaker_stations(_net, input_stations: list[MaterializedStation]):
+        """Capture node-breaker stations passed through apply_topology."""
+        observed_stations.extend(input_stations)
+        return pd.DataFrame({"grid_model_id": [], "open": []}).astype({"grid_model_id": str, "open": bool})
+
+    monkeypatch.setattr(
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.apply_node_breaker_stations",
+        fake_apply_node_breaker_stations,
+    )
+
+    result = apply_topology(net=basic_node_breaker_network_powsybl(), actions=[0], action_set=action_set)
+
+    assert isinstance(result, pd.DataFrame)
+    assert observed_stations == [stations[0]]
+
+
+def test_apply_topology_bus_branch_uses_materialized_stations_directly(
+    case14_data_with_asset_topo: tuple[Path, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify that bus-branch apply_topology forwards runtime stations directly."""
+    grid_path, (_, runtime_topology) = case14_data_with_asset_topo
+    stations = runtime_topology.stations
+    action_set = ActionSet.model_construct(
+        starting_stations=stations,
+        simplified_starting_stations=stations,
+        connectable_branches=[],
+        disconnectable_branches=[],
+        pst_ranges=[],
+        hvdc_ranges=[],
+        local_actions=stations,
+    )
+    observed_stations = []
+
+    monkeypatch.setattr(
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.is_node_breaker_grid",
+        lambda *_args, **_kwargs: False,
+    )
+
+    def fake_apply_topology_bus_branch_stations(_net, input_stations):
+        """Capture bus-branch stations passed through apply_topology."""
+        observed_stations.extend(input_stations)
+        return RealizedTopology(
+            stations=list(input_stations),
+            coupler_diff=[],
+            branch_reassignment_diff=[],
+            injection_reassignment_diff=[],
+            branch_disconnection_diff=[],
+            injection_disconnection_diff=[],
+        )
+
+    monkeypatch.setattr(
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.apply_topology_bus_branch_stations",
+        fake_apply_topology_bus_branch_stations,
+    )
+
+    net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    result = apply_topology(net=net, actions=[0], action_set=action_set)
+
+    assert isinstance(result, RealizedTopology)
+    assert observed_stations == [stations[0]]
 
 
 def test_apply_disconnections(preprocessed_powsybl_data_folder: Path) -> None:

@@ -27,8 +27,13 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
     get_trafos,
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
+    get_all_element_names,
+    materialize_stations_from_network_state,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs
-from toop_engine_interfaces.asset_topology.asset_topology import Topology
+from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology, TopologyMasterData
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.filesystem_helper import load_numpy_filesystem, load_pydantic_model_fs
 from toop_engine_interfaces.folder_structure import (
@@ -39,6 +44,62 @@ from toop_engine_interfaces.folder_structure import (
 logger = structlog.get_logger(__name__)
 
 INJECTION_COLUMNS = ["name", "p", "bus_id_int", "for_nminus1", "type"]
+
+
+def _station_ids(stations: Sequence[MaterializedStation]) -> list[str]:
+    """Return station ids in order for coverage checks and logging."""
+    return [station.bus_group_id for station in stations]
+
+
+def _runtime_stations_preserve_master_connectivity(
+    master_data: TopologyMasterData,
+    runtime_stations: Sequence[MaterializedStation],
+) -> tuple[bool, list[str]]:
+    """Check whether runtime stations preserve canonical connectivity tables from master data."""
+    runtime_by_id = {station.bus_group_id: station for station in runtime_stations}
+    narrowed_station_ids: list[str] = []
+    for station in master_data.stations:
+        runtime_station = runtime_by_id.get(station.bus_group_id)
+        if runtime_station is None:
+            continue
+        if station.branch_connectivity is not None and not np.array_equal(
+            np.asarray(runtime_station.branch_connectivity, dtype=bool),
+            np.asarray(station.branch_connectivity, dtype=bool),
+        ):
+            narrowed_station_ids.append(station.bus_group_id)
+            continue
+        if station.injection_connectivity is not None and not np.array_equal(
+            np.asarray(runtime_station.injection_connectivity, dtype=bool),
+            np.asarray(station.injection_connectivity, dtype=bool),
+        ):
+            narrowed_station_ids.append(station.bus_group_id)
+    return not narrowed_station_ids, narrowed_station_ids
+
+
+def _enrich_master_data_asset_names(master_data: TopologyMasterData, network: pp.network.Network) -> TopologyMasterData:
+    """Fill missing canonical asset names from the live powsybl network."""
+    try:
+        element_names = get_all_element_names(network)
+    except KeyError:
+        element_names = get_all_element_names(network, line_trafo_name_col="name")
+    branch_assets = [
+        asset.model_copy(update={"name": element_names.get(asset.grid_model_id, asset.name)})
+        if asset.name is None
+        else asset
+        for asset in master_data.branch_assets
+    ]
+    injection_assets = [
+        asset.model_copy(update={"name": element_names.get(asset.grid_model_id, asset.name)})
+        if asset.name is None
+        else asset
+        for asset in master_data.injection_assets
+    ]
+    return master_data.model_copy(
+        update={
+            "branch_assets": branch_assets,
+            "injection_assets": injection_assets,
+        }
+    )
 
 
 class PowsyblBackend(BackendInterface):
@@ -583,15 +644,45 @@ class PowsyblBackend(BackendInterface):
         """Currently empty as no multi outages are implemented"""  # noqa: D401
         return []
 
-    def get_asset_topology(self) -> Optional[Topology]:
-        """Get the asset topology if it exists"""
-        if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_file_path"]):
-            return load_pydantic_model_fs(
+    @functools.lru_cache
+    def get_master_data_asset_topology(self) -> Optional[TopologyMasterData]:
+        """Get canonical asset-topology master data if it exists."""
+        if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_master_data_file_path"]):
+            master_data = load_pydantic_model_fs(
                 filesystem=self.data_folder_dirfs,
-                file_path=PREPROCESSING_PATHS["asset_topology_file_path"],
-                model_class=Topology,
+                file_path=PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
+                model_class=TopologyMasterData,
             )
+            return _enrich_master_data_asset_names(master_data, self.net)
         return None
+
+    @functools.lru_cache
+    def get_runtime_asset_topology(self) -> Optional[RuntimeAssetTopology]:
+        """Get live runtime-enriched topology payloads from canonical master data and the current powsybl net."""
+        master_data = self.get_master_data_asset_topology()
+        if master_data is None:
+            return None
+
+        runtime_stations = materialize_stations_from_network_state(network=self.net, master_data=master_data)
+        expected_station_ids = [station.bus_group_id for station in master_data.stations]
+        runtime_station_ids = _station_ids(runtime_stations)
+        missing_station_ids = [station_id for station_id in expected_station_ids if station_id not in runtime_station_ids]
+        if missing_station_ids:
+            logger.warning(
+                "Direct powsybl station materialization did not cover all canonical stations",
+                station_ids=missing_station_ids,
+            )
+
+        preserves_connectivity, narrowed_station_ids = _runtime_stations_preserve_master_connectivity(
+            master_data=master_data,
+            runtime_stations=runtime_stations,
+        )
+        if not preserves_connectivity:
+            raise ValueError(
+                "Direct powsybl station materialization narrowed canonical connectivity for stations: "
+                + ", ".join(narrowed_station_ids)
+            )
+        return RuntimeAssetTopology(stations=runtime_stations, circuit_groups=master_data.circuit_groups)
 
     def get_metadata(self) -> dict:
         """Get the path to the data_folder, masks_folder and the start datetime of the case"""

@@ -29,6 +29,7 @@ from toop_engine_dc_solver.preprocess.helpers.psdf import compute_psdf
 from toop_engine_dc_solver.preprocess.helpers.ptdf import compute_ptdf
 from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
+    extract_network_data_from_interface,
     extract_nminus1_definition,
     load_lf_params,
     validate_network_data,
@@ -108,6 +109,20 @@ def test_get_injections(powsybl_data_folder: Path) -> None:
     assert len(backend.get_injection_names()) == n_injections
     assert len(backend.get_injection_types()) == n_injections
     assert backend.get_outaged_injection_mask().shape == (n_injections,)
+
+
+def test_get_asset_topology_runtime_stations(node_breaker_grid_imported_data_folder: Path) -> None:
+    """Verify that the powsybl backend exposes a runtime asset-topology wrapper."""
+    filesystem_dir_powsybl = DirFileSystem(str(node_breaker_grid_imported_data_folder))
+    backend = PowsyblBackend(filesystem_dir_powsybl)
+
+    runtime_topology = backend.get_runtime_asset_topology()
+
+    assert runtime_topology is not None
+
+    network_data = extract_network_data_from_interface(backend)
+    assert network_data.asset_topology is not None
+    assert len(network_data.asset_topology.stations) == len(runtime_topology.stations)
 
 
 def test_ptdf_matrix(powsybl_data_folder: Path) -> None:

@@ -38,8 +38,11 @@ from toop_engine_dc_solver.preprocess.helpers.ptdf import (
     get_extended_ptdf,
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import min_hamming_distance_matrix
-from toop_engine_dc_solver.preprocess.network_data import NetworkData, get_relevant_stations
-from toop_engine_interfaces.asset_topology.asset_topology import RawStation
+from toop_engine_dc_solver.preprocess.network_data import (
+    NetworkData,
+    get_relevant_stations,
+)
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)
@@ -144,6 +147,9 @@ def make_action_repo(
     Bool[Array, " possible_configurations sub_degree"]
         The repo of physically possible topology actions
     """
+    if separation_set.shape[0] == 0:
+        return np.zeros((1, sub_degree), dtype=bool)
+
     # In case of zero reassignments, we just return the unsplit action and the starting configurations
     if limit_reassignments is not None and limit_reassignments == 0:
         repo = separation_set[:, 1, :sub_degree]
@@ -504,8 +510,11 @@ def enumerate_branch_actions(
         through enumerate_branch_actions_for_sub.
     """
     assert network_data.separation_sets_info is not None, "Separation sets must be computed first"
-    # get id of relevant substations
-    relevant_ids = np.array(network_data.node_ids)[network_data.relevant_node_mask]
+    station_limit_keys = None
+    if network_data.simplified_asset_topology is not None:
+        station_limit_keys = [
+            station.voltage_level_id or station.bus_group_id for station in network_data.simplified_asset_topology.stations
+        ]
     if reassignment_limits is not None:
         station_specific_reassignment_limits = reassignment_limits.station_specific_limits
         reassignment_limit = reassignment_limits.max_reassignments_per_sub
@@ -522,9 +531,13 @@ def enumerate_branch_actions(
             exclude_bsdf_lodf_splits=exclude_bsdf_lodf_splits,
             bsdf_lodf_batch_size=bsdf_lodf_batch_size,
             clip_to_n_actions=clip_to_n_actions,
-            limit_reassignments=station_specific_reassignment_limits.get(grid_model_id, reassignment_limit),
+            limit_reassignments=station_specific_reassignment_limits.get(str(station_limit_key), reassignment_limit),
         )
-        for sub_id, grid_model_id in zip(range(sum(network_data.relevant_node_mask)), relevant_ids, strict=True)
+        for sub_id, station_limit_key in zip(
+            range(sum(network_data.relevant_node_mask)),
+            station_limit_keys or [None] * int(sum(network_data.relevant_node_mask)),
+            strict=True,
+        )
     ]
 
 
@@ -631,7 +644,7 @@ def unpad_branch_actions(
 def determine_injection_topology_sub(
     network_data: NetworkData,
     local_injection_idxs: Int[np.ndarray, " n_injections_at_node"],
-    station: RawStation,
+    station: MaterializedStation,
     n_local_branch_actions: int,
     local_busbar_a_mapping: list[list[int]],
     n_injections_at_node: int,
@@ -650,7 +663,7 @@ def determine_injection_topology_sub(
         The network data containing injection and branch information.
     local_injection_idxs : list[int]
         List of local injection indices corresponding to the station.
-    station : RawStation
+    station : MaterializedStation
         The station object containing information about busbars and connected assets.
     n_local_branch_actions : int
         Number of local branch actions to consider.
@@ -674,11 +687,7 @@ def determine_injection_topology_sub(
         bba_connected_injection_ids = [
             asset.grid_model_id
             for bb_index in busbar_a_mapping
-            for asset in station.get_connected_assets(
-                bb_index,
-                topology_assets=network_data.simplified_asset_topology.injection_assets,
-                asset_scope="injection",
-            )
+            for asset in station.get_connected_assets(bb_index, asset_scope="injection")
         ]
         bba_connected_injection_idxs = [
             np.argmax(local_injection_idxs == network_data.injection_ids.index(injection_id))

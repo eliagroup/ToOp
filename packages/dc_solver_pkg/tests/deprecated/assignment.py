@@ -337,7 +337,7 @@ def realise_bus_split_single_station(
             ignore_assets.append(True)
             asset_assignment.append(False)
         else:
-            raise ValueError(f"Could not find asset {asset.grid_model_id} in the station {station.grid_model_id}")
+            raise ValueError(f"Could not find asset {asset.grid_model_id} in the station {station.bus_group_id}")
 
     configuration_table, coupler_states, busbar_matchings = make_separation_set(station)
 

@@ -5,7 +5,6 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import datetime
 import os
 from pathlib import Path
 
@@ -14,10 +13,16 @@ import pandapower
 import pandas as pd
 import pypowsybl
 from pypowsybl.network import Network
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_raw_stations_and_assets_bus_breaker
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
+    get_bus_breaker_topology_master_data,
+    materialize_stations_from_network_state,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_pandapower_net_for_powsybl
-from toop_engine_interfaces.asset_topology.asset_topology import Topology
-from toop_engine_interfaces.asset_topology.asset_topology_helpers import save_asset_topology
+from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
+from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
+    save_asset_topology_master_data,
+    save_asset_topology_stations,
+)
 from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
 
 
@@ -660,19 +665,22 @@ def create_busbar_b_in_ieee(net: pypowsybl.network.Network) -> None:
 
 
 def extract_station_info_powsybl(net: Network, base_folder: Path) -> None:
-    raw_stations, branch_assets, injection_assets = get_raw_stations_and_assets_bus_breaker(net)
-    target = base_folder / PREPROCESSING_PATHS["asset_topology_file_path"]
+    relevant_stations = list(net.get_buses().index)
+    master_data = get_bus_breaker_topology_master_data(
+        network=net,
+        relevant_stations=relevant_stations,
+        topology_id="extracted_topology",
+    )
+    stations = materialize_stations_from_network_state(network=net, master_data=master_data)
+    target = base_folder / PREPROCESSING_PATHS["asset_topology_runtime_file_path"]
     target.parent.mkdir(parents=True, exist_ok=True)
-    save_asset_topology(
-        target,
-        Topology(
-            topology_id="extracted_topology",
-            raw_stations=raw_stations,
-            branch_assets=branch_assets,
-            injection_assets=injection_assets,
-            asset_bays=[],
-            timestamp=datetime.datetime.now(),
-        ),
+    save_asset_topology_stations(
+        filename=target,
+        stations=RuntimeAssetTopology(stations=stations),
+    )
+    save_asset_topology_master_data(
+        filename=base_folder / PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
+        master_data=master_data,
     )
 
 

@@ -12,13 +12,21 @@ documentation can refer to a stable package-level namespace.
 """
 
 from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
-from toop_engine_interfaces.asset_topology.asset_topology import CircuitGroup, Strategy, Topology
+from toop_engine_interfaces.asset_topology.asset_topology import (
+    CircuitGroup,
+    MasterStation,
+    RuntimeAssetTopology,
+    TopologyMasterData,
+    get_asset_bay_ids_for_asset,
+    get_asset_bays_for_asset,
+    validate_runtime_station_asset_references,
+)
 from toop_engine_interfaces.asset_topology.assets import AssetBay, AssetSetpoint, Busbar, BusbarCoupler, SwitchableAsset
 from toop_engine_interfaces.asset_topology.materialized_topology import (
     MaterializedAssetConnection,
     MaterializedStation,
 )
-from toop_engine_interfaces.asset_topology.station_models import RawStation, StationAssetConnection
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 
 __all__ = [
     "AppliedStation",
@@ -27,12 +35,15 @@ __all__ = [
     "Busbar",
     "BusbarCoupler",
     "CircuitGroup",
+    "MasterStation",
     "MaterializedAssetConnection",
     "MaterializedStation",
-    "RawStation",
     "RealizedTopology",
+    "RuntimeAssetTopology",
     "StationAssetConnection",
-    "Strategy",
     "SwitchableAsset",
-    "Topology",
+    "TopologyMasterData",
+    "get_asset_bay_ids_for_asset",
+    "get_asset_bays_for_asset",
+    "validate_runtime_station_asset_references",
 ]

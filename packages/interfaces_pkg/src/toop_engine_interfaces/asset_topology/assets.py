@@ -7,6 +7,7 @@
 
 """Classes that represent Assets in the grid"""
 
+import math
 from enum import Enum
 
 from beartype.typing import Any, Optional, get_args
@@ -34,12 +35,14 @@ class Busbar(BaseModel):
     """ Whether the busbar is in service. If False, it will be ignored in the switching table"""
 
     bus_branch_bus_id: Optional[str] = None
-    """ The bus_branch_bus_id refers to the bus-branch model bus id.
-    There might be a difference between the busbar grid_model_id (a physical busbar)
-    and the bus_branch_bus_id from the bus-branch model.
-    Use this bus_branch_bus_id to store the bus-branch model bus id.
-    Note: the Station grid_model_id also a bus-branch bus_branch_bus_id. This id is the most splitable bus_branch_bus_id.
-    Other bus_branch_bus_ids are part of the physical station, but are separated by a coupler or branch."""
+    """Runtime-only electrical bus id for this physical busbar.
+
+    The busbar ``grid_model_id`` identifies the physical busbar in the structural station view.
+    ``bus_branch_bus_id`` stores the currently active bus-branch bus id that this busbar belongs to
+    at runtime. Several busbars in one structural station may share the same value, and one
+    structural station may span multiple runtime bus ids when switches are open.
+    Canonical master-data station ids must not be derived from this field.
+    """
 
 
 class AssetBay(BaseModel):
@@ -217,6 +220,8 @@ def normalize_switchable_asset_payload(asset: dict[str, Any]) -> SwitchableAsset
         return asset
 
     asset_data = asset.model_dump() if isinstance(asset, SwitchableAsset) else dict(asset)
+    if isinstance(asset_data.get("name"), float) and math.isnan(asset_data["name"]):
+        asset_data["name"] = None
     if "asset_type" not in asset_data and "type" in asset_data:
         asset_data["asset_type"] = asset_data.pop("type")
     asset_type = asset_data.get("asset_type")

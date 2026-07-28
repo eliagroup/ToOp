@@ -60,6 +60,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     assert_network_data,
     extract_network_data_from_interface,
+    map_runtime_stations_by_node_id,
 )
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import get_busbar_map_adjacent_branches, preprocess_bb_outages
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import (
@@ -67,13 +68,11 @@ from toop_engine_dc_solver.preprocess.preprocess_station_realisations import (
 )
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
     OptimalSeparationSetInfo,
-    add_missing_asset_topology_branch_info,
-    add_missing_asset_topology_injection_info,
     make_optimal_separation_set,
     prepare_for_separation_set,
 )
-from toop_engine_interfaces.asset_topology.asset_topology_helpers import order_topology
-from toop_engine_interfaces.asset_topology.topology_conversion import topology_from_materialized_stations
+from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters, ReassignmentLimits
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
@@ -82,6 +81,195 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 )
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_runtime_asset_ids_per_bus_id(station: MaterializedStation) -> dict[str, set[str]]:
+    """Collect unique in-service runtime asset ids per current bus-branch bus id.
+
+    Parameters
+    ----------
+    station : MaterializedStation
+        Runtime station whose currently energized bus groups should be evaluated.
+
+    Returns
+    -------
+    dict[str, set[str]]
+        Mapping from non-empty bus-branch bus id to unique connected in-service
+        branch and injection asset ids.
+    """
+    asset_ids_per_bus_id: dict[str, set[str]] = {}
+
+    for busbar_index, busbar in enumerate(station.busbars):
+        bus_id = busbar.bus_branch_bus_id
+        if not busbar.in_service or bus_id in {None, ""}:
+            continue
+
+        connected_asset_ids = asset_ids_per_bus_id.setdefault(bus_id, set())
+        connected_asset_ids.update(
+            f"branch:{asset.grid_model_id}" for asset in station.get_connected_assets(busbar_index, asset_scope="branch")
+        )
+        connected_asset_ids.update(
+            f"injection:{asset.grid_model_id}"
+            for asset in station.get_connected_assets(busbar_index, asset_scope="injection")
+        )
+
+    return asset_ids_per_bus_id
+
+
+def _get_effective_station_bus_components(
+    station: MaterializedStation,
+    pst_branch_ids: set[str],
+) -> list[set[str]]:
+    """Collapse runtime bus ids that are internally tied together by PST branches.
+
+    Parameters
+    ----------
+    station : MaterializedStation
+        Runtime station to analyze.
+    pst_branch_ids : set[str]
+        Grid-model branch ids that represent phase-shifting transformers.
+
+    Returns
+    -------
+    list[set[str]]
+        Connected components of active runtime bus ids after merging bus ids that
+        share a PST branch inside the station.
+    """
+    active_bus_ids = {
+        busbar.bus_branch_bus_id
+        for busbar in station.busbars
+        if busbar.in_service and busbar.bus_branch_bus_id not in {None, ""}
+    }
+    if not active_bus_ids:
+        return []
+
+    neighbors = _get_pst_neighbors_by_bus_id(station=station, active_bus_ids=active_bus_ids, pst_branch_ids=pst_branch_ids)
+    return _get_connected_bus_components(neighbors)
+
+
+def _get_pst_neighbors_by_bus_id(
+    station: MaterializedStation,
+    active_bus_ids: set[str],
+    pst_branch_ids: set[str],
+) -> dict[str, set[str]]:
+    """Build runtime bus adjacency after collapsing PST-linked internal buses."""
+    neighbors = {bus_id: {bus_id} for bus_id in active_bus_ids}
+    pst_bus_ids_by_asset_id: dict[str, set[str]] = {}
+    for busbar_index, busbar in enumerate(station.busbars):
+        bus_id = busbar.bus_branch_bus_id
+        if not busbar.in_service or bus_id not in active_bus_ids:
+            continue
+        for asset in station.get_connected_assets(busbar_index, asset_scope="branch"):
+            if asset.grid_model_id in pst_branch_ids:
+                pst_bus_ids_by_asset_id.setdefault(asset.grid_model_id, set()).add(bus_id)
+
+    for connected_bus_ids in pst_bus_ids_by_asset_id.values():
+        for bus_id in connected_bus_ids:
+            neighbors[bus_id].update(connected_bus_ids)
+    return neighbors
+
+
+def _get_connected_bus_components(neighbors: dict[str, set[str]]) -> list[set[str]]:
+    """Return connected components of the provided bus adjacency map."""
+    components: list[set[str]] = []
+    remaining_bus_ids = set(neighbors)
+    while remaining_bus_ids:
+        start_bus_id = remaining_bus_ids.pop()
+        component = {start_bus_id}
+        pending_bus_ids = [start_bus_id]
+        while pending_bus_ids:
+            current_bus_id = pending_bus_ids.pop()
+            for neighbor_bus_id in neighbors[current_bus_id]:
+                if neighbor_bus_id in remaining_bus_ids:
+                    remaining_bus_ids.remove(neighbor_bus_id)
+                    component.add(neighbor_bus_id)
+                    pending_bus_ids.append(neighbor_bus_id)
+        components.append(component)
+    return components
+
+
+def _get_materially_split_station_bus_ids(station: MaterializedStation, pst_branch_ids: set[str]) -> set[str]:
+    """Return bus ids only for runtime splits that affect more than a singleton island.
+
+    Parameters
+    ----------
+    station : MaterializedStation
+        Runtime station to classify.
+    pst_branch_ids : set[str]
+        Grid-model branch ids that represent phase-shifting transformers.
+
+    Returns
+    -------
+    set[str]
+        The active bus-branch bus ids when at least two current bus groups each carry
+        more than one connected in-service asset. Otherwise an empty set.
+    """
+    asset_ids_per_bus_id = _get_runtime_asset_ids_per_bus_id(station)
+    effective_components = _get_effective_station_bus_components(station, pst_branch_ids)
+    if len(effective_components) <= 1:
+        return set()
+
+    effective_component_asset_counts = [
+        len(set().union(*(asset_ids_per_bus_id.get(bus_id, set()) for bus_id in component)))
+        for component in effective_components
+    ]
+    sorted_asset_counts = sorted(effective_component_asset_counts, reverse=True)
+    if len(sorted_asset_counts) < 2 or sorted_asset_counts[1] <= 1:
+        return set()
+
+    return set().union(*effective_components)
+
+
+def _project_station_to_local_assets(
+    station: MaterializedStation,
+    branch_ids: list[str],
+    injection_ids: list[str],
+) -> MaterializedStation:
+    """Restrict a runtime station to the assets represented by one relevant node slice.
+
+    Parameters
+    ----------
+    station : MaterializedStation
+        Runtime station to project.
+    branch_ids : list[str]
+        Branch ids present in the relevant-node slice.
+    injection_ids : list[str]
+        Injection ids present in the relevant-node slice.
+
+    Returns
+    -------
+    MaterializedStation
+        Runtime station with switching-table columns restricted to the requested assets.
+    """
+    branch_id_set = set(branch_ids)
+    injection_id_set = set(injection_ids)
+    branch_keep_indices = [
+        index
+        for index, connection in enumerate(station.branch_connections)
+        if connection.asset.grid_model_id in branch_id_set
+    ]
+    injection_keep_indices = [
+        index
+        for index, connection in enumerate(station.injection_connections)
+        if connection.asset.grid_model_id in injection_id_set
+    ]
+
+    return station.model_copy(
+        update={
+            "branch_connections": [station.branch_connections[index] for index in branch_keep_indices],
+            "injection_connections": [station.injection_connections[index] for index in injection_keep_indices],
+            "branch_switching_table": station.branch_switching_table[:, branch_keep_indices],
+            "injection_switching_table": station.injection_switching_table[:, injection_keep_indices],
+            "branch_connectivity": (
+                station.branch_connectivity[:, branch_keep_indices] if station.branch_connectivity is not None else None
+            ),
+            "injection_connectivity": (
+                station.injection_connectivity[:, injection_keep_indices]
+                if station.injection_connectivity is not None
+                else None
+            ),
+        }
+    )
 
 
 def compute_ptdf_if_not_given(network_data: NetworkData) -> NetworkData:
@@ -194,13 +382,51 @@ def filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> Network
     NetworkData
         The network data with the relevant node mask adjusted to only include nodes with an asset topology
     """
-    assert network_data.asset_topology is not None, "Asset topology has to be passed in"
     relevant_node_ids = np.array(network_data.node_ids)[np.flatnonzero(network_data.relevant_node_mask)]
-    station_ids = np.array([station.grid_model_id for station in network_data.asset_topology.materialize_stations()])
-    keep_mask = np.isin(relevant_node_ids, station_ids)
+    assert network_data.asset_topology is not None, "Missing runtime asset-topology stations"
+    station_bus_ids = set(
+        map_runtime_stations_by_node_id(
+            network_data.asset_topology.stations,
+            node_ids=relevant_node_ids.tolist(),
+        )
+    )
+
+    keep_mask = np.isin(relevant_node_ids, np.array(sorted(station_bus_ids), dtype=object))
 
     for node_id in relevant_node_ids[~keep_mask]:
         logger.warning(f"Removed relevant node {node_id}, since no asset topology is available for it")
+
+    return remove_relevant_subs(network_data, keep_mask=keep_mask)
+
+
+def filter_relevant_split_asset_stations(network_data: NetworkData) -> NetworkData:
+    """Filter out relevant nodes whose runtime station view is materially split.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        The network data carrying relevant-node masks and runtime-enriched asset-topology stations.
+
+    Returns
+    -------
+    NetworkData
+        Network data with relevant nodes removed when their runtime station spans multiple
+        non-trivial active bus groups.
+    """
+    relevant_node_ids = np.array(network_data.node_ids)[np.flatnonzero(network_data.relevant_node_mask)]
+    assert network_data.asset_topology is not None, "Missing runtime asset-topology stations"
+    pst_branch_ids = {network_data.branch_ids[index] for index in np.flatnonzero(network_data.controllable_phase_shift_mask)}
+    split_station_bus_ids = {
+        bus_id
+        for station in network_data.asset_topology.stations
+        for bus_id in _get_materially_split_station_bus_ids(station, pst_branch_ids)
+    }
+    if not split_station_bus_ids:
+        return network_data
+
+    keep_mask = ~np.isin(relevant_node_ids, np.array(sorted(split_station_bus_ids), dtype=object))
+    for node_id in relevant_node_ids[~keep_mask]:
+        logger.warning(f"Removed relevant node {node_id}, since its runtime asset topology station is split")
 
     return remove_relevant_subs(network_data, keep_mask=keep_mask)
 
@@ -948,9 +1174,9 @@ def remove_relevant_subs(
     simplified_asset_topology = (
         network_data.simplified_asset_topology.model_copy(
             update={
-                "raw_stations": [
-                    x
-                    for x, has_action in zip(network_data.simplified_asset_topology.raw_stations, keep_mask, strict=True)
+                "stations": [
+                    station
+                    for station, has_action in zip(network_data.simplified_asset_topology.stations, keep_mask, strict=True)
                     if has_action
                 ]
             }
@@ -991,10 +1217,10 @@ def remove_relevant_subs(
         cross_coupler_limits=cross_coupler_limits,
         branch_action_set=branch_action_set,
         realised_stations=realised_stations,
+        simplified_asset_topology=simplified_asset_topology,
         busbar_a_mappings=busbar_a_mappings,
         branch_action_set_switching_distance=branch_action_set_switching_distance,
         injection_action_set=injection_action_set,
-        simplified_asset_topology=simplified_asset_topology,
     )
 
 
@@ -1018,69 +1244,109 @@ def remove_relevant_subs_without_actions(network_data: NetworkData) -> NetworkDa
     assert network_data.rel_io_sub is None, "Call this before processing injections"
 
     keep_mask = np.array([action.shape[0] > 1 and np.any(action) for action in actions])
+    if network_data.controllable_phase_shift_mask is not None and network_data.branches_at_nodes is not None:
+        keep_mask = keep_mask | np.array(
+            [
+                bool(np.any(network_data.controllable_phase_shift_mask[branches_at_node]))
+                for branches_at_node in network_data.branches_at_nodes
+            ],
+            dtype=bool,
+        )
 
     # Remove from relevant node mask
     return remove_relevant_subs(network_data, keep_mask)
 
 
 def compute_injection_actions(network_data: NetworkData) -> NetworkData:
-    """Compute the injection actions for the grid and update the network data accordingly
+    """Compute injection actions and materialize them into realized stations.
 
     Parameters
     ----------
     network_data : NetworkData
-        The network data to compute the injection actions for
+        The network data to compute the injection actions for.
 
     Returns
     -------
     NetworkData
-        The network data with the injection actions computed
+        The network data with computed injection actions and updated realized stations.
     """
     assert network_data.branch_action_set is not None, "Branch action set is not available."
+    assert network_data.realised_stations is not None, "Realised stations are not available."
     assert network_data.busbar_a_mappings is not None, "Busbar A mappings are not available."
 
     injection_actions = determine_injection_topology(network_data)
+    realised_stations_with_injections = []
+    for realised_stations, local_injection_actions, local_busbar_a_mappings in zip(
+        network_data.realised_stations,
+        injection_actions,
+        network_data.busbar_a_mappings,
+        strict=True,
+    ):
+        local_realised_stations = []
+        for station, injection_action, busbar_a_mapping in zip(
+            realised_stations,
+            local_injection_actions,
+            local_busbar_a_mappings,
+            strict=True,
+        ):
+            if station.injection_switching_table.shape[1] == 0:
+                local_realised_stations.append(station)
+                continue
+
+            busbar_a_indices = set(int(index) for index in busbar_a_mapping)
+            busbar_b_indices = [index for index in range(len(station.busbars)) if index not in busbar_a_indices]
+            updated_injection_switching_table = np.zeros_like(station.injection_switching_table, dtype=bool)
+
+            for injection_idx, injection_on_bus_b in enumerate(injection_action.tolist()):
+                target_busbar_indices = busbar_b_indices if injection_on_bus_b else sorted(busbar_a_indices)
+                current_busbar_indices = np.flatnonzero(station.injection_switching_table[:, injection_idx]).tolist()
+
+                if not target_busbar_indices:
+                    updated_injection_switching_table[:, injection_idx] = station.injection_switching_table[:, injection_idx]
+                    continue
+
+                target_busbar_index = next(
+                    (index for index in current_busbar_indices if index in target_busbar_indices),
+                    target_busbar_indices[0],
+                )
+                updated_injection_switching_table[target_busbar_index, injection_idx] = True
+
+            local_realised_stations.append(
+                station.model_copy(update={"injection_switching_table": updated_injection_switching_table})
+            )
+
+        realised_stations_with_injections.append(local_realised_stations)
+
     return replace(
         network_data,
         injection_action_set=injection_actions,
+        realised_stations=realised_stations_with_injections,
     )
 
 
 def add_missing_asset_topo_info(network_data: NetworkData) -> NetworkData:
-    """Add missing asset topology information to the network data
-
-    Most notably names and types of the assets
-    If no asset topology is present, the network data is returned as is
+    """Validate that productive runtime station data is available.
 
     Parameters
     ----------
     network_data : NetworkData
-        The network data to add the missing asset topology information to
+        The network data whose runtime station information should be validated.
 
     Returns
     -------
     NetworkData
-        The network data with the missing asset topology information added
-    """
-    if network_data.asset_topology is None:
-        return network_data
-    topo = add_missing_asset_topology_branch_info(
-        asset_topology=network_data.asset_topology,
-        branch_ids=network_data.branch_ids,
-        branch_names=network_data.branch_names,
-        branch_types=network_data.branch_types,
-        branch_from_nodes=[network_data.node_ids[i] for i in network_data.from_nodes],
-        overwrite_if_present=False,
-    )
-    topo = add_missing_asset_topology_injection_info(
-        asset_topology=topo,
-        injection_ids=network_data.injection_ids,
-        injection_names=network_data.injection_names,
-        injection_types=network_data.injection_types,
-        overwrite_if_present=False,
-    )
+        The unchanged network data when runtime station data is available.
 
-    return replace(network_data, asset_topology=topo)
+    Raises
+    ------
+    ValueError
+        If runtime asset-topology stations are missing.
+    """
+    assert network_data.asset_topology is not None, (
+        "Missing runtime asset-topology stations for asset topology preprocessing. "
+        "Preprocessing requires backend-enriched runtime stations."
+    )
+    return network_data
 
 
 def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
@@ -1185,27 +1451,44 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
     NetworkData
         The network data with the simplified asset topology
     """
-    topology, not_found = order_topology(
-        network_data.asset_topology, station_ids=[network_data.node_ids[i] for i in network_data.relevant_nodes]
+    station_ids = [network_data.node_ids[i] for i in network_data.relevant_nodes]
+    runtime_stations_by_node_id: dict[str, MaterializedStation] = {}
+    assert network_data.asset_topology is not None, (
+        "Missing runtime asset-topology stations for asset topology simplification. "
+        "Preprocessing requires backend-enriched runtime stations."
     )
+    runtime_stations_by_node_id = map_runtime_stations_by_node_id(
+        network_data.asset_topology.stations,
+        node_ids=station_ids,
+    )
+
+    not_found = [station_id for station_id in station_ids if station_id not in runtime_stations_by_node_id]
     if not_found:
         raise ValueError(f"Some stations were not found in the asset topology: {not_found}")
+
+    runtime_stations = [runtime_stations_by_node_id[station_id] for station_id in station_ids]
+
     stations = []
     keep_mask = []
-    for node_index, branches_at_sub, inj_at_sub, station in zip(
+    for _node_index, branches_at_sub, inj_at_sub, station in zip(
         network_data.relevant_nodes,
         network_data.branches_at_nodes,
         network_data.injection_idx_at_nodes,
-        topology.materialize_stations(),
+        runtime_stations,
         strict=True,
     ):
-        assert network_data.node_ids[node_index] == station.grid_model_id, "The station id does not match the node id"
         branch_ids_local = [network_data.branch_ids[i] for i in branches_at_sub]
         injection_ids_local = [network_data.injection_ids[i] for i in inj_at_sub]
+        has_controllable_pst = bool(np.any(network_data.controllable_phase_shift_mask[branches_at_sub]))
+        station_for_simplification = _project_station_to_local_assets(
+            station=station,
+            branch_ids=branch_ids_local,
+            injection_ids=injection_ids_local,
+        )
 
         try:
             simplified_station, _problems = prepare_for_separation_set(
-                station=station,
+                station=station_for_simplification,
                 branch_ids=branch_ids_local,
                 injection_ids=injection_ids_local,
                 close_couplers=close_couplers,
@@ -1214,17 +1497,20 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
             keep_mask.append(True)
         except ValueError as e:
             logger.warning(
-                f"Station {station.grid_model_id}/{station.name} could not be simplified "
+                f"Station {station.bus_group_id}/{station.name} could not be simplified "
                 f"because {e}, removing it from the relevant nodes."
             )
-            simplified_station = station
-            keep_mask.append(False)
+            simplified_station = station_for_simplification
+            keep_mask.append(has_controllable_pst)
 
         stations.append(simplified_station)
 
     network_data = replace(
         network_data,
-        simplified_asset_topology=topology_from_materialized_stations(topology, stations),
+        simplified_asset_topology=RuntimeAssetTopology(
+            stations=stations,
+            circuit_groups=network_data.asset_topology.circuit_groups if network_data.asset_topology is not None else None,
+        ),
     )
     return remove_relevant_subs(network_data, np.array(keep_mask, dtype=bool))
 
@@ -1250,10 +1536,12 @@ def compute_separation_set_for_stations(
     NetworkData
         The network data with the separation set computed
     """
-    assert network_data.simplified_asset_topology is not None, "Please simplify the asset topology first"
     actions = 0
     separation_sets_info: list[OptimalSeparationSetInfo] = []
-    for station in network_data.simplified_asset_topology.materialize_stations():
+    assert network_data.simplified_asset_topology is not None, (
+        "Missing simplified asset-topology stations for separation set preprocessing."
+    )
+    for station in network_data.simplified_asset_topology.stations:
         separation_set_info = make_optimal_separation_set(station, clip_hamming_distance, clip_at_size)
         separation_sets_info.append(separation_set_info)
         actions += separation_set_info.separation_set.shape[0]
@@ -1344,6 +1632,7 @@ def preprocess(  # noqa: PLR0915
     logging_fn("filter_relevant_nodes", None)
     network_data = filter_relevant_nodes_branch_count(network_data)
     network_data = filter_relevant_nodes_no_asset_station(network_data)
+    network_data = filter_relevant_split_asset_stations(network_data)
 
     logging_fn("assert_network_data", None)
     assert_network_data(network_data)

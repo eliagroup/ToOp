@@ -21,9 +21,6 @@ from pandapower.toolbox import element_bus_tuples, get_connected_elements_dict
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import get_element_table, get_remotely_connected_buses
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import parse_globally_unique_id, table_id
 from toop_engine_interfaces.asset_topology.applied_topology import AppliedStation, RealizedTopology
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    Topology,
-)
 from toop_engine_interfaces.asset_topology.asset_topology_helpers import accumulate_diffs, find_busbars_for_coupler
 from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
@@ -184,7 +181,7 @@ def create_missing_switches(
                 "closed": not coupler.open,
                 "bus": from_busbar_id,
                 "element": to_busbar_id,
-                "type": "LBS",
+                "type": "CB",
             }
             created.append(coupler)
 
@@ -447,7 +444,7 @@ def apply_station_assets(
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
     station : MaterializedStation
-        The station to apply. It is assumed that the station grid_model_id refers to a bus in the pandapower network.
+        The station to apply. It is assumed that the station id refers to a bus in the pandapower network.
 
     Returns
     -------
@@ -579,7 +576,7 @@ def apply_station(
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
     station : MaterializedStation
-        The station to apply. It is assumed that the station grid_model_id refers to a bus in the pandapower network.
+        The station to apply. It is assumed that the station id refers to a bus in the pandapower network.
 
     Returns
     -------
@@ -659,10 +656,13 @@ def apply_station(
     )
 
 
-def apply_topology(net: pp.pandapowerNet, topology: Topology) -> tuple[list[tuple[str, ApplyGridDiff]], RealizedTopology]:
-    """Apply an asset topology to a pandapower network.
+def apply_topology_stations(
+    net: pp.pandapowerNet,
+    stations: list[MaterializedStation],
+) -> tuple[list[tuple[str, ApplyGridDiff]], RealizedTopology]:
+    """Apply runtime station snapshots to a pandapower network.
 
-    This will apply all stations in the topology to the pandapower network. It will create missing busbars and switches,
+    This will apply all provided stations to the pandapower network. It will create missing busbars and switches,
     delete excess busbars and switches, apply the split branch and injection switching tables and set the couplers to
     their desired state.
 
@@ -672,19 +672,19 @@ def apply_topology(net: pp.pandapowerNet, topology: Topology) -> tuple[list[tupl
     ----------
     net : pandapowerNet
         The pandapower network to apply the topology to. Will be modified in place.
-    topology : Topology
-        The topology to apply.
+    stations : list[MaterializedStation]
+        The runtime station snapshots to apply.
 
     Returns
     -------
     list[tuple[str, ApplyGridDiff]]
         A list of tuples containing the station id and the difference between the switches and busbars that were expected by
-        the asset topology and the actual switches and busbars in the grid.
+        the runtime station snapshots and the actual switches and busbars in the grid.
     RealizedTopology
         The realized topology, containing the coupler diff, reassignment diff and disconnection diff for each station.
     """
-    realizations = [apply_station(net, station) for station in topology.materialize_stations()]
-    apply_diffs = [(rs.station.grid_model_id, apply_diff) for apply_diff, rs in realizations]
+    realizations = [apply_station(net, station) for station in stations]
+    apply_diffs = [(rs.station.bus_group_id, apply_diff) for apply_diff, rs in realizations]
     realized_stations = [rs for _, rs in realizations]
 
     (
@@ -696,7 +696,7 @@ def apply_topology(net: pp.pandapowerNet, topology: Topology) -> tuple[list[tupl
     ) = accumulate_diffs(realized_stations)
 
     return apply_diffs, RealizedTopology(
-        topology=topology,
+        stations=[realized_station.station for realized_station in realized_stations],
         coupler_diff=coupler_diff,
         branch_reassignment_diff=branch_reassignment_diff,
         injection_reassignment_diff=injection_reassignment_diff,

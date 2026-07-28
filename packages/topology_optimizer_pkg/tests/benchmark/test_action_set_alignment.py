@@ -16,11 +16,11 @@ def _group_local_actions_by_station(local_actions: list) -> list[tuple[str, int]
     groups: list[tuple[str, int]] = []
     start = 0
     while start < len(local_actions):
-        grid_model_id = local_actions[start].grid_model_id
+        bus_group_id = local_actions[start].bus_group_id
         end = start + 1
-        while end < len(local_actions) and local_actions[end].grid_model_id == grid_model_id:
+        while end < len(local_actions) and local_actions[end].bus_group_id == bus_group_id:
             end += 1
-        groups.append((grid_model_id, end - start))
+        groups.append((bus_group_id, end - start))
         start = end
     return groups
 
@@ -39,7 +39,7 @@ def test_loaded_action_set_stays_aligned_with_jax_action_boundaries(_grid_folder
     counts = [int(value) for value in static_information.dynamic_information.action_set.n_actions_per_sub]
 
     for start, count in zip(starts, counts, strict=True):
-        station_ids = {action_set.local_actions[index].grid_model_id for index in range(start, start + count)}
+        station_ids = {action_set.local_actions[index].bus_group_id for index in range(start, start + count)}
         assert len(station_ids) == 1, "A JAX action-substation block must map to exactly one stored station id."
         jax_groups.append((next(iter(station_ids)), count))
 

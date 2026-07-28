@@ -6,12 +6,10 @@
 # Mozilla Public License, version 2.0
 
 import time
-from datetime import datetime
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-import numpy as np
 import pandapower as pp
 import pandas as pd
 import pypowsybl
@@ -25,12 +23,6 @@ from toop_engine_importer.pandapower_import.preprocessing import modify_constan_
 from toop_engine_importer.pypowsybl_import import powsybl_masks, preprocessing
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.preprocessing import create_nminus1_definition_from_masks
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    RawStation,
-    Topology,
-)
-from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar
-from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
     PREPROCESSING_PATHS,
@@ -51,62 +43,9 @@ from toop_engine_interfaces.messages.preprocess.preprocess_results import (
 
 logger = structlog.get_logger(__name__)
 
-
-def test_filter_split_stations_from_relevant_subs(basic_node_breaker_network_powsybl_grid: Network) -> None:
-    network = basic_node_breaker_network_powsybl_grid
-    network_masks = powsybl_masks.create_default_network_masks(network)
-    buses = network.get_buses(attributes=[])
-    relevant_subs = (
-        buses.index.isin(["S1VL1_1", "S1VL1_2"])
-        if "S1VL1_1" in buses.index
-        else np.array([True, True, *([False] * (len(buses) - 2))])
-    )
-    network_masks = powsybl_masks.NetworkMasks(**{**network_masks.__dict__, "relevant_subs": relevant_subs})
-
-    split_station = RawStation(
-        grid_model_id=buses.index[0],
-        name="split",
-        busbars=[
-            Busbar(int_id=0, grid_model_id="bb0", bus_branch_bus_id=buses.index[0]),
-            Busbar(int_id=1, grid_model_id="bb1", bus_branch_bus_id=buses.index[1]),
-        ],
-        couplers=[],
-        branch_connections=[StationAssetConnection(asset_id="asset0", branch_end=None, asset_bay_id=None)],
-        injection_connections=[],
-        branch_switching_table=np.array([[True], [False]]),
-        injection_switching_table=np.zeros((2, 0), dtype=bool),
-    )
-    regular_station = RawStation(
-        grid_model_id=buses.index[1],
-        name="regular",
-        busbars=[Busbar(int_id=0, grid_model_id="bb2", bus_branch_bus_id=buses.index[1])],
-        couplers=[],
-        branch_connections=[StationAssetConnection(asset_id="asset1", branch_end=None, asset_bay_id=None)],
-        injection_connections=[],
-        branch_switching_table=np.array([[True]]),
-        injection_switching_table=np.zeros((1, 0), dtype=bool),
-    )
-    topology_model = Topology(
-        topology_id="topology",
-        grid_model_file="grid.xiidm",
-        raw_stations=[split_station, regular_station],
-        branch_assets=[BranchAsset(grid_model_id="asset0"), BranchAsset(grid_model_id="asset1")],
-        injection_assets=[],
-        timestamp=datetime.now(),
-    )
-
-    filtered_masks = preprocessing.filter_split_stations_from_relevant_subs(
-        network=network,
-        topology_model=topology_model,
-        network_masks=network_masks,
-    )
-
-    assert [station.grid_model_id for station in topology_model.materialize_stations()] == [
-        split_station.grid_model_id,
-        regular_station.grid_model_id,
-    ]
-    assert filtered_masks.relevant_subs[buses.index.get_loc(split_station.grid_model_id)] == np.False_
-    assert filtered_masks.relevant_subs[buses.index.get_loc(regular_station.grid_model_id)] == np.True_
+ASSET_TOPOLOGY_RUNTIME_STATE_PATH = Path("initial_topology/asset_topology_runtime_state.json")
+ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH = Path("initial_topology/asset_topology_compact_runtime_state.json")
+ASSET_TOPOLOGY_RUNTIME_PATH = Path("initial_topology/asset_topology_runtime.json")
 
 
 def test_save_load_preprocessing_statistics():
@@ -232,8 +171,16 @@ def test_convert_file(ucte_file):
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
+        asset_topology_master_data_file = temp_dir / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
+        asset_topology_runtime_state_file = temp_dir / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
+        asset_topology_compact_runtime_state_file = temp_dir / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH
         assert importer_auxiliary_file.exists()
         assert grid_file_path.exists()
+        assert not (temp_dir / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
+        assert not (temp_dir / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
+        assert asset_topology_master_data_file.exists()
+        assert not asset_topology_runtime_state_file.exists()
+        assert not asset_topology_compact_runtime_state_file.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
@@ -248,8 +195,16 @@ def test_convert_file(ucte_file):
         importer_auxiliary_file = temp_dir_test2 / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir_test2 / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir_test2 / PREPROCESSING_PATHS["masks_path"]
+        asset_topology_master_data_file = temp_dir_test2 / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
+        asset_topology_runtime_state_file = temp_dir_test2 / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
+        asset_topology_compact_runtime_state_file = temp_dir_test2 / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH
         assert importer_auxiliary_file.exists()
         assert grid_file_path.exists()
+        assert not (temp_dir_test2 / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
+        assert not (temp_dir_test2 / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
+        assert asset_topology_master_data_file.exists()
+        assert not asset_topology_runtime_state_file.exists()
+        assert not asset_topology_compact_runtime_state_file.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
@@ -318,8 +273,16 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
         importer_auxiliary_file = temp_dir / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir / PREPROCESSING_PATHS["masks_path"]
+        asset_topology_master_data_file = temp_dir / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
+        asset_topology_runtime_state_file = temp_dir / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
+        asset_topology_compact_runtime_state_file = temp_dir / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH
         assert importer_auxiliary_file.exists()
         assert grid_file_path.exists()
+        assert not (temp_dir / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
+        assert not (temp_dir / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
+        assert asset_topology_master_data_file.exists()
+        assert not asset_topology_runtime_state_file.exists()
+        assert not asset_topology_compact_runtime_state_file.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)
@@ -334,8 +297,16 @@ def test_convert_file_node_breaker_with_svc(basic_node_breaker_network_powsybl_g
         importer_auxiliary_file = temp_dir_test2 / PREPROCESSING_PATHS["importer_auxiliary_file_path"]
         grid_file_path = temp_dir_test2 / PREPROCESSING_PATHS["grid_file_path_powsybl"]
         mask_dir = temp_dir_test2 / PREPROCESSING_PATHS["masks_path"]
+        asset_topology_master_data_file = temp_dir_test2 / PREPROCESSING_PATHS["asset_topology_master_data_file_path"]
+        asset_topology_runtime_state_file = temp_dir_test2 / ASSET_TOPOLOGY_RUNTIME_STATE_PATH
+        asset_topology_compact_runtime_state_file = temp_dir_test2 / ASSET_TOPOLOGY_COMPACT_RUNTIME_STATE_PATH
         assert importer_auxiliary_file.exists()
         assert grid_file_path.exists()
+        assert not (temp_dir_test2 / PREPROCESSING_PATHS["asset_topology_file_path"]).exists()
+        assert not (temp_dir_test2 / ASSET_TOPOLOGY_RUNTIME_PATH).exists()
+        assert asset_topology_master_data_file.exists()
+        assert not asset_topology_runtime_state_file.exists()
+        assert not asset_topology_compact_runtime_state_file.exists()
         for file_name in powsybl_masks.NetworkMasks.__annotations__.keys():
             assert (mask_dir / NETWORK_MASK_NAMES[file_name]).exists(), f"{NETWORK_MASK_NAMES[file_name]} does not exist"
         assert isinstance(import_result, ImportResult)

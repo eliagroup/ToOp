@@ -1,8 +1,8 @@
 # Network Graph for Topologies
 ## Motivation
-To use the optimizer, an [AssetTopology][toop_engine_interfaces.asset_topology] is needed. The [AssetTopology][toop_engine_interfaces.asset_topology] stores information about a Topology, incl. Station layouts, assets and their topological state. The creation of an [AssetTopology][toop_engine_interfaces.asset_topology] is easy if an asset is directly connected to a busbar with no additional nodes and switches in between (e.g., the UCTE Format).
+To use the optimizer, canonical asset-topology master data plus runtime station snapshots are needed. The [AssetTopology][toop_engine_interfaces.asset_topology] model stores station layouts, assets, and their topological state, but productive code now separates canonical structure from runtime switching state. The creation of this representation is easy if an asset is directly connected to a busbar with no additional nodes and switches in between (e.g., the UCTE Format).
 In a closer-to-reality Node-Breaker Model like CGMES, assets can be connected to multiple busbars via switches and additional non-busbar-nodes. With this info we can create possible splits for the optimizer and directly translate the optimization results into switching actions on the actual grid.
-The network graph model maps all important elements to the [AssetTopology][toop_engine_interfaces.asset_topology] logic.
+The network graph model maps all important elements to the [AssetTopology][toop_engine_interfaces.asset_topology] logic and derives structural station groups independently of the current switch state.
 
 ## Core Concepts
 
@@ -65,7 +65,7 @@ The data classes for the Network Graph:
 
 5. **Extract the Filled [`BusbarConnectionInfo`][toop_engine_importer.network_graph.BusbarConnectionInfo] and [`EdgeConnectionInfo`][toop_engine_importer.network_graph.EdgeConnectionInfo] from the Network.**
 
-6. **Create the AssetTopology** using the [`NetworkGraphData`][toop_engine_importer.network_graph.NetworkGraphData], [`BusbarConnectionInfo`][toop_engine_importer.network_graph.BusbarConnectionInfo], and [`EdgeConnectionInfo`][toop_engine_importer.network_graph.EdgeConnectionInfo].
+6. **Create the canonical asset topology and runtime station views** using the [`NetworkGraphData`][toop_engine_importer.network_graph.NetworkGraphData], [`BusbarConnectionInfo`][toop_engine_importer.network_graph.BusbarConnectionInfo], and [`EdgeConnectionInfo`][toop_engine_importer.network_graph.EdgeConnectionInfo]. The productive output is the pair `TopologyMasterData + list[MaterializedStation]`; compatibility wrappers may still package that pair into a legacy `Topology` object.
 
 **Note:** A star equivalent transformation for three-winding transformers is not needed before using this module. The graph module only needs the connection and does no calculation.
 

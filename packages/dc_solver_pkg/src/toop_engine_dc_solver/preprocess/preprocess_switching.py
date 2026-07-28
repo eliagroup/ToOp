@@ -12,23 +12,18 @@ The switching distance is evaluated between a topology and a reference topology.
 
 import itertools
 from dataclasses import dataclass
-from typing import get_args
 
 import jax.numpy as jnp
 import networkx as nx
 import numpy as np
 import structlog
-from beartype.typing import Optional, Sequence
+from beartype.typing import Optional
 from jaxtyping import Array, Bool, Int
 from networkx.algorithms.components import (
     connected_components,
     number_connected_components,
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import hamming_distance
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    Topology,
-    copy_topology_with_updates,
-)
 from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
     filter_disconnected_busbars,
     filter_duplicate_couplers,
@@ -37,8 +32,7 @@ from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
     fuse_all_couplers_with_type,
     order_station_assets,
 )
-from toop_engine_interfaces.asset_topology.asset_types import AssetInjectionType
-from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 logger = structlog.get_logger(__name__)
@@ -139,7 +133,7 @@ def make_separation_set(
 
     if len(station.couplers) > 20:
         raise ValueError(
-            f"Unrealistic number of couplers ({len(station.couplers)}) found in the station {station.grid_model_id}"
+            f"Unrealistic number of couplers ({len(station.couplers)}) found in the station {station.bus_group_id}"
         )
 
     for coupler_open in itertools.product([True, False], repeat=len(station.couplers)):
@@ -212,18 +206,12 @@ def identify_unnecessary_configurations(
         A mask of the configurations that are to be kept.
     """
     assert len(configurations.shape) == 2, "The configurations should be reshaped to two dimensions"
-    # Compute the hamming distance between all pairs of configurations
     hamming_distances = np.sum(np.logical_xor(configurations[:, None], configurations[None, :]), axis=-1)
-    # Also compute the hamming distance to their inverse
     hamming_distances_inv = np.sum(np.logical_xor(configurations[:, None], ~configurations[None, :]), axis=-1)
     hamming_distances = np.minimum(hamming_distances, hamming_distances_inv)
 
-    # Put the diagonal to a value higher than the clip_hamming_distance so we don't exclude
-    # a configuration based on the distance to itself
     np.fill_diagonal(hamming_distances, clip_hamming_distance + 1)
 
-    # Find the configurations that are equivalent to others
-    # Make sure to keep at least one configuration for each equivalence class
     mask = np.ones(len(configurations), dtype=bool)
     for i in range(len(configurations)):
         if mask[i]:
@@ -260,7 +248,10 @@ class StationProblems:
 
 
 def prepare_for_separation_set(
-    station: MaterializedStation, branch_ids: list[str], injection_ids: list[str], close_couplers: bool = False
+    station: MaterializedStation,
+    branch_ids: list[str],
+    injection_ids: list[str],
+    close_couplers: bool = False,
 ) -> tuple[MaterializedStation, StationProblems]:
     """Prepare a Station so it can be used in make_separation_set.
 
@@ -299,7 +290,7 @@ def prepare_for_separation_set(
     station, not_found, ignored = order_station_assets(station, branch_ids + injection_ids)
     if not_found:
         raise ValueError(
-            f"The following assets were not found in the station {station.grid_model_id}/{station.name}: "
+            f"The following assets were not found in the station {station.bus_group_id}/{station.name}: "
             f"{not_found} - this station can not be switched."
         )
 
@@ -311,7 +302,7 @@ def prepare_for_separation_set(
 
     if not station.couplers:
         raise ValueError(
-            f"Station {station.grid_model_id}/{station.name} has no couplers left after preprocessing. "
+            f"Station {station.bus_group_id}/{station.name} has no couplers left after preprocessing. "
             "this station can not be switched.."
         )
 
@@ -365,7 +356,7 @@ def make_optimal_separation_set(
     """
     configuration_table, coupler_states, busbar_matchings = make_separation_set(station)
     logger.info(
-        f"Station {station.grid_model_id}/{station.name} - Initial separation set size: {configuration_table.shape[0]}"
+        f"Station {station.bus_group_id}/{station.name} - Initial separation set size: {configuration_table.shape[0]}"
     )
     clip_hamming_distance = 0 if configuration_table.shape[0] < clip_at_size else clip_hamming_distance
     config_mask = identify_unnecessary_configurations(configuration_table[:, 0, :], clip_hamming_distance)
@@ -382,145 +373,4 @@ def make_optimal_separation_set(
         coupler_states=coupler_states,
         coupler_distance=coupler_distances,
         busbar_a=busbar_matchings,
-    )
-
-
-def add_missing_asset_topology_branch_info(
-    asset_topology: Topology,
-    branch_ids: Sequence[str],
-    branch_names: Sequence[str],
-    branch_types: Sequence[str],
-    branch_from_nodes: Sequence[str],
-    overwrite_if_present: bool = True,
-) -> Topology:
-    """Add name, type and direction info to the asset topology
-
-    These fields are optional and are not necessarily present in the asset topology. This function
-    will update the topology to have these fields. If the fields are already present, they will be
-    overwritten if overwrite_if_present is True.
-
-    Parameters
-    ----------
-    asset_topology : Topology
-        The asset topology to update
-    branch_ids : Sequence[str]
-        The branch ids of the branches in the grid, should match the grid_model_id in the assets
-    branch_names : Sequence[str]
-        The names of the branches, should have the same length as branch_ids
-    branch_types : Sequence[str]
-        The types of the branches, should have the same length as branch_ids
-    branch_from_nodes : Sequence[str]
-        The from node grid_model_id of each branch, should have the same length as branch_ids. If
-        the station name is equal to the entry in from_nodes, the branch-end will be saved as "from"
-        If it's not found, the branch-end will be saved as "to" without checking the to_nodes
-    overwrite_if_present : bool, optional
-        Whether to overwrite the fields if they are already present, by default True
-
-    Returns
-    -------
-    Topology
-        The updated asset topology
-    """
-    # Faster lookup of the position of the branch
-    branch_id_lookup = {branch_id: i for i, branch_id in enumerate(branch_ids)}
-
-    updated_assets_by_id: dict[str, SwitchableAsset] = {}
-    for asset in asset_topology.branch_assets:
-        index = branch_id_lookup.get(asset.grid_model_id, None)
-        if index is not None:
-            asset_data = asset.model_dump()
-            asset_data["name"] = branch_names[index] if overwrite_if_present or asset.name is None else asset.name
-            asset_data["asset_type"] = (
-                branch_types[index] if overwrite_if_present or asset.asset_type is None else asset.asset_type
-            )
-            updated_assets_by_id[asset.grid_model_id] = BranchAsset(**asset_data)
-        else:
-            updated_assets_by_id[asset.grid_model_id] = asset.model_copy(deep=True)
-
-    updated_injection_assets = [asset.model_copy(deep=True) for asset in asset_topology.injection_assets]
-
-    new_raw_stations = []
-    for station in asset_topology.raw_stations:
-        new_branch_ends = []
-        for asset_connection in station.branch_connections:
-            asset_id = asset_connection.asset_id
-            branch_end = asset_connection.branch_end
-            index = branch_id_lookup.get(asset_id, None)
-            if (
-                index is not None
-                and isinstance(updated_assets_by_id[asset_id], BranchAsset)
-                and (overwrite_if_present or branch_end is None)
-            ):
-                new_branch_ends.append("from" if branch_from_nodes[index] == station.grid_model_id else "to")
-            else:
-                new_branch_ends.append(branch_end)
-        new_raw_stations.append(station.with_asset_terminals(new_branch_ends))
-
-    return copy_topology_with_updates(
-        reference_topology=asset_topology,
-        raw_stations=new_raw_stations,
-        asset_bays=asset_topology.asset_bays,
-        branch_assets=[updated_assets_by_id[asset.grid_model_id] for asset in asset_topology.branch_assets],
-        injection_assets=updated_injection_assets,
-    )
-
-
-def add_missing_asset_topology_injection_info(
-    asset_topology: Topology,
-    injection_ids: Sequence[str],
-    injection_names: Sequence[str],
-    injection_types: Sequence[str],
-    overwrite_if_present: bool = True,
-) -> Topology:
-    """Add name info to the asset topology
-
-    These fields are optional and are not necessarily present in the asset topology. This function
-    will update the topology to have these fields. If the fields are already present, they will be
-    overwritten if overwrite_if_present is True.
-
-    Parameters
-    ----------
-    asset_topology : Topology
-        The asset topology to update
-    injection_ids : Sequence[str]
-        The injection ids of the injections in the grid, should match the grid_model_id in the assets
-    injection_names : Sequence[str]
-        The names of the injections, should have the same length as injection_ids
-    injection_types : Sequence[str]
-        The types of the injections, should have the same length as injection_ids
-    overwrite_if_present : bool, optional
-        Whether to overwrite the fields if they are already present, by default True
-
-    Returns
-    -------
-    Topology
-        The updated asset topology
-    """
-    # Faster lookup of the position of the injection
-    injection_id_lookup = {injection_id: i for i, injection_id in enumerate(injection_ids)}
-
-    updated_branch_assets = [asset.model_copy(deep=True) for asset in asset_topology.branch_assets]
-    updated_injection_assets = []
-    for asset in asset_topology.injection_assets:
-        index = injection_id_lookup.get(asset.grid_model_id, None)
-        if index is not None:
-            asset_data = asset.model_dump()
-            asset_data["name"] = injection_names[index] if overwrite_if_present or asset.name is None else asset.name
-            updated_type = injection_types[index] if overwrite_if_present or asset.asset_type is None else asset.asset_type
-            if updated_type in get_args(AssetInjectionType):
-                asset_data["asset_type"] = updated_type
-                updated_injection_assets.append(InjectionAsset(**asset_data))
-            elif isinstance(asset, BranchAsset):
-                updated_injection_assets.append(BranchAsset(**asset_data))
-            else:
-                updated_injection_assets.append(asset.model_copy(update=asset_data, deep=True))
-        else:
-            updated_injection_assets.append(asset.model_copy(deep=True))
-
-    return copy_topology_with_updates(
-        reference_topology=asset_topology,
-        raw_stations=asset_topology.raw_stations,
-        asset_bays=asset_topology.asset_bays,
-        branch_assets=updated_branch_assets,
-        injection_assets=updated_injection_assets,
     )

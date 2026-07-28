@@ -4,8 +4,8 @@
     "name": null,
     "stations": [
         {
-            "grid_model_id": "VL2_0",
-            "voltage_level_id": null,
+            "grid_model_id": "VL2_a",
+            "voltage_level_id": "VL2",
             "name": "VLevel2",
             "station_type": null,
             "region": "BE",
@@ -36,9 +36,6 @@
                     "bus_branch_bus_id": "VL2_0"
                 }
             ],
-            "bus_branch_bus_ids": [
-                "VL2_0"
-            ],
             "couplers": [
                 {
                     "grid_model_id": "VL2_BREAKER",
@@ -61,39 +58,39 @@
                     "asset_bay": null
                 }
             ],
-            "branch_switching_table": [
-                [
-                    true,
-                    false,
-                    true,
-                    false,
-                    true
-                ],
-                [
-                    false,
-                    true,
-                    false,
-                    true,
-                    false
-                ],
-                [
-                    false,
-                    false,
-                    false,
-                    false,
-                    false
-                ]
+            "branch_connections": [
+                {
+                    "asset_id": "L1",
+                    "branch_end": "to",
+                    "asset_bay_id": "VLevel2::L1::bay"
+                },
+                {
+                    "asset_id": "L2",
+                    "branch_end": "to",
+                    "asset_bay_id": "VLevel2::L2::bay"
+                },
+                {
+                    "asset_id": "L6",
+                    "branch_end": "from",
+                    "asset_bay_id": "VLevel2::L6::bay"
+                },
+                {
+                    "asset_id": "L7",
+                    "branch_end": "from",
+                    "asset_bay_id": "VLevel2::L7::bay"
+                },
+                {
+                    "asset_id": "L8",
+                    "branch_end": "from",
+                    "asset_bay_id": "VLevel2::L8::bay"
+                }
             ],
-            "injection_switching_table": [
-                [
-                    true
-                ],
-                [
-                    false
-                ],
-                [
-                    false
-                ]
+            "injection_connections": [
+                {
+                    "asset_id": "load1",
+                    "branch_end": null,
+                    "asset_bay_id": "VLevel2::load1::bay"
+                }
             ],
             "branch_connectivity": [
                 [
@@ -128,130 +125,11 @@
                 [
                     true
                 ]
-            ],
-            "model_log": [],
-            "branch_connections": [
-                {
-                    "asset": {
-                        "grid_model_id": "L1",
-                        "asset_type": "LINE",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel2::L1::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "L12_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS2_1": "L12_DISCONNECTOR_4_0",
-                            "BBS2_2": "L12_DISCONNECTOR_4_1",
-                            "BBS2_3": "L12_DISCONNECTOR_4_2"
-                        }
-                    }
-                },
-                {
-                    "asset": {
-                        "grid_model_id": "L2",
-                        "asset_type": "LINE",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel2::L2::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "L22_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS2_1": "L22_DISCONNECTOR_6_0",
-                            "BBS2_2": "L22_DISCONNECTOR_6_1",
-                            "BBS2_3": "L22_DISCONNECTOR_6_2"
-                        }
-                    }
-                },
-                {
-                    "asset": {
-                        "grid_model_id": "L6",
-                        "asset_type": "LINE",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel2::L6::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "L61_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS2_1": "L61_DISCONNECTOR_8_0",
-                            "BBS2_2": "L61_DISCONNECTOR_8_1",
-                            "BBS2_3": "L61_DISCONNECTOR_8_2"
-                        }
-                    }
-                },
-                {
-                    "asset": {
-                        "grid_model_id": "L7",
-                        "asset_type": "LINE",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel2::L7::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "L71_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS2_1": "L71_DISCONNECTOR_10_0",
-                            "BBS2_2": "L71_DISCONNECTOR_10_1",
-                            "BBS2_3": "L71_DISCONNECTOR_10_2"
-                        }
-                    }
-                },
-                {
-                    "asset": {
-                        "grid_model_id": "L8",
-                        "asset_type": "LINE",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel2::L8::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "L81_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS2_1": "L81_DISCONNECTOR_12_0",
-                            "BBS2_2": "L81_DISCONNECTOR_12_1",
-                            "BBS2_3": "L81_DISCONNECTOR_12_2"
-                        }
-                    }
-                }
-            ],
-            "injection_connections": [
-                {
-                    "asset": {
-                        "grid_model_id": "load1",
-                        "asset_type": "LOAD",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel2::load1::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "load1_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS2_1": "load1_DISCONNECTOR_18_0",
-                            "BBS2_2": "load1_DISCONNECTOR_18_1",
-                            "BBS2_3": "load1_DISCONNECTOR_18_2"
-                        }
-                    }
-                }
             ]
         },
         {
-            "grid_model_id": "VL3_0",
-            "voltage_level_id": null,
+            "grid_model_id": "VL3_a",
+            "voltage_level_id": "VL3",
             "name": "VLevel3",
             "station_type": null,
             "region": "BE",
@@ -290,9 +168,6 @@
                     "bus_branch_bus_id": "VL3_0"
                 }
             ],
-            "bus_branch_bus_ids": [
-                "VL3_0"
-            ],
             "couplers": [
                 {
                     "grid_model_id": "VL3_BREAKER",
@@ -325,45 +200,34 @@
                     "asset_bay": null
                 }
             ],
-            "branch_switching_table": [
-                [
-                    true,
-                    true,
-                    false,
-                    true
-                ],
-                [
-                    false,
-                    false,
-                    true,
-                    false
-                ],
-                [
-                    false,
-                    false,
-                    false,
-                    false
-                ],
-                [
-                    false,
-                    false,
-                    false,
-                    false
-                ]
+            "branch_connections": [
+                {
+                    "asset_id": "L3",
+                    "branch_end": "to",
+                    "asset_bay_id": "VLevel3::L3::bay"
+                },
+                {
+                    "asset_id": "L6",
+                    "branch_end": "to",
+                    "asset_bay_id": "VLevel3::L6::bay"
+                },
+                {
+                    "asset_id": "L7",
+                    "branch_end": "to",
+                    "asset_bay_id": "VLevel3::L7::bay"
+                },
+                {
+                    "asset_id": "L9",
+                    "branch_end": "from",
+                    "asset_bay_id": "VLevel3::L9::bay"
+                }
             ],
-            "injection_switching_table": [
-                [
-                    false
-                ],
-                [
-                    true
-                ],
-                [
-                    false
-                ],
-                [
-                    false
-                ]
+            "injection_connections": [
+                {
+                    "asset_id": "load2",
+                    "branch_end": null,
+                    "asset_bay_id": "VLevel3::load2::bay"
+                }
             ],
             "branch_connectivity": [
                 [
@@ -404,101 +268,6 @@
                 [
                     false
                 ]
-            ],
-            "model_log": [],
-            "branch_connections": [
-                {
-                    "asset": {
-                        "grid_model_id": "L3",
-                        "asset_type": "LINE",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel3::L3::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "L32_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS3_1": "L32_DISCONNECTOR_5_0",
-                            "BBS3_2": "L32_DISCONNECTOR_5_1"
-                        }
-                    }
-                },
-                {
-                    "asset": {
-                        "grid_model_id": "L6",
-                        "asset_type": "LINE",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel3::L6::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "L62_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS3_1": "L62_DISCONNECTOR_7_0",
-                            "BBS3_2": "L62_DISCONNECTOR_7_1"
-                        }
-                    }
-                },
-                {
-                    "asset": {
-                        "grid_model_id": "L7",
-                        "asset_type": "LINE",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel3::L7::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "L72_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS3_1": "L72_DISCONNECTOR_9_0",
-                            "BBS3_2": "L72_DISCONNECTOR_9_1"
-                        }
-                    }
-                },
-                {
-                    "asset": {
-                        "grid_model_id": "L9",
-                        "asset_type": "LINE",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel3::L9::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "L91_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS3_1": "L91_DISCONNECTOR_11_0",
-                            "BBS3_2": "L91_DISCONNECTOR_11_1"
-                        }
-                    }
-                }
-            ],
-            "injection_connections": [
-                {
-                    "asset": {
-                        "grid_model_id": "load2",
-                        "asset_type": "LOAD",
-                        "name": "",
-                        "in_service": true
-                    },
-                    "branch_end": null,
-                    "asset_bay": {
-                        "asset_bay_id": "VLevel3::load2::bay",
-                        "sl_switch_grid_model_id": null,
-                        "dv_switch_grid_model_id": "load2_BREAKER",
-                        "sr_switch_grid_model_id": {
-                            "BBS3_1": "load2_DISCONNECTOR_19_0",
-                            "BBS3_2": "load2_DISCONNECTOR_19_1"
-                        }
-                    }
-                }
             ]
         }
     ],
@@ -668,7 +437,5 @@
             }
         }
     ],
-    "asset_setpoints": null,
-    "timestamp": "2026-06-18T21:43:40.631530",
-    "metrics": null
+    "asset_setpoints": null
 }

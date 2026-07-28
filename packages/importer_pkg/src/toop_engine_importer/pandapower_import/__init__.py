@@ -18,7 +18,7 @@ from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import (
     select_connected_subnet,
 )
 
-from .asset_topology import get_asset_topology_from_network, get_station_from_id
+from .asset_topology import get_asset_topology_master_data_from_network
 from .pandapower_toolset_node_breaker import (
     add_substation_column_to_bus,
     fuse_closed_switches_by_bus_ids,
@@ -32,8 +32,8 @@ from .pandapower_toolset_node_breaker import (
 )
 from .preprocessing import (
     preprocess_net_step1,
-    preprocess_net_step2,
-    validate_asset_topology,
+    preprocess_net_step2_master_data,
+    validate_asset_topology_stations,
 )
 
 __all__ = [
@@ -44,19 +44,18 @@ __all__ = [
     "fuse_closed_switches_by_bus_ids",
     "fuse_closed_switches_fast",
     "get_all_switches_from_bus_ids",
-    "get_asset_topology_from_network",
+    "get_asset_topology_master_data_from_network",
     "get_closed_switch",
     "get_coupler_types_of_substation",
     "get_indirect_connected_switch",
-    "get_station_from_id",
     "get_station_id_list",
     "get_substation_buses_from_bus_id",
     "get_type_b_nodes",
     "move_elements_based_on_labels",
     "preprocess_net_step1",
-    "preprocess_net_step2",
+    "preprocess_net_step2_master_data",
     "remove_out_of_service",
     "replace_zero_branches",
     "select_connected_subnet",
-    "validate_asset_topology",
+    "validate_asset_topology_stations",
 ]

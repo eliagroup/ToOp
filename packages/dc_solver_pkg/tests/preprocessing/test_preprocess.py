@@ -57,6 +57,7 @@ from toop_engine_dc_solver.preprocess.preprocess import (
     filter_inactive_injections,
     filter_relevant_nodes_branch_count,
     filter_relevant_nodes_no_asset_station,
+    filter_relevant_split_asset_stations,
     preprocess,
     process_injection_outages,
     reduce_branch_dimension,
@@ -69,8 +70,9 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_pandapower_branch_loadflow_results_sequence,
 )
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_ids
-from toop_engine_interfaces.asset_topology.asset_topology import copy_topology_with_updates
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import PreprocessStage
 
@@ -553,6 +555,8 @@ def test_compute_electrical_actions(network_data_filled: NetworkData) -> None:
     assert len(network_data.injection_action_set) == sum(network_data.relevant_node_mask)
     assert network_data.branch_action_set_switching_distance is not None
     assert len(network_data.branch_action_set_switching_distance) == sum(network_data.relevant_node_mask)
+    assert network_data.realised_stations is not None
+    assert len(network_data.realised_stations) == sum(network_data.relevant_node_mask)
     for sub, (inj_set, branch_set, sw_dist) in enumerate(
         zip(
             network_data.injection_action_set,
@@ -563,6 +567,7 @@ def test_compute_electrical_actions(network_data_filled: NetworkData) -> None:
         assert inj_set.shape[0] == branch_set.shape[0]
         assert sw_dist.shape[0] == branch_set.shape[0]
         assert inj_set.shape[1] == network_data.num_injections_per_node[sub]
+        assert len(network_data.realised_stations[sub]) == branch_set.shape[0]
         assert branch_set.shape[1] == network_data.num_branches_per_node[sub]
         assert inj_set.ndim == 2
         assert sw_dist.ndim == 1
@@ -592,17 +597,15 @@ def test_enumerate_station_realisations(
 def test_enumerate_station_realisations_no_coupler(
     network_data_filled: NetworkData,
 ) -> None:
-    raw_stations = [
-        station.model_copy(update={"couplers": []}) for station in network_data_filled.asset_topology.raw_stations
+    assert network_data_filled.asset_topology is not None
+    runtime_stations = [
+        station.model_copy(update={"couplers": []}) for station in network_data_filled.asset_topology.stations
     ]
     network_data = replace(
         network_data_filled,
-        asset_topology=copy_topology_with_updates(
-            reference_topology=network_data_filled.asset_topology,
-            raw_stations=raw_stations,
-            asset_bays=network_data_filled.asset_topology.asset_bays,
-            branch_assets=network_data_filled.asset_topology.branch_assets,
-            injection_assets=network_data_filled.asset_topology.injection_assets,
+        asset_topology=RuntimeAssetTopology(
+            stations=runtime_stations,
+            circuit_groups=network_data_filled.asset_topology.circuit_groups,
         ),
     )
     network_data = filter_relevant_nodes_branch_count(network_data)
@@ -620,12 +623,12 @@ def test_simplify_asset_topology(
     network_data = compute_injection_topology_info(network_data)
     network_data = simplify_asset_topology(network_data)
     assert network_data.simplified_asset_topology is not None
-    simplified_stations = network_data.simplified_asset_topology.materialize_stations()
+    simplified_stations = network_data.simplified_asset_topology.stations
     assert len(simplified_stations) == network_data.relevant_node_mask.sum()
     for rel_node_index, (rel_node_id, station) in enumerate(
         zip(network_data.relevant_nodes, simplified_stations, strict=True)
     ):
-        assert station.grid_model_id == network_data.node_ids[rel_node_id]
+        assert station.bus_group_id == network_data.node_ids[rel_node_id]
         MaterializedStation.model_validate(station)
         branch_ids = [network_data.branch_ids[i] for i in network_data.branches_at_nodes[rel_node_index]]
         inj_ids = [network_data.injection_ids[i] for i in network_data.injection_idx_at_nodes[rel_node_index]]
@@ -635,6 +638,48 @@ def test_simplify_asset_topology(
         ]
         assert branch_ids == asset_ids[: len(branch_ids)]
         assert inj_ids == asset_ids[len(branch_ids) :]
+
+
+def test_simplify_asset_topology_projects_runtime_station_to_local_assets(network_data_filled: NetworkData) -> None:
+    """Verify that simplification drops station-local assets outside the relevant node slice."""
+    network_data = compute_branch_topology_info(network_data_filled)
+    network_data = compute_injection_topology_info(network_data)
+    assert network_data.asset_topology is not None
+
+    branch_ids_local = [network_data.branch_ids[i] for i in network_data.branches_at_nodes[0]]
+    injection_ids_local = [network_data.injection_ids[i] for i in network_data.injection_idx_at_nodes[0]]
+    extra_branch_id = next(branch_id for branch_id in network_data.branch_ids if branch_id not in branch_ids_local)
+    base_station = network_data.asset_topology.stations[0]
+    projected_station = base_station.model_copy(
+        update={
+            "branch_connections": [
+                *base_station.branch_connections,
+                MaterializedAssetConnection(asset=BranchAsset(grid_model_id=extra_branch_id, in_service=True)),
+            ],
+            "branch_switching_table": np.c_[
+                base_station.branch_switching_table, np.zeros((len(base_station.busbars), 1), dtype=bool)
+            ],
+            "branch_connectivity": np.c_[
+                base_station.branch_connectivity, np.ones((len(base_station.busbars), 1), dtype=bool)
+            ],
+        }
+    )
+    network_data = replace(
+        network_data,
+        asset_topology=RuntimeAssetTopology(
+            stations=[projected_station, *network_data.asset_topology.stations[1:]],
+            circuit_groups=network_data.asset_topology.circuit_groups,
+        ),
+    )
+
+    network_data = simplify_asset_topology(network_data)
+
+    assert network_data.simplified_asset_topology is not None
+    simplified_station = network_data.simplified_asset_topology.stations[0]
+    simplified_branch_ids = [connection.asset.grid_model_id for connection in simplified_station.branch_connections]
+    simplified_injection_ids = [connection.asset.grid_model_id for connection in simplified_station.injection_connections]
+    assert simplified_branch_ids == branch_ids_local
+    assert simplified_injection_ids == injection_ids_local
 
 
 def test_exclude_bridges_from_outage_masks(
@@ -796,17 +841,110 @@ def test_filter_relevant_nodes_branch_count(network_data: NetworkData) -> None:
 
 def test_filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> None:
     # Remove a few stations from the asset topology
+    trimmed_stations = network_data.asset_topology.stations[:2] if network_data.asset_topology is not None else []
     network_data = replace(
         network_data,
-        asset_topology=network_data.asset_topology.model_copy(
-            update={
-                "raw_stations": network_data.asset_topology.raw_stations[:2]  # Keep only the first two stations
-            }
+        asset_topology=RuntimeAssetTopology(
+            stations=trimmed_stations,
+            circuit_groups=network_data.asset_topology.circuit_groups if network_data.asset_topology is not None else None,
         ),
     )
     # Compute the relevant nodes based on the new asset topology
     network_data = filter_relevant_nodes_no_asset_station(network_data)
     assert network_data.relevant_node_mask.sum() == 2  # Only the first two nodes should remain relevant
+
+
+def test_filter_relevant_split_asset_stations(network_data: NetworkData) -> None:
+    """Verify that trivial runtime splits remain relevant after filtering."""
+    assert network_data.asset_topology is not None
+    base_station = network_data.asset_topology.stations[0]
+    split_station = base_station.model_copy(
+        update={
+            "busbars": [
+                base_station.busbars[0].model_copy(update={"bus_branch_bus_id": network_data.node_ids[0]}),
+                base_station.busbars[1].model_copy(update={"bus_branch_bus_id": network_data.node_ids[1]}),
+            ],
+            "branch_switching_table": np.array([[True, False], [False, True]], dtype=bool),
+            "injection_switching_table": np.array([[False, False], [True, False]], dtype=bool),
+        }
+    )
+    network_data = replace(
+        network_data,
+        asset_topology=RuntimeAssetTopology(
+            stations=[split_station, *network_data.asset_topology.stations[1:]],
+            circuit_groups=network_data.asset_topology.circuit_groups,
+        ),
+    )
+
+    filtered_network_data = filter_relevant_split_asset_stations(network_data)
+
+    assert np.array_equal(filtered_network_data.relevant_node_mask, network_data.relevant_node_mask)
+
+
+def test_filter_relevant_materially_split_asset_stations(network_data: NetworkData) -> None:
+    """Verify that non-trivial runtime splits are still removed from the relevant mask."""
+    assert network_data.asset_topology is not None
+    base_station = network_data.asset_topology.stations[0]
+    split_station = base_station.model_copy(
+        update={
+            "busbars": [
+                base_station.busbars[0].model_copy(update={"bus_branch_bus_id": network_data.node_ids[0]}),
+                base_station.busbars[1].model_copy(update={"bus_branch_bus_id": network_data.node_ids[1]}),
+            ],
+            "branch_switching_table": np.array([[True, False], [False, True]], dtype=bool),
+            "injection_switching_table": np.array([[True, False], [False, True]], dtype=bool),
+        }
+    )
+    network_data = replace(
+        network_data,
+        asset_topology=RuntimeAssetTopology(
+            stations=[split_station, *network_data.asset_topology.stations[1:]],
+            circuit_groups=network_data.asset_topology.circuit_groups,
+        ),
+    )
+
+    filtered_network_data = filter_relevant_split_asset_stations(network_data)
+
+    assert filtered_network_data.relevant_node_mask.sum() == network_data.relevant_node_mask.sum() - 2
+    assert not filtered_network_data.relevant_node_mask[0]
+    assert not filtered_network_data.relevant_node_mask[1]
+
+
+def test_filter_relevant_split_asset_stations_keeps_pst_connected_bus_groups(network_data: NetworkData) -> None:
+    """Verify that PST-linked runtime bus groups do not count as a station split."""
+    assert network_data.asset_topology is not None
+    phase_shift_branch_index = int(np.flatnonzero(network_data.controllable_phase_shift_mask)[0])
+    pst_branch_id = network_data.branch_ids[phase_shift_branch_index]
+    non_pst_branch_id = next(branch_id for branch_id in network_data.branch_ids if branch_id != pst_branch_id)
+    pst_station = MaterializedStation(
+        bus_group_id="pst_station",
+        voltage_level_id="pst_station",
+        busbars=[
+            Busbar(grid_model_id="bb_0", int_id=0, bus_branch_bus_id=network_data.node_ids[0]),
+            Busbar(grid_model_id="bb_1", int_id=1, bus_branch_bus_id=network_data.node_ids[1]),
+        ],
+        couplers=[],
+        branch_connections=[
+            MaterializedAssetConnection(asset=BranchAsset(grid_model_id=pst_branch_id, in_service=True)),
+            MaterializedAssetConnection(asset=BranchAsset(grid_model_id=non_pst_branch_id, in_service=True)),
+        ],
+        injection_connections=[],
+        branch_switching_table=np.array([[True, False], [True, True]], dtype=bool),
+        injection_switching_table=np.zeros((2, 0), dtype=bool),
+        branch_connectivity=np.ones((2, 2), dtype=bool),
+        injection_connectivity=np.zeros((2, 0), dtype=bool),
+    )
+    network_data = replace(
+        network_data,
+        asset_topology=RuntimeAssetTopology(
+            stations=[pst_station, *network_data.asset_topology.stations[1:]],
+            circuit_groups=network_data.asset_topology.circuit_groups,
+        ),
+    )
+
+    filtered_network_data = filter_relevant_split_asset_stations(network_data)
+
+    assert np.array_equal(filtered_network_data.relevant_node_mask, network_data.relevant_node_mask)
 
 
 def test_reduce_node_dimension(network_data_filled):
@@ -887,11 +1025,12 @@ def test_preprocess(data_folder: str, tmp_path: str) -> None:
     static_information = load_static_information(Path(tmp_path) / "test_static_information.hdf5")
     validate_static_information(static_information)
 
-    simplified_stations = network_data.simplified_asset_topology.materialize_stations()
+    assert network_data.simplified_asset_topology is not None
+    simplified_stations = network_data.simplified_asset_topology.stations
     for rel_node_index, (rel_node_id, station) in enumerate(
         zip(network_data.relevant_nodes, simplified_stations, strict=True)
     ):
-        assert station.grid_model_id == network_data.node_ids[rel_node_id]
+        assert station.bus_group_id == network_data.node_ids[rel_node_id]
         MaterializedStation.model_validate(station)
         branch_ids = [network_data.branch_ids[i] for i in network_data.branches_at_nodes[rel_node_index]]
         inj_ids = [network_data.injection_ids[i] for i in network_data.injection_idx_at_nodes[rel_node_index]]

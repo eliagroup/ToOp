@@ -8,14 +8,13 @@
 """Helpers to create switch update data from changed stations.
 
 This module complements the network-based helpers in ``asset_topology_to_dgs`` by deriving the
-same switch update schema from changed stations and a starting topology.
+same switch update schema from changed stations and reference station snapshots.
 """
 
 import numpy as np
 import pandas as pd
 import pandera as pa
 import pandera.typing as pat
-from toop_engine_interfaces.asset_topology.asset_topology import Topology
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.interface_helpers import get_empty_dataframe_from_model
 from toop_engine_interfaces.switch_update_schema import SwitchUpdateSchema
@@ -53,48 +52,47 @@ def _get_asset_busbar_lookup(
 
 def _resolve_changed_stations(
     changed_stations: list[MaterializedStation],
-    starting_topology: Topology,
+    starting_stations: list[MaterializedStation],
 ) -> tuple[dict[str, MaterializedStation], dict[str, MaterializedStation], list[str]]:
     """Resolve station lookups and preserve changed-station ordering.
 
     This helper is intentionally limited to station actions. It validates that all changed stations
-    are unique and present in the starting topology, then returns them in the same station order as
-    the starting topology.
+    are unique and present in the starting stations, then returns them in the same station order as
+    the starting stations.
 
     Parameters
     ----------
     changed_stations : list[Station]
         Stations that contain topology changes relative to the starting topology.
-    starting_topology : Topology
-        Reference topology used to validate station identities and derive stable ordering.
+    starting_stations : list[MaterializedStation]
+        Reference stations used to validate station identities and derive stable ordering.
 
     Returns
     -------
     tuple[dict[str, Station], dict[str, Station], list[str]]
         A tuple containing:
-        1. a lookup for stations in the starting topology by ``grid_model_id``,
+        1. a lookup for starting stations by ``grid_model_id``,
         2. a lookup for changed stations by ``grid_model_id``,
-        3. the changed station ids in starting-topology order.
+        3. the changed station ids in starting-station order.
 
     Raises
     ------
     ValueError
         If ``changed_stations`` contains duplicate station ids or if a changed station is not
-        present in the starting topology.
+        present in the starting stations.
     """
-    changed_station_ids = [station.grid_model_id for station in changed_stations]
+    changed_station_ids = [station.bus_group_id for station in changed_stations]
     if len(changed_station_ids) != len(set(changed_station_ids)):
         raise ValueError("Changed stations must be unique by grid_model_id.")
 
-    starting_stations = starting_topology.materialize_stations()
-    starting_station_lookup = {station.grid_model_id: station for station in starting_stations}
-    changed_station_lookup = {station.grid_model_id: station for station in changed_stations}
+    starting_station_lookup = {station.bus_group_id: station for station in starting_stations}
+    changed_station_lookup = {station.bus_group_id: station for station in changed_stations}
     missing_station_ids = set(changed_station_lookup).difference(starting_station_lookup)
     if missing_station_ids:
-        raise ValueError(f"Changed stations not found in starting topology: {sorted(missing_station_ids)}")
+        raise ValueError(f"Changed stations not found in starting stations: {sorted(missing_station_ids)}")
 
     ordered_changed_station_ids = [
-        station.grid_model_id for station in starting_stations if station.grid_model_id in changed_station_lookup
+        station.bus_group_id for station in starting_stations if station.bus_group_id in changed_station_lookup
     ]
     return starting_station_lookup, changed_station_lookup, ordered_changed_station_ids
 
@@ -124,7 +122,7 @@ def _get_coupler_switch_diffs(
     """
     if len(changed_station.couplers) != len(starting_station.couplers):
         raise ValueError(
-            f"Changed station coupler count does not match starting topology for station {changed_station.grid_model_id}."
+            f"Changed station coupler count does not match starting stations for station {changed_station.bus_group_id}."
         )
 
     diff_switches: list[dict[str, str | bool]] = []
@@ -132,8 +130,8 @@ def _get_coupler_switch_diffs(
     for changed_coupler in changed_station.couplers:
         if changed_coupler.grid_model_id not in starting_couplers:
             raise ValueError(
-                f"Coupler {changed_coupler.grid_model_id} not found in starting topology for station "
-                f"{changed_station.grid_model_id}."
+                f"Coupler {changed_coupler.grid_model_id} not found in starting stations for station "
+                f"{changed_station.bus_group_id}."
             )
         if changed_coupler.open != starting_couplers[changed_coupler.grid_model_id].open:
             diff_switches.append(
@@ -181,16 +179,16 @@ def _get_branch_switch_diffs(
     """
     if changed_station.branch_switching_table.shape != starting_station.branch_switching_table.shape:
         raise ValueError(
-            "Changed station asset switching table shape does not match starting topology for station "
-            f"{changed_station.grid_model_id}."
+            "Changed station asset switching table shape does not match starting stations for station "
+            f"{changed_station.bus_group_id}."
         )
 
     changed_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in changed_station.branch_connections]
     starting_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in starting_station.branch_connections]
     if changed_asset_ids != starting_asset_ids:
         raise ValueError(
-            "Changed station assets are not ordered like the starting topology for station "
-            f"{changed_station.grid_model_id}. Use ActionSet.simplified_starting_topology as input."
+            "Changed station assets are not ordered like the starting stations for station "
+            f"{changed_station.bus_group_id}. Use ActionSet.get_simplified_starting_stations() as input."
         )
 
     switching_xor = np.logical_xor(starting_station.branch_switching_table, changed_station.branch_switching_table)
@@ -211,7 +209,7 @@ def _get_branch_switch_diffs(
             if starting_active > 0:
                 if fail_on_disconnect:
                     raise ValueError(
-                        f"Station action in station {changed_station.grid_model_id} would disconnect "
+                        f"Station action in station {changed_station.bus_group_id} would disconnect "
                         f"asset {changed_asset_connection.asset.grid_model_id}."
                     )
                 diff_switches.append({"grid_model_id": asset_bay.dv_switch_grid_model_id, "open": True})
@@ -259,8 +257,8 @@ def _get_injection_switch_diffs(
     """
     if changed_station.injection_switching_table.shape != starting_station.injection_switching_table.shape:
         raise ValueError(
-            "Changed station asset switching table shape does not match starting topology for station "
-            f"{changed_station.grid_model_id}."
+            "Changed station asset switching table shape does not match starting stations for station "
+            f"{changed_station.bus_group_id}."
         )
 
     changed_asset_ids = [asset_connection.asset.grid_model_id for asset_connection in changed_station.injection_connections]
@@ -269,8 +267,8 @@ def _get_injection_switch_diffs(
     ]
     if changed_asset_ids != starting_asset_ids:
         raise ValueError(
-            "Changed station assets are not ordered like the starting topology for station "
-            f"{changed_station.grid_model_id}. Use ActionSet.simplified_starting_topology as input."
+            "Changed station assets are not ordered like the starting stations for station "
+            f"{changed_station.bus_group_id}. Use ActionSet.get_simplified_starting_stations() as input."
         )
 
     switching_xor = np.logical_xor(
@@ -294,7 +292,7 @@ def _get_injection_switch_diffs(
             if starting_active > 0:
                 if fail_on_disconnect:
                     raise ValueError(
-                        f"Station action in station {changed_station.grid_model_id} would disconnect "
+                        f"Station action in station {changed_station.bus_group_id} would disconnect "
                         f"asset {changed_asset_connection.asset.grid_model_id}."
                     )
                 diff_switches.append({"grid_model_id": asset_bay.dv_switch_grid_model_id, "open": True})
@@ -322,7 +320,7 @@ def _get_asset_switch_diffs(
     starting_station : MaterializedStation
         Station describing the reference branch/injection assignments. The branch and injection
         connection arrays must each stay in the same order as ``changed_station``. This is the
-        ordering contract provided by ``ActionSet.simplified_starting_topology``.
+        ordering contract provided by ``ActionSet.get_simplified_starting_stations()``.
     fail_on_disconnect : bool, default=False
         Fundamentally, the stations should never disconnect an element. If this is detected, the
         helper can either raise or emit a breaker-opening update. If ``fail_on_disconnect`` is
@@ -377,7 +375,7 @@ def _get_switch_updates_from_station_ids(
     diff_switches: list[dict[str, str | bool]] = []
     for station_id in ordered_station_ids:
         if station_id not in starting_station_lookup:
-            raise ValueError(f"Changed station {station_id} not found in starting topology.")
+            raise ValueError(f"Changed station {station_id} not found in starting stations.")
         starting_station = starting_station_lookup[station_id]
         changed_station = changed_station_lookup.get(station_id, starting_station)
         diff_switches.extend(_get_coupler_switch_diffs(changed_station=changed_station, starting_station=starting_station))
@@ -398,12 +396,12 @@ def _get_switch_updates_from_station_ids(
 @pa.check_types
 def get_changing_switches_from_changed_stations(
     changed_stations: list[MaterializedStation],
-    starting_topology: Topology,
+    starting_stations: list[MaterializedStation],
 ) -> pat.DataFrame[SwitchUpdateSchema]:
-    """Get changed switches by comparing changed stations to the starting topology.
+    """Get changed switches by comparing changed stations to reference stations.
 
     This is intended for changed stations originating from ``ActionSet.local_actions`` where only
-    coupler open states and the split station switching tables differ from the starting topology.
+    coupler open states and the split station switching tables differ from the reference stations.
     In the split topology model that means ``branch_switching_table`` and
     ``injection_switching_table`` are compared independently and then merged into one switch-update
     table.
@@ -412,26 +410,26 @@ def get_changing_switches_from_changed_stations(
     ----------
     changed_stations : list[MaterializedStation]
         Stations describing the target state for the affected substations.
-    starting_topology : Topology
-        Starting topology containing the reference state for all stations. This is expected to be
-        ``ActionSet.simplified_starting_topology`` so that both branch and injection connection
-        ordering match the ordering used by ``ActionSet.local_actions``.
+    starting_stations : list[MaterializedStation]
+        Reference stations containing the baseline state for all stations. This is expected to be
+        ``ActionSet.get_simplified_starting_stations()`` so that both branch and injection
+        connection ordering match the ordering used by ``ActionSet.local_actions``.
 
 
     Returns
     -------
     pat.DataFrame[SwitchUpdateSchema]
-        Switch update rows containing only switches whose state differs from the starting topology.
+        Switch update rows containing only switches whose state differs from the starting stations.
 
     Raises
     ------
     ValueError
-        If a changed station is duplicated, missing from the starting topology, or is structurally
+        If a changed station is duplicated, missing from the starting stations, or is structurally
         incompatible with the reference station.
     """
     starting_station_lookup, changed_station_lookup, ordered_changed_station_ids = _resolve_changed_stations(
         changed_stations=changed_stations,
-        starting_topology=starting_topology,
+        starting_stations=starting_stations,
     )
     return _get_switch_updates_from_station_ids(
         changed_station_lookup=changed_station_lookup,

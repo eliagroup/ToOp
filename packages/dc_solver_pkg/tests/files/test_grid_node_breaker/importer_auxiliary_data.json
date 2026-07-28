@@ -205,7 +205,7 @@
         "trafo_disconnectable": []
     },
     "import_result": {
-        "data_folder": "../data/test_grid_node_breaker/grid",
+        "data_folder": "packages/dc_solver_pkg/tests/files/test_grid_node_breaker",
         "n_relevant_subs": 2,
         "n_low_impedance_lines": 0,
         "n_branch_across_switch": 0,
@@ -242,15 +242,25 @@
             "nminus1_area": [
                 ""
             ],
-            "cutoff_voltage": 10,
-            "dso_trafo_factors": null,
+            "cutoff_voltage": 1,
+            "dso_trafo_factors": {
+                "n_0_factor": 1.2,
+                "n_1_factor": 1.4,
+                "n_0_min_increase": 0.05,
+                "n_1_min_increase": 0.05
+            },
             "dso_trafo_weight": 1.0,
-            "border_line_factors": null,
+            "border_line_factors": {
+                "n_0_factor": 1.2,
+                "n_1_factor": 1.4,
+                "n_0_min_increase": 0.05,
+                "n_1_min_increase": 0.05
+            },
             "border_line_weight": 1.0
         },
         "fail_on_non_convergence": true,
-        "data_folder": "../data/test_grid_node_breaker/grid",
-        "grid_model_file": "../data/test_grid_node_breaker/grid.xiidm",
+        "data_folder": "packages/dc_solver_pkg/tests/files/test_grid_node_breaker",
+        "grid_model_file": "packages/dc_solver_pkg/tests/files/test_grid_node_breaker/grid.xiidm",
         "data_type": "cgmes",
         "white_list_file": null,
         "black_list_file": null,
@@ -263,6 +273,7 @@
             "min_busbars": 2,
             "min_connected_branches": 4,
             "min_connected_elements": 4
-        }
+        },
+        "loadflow_parameters_file": null
     }
 }

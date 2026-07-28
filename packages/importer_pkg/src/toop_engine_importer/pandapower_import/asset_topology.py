@@ -12,7 +12,7 @@ Author:  Benjamin Petrick
 Created: 2024-10-01
 """
 
-import datetime
+from string import ascii_lowercase
 
 import numpy as np
 import pandapower as pp
@@ -29,10 +29,9 @@ from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker impo
     get_all_switches_from_bus_ids,
     get_closed_switch,
     get_indirect_connected_switch,
+    get_substation_buses_from_bus_id,
 )
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    Topology,
-)
+from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
@@ -40,10 +39,319 @@ from toop_engine_interfaces.asset_topology.assets import (
     build_asset_bay_id,
     normalize_switchable_asset_payload,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
-from toop_engine_interfaces.asset_topology.topology_conversion import topology_parts_from_materialized_station
+from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
+from toop_engine_interfaces.asset_topology.topology_conversion import validate_complete_master_data
 
 logger = structlog.get_logger(__name__)
+
+
+def _structural_station_suffix(group_index: int) -> str:
+    """Return a deterministic alphabetic suffix for structural station ids.
+
+    Parameters
+    ----------
+    group_index : int
+        Zero-based structural group index inside one station.
+
+    Returns
+    -------
+    str
+        Alphabetic suffix such as ``a``, ``b``, ..., ``aa``.
+    """
+    suffix = ""
+    remaining_index = group_index
+    while True:
+        remaining_index, char_index = divmod(remaining_index, len(ascii_lowercase))
+        suffix = ascii_lowercase[char_index] + suffix
+        if remaining_index == 0:
+            return suffix
+        remaining_index -= 1
+
+
+def _build_station_bus_group_id(station_buses: pd.DataFrame, group_index: int = 0) -> str:
+    """Build a stable station-view identifier for one pandapower station group.
+
+    Parameters
+    ----------
+    station_buses : pd.DataFrame
+        Bus rows belonging to one pandapower station view.
+    group_index : int, default=0
+        Deterministic index of the structural bus group within the station.
+
+    Returns
+    -------
+    str
+        Synthetic bus-group identifier derived from the representative station bus id.
+    """
+    representative_bus_id = str(station_buses.sort_index()["grid_model_id"].iloc[0])
+    return f"{representative_bus_id}_{_structural_station_suffix(group_index)}"
+
+
+def _get_structural_station_bus_groups(station_bus_ids: list[int], network: pp.pandapowerNet) -> list[list[int]]:
+    """Split one pandapower station into structural bus groups via switch connectivity.
+
+    Open and closed bus-bus switches both retain structural connectivity. Runtime state is
+    materialized later; canonical master data keeps the full station structure.
+
+    Parameters
+    ----------
+    station_bus_ids : list[int]
+        Pandapower bus indices that belong to one logical station.
+    network : pp.pandapowerNet
+        Source pandapower network.
+
+    Returns
+    -------
+    list[list[int]]
+        Deterministic structural bus groups represented as pandapower bus indices.
+    """
+    remaining_bus_ids = set(station_bus_ids)
+    if not remaining_bus_ids:
+        return []
+
+    structural_groups: list[list[int]] = []
+    while remaining_bus_ids:
+        seed_bus_id = min(remaining_bus_ids)
+        structural_group = sorted(get_substation_buses_from_bus_id(network, seed_bus_id, only_closed_switches=False))
+        structural_group = [
+            bus_id for bus_id in structural_group if bus_id in remaining_bus_ids or bus_id in station_bus_ids
+        ]
+        structural_groups.append([bus_id for bus_id in structural_group if bus_id in station_bus_ids])
+        remaining_bus_ids -= set(structural_group)
+
+    structural_groups.sort()
+    return [group for group in structural_groups if group]
+
+
+def _register_unique_payload(
+    payloads_by_id: dict[str, object],
+    payload_id: str,
+    payload: object,
+    payload_kind: str,
+) -> None:
+    """Register one topology-owned payload and reject conflicting duplicates.
+
+    Parameters
+    ----------
+    payloads_by_id : dict[str, object]
+        Mutable mapping of already registered payloads.
+    payload_id : str
+        Canonical identifier of the payload.
+    payload : object
+        Payload to register.
+    payload_kind : str
+        Human-readable payload kind used in validation errors.
+
+    Raises
+    ------
+    ValueError
+        If the same payload id is reused with conflicting content.
+    """
+    existing_payload = payloads_by_id.get(payload_id)
+    if existing_payload is None:
+        payloads_by_id[payload_id] = payload
+        return
+    if existing_payload != payload:
+        raise ValueError(f"Conflicting {payload_kind} payload for id {payload_id}")
+
+
+def _build_station_assets_and_connections(
+    station_branches: pd.DataFrame,
+    asset_connection_path: list[AssetBay | None],
+) -> tuple[
+    list[BranchAsset],
+    list[InjectionAsset],
+    list[StationAssetConnection],
+    list[StationAssetConnection],
+    list[bool],
+    list[AssetBay],
+]:
+    """Build canonical assets and station-local connections aligned with branch rows.
+
+    Parameters
+    ----------
+    station_branches : pd.DataFrame
+        Station-local asset rows aligned with the switching matrix columns.
+    asset_connection_path : list[AssetBay | None]
+        Station-local asset-bay payloads aligned with ``station_branches``.
+
+    Returns
+    -------
+    tuple[
+        list[BranchAsset],
+        list[InjectionAsset],
+        list[StationAssetConnection],
+        list[StationAssetConnection],
+        list[bool],
+        list[AssetBay],
+    ]
+        Canonical branch assets, canonical injection assets, aligned station-local
+        references, branch mask, and referenced asset bays.
+    """
+    switchable_assets = [
+        normalize_switchable_asset_payload(asset_payload) for asset_payload in station_branches.to_dict(orient="records")
+    ]
+    asset_terminals = (
+        station_branches["branch_end"].tolist()
+        if "branch_end" in station_branches.columns
+        else [None] * len(station_branches)
+    )
+    branch_mask = [isinstance(asset, BranchAsset) for asset in switchable_assets]
+    if any(not isinstance(asset, (BranchAsset, InjectionAsset)) for asset in switchable_assets):
+        raise ValueError("All station assets must normalize to BranchAsset or InjectionAsset")
+
+    branch_assets: list[BranchAsset] = []
+    injection_assets: list[InjectionAsset] = []
+    branch_connections: list[StationAssetConnection] = []
+    injection_connections: list[StationAssetConnection] = []
+    asset_bays: list[AssetBay] = []
+    for asset, asset_terminal, asset_bay, is_branch in zip(
+        switchable_assets,
+        asset_terminals,
+        asset_connection_path,
+        branch_mask,
+        strict=True,
+    ):
+        if asset_bay is not None:
+            asset_bays.append(asset_bay.model_copy(deep=True))
+        connection = StationAssetConnection(
+            asset_id=asset.grid_model_id,
+            branch_end=asset_terminal,
+            asset_bay_id=asset_bay.asset_bay_id if asset_bay is not None else None,
+        )
+        if is_branch:
+            branch_assets.append(asset.model_copy(update={"in_service": True}, deep=True))
+            branch_connections.append(connection)
+        else:
+            injection_assets.append(asset.model_copy(update={"in_service": True}, deep=True))
+            injection_connections.append(connection)
+    return branch_assets, injection_assets, branch_connections, injection_connections, branch_mask, asset_bays
+
+
+def _build_master_station_from_station_id(
+    network: pp.pandapowerNet,
+    station_id_list: list[int],
+    group_index: int = 0,
+    foreign_key: str = "equipment",
+) -> tuple[MasterStation, list[BranchAsset], list[InjectionAsset], list[AssetBay]]:
+    """Build one canonical master station plus topology-owned payloads.
+
+    Parameters
+    ----------
+    network : pp.pandapowerNet
+        Source pandapower network.
+    station_id_list : list[int]
+        Pandapower bus indices belonging to the structural station group.
+    group_index : int, default=0
+        Structural group index inside the original station.
+    foreign_key : str, default="equipment"
+        Column name used as the preferred human-readable identifier.
+
+    Returns
+    -------
+    tuple[MasterStation, list[BranchAsset], list[InjectionAsset], list[AssetBay]]
+        Canonical station plus the topology-owned payloads it references.
+    """
+    station_buses = get_busses_from_station(network, station_bus_index=station_id_list, foreign_key=foreign_key)
+    coupler_elements = get_coupler_from_station(network, station_buses, foreign_key=foreign_key)
+    station_branches, switching_matrix, asset_connection_path = get_branches_from_station(
+        network,
+        station_buses,
+        foreign_key=foreign_key,
+    )
+    voltage_level_float = get_parameter_from_station(network=network, station_bus_index=station_id_list, parameter="vn_kv")
+    station_identity = _get_station_identity(
+        station_buses=station_buses,
+        voltage_level=voltage_level_float,
+        group_index=group_index,
+    )
+    branch_assets, injection_assets, branch_connections, injection_connections, branch_mask, asset_bays = (
+        _build_station_assets_and_connections(
+            station_branches=station_branches,
+            asset_connection_path=asset_connection_path,
+        )
+    )
+    master_station = MasterStation(
+        bus_group_id=str(station_identity["bus_group_id"]),
+        name=str(station_identity["name"]),
+        voltage_level=float(station_identity["voltage_level"]),
+        busbars=[
+            busbar.model_copy(update={"in_service": True}, deep=True)
+            for busbar in get_list_of_busbars_from_df(station_buses[station_buses["type"] == "b"])
+        ],
+        couplers=[
+            coupler.model_copy(update={"open": False, "in_service": True}, deep=True)
+            for coupler in get_list_of_coupler_from_df(coupler_elements)
+        ],
+        branch_connections=branch_connections,
+        injection_connections=injection_connections,
+        branch_connectivity=np.ones_like(switching_matrix[:, branch_mask], dtype=bool),
+        injection_connectivity=np.ones_like(switching_matrix[:, [not is_branch for is_branch in branch_mask]], dtype=bool),
+    )
+    return master_station, branch_assets, injection_assets, asset_bays
+
+
+def get_asset_topology_master_data_from_network(
+    network: pp.pandapowerNet,
+    topology_id: str,
+    grid_model_file: str,
+    station_id_list: List[List[int]],
+    foreign_key: str = "equipment",
+) -> TopologyMasterData:
+    """Return canonical asset-topology master data derived from a pandapower network.
+
+    Parameters
+    ----------
+    network : pp.pandapowerNet
+        Source pandapower network.
+    topology_id : str
+        Identifier to store on the resulting master data.
+    grid_model_file : str
+        Source grid-model file name stored in the master data.
+    station_id_list : list[list[int]]
+        Station definitions as lists of pandapower bus indices.
+    foreign_key : str, default="equipment"
+        Column name used as the preferred human-readable identifier.
+
+    Returns
+    -------
+    TopologyMasterData
+        Canonical master data split into structural station groups.
+    """
+    master_stations: list[MasterStation] = []
+    branch_assets_by_id: dict[str, BranchAsset] = {}
+    injection_assets_by_id: dict[str, InjectionAsset] = {}
+    asset_bays_by_id: dict[str, AssetBay] = {}
+
+    for station_ids in station_id_list:
+        structural_groups = _get_structural_station_bus_groups(list(station_ids), network)
+        for group_index, structural_group in enumerate(structural_groups):
+            master_station, branch_assets, injection_assets, asset_bays = _build_master_station_from_station_id(
+                network=network,
+                station_id_list=structural_group,
+                group_index=group_index,
+                foreign_key=foreign_key,
+            )
+            master_stations.append(master_station)
+            for asset in branch_assets:
+                _register_unique_payload(branch_assets_by_id, asset.grid_model_id, asset, "branch asset")
+            for asset in injection_assets:
+                _register_unique_payload(injection_assets_by_id, asset.grid_model_id, asset, "injection asset")
+            for asset_bay in asset_bays:
+                if asset_bay.asset_bay_id is None:
+                    continue
+                _register_unique_payload(asset_bays_by_id, asset_bay.asset_bay_id, asset_bay, "asset bay")
+
+    master_data = TopologyMasterData(
+        topology_id=topology_id,
+        grid_model_file=grid_model_file,
+        stations=master_stations,
+        branch_assets=list(branch_assets_by_id.values()),
+        injection_assets=list(injection_assets_by_id.values()),
+        asset_bays=list(asset_bays_by_id.values()),
+    )
+    validate_complete_master_data(master_data)
+    return master_data
 
 
 def get_busses_from_station(
@@ -92,8 +400,9 @@ def get_busses_from_station(
     bus_df["int_id"] = bus_df.index
     # equipment col is the foreign key (unique) in powerfactory
     if foreign_key in bus_df.columns:
-        bus_df["name"] = bus_df[foreign_key]
+        bus_df["name"] = bus_df[foreign_key].astype(str)
     station_busses = bus_df[["grid_model_id", "type", "name", "int_id", "in_service"]]
+    station_busses["name"] = station_busses["name"].astype(str)
 
     if foreign_key in station_busses.columns:
         # force behavior: the index of the DataFrame is the internal id of the bus
@@ -154,7 +463,13 @@ def get_coupler_from_station(
             switch_bus.append((bus_1, bus_2))
         else:
             # check if the busbars are indirectly connected by a switch
-            indirect_connection = get_indirect_connected_switch(network, bus_1, bus_2, consider_three_buses=True)
+            indirect_connection = get_indirect_connected_switch(
+                network,
+                bus_1,
+                bus_2,
+                only_closed_switches=False,
+                consider_three_buses=True,
+            )
             if list(indirect_connection.keys()) == ["switch"]:
                 for switch_id in indirect_connection["switch"]:
                     switch_ids.append(switch_id)
@@ -213,7 +528,7 @@ def get_branches_from_station(  # noqa: PLR0912, C901
     branch_types: Optional[List[str]] = None,
     bus_types: Optional[List[Tuple[str, Optional[str], str]]] = None,
     foreign_key: str = "equipment",
-) -> Tuple[pd.DataFrame, np.ndarray, List[AssetBay]]:
+) -> Tuple[pd.DataFrame, np.ndarray, List[AssetBay | None]]:
     """Get the branches from a station_buses index.
 
     Parameters
@@ -276,6 +591,11 @@ def get_branches_from_station(  # noqa: PLR0912, C901
             ("mv_bus", "mv", "_mv"),
         ]
 
+    switch_identifier_col = foreign_key
+    if switch_identifier_col not in network.switch.columns:
+        network.switch["grid_model_id"] = network.switch.index.astype(str) + SEPARATOR + "switch"
+        switch_identifier_col = "grid_model_id"
+
     bus_ids = station_buses.index
     bus_type_b = station_buses[station_buses["type"] == "b"]
     branch_data = []
@@ -305,27 +625,29 @@ def get_branches_from_station(  # noqa: PLR0912, C901
                 asset_connection = get_asset_connection_path_to_busbars(
                     network=network,
                     station_grid_model_id=station_grid_model_id,
-                    asset_grid_model_id=str(branch[foreign_key]),
+                    asset_grid_model_id=(
+                        str(branch[foreign_key]) if foreign_key in branch.index else str(branch["grid_model_id"])
+                    ),
                     asset_bus=asset_bus,
                     station_buses=station_buses,
-                    save_col_name=foreign_key,
+                    save_col_name=switch_identifier_col,
                 )
 
                 # change bus_int_id to the final busbar
                 final_bus_dict = asset_connection.sr_switch_grid_model_id
                 closed_sr_switches = get_closed_switch(
                     network.switch,
-                    column=foreign_key,
+                    column=switch_identifier_col,
                     column_ids=final_bus_dict.values(),
                 )
                 closed_dv_switches = get_closed_switch(
                     network.switch,
-                    column=foreign_key,
+                    column=switch_identifier_col,
                     column_ids=[asset_connection.dv_switch_grid_model_id],
                 )
                 closed_sl_switches = get_closed_switch(
                     network.switch,
-                    column=foreign_key,
+                    column=switch_identifier_col,
                     column_ids=[asset_connection.sl_switch_grid_model_id],
                 )
                 if (
@@ -348,7 +670,7 @@ def get_branches_from_station(  # noqa: PLR0912, C901
                         )
                         closed_sr_switches = closed_sr_switches.iloc[[0]]
                     final_bus = [  # noqa: RUF015
-                        i for i in final_bus_dict if final_bus_dict[i] == closed_sr_switches[foreign_key].values[0]
+                        i for i in final_bus_dict if final_bus_dict[i] == closed_sr_switches[switch_identifier_col].values[0]
                     ][0]
                     branch_df_all_busses.loc[index, "bus_int_id"] = int(final_bus.split(SEPARATOR)[0])
                     asset_connection_list.append(asset_connection)
@@ -423,58 +745,12 @@ def get_parameter_from_station(
     return parameter
 
 
-def _materialize_station_asset_connections(
-    station_branches: pd.DataFrame,
-    asset_connection_path: list[AssetBay | None],
-) -> tuple[list[MaterializedAssetConnection], list[MaterializedAssetConnection], list[bool]]:
-    """Build split materialized asset connections aligned with the station branch rows.
-
-    Parameters
-    ----------
-    station_branches : pd.DataFrame
-        Station-local asset rows aligned with the switching matrix columns.
-    asset_connection_path : list[AssetBay | None]
-        Asset-bay metadata aligned with ``station_branches``.
-
-    Returns
-    -------
-    tuple[list[MaterializedAssetConnection], list[MaterializedAssetConnection], list[bool]]
-        Branch connections, injection connections, and the branch mask aligned with
-        ``station_branches``.
-    """
-    switchable_assets = [
-        normalize_switchable_asset_payload(asset_payload) for asset_payload in station_branches.to_dict(orient="records")
-    ]
-    asset_terminals = (
-        station_branches["branch_end"].tolist()
-        if "branch_end" in station_branches.columns
-        else [None] * len(station_branches)
-    )
-    branch_mask = [isinstance(asset, BranchAsset) for asset in switchable_assets]
-    if any(not isinstance(asset, (BranchAsset, InjectionAsset)) for asset in switchable_assets):
-        raise ValueError("All station assets must normalize to BranchAsset or InjectionAsset")
-    branch_connections: list[MaterializedAssetConnection] = []
-    injection_connections: list[MaterializedAssetConnection] = []
-    for asset, asset_terminal, asset_bay, is_branch in zip(
-        switchable_assets,
-        asset_terminals,
-        asset_connection_path,
-        branch_mask,
-        strict=True,
-    ):
-        connection = MaterializedAssetConnection(asset=asset, branch_end=asset_terminal, asset_bay=asset_bay)
-        if is_branch:
-            branch_connections.append(connection)
-        else:
-            injection_connections.append(connection)
-    return branch_connections, injection_connections, branch_mask
-
-
 def _get_station_identity(
     station_buses: pd.DataFrame,
     voltage_level: float | int | str,
+    group_index: int = 0,
 ) -> dict[str, str | float | int]:
-    """Extract the station identity fields used to build the materialized station.
+    """Extract the station identity fields used to build the canonical station.
 
     Parameters
     ----------
@@ -482,166 +758,21 @@ def _get_station_identity(
         Station bus rows used to derive the grid model id and display name.
     voltage_level : float | int | str
         Resolved station voltage level.
+    group_index : int, default=0
+        Deterministic index of the structural bus group within the station.
 
     Returns
     -------
     dict[str, str | float | int]
-        Minimal station identity payload containing ``grid_model_id``, ``name``, and
+        Minimal station identity payload containing ``bus_group_id``, ``name``, and
         ``voltage_level``.
     """
     station_buses = station_buses.sort_index()
     return {
-        "grid_model_id": station_buses["grid_model_id"].iloc[0],
+        "bus_group_id": _build_station_bus_group_id(station_buses, group_index=group_index),
         "name": station_buses["name"].iloc[0],
         "voltage_level": voltage_level,
     }
-
-
-def get_station_from_id(
-    network: pp.pandapowerNet,
-    station_id_list: list[int],
-    foreign_key: str = "equipment",
-) -> MaterializedStation:
-    """Get the busses from a station_id.
-
-    Parameters
-    ----------
-    network: pp.pandapowerNet
-        pandapower network object
-    station_id_list: list[int]
-        List of station ids for which the stations should be retrieved.
-    foreign_key: str
-        Defines the column name that is used as the foreign_key/unique identifier.
-
-    Returns
-    -------
-    station: Station
-        Station object.
-    """
-    station_buses = get_busses_from_station(network, station_bus_index=station_id_list)
-    coupler_elements = get_coupler_from_station(network, station_buses)
-    (
-        station_branches,
-        switching_matrix,
-        asset_connection_path,
-    ) = get_branches_from_station(network, station_buses, foreign_key=foreign_key)
-
-    voltage_level_float = get_parameter_from_station(network=network, station_bus_index=station_id_list, parameter="vn_kv")
-    station_identity = _get_station_identity(station_buses=station_buses, voltage_level=voltage_level_float)
-    branch_connections, injection_connections, branch_mask = _materialize_station_asset_connections(
-        station_branches=station_branches,
-        asset_connection_path=asset_connection_path,
-    )
-
-    return MaterializedStation(
-        grid_model_id=station_identity["grid_model_id"],
-        name=station_identity["name"],
-        # region=region,
-        voltage_level=station_identity["voltage_level"],
-        busbars=get_list_of_busbars_from_df(station_buses[station_buses["type"] == "b"]),
-        couplers=get_list_of_coupler_from_df(coupler_elements),
-        branch_connections=branch_connections,
-        injection_connections=injection_connections,
-        branch_switching_table=switching_matrix[:, branch_mask],
-        injection_switching_table=switching_matrix[:, [not is_branch for is_branch in branch_mask]],
-    )
-
-
-def get_list_of_stations_ids(
-    network: pp.pandapowerNet,
-    station_list: List[List[int]],
-    foreign_key: str = "equipment",
-) -> List[MaterializedStation]:
-    """Get the list of stations from the network.
-
-    Parameters
-    ----------
-    network: pp.pandapowerNet
-        pandapower network object
-    station_list: List[List[int]]
-        List of station ids for which the stations should be retrieved.
-        Station ids are a list -> a list of busbars associated with the station.
-    foreign_key: str
-        Defines the column name that is used as the foreign_key/unique identifier.
-
-    Returns
-    -------
-    station_list: list[Station]
-        List of station objects.
-    """
-    station_list = [
-        get_station_from_id(network=network, station_id_list=station_id, foreign_key=foreign_key)
-        for station_id in station_list
-    ]
-
-    return station_list
-
-
-def get_asset_topology_from_network(
-    network: pp.pandapowerNet,
-    topology_id: str,
-    grid_model_file: str,
-    station_id_list: List[List[int]],
-    foreign_key: str = "equipment",
-) -> Topology:
-    """Get the asset topology from the network.
-
-    Parameters
-    ----------
-    network: pp.pandapowerNet
-        pandapower network object
-    topology_id: str
-        Id of the topology.
-    grid_model_file: str
-        Name of the grid model file.
-    station_id_list: List[List[int]]
-        List of station ids for which the stations should be retrieved.
-        Station ids are a list -> a list of busbars associated with the station.
-    foreign_key: str
-        Defines the column name that is used as the foreign_key/unique identifier.
-
-    Returns
-    -------
-    asset_topology: Topology
-        Topology class of the network.
-    """
-    station_topologies = get_list_of_stations_ids(network=network, station_list=station_id_list, foreign_key=foreign_key)
-    timestamp = datetime.datetime.now()
-    topology_stations = []
-    topology_assets = {}
-    topology_asset_bays = {}
-    for station in station_topologies:
-        topology_station, station_branch_assets, station_injection_assets, station_asset_bays = (
-            topology_parts_from_materialized_station(station)
-        )
-        topology_stations.append(topology_station)
-        for asset in [*station_branch_assets, *station_injection_assets]:
-            existing_asset = topology_assets.get(asset.grid_model_id)
-            if existing_asset is None:
-                topology_assets[asset.grid_model_id] = asset
-            elif existing_asset != asset:
-                raise ValueError(f"Conflicting topology asset payload for grid_model_id {asset.grid_model_id}")
-        for asset_bay in station_asset_bays:
-            if asset_bay.asset_bay_id is None:
-                continue
-            existing_asset_bay = topology_asset_bays.get(asset_bay.asset_bay_id)
-            if existing_asset_bay is None:
-                topology_asset_bays[asset_bay.asset_bay_id] = asset_bay
-            elif existing_asset_bay != asset_bay:
-                raise ValueError(f"Conflicting topology asset bay payload for asset_bay_id {asset_bay.asset_bay_id}")
-
-    topology_assets_list = list(topology_assets.values())
-    branch_assets = [asset for asset in topology_assets_list if isinstance(asset, BranchAsset)]
-    injection_assets = [asset for asset in topology_assets_list if isinstance(asset, InjectionAsset)]
-    return Topology(
-        topology_id=topology_id,
-        grid_model_file=grid_model_file,
-        raw_stations=topology_stations,
-        branch_assets=branch_assets,
-        injection_assets=injection_assets,
-        asset_bays=list(topology_asset_bays.values()),
-        timestamp=timestamp,
-    )
 
 
 def get_station_bus_df(

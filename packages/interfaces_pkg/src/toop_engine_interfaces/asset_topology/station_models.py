@@ -5,16 +5,16 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Shared station models for raw and materialized asset topologies."""
+"""Shared station models and validators for asset topologies."""
 
 from copy import deepcopy
 
 import numpy as np
-from beartype.typing import Any, Literal, Optional, TypeAlias
+from beartype.typing import Any, Optional, TypeAlias
 from numpydantic import NDArray, Shape
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from toop_engine_interfaces.asset_topology.asset_types import BranchEnd
-from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler
 
 StationSwitchingArray: TypeAlias = NDArray[Shape["* n_bus, * n_asset"], np.bool_]
 
@@ -140,16 +140,20 @@ class _StationStructure(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    grid_model_id: str
-    """The unique identifier of the station.
+    bus_group_id: str
+    """The unique identifier of the station view or bus group.
 
-    Expects the bus-branch model bus_id, not the full voltage level id.
+    This is a station-view identifier and may be synthetic.
+    Runtime electrical bus ids are tracked separately on the busbars.
 
     Included are all assets, busbars and couplers that are connectable via switches.
     Buses in the same station that are connected via branches are excluded in this specific bus.
 
     This means, that two stations/buses can have the same elements if the station is currently split.
     """
+
+    voltage_level_id: Optional[str] = None
+    """Voltage level identifier backing this station view in the source grid."""
 
     name: Optional[str] = None
     """The name of the station."""
@@ -165,6 +169,9 @@ class _StationStructure(BaseModel):
 
     busbars: list[Busbar]
     """The list of busbars at the station."""
+
+    bus_branch_bus_ids: list[str] = Field(default_factory=list)
+    """Unique non-empty bus-branch bus ids currently represented by this station view."""
 
     couplers: list[BusbarCoupler]
     """The list of couplers at the station."""
@@ -209,7 +216,7 @@ class _StationStructure(BaseModel):
     @classmethod
     def normalize_station_tables(
         cls,
-        v: Optional[Any],  # noqa: ANN401
+        v: object | None,
     ) -> Optional[np.ndarray]:
         """Normalize switching and connectivity table inputs to boolean arrays."""
         if v is None:
@@ -224,6 +231,14 @@ class _StationStructure(BaseModel):
         if len(int_ids) != len(set(int_ids)):
             raise ValueError("busbar int_ids must be unique per station")
         return v
+
+    @field_validator("bus_branch_bus_ids", mode="before")
+    @classmethod
+    def normalize_bus_branch_bus_ids(cls, v: Optional[list[str]]) -> list[str]:
+        """Normalize explicit bus-branch bus ids to a unique sorted list."""
+        if v is None:
+            return []
+        return sorted({bus_id for bus_id in v if bus_id not in {None, ""}})
 
     @field_validator("couplers")
     @classmethod
@@ -242,7 +257,7 @@ class _StationStructure(BaseModel):
             if coupler.busbar_from_id not in busbar_ids or coupler.busbar_to_id not in busbar_ids:
                 raise ValueError(
                     f"Coupler {coupler.grid_model_id} references non-existing busbars"
-                    f" Station_id: {self.grid_model_id}, Name: {self.name}"
+                    f" Station_id: {self.bus_group_id}, Name: {self.name}"
                 )
         return self
 
@@ -256,183 +271,19 @@ class _StationStructure(BaseModel):
             if busbar_state_map[coupler.busbar_from_id] != busbar_state_map[coupler.busbar_to_id]:
                 raise ValueError(
                     f"Closed coupler {coupler.grid_model_id} connects out-of-service busbar with in-service busbar."
-                    f" Station_id: {self.grid_model_id}, Name: {self.name}"
+                    f" Station_id: {self.bus_group_id}, Name: {self.name}"
                 )
         return self
 
     @model_validator(mode="after")
-    def check_bus_id(self: "_StationStructure") -> "_StationStructure":
-        """Check if station grid_model_id is in the busbar.bus_branch_bus_id."""
-        busbar_grid_model_id = [busbar.bus_branch_bus_id for busbar in self.busbars if busbar.bus_branch_bus_id is not None]
-        if len(busbar_grid_model_id) > 0 and self.grid_model_id not in busbar_grid_model_id:
-            raise ValueError(
-                f"Station grid_model_id {self.grid_model_id} does not exist in busbars bus_branch_bus_id"
-                f" Station_id: {self.grid_model_id}, Name: {self.name}"
-            )
-
+    def sync_bus_branch_bus_ids(self: "_StationStructure") -> "_StationStructure":
+        """Store the unique bus-branch bus ids contained in the station busbars."""
+        bus_branch_bus_ids = sorted(
+            {busbar.bus_branch_bus_id for busbar in self.busbars if busbar.bus_branch_bus_id not in {None, ""}}
+        )
+        self.bus_branch_bus_ids = bus_branch_bus_ids if bus_branch_bus_ids else self.bus_branch_bus_ids
         return self
 
     def is_split(self) -> bool:
         """Return whether the station view spans more than one non-empty bus-branch bus id."""
-        bus_ids = {busbar.bus_branch_bus_id for busbar in self.busbars if busbar.bus_branch_bus_id not in {None, ""}}
-        return len(bus_ids) > 1
-
-
-class RawStation(_StationStructure):
-    """Station data stored inside a topology without embedded asset payloads.
-
-    The station identity still refers to a bus-branch model bus_id for one splitable station view.
-    Asset membership is expressed through the aligned station-local arrays instead of embedded
-    SwitchableAsset payloads.
-    """
-
-    branch_connections: list[StationAssetConnection] = Field(default_factory=list)
-    """Station-local branch references aligned with ``branch_switching_table``."""
-
-    injection_connections: list[StationAssetConnection] = Field(default_factory=list)
-    """Station-local injection references aligned with ``injection_switching_table``."""
-
-    def with_asset_terminals(self, asset_terminals: list[Optional[BranchEnd]]) -> "RawStation":
-        """Return a copy with updated branch terminals."""
-        if len(asset_terminals) != len(self.branch_connections):
-            raise ValueError(
-                f"asset_terminals length {len(asset_terminals)} does not match branch_connections length "
-                f"{len(self.branch_connections)}"
-                f" Station_id: {self.grid_model_id}, Name: {self.name}"
-            )
-
-        return self.model_copy(
-            update={
-                "branch_connections": [
-                    asset_connection.model_copy(update={"branch_end": asset_terminal})
-                    for asset_connection, asset_terminal in zip(self.branch_connections, asset_terminals, strict=True)
-                ]
-            }
-        )
-
-    @model_validator(mode="after")
-    def check_asset_reference_alignment(self: "RawStation") -> "RawStation":
-        """Check if station-local asset reference arrays are aligned."""
-        _validate_station_switching_tables(
-            station_grid_model_id=self.grid_model_id,
-            station_name=self.name,
-            busbar_count=len(self.busbars),
-            asset_count=len(self.branch_connections),
-            asset_switching_table=self.branch_switching_table,
-            asset_connectivity=self.branch_connectivity,
-            asset_kind="branch",
-        )
-        _validate_station_physical_assignments(
-            station_grid_model_id=self.grid_model_id,
-            station_name=self.name,
-            asset_switching_table=self.branch_switching_table,
-            asset_connectivity=self.branch_connectivity,
-            asset_kind="branch",
-        )
-        _validate_station_switching_tables(
-            station_grid_model_id=self.grid_model_id,
-            station_name=self.name,
-            busbar_count=len(self.busbars),
-            asset_count=len(self.injection_connections),
-            asset_switching_table=self.injection_switching_table,
-            asset_connectivity=self.injection_connectivity,
-            asset_kind="injection",
-        )
-        _validate_station_physical_assignments(
-            station_grid_model_id=self.grid_model_id,
-            station_name=self.name,
-            asset_switching_table=self.injection_switching_table,
-            asset_connectivity=self.injection_connectivity,
-            asset_kind="injection",
-        )
-        return self
-
-    def __eq__(self, other: object) -> bool:
-        """Check if two topology stations are equal."""
-        if not isinstance(other, RawStation):
-            return False
-        return (
-            self.grid_model_id == other.grid_model_id
-            and self.name == other.name
-            and self.station_type == other.station_type
-            and self.region == other.region
-            and self.voltage_level == other.voltage_level
-            and self.busbars == other.busbars
-            and self.couplers == other.couplers
-            and self.branch_connections == other.branch_connections
-            and self.injection_connections == other.injection_connections
-            and np.array_equal(self.branch_switching_table, other.branch_switching_table)
-            and np.array_equal(self.injection_switching_table, other.injection_switching_table)
-            and (
-                np.array_equal(self.branch_connectivity, other.branch_connectivity)
-                if (self.branch_connectivity is not None and other.branch_connectivity is not None)
-                else self.branch_connectivity == other.branch_connectivity
-            )
-            and (
-                np.array_equal(self.injection_connectivity, other.injection_connectivity)
-                if (self.injection_connectivity is not None and other.injection_connectivity is not None)
-                else self.injection_connectivity == other.injection_connectivity
-            )
-            and self.model_log == other.model_log
-        )
-
-    def model_copy(self, *, update: Optional[dict[str, Any]] = None, deep: bool = False) -> "RawStation":
-        """Copy and revalidate the station."""
-        payload = _merged_round_trip_payload(self, update, deep=deep)
-        return type(self).model_validate(payload)
-
-    def get_connected_assets(
-        self,
-        busbar_index: int,
-        topology_assets: Optional[list[SwitchableAsset]] = None,
-        asset_scope: Literal["all", "branch", "injection"] = "all",
-    ) -> list[SwitchableAsset]:
-        """Return in-service topology assets connected to one busbar.
-
-        Parameters
-        ----------
-        busbar_index : int
-            Row index into the station switching tables.
-        topology_assets : Optional[list[SwitchableAsset]]
-            Topology-owned assets used to resolve raw station asset references.
-        asset_scope : Literal["all", "branch", "injection"]
-            Restrict the lookup to branch or injection connections.
-
-        Returns
-        -------
-        list[SwitchableAsset]
-            Connected in-service assets for the requested busbar and scope.
-
-        Raises
-        ------
-        ValueError
-            If topology assets are missing for a raw station lookup.
-        """
-        if topology_assets is None:
-            raise ValueError("topology_assets must be provided when resolving connected assets for a RawStation")
-
-        asset_map = {asset.grid_model_id: asset for asset in topology_assets}
-        if asset_scope == "branch":
-            return [
-                asset_map[asset_connection.asset_id]
-                for asset_connection, is_connected in zip(
-                    self.branch_connections,
-                    self.branch_switching_table[busbar_index],
-                    strict=True,
-                )
-                if is_connected and asset_map[asset_connection.asset_id].in_service
-            ]
-        if asset_scope == "injection":
-            return [
-                asset_map[asset_connection.asset_id]
-                for asset_connection, is_connected in zip(
-                    self.injection_connections,
-                    self.injection_switching_table[busbar_index],
-                    strict=True,
-                )
-                if is_connected and asset_map[asset_connection.asset_id].in_service
-            ]
-        return [
-            *self.get_connected_assets(busbar_index, topology_assets=topology_assets, asset_scope="branch"),
-            *self.get_connected_assets(busbar_index, topology_assets=topology_assets, asset_scope="injection"),
-        ]
+        return len(self.bus_branch_bus_ids) > 1

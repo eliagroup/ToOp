@@ -29,7 +29,7 @@ from toop_engine_dc_solver.export.dgs_v7_definitions import (
 from toop_engine_dc_solver.postprocess.apply_asset_topo_powsybl import (
     get_asset_switch_states_from_station,
     get_busbar_lookup,
-    get_changing_switches_from_topology,
+    get_changing_switches_from_stations,
     get_coupler_states_from_busbar_couplers,
     get_diff_switch_states,
 )
@@ -137,7 +137,8 @@ def test_get_coupler_states_from_busbar_couplers():
 
 
 def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
-    station = basic_node_breaker_topology.materialize_stations()[0]
+    topology_stations = basic_node_breaker_topology
+    station = topology_stations[0]
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
     expected_reassignment = [
         {"grid_model_id": "L42_DISCONNECTOR_3_0", "open": True},
@@ -186,7 +187,8 @@ def test_get_asset_switch_states_from_station(basic_node_breaker_topology):
 
 
 def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
-    station = deepcopy(basic_node_breaker_topology.materialize_stations()[0])
+    topology_stations = basic_node_breaker_topology
+    station = deepcopy(topology_stations[0])
     asset_bay_sr_fid_list = [
         *(asset_connection.get_sr_switch() for asset_connection in station.branch_connections),
         *(asset_connection.get_sr_switch() for asset_connection in station.injection_connections),
@@ -220,14 +222,16 @@ def test_get_asset_bay_sr_fid_list(basic_node_breaker_topology):
 
 
 def test_get_busbar_lookup(basic_node_breaker_topology):
-    station = basic_node_breaker_topology.materialize_stations()[0]
+    topology_stations = basic_node_breaker_topology
+    station = topology_stations[0]
     busbar_lookup = get_busbar_lookup(station)
     expected = {0: "BBS4_1", 1: "BBS4_2"}
     assert busbar_lookup == expected
 
 
 def test_station_helpers_build_switch_update_schema(basic_node_breaker_topology):
-    station = basic_node_breaker_topology.materialize_stations()[0]
+    topology_stations = basic_node_breaker_topology
+    station = topology_stations[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
     switch_update_schema = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
@@ -246,7 +250,8 @@ def test_station_helpers_build_switch_update_schema(basic_node_breaker_topology)
 
 def test_get_diff_switch_states(basic_node_breaker_grid_v1, basic_node_breaker_topology):
     net = basic_node_breaker_grid_v1
-    station = basic_node_breaker_topology.materialize_stations()[0]
+    topology_stations = basic_node_breaker_topology
+    station = topology_stations[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
     switch_update_schema = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)
@@ -263,8 +268,11 @@ def test_get_diff_switch_states(basic_node_breaker_grid_v1, basic_node_breaker_t
 
 def test_get_changing_switches_from_topology(basic_node_breaker_grid_v1, basic_node_breaker_topology):
     net = basic_node_breaker_grid_v1
-    topology = basic_node_breaker_topology
-    diff_switch_states = get_changing_switches_from_topology(network=net, target_topology=topology)
+    topology_stations = basic_node_breaker_topology
+    diff_switch_states = get_changing_switches_from_stations(
+        network=net,
+        stations=topology_stations,
+    )
     SwitchUpdateSchema.validate(diff_switch_states)
     expected = [
         {"grid_model_id": "VL4_BREAKER", "open": True},
@@ -277,7 +285,8 @@ def test_get_changing_switches_from_topology(basic_node_breaker_grid_v1, basic_n
 
 def test_switch_update_schema_to_dgs(basic_node_breaker_grid_v1, basic_node_breaker_topology):
     _net = basic_node_breaker_grid_v1
-    station = basic_node_breaker_topology.materialize_stations()[0]
+    topology_stations = basic_node_breaker_topology
+    station = topology_stations[0]
     coupler_df = get_coupler_states_from_busbar_couplers(station.couplers)
     switch_reassignment_df, switch_disconnection_df = get_asset_switch_states_from_station(station)
     switch_update_schema = pd.concat([coupler_df, switch_reassignment_df, switch_disconnection_df], ignore_index=True)

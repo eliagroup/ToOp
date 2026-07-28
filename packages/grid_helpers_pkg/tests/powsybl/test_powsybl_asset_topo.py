@@ -14,27 +14,28 @@ import pytest
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl, create_busbar_b_in_ieee
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     _get_branch_station_assets_from_df,
+    _get_bus_breaker_structural_bus_groups,
     _get_injection_station_assets_from_df,
     assert_station_in_network,
     get_all_element_names,
     get_asset_info_from_topology,
     get_asset_switching_table,
+    get_bus_breaker_topology_master_data,
     get_bus_info_from_topology,
     get_coupler_info_from_topology,
     get_list_of_busbars_from_df,
     get_list_of_coupler_from_df,
     get_name_of_station_elements,
-    get_raw_stations_and_assets_bus_breaker,
     get_relevant_network_data,
-    get_relevant_stations,
-    get_topology,
+    get_stations_and_assets_bus_breaker,
+    materialize_stations_from_network_state,
 )
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    RawStation,
-    Topology,
-)
+from toop_engine_importer.network_graph import powsybl_station_to_graph
+from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
 
 
 def test_get_name_for_branches():
@@ -233,6 +234,7 @@ def test_get_bus_info_from_topology():
             "name": ["name1", "name2"],
             "int_id": [0, 1],
             "in_service": [True, True],
+            "bus_branch_bus_id": ["node1", "node1"],
         }
     )
     assert np.all(expected_bus_info == bus_info)
@@ -380,22 +382,98 @@ def test_get_relevant_stations(ucte_file: Path):
     network = pypowsybl.network.load(ucte_file)
 
     relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
-    stations = get_relevant_stations(network, relevant_subs)
+    master_data = get_bus_breaker_topology_master_data(network, relevant_subs, topology_id="relevant_stations")
+    stations = materialize_stations_from_network_state(network=network, master_data=master_data)
 
-    assert len(stations) == sum(relevant_subs), "Wrong number of stations"
-    assert isinstance(stations[0], RawStation), "Wrong type of station"
+    assert len(master_data.stations) <= sum(relevant_subs), "Bus groups should not outnumber relevant electrical buses"
+    assert len(stations) == len(master_data.stations), "Wrong number of stations"
+    assert isinstance(stations[0], MaterializedStation), "Wrong type of station"
+
+
+def test_get_topology_master_data_and_stations_ucte(ucte_file: Path):
+    """Verify canonical master data and runtime stations for a UCTE bus-breaker grid."""
+    network = pypowsybl.network.load(ucte_file)
+
+    relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
+    master_data = get_bus_breaker_topology_master_data(
+        network=network,
+        relevant_stations=relevant_subs,
+        grid_model_file="booga",
+        topology_id="wooga",
+    )
+    stations = materialize_stations_from_network_state(network=network, master_data=master_data)
+
+    assert master_data.topology_id == "wooga"
+    assert master_data.grid_model_file == "booga"
+    assert len(stations) == len(master_data.stations)
+    assert all(isinstance(station, MaterializedStation) for station in stations)
 
 
 def test_get_topology_ucte(ucte_file: Path):
     network = pypowsybl.network.load(ucte_file)
 
     relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
-    topology = get_topology(network, relevant_subs, grid_model_file="booga", topology_id="wooga")
+    master_data = get_bus_breaker_topology_master_data(
+        network=network,
+        relevant_stations=relevant_subs,
+        grid_model_file="booga",
+        topology_id="wooga",
+    )
+    stations = materialize_stations_from_network_state(network=network, master_data=master_data)
+    assert [station.model_dump(mode="json") for station in stations] == [
+        station.model_dump(mode="json") for station in stations
+    ]
+    assert len(stations) == len(master_data.stations), "Wrong number of runtime stations"
+    assert master_data.grid_model_file == "booga"
+    assert master_data.topology_id == "wooga"
 
-    assert isinstance(topology, Topology), "Wrong type of topology"
-    assert len(topology.materialize_stations()) == sum(relevant_subs), "Wrong number of stations"
-    assert topology.grid_model_file == "booga"
-    assert topology.topology_id == "wooga"
+
+def test_materialize_stations_from_network_state(ucte_file: Path) -> None:
+    """Verify that runtime station materialization succeeds for a UCTE grid."""
+    network = pypowsybl.network.load(ucte_file)
+
+    relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
+    master_data = get_bus_breaker_topology_master_data(network, relevant_subs, grid_model_file="booga", topology_id="wooga")
+    materialized_stations = materialize_stations_from_network_state(network, master_data)
+
+    assert len(materialized_stations) <= len(master_data.stations)
+    assert all(asset.in_service for asset in master_data.branch_assets)
+    assert all(isinstance(station, MaterializedStation) for station in materialized_stations)
+
+
+def test_materialize_stations_from_network_state_preserves_bus_branch_bus_ids_node_breaker() -> None:
+    """Verify that node-breaker materialization preserves bus-branch bus ids."""
+    network = basic_node_breaker_network_powsybl()
+    network_masks = powsybl_masks.create_default_network_masks(network)
+    relevant_subs = network.get_buses(attributes=[]).index.isin(["VL2_0", "VL3_0"])
+    network_masks = powsybl_masks.NetworkMasks(**{**network_masks.__dict__, "relevant_subs": relevant_subs})
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=Path("node_breaker_network.xiidm"),
+        data_folder=Path("."),
+        white_list_file=None,
+        black_list_file=None,
+        area_settings=AreaSettings(
+            cutoff_voltage=110,
+            control_area=[""],
+            view_area=[""],
+            nminus1_area=[""],
+        ),
+    )
+
+    master_data = powsybl_station_to_graph.get_node_breaker_topology_master_data(
+        network=network,
+        network_masks=network_masks,
+        importer_parameters=importer_parameters,
+    )
+    materialized_stations = materialize_stations_from_network_state(network, master_data)
+
+    station_bus_ids = {
+        station.voltage_level_id: {busbar.bus_branch_bus_id for busbar in station.busbars}
+        for station in materialized_stations
+    }
+
+    assert station_bus_ids["VL2"] == {"VL2_0"}
+    assert station_bus_ids["VL3"] == {"VL3_0"}
 
 
 def test_get_relevant_network_data_node_breaker():
@@ -427,30 +505,52 @@ def test_get_relevant_network_data_node_breaker():
     ]
 
 
-def test_assert_station_in_network(case14_data_with_asset_topo: tuple[Path, Topology]) -> None:
-    grid_path, topology = case14_data_with_asset_topo
+def test_assert_station_in_network(
+    case14_data_with_asset_topo: tuple[Path, object, list[MaterializedStation]],
+) -> None:
+    """Verify strict station presence checks against a powsybl network."""
+    grid_path, _master_data, stations = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-
-    stations = topology.materialize_stations()
     for station in stations:
         assert_station_in_network(net, station)
 
     # Change the station ID
-    station = stations[0].model_copy(update={"grid_model_id": "hugawuga"})
-    with pytest.raises(ValueError, match="Station hugawuga not found in the network"):
+    station = stations[0].model_copy(update={"bus_group_id": "hugawuga", "voltage_level_id": None})
+    with pytest.raises(ValueError, match="Station hugawuga is missing voltage_level_id"):
         assert_station_in_network(net, station)
 
 
-def test_assert_station_in_network_coupler(case14_data_with_asset_topo: tuple[Path, Topology]) -> None:
-    grid_path, topology = case14_data_with_asset_topo
+def test_assert_station_in_network_uses_voltage_level_id_for_synthetic_station_id(
+    case14_data_with_asset_topo: tuple[Path, object, list[MaterializedStation]],
+) -> None:
+    """Verify that synthetic station ids resolve via voltage_level_id during station checks."""
+    grid_path, _master_data, stations = case14_data_with_asset_topo
+    net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+
+    station = stations[0].model_copy(
+        update={
+            "bus_group_id": "synthetic_station_id",
+            "voltage_level_id": "VL1",
+        }
+    )
+
+    assert_station_in_network(net, station)
+
+
+def test_assert_station_in_network_coupler(
+    case14_data_with_asset_topo: tuple[Path, object, list[MaterializedStation]],
+) -> None:
+    """Verify coupler subset and strict-count checks in station validation."""
+    grid_path, _master_data, stations = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     # Add a coupler to the station that is not in the grid
-    station = topology.materialize_stations()[0].model_copy(
+    base_station = stations[0]
+    station = base_station.model_copy(
         update={
             "couplers": [
-                topology.materialize_stations()[0].couplers[0],
-                topology.materialize_stations()[0].couplers[0].model_copy(update={"grid_model_id": "hugawuga"}),
+                base_station.couplers[0],
+                base_station.couplers[0].model_copy(update={"grid_model_id": "hugawuga"}),
             ],
         }
     )
@@ -459,7 +559,7 @@ def test_assert_station_in_network_coupler(case14_data_with_asset_topo: tuple[Pa
         assert_station_in_network(net, station)
 
     # Remove a coupler from the station
-    station = topology.materialize_stations()[0].model_copy(
+    station = stations[0].model_copy(
         update={
             "couplers": [],
         }
@@ -470,10 +570,13 @@ def test_assert_station_in_network_coupler(case14_data_with_asset_topo: tuple[Pa
         assert_station_in_network(net, station, couplers_strict=True)
 
 
-def test_assert_station_in_network_busbar(case14_data_with_asset_topo: tuple[Path, Topology]) -> None:
-    grid_path, topology = case14_data_with_asset_topo
+def test_assert_station_in_network_busbar(
+    case14_data_with_asset_topo: tuple[Path, object, list[MaterializedStation]],
+) -> None:
+    """Verify busbar subset and strict-count checks in station validation."""
+    grid_path, _master_data, stations = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    base_station = topology.materialize_stations()[0]
+    base_station = stations[0]
 
     # Add a busbar to the station that is not in the grid
     station = base_station.model_copy(
@@ -497,6 +600,20 @@ def test_assert_station_in_network_busbar(case14_data_with_asset_topo: tuple[Pat
                 ],
                 axis=0,
             ),
+            "branch_connectivity": np.concatenate(
+                [
+                    base_station.branch_connectivity,
+                    base_station.branch_connectivity[0:1],
+                ],
+                axis=0,
+            ),
+            "injection_connectivity": np.concatenate(
+                [
+                    base_station.injection_connectivity,
+                    base_station.injection_connectivity[0:1],
+                ],
+                axis=0,
+            ),
         }
     )
     with pytest.raises(ValueError, match="Busbar hugawuga not found in the station buses"):
@@ -504,7 +621,8 @@ def test_assert_station_in_network_busbar(case14_data_with_asset_topo: tuple[Pat
 
     # Remove a busbar from the station
     station = type(base_station).model_construct(
-        grid_model_id=base_station.grid_model_id,
+        grid_model_id=base_station.bus_group_id,
+        voltage_level_id=base_station.voltage_level_id,
         name=base_station.name,
         station_type=base_station.station_type,
         region=base_station.region,
@@ -525,12 +643,15 @@ def test_assert_station_in_network_busbar(case14_data_with_asset_topo: tuple[Pat
         assert_station_in_network(net, station, busbars_strict=True)
 
 
-def test_assert_station_in_network_asset(case14_data_with_asset_topo: tuple[Path, Topology]) -> None:
-    grid_path, topology = case14_data_with_asset_topo
+def test_assert_station_in_network_asset(
+    case14_data_with_asset_topo: tuple[Path, object, list[MaterializedStation]],
+) -> None:
+    """Verify asset subset and strict-count checks in station validation."""
+    grid_path, _master_data, stations = case14_data_with_asset_topo
     net = pypowsybl.network.load(grid_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     # Add a switchable asset to the station that is not in the grid
-    base_station = topology.materialize_stations()[0]
+    base_station = stations[0]
     if base_station.branch_connections:
         station = base_station.model_copy(
             update={
@@ -548,6 +669,13 @@ def test_assert_station_in_network_asset(case14_data_with_asset_topo: tuple[Path
                     [
                         base_station.branch_switching_table,
                         base_station.branch_switching_table[:, 0:1],
+                    ],
+                    axis=1,
+                ),
+                "branch_connectivity": np.concatenate(
+                    [
+                        base_station.branch_connectivity,
+                        base_station.branch_connectivity[:, 0:1],
                     ],
                     axis=1,
                 ),
@@ -573,6 +701,13 @@ def test_assert_station_in_network_asset(case14_data_with_asset_topo: tuple[Path
                     ],
                     axis=1,
                 ),
+                "injection_connectivity": np.concatenate(
+                    [
+                        base_station.injection_connectivity,
+                        base_station.injection_connectivity[:, 0:1],
+                    ],
+                    axis=1,
+                ),
             }
         )
     with pytest.raises(ValueError, match="Asset hugawuga not found in the station elements"):
@@ -584,6 +719,7 @@ def test_assert_station_in_network_asset(case14_data_with_asset_topo: tuple[Path
             update={
                 "branch_connections": base_station.branch_connections[:-1],
                 "branch_switching_table": base_station.branch_switching_table[:, :-1],
+                "branch_connectivity": base_station.branch_connectivity[:, :-1],
             }
         )
     else:
@@ -591,6 +727,7 @@ def test_assert_station_in_network_asset(case14_data_with_asset_topo: tuple[Path
             update={
                 "injection_connections": base_station.injection_connections[:-1],
                 "injection_switching_table": base_station.injection_switching_table[:, :-1],
+                "injection_connectivity": base_station.injection_connectivity[:, :-1],
             }
         )
     # Should pass without strict
@@ -603,7 +740,7 @@ def test_convert_bus_breaker_stations_to_asset_topo() -> None:
     net = pypowsybl.network.create_ieee30()
     create_busbar_b_in_ieee(net)
 
-    stations, branch_assets, injection_assets = get_raw_stations_and_assets_bus_breaker(net)
+    stations, branch_assets, injection_assets = get_stations_and_assets_bus_breaker(net)
     assets = [*branch_assets, *injection_assets]
     assert len(stations) == 30
 
@@ -611,7 +748,8 @@ def test_convert_bus_breaker_stations_to_asset_topo() -> None:
         assert len(station.busbars) == 2
         assert len(station.couplers) == 1
         for asset_id in [
-            asset_connection.asset_id for asset_connection in [*station.branch_connections, *station.injection_connections]
+            asset_connection.asset.grid_model_id
+            for asset_connection in [*station.branch_connections, *station.injection_connections]
         ]:
             assert any(asset.grid_model_id == asset_id for asset in assets)
 
@@ -620,3 +758,37 @@ def test_convert_bus_breaker_stations_to_asset_topo() -> None:
 
     for asset in injection_assets:
         assert asset.grid_model_id in net.get_injections().index
+
+
+def test_get_bus_breaker_topology_master_data_groups_connected_buses_per_voltage_level() -> None:
+    net = pypowsybl.network.create_ieee30()
+    create_busbar_b_in_ieee(net)
+
+    relevant_subs = np.ones(len(net.get_buses()), dtype=bool)
+    master_data = get_bus_breaker_topology_master_data(net, relevant_subs, topology_id="ieee30")
+
+    assert len(master_data.stations) == 30
+    assert all(station.bus_group_id.endswith("_a") for station in master_data.stations)
+    assert {station.bus_group_id for station in master_data.stations} == {
+        f"VL{voltage_level_index}_a" for voltage_level_index in range(1, 31)
+    }
+    assert all(len(station.busbars) == 2 for station in master_data.stations)
+
+
+def test_get_bus_breaker_structural_bus_groups_ignores_retained_flag() -> None:
+    station_topology_buses = pd.DataFrame(index=["bus_a", "bus_b", "bus_c"])
+    station_topology_switches = pd.DataFrame(
+        {
+            "bus1_id": ["bus_a", "bus_b"],
+            "bus2_id": ["bus_b", "bus_c"],
+            "open": [True, False],
+            "retained": [False, False],
+        }
+    )
+
+    structural_groups = _get_bus_breaker_structural_bus_groups(
+        station_topology_buses=station_topology_buses,
+        station_topology_switches=station_topology_switches,
+    )
+
+    assert structural_groups == [{"bus_a", "bus_b", "bus_c"}]

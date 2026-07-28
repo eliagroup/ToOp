@@ -5,18 +5,13 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-from datetime import datetime
 
 import numpy as np
 import pandapower
 import pytest
 import structlog.testing
 from toop_engine_importer.pandapower_import import asset_topology
-from toop_engine_interfaces.asset_topology.asset_topology import (
-    Topology,
-)
 from toop_engine_interfaces.asset_topology.assets import AssetBay, build_asset_bay_id
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 
 def test_get_busses_from_station(pp_network_w_switches):
@@ -290,50 +285,46 @@ def test_get_parameter_from_station():
     assert result == expected
 
 
-def test_get_station_from_id(pp_network_w_switches):
-    net = pp_network_w_switches
-    station_id_list = [el for el in range(0, 15)]
-    result = asset_topology.get_station_from_id(network=net, station_id_list=station_id_list, foreign_key="name")
-    assert isinstance(result, MaterializedStation)
-    assert result.grid_model_id == r"0%%bus"
-    assert result.name == "Double Busbar 1"
-    assert result.station_type is None
-    assert result.voltage_level == 380.0
-    assert len(result.busbars) == 2
-
-
-def test_get_list_of_stations_ids(pp_network_w_switches):
+def test_get_asset_topology_master_data_from_network(pp_network_w_switches):
+    """Verify canonical master-data extraction from the pandapower network."""
     net = pp_network_w_switches
     station_id_list = [[el for el in range(0, 15)], [el for el in range(16, 32)]]
-    result = asset_topology.get_list_of_stations_ids(network=net, station_list=station_id_list, foreign_key="name")
-    assert isinstance(result, list)
-    assert len(result) == 2
-    assert isinstance(result[0], MaterializedStation)
-    assert isinstance(result[1], MaterializedStation)
-    assert result[0].grid_model_id == r"0%%bus"
-    assert result[0].name == "Double Busbar 1"
-    assert result[1].grid_model_id == r"16%%bus"
-    assert result[1].name == "Single Busbar"
-
-
-def test_get_asset_topology_from_network(pp_network_w_switches):
-    net = pp_network_w_switches
-    station_id_list = [[el for el in range(0, 15)], [el for el in range(16, 32)]]
-    result = asset_topology.get_asset_topology_from_network(
+    master_data = asset_topology.get_asset_topology_master_data_from_network(
         network=net,
         station_id_list=station_id_list,
         topology_id="1",
         grid_model_file="test",
         foreign_key="name",
     )
-    assert isinstance(result, Topology)
-    assert result.topology_id == "1"
-    assert result.grid_model_file == "test"
-    assert isinstance(result.raw_stations, list)
-    assert isinstance(result.timestamp, datetime)
-    current_time = datetime.now()
-    time_difference = current_time - result.timestamp
-    assert time_difference.total_seconds() < 60, "Timestamp is not recent"
+    assert master_data.topology_id == "1"
+    assert master_data.grid_model_file == "test"
+    assert len(master_data.stations) == len(station_id_list)
+    assert master_data.stations[0].bus_group_id == r"0%%bus_a"
+    assert master_data.stations[0].name == "Double Busbar 1"
+    assert master_data.stations[0].voltage_level == 380.0
+    assert len(master_data.stations[0].busbars) == 2
+    assert master_data.stations[1].bus_group_id == r"16%%bus_a"
+    assert master_data.stations[1].name == "Single Busbar"
+
+
+def test_get_asset_topology_master_data_from_network_keeps_open_coupler_busbars_in_same_group(
+    pp_network_w_switches_open_coupler,
+):
+    """Verify structural bus groups ignore the current coupler open state in canonical master data."""
+    net = pp_network_w_switches_open_coupler
+    station_id_list = [[el for el in range(0, 15)], [el for el in range(16, 32)]]
+
+    master_data = asset_topology.get_asset_topology_master_data_from_network(
+        network=net,
+        station_id_list=station_id_list,
+        topology_id="1",
+        grid_model_file="test",
+        foreign_key="name",
+    )
+
+    double_busbar_station = next(station for station in master_data.stations if station.name == "Double Busbar 1")
+    assert double_busbar_station.bus_group_id == r"0%%bus_a"
+    assert {busbar.grid_model_id for busbar in double_busbar_station.busbars} == {r"0%%bus", r"1%%bus"}
 
 
 def test_get_station_bus_df(pp_network_w_switches):

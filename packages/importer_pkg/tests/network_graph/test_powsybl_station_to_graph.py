@@ -5,7 +5,6 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-import datetime
 from pathlib import Path
 
 import networkx as nx
@@ -16,7 +15,9 @@ import pypowsybl
 import pytest
 from pypowsybl.network import Network
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_stations_from_network_state
 from toop_engine_importer.network_graph.data_classes import (
+    BusbarConnectionInfo,
     HelperBranchSchema,
     NetworkGraphData,
     NodeAssetSchema,
@@ -24,23 +25,27 @@ from toop_engine_importer.network_graph.data_classes import (
     SubstationInformation,
     SwitchSchema,
 )
+from toop_engine_importer.network_graph.graph_to_asset_topo import get_station_connection_tables, remove_double_connections
 from toop_engine_importer.network_graph.network_graph_helper_functions import add_suffix_to_duplicated_grid_model_id
 from toop_engine_importer.network_graph.powsybl_station_to_graph import (
+    _build_master_station_from_busbar_group,
+    _build_station_connectivity_by_asset_type,
+    _get_station_asset_connections,
+    _get_station_busbar_view,
+    _get_station_topology_frames,
+    _get_structural_busbar_groups,
     get_helper_branches,
     get_node_assets,
     get_node_breaker_topology_graph,
+    get_node_breaker_topology_master_data,
     get_nodes,
     get_relevant_voltage_levels,
-    get_station,
-    get_station_list,
     get_switches,
-    get_topology,
     node_breaker_topology_to_graph_data,
 )
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_busbar_sections_with_in_service
-from toop_engine_interfaces.asset_topology.asset_topology import Topology
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
@@ -48,16 +53,109 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
 )
 
 
-def all_station_connections(station: MaterializedStation):
+def all_station_connections(station: MaterializedStation) -> list[MaterializedAssetConnection]:
     return [*station.branch_connections, *station.injection_connections]
 
 
-def all_station_switching_table(station: MaterializedStation):
+def all_station_switching_table(station: MaterializedStation) -> np.ndarray:
     return np.concatenate([station.branch_switching_table, station.injection_switching_table], axis=1)
 
 
-def all_station_connectivity(station: MaterializedStation):
+def all_station_connectivity(station: MaterializedStation) -> np.ndarray:
     return np.concatenate([station.branch_connectivity, station.injection_connectivity], axis=1)
+
+
+def build_station_from_bus_id(network: Network, bus_id: str, station_info: SubstationInformation) -> MaterializedStation:
+    """Build one materialized station view from a selected bus id for graph-conversion tests."""
+    graph_data = node_breaker_topology_to_graph_data(network, substation_info=station_info)
+    graph = get_node_breaker_topology_graph(graph_data)
+    _busbar_df, selected_busbar_ids, _busbar_connection_info = _get_station_busbar_view(
+        graph=graph,
+        graph_data=graph_data,
+        bus_id=bus_id,
+        substation_id=station_info.name,
+    )
+    station, branch_assets, injection_assets, asset_bays = _build_master_station_from_busbar_group(
+        network=network,
+        station_info=station_info,
+        selected_busbar_ids=selected_busbar_ids,
+        station_grid_model_id=bus_id,
+    )
+    busbar_df, _coupler_df, busbar_connection_info, switchable_assets_df, asset_bays_by_asset_id, station_logs = (
+        _get_station_topology_frames(
+            network=network,
+            station_info=station_info,
+            selected_busbar_ids=selected_busbar_ids,
+            station_grid_model_id=bus_id,
+        )
+    )
+    _branch_assets, _injection_assets, branch_connections, injection_connections, branch_mask, _asset_bays = (
+        _get_station_asset_connections(
+            network=network,
+            station_info=station_info,
+            busbar_df=busbar_df,
+            switchable_assets_df=switchable_assets_df,
+            asset_bays_by_asset_id=asset_bays_by_asset_id,
+        )
+    )
+    branch_connectivity, injection_connectivity = _build_station_connectivity_by_asset_type(
+        busbar_connection_info=busbar_connection_info,
+        busbar_df=busbar_df,
+        switchable_assets_df=switchable_assets_df,
+        branch_mask=branch_mask,
+    )
+    _asset_connectivity, asset_switching_table, _busbar_connectivity, _busbar_switching_table = (
+        get_station_connection_tables(
+            busbar_connection_info,
+            busbar_df=busbar_df,
+            switchable_assets_df=switchable_assets_df,
+        )
+    )
+    asset_switching_table = remove_double_connections(asset_switching_table, substation_id=station_info.name)
+    branch_switching_table = asset_switching_table[:, branch_mask]
+    injection_switching_table = asset_switching_table[:, [not is_branch for is_branch in branch_mask]]
+    asset_bay_by_id = {asset_bay.asset_bay_id: asset_bay for asset_bay in asset_bays if asset_bay.asset_bay_id is not None}
+    branch_asset_by_id = {asset.grid_model_id: asset for asset in branch_assets}
+    injection_asset_by_id = {asset.grid_model_id: asset for asset in injection_assets}
+    return MaterializedStation(
+        bus_group_id=station.bus_group_id,
+        voltage_level_id=station.voltage_level_id,
+        name=station.name,
+        station_type=station.station_type,
+        region=station.region,
+        voltage_level=station.voltage_level,
+        busbars=[busbar.model_copy(deep=True) for busbar in station.busbars],
+        couplers=[coupler.model_copy(deep=True) for coupler in station.couplers],
+        branch_connections=[
+            MaterializedAssetConnection(
+                asset=branch_asset_by_id[connection.asset_id].model_copy(deep=True),
+                branch_end=connection.branch_end,
+                asset_bay=(
+                    asset_bay_by_id[connection.asset_bay_id].model_copy(deep=True)
+                    if connection.asset_bay_id is not None
+                    else None
+                ),
+            )
+            for connection in branch_connections
+        ],
+        injection_connections=[
+            MaterializedAssetConnection(
+                asset=injection_asset_by_id[connection.asset_id].model_copy(deep=True),
+                branch_end=connection.branch_end,
+                asset_bay=(
+                    asset_bay_by_id[connection.asset_bay_id].model_copy(deep=True)
+                    if connection.asset_bay_id is not None
+                    else None
+                ),
+            )
+            for connection in injection_connections
+        ],
+        branch_switching_table=branch_switching_table,
+        injection_switching_table=injection_switching_table,
+        branch_connectivity=branch_connectivity,
+        injection_connectivity=injection_connectivity,
+        model_log=station_logs,
+    )
 
 
 def test_node_breaker_topology_to_graph(basic_node_breaker_network_powsybl_grid):
@@ -125,6 +223,28 @@ def test_get_helper_branches(basic_node_breaker_network_powsybl_grid):
     HelperBranchSchema.validate(helper_branches)
 
 
+def test_get_structural_busbar_groups_is_independent_of_runtime_switch_state():
+    """Verify that structural busbar grouping ignores runtime switch states."""
+    busbar_connection_info = {
+        "BBS1": BusbarConnectionInfo(connectable_busbars=["BBS1", "BBS2"]),
+        "BBS2": BusbarConnectionInfo(connectable_busbars=["BBS1", "BBS2"]),
+        "BBS3": BusbarConnectionInfo(connectable_busbars=["BBS3"]),
+        "BBS4": BusbarConnectionInfo(connectable_busbars=["BBS4", "BBS5"]),
+        "BBS5": BusbarConnectionInfo(connectable_busbars=["BBS4", "BBS5"]),
+    }
+
+    result = _get_structural_busbar_groups(
+        full_busbar_connection_info=busbar_connection_info,
+        allowed_busbar_ids={"BBS5", "BBS3", "BBS2", "BBS4", "BBS1"},
+    )
+
+    assert result == [
+        {"BBS1", "BBS2"},
+        {"BBS3"},
+        {"BBS4", "BBS5"},
+    ]
+
+
 def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
     net = basic_node_breaker_network_powsybl_grid
     nbt = net.get_node_breaker_topology("VL1")
@@ -165,10 +285,10 @@ def test_get_node_assets(basic_node_breaker_network_powsybl_grid):
 def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL3"}
     station_info = SubstationInformation(**station_info)
-    res = get_station(basic_node_breaker_network_powsybl_grid, "VL3_0", station_info)
+    res = build_station_from_bus_id(basic_node_breaker_network_powsybl_grid, "VL3_0", station_info)
     assert isinstance(res, MaterializedStation)
     assert res.name == "Station_ID"
-    assert res.grid_model_id == "VL3_0"
+    assert res.bus_group_id == "VL3_0"
     assert res.region == "BE"
     assert res.voltage_level == 380
 
@@ -199,7 +319,7 @@ def test_get_station(basic_node_breaker_network_powsybl_grid: Network):
     asset_bays = [asset_connection.asset_bay for asset_connection in all_station_connections(res)]
     asset_terminals = [asset_connection.branch_end for asset_connection in all_station_connections(res)]
     assert len(assets) == 5
-    assert asset_terminals == [None] * len(assets)
+    assert asset_terminals == ["to", "to", "to", "from", None]
     assert assets[0].grid_model_id == "L3"
     assert assets[0].asset_type == "LINE"
     assert assets[0].name == ""
@@ -271,7 +391,7 @@ def test_get_station_edge_cases_one_bay_two_assets(asset_topo_edge_cases_node_br
     net = asset_topo_edge_cases_node_breaker_grid
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     station_info = SubstationInformation(**station_info)
-    res = get_station(net, "VL1_1", station_info)
+    res = build_station_from_bus_id(net, "VL1_1", station_info)
     load_assets = [
         asset_connection.asset
         for asset_connection in all_station_connections(res)
@@ -290,7 +410,7 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
     net = asset_topo_edge_cases_node_breaker_grid
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL1"}
     station_info = SubstationInformation(**station_info)
-    res = get_station(net, "VL1_1", station_info)
+    res = build_station_from_bus_id(net, "VL1_1", station_info)
     assert [busbar.grid_model_id for busbar in res.busbars] == [
         "VL1_1_1",
         "VL1_1_2",
@@ -321,7 +441,7 @@ def test_get_station_edge_cases(asset_topo_edge_cases_node_breaker_grid):
 
     station_info = {"name": "Station_ID", "region": "BE", "nominal_v": 380, "voltage_level_id": "VL2"}
     station_info = SubstationInformation(**station_info)
-    res = get_station(net, "VL2_0", station_info)
+    res = build_station_from_bus_id(net, "VL2_0", station_info)
 
     expected_busbar_grid_model_ids = [
         "VL2_1_1",
@@ -379,17 +499,47 @@ def test_get_topo_integration(basic_node_breaker_network_powsybl_grid: Network):
     assert all(relevant_voltage_level_with_region["voltage_level_id"] == expected[1:3])
     assert all(relevant_voltage_level_with_region.index == ["VL2_0", "VL3_0"])
 
-    res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
-    assert len(res) == 2
-    assert all([isinstance(station, MaterializedStation) for station in res])
+    master_data = get_node_breaker_topology_master_data(
+        network=net, network_masks=network_masks, importer_parameters=importer_parameters
+    )
+    materialized_stations = materialize_stations_from_network_state(network=net, master_data=master_data)
+    assert len(materialized_stations) == 2
+    assert [station.bus_group_id for station in materialized_stations] == ["VL2_a", "VL3_a"]
+    assert master_data.topology_id == "cgmes_file.zip"
+    assert master_data.grid_model_file == "cgmes_file.zip"
 
-    timestamp = datetime.datetime.now()
-    res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
-    assert isinstance(res, Topology)
-    assert len(res.materialize_stations()) == 2
-    assert res.topology_id == "cgmes_file.zip"
-    assert res.grid_model_file == "cgmes_file.zip"
-    assert res.timestamp - timestamp < datetime.timedelta(seconds=3)
+
+def test_materialized_stations_from_master_data_are_stable(
+    basic_node_breaker_network_powsybl_grid: Network,
+):
+    """Verify that re-materializing node-breaker stations from master data is stable."""
+    net = basic_node_breaker_network_powsybl_grid
+    importer_parameters = CgmesImporterParameters(
+        grid_model_file=Path("cgmes_file.zip"),
+        data_folder="data_folder",
+        area_settings=AreaSettings(cutoff_voltage=220, control_area=["BE"], view_area=["BE"], nminus1_area=["BE"]),
+    )
+    lf_result, *_ = pypowsybl.loadflow.run_dc(net)
+    network_masks = powsybl_masks.make_masks(
+        network=net,
+        slack_id=lf_result.reference_bus_id,
+        importer_parameters=importer_parameters,
+        blacklisted_ids=[],
+    )
+
+    master_data = get_node_breaker_topology_master_data(
+        network=net, network_masks=network_masks, importer_parameters=importer_parameters
+    )
+    new_stations = materialize_stations_from_network_state(network=net, master_data=master_data)
+    repeated_stations = materialize_stations_from_network_state(network=net, master_data=master_data)
+
+    assert len(new_stations) == len(repeated_stations)
+    for new_station, repeated_station in zip(new_stations, repeated_stations, strict=True):
+        assert new_station == repeated_station
+        assert new_station.name == repeated_station.name
+        assert new_station.station_type == repeated_station.station_type
+        assert new_station.voltage_level == repeated_station.voltage_level
+        assert new_station.model_log == repeated_station.model_log
 
 
 def make_node_assets_df(rows):
@@ -481,10 +631,7 @@ def test_create_complex_grid_battery_hvdc_svc_3w_trafo_asset_topo():
     for vl in expected:
         assert vl in relevant_voltage_level_with_region["voltage_level_id"].values, f"Expected voltage level {vl} not found"
 
-    res = get_station_list(network=net, relevant_voltage_level_with_region=relevant_voltage_level_with_region)
-    assert len(res) >= len(expected)
-    assert all([isinstance(station, MaterializedStation) for station in res])
-
-    res = get_topology(network=net, network_masks=network_masks, importer_parameters=importer_parameters)
-    assert isinstance(res, Topology)
-    assert len(res.materialize_stations()) == len(expected)
+    master_data = get_node_breaker_topology_master_data(
+        network=net, network_masks=network_masks, importer_parameters=importer_parameters
+    )
+    assert len(materialize_stations_from_network_state(network=net, master_data=master_data)) == len(expected)

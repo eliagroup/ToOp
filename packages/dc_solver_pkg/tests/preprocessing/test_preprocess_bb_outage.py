@@ -126,7 +126,6 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
         bridging_branch_mask=np.array([True, False, False, False]),
         injection_ids=["injection_node_0", "injection_node_2", "injection_node_1"],
         mw_injections=np.array([[10, -10, 50]], dtype=float),
-        asset_topology=None,
         split_multi_outage_branches=None,
     )
 
@@ -230,7 +229,6 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         injection_ids=["injection_node_0", "injection_node_2", "injection_node_1"],
         mw_injections=np.array([[10, -10, 50]], dtype=float),
         relevant_node_mask=np.array([False, False, False, False]),
-        asset_topology=None,
         split_multi_outage_branches=None,
     )
 
@@ -244,7 +242,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         int_id=1,
     )
     station = MaterializedStation(
-        grid_model_id="node_2",
+        bus_group_id="node_2",
         busbars=[busbar_0, busbar_1],
         couplers=[],
         branch_connections=[MaterializedAssetConnection(asset=asset) for asset in [asset2, asset3, asset4]],
@@ -343,7 +341,7 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
         int_id=0,
     )
     station = MaterializedStation(
-        grid_model_id="node_0",
+        bus_group_id="node_0",
         busbars=[busbar_0],
         couplers=[],
         branch_connections=[MaterializedAssetConnection(asset=asset) for asset in [asset1, asset4, asset5]],
@@ -411,8 +409,9 @@ def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: 
 
     # Test case 3: Check if the branches to be outaged are valid and connected to the busbar
     for branch_outages, station_id in zip(updated_net_data.non_rel_bb_outage_br_indices, non_rel_bb_map):
-        for station in updated_net_data.asset_topology.materialize_stations():
-            if station.grid_model_id == station_id:
+        assert updated_net_data.asset_topology is not None
+        for station in updated_net_data.asset_topology.stations:
+            if station.bus_group_id == station_id:
                 break
 
         for busbar_id in non_rel_bb_map[station_id]:
@@ -434,14 +433,26 @@ def test_get_branch_injection_outages_for_rel_subs(
 ):
     network_data_preprocessed = compute_separation_set_for_stations(network_data_preprocessed)
     network_data_preprocessed = enumerate_station_realisations(network_data_preprocessed)
-    # 71%%bus is a relevant node
+    relevant_station_ids = [station_combis[0].bus_group_id for station_combis in network_data_preprocessed.realised_stations]
+    assert "71%%bus" in relevant_station_ids
+
+    assert network_data_preprocessed.asset_topology is not None
+    monitored_station = next(
+        station for station in network_data_preprocessed.asset_topology.stations if station.bus_group_id == "71%%bus"
+    )
+    non_outaged_station = next(
+        station for station in network_data_preprocessed.asset_topology.stations if station.bus_group_id == "157%%bus"
+    )
+
     rel_station_busbars_map = {
-        "71%%bus": ["71%%bus_a", "71%%bus_b"],
-        "157%%bus": ["157%%bus_a"],
+        "71%%bus": [busbar.grid_model_id for busbar in monitored_station.busbars],
+        "157%%bus": [non_outaged_station.busbars[0].grid_model_id],
     }
     outage_data_branch_indices, outage_data_deltap, outage_data_nodal_index = get_branch_injection_outages_for_rel_subs(
         network_data_preprocessed, rel_station_busbars_map
     )
+    monitored_station_index = relevant_station_ids.index("71%%bus")
+    ignored_station_ids = set(relevant_station_ids) - set(rel_station_busbars_map)
 
     # Test case 1: Check if the function returns the correct number of outage data sets
     assert len(outage_data_branch_indices) == len(network_data_preprocessed.relevant_nodes), (
@@ -492,66 +503,79 @@ def test_get_branch_injection_outages_for_rel_subs(
                     )
         rel_station_index += 1
 
-    # Test case 5: Check that the there should be 0 combis for 3rd relevant node, 2 busbar outage data for 1st rel node and
-    # 1 busbar outage data for 2nd rel node
-    assert len(outage_data_branch_indices[0][0]) == 2, (
-        f"Expected 2 busbar outage data for 1st rel node, but got {len(outage_data_branch_indices[0])}"
+    # Test case 5: The monitored station keeps both busbar outages, and stations outside the
+    # requested outage map remain empty.
+    assert len(outage_data_branch_indices[monitored_station_index][0]) == 2, (
+        "Expected 2 busbar outage data for the monitored relevant station, "
+        f"but got {len(outage_data_branch_indices[monitored_station_index][0])}"
     )
-    assert len(outage_data_branch_indices[1][0]) == 2, (
-        f"Expected 2 busbar outage data for 2nd rel node, but got {len(outage_data_branch_indices[1])}"
+    assert all(nodal_index is not None for nodal_index in outage_data_nodal_index[monitored_station_index][0]), (
+        "Expected nodal indices for all selected busbar outages of the remaining relevant station"
     )
-    assert len(outage_data_branch_indices[1][0][0]) == 0 or len(outage_data_branch_indices[1][0][1]) == 0
-    assert len(outage_data_branch_indices[2]) == 0, (
-        f"Expected 0 combis data for 3rd rel node, but got {len(outage_data_branch_indices[2])}"
-    )
+    for station_id, station_outages in zip(relevant_station_ids, outage_data_branch_indices, strict=True):
+        if station_id in ignored_station_ids:
+            assert station_outages == [], f"Expected no outage data for non-selected station {station_id}"
 
 
 def test_get_modified_stations(network_data_preprocessed: NetworkData):
-    # '157%%bus' is a rel sub with 2 busbars; This has 5 branches connected to it and 2 injections -
+    # '71%%bus' is the monitored relevant substation for this test.
     # 1 generator and 1 load; 1 closed coupler
     # switching_table:
     # array([[False,  True, False, False, False,  True, False],
     #        [True, False,  True,  True,  True, False,  True]]
-    monitored_station = network_data_preprocessed.asset_topology.materialize_stations()[156]
-    outage_stations = [monitored_station.grid_model_id]
+    assert network_data_preprocessed.asset_topology is not None
+    monitored_station = next(
+        station for station in network_data_preprocessed.asset_topology.stations if station.bus_group_id == "71%%bus"
+    )
+    outage_stations = [monitored_station.bus_group_id]
     branch_actions_all_rel_sub = network_data_preprocessed.branch_action_set
     modified_stations_br = get_modified_stations(network_data=network_data_preprocessed, stations_to_outage=outage_stations)
+    relevant_station_ids = [station_combis[0].bus_group_id for station_combis in network_data_preprocessed.realised_stations]
+    monitored_station_index = relevant_station_ids.index(monitored_station.bus_group_id)
 
-    # Test Case 1: There should be no combinations for stations 0 and station 2
-    assert len(modified_stations_br[0]) == 0, (
-        f"Expected 0 combinations for station 0 branch actions, but got {len(modified_stations_br[0])}"
+    assert len(modified_stations_br) == len(network_data_preprocessed.realised_stations), (
+        "Expected modified stations to preserve the relevant-station outer dimension"
     )
-    assert len(modified_stations_br[2]) == 0, (
-        f"Expected 0 combinations for station 2 branch actions, but got {len(modified_stations_br[0])}"
-    )
-    assert len(modified_stations_br[1]) == len(branch_actions_all_rel_sub[1]), (
-        f"Expected {len(branch_actions_all_rel_sub[1])} combinations for station 1 branch actions, but got {len(modified_stations_br[1])}"
+    for station_id, station_combis in zip(relevant_station_ids, modified_stations_br, strict=True):
+        if station_id != monitored_station.bus_group_id:
+            assert station_combis == [], f"Expected no modified station combinations for {station_id}"
+
+    # Test Case 1: The monitored station should keep all branch action combinations.
+    assert len(modified_stations_br[monitored_station_index]) == len(branch_actions_all_rel_sub[monitored_station_index]), (
+        "Expected the monitored station to keep all branch action combinations, "
+        f"but got {len(modified_stations_br[monitored_station_index])} instead of "
+        f"{len(branch_actions_all_rel_sub[monitored_station_index])}"
     )
 
-    # Test Case 2: The switching table of station 1 should be according to the branch_actions_all_rel_sub[1].
+    # Test Case 2: The switching table of the monitored station should be according to its branch actions.
     # Also, the configuration of the injections should not change.
     res = []
-    for action_index, action in enumerate(branch_actions_all_rel_sub[1]):
+    for action_index, action in enumerate(branch_actions_all_rel_sub[monitored_station_index]):
         if not action.any():
             res.append(
                 np.all(
-                    _combined_asset_switching_table(modified_stations_br[1][action_index])
+                    _combined_asset_switching_table(modified_stations_br[monitored_station_index][action_index])
                     == _combined_asset_switching_table(monitored_station)
                 )
             )
         else:
             res.append(
                 np.all(
-                    modified_stations_br[1][action_index].branch_switching_table[:, 0 : len(action)] == action, axis=1
+                    modified_stations_br[monitored_station_index][action_index].branch_switching_table[:, 0 : len(action)]
+                    == action,
+                    axis=1,
                 ).any()
             )
-    assert np.sum(res) == len(modified_stations_br[1]), (
+    assert np.sum(res) == len(modified_stations_br[monitored_station_index]), (
         "Some branch actions didn't execute properly as a result, the modified switching table is not as expected"
     )
     assert np.all(
         [
-            np.all(modified_stations_br[1][i].injection_switching_table == monitored_station.injection_switching_table)
-            for i in range(len(modified_stations_br[1]))
+            np.all(
+                modified_stations_br[monitored_station_index][i].injection_switching_table
+                == monitored_station.injection_switching_table
+            )
+            for i in range(len(modified_stations_br[monitored_station_index]))
         ]
     ), (
         "The injection configuration in the switching table for the modified station should be the same as the original station"
@@ -608,7 +632,7 @@ def test_get_non_rel_bridge_busbars(network_data_test_grid: NetworkData):
     }
     non_rel_busbar_outage_map = get_non_rel_articulation_nodes(outage_map, network_data_test_grid)
     expected_map = {
-        "VL2_0": ["BBS2_1", "BBS2_3"],
+        "VL2_a": ["BBS2_1", "BBS2_3"],
     }
     assert non_rel_busbar_outage_map == expected_map, f"Expected {expected_map}, but got {non_rel_busbar_outage_map}"
 

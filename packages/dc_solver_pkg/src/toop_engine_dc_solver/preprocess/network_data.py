@@ -17,7 +17,7 @@ from fsspec.implementations.local import LocalFileSystem
 from jaxtyping import Bool, Float, Int
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_lf_params_from_fs
-from toop_engine_interfaces.asset_topology.asset_topology import RawStation, Topology
+from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.nminus1_definition import Contingency, GridElement, MonitoredElement, Nminus1Definition
@@ -35,6 +35,25 @@ class OutageData(NamedTuple):
 
     node_index: int
     """The index of the node that is outaged"""
+
+
+def _structural_station_suffix_to_index(suffix: str) -> int | None:
+    """Convert a structural station suffix like ``a`` or ``ab`` to a zero-based index."""
+    if not suffix.isalpha() or not suffix.islower():
+        return None
+
+    index = 0
+    for char in suffix:
+        index = index * 26 + (ord(char) - ord("a") + 1)
+    return index - 1
+
+
+def _node_id_sort_key(node_id: str, voltage_level_id: str) -> tuple[int, int | str]:
+    """Sort node ids within one voltage level by numeric suffix when available."""
+    suffix = node_id.removeprefix(f"{voltage_level_id}_")
+    if suffix.isdigit():
+        return (0, int(suffix))
+    return (1, suffix)
 
 
 @dataclass(frozen=True)
@@ -241,11 +260,11 @@ class NetworkData:
     rel_io_global_inj_index: Optional[Int[np.ndarray, " n_relevant_injection_outages"]] = None
     """The injection that this injection outage refers to, pointing into all injections."""
 
-    asset_topology: Optional[Topology] = None
-    """The asset topology of the pre-optimization grid."""
+    asset_topology: Optional[RuntimeAssetTopology] = None
+    """Runtime asset-topology wrapper aligned to the current backend grid state."""
 
-    simplified_asset_topology: Optional[Topology] = None
-    """The asset topology in a simplified version, containing only optimization-relevant stations and assets."""
+    simplified_asset_topology: Optional[RuntimeAssetTopology] = None
+    """Simplified runtime asset-topology wrapper aligned to the optimization-relevant station order."""
 
     separation_sets_info: Optional[list[OptimalSeparationSetInfo]] = None
     """The optimal separation set information for each relevant substation."""
@@ -269,7 +288,6 @@ class NetworkData:
     """The indices of the branches that are outaged in the busbar-outage cases, represented as integers.
     The length of the outer list equals the number of busbar outages, the inner list contains the indices
     of the branches that are outaged. This will be computed during busbar-outage cases."""
-
     non_rel_bb_outage_deltap: Optional[Float[np.ndarray, " n_busbar_outages n_timesteps"]] = None
     """The delta p for every injection outage at the time of busbar outage. The length of the outer list equals
     the number of busbar outages, the inner list contains the delta p for each timestep. Will be computed during
@@ -337,7 +355,7 @@ class NetworkData:
     """
     The information about busbars that have to be outaged.
 
-    The key of the dict is the station's grid_model_id and the value is a list of grid_model_ids
+    The key of the dict is the station's bus_group_id and the value is a list of grid_model_ids
     of the busbars that have to be outaged. If is None then, all the physical
     busbars of the relevant stations will be outaged."""
 
@@ -362,6 +380,87 @@ class NetworkData:
         return np.concatenate([branch_outage_ids, injection_outage_ids, np.array(self.multi_outage_ids)]).tolist()
 
 
+def get_runtime_station_lookup_ids(
+    station: MaterializedStation,
+    *,
+    node_ids: Sequence[str] | Sequence[int] | None = None,
+) -> set[str]:
+    """Return stable lookup ids for a runtime station.
+
+    Structural station ids stay authoritative. Explicit runtime or canonical bus ids
+    are added as aliases. A voltage-level heuristic is only used when it resolves to
+    exactly one network node.
+    """
+    lookup_ids = {station.bus_group_id}
+    lookup_ids.update(bus_id for bus_id in station.bus_branch_bus_ids if bus_id not in {None, ""})
+    lookup_ids.update(busbar.bus_branch_bus_id for busbar in station.busbars if busbar.bus_branch_bus_id not in {None, ""})
+
+    if len(lookup_ids) == 1 and station.voltage_level_id is not None and node_ids is not None:
+        voltage_level_node_ids = {
+            str(node_id)
+            for node_id in node_ids
+            if isinstance(node_id, str) and node_id.startswith(f"{station.voltage_level_id}_")
+        }
+        if len(voltage_level_node_ids) == 1:
+            lookup_ids.update(voltage_level_node_ids)
+        else:
+            suffix = station.bus_group_id.removeprefix(f"{station.voltage_level_id}_")
+            structural_group_index = _structural_station_suffix_to_index(suffix)
+            if structural_group_index is not None:
+                ordered_node_ids = sorted(
+                    voltage_level_node_ids,
+                    key=lambda node_id: _node_id_sort_key(node_id, station.voltage_level_id),
+                )
+                if structural_group_index < len(ordered_node_ids):
+                    lookup_ids.add(ordered_node_ids[structural_group_index])
+
+    return lookup_ids
+
+
+def map_runtime_stations_by_node_id(
+    stations: Sequence[MaterializedStation],
+    *,
+    node_ids: Sequence[str] | Sequence[int],
+) -> dict[str | int, MaterializedStation]:
+    """Map runtime stations to network node ids with explicit aliases taking precedence.
+
+    Parameters
+    ----------
+    stations : Sequence[MaterializedStation]
+        Runtime stations that should be matched to network node ids.
+    node_ids : Sequence[str] | Sequence[int]
+        Candidate network node ids that require a runtime-station match.
+
+    Returns
+    -------
+    dict[str | int, MaterializedStation]
+        Mapping from node id to the matched runtime station.
+    """
+    runtime_stations_by_node_id: dict[str | int, MaterializedStation] = {}
+    unresolved_node_ids = list(node_ids)
+    unresolved_node_id_set = set(unresolved_node_ids)
+
+    for station in stations:
+        explicit_lookup_ids = get_runtime_station_lookup_ids(station)
+        for candidate_node_id in explicit_lookup_ids:
+            if candidate_node_id in unresolved_node_id_set:
+                runtime_stations_by_node_id[candidate_node_id] = station
+
+    unresolved_node_ids = [node_id for node_id in unresolved_node_ids if node_id not in runtime_stations_by_node_id]
+    unresolved_node_id_set = set(unresolved_node_ids)
+
+    for station in stations:
+        candidate_node_ids = get_runtime_station_lookup_ids(
+            station,
+            node_ids=unresolved_node_ids,
+        )
+        for candidate_node_id in candidate_node_ids:
+            if candidate_node_id in unresolved_node_id_set:
+                runtime_stations_by_node_id[candidate_node_id] = station
+
+    return runtime_stations_by_node_id
+
+
 def extract_network_data_from_interface(interface: BackendInterface) -> NetworkData:
     """Extract the network data from the interface.
 
@@ -378,6 +477,8 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
 
     def fillna(a: np.ndarray, b: Union[np.ndarray, float]) -> np.ndarray:
         return np.where(np.isnan(a), b, a)
+
+    asset_topology = interface.get_runtime_asset_topology()
 
     return NetworkData(
         ptdf=interface.get_ptdf(),
@@ -417,7 +518,7 @@ def extract_network_data_from_interface(interface: BackendInterface) -> NetworkD
         injection_types=interface.get_injection_types(),
         multi_outage_types=interface.get_multi_outage_types(),
         metadata=interface.get_metadata(),
-        asset_topology=interface.get_asset_topology(),
+        asset_topology=asset_topology,
         controllable_phase_shift_mask=interface.get_controllable_phase_shift_mask(),
         phase_shift_taps=interface.get_phase_shift_taps(),
         phase_shift_starting_tap_idx=interface.get_phase_shift_starting_taps(),
@@ -572,7 +673,8 @@ def validate_network_data(network_data: NetworkData) -> None:
     ):
         assert len(branch_act) == len(inj_act) == len(sw_dist)
 
-    assert len(network_data.simplified_asset_topology.raw_stations) == n_rel_subs
+    assert network_data.simplified_asset_topology is not None
+    assert len(network_data.simplified_asset_topology.stations) == n_rel_subs
     assert len(network_data.realised_stations) == n_rel_subs
     for realizations in network_data.realised_stations:
         for realized_station in realizations:
@@ -581,9 +683,9 @@ def validate_network_data(network_data: NetworkData) -> None:
     assert len(network_data.branch_action_set_switching_distance) == n_rel_subs
 
 
-def get_relevant_stations(network_data: NetworkData) -> list[RawStation]:
+def get_relevant_stations(network_data: NetworkData) -> list[MaterializedStation]:
     """
-    Get the relevant raw asset-topology stations from the network data.
+    Get the relevant runtime asset-topology stations from the network data.
 
     Parameters
     ----------
@@ -592,22 +694,31 @@ def get_relevant_stations(network_data: NetworkData) -> list[RawStation]:
 
     Returns
     -------
-    list[RawStation]
-        The relevant raw stations in the same order as the relevant nodes.
+    list[MaterializedStation]
+        The relevant runtime stations in the same order as the relevant nodes.
     """
     relevant_node_ids = [
         node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
     ]
 
-    def find_station(stations: list[RawStation], grid_model_id: str, fallback: Optional[RawStation] = None) -> RawStation:
-        for station in stations:
-            if station.grid_model_id == grid_model_id:
-                return station
-        if fallback is not None:
-            return fallback
-        raise ValueError(f"Could not find station with grid_model_id {grid_model_id}")
+    assert network_data.asset_topology is not None, (
+        "Missing runtime asset-topology stations for relevant station extraction. "
+        "Preprocessing requires backend-enriched runtime stations."
+    )
+    preferred_stations = network_data.asset_topology.stations
+    stations_by_id = map_runtime_stations_by_node_id(
+        preferred_stations,
+        node_ids=list(relevant_node_ids),
+    )
 
-    return [find_station(network_data.simplified_asset_topology.raw_stations, node_id) for node_id in relevant_node_ids]
+    missing_station_ids = [node_id for node_id in relevant_node_ids if node_id not in stations_by_id]
+    if missing_station_ids:
+        raise ValueError(
+            "Missing runtime asset-topology stations for relevant station extraction. "
+            f"Missing stations for relevant nodes: {missing_station_ids}"
+        )
+
+    return [stations_by_id[node_id] for node_id in relevant_node_ids]
 
 
 def map_branch_injection_ids(
@@ -641,9 +752,7 @@ def map_branch_injection_ids(
 
 
 def extract_action_set(network_data: NetworkData) -> ActionSet:
-    """Extract an action set from a filled network data
-
-    This will read the realized stations as saved in the network data
+    """Extract an action set from filled network data.
 
     Parameters
     ----------
@@ -656,11 +765,9 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
         The action set extracted from the network data.
     """
     assert network_data.realised_stations is not None, "No realised stations in network data"
-    assert network_data.asset_topology is not None, "No asset topology in network data"
+    assert network_data.simplified_asset_topology is not None, "No simplified asset-topology stations in network data"
 
-    # Flatten the realised stations as they are currently stored in per-station batches, i.e.
-    # every batch holds only changes for one station. However in the action set we store it flattened.
-    local_actions = [station for batch in network_data.realised_stations for station in batch]
+    local_actions = [station for realised_stations in network_data.realised_stations for station in realised_stations]
 
     disconnectable_branches = [
         GridElement(id=branch_id, type=branch_type, name=branch_name, kind="branch")
@@ -694,11 +801,10 @@ def extract_action_set(network_data: NetworkData) -> ActionSet:
         )
     ]
 
+    assert network_data.asset_topology is not None, "No runtime asset-topology stations in network data"
     return ActionSet(
-        starting_topology=network_data.asset_topology,
-        simplified_starting_topology=network_data.simplified_asset_topology
-        if network_data.simplified_asset_topology
-        else network_data.asset_topology,
+        starting_stations=network_data.asset_topology.stations,
+        simplified_starting_stations=network_data.simplified_asset_topology.stations,
         local_actions=local_actions,
         disconnectable_branches=disconnectable_branches,
         pst_ranges=pst_ranges,
@@ -735,18 +841,17 @@ def extract_nminus1_definition(network_data: NetworkData) -> Nminus1Definition:
         if monitored
     ]
 
-    asset_topology = (
-        network_data.simplified_asset_topology if network_data.simplified_asset_topology else network_data.asset_topology
-    )
+    assert network_data.simplified_asset_topology is not None, "No simplified asset-topology stations in network data"
+    asset_topology_stations = network_data.simplified_asset_topology.stations
     monitored_nodes = [
         MonitoredElement(id=busbar.grid_model_id, name=busbar.name or "", type=busbar.busbar_type, kind="bus")
-        for station in asset_topology.materialize_stations()
+        for station in asset_topology_stations
         for busbar in station.busbars
     ]
 
     monitored_switches = [
         MonitoredElement(id=switch.grid_model_id, name=switch.name or "", type=switch.coupler_type, kind="switch")
-        for station in asset_topology.materialize_stations()
+        for station in asset_topology_stations
         for switch in station.couplers
     ]
 

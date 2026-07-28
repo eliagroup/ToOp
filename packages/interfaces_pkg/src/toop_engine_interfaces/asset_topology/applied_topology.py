@@ -11,8 +11,8 @@ This is the station-local view of the topology
 with assets and asset bays, including the differences to the original topology.
 """
 
-from pydantic import BaseModel
-from toop_engine_interfaces.asset_topology.asset_topology import Topology
+from pydantic import BaseModel, Field
+from toop_engine_interfaces.asset_topology.asset_topology import TopologyMasterData
 from toop_engine_interfaces.asset_topology.assets import BusbarCoupler
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
@@ -25,11 +25,14 @@ class RealizedTopology(BaseModel):
     diff.
     """
 
-    topology: Topology
-    """The realized asset topology object"""
+    master_data: TopologyMasterData | None = None
+    """Canonical master data associated with the realized runtime stations when available."""
+
+    stations: list[MaterializedStation] = Field(default_factory=list)
+    """The realized asset stations that were directly applied or compared."""
 
     coupler_diff: list[tuple[str, BusbarCoupler]]
-    """A list of couplers that have been switched. Each tuple contains the station grid_model_id
+    """A list of couplers that have been switched. Each tuple contains the station id
     and the coupler that was switched."""
 
     branch_reassignment_diff: list[tuple[str, int, int, bool]]

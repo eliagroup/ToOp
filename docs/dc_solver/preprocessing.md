@@ -20,6 +20,13 @@ Output data pieces are defined in the [`folder_structure`][toop_engine_interface
 
 The [`backend`][toop_engine_interfaces.backend.BackendInterface] interface exposes a common format for both pandapower and powsybl-based grids. The main task of the backend is loading the masks and exposing the information in the required format. Instead of modelling lines, trafos, etc., the backend exposes branches, nodes, and injections.
 
+For asset topology, the backend now exposes two distinct views:
+
+- Canonical master data via `get_master_data_asset_topology(...)`. This is the structural station description keyed by `bus_group_id`.
+- Runtime station snapshots via `get_runtime_asset_topology(...)`. These snapshots contain the current busbar, coupler, switching-table, and bus-id state for the canonical stations.
+
+This split is important during preprocessing because structural station grouping must not depend on the current open or closed state of busbar couplers, while runtime action generation still needs the current electrical station view.
+
 ## `preprocess()` routine
 
 The [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] function performs multiple steps to convert the backend information. The network data dataclass gets consecutively filled during these preprocessing steps:
@@ -40,13 +47,23 @@ The [`preprocess`][toop_engine_dc_solver.preprocess.preprocess] function perform
 - `compute_injection_topology_info` gathers information about injections at relevant nodes.
 - `convert_multi_outages` removes one branch from trafo3w multi-outages and sorts the multi-outages by number of branches disconnected.
 - `add_missing_asset_topo_info` ensures that all branches and injections from the network data are present in the asset topology.
-- `simplify_asset_topology` creates a separate simplified asset topology that drops all assets not in the network data. The simplified asset topology exactly matches the network data view.
+- `simplify_asset_topology` creates a separate simplified asset topology that drops all assets not in the network data. The simplified asset topology exactly matches the network data view and projects runtime stations to the locally relevant assets of each node.
 - `compute_electrical_actions` enumerates electrical (bus/branch) station reconfigurations for all relevant subs. The actions are also pre-filtered for suitability based on the bus/branch information. Currently, injection actions are not enumerated.
 - `enumerate_station_realizations` finds a physical (node/breaker) representation for each electrical configuration.
 - `remove_relevant_subs_without_actions` removes all relevant subs that have an empty action set and turns them into non-relevant subs.
 - `enumerate_injection_actions` does not technically enumerate injection actions yet but just copies the assignment from the asset topology into the action set for each branch action.
 - `process_injection_outages` finds the delta p and PTDF node for every injection outage. Injection outages at relevant subs are stored separately.
 - `add_bus_b_columns_to_ptdf` adds a column for every relevant sub at the end of the PTDF.
+
+## Canonical vs runtime semantics
+
+Recent preprocessing logic relies on a strict distinction between canonical and runtime station information:
+
+- `bus_group_id` is the canonical station identity used to align master data, runtime stations, station limits, and stored actions.
+- Structural split groups are determined independently of open switches. Deterministic suffix ids such as `_a`, `_b`, and `_c` describe canonical groups inside one physical substation.
+- Runtime lookup uses active `bus_branch_bus_ids` to map relevant electrical nodes back to canonical stations.
+- Split filtering no longer relies on a raw "station has multiple busbars" check alone. It distinguishes materially split stations from technical multi-bus layouts and treats PST-linked internal bus components specially.
+- Simplification and action generation operate on node-local projected runtime stations so the station-local asset view stays aligned with `branches_at_nodes` and `injections_at_nodes`.
 
 ## `convert_to_jax()` routine
 

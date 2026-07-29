@@ -251,38 +251,37 @@ def test_save_and_load_complex_example_grid_as_cgmes(tmp_path_factory: pytest.Te
 
     assert isinstance(loaded_net, pypowsybl.network.Network)
 
-    # Element types that CGMES round trips one to one, ids included.
-    for getter in [
-        "get_loads",
-        "get_2_windings_transformers",
-        "get_3_windings_transformers",
-        "get_shunt_compensators",
-        "get_static_var_compensators",
-        "get_hvdc_lines",
-        "get_vsc_converter_stations",
-        "get_lcc_converter_stations",
-        "get_busbar_sections",
-    ]:
-        before = getattr(net, getter)()
-        after = getattr(loaded_net, getter)()
-        assert len(before) == len(after), f"{getter} changed during the CGMES round trip"
-        assert set(before.index) <= set(after.index), f"{getter} lost ids during the CGMES round trip"
-
     n_boundary_lines = len(net.get_boundary_lines())
     n_tie_lines = len(net.get_tie_lines())
     n_batteries = len(net.get_batteries())
-
     # CGMES models a boundary line as a full AC line ending in a fictitious substation/voltage level/bus.
     # Two boundary lines coupled by a tie line share a single boundary point.
-    assert len(loaded_net.get_lines()) == len(net.get_lines()) + n_boundary_lines
-    assert set(net.get_lines().index) <= set(loaded_net.get_lines().index)
-    assert len(loaded_net.get_boundary_lines()) == 0
-    assert len(loaded_net.get_tie_lines()) == 0
-    for getter in ["get_substations", "get_voltage_levels", "get_buses"]:
+    n_boundary_points = n_boundary_lines - n_tie_lines
+
+    # Element counts that CGMES round trips, ids included, either one to one or up to the fictitious
+    # elements added per boundary point.
+    for getter, extra in [
+        ("get_loads", 0),
+        ("get_2_windings_transformers", 0),
+        ("get_3_windings_transformers", 0),
+        ("get_shunt_compensators", 0),
+        ("get_static_var_compensators", 0),
+        ("get_hvdc_lines", 0),
+        ("get_vsc_converter_stations", 0),
+        ("get_lcc_converter_stations", 0),
+        ("get_busbar_sections", 0),
+        ("get_substations", n_boundary_points),
+        ("get_voltage_levels", n_boundary_points),
+        ("get_buses", n_boundary_points),
+        ("get_lines", n_boundary_lines),
+    ]:
         before = getattr(net, getter)()
         after = getattr(loaded_net, getter)()
-        assert len(after) == len(before) + n_boundary_lines - n_tie_lines, f"unexpected {getter} count"
+        assert len(after) == len(before) + extra, f"unexpected {getter} count after the CGMES round trip"
         assert set(before.index) <= set(after.index), f"{getter} lost ids during the CGMES round trip"
+
+    assert len(loaded_net.get_boundary_lines()) == 0
+    assert len(loaded_net.get_tie_lines()) == 0
 
     # CGMES has no battery class, so batteries come back as generators, and every boundary line adds an
     # equivalent injection generator.
@@ -310,11 +309,31 @@ def test_save_and_load_complex_example_grid_as_cgmes(tmp_path_factory: pytest.Te
         before = getattr(net, getter)()
         after = getattr(loaded_net, getter)()
         common = sorted(set(before.index) & set(after.index))
+        # initial=0.0 keeps element types the grid does not have (empty frames) a no-op.
         return float(
-            np.nanmax(np.abs(before.loc[common, column].to_numpy(float) - after.loc[common, column].to_numpy(float)))
+            np.nanmax(
+                np.abs(before.loc[common, column].to_numpy(float) - after.loc[common, column].to_numpy(float)),
+                initial=0.0,
+            )
         )
 
-    # The state variables of the exported load flow are restored on import.
+    # Tap changers keep their position and their full step table. Note that target_deadband is not part of
+    # the comparison, CGMES does not carry it.
+    tap_columns = {
+        "get_phase_tap_changers": ["tap", "low_tap", "high_tap", "step_count"],
+        "get_ratio_tap_changers": ["tap", "low_tap", "high_tap", "step_count"],
+        "get_phase_tap_changer_steps": ["rho", "alpha", "r", "x", "g", "b"],
+        "get_ratio_tap_changer_steps": ["rho", "r", "x", "g", "b"],
+    }
+    for getter, columns in tap_columns.items():
+        before = getattr(net, getter)()
+        assert before.index.equals(getattr(loaded_net, getter)().index), f"{getter} changed during the round trip"
+        for column in columns:
+            assert max_abs_diff(getter, column) < 1e-6, f"{getter}.{column} changed during the CGMES round trip"
+
+    # The state variables of the exported load flow are restored on import. The first assertion guards
+    # against an all NaN comparison, which max_abs_diff would report as no difference.
+    assert net.get_lines()["p1"].notna().any(), "the fixture is expected to leave a converged load flow"
     for getter, columns in result_columns.items():
         for column in columns:
             assert max_abs_diff(getter, column) < 1e-6, f"{getter}.{column} changed during the CGMES round trip"

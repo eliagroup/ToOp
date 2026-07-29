@@ -587,8 +587,11 @@ def get_asset_info_from_topology(
     station_elements = get_name_of_station_elements(station_elements, element_names)
     # for UCTE model: if not in service, asset will not appear
     station_elements["in_service"] = True
-    station_elements.reset_index(inplace=True)
-    station_elements.rename(columns={"id": "grid_model_id"}, inplace=True)
+    if "grid_model_id" in station_elements.columns:
+        station_elements.reset_index(drop=True, inplace=True)
+    else:
+        station_elements.reset_index(inplace=True)
+        station_elements.rename(columns={"id": "grid_model_id"}, inplace=True)
     # get the busbar ids for switching matrix
     merged_df = pd.merge(
         station_elements,

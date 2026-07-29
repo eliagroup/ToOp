@@ -495,7 +495,10 @@ def _get_busbar_outage_node_index(
     the realised branch-action combination.
     """
     node_ids = np.array(network.node_ids)
-    node_indices_to_outage = np.nonzero(node_ids == station.bus_group_id)[0].tolist()
+    try:
+        node_indices_to_outage = list(_get_station_node_indices(station, network))
+    except ValueError:
+        node_indices_to_outage = []
     if not node_indices_to_outage:
         busbar = station.busbars[busbar_index]
         fallback_node_ids = [
@@ -514,7 +517,7 @@ def _get_busbar_outage_node_index(
     if len(node_indices_to_outage) == 0:
         raise ValueError(
             f"Could not resolve outage node for station {station.bus_group_id}"
-            " and busbar {station.busbars[busbar_index].grid_model_id}"
+            f" and busbar {station.busbars[busbar_index].grid_model_id}"
         )
 
     relevant_node_matches = np.flatnonzero(np.isin(network.relevant_nodes, node_indices_to_outage))
@@ -634,26 +637,56 @@ def update_network_data_with_non_rel_bb_outages(
             non_rel_bb_outage_nodal_indices=np.zeros((n_busbar_outages), int),
         )
 
+    runtime_stations = _get_runtime_aware_asset_topology_stations(network)
     simplified_stations = _get_simplified_runtime_stations(network)
     normalized_outage_station_busbars_map = _normalize_station_busbar_map_keys(
-        simplified_stations,
+        runtime_stations,
         outage_station_busbars_map,
+    )
+    if simplified_stations:
+        normalized_outage_station_busbars_map = _normalize_station_busbar_map_keys(
+            simplified_stations,
+            normalized_outage_station_busbars_map,
+        )
+    simplified_stations_by_id = {station.bus_group_id: station for station in simplified_stations}
+    runtime_stations_by_id = {station.bus_group_id: station for station in runtime_stations}
+
+    ordered_station_ids = [
+        station.bus_group_id
+        for station in simplified_stations
+        if station.bus_group_id in normalized_outage_station_busbars_map
+    ]
+    ordered_station_ids.extend(
+        station.bus_group_id
+        for station in runtime_stations
+        if station.bus_group_id in normalized_outage_station_busbars_map
+        and station.bus_group_id not in simplified_stations_by_id
+        and set(normalized_outage_station_busbars_map[station.bus_group_id]).issuperset(
+            {busbar.grid_model_id for busbar in station.busbars if busbar.in_service}
+        )
     )
 
     branch_indices = []
     delta_p = []
     nodal_indices = []
     zero_flow_branch_indices = []
-    for station in simplified_stations:
-        if station.bus_group_id in normalized_outage_station_busbars_map:
-            for bb_id in normalized_outage_station_busbars_map[station.bus_group_id]:
-                outage_data = extract_busbar_outage_data(
-                    station, bb_id, network, stub_power_map={}, branch_action_combi_index=None
-                )
-                branch_indices.append(outage_data.branch_indices)
-                delta_p.append(outage_data.nodal_injection)
-                nodal_indices.append(outage_data.node_index)
-                zero_flow_branch_indices.append(outage_data.zero_flow_branch_indices)
+    for station_id in ordered_station_ids:
+        simplified_station = simplified_stations_by_id.get(station_id)
+        runtime_station = runtime_stations_by_id.get(station_id)
+        for bb_id in normalized_outage_station_busbars_map[station_id]:
+            station = runtime_station
+            if simplified_station is not None and any(
+                busbar.grid_model_id == bb_id for busbar in simplified_station.busbars
+            ):
+                station = simplified_station
+            assert station is not None, f"No station found for non-relevant busbar outage at station {station_id}."
+            outage_data = extract_busbar_outage_data(
+                station, bb_id, network, stub_power_map={}, branch_action_combi_index=None
+            )
+            branch_indices.append(outage_data.branch_indices)
+            delta_p.append(outage_data.nodal_injection)
+            nodal_indices.append(outage_data.node_index)
+            zero_flow_branch_indices.append(outage_data.zero_flow_branch_indices)
 
     n_busbar_outages = len(branch_indices)
 

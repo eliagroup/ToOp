@@ -813,7 +813,21 @@ def get_relevant_stations(network_data: NetworkData) -> list[MaterializedStation
 
 
 def _get_station_articulation_busbar_ids(station: MaterializedStation) -> set[str]:
-    """Return busbar ids that would split the station if they were outaged."""
+    """
+    Return articulation busbars for a runtime station.
+
+    Parameters
+    ----------
+    station : MaterializedStation
+        Runtime station whose closed, in-service coupler graph is analysed.
+
+    Returns
+    -------
+    set[str]
+        Grid-model ids of busbars whose removal would disconnect the station coupler graph.
+        These busbars are excluded from non-relevant busbar outage export because their outage
+        represents a structural station split rather than a simple removable busbar outage.
+    """
     busbar_intid_index_mapper = {busbar.int_id: index for index, busbar in enumerate(station.busbars)}
     edges = [
         (
@@ -961,6 +975,10 @@ def _get_non_relevant_busbar_outage_ids(
 
     normalized_outage_station_busbars_map = _normalize_busbar_outage_station_map(network_data, relevant_station_ids)
     stations_by_id = {station.bus_group_id: station for station in network_data.asset_topology.stations}
+    articulation_ids_by_station = {
+        station.bus_group_id: _get_station_articulation_busbar_ids(station)
+        for station in network_data.asset_topology.stations
+    }
 
     non_relevant_busbar_outage_ids: list[str] = []
     for station_id, configured_busbars in normalized_outage_station_busbars_map.items():
@@ -972,8 +990,11 @@ def _get_non_relevant_busbar_outage_ids(
         )
         if relevant_station_ids.intersection(candidate_lookup_ids):
             continue
+        articulation_ids = articulation_ids_by_station.get(station_id, set())
         non_relevant_busbar_outage_ids.extend(
-            busbar_id for busbar_id in configured_busbars if busbar_id not in relevant_busbar_ids
+            busbar_id
+            for busbar_id in configured_busbars
+            if busbar_id not in articulation_ids and busbar_id not in relevant_busbar_ids
         )
 
     return non_relevant_busbar_outage_ids

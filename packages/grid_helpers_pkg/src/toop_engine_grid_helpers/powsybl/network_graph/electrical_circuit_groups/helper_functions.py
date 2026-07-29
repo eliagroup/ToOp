@@ -127,24 +127,30 @@ def get_outage_group_ids_by_busbar_section_id(
     busbar_coupler, asset_breakers = extract_secondary_busbar_section_circuit_groups(switches=switches, injection=injection)
 
     busbar_sections = injection[injection["type"] == "BUSBAR_SECTION"]
-    for busbar_id, row in busbar_sections.iterrows():
-        busbar_circuit_group = int(row["electrical_circuit_group"])
-        # get all busbar couplers
-        busbar_couplers = busbar_coupler[
-            (busbar_coupler["electrical_circuit_group_bus1"] == busbar_circuit_group)
-            | (busbar_coupler["electrical_circuit_group_bus2"] == busbar_circuit_group)
-        ]
-        busbar_couplers_ids = list(busbar_couplers.index)
-        # get all asset breakers
-        busbar_asset_breakers = asset_breakers[(asset_breakers["electrical_circuit_group_busbar"] == busbar_circuit_group)]
-        asset_breakers_ids = list(busbar_asset_breakers.index)
-        asset_circuit_groups = [int(group_id) for group_id in busbar_asset_breakers["asset_circuit_group"].tolist()]
+    busbar_couplers_by_group: dict[int, list[str]] = {}
+    for column in ["electrical_circuit_group_bus1", "electrical_circuit_group_bus2"]:
+        for component_id, busbar_coupler_ids in busbar_coupler.groupby(column, dropna=True).groups.items():
+            busbar_couplers_by_group.setdefault(int(component_id), []).extend(busbar_coupler_ids.to_list())
 
+    asset_breakers_by_group = {
+        int(component_id): asset_breaker_ids.to_list()
+        for component_id, asset_breaker_ids in asset_breakers.groupby(
+            "electrical_circuit_group_busbar", dropna=True
+        ).groups.items()
+    }
+    asset_circuit_groups_by_group = {
+        int(component_id): [int(group_id) for group_id in group_values]
+        for component_id, group_values in asset_breakers.groupby("electrical_circuit_group_busbar", dropna=True)[
+            "asset_circuit_group"
+        ]
+    }
+
+    for busbar_id, busbar_circuit_group in busbar_sections["electrical_circuit_group"].astype(int).items():
         busbar_outage_groups[busbar_id] = BusbarSectionOutageGroup(
             primary_circuit_group=busbar_circuit_group,
-            busbar_couplers=busbar_couplers_ids,
-            primary_asset_breakers=asset_breakers_ids,
-            asset_circuit_groups=asset_circuit_groups,
+            busbar_couplers=busbar_couplers_by_group.get(busbar_circuit_group, []),
+            primary_asset_breakers=asset_breakers_by_group.get(busbar_circuit_group, []),
+            asset_circuit_groups=asset_circuit_groups_by_group.get(busbar_circuit_group, []),
         )
     return busbar_outage_groups
 

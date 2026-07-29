@@ -94,16 +94,9 @@ def _get_graph_edges(
     branches = net.get_branches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id"])
     branches.reset_index(inplace=True, drop=False)
     branches.rename(columns={"id": "id_str"}, inplace=True)
-    branches = branches.merge(
-        bus_breaker_int_id[["bus_breaker_id_int"]], left_on="bus_breaker_bus1_id", right_index=True, how="left"
-    )
-    branches = branches.merge(
-        bus_breaker_int_id[["bus_breaker_id_int"]],
-        left_on="bus_breaker_bus2_id",
-        right_index=True,
-        suffixes=("_bus1", "_bus2"),
-        how="left",
-    )
+    bus_breaker_id_lookup = bus_breaker_int_id["bus_breaker_id_int"]
+    branches["bus_breaker_id_int_bus1"] = branches["bus_breaker_bus1_id"].map(bus_breaker_id_lookup)
+    branches["bus_breaker_id_int_bus2"] = branches["bus_breaker_bus2_id"].map(bus_breaker_id_lookup)
     return branches
 
 
@@ -132,9 +125,14 @@ def _get_electrical_circuit_group(
         The bus breaker IDs with electrical circuit groups.
     """
     # create a graph based on all edges we want to consider for the connected components
-    edge_tuples = []
-    for idx, row in edges.iterrows():
-        edge_tuples.append((row["bus_breaker_id_int_bus1"], row["bus_breaker_id_int_bus2"], idx))
+    edge_tuples = list(
+        zip(
+            edges["bus_breaker_id_int_bus1"].to_numpy(),
+            edges["bus_breaker_id_int_bus2"].to_numpy(),
+            edges.index.to_numpy(),
+            strict=False,
+        )
+    )
 
     graph = rx.PyGraph(multigraph=True)
     # add ALL breaker ids, no matter if they are connected by a branch or not
@@ -143,10 +141,7 @@ def _get_electrical_circuit_group(
     graph.add_edges_from(edge_tuples)
     connected_nodes = rx.connected_components(graph)
     # map nodes back to bus_breaker_id
-    connected_components = {}
-    for i, component in enumerate(connected_nodes):
-        for node in component:
-            connected_components[node] = i
+    connected_components = {node: i for i, component in enumerate(connected_nodes) for node in component}
     # map connected components back to bus_breaker_id
     bus_breaker_int_id["electrical_circuit_group"] = bus_breaker_int_id["bus_breaker_id_int"].map(connected_components)
     return bus_breaker_int_id
@@ -172,9 +167,8 @@ def _get_electrical_circuit_group_branches(
     """
     branches = net.get_branches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id"])
     # per definition has one branch the same connected component id on both sides -> sufficient to merge on one side only
-    branches = branches.merge(
-        bus_breaker_int_id[["electrical_circuit_group"]], left_on="bus_breaker_bus1_id", right_index=True, how="left"
-    )
+    electrical_circuit_group_lookup = bus_breaker_int_id["electrical_circuit_group"]
+    branches["electrical_circuit_group"] = branches["bus_breaker_bus1_id"].map(electrical_circuit_group_lookup)
     return branches
 
 
@@ -205,16 +199,9 @@ def _get_electrical_circuit_group_switches(
     if not keep_fictitious:
         switches = switches[~switches["fictitious"]]
     # per definition has one BREAKER switch has two electrical circuit group ids
-    switches = switches.merge(
-        bus_breaker_int_id[["electrical_circuit_group"]], left_on="bus_breaker_bus1_id", right_index=True, how="left"
-    )
-    switches = switches.merge(
-        bus_breaker_int_id[["electrical_circuit_group"]],
-        left_on="bus_breaker_bus2_id",
-        right_index=True,
-        how="left",
-        suffixes=("_bus1", "_bus2"),
-    )
+    electrical_circuit_group_lookup = bus_breaker_int_id["electrical_circuit_group"]
+    switches["electrical_circuit_group_bus1"] = switches["bus_breaker_bus1_id"].map(electrical_circuit_group_lookup)
+    switches["electrical_circuit_group_bus2"] = switches["bus_breaker_bus2_id"].map(electrical_circuit_group_lookup)
     switches = switches[
         [
             "bus_breaker_bus1_id",
@@ -246,9 +233,8 @@ def _get_electrical_circuit_group_injections(
         A DataFrame containing injections and their electrical circuit groups.
     """
     injection = net.get_injections(attributes=["bus_breaker_bus_id", "type"])
-    injection = injection.merge(
-        bus_breaker_int_id[["electrical_circuit_group"]], left_on="bus_breaker_bus_id", right_index=True, how="left"
-    )
+    electrical_circuit_group_lookup = bus_breaker_int_id["electrical_circuit_group"]
+    injection["electrical_circuit_group"] = injection["bus_breaker_bus_id"].map(electrical_circuit_group_lookup)
     injection = injection[injection["electrical_circuit_group"].notnull()]
     return injection
 
@@ -340,21 +326,18 @@ def identify_circuit_groups(
         int(component_id): ElectricalCircuitGroup()
         for component_id in bus_breaker_int_id["electrical_circuit_group"].dropna().unique()
     }
-    for idx, row in branches.iterrows():
-        component_id = int(row["electrical_circuit_group"])
-        outage_groups[component_id].branches.append(idx)
-    for idx, row in switches.iterrows():
-        component_id1 = int(row["electrical_circuit_group_bus1"])
-        component_id2 = int(row["electrical_circuit_group_bus2"])
-
-        outage_groups[component_id1].switches.append(idx)
-        outage_groups[component_id2].switches.append(idx)
-    for idx, row in injection.iterrows():
-        component_id = int(row["electrical_circuit_group"])
-        if row["type"] == "BUSBAR_SECTION":
-            outage_groups[component_id].busbar_section.append(idx)
-        else:
-            outage_groups[component_id].injections.append(idx)
+    for component_id, branch_ids in branches.groupby("electrical_circuit_group", dropna=True).groups.items():
+        outage_groups[int(component_id)].branches.extend(branch_ids.to_list())
+    for component_id, switch_ids in switches.groupby("electrical_circuit_group_bus1", dropna=True).groups.items():
+        outage_groups[int(component_id)].switches.extend(switch_ids.to_list())
+    for component_id, switch_ids in switches.groupby("electrical_circuit_group_bus2", dropna=True).groups.items():
+        outage_groups[int(component_id)].switches.extend(switch_ids.to_list())
+    busbar_sections = injection[injection["type"] == "BUSBAR_SECTION"]
+    for component_id, busbar_ids in busbar_sections.groupby("electrical_circuit_group", dropna=True).groups.items():
+        outage_groups[int(component_id)].busbar_section.extend(busbar_ids.to_list())
+    non_busbar_injections = injection[injection["type"] != "BUSBAR_SECTION"]
+    for component_id, injection_ids in non_busbar_injections.groupby("electrical_circuit_group", dropna=True).groups.items():
+        outage_groups[int(component_id)].injections.extend(injection_ids.to_list())
 
     net.set_working_variant(original_variant)
     return ElectricalCircuitGroupIdentification(

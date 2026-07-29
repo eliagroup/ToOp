@@ -116,6 +116,7 @@ def _assert_matching_common_branches(powsybl_filtered, comparison_filtered, atol
 
 def test_circuit_group_basic_functions() -> None:
     net = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    pypowsybl.network.replace_3_windings_transformers_with_3_2_windings_transformers(net)
     pypowsybl.loadflow.run_ac(net)
     # create a outage group for the INT station
     replace_switches = [

@@ -10,9 +10,9 @@ import numpy as np
 import pandas as pd
 import pytest
 import structlog.testing
-from toop_engine_importer.network_graph.data_classes import NetworkGraphData, SubstationInformation
-from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
-from toop_engine_importer.network_graph.graph_to_asset_topo import (
+from toop_engine_grid_helpers.network_graph.data_classes import NetworkGraphData, SubstationInformation
+from toop_engine_grid_helpers.network_graph.default_filter_strategy import run_default_filter_strategy
+from toop_engine_grid_helpers.network_graph.graph_to_asset_topo import (
     get_asset_bay,
     get_busbar_df,
     get_coupler_df,
@@ -24,13 +24,13 @@ from toop_engine_importer.network_graph.graph_to_asset_topo import (
     remove_double_connections,
     select_one_busbar_for_coupler_side,
 )
-from toop_engine_importer.network_graph.network_graph import (
+from toop_engine_grid_helpers.network_graph.network_graph import (
     generate_graph,
     get_busbar_connection_info,
     get_edge_connection_info,
 )
-from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
-from toop_engine_importer.network_graph.powsybl_station_to_graph import (
+from toop_engine_grid_helpers.network_graph.network_graph_data import add_graph_specific_data
+from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
     _build_master_station_from_busbar_group,
     _build_station_connectivity_by_asset_type,
     _get_station_asset_connections,

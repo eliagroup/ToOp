@@ -20,16 +20,16 @@ import pandas as pd
 import structlog
 from beartype.typing import List, Literal, Optional, Tuple, Union
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
-    get_asset_switching_table,
-    get_list_of_busbars_from_df,
-    get_list_of_coupler_from_df,
-)
-from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker import (
+from toop_engine_grid_helpers.pandapower.station_extraction import (
     get_all_switches_from_bus_ids,
     get_closed_switch,
     get_indirect_connected_switch,
     get_substation_buses_from_bus_id,
+)
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
+    get_asset_switching_table,
+    get_list_of_busbars_from_df,
+    get_list_of_coupler_from_df,
 )
 from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
 from toop_engine_interfaces.asset_topology.assets import (

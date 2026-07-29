@@ -11,8 +11,8 @@ from itertools import pairwise
 
 import networkx as nx
 from beartype.typing import Any, TypeVar
-from toop_engine_importer.network_graph.data_classes import WeightValues
-from toop_engine_importer.network_graph.network_graph import (
+from toop_engine_grid_helpers.network_graph.data_classes import WeightValues
+from toop_engine_grid_helpers.network_graph.network_graph import (
     multi_weight_function,
     shortest_paths_to_target_ids,
     update_edge_connection_info,

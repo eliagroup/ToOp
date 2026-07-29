@@ -15,13 +15,13 @@ Each tests creates it's own test graph with the minimum data needed to test the 
 import copy
 
 import networkx as nx
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     BusbarConnectionInfo,
     EdgeConnectionInfo,
     NetworkGraphData,
     WeightValues,
 )
-from toop_engine_importer.network_graph.default_filter_strategy import (
+from toop_engine_grid_helpers.network_graph.default_filter_strategy import (
     calculate_connectable_busbars,
     calculate_zero_impedance_connected,
     get_asset_bay_update_dict,
@@ -33,8 +33,8 @@ from toop_engine_importer.network_graph.default_filter_strategy import (
     set_switch_busbar_connection_info,
     set_zero_impedance_connected,
 )
-from toop_engine_importer.network_graph.network_graph import generate_graph
-from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
+from toop_engine_grid_helpers.network_graph.network_graph import generate_graph
+from toop_engine_grid_helpers.network_graph.network_graph_data import add_graph_specific_data
 
 
 def test_set_switch_busbar_connection_info(network_graph_data_test2_helper_branches_removed: NetworkGraphData):

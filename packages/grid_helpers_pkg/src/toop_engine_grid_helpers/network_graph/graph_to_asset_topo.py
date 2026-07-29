@@ -14,7 +14,7 @@ import pandera.typing as pat
 import structlog
 from beartype.typing import Literal, Optional, Union
 from jaxtyping import Bool
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     BranchSchema,
     BusbarConnectionInfo,
     EdgeConnectionInfo,

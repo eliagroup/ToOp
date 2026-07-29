@@ -25,6 +25,10 @@ from confluent_kafka import Consumer
 from docker import DockerClient
 from docker.models.containers import Container
 from pypowsybl.network import Network
+from toop_engine_grid_helpers.network_graph.data_classes import BranchSchema, NetworkGraphData, SubstationInformation
+from toop_engine_grid_helpers.network_graph.default_filter_strategy import run_default_filter_strategy
+from toop_engine_grid_helpers.network_graph.network_graph import generate_graph
+from toop_engine_grid_helpers.network_graph.network_graph_data import add_graph_specific_data, remove_helper_branches
 from toop_engine_grid_helpers.pandapower.example_grids import (
     example_multivoltage_cross_coupler,
 )
@@ -36,11 +40,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_bus_breaker_topology_master_data,
     materialize_stations_from_network_state,
 )
-from toop_engine_importer.network_graph.data_classes import BranchSchema, NetworkGraphData, SubstationInformation
-from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
-from toop_engine_importer.network_graph.network_graph import generate_graph
-from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data, remove_helper_branches
-from toop_engine_importer.network_graph.powsybl_station_to_graph import (
+from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
     get_node_breaker_topology_graph,
     node_breaker_topology_to_graph_data,
 )

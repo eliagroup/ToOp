@@ -10,7 +10,7 @@
 import networkx as nx
 import pandera.typing as pat
 from beartype.typing import Any, Callable, Iterable, Iterator, Literal, Optional, Union
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     BRANCH_TYPES,
     BranchSchema,
     BusbarConnectionInfo,
@@ -21,7 +21,7 @@ from toop_engine_importer.network_graph.data_classes import (
     SwitchSchema,
     WeightValues,
 )
-from toop_engine_importer.network_graph.network_graph_helper_functions import add_dict_list
+from toop_engine_grid_helpers.network_graph.network_graph_helper_functions import add_dict_list
 
 
 def generate_graph(network_graph_data: NetworkGraphData) -> nx.Graph:

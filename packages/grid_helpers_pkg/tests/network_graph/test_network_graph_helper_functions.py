@@ -6,8 +6,8 @@
 # Mozilla Public License, version 2.0
 
 import pytest
-from toop_engine_importer.network_graph.data_classes import DUPLICATED_EDGE_SUFFIX
-from toop_engine_importer.network_graph.network_graph_helper_functions import (
+from toop_engine_grid_helpers.network_graph.data_classes import DUPLICATED_EDGE_SUFFIX
+from toop_engine_grid_helpers.network_graph.network_graph_helper_functions import (
     add_dict_list,
     find_longest_path_ids,
     find_matching_node_in_list,

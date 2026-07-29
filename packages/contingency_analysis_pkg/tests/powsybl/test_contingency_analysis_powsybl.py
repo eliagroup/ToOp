@@ -28,7 +28,7 @@ from toop_engine_contingency_analysis.pypowsybl.contingency_analysis_powsybl imp
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_stations_from_network_state
-from toop_engine_importer.network_graph.powsybl_station_to_graph import (
+from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
     get_node_breaker_topology_master_data,
     get_relevant_voltage_levels,
 )

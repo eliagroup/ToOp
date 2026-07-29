@@ -6,8 +6,8 @@
 # Mozilla Public License, version 2.0
 
 import networkx as nx
-from toop_engine_importer.network_graph.data_classes import EdgeConnectionInfo, WeightValues
-from toop_engine_importer.network_graph.filter_strategy.empty_bay import set_empty_bay_weights
+from toop_engine_grid_helpers.network_graph.data_classes import EdgeConnectionInfo, WeightValues
+from toop_engine_grid_helpers.network_graph.filter_strategy.empty_bay import set_empty_bay_weights
 
 
 def test_empty_bay():

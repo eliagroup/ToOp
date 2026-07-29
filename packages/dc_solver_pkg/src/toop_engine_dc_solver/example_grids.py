@@ -30,6 +30,10 @@ from toop_engine_dc_solver.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
+from toop_engine_grid_helpers.asset_topology_helpers import (
+    save_asset_topology_master_data,
+    save_asset_topology_stations,
+)
 from toop_engine_grid_helpers.pandapower.example_grids import (
     pandapower_case30_with_psts_and_weak_branches,
     pandapower_extended_case57,
@@ -54,10 +58,6 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_f
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, RuntimeAssetTopology, TopologyMasterData
-from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
-    save_asset_topology_master_data,
-    save_asset_topology_stations,
-)
 from toop_engine_interfaces.asset_topology.assets import AssetBay, BranchAsset, Busbar, BusbarCoupler, InjectionAsset
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection

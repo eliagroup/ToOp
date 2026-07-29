@@ -14,9 +14,7 @@ import pandera as pa
 import pypowsybl
 import pytest
 from pypowsybl.network import Network
-from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_stations_from_network_state
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     BusbarConnectionInfo,
     HelperBranchSchema,
     NetworkGraphData,
@@ -25,9 +23,14 @@ from toop_engine_importer.network_graph.data_classes import (
     SubstationInformation,
     SwitchSchema,
 )
-from toop_engine_importer.network_graph.graph_to_asset_topo import get_station_connection_tables, remove_double_connections
-from toop_engine_importer.network_graph.network_graph_helper_functions import add_suffix_to_duplicated_grid_model_id
-from toop_engine_importer.network_graph.powsybl_station_to_graph import (
+from toop_engine_grid_helpers.network_graph.graph_to_asset_topo import (
+    get_station_connection_tables,
+    remove_double_connections,
+)
+from toop_engine_grid_helpers.network_graph.network_graph_helper_functions import add_suffix_to_duplicated_grid_model_id
+from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_stations_from_network_state
+from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
     _build_master_station_from_busbar_group,
     _build_station_connectivity_by_asset_type,
     _get_station_asset_connections,

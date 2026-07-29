@@ -23,6 +23,7 @@ from toop_engine_contingency_analysis.pandapower.pandapower_helpers.schemas impo
 from toop_engine_dc_solver.postprocess.abstract_runner import AbstractLoadflowRunner
 from toop_engine_dc_solver.postprocess.apply_asset_topo_pandapower import apply_station
 from toop_engine_dc_solver.preprocess.network_data import NetworkData, extract_action_set, extract_nminus1_definition
+from toop_engine_grid_helpers.asset_topology_helpers import accumulate_diffs, electrical_components
 from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
     get_element_table,
     get_pandapower_branch_loadflow_results_sequence,
@@ -36,7 +37,6 @@ from toop_engine_interfaces.asset_topology.applied_topology import (
     AppliedStation,
     RealizedTopology,
 )
-from toop_engine_interfaces.asset_topology.asset_topology_helpers import accumulate_diffs, electrical_components
 from toop_engine_interfaces.loadflow_result_helpers_polars import extract_solver_matrices_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Contingency, Nminus1Definition

@@ -8,6 +8,7 @@
 """Convert a pypowsybl network to a NetworkGraph."""
 
 from string import ascii_lowercase
+from typing import Protocol
 
 import networkx as nx
 import pandas as pd
@@ -15,12 +16,7 @@ import pandera.typing as pat
 import structlog
 from pydantic import ValidationError
 from pypowsybl.network.impl.network import Network
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
-    get_all_element_names,
-    get_list_of_busbars_from_df,
-    get_list_of_coupler_from_df,
-)
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     HelperBranchSchema,
     NetworkGraphData,
     NodeAssetSchema,
@@ -28,28 +24,30 @@ from toop_engine_importer.network_graph.data_classes import (
     SubstationInformation,
     SwitchSchema,
 )
-from toop_engine_importer.network_graph.default_filter_strategy import run_default_filter_strategy
-from toop_engine_importer.network_graph.graph_to_asset_topo import (
+from toop_engine_grid_helpers.network_graph.default_filter_strategy import run_default_filter_strategy
+from toop_engine_grid_helpers.network_graph.graph_to_asset_topo import (
     get_asset_bay,
     get_busbar_df,
     get_coupler_df,
     get_station_asset_connectivity_table,
     get_switchable_asset,
 )
-from toop_engine_importer.network_graph.network_graph import (
+from toop_engine_grid_helpers.network_graph.network_graph import (
     generate_graph,
     get_busbar_connection_info,
     get_edge_connection_info,
 )
-from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
-from toop_engine_importer.network_graph.network_graph_helper_functions import (
+from toop_engine_grid_helpers.network_graph.network_graph_data import add_graph_specific_data
+from toop_engine_grid_helpers.network_graph.network_graph_helper_functions import (
     remove_suffix_from_switchable_assets,
 )
-from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import (
-    get_busbar_sections_with_in_service,
-    get_voltage_level_with_region,
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
+    _get_busbar_sections_with_in_service,
+    get_all_element_names,
+    get_list_of_busbars_from_df,
+    get_list_of_coupler_from_df,
 )
-from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import get_voltage_level_with_region
 from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
@@ -62,6 +60,12 @@ from toop_engine_interfaces.asset_topology.topology_conversion import validate_c
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 
 logger = structlog.get_logger(__name__)
+
+
+class RelevantSubstationMaskProtocol(Protocol):
+    """Minimal protocol for objects carrying the relevant-substation mask."""
+
+    relevant_subs: object
 
 
 def _register_unique_payload(
@@ -802,7 +806,10 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
     bbt = net.get_bus_breaker_topology(substation_info.voltage_level_id)
 
     switches_df = get_switches(switches_df=nbt.switches)
-    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "bus_id", "in_service"])
+    busbar_sections_names_df = _get_busbar_sections_with_in_service(
+        network=net,
+        attributes=["name", "bus_id", "in_service"],
+    )
     nodes_df = get_nodes(
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
@@ -900,7 +907,7 @@ def get_nodes(
     ----------
     busbar_sections_names_df : pd.DataFrame
         The busbar sections names.
-        from get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
+        from _get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
     nodes_df : pd.DataFrame
         The nodes DataFrame from the net.get_node_breaker_topology(voltage_level_id).nodes
     bus_breaker_elements_df : pd.DataFrame
@@ -1102,7 +1109,7 @@ def _topology_master_data_from_structural_station_views(
 
 def get_node_breaker_topology_master_data(
     network: Network,
-    network_masks: NetworkMasks,
+    network_masks: RelevantSubstationMaskProtocol,
     importer_parameters: CgmesImporterParameters,
 ) -> TopologyMasterData:
     """Return canonical master data derived directly from node-breaker graph extraction.
@@ -1111,7 +1118,7 @@ def get_node_breaker_topology_master_data(
     ----------
     network : Network
         Source powsybl network.
-    network_masks : NetworkMasks
+    network_masks : RelevantSubstationMaskProtocol
         Precomputed masks defining the relevant stations.
     importer_parameters : CgmesImporterParameters
         Import configuration providing the topology identifier and source file name.
@@ -1129,15 +1136,15 @@ def get_node_breaker_topology_master_data(
     )
 
 
-def get_relevant_voltage_levels(network: Network, network_masks: NetworkMasks) -> pd.DataFrame:
+def get_relevant_voltage_levels(network: Network, network_masks: RelevantSubstationMaskProtocol) -> pd.DataFrame:
     """Get all relevant voltage level from the network.
 
     Parameters
     ----------
     network: Network
         pypowsybl network object
-    network_masks: NetworkMasks
-        NetworkMasks object with the relevant_subs mask
+    network_masks: RelevantSubstationMaskProtocol
+        Object with a relevant_subs mask aligned to the powsybl bus table
 
     Returns
     -------

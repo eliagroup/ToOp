@@ -8,8 +8,7 @@
 
 import numpy as np
 import pytest
-from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
-from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
+from toop_engine_grid_helpers.asset_topology_helpers import (
     filter_disconnected_busbars,
     filter_duplicate_couplers,
     filter_out_of_service,
@@ -24,6 +23,7 @@ from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
     station_diff,
     topology_diff,
 )
+from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,

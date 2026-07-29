@@ -53,21 +53,21 @@ from itertools import pairwise
 
 import networkx as nx
 from beartype.typing import Literal, Union
-from toop_engine_importer.network_graph.data_classes import EDGE_ID, WeightValues
-from toop_engine_importer.network_graph.filter_strategy.helper_functions import (
+from toop_engine_grid_helpers.network_graph.data_classes import EDGE_ID, WeightValues
+from toop_engine_grid_helpers.network_graph.filter_strategy.helper_functions import (
     calculate_asset_bay_for_node_assets,
     get_edge_attr_for_dict_key,
     get_edge_attr_for_dict_list,
     set_asset_bay_edge_attr,
     set_single_bay_weight,
 )
-from toop_engine_importer.network_graph.network_graph import (
+from toop_engine_grid_helpers.network_graph.network_graph import (
     get_busbar_connection_info_attribute,
     get_busbar_true_nodes,
     get_edge_list_by_attribute,
     update_edge_connection_info,
 )
-from toop_engine_importer.network_graph.network_graph_helper_functions import (
+from toop_engine_grid_helpers.network_graph.network_graph_helper_functions import (
     find_matching_node_in_list,
     remove_path_multiple_busbars,
     reverse_dict_list,

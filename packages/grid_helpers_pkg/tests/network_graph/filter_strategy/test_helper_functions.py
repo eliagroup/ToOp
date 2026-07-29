@@ -6,9 +6,9 @@
 # Mozilla Public License, version 2.0
 
 import networkx as nx
-from toop_engine_importer.network_graph.data_classes import BusbarConnectionInfo, EdgeConnectionInfo, WeightValues
-from toop_engine_importer.network_graph.default_filter_strategy import set_switch_busbar_connection_info
-from toop_engine_importer.network_graph.filter_strategy.helper_functions import (
+from toop_engine_grid_helpers.network_graph.data_classes import BusbarConnectionInfo, EdgeConnectionInfo, WeightValues
+from toop_engine_grid_helpers.network_graph.default_filter_strategy import set_switch_busbar_connection_info
+from toop_engine_grid_helpers.network_graph.filter_strategy.helper_functions import (
     calculate_asset_bay_for_node_assets,
     get_edge_attr_for_dict_key,
     get_edge_attr_for_dict_list,

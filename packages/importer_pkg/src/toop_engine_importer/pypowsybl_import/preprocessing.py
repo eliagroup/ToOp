@@ -29,6 +29,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 from pypowsybl.loadflow import VoltageInitMode
 from pypowsybl.network.impl.network import Network
+from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import (
     CGMES_DISTRIBUTED_SLACK,
     POWSYBL_LOADFLOW_PARAM_PF,
@@ -41,7 +42,6 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import (
     save_powsybl_to_fs,
     sort_powsybl_element_frame_by_id,
 )
-from toop_engine_importer.network_graph import powsybl_station_to_graph
 from toop_engine_importer.pypowsybl_import import network_analysis
 from toop_engine_importer.pypowsybl_import.data_classes import PreProcessingStatistics
 from toop_engine_importer.pypowsybl_import.loadflow_based_current_limits import (

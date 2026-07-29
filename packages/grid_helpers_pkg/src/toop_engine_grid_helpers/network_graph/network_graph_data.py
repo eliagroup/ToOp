@@ -10,7 +10,7 @@
 import numpy as np
 import pandas as pd
 import pandera.typing as pat
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     BranchSchema,
     HelperBranchSchema,
     NetworkGraphData,
@@ -18,8 +18,8 @@ from toop_engine_importer.network_graph.data_classes import (
     NodeSchema,
     SwitchSchema,
 )
-from toop_engine_importer.network_graph.filter_weights import set_all_weights
-from toop_engine_importer.network_graph.network_graph_helper_functions import add_suffix_to_duplicated_grid_model_id
+from toop_engine_grid_helpers.network_graph.filter_weights import set_all_weights
+from toop_engine_grid_helpers.network_graph.network_graph_helper_functions import add_suffix_to_duplicated_grid_model_id
 
 
 def add_graph_specific_data(network_graph_data: NetworkGraphData) -> None:

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pypowsybl
 import pytest
+from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl, create_busbar_b_in_ieee
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     _get_branch_station_assets_from_df,
@@ -30,7 +31,6 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_stations_and_assets_bus_breaker,
     materialize_stations_from_network_state,
 )
-from toop_engine_importer.network_graph import powsybl_station_to_graph
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation

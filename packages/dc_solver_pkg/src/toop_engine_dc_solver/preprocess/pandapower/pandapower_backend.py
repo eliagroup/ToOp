@@ -38,14 +38,17 @@ from toop_engine_grid_helpers.pandapower.pandapower_tasks import (
     get_trafo3w_ppc_branch_idx,
     get_trafo3w_ppc_node_idx,
 )
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import get_list_of_busbars_from_df, get_list_of_coupler_from_df
-from toop_engine_importer.pandapower_import.asset_topology import (
+from toop_engine_grid_helpers.pandapower.station_extraction import (
+    add_substation_column_to_bus,
     get_branches_from_station,
     get_busses_from_station,
     get_coupler_from_station,
     get_parameter_from_station,
 )
-from toop_engine_importer.pandapower_import.pandapower_toolset_node_breaker import add_substation_column_to_bus
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
+    get_list_of_busbars_from_df,
+    get_list_of_coupler_from_df,
+)
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology, TopologyMasterData
 from toop_engine_interfaces.asset_topology.assets import BranchAsset, InjectionAsset, normalize_switchable_asset_payload
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation

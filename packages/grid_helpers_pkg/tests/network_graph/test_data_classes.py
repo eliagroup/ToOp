@@ -8,7 +8,7 @@
 import pandas as pd
 import pytest
 from pandera.errors import SchemaError
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     BranchSchema,
     HelperBranchSchema,
     NetworkGraphData,

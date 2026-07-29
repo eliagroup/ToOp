@@ -36,7 +36,6 @@ dependencies = [
     "numpydantic (>=1.6.4,<2.0.0)",
     "jaxtyping (>=0.2.22,<0.3.0)",
     "structlog (>=24.4.0,<25.0.0)",
-    "networkx>=2.5.0",
     "polars>=1.33.0",
     "pyarrow>=21.0.0",
     "fsspec>=2024.0.0",

@@ -8,8 +8,8 @@
 from unittest import mock
 
 import pandas as pd
-from toop_engine_importer.network_graph.data_classes import NetworkGraphData
-from toop_engine_importer.network_graph.network_graph_data import add_node_tuple_column
+from toop_engine_grid_helpers.network_graph.data_classes import NetworkGraphData
+from toop_engine_grid_helpers.network_graph.network_graph_data import add_node_tuple_column
 
 
 def test_add_node_tuple():

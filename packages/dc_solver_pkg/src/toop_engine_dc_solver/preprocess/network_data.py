@@ -990,7 +990,11 @@ def _get_non_relevant_busbar_outage_ids(
         )
         if relevant_station_ids.intersection(candidate_lookup_ids):
             continue
-        articulation_ids = articulation_ids_by_station.get(station_id, set())
+        full_in_service_station_busbars = (
+            {busbar.grid_model_id for busbar in station.busbars if busbar.in_service} if station is not None else set()
+        )
+        uses_full_station_outage = full_in_service_station_busbars.issubset(set(configured_busbars))
+        articulation_ids = set() if uses_full_station_outage else articulation_ids_by_station.get(station_id, set())
         non_relevant_busbar_outage_ids.extend(
             busbar_id
             for busbar_id in configured_busbars

@@ -7,9 +7,9 @@
 
 import networkx as nx
 import pytest
-from toop_engine_importer.network_graph.data_classes import BusbarConnectionInfo, EdgeConnectionInfo, WeightValues
-from toop_engine_importer.network_graph.filter_strategy.helper_functions import set_asset_bay_edge_attr
-from toop_engine_importer.network_graph.filter_strategy.switches import (
+from toop_engine_grid_helpers.network_graph.data_classes import BusbarConnectionInfo, EdgeConnectionInfo, WeightValues
+from toop_engine_grid_helpers.network_graph.filter_strategy.helper_functions import set_asset_bay_edge_attr
+from toop_engine_grid_helpers.network_graph.filter_strategy.switches import (
     busbar_coupler_condition,
     get_asset_bay_id_grid_model_update_dict,
     get_busbar_sides_of_coupler,

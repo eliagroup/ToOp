@@ -7,13 +7,13 @@
 
 import pandas as pd
 import pytest
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     BranchSchema,
     HelperBranchSchema,
     SwitchSchema,
     WeightValues,
 )
-from toop_engine_importer.network_graph.filter_weights import (
+from toop_engine_grid_helpers.network_graph.filter_weights import (
     set_all_weights,
     set_bay_weight,
     set_busbar_weight,

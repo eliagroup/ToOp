@@ -7,6 +7,7 @@
 
 """Contains functions to import data from pandapower networks to the Topology Optimizer."""
 
+from toop_engine_grid_helpers.pandapower.asset_topology import get_asset_topology_master_data_from_network
 from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import (
     create_virtual_slack,
     drop_elements_connected_to_one_bus,
@@ -18,7 +19,6 @@ from toop_engine_grid_helpers.pandapower.pandapower_import_helpers import (
     select_connected_subnet,
 )
 
-from .asset_topology import get_asset_topology_master_data_from_network
 from .pandapower_toolset_node_breaker import (
     add_substation_column_to_bus,
     fuse_closed_switches_by_bus_ids,

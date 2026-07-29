@@ -15,14 +15,14 @@ The default strategy fills:
 
 import networkx as nx
 from beartype.typing import Union
-from toop_engine_importer.network_graph.data_classes import WeightValues
-from toop_engine_importer.network_graph.filter_strategy.empty_bay import set_empty_bay_weights
-from toop_engine_importer.network_graph.filter_strategy.helper_functions import (
+from toop_engine_grid_helpers.network_graph.data_classes import WeightValues
+from toop_engine_grid_helpers.network_graph.filter_strategy.empty_bay import set_empty_bay_weights
+from toop_engine_grid_helpers.network_graph.filter_strategy.helper_functions import (
     calculate_asset_bay_for_node_assets,
     set_asset_bay_edge_attr,
 )
-from toop_engine_importer.network_graph.filter_strategy.switches import set_all_busbar_coupling_switches
-from toop_engine_importer.network_graph.network_graph import (
+from toop_engine_grid_helpers.network_graph.filter_strategy.switches import set_all_busbar_coupling_switches
+from toop_engine_grid_helpers.network_graph.network_graph import (
     flatten_list_of_mixed_entries,
     get_busbar_true_nodes,
     get_helper_node_ids,
@@ -33,7 +33,7 @@ from toop_engine_importer.network_graph.network_graph import (
     update_busbar_connection_info,
     update_edge_connection_info,
 )
-from toop_engine_importer.network_graph.network_graph_helper_functions import (
+from toop_engine_grid_helpers.network_graph.network_graph_helper_functions import (
     find_matching_node_in_list,
     find_shortest_path_ids,
     reverse_dict_list,

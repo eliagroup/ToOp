@@ -10,7 +10,7 @@ import numpy as np
 import pandapower
 import pytest
 import structlog.testing
-from toop_engine_importer.pandapower_import import asset_topology
+from toop_engine_grid_helpers.pandapower import asset_topology
 from toop_engine_interfaces.asset_topology.assets import AssetBay, build_asset_bay_id
 
 

@@ -10,7 +10,7 @@ import copy
 import networkx as nx
 import pandas as pd
 import pytest
-from toop_engine_importer.network_graph.data_classes import (
+from toop_engine_grid_helpers.network_graph.data_classes import (
     BRANCH_TYPES,
     SWITCH_TYPES,
     BusbarConnectionInfo,
@@ -18,7 +18,7 @@ from toop_engine_importer.network_graph.data_classes import (
     NetworkGraphData,
     WeightValues,
 )
-from toop_engine_importer.network_graph.network_graph import (
+from toop_engine_grid_helpers.network_graph.network_graph import (
     append_connection_info,
     flatten_list_of_mixed_entries,
     generate_graph,
@@ -41,8 +41,8 @@ from toop_engine_importer.network_graph.network_graph import (
     update_edge_connection_info,
     validate_update_dict_for_connection_info,
 )
-from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
-from toop_engine_importer.network_graph.powsybl_station_to_graph import get_node_breaker_topology_graph
+from toop_engine_grid_helpers.network_graph.network_graph_data import add_graph_specific_data
+from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import get_node_breaker_topology_graph
 
 
 def test_get_busbar_connection_info(get_graph_input_dicts):

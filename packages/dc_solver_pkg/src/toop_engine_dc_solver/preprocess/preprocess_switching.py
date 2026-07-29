@@ -24,7 +24,7 @@ from networkx.algorithms.components import (
     number_connected_components,
 )
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import hamming_distance
-from toop_engine_interfaces.asset_topology.asset_topology_helpers import (
+from toop_engine_grid_helpers.asset_topology_helpers import (
     filter_disconnected_busbars,
     filter_duplicate_couplers,
     filter_out_of_service,

@@ -13,8 +13,8 @@ import pandapower as pp
 import pandas as pd
 import pytest
 import structlog.testing
+from toop_engine_grid_helpers.pandapower.asset_topology import get_asset_topology_master_data_from_network
 from toop_engine_importer.pandapower_import import (
-    asset_topology,
     pandapower_toolset_node_breaker,
     preprocessing,
 )
@@ -163,7 +163,7 @@ def test_preprocess_net_step2(pp_network_w_switches):
     # preprocessing.fuse_cross_coupler(network=net, station_id_list=station_id_list)
 
     # get relevant substations for asset topology
-    master_data = asset_topology.get_asset_topology_master_data_from_network(
+    master_data = get_asset_topology_master_data_from_network(
         network=net,
         station_id_list=station_id_list,
         topology_id="1",
@@ -241,7 +241,7 @@ def test_validate(pp_network_w_switches):
     # preprocessing.fuse_cross_coupler(network=net, station_id_list=station_id_list)
 
     # get relevant substations for asset topology
-    master_data = asset_topology.get_asset_topology_master_data_from_network(
+    master_data = get_asset_topology_master_data_from_network(
         network=net,
         station_id_list=station_id_list,
         topology_id="1",
@@ -258,7 +258,7 @@ def test_validate(pp_network_w_switches):
     net = deepcopy(pp_network_w_switches)
     station_id_list = [[el for el in range(0, 15)], [el for el in range(16, 32)]]
     # get relevant substations for asset topology
-    master_data = asset_topology.get_asset_topology_master_data_from_network(
+    master_data = get_asset_topology_master_data_from_network(
         network=net,
         station_id_list=station_id_list,
         topology_id="1",

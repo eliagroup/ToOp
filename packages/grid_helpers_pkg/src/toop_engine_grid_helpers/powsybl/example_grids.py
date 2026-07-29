@@ -1870,7 +1870,10 @@ def create_complex_grid_battery_hvdc_svc_3w_trafo(
     if connect_line_out_of_service:
         n.connect("LINE_out_of_service")
 
-    pypowsybl.loadflow.run_ac(n)
+    # Bound the residual slack-bus imbalance well below the ~0.1 MW threshold above which the
+    # CGMES SV export emits an SvInjection. Such an SvInjection cannot be re-imported into a
+    # node/breaker voltage level (powsybl attaches the fictitious load by bus, not by node).
+    pypowsybl.loadflow.run_ac(n, pypowsybl.loadflow.Parameters(provider_parameters={"slackBusPMaxMismatch": "1e-6"}))
 
     return n
 

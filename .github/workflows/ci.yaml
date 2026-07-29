@@ -155,7 +155,7 @@ jobs:
       FOSSA_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
       - name: Check out repository code
-        uses: actions/checkout@029693cc50323968e039056be419b32989fc5880c
+        uses: actions/checkout@29693cc50323968e039056be419b32989fc5880c
 
       - uses: ./.github/actions/install-uv
 

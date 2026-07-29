@@ -8,6 +8,7 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import polars as pl
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from sqlmodel import Session, select
@@ -224,10 +225,48 @@ def test_initialize_powsybl(grid_folder: Path, loadflow_result_folder: Path) -> 
     params = ACOptimizerParameters(
         ga_config=ACGAParameters(
             runtime_seconds=10,
-            pull_prob=0.9,
-            reconnect_prob=0.05,
-            close_coupler_prob=0.05,
             seed=42,
+            include_non_converging_loadflows_in_worst_k=True,
+        )
+    )
+    grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")
+
+    loadflow_result_fs = DirFileSystem(str(loadflow_result_folder))
+    processed_gridfile_fs = DirFileSystem(str(grid_folder))
+    # Run the function
+    optimizer_data, strategy = initialize_optimization(
+        params=params,
+        session=create_session(),
+        optimization_id="test",
+        grid_file=grid_file,
+        loadflow_result_fs=loadflow_result_fs,
+        processed_gridfile_fs=processed_gridfile_fs,
+    )
+    assert optimizer_data is not None
+    assert strategy is not None
+    assert len(optimizer_data.runners) == 1
+    assert len(strategy.timesteps) == 1
+    assert strategy.timesteps[0].loadflow_results is not None
+
+    loaded_initial_loadflow = optimizer_data.load_loadflow_fn(strategy.timesteps[0].loadflow_results)
+    n_non_converging = loaded_initial_loadflow.converged.filter(pl.col("status") != "CONVERGED").collect().shape[0]
+    assert loaded_initial_loadflow is not None
+    # Query the stored topology using optimizer_data.session
+    ac_topos = optimizer_data.session.exec(
+        select(ACOptimTopology).where(ACOptimTopology.optimizer_type == OptimizerType.AC)
+    ).all()
+    assert isinstance(ac_topos, list)
+    assert ac_topos[0].metrics["top_k_overloads_n_1"] is not None
+    assert len(ac_topos[0].worst_k_contingency_cases) == params.ga_config.n_worst_contingencies + n_non_converging
+
+
+def test_initialize_powsybl_without_non_converging(grid_folder: Path, loadflow_result_folder: Path) -> None:
+    # Create start parameters
+    params = ACOptimizerParameters(
+        ga_config=ACGAParameters(
+            runtime_seconds=10,
+            seed=42,
+            include_non_converging_loadflows_in_worst_k=False,
         )
     )
     grid_file = GridFile(framework=Framework.PYPOWSYBL, grid_folder="case57")

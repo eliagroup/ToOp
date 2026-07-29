@@ -1519,6 +1519,7 @@ def order_station_assets(
         asset_connection.asset.grid_model_id: (index, asset_connection)
         for index, asset_connection in enumerate(station.injection_connections)
     }
+
     new_branch_connections = []
     new_injection_connections = []
     not_found = []

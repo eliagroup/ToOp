@@ -10,7 +10,6 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
@@ -42,10 +41,13 @@ from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
 from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax
 from toop_engine_dc_solver.preprocess.network_data import (
     extract_action_set,
+    extract_busbar_outage_ids,
     extract_nminus1_definition,
+    get_relevant_stations,
     load_lf_params,
 )
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
+from toop_engine_dc_solver.preprocess.preprocess import PreprocessParameters, preprocess
 from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_interfaces.asset_topology.applied_topology import RealizedTopology
@@ -328,10 +330,193 @@ def test_apply_disconnections_matches_loadflows(
 
 
 @pytest.mark.parametrize(
+    ("busbar_id", "atol"),
+    [
+        pytest.param("BBS2_1", 1e-9, id="BBS2_1"),
+        pytest.param(
+            "BBS2_2",
+            1e-9,
+            id="BBS2_2",
+        ),
+        pytest.param("BBS2_3", 1e-9, id="BBS2_3"),
+        pytest.param("BBS3_1", 1e-9, id="BBS3_1"),
+        pytest.param("BBS3_2", 1e-9, id="BBS3_2"),
+        pytest.param("BBS4_1", 1e-9, id="BBS4_1"),
+        pytest.param("BBS4_2", 1e-9, id="BBS4_2"),
+        pytest.param(
+            "BBS5_1",
+            1e-9,
+            id="BBS5_1",
+            marks=pytest.mark.xfail(
+                reason="Non-relevant busbar outage over a bridging branch is approximated by delta-p compensation in solver, not physical branch removal."
+            ),
+        ),
+    ],
+)
+def test_busbar_outages_matches_loadflows_node_breaker(
+    test_grid_folder_path: Path,
+    network_data_test_grid,
+    busbar_id: str,
+    atol: float,
+) -> None:
+    net = pypowsybl.network.load(test_grid_folder_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    network_data = network_data_test_grid
+    lf_params = load_lf_params(test_grid_folder_path / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    runner = PowsyblRunner(lf_params=lf_params)
+    runner.replace_grid(net)
+    runner.store_action_set(extract_action_set(network_data))
+    full_nminus1_definition = extract_nminus1_definition(network_data)
+
+    static_information = convert_to_jax(
+        network_data,
+        preprocess_bb_outages=True,
+    )
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            batch_size_bsdf=1,
+            enable_bb_outages=True,
+            bb_outage_as_nminus1=True,
+        ),
+        dynamic_information=replace(
+            static_information.dynamic_information,
+            bb_outage_baseline_analysis=None,
+        ),
+    )
+
+    busbar_outage_ids = extract_busbar_outage_ids(network_data)
+    assert busbar_outage_ids, "Expected exported busbar outages for the node-breaker grid"
+    assert busbar_id in busbar_outage_ids
+
+    (n_0, n_1), success = run_solver_symmetric(
+        default_topology(static_information.solver_config),
+        None,
+        None,
+        static_information.dynamic_information,
+        static_information.solver_config,
+        lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+    )
+    n_0 = np.abs(n_0[0, 0])
+    n_1 = np.abs(n_1[0, 0])
+    assert np.all(success)
+
+    contingency_order = [
+        contingency.id for contingency in full_nminus1_definition.contingencies if not contingency.is_basecase()
+    ]
+    busbar_row_index = contingency_order.index(busbar_id)
+    busbar_contingency = next(
+        contingency for contingency in full_nminus1_definition.contingencies if contingency.id == busbar_id
+    )
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=full_nminus1_definition.monitored_elements,
+        contingencies=[full_nminus1_definition.contingencies[0], busbar_contingency],
+    )
+    runner.store_nminus1_definition(nminus1_definition)
+
+    ref_result = runner.run_dc_loadflow([], [])
+    n_0_ref, n_1_ref, success_ref = extract_solver_matrices_polars(ref_result, nminus1_definition, 0)
+    n_0_ref = np.abs(n_0_ref)
+    n_1_ref = np.abs(n_1_ref)
+
+    assert n_0.shape == n_0_ref.shape
+    assert np.allclose(n_0, n_0_ref)
+    assert success_ref.shape == (1,)
+    assert success_ref[0]
+
+    n_1_busbar = n_1[busbar_row_index]
+    n_1_ref_busbar = n_1_ref[0]
+
+    assert n_1_busbar.shape == n_1_ref_busbar.shape
+    assert np.allclose(n_1_busbar, n_1_ref_busbar, atol=atol, rtol=0.0)
+
+
+def test_busbar_outages_matches_loadflows_complex_grid(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
+) -> None:
+    data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path
+    lf_params = load_lf_params(data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    backend = PowsyblBackend(DirFileSystem(str(data_folder)), lf_params=lf_params)
+    network_data = preprocess(backend, parameters=PreprocessParameters(preprocess_bb_outages=True))
+
+    busbar_outage_ids = extract_busbar_outage_ids(network_data)
+    assert busbar_outage_ids
+
+    selected_busbar_ids = [
+        busbar.grid_model_id
+        for station in get_relevant_stations(network_data)
+        for busbar in station.busbars
+        if busbar.grid_model_id in busbar_outage_ids
+    ]
+    assert selected_busbar_ids
+
+    static_information = convert_to_jax(
+        network_data,
+        preprocess_bb_outages=True,
+    )
+    static_information = replace(
+        static_information,
+        solver_config=replace(
+            static_information.solver_config,
+            batch_size_bsdf=1,
+            enable_bb_outages=True,
+            bb_outage_as_nminus1=True,
+        ),
+        dynamic_information=replace(
+            static_information.dynamic_information,
+            bb_outage_baseline_analysis=None,
+        ),
+    )
+
+    (n_0, n_1), success = run_solver_symmetric(
+        default_topology(static_information.solver_config),
+        None,
+        None,
+        static_information.dynamic_information,
+        static_information.solver_config,
+        lambda lf_res: (lf_res.n_0_matrix, lf_res.n_1_matrix),
+    )
+    n_0 = np.abs(n_0[0, 0])
+    n_1 = np.abs(n_1[0, 0])
+    assert np.all(success)
+    assert np.isfinite(n_0).all()
+
+    full_nminus1_definition = extract_nminus1_definition(network_data)
+    contingency_order = [
+        contingency.id for contingency in full_nminus1_definition.contingencies if not contingency.is_basecase()
+    ]
+    selected_row_indices = [contingency_order.index(busbar_id) for busbar_id in selected_busbar_ids]
+    assert np.isfinite(n_1[selected_row_indices]).all()
+
+    runner = PowsyblRunner(lf_params=lf_params)
+    runner.replace_grid(pypowsybl.network.load(data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"]))
+    runner.store_action_set(extract_action_set(network_data))
+    selected_contingencies = [
+        next(contingency for contingency in full_nminus1_definition.contingencies if contingency.id == busbar_id)
+        for busbar_id in selected_busbar_ids
+    ]
+    nminus1_definition = Nminus1Definition(
+        monitored_elements=full_nminus1_definition.monitored_elements,
+        contingencies=[full_nminus1_definition.contingencies[0], *selected_contingencies],
+    )
+    runner.store_nminus1_definition(nminus1_definition)
+
+    ref_result = runner.run_dc_loadflow([], [])
+    n_0_ref, n_1_ref, success_ref = extract_solver_matrices_polars(ref_result, nminus1_definition, 0)
+    n_0_ref = np.abs(n_0_ref)
+    n_1_ref = np.abs(n_1_ref)
+
+    assert np.isfinite(n_0_ref).all()
+    assert np.isfinite(n_1_ref).all()
+    assert success_ref.shape == (len(selected_busbar_ids),)
+    assert np.all(success_ref)
+
+
+@pytest.mark.parametrize(
     "fixture_name",
     [
         "three_node_pst_example_data_folder",
-        "complex_grid_battery_hvdc_svc_3w_trafo_data_folder",
+        "create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path",
         "complex_grid_battery_hvdc_svc_3w_trafo_linear_1_0_data_folder",
         "complex_grid_battery_hvdc_svc_3w_trafo_linear_1_1_data_folder",
         "complex_grid_battery_hvdc_svc_3w_trafo_linear_0_1_data_folder",
@@ -341,9 +526,6 @@ def test_change_pst_matches_loadflows(
     request,
     fixture_name: str,
 ) -> None:
-    if fixture_name == "complex_grid_battery_hvdc_svc_3w_trafo_data_folder":
-        pytest.xfail("No linear PSTs in this grid, which is not implemented currently")
-
     preprocessed_powsybl_data_folder = request.getfixturevalue(fixture_name)
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
     network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
@@ -367,15 +549,9 @@ def test_change_pst_matches_loadflows(
     )
     assert di.nodal_injection_information is not None, "Grid should have nodal injection information for this test"
 
-    # With random PST tap changes, DC solver and runner should match
     n_pst = len(di.nodal_injection_information.pst_n_taps)
-    rel_taps = jax.random.randint(
-        jax.random.PRNGKey(42),
-        shape=(n_pst,),
-        minval=0,
-        maxval=di.nodal_injection_information.pst_n_taps,
-    )
-    abs_taps = rel_taps + di.nodal_injection_information.grid_model_low_tap
+    pst_n_taps = di.nodal_injection_information.pst_n_taps
+    low_taps = di.nodal_injection_information.grid_model_low_tap
 
     solver_res_no_pst, success_dc_no_pst = compute_symmetric_batch(
         topology_batch=default_topology(solver_config),
@@ -403,46 +579,144 @@ def test_change_pst_matches_loadflows(
 
     assert di.nodal_injection_information is not None, "Grid should have nodal injection information for this test"
 
-    solver_res, success_dc = compute_symmetric_batch(
-        topology_batch=default_topology(solver_config),
-        disconnection_batch=None,
-        injections=None,
-        nodal_inj_start_options=NodalInjStartOptions(
-            previous_results=NodalInjOptimResults(pst_tap_idx=rel_taps[None, None, :]),
-            precision_percent=jnp.array(0.0),
-        ),
-        dynamic_information=di,
-        solver_config=solver_config,
+    valid_mask = jnp.arange(di.nodal_injection_information.pst_tap_values.shape[1])[None, :] < pst_n_taps[:, None]
+    first_susceptance = di.nodal_injection_information.pst_tap_susceptance_values[:, :1]
+    nonlinear_mask = jnp.any(
+        valid_mask & (di.nodal_injection_information.pst_tap_susceptance_values != first_susceptance),
+        axis=1,
     )
-    assert np.all(success_dc), "DC solver with PST changes should succeed"
 
     # Get PST branch IDs from the action set (which knows about controllable PSTs)
     action_set = extract_action_set(network_data)
     pst_indices = [pst.id for pst in action_set.pst_ranges]
 
-    net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", CGMES_DISTRIBUTED_SLACK)
-    net.update_phase_tap_changers(id=pst_indices, tap=(abs_taps).tolist())
-    pypowsybl.loadflow.run_dc(net)
-    n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
+    if bool(np.any(np.array(nonlinear_mask))):
+        tap_scenarios = [jnp.minimum(di.nodal_injection_information.starting_tap_idx + 1, pst_n_taps - 1)]
+    else:
+        tap_scenarios = [
+            jnp.minimum(di.nodal_injection_information.starting_tap_idx + 1, pst_n_taps - 1),
+            jnp.where(jnp.arange(n_pst) % 2 == 0, 0, pst_n_taps - 1),
+            jnp.where(jnp.arange(n_pst) % 2 == 0, pst_n_taps - 1, 0),
+        ]
 
-    assert not np.allclose(n_0_no_pst, n_0_direct), "PST must change the loadflow results"
+    for rel_taps in tap_scenarios:
+        abs_taps = rel_taps + low_taps
+        solver_res, success_dc = compute_symmetric_batch(
+            topology_batch=default_topology(solver_config),
+            disconnection_batch=None,
+            injections=None,
+            nodal_inj_start_options=NodalInjStartOptions(
+                previous_results=NodalInjOptimResults(pst_tap_idx=rel_taps[None, None, :]),
+                precision_percent=jnp.array(0.0),
+            ),
+            dynamic_information=di,
+            solver_config=solver_config,
+        )
+        assert np.all(success_dc), "DC solver with PST changes should succeed"
 
-    runner_res = runner.run_dc_loadflow([], [], np.array(abs_taps).tolist())
-    n_0_runner_pst, n_1_runner_pst, success_ref = extract_solver_matrices_polars(runner_res, nminus1_definition, 0)
-    assert np.all(success_ref), "Pypowsybl runner with PST changes should succeed"
+        net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+        net = set_target_values_to_lf_values_incl_distributed_slack(net, "dc", CGMES_DISTRIBUTED_SLACK)
+        net.update_phase_tap_changers(id=pst_indices, tap=np.array(abs_taps).tolist())
+        pypowsybl.loadflow.run_dc(net)
+        n_0_direct = net.get_branches().loc[network_data.branch_ids][network_data.monitored_branch_mask].p1.values
 
-    n_0_with_pst = -solver_res.n_0_matrix[0, 0]
-    n_1_with_pst = -solver_res.n_1_matrix[0, 0]
+        assert not np.allclose(n_0_no_pst, n_0_direct), "PST must change the loadflow results"
 
-    # First verify the two powsybl native computations
-    assert np.allclose(n_0_direct, n_0_runner_pst, atol=1e-2)
+        runner_res = runner.run_dc_loadflow([], [], np.array(abs_taps).tolist())
+        n_0_runner_pst, n_1_runner_pst, success_ref = extract_solver_matrices_polars(runner_res, nminus1_definition, 0)
+        assert np.all(success_ref), "Pypowsybl runner with PST changes should succeed"
 
-    # Then verify runner also matches direct computation
-    assert np.allclose(n_0_runner_pst, n_0_with_pst, atol=1e-2), "Runner should match direct pypowsybl computation"
+        n_0_with_pst = -solver_res.n_0_matrix[0, 0]
+        n_1_with_pst = -solver_res.n_1_matrix[0, 0]
 
-    # Finally verify runner matches DC solver
-    assert np.allclose(np.abs(n_1_runner_pst), np.abs(n_1_with_pst), atol=1e-2), "N-1 with PST changes should match"
+        assert np.allclose(n_0_direct, n_0_runner_pst, atol=1e-9, rtol=0.0)
+        assert np.allclose(n_0_runner_pst, n_0_with_pst, atol=1e-9, rtol=0.0), (
+            "Runner should match direct pypowsybl computation"
+        )
+        assert np.allclose(np.abs(n_1_runner_pst), np.abs(n_1_with_pst), atol=1e-9, rtol=0.0), (
+            "N-1 with PST changes should match"
+        )
+
+
+def test_nonlinear_pst_extreme_taps_change_loadflow_and_succeed(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path: Path,
+) -> None:
+    preprocessed_powsybl_data_folder = create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path
+    network_data = load_network_data(preprocessed_powsybl_data_folder / "network_data.pkl")
+    static_information = load_static_information(
+        preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["static_information_file_path"]
+    )
+    di = static_information.dynamic_information
+    solver_config = replace(static_information.solver_config, batch_size_bsdf=1)
+    assert di.nodal_injection_information is not None
+    valid_mask = (
+        jnp.arange(di.nodal_injection_information.pst_tap_values.shape[1])[None, :]
+        < di.nodal_injection_information.pst_n_taps[:, None]
+    )
+    first_susceptance = di.nodal_injection_information.pst_tap_susceptance_values[:, :1]
+    nonlinear_mask = jnp.any(
+        valid_mask & (di.nodal_injection_information.pst_tap_susceptance_values != first_susceptance),
+        axis=1,
+    )
+    assert bool(np.any(np.array(nonlinear_mask)))
+
+    base_res, base_success = compute_symmetric_batch(
+        topology_batch=default_topology(solver_config),
+        disconnection_batch=None,
+        injections=None,
+        nodal_inj_start_options=None,
+        dynamic_information=di,
+        solver_config=solver_config,
+    )
+    assert np.all(base_success)
+    n_0_base = -base_res.n_0_matrix[0, 0]
+
+    pst_n_taps = di.nodal_injection_information.pst_n_taps
+    low_taps = di.nodal_injection_information.grid_model_low_tap
+    n_pst = len(pst_n_taps)
+    extreme_scenarios = [
+        jnp.where(jnp.arange(n_pst) % 2 == 0, 0, pst_n_taps - 1),
+        jnp.where(jnp.arange(n_pst) % 2 == 0, pst_n_taps - 1, 0),
+    ]
+
+    runner = PowsyblRunner(
+        lf_params=load_lf_params(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["loadflow_parameters_file_path"])
+    )
+    runner.load_base_grid(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
+    runner.store_action_set(extract_action_set(network_data))
+    runner.store_nminus1_definition(extract_nminus1_definition(network_data))
+
+    for rel_taps in extreme_scenarios:
+        abs_taps = (rel_taps + low_taps).astype(int)
+        solver_res, success_dc = compute_symmetric_batch(
+            topology_batch=default_topology(solver_config),
+            disconnection_batch=None,
+            injections=None,
+            nodal_inj_start_options=NodalInjStartOptions(
+                previous_results=NodalInjOptimResults(pst_tap_idx=rel_taps[None, None, :]),
+                precision_percent=jnp.array(0.0),
+            ),
+            dynamic_information=di,
+            solver_config=solver_config,
+        )
+        assert np.all(success_dc)
+
+        runner_res = runner.run_dc_loadflow([], [], np.array(abs_taps).tolist())
+        n_0_runner_pst, n_1_runner_pst, success_ref = extract_solver_matrices_polars(
+            runner_res,
+            extract_nminus1_definition(network_data),
+            0,
+        )
+        assert np.all(success_ref)
+
+        n_0_with_pst = -solver_res.n_0_matrix[0, 0]
+        n_1_with_pst = -solver_res.n_1_matrix[0, 0]
+        assert np.isfinite(n_0_with_pst).all()
+        assert np.isfinite(n_0_runner_pst).all()
+        assert not np.allclose(n_0_base, n_0_runner_pst), "Extreme PST taps should change the reference loadflow"
+        assert not np.allclose(n_0_base, n_0_with_pst), "Extreme PST taps should change the solver loadflow"
+        assert np.allclose(n_0_runner_pst, n_0_with_pst, atol=1e-9, rtol=0.0)
+        assert np.allclose(np.abs(n_1_runner_pst), np.abs(n_1_with_pst), atol=1e-9, rtol=0.0)
 
 
 def test_runner_load_from_fs(preprocessed_powsybl_data_folder: Path) -> None:

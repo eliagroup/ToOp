@@ -563,7 +563,7 @@ def _get_target_bus_index(
     Parameters
     ----------
     station : MaterializedStation
-        Station whose busbar order defines valid target indices.
+        The station whose busbar ordering defines the switching-table row order.
     switching_column : np.ndarray
         One branch or injection switching-table column.
     bus_breaker_id : Optional[str]
@@ -579,7 +579,9 @@ def _get_target_bus_index(
     target_bus_indices = [
         index
         for index, (connected, busbar) in enumerate(zip(switching_column.tolist(), station.busbars, strict=True))
-        if connected and busbar.grid_model_id == bus_breaker_id
+        if connected
+        and (busbar.bus_breaker_bus_id if busbar.bus_breaker_bus_id not in {None, ""} else busbar.grid_model_id)
+        == bus_breaker_id
     ]
     if len(target_bus_indices) == 1:
         return target_bus_indices[0]
@@ -641,7 +643,12 @@ def _apply_single_branch_bus_branch(
         return "nothing", []
 
     target_bus_index = _get_target_bus_index(station, switching_column, bus_breaker_id)
-    target_bus_breaker_id = station.busbars[target_bus_index].grid_model_id
+    target_busbar = station.busbars[target_bus_index]
+    target_bus_breaker_id = (
+        target_busbar.bus_breaker_bus_id
+        if target_busbar.bus_breaker_bus_id not in {None, ""}
+        else target_busbar.grid_model_id
+    )
     if target_bus_breaker_id == bus_breaker_id:
         return "nothing", []
 
@@ -653,7 +660,12 @@ def _apply_single_branch_bus_branch(
     )
     reassignments = [(asset_index, target_bus_index, True)]
 
-    old_indices = [index for index, busbar in enumerate(station.busbars) if busbar.grid_model_id == bus_breaker_id]
+    old_indices = [
+        index
+        for index, busbar in enumerate(station.busbars)
+        if (busbar.bus_breaker_bus_id if busbar.bus_breaker_bus_id not in {None, ""} else busbar.grid_model_id)
+        == bus_breaker_id
+    ]
     if len(old_indices) == 1:
         reassignments.append((asset_index, old_indices[0], False))
 
@@ -731,7 +743,12 @@ def _apply_single_injection_bus_branch(
         return "nothing", []
 
     target_bus_index = _get_target_bus_index(station, switching_column, bus_breaker_id)
-    target_bus_breaker_id = station.busbars[target_bus_index].grid_model_id
+    target_busbar = station.busbars[target_bus_index]
+    target_bus_breaker_id = (
+        target_busbar.bus_breaker_bus_id
+        if target_busbar.bus_breaker_bus_id not in {None, ""}
+        else target_busbar.grid_model_id
+    )
     if target_bus_breaker_id == bus_breaker_id:
         return "nothing", []
 
@@ -742,7 +759,12 @@ def _apply_single_injection_bus_branch(
     )
     reassignments = [(asset_index, target_bus_index, True)]
 
-    old_indices = [index for index, busbar in enumerate(station.busbars) if busbar.grid_model_id == bus_breaker_id]
+    old_indices = [
+        index
+        for index, busbar in enumerate(station.busbars)
+        if (busbar.bus_breaker_bus_id if busbar.bus_breaker_bus_id not in {None, ""} else busbar.grid_model_id)
+        == bus_breaker_id
+    ]
     if len(old_indices) == 1:
         reassignments.append((asset_index, old_indices[0], False))
 
@@ -995,7 +1017,7 @@ def apply_station(
     """
     materialized_station = station.model_copy(deep=True)
 
-    relevant_voltage_level_id = _get_station_voltage_level_id(materialized_station)
+    relevant_voltage_level_id = materialized_station.voltage_level_id
 
     if is_node_breaker_grid(net=net, relevant_voltage_level_id=relevant_voltage_level_id):
         return apply_node_breaker_stations(

@@ -13,6 +13,7 @@ def test_acga_parameters_default():
     params = ACGAParameters()
     assert params.runtime_seconds == 180
     assert params.n_worst_contingencies == 20
+    assert params.include_non_converging_loadflows_in_worst_k is True
     assert params.seed == 42
     assert params.worst_k_runner_processes == 1
     assert params.runner_processes == 1
@@ -24,6 +25,7 @@ def test_acga_parameters_default():
     assert params.reject_critical_branch_threshold == 1.1
     assert params.reject_voltage_jump_threshold == 1.1
     assert params.reject_critical_va_diff_threshold == 1.1
+    assert params.enable_critical_voltage_rejection is False
     assert params.critical_voltage_jump_percent == 5.0
     assert params.critical_va_diff_degree == 20.0
     # Probabilities sum to one
@@ -54,6 +56,7 @@ def test_acga_parameters_filter_strategy():
         reject_critical_branch_threshold=0.8,
         reject_voltage_jump_threshold=0.7,
         reject_critical_va_diff_threshold=0.85,
+        enable_critical_voltage_rejection=True,
         critical_voltage_jump_percent=7.5,
         critical_va_diff_degree=12.0,
         filter_strategy=filter_strat,

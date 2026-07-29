@@ -186,8 +186,60 @@ class MaterializedStation(_StationStructure):
         MaterializedStation
             Copied and revalidated station instance.
         """
+        if update and ("asset_switching_table" in update or "asset_connectivity" in update):
+            normalized_update = dict(update)
+
+            if "asset_switching_table" in normalized_update:
+                asset_switching_table = normalized_update.pop("asset_switching_table")
+                branch_count = len(self.branch_connections)
+                normalized_update["branch_switching_table"] = asset_switching_table[:, :branch_count]
+                normalized_update["injection_switching_table"] = asset_switching_table[:, branch_count:]
+
+            if "asset_connectivity" in normalized_update:
+                asset_connectivity = normalized_update.pop("asset_connectivity")
+                if asset_connectivity is None:
+                    normalized_update["branch_connectivity"] = None
+                    normalized_update["injection_connectivity"] = None
+                else:
+                    branch_count = len(self.branch_connections)
+                    normalized_update["branch_connectivity"] = asset_connectivity[:, :branch_count]
+                    normalized_update["injection_connectivity"] = asset_connectivity[:, branch_count:]
+
+            update = normalized_update
+
         payload = _merged_round_trip_payload(self, update, deep=deep)
         return type(self).model_validate(payload)
+
+    @property
+    def grid_model_id(self) -> str:
+        """Backward-compatible alias for the station identifier."""
+        return self.bus_group_id
+
+    @property
+    def assets(self) -> list[SwitchableAsset]:
+        """Return combined station-local assets in legacy column order."""
+        return [
+            *(asset_connection.asset for asset_connection in self.branch_connections),
+            *(asset_connection.asset for asset_connection in self.injection_connections),
+        ]
+
+    @property
+    def asset_switching_table(self) -> np.ndarray:
+        """Return the combined switching table in legacy branch-then-injection order."""
+        return np.concatenate([self.branch_switching_table, self.injection_switching_table], axis=1)
+
+    @property
+    def asset_connectivity(self) -> Optional[np.ndarray]:
+        """Return the combined connectivity matrix in legacy branch-then-injection order."""
+        if self.branch_connectivity is None and self.injection_connectivity is None:
+            return None
+        branch_connectivity = self.branch_connectivity
+        injection_connectivity = self.injection_connectivity
+        if branch_connectivity is None:
+            branch_connectivity = np.zeros_like(self.branch_switching_table, dtype=bool)
+        if injection_connectivity is None:
+            injection_connectivity = np.zeros_like(self.injection_switching_table, dtype=bool)
+        return np.concatenate([branch_connectivity, injection_connectivity], axis=1)
 
     def get_connected_assets(
         self,

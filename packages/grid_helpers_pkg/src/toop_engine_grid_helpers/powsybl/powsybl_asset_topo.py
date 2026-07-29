@@ -130,6 +130,7 @@ def _get_bus_breaker_station_bus_info_from_group(
     """
     group_station_buses = station_buses.loc[station_buses.index.isin(selected_busbar_ids)].copy()
     group_station_buses["in_service"] = True
+    group_station_buses["bus_breaker_bus_id"] = group_station_buses.index.astype(str)
     group_station_buses["bus_branch_bus_id"] = group_station_buses["bus_id"].astype(str)
     group_station_buses = (
         group_station_buses.sort_index()
@@ -137,7 +138,7 @@ def _get_bus_breaker_station_bus_info_from_group(
         .reset_index()
         .rename(columns={"index": "int_id", "id": "grid_model_id"})
     )
-    return group_station_buses[["grid_model_id", "name", "int_id", "in_service", "bus_branch_bus_id"]]
+    return group_station_buses[["grid_model_id", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]]
 
 
 def get_all_element_names(network: Network, line_trafo_name_col: str = "elementName") -> pd.Series:
@@ -464,13 +465,16 @@ def get_bus_info_from_topology(station_buses: pd.DataFrame, bus_id: str) -> pd.D
     station_buses = station_buses[station_buses["bus_id"] == bus_id].copy()
     # for UCTE model: if not in service, asset will not appear
     station_buses["in_service"] = True
+    station_buses["bus_breaker_bus_id"] = station_buses.index.astype(str)
     station_buses["bus_branch_bus_id"] = str(bus_id)
 
     # get bus df
     station_buses = (
         station_buses.sort_index().reset_index().reset_index().rename(columns={"index": "int_id", "id": "grid_model_id"})
     )
-    station_buses = station_buses[["grid_model_id", "name", "int_id", "in_service", "bus_branch_bus_id"]]
+    station_buses = station_buses[
+        ["grid_model_id", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]
+    ]
 
     return station_buses
 
@@ -1129,6 +1133,7 @@ def get_stations_and_assets_bus_breaker(
                 Busbar(
                     grid_model_id=grid_model_id,
                     int_id=busbar_mapper[grid_model_id],
+                    bus_breaker_bus_id=str(grid_model_id),
                     bus_branch_bus_id=str(local_buses.loc[grid_model_id]["bus_id"]),
                 )
                 for grid_model_id in local_buses.index

@@ -149,7 +149,10 @@ def _get_station_topology_frames(
     coupler_df = get_coupler_df(
         switches_df=graph_data.switches, busbar_df=busbar_df, substation_id=substation_id, graph=graph
     )
-    coupler_df = coupler_df.dropna(subset=["busbar_from_id", "busbar_to_id"]).copy()
+    if {"busbar_from_id", "busbar_to_id"}.issubset(coupler_df.columns):
+        coupler_df = coupler_df.dropna(subset=["busbar_from_id", "busbar_to_id"]).copy()
+    else:
+        coupler_df = coupler_df.iloc[0:0].copy()
     if not coupler_df.empty:
         coupler_df[["busbar_from_id", "busbar_to_id"]] = coupler_df[["busbar_from_id", "busbar_to_id"]].astype(int)
 
@@ -749,6 +752,11 @@ def _build_master_station_from_busbar_group(
     return master_station, branch_assets, injection_assets, asset_bays
 
 
+def normalize_nullable_bool(series: pd.Series, default: bool) -> pd.Series:
+    """Normalize nullable or object-backed boolean-like series without pandas downcast warnings."""
+    return series.astype("boolean").fillna(default).astype(bool)
+
+
 def node_breaker_topology_to_graph_data(net: Network, substation_info: SubstationInformation) -> NetworkGraphData:
     """Convert a node breaker topology to a NetworkGraph.
 
@@ -766,18 +774,50 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
     NetworkGraphData.
     """
     all_names_df = get_all_element_names(net, line_trafo_name_col="name")
+    branches_df = net.get_branches(attributes=["connected1", "connected2", "bus1_id", "bus2_id"])
+    boundary_line_tie_ids = net.get_boundary_lines(attributes=["tie_line_id"])["tie_line_id"]
+    injections_df = net.get_injections(attributes=["connected", "bus_id"])
+    buses_df = net.get_buses(attributes=["connected_component"])
+    bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
+    in_main_connected_component = buses_df["connected_component"].fillna(0).eq(0)
+
+    branch_in_service = (
+        normalize_nullable_bool(branches_df["connected1"], default=False)
+        & normalize_nullable_bool(branches_df["connected2"], default=False)
+        & normalize_nullable_bool(branches_df["bus1_id"].map(in_main_connected_component), default=False)
+        & normalize_nullable_bool(branches_df["bus2_id"].map(in_main_connected_component), default=False)
+    ).rename("in_service")
+    injection_in_service = (
+        normalize_nullable_bool(injections_df["connected"], default=False)
+        & normalize_nullable_bool(injections_df["bus_id"].map(in_main_connected_component), default=False)
+    ).rename("in_service")
+
+    asset_in_service = pd.concat(
+        [
+            branch_in_service,
+            injection_in_service,
+        ]
+    )
     nbt = net.get_node_breaker_topology(substation_info.voltage_level_id)
+    bbt = net.get_bus_breaker_topology(substation_info.voltage_level_id)
 
     switches_df = get_switches(switches_df=nbt.switches)
-    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service", "bus_id"])
+    busbar_sections_names_df = get_busbar_sections_with_in_service(network=net, attributes=["name", "bus_id", "in_service"])
     nodes_df = get_nodes(
         busbar_sections_names_df=busbar_sections_names_df,
         nodes_df=nbt.nodes,
+        bus_breaker_elements_df=bbt.elements,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_info,
     )
     helper_branches = get_helper_branches(internal_connections_df=nbt.internal_connections)
-    node_assets_df = get_node_assets(nodes_df=nodes_df, all_names_df=all_names_df)
+    node_assets_df = get_node_assets(
+        nodes_df=nodes_df,
+        all_names_df=all_names_df,
+        asset_in_service=asset_in_service,
+        boundary_line_tie_ids=boundary_line_tie_ids,
+    )
 
     graph_data = NetworkGraphData(
         nodes=nodes_df,
@@ -846,6 +886,8 @@ def get_switches(switches_df: pd.DataFrame) -> pat.DataFrame[SwitchSchema]:
 def get_nodes(
     busbar_sections_names_df: pd.DataFrame,
     nodes_df: pd.DataFrame,
+    bus_breaker_elements_df: pd.DataFrame,
+    bus_breaker_view_buses_df: pd.DataFrame,
     switches_df: pd.DataFrame,
     substation_info: SubstationInformation,
 ) -> pat.DataFrame[NodeSchema]:
@@ -861,6 +903,10 @@ def get_nodes(
         from get_busbar_sections_with_in_service(network=net, attributes=["name", "in_service"])
     nodes_df : pd.DataFrame
         The nodes DataFrame from the net.get_node_breaker_topology(voltage_level_id).nodes
+    bus_breaker_elements_df : pd.DataFrame
+        The elements DataFrame from the bus-breaker topology of the same voltage level.
+    bus_breaker_view_buses_df : pd.DataFrame
+        The bus breaker view buses DataFrame from the pypowsybl network.
     switches_df : pd.DataFrame
         The switches DataFrame from the node NodeBreakerTopology.
     substation_info : SubstationInformation
@@ -872,6 +918,12 @@ def get_nodes(
         The nodes as a DataFrame, with renamed columns for the NetworkGraph.
     """
     nodes_df = nodes_df.merge(busbar_sections_names_df, left_on="connectable_id", right_index=True, how="left")
+    busbar_bus_ids = bus_breaker_elements_df.loc[bus_breaker_elements_df["type"] == "BUSBAR_SECTION", ["bus_id"]].rename(
+        columns={"bus_id": "bus_breaker_bus_id"}
+    )
+    nodes_df = nodes_df.merge(busbar_bus_ids, left_on="connectable_id", right_index=True, how="left")
+    if "bus_id" not in nodes_df.columns:
+        nodes_df = nodes_df.merge(bus_breaker_view_buses_df, left_on="bus_breaker_bus_id", right_index=True, how="left")
     nodes_df["grid_model_id"] = ""
     nodes_df["node_type"] = "node"
     nodes_df["substation_id"] = substation_info.name
@@ -923,7 +975,12 @@ def get_helper_branches(internal_connections_df: pd.DataFrame) -> pat.DataFrame[
     return helper_branches
 
 
-def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.Series) -> pat.DataFrame[NodeAssetSchema]:
+def get_node_assets(
+    nodes_df: pd.DataFrame,
+    all_names_df: pd.Series,
+    asset_in_service: pd.Series,
+    boundary_line_tie_ids: pd.Series,
+) -> pat.DataFrame[NodeAssetSchema]:
     """Get node assets from a node breaker topology.
 
     Get the node assets from a node breaker topology, rename and retype for the NetworkGraph.
@@ -934,6 +991,10 @@ def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.Series) -> pat.Data
         The nodes DataFrame from the node NodeBreakerTopology.
     all_names_df : pd.Series
         The names of all elements in the network.
+    asset_in_service : pd.Series
+        Boolean service state by connectable id derived from the Powsybl network model.
+    boundary_line_tie_ids : pd.Series
+        Mapping from boundary line id to tie line id for paired boundary lines.
 
     Returns
     -------
@@ -950,9 +1011,17 @@ def get_node_assets(nodes_df: pd.DataFrame, all_names_df: pd.Series) -> pat.Data
     node_assets_df = node_assets_df.merge(all_names_df, how="left", left_on="grid_model_id", right_index=True)
     node_assets_df.rename(columns={"connectable_type": "asset_type", "name": "foreign_id"}, inplace=True)
     node_assets_df.fillna({"foreign_id": ""}, inplace=True)
+    tie_line_ids = node_assets_df["grid_model_id"].map(boundary_line_tie_ids).fillna("")
+    paired_boundary_lines = (node_assets_df["asset_type"] == "BOUNDARY_LINE") & tie_line_ids.ne("")
+    node_assets_df.loc[paired_boundary_lines, "grid_model_id"] = tie_line_ids[paired_boundary_lines]
+    node_assets_df.loc[paired_boundary_lines, "asset_type"] = "TIE_LINE"
+    node_assets_df.loc[paired_boundary_lines, "foreign_id"] = (
+        node_assets_df.loc[paired_boundary_lines, "grid_model_id"].map(all_names_df).fillna("")
+    )
     node_assets_df = node_assets_df[["grid_model_id", "foreign_id", "node", "asset_type"]]
-    # TODO: might need to be changed once there is more information about the in_service state
-    node_assets_df["in_service"] = True
+    node_assets_df["in_service"] = normalize_nullable_bool(
+        node_assets_df["grid_model_id"].map(asset_in_service), default=True
+    )
     return node_assets_df
 
 
@@ -1079,6 +1148,12 @@ def get_relevant_voltage_levels(network: Network, network_masks: NetworkMasks) -
     voltage_levels = get_voltage_level_with_region(network, attributes=attributes)
     busses = network.get_buses()
     relevant_voltage_levels = busses[network_masks.relevant_subs]["voltage_level_id"]
+    busbar_sections = network.get_busbar_sections(attributes=["bus_id"])
+    busbar_outage_bus_ids = pd.Index(busbar_sections[network_masks.busbar_for_nminus1]["bus_id"].unique())
+    relevant_busbar_buses = busses.loc[busses.index.intersection(busbar_outage_bus_ids)]
+    relevant_voltage_levels = pd.concat(
+        [relevant_voltage_levels, relevant_busbar_buses["voltage_level_id"]]
+    ).drop_duplicates()
     relevant_voltage_level_with_region = voltage_levels[voltage_levels.index.isin(relevant_voltage_levels)]
     relevant_voltage_level_with_region_and_bus_id = relevant_voltage_level_with_region.merge(
         relevant_voltage_levels, left_index=True, right_on="voltage_level_id", how="left"

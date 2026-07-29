@@ -38,8 +38,8 @@ config = pandera.config.PanderaConfig(
     validation_enabled=True, validation_depth=pandera.config.ValidationDepth.SCHEMA_AND_DATA
 )
 pandera.config.reset_config_context(config)
-from toop_engine_interfaces.loadflow_results import BranchResultSchema
-from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars
+from toop_engine_interfaces.loadflow_results import BranchResultSchema, ConvergedSchema
+from toop_engine_interfaces.loadflow_results_polars import BranchResultSchemaPolars, ConvergedSchemaPolars
 
 
 @pytest.fixture(scope="module")
@@ -321,20 +321,24 @@ def branch_results_df_fast_failing() -> pd.DataFrame:
             (0, "cont2", "branch2", 1),
             (0, "cont3", "branch1", 1),
             (0, "cont3", "branch2", 1),
+            (0, "cont4", "branch1", 1),
+            (0, "cont4", "branch2", 1),
             (1, "cont1", "branch1", 1),
             (1, "cont1", "branch2", 1),
             (1, "cont2", "branch1", 1),
             (1, "cont2", "branch2", 1),
             (1, "cont3", "branch1", 1),
             (1, "cont3", "branch2", 1),
+            (1, "cont4", "branch1", 1),
+            (1, "cont4", "branch2", 1),
         ],
         names=["timestep", "contingency", "element", "side"],
     )
     # Data: purposely set overloads for cont2 and cont3 higher than cont1, for both timesteps
     data = {
-        "p": [float(x) for x in [10, 20, 100, 200, 50, 60, 15, 25, 110, 210, 55, 65]],
-        "i": [float(x) for x in [1, 2, 10, 20, 5, 6, 2, 3, 11, 21, 6, 7]],
-        "loading": [float(x) for x in [10, 10, 50, 50, 25, 30, 12, 12, 52, 52, 27, 32]],
+        "p": [float(x) for x in [10, 20, 100, 200, 50, 60, np.nan, np.nan, 15, 25, 110, 210, 55, 65, np.nan, np.nan]],
+        "i": [float(x) for x in [1, 2, 10, 20, 5, 6, np.nan, np.nan, 2, 3, 11, 21, 6, 7, np.nan, np.nan]],
+        "loading": [float(x) for x in [10, 10, 50, 50, 25, 30, np.nan, np.nan, 12, 12, 52, 52, 27, 32, np.nan, np.nan]],
     }
     df = pd.DataFrame(data, index=idx)
     # Add required columns for BranchResultSchema, fill with dummy values if needed
@@ -351,6 +355,47 @@ def branch_results_df_fast_failing() -> pd.DataFrame:
                 df[col] = ""
     BranchResultSchema.validate(df)
     return df
+
+
+@pytest.fixture(scope="function")
+def convergence_results_df_fast_failing() -> pd.DataFrame:
+    # Create a MultiIndex for (timestep, contingency)
+    idx = pd.MultiIndex.from_tuples(
+        [
+            (0, "cont1"),
+            (0, "cont2"),
+            (0, "cont3"),
+            (0, "cont4"),
+            (1, "cont1"),
+            (1, "cont2"),
+            (1, "cont3"),
+            (1, "cont4"),
+        ],
+        names=["timestep", "contingency"],
+    )
+    # Data: purposely set cont4 to not converged
+    data = {"status": ["CONVERGED", "CONVERGED", "CONVERGED", "FAILED", "CONVERGED", "CONVERGED", "CONVERGED", "FAILED"]}
+    df = pd.DataFrame(data, index=idx)
+    for col in ConvergedSchema.to_schema().columns:
+        if col not in df.columns:
+            dtype = ConvergedSchema.to_schema().columns[col].dtype.type.name
+            if pd.api.types.is_float_dtype(dtype):
+                df[col] = 0.0
+            elif pd.api.types.is_integer_dtype(dtype):
+                df[col] = 0
+            elif pd.api.types.is_bool_dtype(dtype):
+                df[col] = False
+            else:
+                df[col] = ""
+    return df
+
+
+@pytest.fixture(scope="function")
+def convergence_results_df_fast_failing_polars(convergence_results_df_fast_failing) -> pl.LazyFrame:
+    df = convergence_results_df_fast_failing
+    df_polars = pl.from_pandas(df, include_index=True).lazy()
+    df_polars = ConvergedSchemaPolars.validate(df_polars)
+    return df_polars
 
 
 @pytest.fixture(scope="function")

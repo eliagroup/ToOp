@@ -32,8 +32,10 @@ from toop_engine_importer.network_graph.network_graph import (
 from toop_engine_importer.network_graph.network_graph_data import add_graph_specific_data
 from toop_engine_importer.network_graph.powsybl_station_to_graph import (
     _build_master_station_from_busbar_group,
-    _collect_station_topology_components,
+    _build_station_connectivity_by_asset_type,
+    _get_station_asset_connections,
     _get_station_busbar_view,
+    _get_station_topology_frames,
     get_node_breaker_topology_graph,
     node_breaker_topology_to_graph_data,
 )
@@ -56,26 +58,39 @@ def build_station_from_bus_id(net, bus_id: str, station_info: SubstationInformat
         selected_busbar_ids=selected_busbar_ids,
         station_grid_model_id=bus_id,
     )
-    (
-        _busbars,
-        _couplers,
-        _branch_assets,
-        _injection_assets,
-        _branch_connections,
-        _injection_connections,
-        _branch_mask,
-        branch_switching_table,
-        injection_switching_table,
-        _branch_connectivity,
-        _injection_connectivity,
-        _asset_bays,
-        _station_logs,
-    ) = _collect_station_topology_components(
-        network=net,
-        station_info=station_info,
-        selected_busbar_ids=selected_busbar_ids,
-        station_grid_model_id=bus_id,
+    busbar_df, _coupler_df, busbar_connection_info, switchable_assets_df, asset_bays_by_asset_id, _station_logs = (
+        _get_station_topology_frames(
+            network=net,
+            station_info=station_info,
+            selected_busbar_ids=selected_busbar_ids,
+            station_grid_model_id=bus_id,
+        )
     )
+    _branch_assets, _injection_assets, _branch_connections, _injection_connections, branch_mask, _asset_bays = (
+        _get_station_asset_connections(
+            network=net,
+            station_info=station_info,
+            busbar_df=busbar_df,
+            switchable_assets_df=switchable_assets_df,
+            asset_bays_by_asset_id=asset_bays_by_asset_id,
+        )
+    )
+    _branch_connectivity, _injection_connectivity = _build_station_connectivity_by_asset_type(
+        busbar_connection_info=busbar_connection_info,
+        busbar_df=busbar_df,
+        switchable_assets_df=switchable_assets_df,
+        branch_mask=branch_mask,
+    )
+    _asset_connectivity, asset_switching_table, _busbar_connectivity, _busbar_switching_table = (
+        get_station_connection_tables(
+            busbar_connection_info,
+            busbar_df=busbar_df,
+            switchable_assets_df=switchable_assets_df,
+        )
+    )
+    asset_switching_table = remove_double_connections(asset_switching_table, substation_id=station_info.name)
+    branch_switching_table = asset_switching_table[:, branch_mask]
+    injection_switching_table = asset_switching_table[:, [not is_branch for is_branch in branch_mask]]
     return station, branch_switching_table, injection_switching_table
 
 
@@ -131,6 +146,7 @@ def test_get_busbar_df(network_graph_data_test1: NetworkGraphData):
             "int_id": 0,
             "in_service": True,
             "bus_branch_bus_id": "BBS3_1_bus_id",
+            "bus_breaker_bus_id": None,
         },
         {
             "grid_model_id": "BBS3_2",
@@ -139,6 +155,7 @@ def test_get_busbar_df(network_graph_data_test1: NetworkGraphData):
             "int_id": 1,
             "in_service": True,
             "bus_branch_bus_id": "BBS3_2_bus_id",
+            "bus_breaker_bus_id": None,
         },
     ]
     assert busbar_df.to_dict(orient="records") == expected

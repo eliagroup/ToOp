@@ -196,6 +196,58 @@ def test_get_node_results_polars_keeps_absolute_ac_voltage() -> None:
     assert node_results.filter(pl.col("element") == "bus_2").select("vm").item() == 224.8
 
 
+def test_get_node_results_polars_computes_vm_basecase_deviation() -> None:
+    bus_results = pl.LazyFrame(
+        {
+            "contingency_id": ["", "", "contingency_1", "contingency_1"],
+            "operator_strategy_id": ["", "", "", ""],
+            "voltage_level_id": ["VL_1", "VL_1", "VL_1", "VL_1"],
+            "bus_id": ["bus_1", "bus_2", "bus_1", "bus_2"],
+            "v_mag": [220.0, 225.0, 231.0, 213.75],
+            "v_angle": [-1.0, -0.5, -1.2, -0.3],
+        }
+    )
+    voltage_levels = pl.LazyFrame(
+        {
+            "id": ["VL_1"],
+            "nominal_v": [225.0],
+            "high_voltage_limit": [245.0],
+            "low_voltage_limit": [205.0],
+        }
+    )
+    monitored_buses = ["bus_1", "bus_2"]
+    busmap = pl.LazyFrame({"id": monitored_buses, "bus_breaker_bus_id": monitored_buses})
+
+    node_results = get_node_results_polars(
+        bus_results,
+        monitored_buses,
+        busmap,
+        voltage_levels,
+        failed_outages=[],
+        timestep=0,
+        method="ac",
+    ).collect()
+
+    assert (
+        node_results.filter((pl.col("contingency") == "") & (pl.col("element") == "bus_1"))
+        .select("vm_basecase_deviation")
+        .item()
+        == 0.0
+    )
+    assert (
+        node_results.filter((pl.col("contingency") == "contingency_1") & (pl.col("element") == "bus_1"))
+        .select("vm_basecase_deviation")
+        .item()
+        == 5.0
+    )
+    assert (
+        node_results.filter((pl.col("contingency") == "contingency_1") & (pl.col("element") == "bus_2"))
+        .select("vm_basecase_deviation")
+        .item()
+        == 5.0
+    )
+
+
 def test_get_branch_results():
     ca_branch_results = pl.LazyFrame(
         {

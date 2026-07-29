@@ -23,6 +23,7 @@ from toop_engine_dc_solver.jax.types import (
     NodalInjOptimResults,
     NodalInjStartOptions,
     SolverConfig,
+    SolverLoadflowResults,
     int_max,
 )
 from toop_engine_interfaces.types import MetricType
@@ -67,6 +68,64 @@ METRICS = {
     "pst_switching_distance_squared": jnp.maximum,
     "pst_activated": jnp.maximum,
 }
+
+
+def get_aggregate_metrics(
+    lf_res: SolverLoadflowResults,
+    success: Bool[Array, " batch_size"],
+    dynamic_information: DynamicInformation,
+    observed_metrics: tuple[MetricType, ...],
+    n_worst_contingencies: int,
+) -> dict[str, Array]:
+    """Aggregate one scored batch of loadflow results into optimizer metrics.
+
+    Parameters
+    ----------
+    lf_res : SolverLoadflowResults
+        Batched loadflow results returned by the symmetric solver path.
+    success : Bool[Array, " batch_size"]
+        Per-topology success mask used to invalidate failed candidates.
+    dynamic_information : DynamicInformation
+        Dynamic grid information required by the aggregation metrics.
+    observed_metrics : tuple[MetricType, ...]
+        Metrics that should be preserved for scoring and result emission.
+    n_worst_contingencies : int
+        Number of worst contingency indices to keep for each topology.
+
+    Returns
+    -------
+    dict[str, Array]
+        Aggregated metrics for the full batch, including ``case_indices`` and
+        ``top_k_overloads_n_1``.
+    """
+    # Extract initial PST tap indices if PST optimization is enabled
+    initial_pst_tap_idx = None
+    if dynamic_information.nodal_injection_information is not None:
+        initial_pst_tap_idx = dynamic_information.nodal_injection_information.starting_tap_idx
+
+    aggregates = {}
+    for metric_name in observed_metrics:
+        metric = aggregate_to_metric_batched(
+            lf_res_batch=lf_res,
+            branch_limits=dynamic_information.branch_limits,
+            reassignment_distance=dynamic_information.action_set.reassignment_distance,
+            n_relevant_subs=dynamic_information.n_sub_relevant,
+            metric=metric_name,
+            initial_pst_tap_idx=initial_pst_tap_idx,
+        )
+        metric = jnp.where(success, metric, jnp.inf)
+        aggregates[metric_name] = metric
+
+    # Note: compute_overloads is called for each timestep separately, so the results are not batched.
+    # As we don't have multi timestep optimisation support yet, we compute the worst k contingencies
+    # sequentially one timestep at a time. This means that the timestep dimension will always be 1.
+    #  TODO This is a temporary solution until we have multi timestep support.
+    worst_k_res = jax.vmap(get_worst_k_contingencies, in_axes=(None, 0, None))(
+        n_worst_contingencies, lf_res.n_1_matrix, dynamic_information.branch_limits.max_mw_flow
+    )
+    aggregates["top_k_overloads_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
+    aggregates["case_indices"] = worst_k_res.case_indices[:, 0, :]
+    return aggregates
 
 
 # The scoring function runs the loadflow and computes the overload energy
@@ -114,35 +173,15 @@ def compute_overloads(
         solver_config=solver_config,
     )
 
-    # Extract initial PST tap indices if PST optimization is enabled
-    initial_pst_tap_idx = None
-    if dynamic_information.nodal_injection_information is not None:
-        initial_pst_tap_idx = dynamic_information.nodal_injection_information.starting_tap_idx
-
-    aggregates = {}
-    for metric_name in observed_metrics:
-        metric = aggregate_to_metric_batched(
-            lf_res_batch=lf_res,
-            branch_limits=dynamic_information.branch_limits,
-            reassignment_distance=dynamic_information.action_set.reassignment_distance,
-            n_relevant_subs=dynamic_information.n_sub_relevant,
-            metric=metric_name,
-            initial_pst_tap_idx=initial_pst_tap_idx,
-        )
-        metric = jnp.where(success, metric, jnp.inf)
-        aggregates[metric_name] = metric
-
-    # Note: compute_overloads is called for each timestep separately, so the results are not batched.
-    # As we don't have multi timestep optimisation support yet, we compute the worst k contingencies
-    # sequentially one timestep at a time. This means that the timestep dimension will always be 1.
-    #  TODO This is a temporary solution until we have multi timestep support.
-    worst_k_res = jax.vmap(get_worst_k_contingencies, in_axes=(None, 0, None))(
-        n_worst_contingencies, lf_res.n_1_matrix, dynamic_information.branch_limits.max_mw_flow
+    aggregates = get_aggregate_metrics(
+        lf_res=lf_res,
+        success=success,
+        dynamic_information=dynamic_information,
+        observed_metrics=observed_metrics,
+        n_worst_contingencies=n_worst_contingencies,
     )
-    aggregates["top_k_overloads_n_1"] = worst_k_res.top_k_overloads[:, 0]  # Take the first timestep only
-    aggregates["case_indices"] = worst_k_res.case_indices[:, 0, :]
 
-    return aggregates, lf_res.nodal_injections_optimized, success
+    return aggregates, lf_res.pst_tap_results, success
 
 
 def scoring_function(

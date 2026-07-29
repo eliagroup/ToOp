@@ -6,14 +6,15 @@
 # Mozilla Public License, version 2.0
 
 import copy
-from dataclasses import replace
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pypowsybl as pp
 import pytest
+from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
 from toop_engine_dc_solver.jax.busbar_outage import (
@@ -44,8 +45,11 @@ from toop_engine_dc_solver.jax.types import (
     int_max,
 )
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import apply_topology
-from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, get_bb_outage_baseline_analysis
-from toop_engine_dc_solver.preprocess.network_data import extract_action_set
+from toop_engine_dc_solver.preprocess.convert_to_jax import convert_to_jax, get_bb_outage_baseline_analysis, load_grid
+from toop_engine_dc_solver.preprocess.network_data import (
+    extract_action_set,
+    extract_busbar_outage_ids,
+)
 from toop_engine_dc_solver.preprocess.preprocess import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     extract_busbar_outage_data,
@@ -56,6 +60,9 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     logger,
     preprocess_bb_outages,
 )
+from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl
+from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK, SINGLE_SLACK
+from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 
 
@@ -77,6 +84,15 @@ def get_station_outage_map_key(station: MaterializedStation, outage_map: dict[st
             return busbar.bus_branch_bus_id
 
     return None
+
+
+from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
+    AreaSettings,
+    CgmesImporterParameters,
+    PreprocessParameters,
+)
+from toop_engine_interfaces.nminus1_definition import load_nminus1_definition
 
 
 # FIxme: Look deeply into this
@@ -198,6 +214,42 @@ def test_perform_outage_single_busbar(
         assert n_skeleton_branches <= 1, "There should be at most one skeleton branch per busbar"
 
 
+def test_perform_rel_bb_outage_single_topo_filters_padded_busbar_slots() -> None:
+    rel_bb_outage_data = RelBBOutageData(
+        branch_outage_set=jnp.full((1, 2, 1), int_max(), dtype=int),
+        deltap_set=jnp.zeros((1, 2, 1), dtype=float),
+        nodal_indices=jnp.array([[0, int_max()]], dtype=int),
+        articulation_node_mask=jnp.array([[False, False]], dtype=bool),
+        valid_busbar_mask=jnp.array([[True, False]], dtype=bool),
+        valid_busbar_flat_indices=jnp.array([0], dtype=int),
+        zero_flow_branch_set=jnp.full((1, 2, 0), int_max(), dtype=int),
+    )
+    action_set = ActionSet(
+        branch_actions=jnp.zeros((1, 1), dtype=bool),
+        inj_actions=jnp.zeros((1, 0), dtype=bool),
+        n_actions_per_sub=jnp.array([1], dtype=int),
+        substation_correspondence=jnp.array([0], dtype=int),
+        unsplit_action_mask=jnp.array([True], dtype=bool),
+        reassignment_distance=jnp.array([0], dtype=int),
+        action_start_indices=jnp.array([0], dtype=int),
+        rel_bb_outage_data=rel_bb_outage_data,
+    )
+
+    lfs, success = perform_rel_bb_outage_single_topo(
+        n_0_flows=jnp.zeros((1, 1), dtype=float),
+        action_indices=jnp.array([0], dtype=int),
+        ptdf=jnp.zeros((1, 1), dtype=float),
+        nodal_injections=jnp.zeros((1, 1), dtype=float),
+        from_nodes=jnp.array([0], dtype=int),
+        to_nodes=jnp.array([0], dtype=int),
+        action_set=action_set,
+        branches_monitored=jnp.array([0], dtype=int),
+    )
+
+    assert lfs.shape[0] == 1
+    assert success.shape[0] == 1
+
+
 def test_perform_outage_single_busbar_with_disconnections(
     jax_inputs_oberrhein, network_data_preprocessed: NetworkData, oberrhein_outage_station_busbars_map
 ) -> None:
@@ -282,6 +334,56 @@ def test_perform_non_rel_bb_outages(
         n_timesteps,
         dynamic_information.branches_monitored.shape[0],
     ), "Shape of lfs_outage is incorrect"
+
+
+def test_node_breaker_import_preserves_all_imported_busbar_outages() -> None:
+    with TemporaryDirectory() as temp_dir_str:
+        temp_dir = Path(temp_dir_str)
+        net = basic_node_breaker_network_powsybl()
+
+        grid_file = temp_dir / "node_breaker_network.xiidm"
+        net.save(grid_file)
+        importer_parameters = CgmesImporterParameters(
+            grid_model_file=grid_file,
+            data_folder=temp_dir,
+            white_list_file=None,
+            black_list_file=None,
+            area_settings=AreaSettings(cutoff_voltage=1, control_area=[""], view_area=[""], nminus1_area=[""]),
+        )
+        preprocessing.convert_file(importer_parameters=importer_parameters)
+
+        imported_nminus1_definition = load_nminus1_definition(temp_dir / PREPROCESSING_PATHS["nminus1_definition_file_path"])
+        all_busbar_ids = sorted(net.get_busbar_sections().index.to_list())
+        expected_busbar_ids = sorted(
+            {
+                element.id
+                for contingency in imported_nminus1_definition.contingencies
+                for element in contingency.elements
+                if element.kind == "bus" and element.type == "BUSBAR_SECTION"
+            }
+        )
+
+        _info, _static_information, network_data = load_grid(
+            data_folder_dirfs=DirFileSystem(str(temp_dir)),
+            pandapower=False,
+            parameters=PreprocessParameters(preprocess_bb_outages=True),
+            lf_params=CGMES_DISTRIBUTED_SLACK,
+        )
+
+        configured_busbar_ids = sorted(
+            busbar_id for busbar_ids in (network_data.busbar_outage_map or {}).values() for busbar_id in busbar_ids
+        )
+        preprocessed_busbar_ids = sorted(extract_busbar_outage_ids(network_data))
+        _, non_rel_busbar_outage_map = get_rel_non_rel_sub_bb_maps(network_data, network_data.busbar_outage_map or {})
+        expected_non_rel_busbar_count = sum(len(busbar_ids) for busbar_ids in non_rel_busbar_outage_map.values())
+
+        assert expected_busbar_ids
+        assert set(expected_busbar_ids).issubset(set(all_busbar_ids))
+        assert configured_busbar_ids == expected_busbar_ids
+        assert preprocessed_busbar_ids == expected_busbar_ids
+        assert len(network_data.non_rel_bb_outage_br_indices) == expected_non_rel_busbar_count
+        assert network_data.non_rel_bb_outage_deltap.shape[0] == expected_non_rel_busbar_count
+        assert network_data.non_rel_bb_outage_nodal_indices.shape[0] == expected_non_rel_busbar_count
 
 
 def test_perform_rel_bb_outage_single_topo_with_no_inj_reassignments(
@@ -490,15 +592,15 @@ def correct_power_flow_directions(lfs, network_data_preprocessed: NetworkData):
 def test_compare_loadflows_non_rel_bb_outage_powsybl(
     test_grid_folder_path: Path,
     network_data_test_grid: NetworkData,
-    outage_map_test_grid: dict[str, list[str]],
 ):
     net = pp.network.load(test_grid_folder_path / "grid.xiidm")
     # outage_map = outage_map_test_grid
     outage_map = network_data_test_grid.busbar_outage_map
+    assert outage_map is not None
 
     rel_bb_outage_map, non_rel_bb_outage_map = get_rel_non_rel_sub_bb_maps(network_data_test_grid, outage_map)
-    network_data = replace(network_data_test_grid, busbar_outage_map=outage_map)
-    network_data = preprocess_bb_outages(network_data)
+    assert non_rel_bb_outage_map
+    network_data = preprocess_bb_outages(network_data_test_grid)
     static_information = convert_to_jax(
         network_data,
         preprocess_bb_outages=True,
@@ -526,49 +628,47 @@ def test_compare_loadflows_non_rel_bb_outage_powsybl(
 
     for lfs_index, busbar_id in enumerate(sorted_busbars_to_be_outaged):
         station = busbar_to_station[busbar_id]
+        outage_data = extract_busbar_outage_data(station, busbar_id, network_data, {}, branch_action_combi_index=None)
         copy_net = copy.deepcopy(net)
         bb_index = get_busbar_index(station, busbar_id)
         bb = station.busbars[bb_index]
         if bb.grid_model_id not in sorted_busbars_to_be_outaged:
             continue
-            bb_index = get_busbar_index(station, bb.grid_model_id)
-            connected_assets = station.get_connected_assets(bb_index)
-            connected_branch_assets = station.get_connected_assets(bb_index, asset_scope="branch")
-            connected_asset_ids = [asset.grid_model_id for asset in connected_assets]
-            connected_branch_indices = [
-                network_data.branch_ids.index(asset.grid_model_id) for asset in connected_branch_assets
-            ]
-            copy_net.remove_elements(connected_asset_ids)
-            config = pp.loadflow.Parameters(
-                distributed_slack=False,
-            )
-            pp.loadflow.run_dc(copy_net, parameters=config)
+        bb_index = get_busbar_index(station, bb.grid_model_id)
+        connected_assets = station.get_connected_assets(bb_index)
+        connected_branch_assets = station.get_connected_assets(bb_index, asset_scope="branch")
+        connected_asset_ids = [asset.grid_model_id for asset in connected_assets]
+        connected_branch_indices = [network_data.branch_ids.index(asset.grid_model_id) for asset in connected_branch_assets]
+        copy_net.remove_elements(connected_asset_ids)
+        pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
 
-            # Get the stub branches connected to this busbar
-            stub_branch_indices = []
-            for asset in connected_branch_assets:
-                br_index = network_data.branch_ids.index(asset.grid_model_id)
-                if network_data.bridging_branch_mask[br_index]:
-                    stub_branch_indices.append(br_index)
+        # Get the stub branches connected to this busbar
+        stub_branch_indices = []
+        for asset in connected_branch_assets:
+            br_index = network_data.branch_ids.index(asset.grid_model_id)
+            if network_data.bridging_branch_mask[br_index]:
+                stub_branch_indices.append(br_index)
+        zero_flow_branch_indices = set(outage_data.zero_flow_branch_indices)
 
-            # All the loadflows should match except the stub branch and the disconnected branches where the load flow should be zero.
-            # The stub branch lf will not match
-            for index, branch_model_id in enumerate(network_data.branch_ids):
-                # If index in connected_branch, then the load flow should be zero
+        # All the loadflows should match except the stub branch and the disconnected branches where the load flow should be zero.
+        # The stub branch lf will not match
+        for index, branch_model_id in enumerate(network_data.branch_ids):
+            # If index in connected_branch, then the load flow should be zero
 
-                if index in stub_branch_indices:
-                    assert branch_model_id not in copy_net.get_lines()["p2"]
-                elif index in connected_branch_indices:
-                    assert jnp.isclose(lfs_non_rel[lfs_index][0][index], 0.0)
-                else:
-                    lf_match = jnp.isclose(copy_net.get_lines()["p2"][branch_model_id], lfs_non_rel[lfs_index][0][index])
-                    assert lf_match, f"Load flow mismatch for branch {branch_model_id}"
+            if index in stub_branch_indices:
+                assert branch_model_id not in copy_net.get_lines()["p2"]
+            elif index in zero_flow_branch_indices:
+                assert jnp.isclose(lfs_non_rel[lfs_index][0][index], 0.0)
+            elif index in connected_branch_indices:
+                assert jnp.isclose(lfs_non_rel[lfs_index][0][index], 0.0)
+            else:
+                lf_match = jnp.isclose(copy_net.get_lines()["p2"][branch_model_id], lfs_non_rel[lfs_index][0][index])
+                assert lf_match, f"Load flow mismatch for branch {branch_model_id}"
 
 
 def test_compare_loadflows_rel_bb_outage(
     test_grid_folder_path: Path,
     network_data_test_grid: NetworkData,
-    outage_map_test_grid: dict[str, list[str]],
     jax_inputs_test_grid: tuple[ActionIndexComputations, StaticInformation],
 ):
     net = pp.network.load(test_grid_folder_path / "grid.xiidm")
@@ -580,7 +680,11 @@ def test_compare_loadflows_rel_bb_outage(
 
     # These indices are neccessarily sorted in the order of rel_subs
     updated_topo_indices = jax.jit(pad_action_with_unsplit_action_indices)(di.action_set, topo_indices.action)
-    rel_bb_outage_map, _ = get_rel_non_rel_sub_bb_maps(network_data_test_grid, outage_map_test_grid)
+
+    assert network_data_test_grid.busbar_outage_map is not None
+
+    rel_bb_outage_map, _ = get_rel_non_rel_sub_bb_maps(network_data_test_grid, network_data_test_grid.busbar_outage_map)
+    assert rel_bb_outage_map
 
     branch_actions = di.action_set.branch_actions[updated_topo_indices]
     affected_sub_ids = di.action_set.substation_correspondence[updated_topo_indices]
@@ -623,10 +727,7 @@ def test_compare_loadflows_rel_bb_outage(
                 network_data_test_grid.branch_ids.index(asset.grid_model_id) for asset in connected_branch_assets
             ]
             copy_net.remove_elements(connected_asset_ids)
-            config = pp.loadflow.Parameters(
-                distributed_slack=False,
-            )
-            pp.loadflow.run_dc(copy_net, parameters=config)
+            pp.loadflow.run_dc(copy_net, parameters=SINGLE_SLACK)
 
             # Get the stub branches connected to this busbar
             stub_branch_indices = []
@@ -664,6 +765,8 @@ def create_dummy_rel_bb_outage_data(
     n_br_combis: int, n_max_bb_to_outage_per_sub: int, max_branches_per_sub: int, n_timesteps: int, seed: int
 ) -> RelBBOutageData:
     """Creates a dummy RelBBOutageData object with the given dimensions filled with random data"""
+    valid_busbar_mask = jax.random.bernoulli(jax.random.PRNGKey(seed + 4), 0.5, (n_br_combis, n_max_bb_to_outage_per_sub))
+    valid_busbar_mask = valid_busbar_mask.at[:, 0].set(True)
     return RelBBOutageData(
         branch_outage_set=jax.random.randint(
             jax.random.PRNGKey(seed),
@@ -681,6 +784,15 @@ def create_dummy_rel_bb_outage_data(
         articulation_node_mask=jax.random.bernoulli(
             jax.random.PRNGKey(seed + 3), 0.5, (n_br_combis, n_max_bb_to_outage_per_sub)
         ),
+        valid_busbar_mask=valid_busbar_mask,
+        valid_busbar_flat_indices=jnp.flatnonzero(valid_busbar_mask[0]),
+        zero_flow_branch_set=jax.random.randint(
+            jax.random.PRNGKey(seed + 5),
+            (n_br_combis, n_max_bb_to_outage_per_sub, 2),
+            0,
+            100,
+            dtype=jnp.int64,
+        ),
     )
 
 
@@ -693,7 +805,7 @@ def test_remove_critical_busbars_from_outage():
         seed=42,
     )
     branch_action_indices = jnp.array([3, 7, 8, 10])
-    branch_outages, nodal_indices, deltap_outages = remove_articulation_nodes_from_bb_outage(
+    branch_outages, nodal_indices, deltap_outages, zero_flow_branch_outages = remove_articulation_nodes_from_bb_outage(
         rel_outage_data, branch_action_indices
     )
     assert rel_outage_data.branch_outage_set[branch_action_indices].shape == branch_outages.shape, (
@@ -717,6 +829,15 @@ def test_remove_critical_busbars_from_outage():
             rel_outage_data.articulation_node_mask[branch_action_indices],
         )
     ), "Nodal indices are incorrect"
+    assert rel_outage_data.zero_flow_branch_set[branch_action_indices].shape == zero_flow_branch_outages.shape, (
+        "Shape of zero_flow_branch_outages is incorrect"
+    )
+    assert jnp.all(
+        jnp.isclose(
+            ~jnp.all(rel_outage_data.zero_flow_branch_set[branch_action_indices] == zero_flow_branch_outages, axis=2),
+            rel_outage_data.articulation_node_mask[branch_action_indices],
+        )
+    ), "Zero-flow branch data is incorrect"
 
 
 def test_perform_rel_bb_outage_for_unsplit_grid(
@@ -1012,7 +1133,7 @@ def perform_rel_bb_outage_single_topo_unjaxed(
         "Mismatch in branch action set and branch outage set."
     )
 
-    branch_outages, nodal_indices_outages, deltap_outages = remove_articulation_nodes_from_bb_outage(
+    branch_outages, nodal_indices_outages, deltap_outages, _ = remove_articulation_nodes_from_bb_outage(
         action_set.rel_bb_outage_data, action_indices
     )
     # Note: branch_indices with value -1 or int_max are automatically ignored in the  build_modf_matrix  function

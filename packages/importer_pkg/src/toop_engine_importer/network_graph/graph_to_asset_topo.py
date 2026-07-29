@@ -14,7 +14,6 @@ import pandera.typing as pat
 import structlog
 from beartype.typing import Literal, Optional, Union
 from jaxtyping import Bool
-from numpy.typing import ArrayLike
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
     BusbarConnectionInfo,
@@ -50,14 +49,21 @@ def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd
     """
     busbar_df = nodes_df[(nodes_df["substation_id"] == substation_id) & (nodes_df["node_type"] == "busbar")].copy()
 
+    if "bus_breaker_bus_id" not in busbar_df.columns:
+        busbar_df["bus_breaker_bus_id"] = None
+
     busbar_df = (
         busbar_df.sort_values(by="grid_model_id")
         .reset_index()
         .rename(columns={"foreign_id": "name", "node_type": "busbar_type", "bus_id": "bus_branch_bus_id"})
     )
     busbar_df["int_id"] = busbar_df.index
+    if "bus_branch_bus_id" not in busbar_df.columns:
+        busbar_df["bus_branch_bus_id"] = None
 
-    busbar_df = busbar_df[["grid_model_id", "busbar_type", "name", "int_id", "in_service", "bus_branch_bus_id"]]
+    busbar_df = busbar_df[
+        ["grid_model_id", "busbar_type", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]
+    ]
 
     return busbar_df
 
@@ -779,9 +785,9 @@ def get_station_asset_connectivity_table(
 
 
 def remove_double_connections(
-    switching_table: Bool[ArrayLike, " n_bus n_asset"],
+    switching_table: Bool[np.ndarray, " n_bus n_asset"],
     substation_id: Optional[str] = None,
-) -> Bool[ArrayLike, " n_bus n_asset"]:
+) -> Bool[np.ndarray, " n_bus n_asset"]:
     """Remove double connections from the switching table.
 
     An Asset can be connected to multiple busbars.

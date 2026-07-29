@@ -34,6 +34,14 @@ class Busbar(BaseModel):
     in_service: bool = True
     """ Whether the busbar is in service. If False, it will be ignored in the switching table"""
 
+    bus_breaker_bus_id: Optional[str] = None
+    """Physical bus-breaker bus id backing this busbar section.
+
+    This identifies the bus in the source bus-breaker topology that the physical
+    busbar section belongs to. Unlike ``bus_branch_bus_id`` this is not meant to
+    reflect runtime regrouping after switching operations.
+    """
+
     bus_branch_bus_id: Optional[str] = None
     """Runtime-only electrical bus id for this physical busbar.
 

@@ -104,12 +104,11 @@ def get_islanding_contingency_ids(net: Network, nminus1_definition: Nminus1Defin
         branch = branches.loc[element.id]
         if not bool(branch["connected1"] or branch["connected2"]):
             continue
-
-        contingency_net = deepcopy(net)
-        contingency_net.update_branches(id=element.id, connected1=False, connected2=False)
-        if count_connected_components(contingency_net) > base_connected_components:
+        was_connected = net.disconnect(element.id)
+        if count_connected_components(net) > base_connected_components:
             islanding_contingency_ids.add(contingency.id)
-
+        if was_connected:
+            net.connect(element.id)
     return islanding_contingency_ids
 
 
@@ -136,7 +135,7 @@ def apply_topology(net: Network, actions: list[int], action_set: ActionSet) -> A
         return None
 
     stations = [action_set.local_actions[action] for action in actions]
-    relevant_voltage_level_id = _get_station_voltage_level_id(stations[0])
+    relevant_voltage_level_id = stations[0].voltage_level_id if stations else None
 
     if is_node_breaker_grid(net, relevant_voltage_level_id):
         additional_info = apply_node_breaker_stations(net, stations)

@@ -908,22 +908,19 @@ def main() -> None:
                 _bench_jitted(
                     "mutate_nodal_injections",
                     mutate_nodal_injections_jit,
-                    genotypes.nodal_injections_optimized,
+                    genotypes.pst_tap_results,
                     jax.random.PRNGKey(134),
                     runs=args.runs,
                 ),
                 _bench_jitted(
                     "mutate_psts",
                     mutate_psts_jit,
-                    genotypes.nodal_injections_optimized.pst_tap_idx[0, 0],
+                    genotypes.pst_tap_results.pst_tap_idx[0, 0],
                     jax.random.PRNGKey(135),
                     runs=args.runs,
                 ),
             ]
-            if (
-                mutation_config.nodal_injection_mutation_config is not None
-                and genotypes.nodal_injections_optimized is not None
-            )
+            if (mutation_config.nodal_injection_mutation_config is not None and genotypes.pst_tap_results is not None)
             else []
         ),
         _bench_jitted(

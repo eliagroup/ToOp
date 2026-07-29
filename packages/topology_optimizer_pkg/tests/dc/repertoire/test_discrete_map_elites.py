@@ -11,19 +11,15 @@ import jax
 import jax.numpy as jnp
 import pypowsybl
 import pytest
-from fsspec.implementations.dirfs import DirFileSystem
 from jax_dataclasses import replace
 from pypowsybl.network import Network
 from qdax.utils.metrics import default_ga_metrics
-from toop_engine_dc_solver.example_grids import three_node_pst_example_folder_powsybl
 from toop_engine_dc_solver.jax.aggregate_results import get_overload_energy_n_1_matrix
 from toop_engine_dc_solver.jax.compute_batch import compute_symmetric_batch
 from toop_engine_dc_solver.jax.inputs import load_static_information, validate_static_information
 from toop_engine_dc_solver.jax.topology_computations import default_topology
 from toop_engine_dc_solver.jax.types import NodalInjOptimResults, NodalInjStartOptions, StaticInformation
-from toop_engine_dc_solver.preprocess.convert_to_jax import load_grid
 from toop_engine_dc_solver.preprocess.network_data import NetworkData
-from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 from toop_engine_topology_optimizer.dc.ga_helpers import TrackingMixingEmitter
 from toop_engine_topology_optimizer.dc.genetic_functions.crossover import (
@@ -127,20 +123,6 @@ def test_discrete_mapelites(static_information_file: str, cell_depth: int) -> No
     )
 
     assert repertoire.fitnesses.shape == (20 * cell_depth,)
-
-
-# TODO: Move fixture to conftest
-@pytest.fixture
-def create_3_node_pst_example_grid(
-    tmp_path_factory,
-) -> tuple[StaticInformationStats, StaticInformation, NetworkData, Network]:
-    tmp_path = tmp_path_factory.mktemp("three_node_pst_example_grid")
-
-    three_node_pst_example_folder_powsybl(tmp_path)
-    filesystem_dir = DirFileSystem(str(tmp_path))
-    stats, static_information, network_data = load_grid(filesystem_dir, pandapower=False)
-    net = pypowsybl.network.load(tmp_path / PREPROCESSING_PATHS["grid_file_path_powsybl"])
-    return stats, static_information, network_data, net
 
 
 # TODO: Fix tap to reduce overload

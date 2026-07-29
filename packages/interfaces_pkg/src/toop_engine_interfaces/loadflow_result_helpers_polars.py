@@ -303,7 +303,10 @@ def extract_branch_results_polars(
     n_contingencies = len(contingencies)
     if (n_monitored_branches == 0) or (n_contingencies == 0 and basecase is None):
         # If there are no monitored branches, return empty arrays
-        return np.full(n_monitored_branches, dtype=float), np.full((n_contingencies, n_monitored_branches), dtype=float)
+        return (
+            np.full((n_monitored_branches,), np.nan, dtype=float),
+            np.full((n_contingencies, n_monitored_branches), np.nan, dtype=float),
+        )
     # Get the branch results for the given job_id and timestep
     three_winding_side_dict = {
         "trafo3w_hv": BranchSide.ONE.value,

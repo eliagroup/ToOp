@@ -60,6 +60,7 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     assert_network_data,
     extract_network_data_from_interface,
+    get_runtime_station_lookup_ids,
     map_runtime_stations_by_node_id,
 )
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import get_busbar_map_adjacent_branches, preprocess_bb_outages
@@ -72,7 +73,7 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     prepare_for_separation_set,
 )
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
+from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import PreprocessParameters, ReassignmentLimits
 from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
@@ -81,6 +82,15 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 )
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_station_node_id_aliases(
+    station: MaterializedStation,
+    *,
+    node_ids: list[str] | None = None,
+) -> set[str]:
+    """Collect lookup ids that may reference the same runtime station."""
+    return {str(lookup_id) for lookup_id in get_runtime_station_lookup_ids(station, node_ids=node_ids)}
 
 
 def _get_runtime_asset_ids_per_bus_id(station: MaterializedStation) -> dict[str, set[str]]:
@@ -220,10 +230,74 @@ def _get_materially_split_station_bus_ids(station: MaterializedStation, pst_bran
     return set().union(*effective_components)
 
 
+def _get_local_busbar_keep_indices(station: MaterializedStation, node_id: str | None) -> list[int]:
+    """Return busbar indices for the requested electrical node slice."""
+    if node_id is None or node_id not in station.bus_branch_bus_ids or len(station.bus_branch_bus_ids) <= 1:
+        return list(range(len(station.busbars)))
+
+    return [index for index, busbar in enumerate(station.busbars) if busbar.bus_branch_bus_id == node_id]
+
+
+def _select_locally_switched_asset_indices(
+    asset_connections: list[MaterializedAssetConnection],
+    allowed_asset_ids: set[str],
+    switching_rows: np.ndarray,
+) -> list[int]:
+    """Keep the first locally switched occurrence of each requested asset id."""
+    selected_indices: list[int] = []
+    seen_asset_ids: set[str] = set()
+
+    for index, connection in enumerate(asset_connections):
+        asset_id = connection.asset.grid_model_id
+        if asset_id not in allowed_asset_ids or asset_id in seen_asset_ids:
+            continue
+        if not np.any(switching_rows[:, index]):
+            continue
+        selected_indices.append(index)
+        seen_asset_ids.add(asset_id)
+
+    return selected_indices
+
+
+def _filter_asset_bay_to_kept_busbars(
+    asset_connection: MaterializedAssetConnection,
+    kept_busbar_grid_model_ids: set[str],
+) -> MaterializedAssetConnection:
+    """Drop asset-bay SR references to busbars that were removed from the slice."""
+    if asset_connection.asset_bay is None:
+        return asset_connection
+
+    return asset_connection.model_copy(
+        update={
+            "asset_bay": asset_connection.asset_bay.model_copy(
+                update={
+                    "sr_switch_grid_model_id": {
+                        busbar_id: switch_id
+                        for busbar_id, switch_id in asset_connection.asset_bay.sr_switch_grid_model_id.items()
+                        if busbar_id in kept_busbar_grid_model_ids
+                    }
+                }
+            )
+        }
+    )
+
+
+def _slice_optional_matrix(
+    matrix: np.ndarray | None,
+    row_indices: list[int],
+    column_indices: list[int],
+) -> np.ndarray | None:
+    """Slice an optional switching/connectivity matrix if present."""
+    if matrix is None:
+        return None
+    return matrix[np.ix_(row_indices, column_indices)]
+
+
 def _project_station_to_local_assets(
     station: MaterializedStation,
     branch_ids: list[str],
     injection_ids: list[str],
+    node_id: str | None = None,
 ) -> MaterializedStation:
     """Restrict a runtime station to the assets represented by one relevant node slice.
 
@@ -235,41 +309,75 @@ def _project_station_to_local_assets(
         Branch ids present in the relevant-node slice.
     injection_ids : list[str]
         Injection ids present in the relevant-node slice.
+    node_id : str | None, optional
+        Runtime electrical bus id of the relevant-node slice. When it matches one
+        of multiple bus groups inside the runtime station, only that active bus
+        group is kept.
 
     Returns
     -------
     MaterializedStation
         Runtime station with switching-table columns restricted to the requested assets.
     """
-    branch_id_set = set(branch_ids)
-    injection_id_set = set(injection_ids)
-    branch_keep_indices = [
-        index
-        for index, connection in enumerate(station.branch_connections)
-        if connection.asset.grid_model_id in branch_id_set
-    ]
-    injection_keep_indices = [
-        index
-        for index, connection in enumerate(station.injection_connections)
-        if connection.asset.grid_model_id in injection_id_set
-    ]
+    busbar_keep_indices = _get_local_busbar_keep_indices(station, node_id)
+    kept_busbars = [station.busbars[index] for index in busbar_keep_indices]
+    kept_busbar_int_ids = {busbar.int_id for busbar in kept_busbars}
+    kept_busbar_grid_model_ids = {busbar.grid_model_id for busbar in kept_busbars}
+
+    branch_switching_rows = station.branch_switching_table[busbar_keep_indices, :]
+    injection_switching_rows = station.injection_switching_table[busbar_keep_indices, :]
+    branch_keep_indices = _select_locally_switched_asset_indices(
+        asset_connections=station.branch_connections,
+        allowed_asset_ids=set(branch_ids),
+        switching_rows=branch_switching_rows,
+    )
+    injection_keep_indices = _select_locally_switched_asset_indices(
+        asset_connections=station.injection_connections,
+        allowed_asset_ids=set(injection_ids),
+        switching_rows=injection_switching_rows,
+    )
 
     return station.model_copy(
         update={
-            "branch_connections": [station.branch_connections[index] for index in branch_keep_indices],
-            "injection_connections": [station.injection_connections[index] for index in injection_keep_indices],
-            "branch_switching_table": station.branch_switching_table[:, branch_keep_indices],
-            "injection_switching_table": station.injection_switching_table[:, injection_keep_indices],
-            "branch_connectivity": (
-                station.branch_connectivity[:, branch_keep_indices] if station.branch_connectivity is not None else None
+            "busbars": kept_busbars,
+            "couplers": [
+                coupler
+                for coupler in station.couplers
+                if coupler.busbar_from_id in kept_busbar_int_ids and coupler.busbar_to_id in kept_busbar_int_ids
+            ],
+            "branch_connections": [
+                _filter_asset_bay_to_kept_busbars(station.branch_connections[index], kept_busbar_grid_model_ids)
+                for index in branch_keep_indices
+            ],
+            "injection_connections": [
+                _filter_asset_bay_to_kept_busbars(station.injection_connections[index], kept_busbar_grid_model_ids)
+                for index in injection_keep_indices
+            ],
+            "branch_switching_table": station.branch_switching_table[np.ix_(busbar_keep_indices, branch_keep_indices)],
+            "injection_switching_table": station.injection_switching_table[
+                np.ix_(busbar_keep_indices, injection_keep_indices)
+            ],
+            "branch_connectivity": _slice_optional_matrix(
+                station.branch_connectivity,
+                busbar_keep_indices,
+                branch_keep_indices,
             ),
-            "injection_connectivity": (
-                station.injection_connectivity[:, injection_keep_indices]
-                if station.injection_connectivity is not None
-                else None
+            "injection_connectivity": _slice_optional_matrix(
+                station.injection_connectivity,
+                busbar_keep_indices,
+                injection_keep_indices,
             ),
         }
     )
+
+
+def disable_busbar_outage_contingencies(network_data: NetworkData) -> NetworkData:
+    """Clear busbar-outage configuration from network data.
+
+    The importer may provide a busbar outage map unconditionally, but when preprocessing-side
+    busbar outages are disabled we must not reconstruct bus contingencies from it later on.
+    """
+    return replace(network_data, busbar_outage_map=None)
 
 
 def compute_ptdf_if_not_given(network_data: NetworkData) -> NetworkData:
@@ -427,6 +535,42 @@ def filter_relevant_split_asset_stations(network_data: NetworkData) -> NetworkDa
     keep_mask = ~np.isin(relevant_node_ids, np.array(sorted(split_station_bus_ids), dtype=object))
     for node_id in relevant_node_ids[~keep_mask]:
         logger.warning(f"Removed relevant node {node_id}, since its runtime asset topology station is split")
+
+    return remove_relevant_subs(network_data, keep_mask=keep_mask)
+
+
+def _switching_table_has_double_connections(switching_table: np.ndarray) -> bool:
+    """Return whether a switching table contains assets connected to multiple busbars."""
+    return bool(switching_table.size > 0 and np.any(np.sum(switching_table, axis=0) > 1))
+
+
+def filter_relevant_nodes_no_double_connections(network_data: NetworkData) -> NetworkData:
+    """Filter relevant nodes whose asset-topology station contains double connections.
+
+    Parameters
+    ----------
+    network_data : NetworkData
+        The network data to filter.
+
+    Returns
+    -------
+    NetworkData
+        The network data with relevant nodes removed when their station has double connections.
+    """
+    assert network_data.asset_topology is not None, "Asset topology has to be passed in"
+    relevant_node_ids = np.array(network_data.node_ids)[np.flatnonzero(network_data.relevant_node_mask)]
+    station_ids_without_double_connections = np.array(
+        [
+            lookup_id
+            for station in network_data.asset_topology.stations
+            if not _switching_table_has_double_connections(station.asset_switching_table)
+            for lookup_id in get_runtime_station_lookup_ids(station)
+        ]
+    )
+    keep_mask = np.isin(relevant_node_ids, station_ids_without_double_connections)
+
+    for node_id in relevant_node_ids[~keep_mask]:
+        logger.warning(f"Removed relevant node {node_id}, since its asset topology station has double connections")
 
     return remove_relevant_subs(network_data, keep_mask=keep_mask)
 
@@ -787,8 +931,25 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
     relevant_phase_shift_taps = list(
         [taps for taps, keep in zip(network_data.phase_shift_taps, kept_pst_branches, strict=True) if keep]
     )
+    relevant_phase_shift_susceptance_taps = list(
+        [
+            susceptance_taps
+            for susceptance_taps, keep in zip(network_data.phase_shift_susceptance_taps, kept_pst_branches, strict=True)
+            if keep
+        ]
+    )
     relevant_phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[kept_pst_branches]
     relevant_phase_shift_low_tap = network_data.phase_shift_low_tap[kept_pst_branches]
+    relevant_parallel_pst_group_mask = None
+    relevant_parallel_pst_group_ids = None
+    if network_data.parallel_pst_group_mask is not None:
+        relevant_parallel_pst_group_mask = network_data.parallel_pst_group_mask[:, kept_pst_branches]
+        kept_group_rows = np.any(relevant_parallel_pst_group_mask, axis=1)
+        relevant_parallel_pst_group_mask = relevant_parallel_pst_group_mask[kept_group_rows]
+        if network_data.parallel_pst_group_ids is not None:
+            relevant_parallel_pst_group_ids = [
+                group_id for group_id, keep in zip(network_data.parallel_pst_group_ids, kept_group_rows, strict=True) if keep
+            ]
     # PST branches carry a node injection as well, so we need to adjust the injection indices
     pst_node_indices = np.flatnonzero(network_data.controllable_pst_node_mask)
     # Assert that the number of PST branches and nodes is the same
@@ -820,8 +981,11 @@ def reduce_branch_dimension(network_data: NetworkData) -> NetworkData:
         phase_shift_mask=network_data.phase_shift_mask[relevant_branches],
         controllable_phase_shift_mask=network_data.controllable_phase_shift_mask[relevant_branches],
         phase_shift_taps=relevant_phase_shift_taps,
+        phase_shift_susceptance_taps=relevant_phase_shift_susceptance_taps,
         phase_shift_starting_tap_idx=relevant_phase_shift_starting_tap_idx,
         phase_shift_low_tap=relevant_phase_shift_low_tap,
+        parallel_pst_group_mask=relevant_parallel_pst_group_mask,
+        parallel_pst_group_ids=relevant_parallel_pst_group_ids,
         controllable_pst_node_mask=kept_controllable_pst_node_mask,
         monitored_branch_mask=network_data.monitored_branch_mask[relevant_branches],
         disconnectable_branch_mask=network_data.disconnectable_branch_mask[relevant_branches],
@@ -876,6 +1040,17 @@ def exclude_bridges_from_outage_masks(network_data: NetworkData) -> NetworkData:
         The network data with the briding branches removed from n-1 and disconnection-masks
     """
     assert network_data.bridging_branch_mask is not None, "Please compute bridges first!"
+    excluded_outaged_branch_ids = np.array(network_data.branch_ids)[
+        network_data.outaged_branch_mask & network_data.bridging_branch_mask
+    ].tolist()
+    if excluded_outaged_branch_ids:
+        logger.info(
+            "Excluded branches from mask",
+            mask_name="outaged_branch_mask",
+            reason="bridging_branch",
+            n_excluded=len(excluded_outaged_branch_ids),
+            excluded_branch_ids=excluded_outaged_branch_ids,
+        )
     return replace(
         network_data,
         outaged_branch_mask=network_data.outaged_branch_mask & ~network_data.bridging_branch_mask,
@@ -1394,6 +1569,15 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
         network_data.to_nodes,
         network_data.slack,
     )
+    if network_data.busbar_outage_map is not None:
+        busbar_outage_station_ids = set(network_data.busbar_outage_map.keys())
+        if network_data.asset_topology is not None:
+            for station in network_data.asset_topology.stations:
+                station_aliases = _get_station_node_id_aliases(station, node_ids=network_data.node_ids)
+                if station_aliases & busbar_outage_station_ids:
+                    busbar_outage_station_ids.update(station_aliases)
+        busbar_outage_station_mask = np.isin(network_data.node_ids, list(busbar_outage_station_ids))
+        significant_nodes |= busbar_outage_station_mask
     significant_node_ids = np.flatnonzero(significant_nodes)
     ptdf, nodal_injection = reduce_ptdf_and_nodal_injections(
         network_data.ptdf, network_data.nodal_injection, significant_nodes
@@ -1469,6 +1653,11 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
     runtime_stations = [runtime_stations_by_node_id[station_id] for station_id in station_ids]
 
     stations = []
+    busbar_outage_map = (
+        {station_id: list(busbar_ids) for station_id, busbar_ids in network_data.busbar_outage_map.items()}
+        if network_data.busbar_outage_map is not None
+        else None
+    )
     keep_mask = []
     for _node_index, branches_at_sub, inj_at_sub, station in zip(
         network_data.relevant_nodes,
@@ -1477,30 +1666,39 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
         runtime_stations,
         strict=True,
     ):
+        node_id = network_data.node_ids[_node_index]
         branch_ids_local = [network_data.branch_ids[i] for i in branches_at_sub]
         injection_ids_local = [network_data.injection_ids[i] for i in inj_at_sub]
         has_controllable_pst = bool(np.any(network_data.controllable_phase_shift_mask[branches_at_sub]))
-        station_for_simplification = _project_station_to_local_assets(
+        electrical_bus_station = _project_station_to_local_assets(
             station=station,
             branch_ids=branch_ids_local,
             injection_ids=injection_ids_local,
+            node_id=node_id,
         )
-
         try:
             simplified_station, _problems = prepare_for_separation_set(
-                station=station_for_simplification,
+                station=electrical_bus_station,
                 branch_ids=branch_ids_local,
                 injection_ids=injection_ids_local,
                 close_couplers=close_couplers,
             )
+            if busbar_outage_map is not None:
+                station_lookup_ids = _get_station_node_id_aliases(electrical_bus_station, node_ids=station_ids)
+                simplified_busbar_ids = {busbar.grid_model_id for busbar in simplified_station.busbars}
+                matching_station_ids = [station_id for station_id in busbar_outage_map if station_id in station_lookup_ids]
+                for station_id in matching_station_ids:
+                    busbar_outage_map[station_id] = [
+                        busbar_id for busbar_id in busbar_outage_map[station_id] if busbar_id in simplified_busbar_ids
+                    ]
 
             keep_mask.append(True)
         except ValueError as e:
             logger.warning(
-                f"Station {station.bus_group_id}/{station.name} could not be simplified "
+                f"Station {electrical_bus_station.bus_group_id}/{electrical_bus_station.name} could not be simplified "
                 f"because {e}, removing it from the relevant nodes."
             )
-            simplified_station = station_for_simplification
+            simplified_station = electrical_bus_station
             keep_mask.append(has_controllable_pst)
 
         stations.append(simplified_station)
@@ -1511,6 +1709,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
             stations=stations,
             circuit_groups=network_data.asset_topology.circuit_groups if network_data.asset_topology is not None else None,
         ),
+        busbar_outage_map=busbar_outage_map,
     )
     return remove_relevant_subs(network_data, np.array(keep_mask, dtype=bool))
 
@@ -1551,46 +1750,6 @@ def compute_separation_set_for_stations(
     )
 
 
-def exclude_nonlinear_psts_from_controllable(network_data: NetworkData) -> NetworkData:
-    """Exclude nonlinear phase shifters from the controllable phase shifter mask.
-
-    This is necessary because nonlinear phase shifters cannot be handled correctly in the backend
-    at this moment.
-
-    Parameters
-    ----------
-    network_data : NetworkData
-        The network data to exclude the nonlinear phase shifters from the controllable mask for
-
-    Returns
-    -------
-    NetworkData
-        The network data with the nonlinear phase shifters excluded from the controllable mask
-    """
-    if network_data.phase_shift_mask is None or network_data.controllable_phase_shift_mask is None:
-        return network_data
-    logger.info(
-        "Excluding nonlinear phase shifters from the controllable mask, "
-        "since they cannot be handled correctly in the backend."
-    )
-    pst_linearity = network_data.phase_shift_linearity
-    phase_shift_low_tap = network_data.phase_shift_low_tap[pst_linearity]
-    phase_shift_starting_tap_idx = network_data.phase_shift_starting_tap_idx[pst_linearity]
-    phase_shift_taps = [taps for taps, linear in zip(network_data.phase_shift_taps, pst_linearity, strict=True) if linear]
-
-    controllable_pst_indices = np.flatnonzero(network_data.controllable_phase_shift_mask)
-    controllable_phase_shift_mask = np.zeros_like(network_data.controllable_phase_shift_mask, dtype=bool)
-    controllable_phase_shift_mask[controllable_pst_indices[pst_linearity]] = True
-    return replace(
-        network_data,
-        controllable_phase_shift_mask=controllable_phase_shift_mask,
-        phase_shift_low_tap=phase_shift_low_tap,
-        phase_shift_starting_tap_idx=phase_shift_starting_tap_idx,
-        phase_shift_taps=phase_shift_taps,
-        phase_shift_linearity=np.ones_like(phase_shift_low_tap, dtype=bool),
-    )
-
-
 def preprocess(  # noqa: PLR0915
     interface: BackendInterface,
     logging_fn: Optional[Callable[[PreprocessStage, Optional[str]], None]] = None,
@@ -1623,9 +1782,6 @@ def preprocess(  # noqa: PLR0915
     logging_fn("extract_network_data_from_interface", None)
     network_data = extract_network_data_from_interface(interface)
 
-    logging_fn("exclude_nonlinear_psts_from_controllable", None)
-    network_data = exclude_nonlinear_psts_from_controllable(network_data)
-
     logging_fn("compute_bridging_branches", None)
     network_data = compute_bridging_branches(network_data)
 
@@ -1633,6 +1789,7 @@ def preprocess(  # noqa: PLR0915
     network_data = filter_relevant_nodes_branch_count(network_data)
     network_data = filter_relevant_nodes_no_asset_station(network_data)
     network_data = filter_relevant_split_asset_stations(network_data)
+    network_data = filter_relevant_nodes_no_double_connections(network_data)
 
     logging_fn("assert_network_data", None)
     assert_network_data(network_data)
@@ -1719,6 +1876,7 @@ def preprocess(  # noqa: PLR0915
         network_data = preprocess_bb_outages(network_data)
     else:
         logging_fn("preprocess_bb_outage", "BB-Outages disabled, skipping preprocessing step")
+        network_data = disable_busbar_outage_contingencies(network_data)
 
     logging_fn("preprocess_done", None)
     return network_data

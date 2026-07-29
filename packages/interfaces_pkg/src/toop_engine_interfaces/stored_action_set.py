@@ -66,6 +66,19 @@ class PSTRange(GridElement):
     high_tap: int
     """The highest tap the PST supports"""
 
+    pst_group: str | None = None
+    """The optimization group of the PST.
+
+    When omitted in serialized action sets, this defaults to the PST id for backward compatibility.
+    """
+
+    @model_validator(mode="after")
+    def _default_pst_group(self) -> "PSTRange":
+        """Default missing group ids to the PST id for backward compatibility."""
+        if self.pst_group is None:
+            self.pst_group = str(self.id)
+        return self
+
 
 class HVDCRange(GridElement):
     """High voltage direct current lines can be set within the scope of non-costly optimization.

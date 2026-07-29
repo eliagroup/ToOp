@@ -3,6 +3,25 @@
 A busbar outage is implemented by outaging the connected branches and injections corresponding to the busbar while ensuring that the grid remains unsplit. Busbar outage is accomplished in two steps:
 1. Preprocessing: Extract and calculate data needed for step 2. This data includes the branches and injections that will have to be outaged if a busbar is outaged.
 2. Perform Outage: Calculate loadflows due to the outage of the busbars. This involves outaging the connected branches and injections to the busbar being outaged.
+
+## Propagation of busbar outages
+
+Busbar outages do not stop at the initially selected physical busbar. Before any branch or injection is translated into a solver outage, the preprocessing first resolves the full outage area on the physical station topology.
+
+Starting from the selected physical busbar, the outage propagates over two kinds of station-local connections:
+1. Closed, in-service couplers that are allowed to propagate the outage.
+2. In-service assets that are connected to more than one physical busbar in the current switching table.
+
+The second rule is what propagates outages over double connections. If an in-service asset is connected to both busbar_0 and busbar_1, then outaging busbar_0 also pulls busbar_1 into the same outage area, because electrically the asset bridges both busbars.
+
+Not every coupler propagates the outage. Closed breakers are treated as blocking elements, so a busbar outage does not cross them just because they are closed. Disconnectors and other non-blocking closed couplers do propagate the outage.
+
+After the outage area has been determined, the implementation gathers all in-service assets connected to any busbar in that area, deduplicates them, and only then converts them into branch outages and nodal injection changes. This means propagation is decided on the physical station topology first, and only afterwards translated into solver-facing branch and injection outages.
+
+For relevant stations, this propagation is evaluated on the realized station topology produced by the current branch action. In other words, propagation is not computed once on the original station and then reused for all actions; it is recomputed on the topology that actually results from the selected split.
+
+On the current busbar-propagation branch, relevant nodes whose asset topology already contains double connections in asset_switching_table are filtered out during preprocessing. This avoids carrying ambiguous station topologies into the relevant-station action enumeration, while non-relevant busbar outages still support propagation over double-connected assets.
+
 ## 1. Preprocess
 
 In this step, we calculate the branches to be outaged as well as injections to be deducted for non-relevant and relevant busbar outages. We have different preprocessing routines for outaging busbars of relevant and non-relevant substations.
@@ -10,6 +29,8 @@ In this step, we calculate the branches to be outaged as well as injections to b
 ### Preprocess non-relevent busbar outage:
 
 We model the busbar-outage as a multi-outage problem of lines and injections. For each busbar, get all the branches and sum up the injections connected to it. If we outage this busbar, then all these branches will be outaged using MODF formulation, and the sum of injections (delta_p) will be subtracted from the nodal injection at the node.
+
+In the current implementation, this does not mean only the assets directly attached to the selected busbar. We first expand to the propagated outage area described above and then collect the assets connected anywhere inside that area.
 
 However, if there is a stub branch connected to the station we can't delete this branch. A stub branch is essentially a bridge branch, the outage of which would lead to splitting the grid into two. If the busbar has a stub branch, we don't delete this branch. Additionally, we sum up all the injections along the stub branch and subtract this along with injection directly connected to the busbar.
 
@@ -48,6 +69,8 @@ bb3 = ['l4']
 Now, when we outage 'bb1' of station 'X', we need to outage 'inj0' from the nodal_index of busbar_B. Likewise, if we outage 'bb0', we need to outage all lines from the set {'l0', 'l1', 'l3'} except the lines which serve as stub branches. Similarly, if we take another action 'a2', the branches that will be outaged, the injections that will have to be outaged, and the nodal_index of the physical busbar will change. The nodal_index of the physical busbar changes because the branch action determines whether a particular physical busbar must be mapped to the electrical busbar_A or busbar_B, in other words, the configuration of the busbar. Therefore, we need to calculate for each action in the action set, the branches to be outaged, delta_p, and the nodal_index of the busbar.
 
 Additionally, injection actions change the topology of the injections. However, at the moment, the feature to consider injection actions is not implemented yet in busbar_outage module.
+
+The same propagation rules apply here as well, but they are evaluated on the realized station topology for the chosen branch action. Therefore, the propagated outage area, the affected branches, and the resulting injection removal can all change from one branch action to another.
 
 ## 2. Perform Outage
 

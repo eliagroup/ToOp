@@ -363,7 +363,7 @@ def test_action_set_model_validator_rejects_non_grouped_local_actions():
             name=None,
             int_id=0,
             in_service=True,
-            bus_branch_bus_id=None,
+            bus_breaker_bus_id=None,
         )
     ]
     assets = [

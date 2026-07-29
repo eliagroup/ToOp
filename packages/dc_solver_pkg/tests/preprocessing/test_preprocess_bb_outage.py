@@ -13,6 +13,7 @@ from toop_engine_dc_solver.preprocess.network_data import NetworkData
 from toop_engine_dc_solver.preprocess.preprocess import compute_separation_set_for_stations
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     _get_busbar_outage_node_index,
+    _normalize_station_busbar_map_keys,
     extract_busbar_outage_data,
     extract_outage_index_injection_from_asset,
     get_all_rel_bb_outage_data,
@@ -28,6 +29,7 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
     update_network_data_with_non_rel_bb_outages,
 )
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
+from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
 from toop_engine_interfaces.asset_topology.assets import (
     BranchAsset,
     Busbar,
@@ -853,10 +855,18 @@ def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: 
         network_data_preprocessed, outage_station_busbars_map=outage_station_busbars_map
     )
     updated_net_data = update_network_data_with_non_rel_bb_outages(network_data_preprocessed, non_rel_bb_map)
+    assert updated_net_data.simplified_asset_topology is not None
+    simplified_stations = updated_net_data.simplified_asset_topology.stations
+    normalized_non_rel_bb_map = _normalize_station_busbar_map_keys(simplified_stations, non_rel_bb_map)
+    expected_outage_count = sum(
+        len(busbar_ids)
+        for station_id, busbar_ids in normalized_non_rel_bb_map.items()
+        if any(station.bus_group_id == station_id for station in simplified_stations)
+    )
 
     # Test case 1: Check if the function returns the correct number of multi-branch outages
-    assert len(updated_net_data.non_rel_bb_outage_br_indices) == len(non_rel_bb_map), (
-        f"Expected {len(non_rel_bb_map)} multi-branch outages, but got {len(non_rel_bb_map.non_rel_bb_outage_br_indices)}"
+    assert len(updated_net_data.non_rel_bb_outage_br_indices) == expected_outage_count, (
+        f"Expected {expected_outage_count} multi-branch outages, but got {len(updated_net_data.non_rel_bb_outage_br_indices)}"
     )
 
     # Test case 2: Check if the function returns the node_index for each of multi-injection outages
@@ -865,13 +875,12 @@ def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: 
     )
 
     # Test case 3: Check if the branches to be outaged are valid and connected to the busbar
-    for branch_outages, station_id in zip(updated_net_data.non_rel_bb_outage_br_indices, non_rel_bb_map):
-        assert updated_net_data.asset_topology is not None
-        for station in updated_net_data.asset_topology.stations:
-            if station.bus_group_id == station_id:
-                break
-
-        for busbar_id in non_rel_bb_map[station_id]:
+    branch_outages_iter = iter(updated_net_data.non_rel_bb_outage_br_indices)
+    for station in simplified_stations:
+        if station.bus_group_id not in normalized_non_rel_bb_map:
+            continue
+        for busbar_id in normalized_non_rel_bb_map[station.bus_group_id]:
+            branch_outages = next(branch_outages_iter)
             busbar_index = get_busbar_index(station, busbar_id)
             for branch_index in branch_outages:
                 branch_id = updated_net_data.branch_ids[branch_index]
@@ -883,6 +892,86 @@ def test_update_network_data_with_non_rel_bb_outages(network_data_preprocessed: 
                 assert _combined_asset_switching_table(station)[busbar_index, asset_index], (
                     f"Branch {branch_id} is not connected to busbar {busbar_id}"
                 )
+
+
+def test_update_network_data_with_non_rel_bb_outages_uses_simplified_station_assets() -> None:
+    physical_station = build_materialized_station(
+        grid_model_id="node_0",
+        busbars=[Busbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0")],
+        couplers=[],
+        branch_assets=[
+            BranchAsset(grid_model_id="branch_kept", in_service=True, asset_type="line"),
+            BranchAsset(grid_model_id="branch_foreign", in_service=True, asset_type="line"),
+        ],
+        injection_assets=[],
+        branch_switching_table=np.array([[True, True]], dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    simplified_station = build_materialized_station(
+        grid_model_id="node_0",
+        busbars=[Busbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0")],
+        couplers=[],
+        branch_assets=[BranchAsset(grid_model_id="branch_kept", in_service=True, asset_type="line")],
+        injection_assets=[],
+        branch_switching_table=np.array([[True]], dtype=bool),
+        injection_switching_table=np.zeros((1, 0), dtype=bool),
+    )
+    network_data = NetworkData(
+        ptdf=np.zeros((1, 1), dtype=float),
+        psdf=np.zeros((1, 0), dtype=float),
+        slack=0,
+        relevant_node_mask=np.array([False], dtype=bool),
+        ac_dc_mismatch=np.zeros((1, 1), dtype=float),
+        max_mw_flows=np.zeros((1, 1), dtype=float),
+        max_mw_flows_n_1=np.zeros((1, 1), dtype=float),
+        overload_weights=np.zeros((1,), dtype=float),
+        n0_n1_max_diff_factors=np.zeros((1,), dtype=float),
+        cross_coupler_limits=np.zeros((0,), dtype=float),
+        susceptances=np.zeros((1,), dtype=float),
+        from_nodes=np.array([0], dtype=int),
+        to_nodes=np.array([0], dtype=int),
+        shift_angles=np.zeros((1, 1), dtype=float),
+        phase_shift_mask=np.array([False], dtype=bool),
+        controllable_phase_shift_mask=np.array([False], dtype=bool),
+        phase_shift_taps=[],
+        phase_shift_susceptance_taps=[],
+        phase_shift_linearity=np.zeros((0,), dtype=bool),
+        phase_shift_starting_tap_idx=np.zeros((0,), dtype=int),
+        phase_shift_low_tap=np.zeros((0,), dtype=int),
+        monitored_branch_mask=np.array([False], dtype=bool),
+        disconnectable_branch_mask=np.array([True], dtype=bool),
+        outaged_branch_mask=np.array([False], dtype=bool),
+        outaged_injection_mask=np.zeros((0,), dtype=bool),
+        multi_outage_branch_mask=np.zeros((0, 1), dtype=bool),
+        multi_outage_node_mask=np.zeros((0, 1), dtype=bool),
+        injection_nodes=np.zeros((0,), dtype=int),
+        mw_injections=np.zeros((1, 0), dtype=float),
+        base_mva=1.0,
+        node_ids=["node_0"],
+        branch_ids=["branch_kept"],
+        injection_ids=[],
+        multi_outage_ids=[],
+        node_names=["node_0"],
+        branch_names=["branch_kept"],
+        injection_names=[],
+        multi_outage_names=[],
+        branch_types=["line"],
+        node_types=["BUS"],
+        injection_types=[],
+        multi_outage_types=[],
+        metadata={},
+        bridging_branch_mask=np.array([False], dtype=bool),
+        nodal_injection=np.zeros((1, 1), dtype=float),
+        asset_topology=RuntimeAssetTopology(stations=[physical_station]),
+        simplified_asset_topology=RuntimeAssetTopology(stations=[simplified_station]),
+    )
+
+    updated_network_data = update_network_data_with_non_rel_bb_outages(
+        network_data,
+        {"node_0": ["busbar_0"]},
+    )
+
+    assert updated_network_data.non_rel_bb_outage_br_indices == [[0]]
 
 
 def test_get_branch_injection_outages_for_rel_subs(

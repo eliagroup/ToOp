@@ -8,6 +8,7 @@
 """Functions to initialize and modify NetworkGraphData."""
 
 import numpy as np
+import pandas as pd
 import pandera.typing as pat
 from toop_engine_importer.network_graph.data_classes import (
     BranchSchema,
@@ -54,28 +55,31 @@ def add_node_tuple_column(network_graph_data: NetworkGraphData) -> None:
         The NetworkGraphData model to add the node tuple.
         Note: The NetworkGraphData is modified in place.
     """
-    network_graph_data.switches["node_tuple"] = list(
-        map(
-            lambda x: tuple(map(int, sorted(set(x)))),
-            np.column_stack((network_graph_data.switches["from_node"], network_graph_data.switches["to_node"])),
-        )
+    network_graph_data.switches["node_tuple"] = _build_node_tuple_series(
+        from_nodes=network_graph_data.switches["from_node"],
+        to_nodes=network_graph_data.switches["to_node"],
     )
     if not network_graph_data.branches.empty:
-        network_graph_data.branches["node_tuple"] = list(
-            map(
-                lambda x: tuple(map(int, sorted(set(x)))),
-                np.column_stack((network_graph_data.branches["from_node"], network_graph_data.branches["to_node"])),
-            )
+        network_graph_data.branches["node_tuple"] = _build_node_tuple_series(
+            from_nodes=network_graph_data.branches["from_node"],
+            to_nodes=network_graph_data.branches["to_node"],
         )
     if not network_graph_data.helper_branches.empty:
-        network_graph_data.helper_branches["node_tuple"] = list(
-            map(
-                lambda x: tuple(map(int, sorted(set(x)))),
-                np.column_stack(
-                    (network_graph_data.helper_branches["from_node"], network_graph_data.helper_branches["to_node"])
-                ),
-            )
+        network_graph_data.helper_branches["node_tuple"] = _build_node_tuple_series(
+            from_nodes=network_graph_data.helper_branches["from_node"],
+            to_nodes=network_graph_data.helper_branches["to_node"],
         )
+
+
+def _build_node_tuple_series(from_nodes: pd.Series, to_nodes: pd.Series) -> pd.Series:
+    """Build an object-dtype node-tuple series that stays schema-valid for empty frames."""
+    node_tuples = list(
+        map(
+            lambda x: tuple(map(int, sorted(set(x)))),
+            np.column_stack((from_nodes, to_nodes)),
+        )
+    )
+    return pd.Series(node_tuples, index=from_nodes.index, dtype=object)
 
 
 def remove_helper_branches(

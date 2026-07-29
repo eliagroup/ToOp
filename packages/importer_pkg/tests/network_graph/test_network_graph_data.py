@@ -32,3 +32,16 @@ def test_add_node_tuple():
 
     assert network_graph_data.helper_branches["node_tuple"].iloc[0] == (9, 11)
     assert network_graph_data.helper_branches["node_tuple"].iloc[1] == (10, 12)
+
+
+def test_add_node_tuple_keeps_empty_switch_series_schema_compatible():
+    network_graph_data = mock.Mock(spec=NetworkGraphData)
+    network_graph_data.switches = pd.DataFrame({"from_node": pd.Series(dtype=int), "to_node": pd.Series(dtype=int)})
+    network_graph_data.branches = pd.DataFrame({"from_node": [5], "to_node": [7]})
+    network_graph_data.helper_branches = pd.DataFrame({"from_node": pd.Series(dtype=int), "to_node": pd.Series(dtype=int)})
+
+    add_node_tuple_column(network_graph_data)
+
+    assert "node_tuple" in network_graph_data.switches.columns
+    assert network_graph_data.switches["node_tuple"].dtype == object
+    assert network_graph_data.switches["node_tuple"].empty

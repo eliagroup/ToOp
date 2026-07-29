@@ -634,13 +634,19 @@ def update_network_data_with_non_rel_bb_outages(
             non_rel_bb_outage_nodal_indices=np.zeros((n_busbar_outages), int),
         )
 
+    simplified_stations = _get_simplified_runtime_stations(network)
+    normalized_outage_station_busbars_map = _normalize_station_busbar_map_keys(
+        simplified_stations,
+        outage_station_busbars_map,
+    )
+
     branch_indices = []
     delta_p = []
     nodal_indices = []
     zero_flow_branch_indices = []
-    for station in _get_runtime_aware_asset_topology_stations(network):
-        if station.bus_group_id in outage_station_busbars_map:
-            for bb_id in outage_station_busbars_map[station.bus_group_id]:
+    for station in simplified_stations:
+        if station.bus_group_id in normalized_outage_station_busbars_map:
+            for bb_id in normalized_outage_station_busbars_map[station.bus_group_id]:
                 outage_data = extract_busbar_outage_data(
                     station, bb_id, network, stub_power_map={}, branch_action_combi_index=None
                 )
@@ -649,11 +655,13 @@ def update_network_data_with_non_rel_bb_outages(
                 nodal_indices.append(outage_data.node_index)
                 zero_flow_branch_indices.append(outage_data.zero_flow_branch_indices)
 
+    n_busbar_outages = len(branch_indices)
+
     return replace(
         network,
         non_rel_bb_outage_br_indices=branch_indices,
-        non_rel_bb_outage_deltap=np.array(delta_p),
-        non_rel_bb_outage_nodal_indices=np.array(nodal_indices),
+        non_rel_bb_outage_deltap=np.array(delta_p, dtype=float).reshape(n_busbar_outages, network.nodal_injection.shape[0]),
+        non_rel_bb_outage_nodal_indices=np.array(nodal_indices, dtype=int),
         non_rel_bb_outage_zero_flow_br_indices=zero_flow_branch_indices,
     )
 

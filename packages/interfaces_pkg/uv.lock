@@ -2044,7 +2044,7 @@ wheels = [
 
 [[package]]
 name = "ray"
-version = "2.55.1"
+version = "2.56.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -2057,10 +2057,10 @@ dependencies = [
     { name = "requests" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/7d/48ba2f49b40a34b0071ee27c0144a2573d8836094eaca213d59cef12c271/ray-2.55.1-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:0053fd5b400f7ac56263aa1bbd3d68fb79341b08b8dc697c88782d5aca7b3ed4", size = 65835271, upload-time = "2026-04-22T20:09:34.984Z" },
-    { url = "https://files.pythonhosted.org/packages/8f/a3/d6db3a428e4ea17cc72e79f747cfe11e90e63e36e1705bb8324e45f334b7/ray-2.55.1-cp311-cp311-manylinux2014_aarch64.whl", hash = "sha256:0ea2f670a7725833ad2333a8c46ab69865ad06c8e5de9f65695e0f8f35331cec", size = 72879783, upload-time = "2026-04-22T20:09:40.986Z" },
-    { url = "https://files.pythonhosted.org/packages/46/59/41da0e72a59cd3e8978480ccfeb86ef4235ae5ceb9b8928168a764fa930a/ray-2.55.1-cp311-cp311-manylinux2014_x86_64.whl", hash = "sha256:d5382da181c03ee2f502ef46cf0ae4bbc30157b5bd9a67d7651f6a272528a85a", size = 73706515, upload-time = "2026-04-22T20:09:47.079Z" },
-    { url = "https://files.pythonhosted.org/packages/65/52/c16bbdc3e31a5178f97be88966ab56db6f7e04882640c5cf2fee5b87757b/ray-2.55.1-cp311-cp311-win_amd64.whl", hash = "sha256:5e56d2e8f304cafe990c198a2b894f5b813de018998cd7212869201f6dc17cff", size = 27882093, upload-time = "2026-04-22T20:09:52.943Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/f2/2cbbbef7a67adc6555b141c7a67557bd7ce21cfb85b85772627c6a582e97/ray-2.56.0-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:a9ad4e26941eb2f8dbd494ad07f9f2227143164c6114132b26b23ad4f20b1c6f", size = 66354212, upload-time = "2026-06-29T20:50:37.148Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/69/09c8320519aa4d075bd6ecb1694c28d26b5b07a5b46050703d9ac2c5a9b6/ray-2.56.0-cp311-cp311-manylinux2014_aarch64.whl", hash = "sha256:aea655831d25084cb343002a8e67a77b6aa552ddb776a65461d49f62884f096a", size = 73299499, upload-time = "2026-06-29T20:50:42.584Z" },
+    { url = "https://files.pythonhosted.org/packages/18/d3/84df370c773a0b853abdba498a6258106cb928d452ff56eec7f86c2f80b4/ray-2.56.0-cp311-cp311-manylinux2014_x86_64.whl", hash = "sha256:c5bf1a4384c0e2aa4420c95474b734d064cac354b0f00760be02d886afe96ca4", size = 74143858, upload-time = "2026-06-29T20:50:48.228Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/1b/0b4c96879ded375d0b35441c6b3633ccbea7c7c5448335589811fe5f275c/ray-2.56.0-cp311-cp311-win_amd64.whl", hash = "sha256:8e57781685bb4332edf8a7cfb1135ff53d50002b6a0504006e68365bcd26aa7c", size = 28390306, upload-time = "2026-06-29T20:50:53.841Z" },
 ]
 
 [[package]]
@@ -2416,7 +2416,7 @@ dev = [
     { name = "pytest-mock" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "ray", specifier = ">=2.55.0,<3.0.0" },
+    { name = "ray", specifier = ">=2.56.0,<3.0.0" },
     { name = "ruff" },
     { name = "seaborn", specifier = ">=0.13.0" },
     { name = "types-confluent-kafka", specifier = ">=1.3.3" },

@@ -257,6 +257,25 @@ def _get_station_node_indices(station: MaterializedStation, network: NetworkData
     return tuple(sorted(node_indices))
 
 
+def _get_busbar_node_indices(
+    station: MaterializedStation,
+    busbar_index: int,
+    network: NetworkData,
+) -> tuple[int, ...]:
+    """Return node indices that directly identify the given physical busbar."""
+    busbar = station.busbars[busbar_index]
+    fallback_node_ids = [
+        busbar.bus_breaker_bus_id,
+        busbar.bus_branch_bus_id,
+        busbar.grid_model_id,
+    ]
+    node_id_array = np.array(network.node_ids)
+    node_indices: list[int] = []
+    for fallback_node_id in dict.fromkeys(node_id for node_id in fallback_node_ids if node_id is not None):
+        node_indices.extend(np.nonzero(node_id_array == fallback_node_id)[0].tolist())
+    return tuple(sorted(set(node_indices)))
+
+
 def extract_outage_index_injection_from_asset(
     asset: SwitchableAsset,
     network: NetworkData,
@@ -494,22 +513,12 @@ def _get_busbar_outage_node_index(
     For relevant stations the physical busbar must be mapped to busbar A or busbar B depending on
     the realised branch-action combination.
     """
-    node_ids = np.array(network.node_ids)
     try:
         node_indices_to_outage = list(_get_station_node_indices(station, network))
     except ValueError:
         node_indices_to_outage = []
     if not node_indices_to_outage:
-        busbar = station.busbars[busbar_index]
-        fallback_node_ids = [
-            busbar.bus_breaker_bus_id,
-            busbar.bus_branch_bus_id,
-            busbar.grid_model_id,
-        ]
-        for fallback_node_id in dict.fromkeys(node_id for node_id in fallback_node_ids if node_id is not None):
-            node_indices_to_outage = np.nonzero(node_ids == fallback_node_id)[0].tolist()
-            if node_indices_to_outage:
-                break
+        node_indices_to_outage = list(_get_busbar_node_indices(station, busbar_index, network))
     node_indices_to_outage = tuple(sorted(node_indices_to_outage))
 
     if len(node_indices_to_outage) == 1:
@@ -522,6 +531,9 @@ def _get_busbar_outage_node_index(
 
     relevant_node_matches = np.flatnonzero(np.isin(network.relevant_nodes, node_indices_to_outage))
     if len(relevant_node_matches) == 0:
+        busbar_node_indices = _get_busbar_node_indices(station, busbar_index, network)
+        if len(busbar_node_indices) == 1:
+            return busbar_node_indices[0]
         raise ValueError(
             f"Could not resolve relevant node index for station {station.bus_group_id}"
             f" and busbar {station.busbars[busbar_index].grid_model_id}"

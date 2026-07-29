@@ -267,6 +267,44 @@ def test_get_busbar_outage_node_index_falls_back_to_busbar_bus_id(network_data: 
     assert node_index == 0
 
 
+def test_get_busbar_outage_node_index_falls_back_when_station_lookup_is_ambiguous(
+    network_data: NetworkData,
+) -> None:
+    station = build_materialized_station(
+        grid_model_id="station_0",
+        busbars=[
+            Busbar(
+                grid_model_id="busbar_0",
+                int_id=0,
+                bus_branch_bus_id="node_0",
+                bus_breaker_bus_id="node_0",
+            ),
+            Busbar(
+                grid_model_id="busbar_1",
+                int_id=1,
+                bus_branch_bus_id="node_1",
+                bus_breaker_bus_id="node_1",
+            ),
+        ],
+        couplers=[],
+        branch_assets=[],
+        injection_assets=[],
+        branch_switching_table=np.zeros((2, 0), dtype=bool),
+        injection_switching_table=np.zeros((2, 0), dtype=bool),
+        branch_connectivity=np.zeros((2, 0), dtype=bool),
+        injection_connectivity=np.zeros((2, 0), dtype=bool),
+    )
+    network_data_dummy = replace(
+        network_data,
+        node_ids=["station_0", "node_0", "node_1"],
+        relevant_node_mask=np.array([False, False, False], dtype=bool),
+    )
+
+    node_index = _get_busbar_outage_node_index(station, 0, network_data_dummy, branch_action_combi_index=0)
+
+    assert node_index == 1
+
+
 def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     # Create mock SwitchableAsset objects
     asset1 = BranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")

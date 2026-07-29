@@ -317,11 +317,11 @@ def get_bsdf_branch_indices(
     to_node: Int[np.ndarray, " n_branches"],
 ) -> tuple[
     Int[np.ndarray, " branches_from_a"],
-    Int[np.ndarray, "branches_to_a"],
-    Int[np.ndarray, "branches_from_b"],
-    Int[np.ndarray, "branches_to_b"],
-    Int[np.ndarray, "node_from_a"],
-    Int[np.ndarray, "node_to_a"],
+    Int[np.ndarray, " branches_to_a"],
+    Int[np.ndarray, " branches_from_b"],
+    Int[np.ndarray, " branches_to_b"],
+    Int[np.ndarray, " node_from_a"],
+    Int[np.ndarray, " node_to_a"],
 ]:
     """Extract the branch indices for the BSDF computation
 
@@ -370,7 +370,7 @@ def get_bsdf_branch_indices(
     return brh_from_a, brh_to_a, brh_from_b, brh_to_b, node_from_a, node_to_a
 
 
-def calc_bsdf(
+def calc_bsdf(  # noqa: PLR0913
     switched_node: int,
     assignment: Bool[np.ndarray, " n_branches_at_node"],
     is_slack: bool,
@@ -738,7 +738,7 @@ def contingency_analysis(
     return np.array(n_1_flows), np.array(success)
 
 
-def run_solver(
+def run_solver(  # noqa: PLR0913
     branch_topo_vect: Bool[np.ndarray, " n_branches_at_subs"],
     relevant_nodes: Int[np.ndarray, " n_relevant_subs"],
     slack: int,

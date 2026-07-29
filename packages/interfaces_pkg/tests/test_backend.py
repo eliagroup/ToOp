@@ -182,7 +182,8 @@ def test_backend():
     assert backend.get_node_types() == ["Type A", "Type B", "Type C"]
     assert backend.get_injection_types() == ["Type X", "Type Y"]
     assert backend.get_multi_outage_types() == ["Type M1", "Type M2"]
-    assert backend.get_asset_topology() is None
+    assert backend.get_master_data_asset_topology() is None
+    assert backend.get_runtime_asset_topology() is None
     assert backend.get_metadata() == {"key": "value"}
     assert backend.get_busbar_outage_map() is None
 

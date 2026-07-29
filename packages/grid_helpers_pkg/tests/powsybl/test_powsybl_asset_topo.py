@@ -234,10 +234,11 @@ def test_get_bus_info_from_topology():
             "name": ["name1", "name2"],
             "int_id": [0, 1],
             "in_service": [True, True],
+            "bus_breaker_bus_id": ["busbar1", "busbar2"],
             "bus_branch_bus_id": ["node1", "node1"],
         }
     )
-    assert np.all(expected_bus_info == bus_info)
+    pd.testing.assert_frame_equal(expected_bus_info, bus_info)
 
 
 def test_get_asset_info_from_topology():

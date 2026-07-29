@@ -842,6 +842,8 @@ def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
     if network_data.busbar_outage_map is None or network_data.asset_topology is None:
         return []
 
+    outage_topology = network_data.simplified_asset_topology or network_data.asset_topology
+
     busbar_outage_ids: list[str] = []
     relevant_stations = get_relevant_stations(network_data)
     for station_index, station in enumerate(relevant_stations):
@@ -875,14 +877,9 @@ def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
     }
     relevant_busbar_ids = set(busbar_outage_ids)
     articulation_ids_by_station = {
-        station.grid_model_id: _get_station_articulation_busbar_ids(station)
-        for station in (
-            network_data.simplified_asset_topology.stations
-            if network_data.simplified_asset_topology is not None
-            else network_data.asset_topology.stations
-        )
+        station.grid_model_id: _get_station_articulation_busbar_ids(station) for station in outage_topology.stations
     }
-    for station in network_data.asset_topology.stations:
+    for station in outage_topology.stations:
         if station.grid_model_id in relevant_station_ids:
             continue
         configured_busbars = network_data.busbar_outage_map.get(station.grid_model_id, [])

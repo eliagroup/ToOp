@@ -534,6 +534,7 @@ def sample_action_index_from_branch_actions(
 
     action_start_indices = branch_action_set.action_start_indices
     n_available_actions = branch_action_set.n_actions_per_sub[safe_sub_id] - 1
+    has_split_actions = n_available_actions > 0
     action_offset = action_start_indices[safe_sub_id] + 1
     random_action = jax.random.randint(
         key=rng_key,
@@ -543,7 +544,7 @@ def sample_action_index_from_branch_actions(
     )
     new_branch_action = action_offset + random_action
 
-    return jnp.where(valid_sub_id, new_branch_action, jnp.array(int_max()))
+    return jnp.where(valid_sub_id & has_split_actions, new_branch_action, jnp.array(int_max()))
 
 
 def sample_from_branch_actions(

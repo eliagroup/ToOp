@@ -17,6 +17,34 @@ from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set, load_action_set_fs, save_action_set
 
 
+def _build_materialized_station(
+    bus_group_id: str,
+    busbars: list[Busbar],
+    couplers: list[BusbarCoupler],
+    branch_connections: list[MaterializedAssetConnection],
+    branch_switching_table: np.ndarray,
+) -> MaterializedStation:
+    """Build a materialized station matching the current runtime-topology schema."""
+    return MaterializedStation.model_construct(
+        bus_group_id=bus_group_id,
+        name=None,
+        voltage_level_id=None,
+        station_type=None,
+        region=None,
+        voltage_level=None,
+        busbars=busbars,
+        bus_branch_bus_ids=[],
+        couplers=couplers,
+        branch_connections=branch_connections,
+        branch_switching_table=branch_switching_table,
+        branch_connectivity=None,
+        injection_connections=[],
+        injection_switching_table=np.zeros((len(busbars), 0), dtype=bool),
+        injection_connectivity=None,
+        model_log=None,
+    )
+
+
 def _build_large_random_action_set(
     rng: np.random.Generator,
     n_actions: int,
@@ -57,11 +85,12 @@ def _build_large_random_action_set(
         busbars = [
             Busbar.model_construct(
                 grid_model_id=f"{grid_model_id}_busbar_{busbar_idx}",
-                type=None,
+                busbar_type=None,
                 name=None,
                 int_id=busbar_idx,
                 in_service=True,
                 bus_breaker_bus_id=None,
+                bus_branch_bus_id=None,
             )
             for busbar_idx in range(n_busbars)
         ]
@@ -69,7 +98,7 @@ def _build_large_random_action_set(
         couplers = [
             BusbarCoupler.model_construct(
                 grid_model_id=f"{grid_model_id}_coupler_{coupler_idx}",
-                type=None,
+                coupler_type=None,
                 name=None,
                 busbar_from_id=0,
                 busbar_to_id=1,
@@ -83,7 +112,7 @@ def _build_large_random_action_set(
         assets = [
             BranchAsset.model_construct(
                 grid_model_id=f"{grid_model_id}_asset_{asset_idx}",
-                type=None,
+                asset_type=None,
                 name=None,
                 in_service=True,
             )
@@ -91,25 +120,16 @@ def _build_large_random_action_set(
         ]
 
         branch_switching_table = rng.integers(0, 2, size=(n_busbars, n_assets), dtype=np.uint8).astype(bool)
-        injection_switching_table = np.zeros((n_busbars, 0), dtype=bool)
+        branch_connections = [
+            MaterializedAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None) for asset in assets
+        ]
 
-        starting_station = MaterializedStation.model_construct(
-            grid_model_id=grid_model_id,
-            name=None,
-            type=None,
-            region=None,
-            voltage_level=None,
+        starting_station = _build_materialized_station(
+            bus_group_id=grid_model_id,
             busbars=busbars,
             couplers=couplers,
-            branch_connections=[
-                MaterializedAssetConnection.model_construct(asset=asset, branch_end=None, asset_bay=None) for asset in assets
-            ],
+            branch_connections=branch_connections,
             branch_switching_table=branch_switching_table,
-            branch_connectivity=None,
-            injection_connections=[],
-            injection_switching_table=injection_switching_table,
-            injection_connectivity=None,
-            model_log=None,
         )
         starting_stations.append(starting_station)
 

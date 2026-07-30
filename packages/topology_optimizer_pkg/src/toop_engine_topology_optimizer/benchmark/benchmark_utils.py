@@ -62,6 +62,7 @@ from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_interfaces.folder_structure import (
     PREPROCESSING_PATHS,
 )
+from toop_engine_interfaces.loadflow_result_helpers_polars import save_loadflow_results_polars
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
@@ -514,7 +515,11 @@ def calculate_and_save_loadflow_results(
     disconnections: Optional[list[int]] = None,
 ) -> tuple[LoadflowResultsPolars, Optional[AdditionalActionInfo]]:
     """
-    Calculate AC and DC loadflow results using the provided runner and saves the results as CSV files.
+    Calculate AC and DC loadflow results using the provided runner and saves the results
+
+    Saves ac and dc branch results as CSV files for human-readable review + ac results in parquet format for full inspection.
+
+
 
     Parameters
     ----------
@@ -534,6 +539,7 @@ def calculate_and_save_loadflow_results(
         This function also saves the results to CSV files:
         - "ac_loadflow_results.csv"
         - "dc_loadflow_results.csv"
+        - "ac_loadflow_results_parquet/....parquet"
         in the specified `topology_path` directory.
     """
     if actions is None:
@@ -543,6 +549,7 @@ def calculate_and_save_loadflow_results(
     ac_loadflow_results = runner.run_ac_loadflow(actions, disconnections)
     ac_action_info = runner.get_last_action_info()
     ac_loadflow_results.branch_results.collect().write_csv(topology_path / "ac_loadflow_results.csv")
+    save_loadflow_results_polars(DirFileSystem(topology_path), "ac_loadflow_result_parquet", ac_loadflow_results)
     dc_loadflow_results = runner.run_dc_loadflow(actions, disconnections)
     dc_loadflow_results.branch_results.collect().write_csv(topology_path / "dc_loadflow_results.csv")
     return ac_loadflow_results, ac_action_info

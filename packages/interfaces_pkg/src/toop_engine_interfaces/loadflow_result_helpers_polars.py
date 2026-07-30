@@ -38,7 +38,7 @@ from toop_engine_interfaces.nminus1_definition import GridElement, Nminus1Defini
 def save_loadflow_results_polars(
     fs: AbstractFileSystem, file_path: str | Path, loadflows: LoadflowResultsPolars
 ) -> StoredLoadflowReference:
-    """Save loadflow results to a file in hdf5 format.
+    """Save loadflow results to a file in parquet format.
 
     Parameters
     ----------

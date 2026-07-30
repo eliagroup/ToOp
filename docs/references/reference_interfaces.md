@@ -24,6 +24,3 @@
 
 ## Asset Topology
 ::: toop_engine_interfaces.asset_topology
-
-## Asset Topology Helper
-::: toop_engine_interfaces.asset_topology.asset_topology_helpers

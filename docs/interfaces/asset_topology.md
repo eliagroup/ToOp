@@ -104,10 +104,10 @@ For backend APIs, the intended split is:
 - `get_master_data_asset_topology(...)` returns the canonical structural station data.
 - `get_runtime_asset_topology(...)` returns the runtime materialized station snapshots aligned to that canonical structure.
 
-To populate Asset Topology data from grid models, use the [`Network Graph module`][toop_engine_importer.network_graph].  
+To populate Asset Topology data from grid models, use the [`Network Graph module`][toop_engine_grid_helpers.network_graph].  
 
-A Pandapower to Asset Topology implementation is found in the importer: [`get_asset_topology_master_data_from_network`][toop_engine_importer.pandapower_import.asset_topology.get_asset_topology_master_data_from_network]
+A Pandapower to Asset Topology implementation is found in the grid helpers: [`get_asset_topology_master_data_from_network`][toop_engine_grid_helpers.pandapower.asset_topology.get_asset_topology_master_data_from_network]
 
 Note: the Pandapower version does not currently use the Network Graph module.
 
-A PyPowSyBl to Asset Topology implementation is found in the importer Network Graph module: [`get_topology`][toop_engine_importer.network_graph.powsybl_station_to_graph]
+A PyPowSyBl to Asset Topology implementation is found in the grid helpers Network Graph module: [`get_topology`][toop_engine_grid_helpers.powsybl.powsybl_station_to_graph]

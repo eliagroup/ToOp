@@ -13,18 +13,14 @@
 
 ## Importer Pandapower
 ::: toop_engine_importer.pandapower_import
-::: toop_engine_importer.pandapower_import.asset_topology
 
 ## Importer Pypowsybl
 ::: toop_engine_importer.pypowsybl_import
 ::: toop_engine_importer.pypowsybl_import.preprocessing
 
-## Network Graph
+## Importer Network Graph Pandapower
 ::: toop_engine_importer.network_graph
-::: toop_engine_importer.network_graph.default_filter_strategy
-::: toop_engine_importer.network_graph.powsybl_station_to_graph
-::: toop_engine_importer.network_graph.filter_strategy.empty_bay
-::: toop_engine_importer.network_graph.filter_strategy.switches
+::: toop_engine_importer.network_graph.pandapower_network_to_graph
 
 ## Exporter
 ::: toop_engine_importer.exporter

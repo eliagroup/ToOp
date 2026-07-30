@@ -24,6 +24,8 @@ def test_get_busses_from_station(pp_network_w_switches):
         "name": {0: "Double Busbar 1"},
         "int_id": {0: 0},
         "in_service": {0: True},
+        "bus_breaker_bus_id": {0: "0%%bus"},
+        "bus_branch_bus_id": {0: "0%%bus"},
     }
     result = asset_topology.get_busses_from_station(network=net, station_bus_index=0, station_col="name").to_dict()
     assert result == expected
@@ -49,6 +51,8 @@ def test_get_busses_from_station(pp_network_w_switches):
         "name": {0: "Double Busbar 1", 2: "Bus DB T0"},
         "int_id": {0: 0, 2: 2},
         "in_service": {0: True, 2: True},
+        "bus_breaker_bus_id": {0: "0%%bus", 2: "2%%bus"},
+        "bus_branch_bus_id": {0: "0%%bus", 2: "2%%bus"},
     }
     result = asset_topology.get_busses_from_station(network=net, station_bus_index=[0, 2], station_col="name").to_dict()
     assert result == expected

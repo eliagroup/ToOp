@@ -27,6 +27,7 @@ def enumerate_station_realisations(
     network_data: NetworkData,
     choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"] = "least_connected_busbar",
     reassignment_limits: Optional[ReassignmentLimits] = None,
+    validate: bool = False,
 ) -> NetworkData:
     """Find a physical station realization for every branch action in the branch action set.
 
@@ -46,6 +47,10 @@ def enumerate_station_realisations(
         A heuristic to choose the busbar for the action realization.
     reassignment_limits : Optional[ReassignmentLimits]
         If given, settings to limit the amount of reassignment during the physical reconfiguration.
+    validate : bool
+        Whether to validate every realized station update. This is primarily useful for targeted tests and debugging;
+        the productive path defaults to ``False`` because the input simplified stations are already validated and
+        per-action validation is expensive.
 
     Returns
     -------
@@ -97,7 +102,7 @@ def enumerate_station_realisations(
                 separation_set_info=separation_set_info,
                 choice_heuristic=choice_heuristic,
                 reassignment_limits=effective_reassignment_limits,
-                validate=True,
+                validate=validate,
             )
         )
         all_rel_realised_stations.append(realised_stations)

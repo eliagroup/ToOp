@@ -346,6 +346,33 @@ def _validate_station_diff_hypothesis(starting_station: MaterializedStation, act
         )
 
 
+def _construct_action_from_station_diff(
+    starting_station: MaterializedStation,
+    couplers: list,
+    branch_switching_table: np.ndarray,
+    injection_switching_table: np.ndarray,
+) -> MaterializedStation:
+    """Construct an expanded action station from a validated reference station and diff payload."""
+    return MaterializedStation.model_construct(
+        bus_group_id=starting_station.bus_group_id,
+        voltage_level_id=starting_station.voltage_level_id,
+        name=starting_station.name,
+        station_type=starting_station.station_type,
+        region=starting_station.region,
+        voltage_level=starting_station.voltage_level,
+        busbars=starting_station.busbars,
+        bus_branch_bus_ids=starting_station.bus_branch_bus_ids,
+        couplers=couplers,
+        branch_connections=starting_station.branch_connections,
+        injection_connections=starting_station.injection_connections,
+        branch_switching_table=branch_switching_table,
+        injection_switching_table=injection_switching_table,
+        branch_connectivity=starting_station.branch_connectivity,
+        injection_connectivity=starting_station.injection_connectivity,
+        model_log=starting_station.model_log,
+    )
+
+
 def store_station_diff_fs(
     filesystem: AbstractFileSystem, station_diffs: list[StationDiffArray], diff_file_path: str | Path
 ) -> None:
@@ -464,21 +491,25 @@ def expand_single_station_diff_to_actions(
         A list of stations, each corresponding to an action in the station diffs action dimension.
     """
     actions = []
+    coupler_state_cache: dict[tuple[bool, ...], list] = {}
     for i in range(station_diff.coupler_open.shape[0]):
-        coupler_array = station_diff.coupler_open[i]
-        couplers = [
-            coupler.model_copy(update={"open": bool(coupler_open)})
-            for coupler, coupler_open in zip(starting_station.couplers, coupler_array, strict=True)
-        ]
+        coupler_state_key = tuple(bool(coupler_open) for coupler_open in station_diff.coupler_open[i])
+        couplers = coupler_state_cache.get(coupler_state_key)
+        if couplers is None:
+            couplers = [
+                coupler.model_copy(update={"open": coupler_open}, deep=False)
+                for coupler, coupler_open in zip(starting_station.couplers, coupler_state_key, strict=True)
+            ]
+            coupler_state_cache[coupler_state_key] = couplers
+
         branch_switching_table = station_diff.branch_switching_table[i]
         injection_switching_table = station_diff.injection_switching_table[i]
 
-        action = starting_station.model_copy(
-            update={
-                "couplers": couplers,
-                "branch_switching_table": branch_switching_table,
-                "injection_switching_table": injection_switching_table,
-            },
+        action = _construct_action_from_station_diff(
+            starting_station=starting_station,
+            couplers=couplers,
+            branch_switching_table=branch_switching_table,
+            injection_switching_table=injection_switching_table,
         )
         actions.append(action)
     return actions

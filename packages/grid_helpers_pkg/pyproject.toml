@@ -37,7 +37,7 @@ dependencies = [
     "orjson>=3.11.3",
     "pyarrow>=21.0.0",
     "structlog (>=24.4.0,<25.0.0)",
-    "rustworkx>=0.15.0",
+    "networkx>=2.5.0",
 ]
 
 [build-system]

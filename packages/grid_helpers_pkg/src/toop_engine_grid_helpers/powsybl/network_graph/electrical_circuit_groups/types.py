@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class EdgeSchema(pa.DataFrameModel):
     """Schema for branch edges in the bus-breaker connectivity graph.
 
-    Used by the rustworkx graph library to represent the bus-breaker topology of the network.
+    Used by the networkx graph library to represent the bus-breaker topology of the network.
     """
 
     id_str: pat.Series[str]

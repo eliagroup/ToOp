@@ -7,10 +7,10 @@
 
 """Outage group identification module."""
 
+import networkx as nx
 import pandera as pa
 import pandera.typing as pat
 import pypowsybl
-import rustworkx as rx
 from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.helper_functions import (
     build_circuit_group_lookup_index,
 )
@@ -141,12 +141,12 @@ def _get_electrical_circuit_group(
         )
     )
 
-    graph = rx.PyGraph(multigraph=True)
+    graph = nx.MultiGraph()
     # add ALL breaker ids, no matter if they are connected by a branch or not
     # as later on we also want to map injections that might be connected to an isolated bus_breaker_id
     graph.add_nodes_from(bus_breaker_int_id["bus_breaker_id_int"])
     graph.add_edges_from(edge_tuples)
-    connected_nodes = rx.connected_components(graph)
+    connected_nodes = nx.connected_components(graph)
     # map nodes back to bus_breaker_id
     connected_components = {node: i for i, component in enumerate(connected_nodes) for node in component}
     # map connected components back to bus_breaker_id

@@ -121,17 +121,10 @@ def test_get_busbar_outage_map(powsybl_data_folder: Path) -> None:
         busbar_to_station_id = {
             busbar.grid_model_id: station.bus_group_id for station in asset_topology.stations for busbar in station.busbars
         }
-        bus_id_to_station_id = {
-            busbar.bus_branch_bus_id: station.bus_group_id
-            for station in asset_topology.stations
-            for busbar in station.busbars
-            if busbar.bus_branch_bus_id is not None
-        }
+
     expected_outage_map: dict[str, list[str]] = {}
     for busbar_id, busbar in selected_busbars.iterrows():
         station_id = busbar_to_station_id.get(str(busbar_id))
-        if station_id is None:
-            station_id = bus_id_to_station_id.get(str(busbar["bus_id"]))
         if station_id is None:
             continue
         expected_outage_map.setdefault(station_id, []).append(str(busbar_id))
@@ -159,22 +152,15 @@ def test_get_busbar_outage_map_case57(powsybl_case57_folder_xiidm: Path) -> None
     bus_id_to_station_id = {}
     if asset_topology is not None:
         busbar_to_station_id = {
-            busbar.grid_model_id: station.grid_model_id for station in asset_topology.stations for busbar in station.busbars
-        }
-        bus_id_to_station_id = {
-            busbar.bus_breaker_bus_id: station.grid_model_id
-            for station in asset_topology.stations
-            for busbar in station.busbars
+            busbar.grid_model_id: station.bus_group_id for station in asset_topology.stations for busbar in station.busbars
         }
     expected_outage_map: dict[str, list[str]] = {}
     for busbar_id, busbar in selected_busbars.iterrows():
         station_id = busbar_to_station_id.get(str(busbar_id))
         if station_id is None:
-            station_id = bus_id_to_station_id.get(str(busbar["bus_id"]))
-        if station_id is None:
             continue
         expected_outage_map.setdefault(station_id, []).append(str(busbar_id))
-
+    assert len(backend.get_busbar_outage_map()) > 0
     assert backend.get_busbar_outage_map() == expected_outage_map
 
 
@@ -207,15 +193,19 @@ def test_get_asset_topology_runtime_stations(node_breaker_grid_imported_data_fol
 
 
 def test_get_asset_topology_runtime_stations_case57_sets_bus_breaker_ids(powsybl_case57_folder_xiidm: Path) -> None:
-    """Runtime stations for bus-branch powsybl grids should carry physical bus-breaker ids."""
+    """Runtime stations for node-breaker powsybl grids should preserve busbar section ids."""
     filesystem_dir_powsybl = DirFileSystem(str(powsybl_case57_folder_xiidm))
     backend = PowsyblBackend(filesystem_dir_powsybl)
 
     runtime_topology = backend.get_runtime_asset_topology()
+    busbar_sections = backend.net.get_busbar_sections(attributes=["bus_id"])
 
     assert runtime_topology is not None
     assert all(
-        busbar.bus_breaker_bus_id == busbar.grid_model_id
+        busbar.grid_model_id in busbar_sections.index for station in runtime_topology.stations for busbar in station.busbars
+    )
+    assert all(
+        busbar.bus_branch_bus_id == str(busbar_sections.loc[busbar.grid_model_id, "bus_id"])
         for station in runtime_topology.stations
         for busbar in station.busbars
     )

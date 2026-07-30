@@ -20,13 +20,9 @@ from toop_engine_dc_solver.preprocess.network_data import (
     extract_network_data_from_interface,
     get_relevant_stations,
     map_branch_injection_ids,
-    map_runtime_stations_by_node_id,
 )
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.powsybl.powsybl_backend import PowsyblBackend
-from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
-from toop_engine_interfaces.asset_topology.assets import Busbar
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 
 
@@ -136,92 +132,6 @@ def test_get_relevant_stations_requires_runtime_stations_when_master_data_exists
 
     with pytest.raises(AssertionError, match="Missing runtime asset-topology stations"):
         get_relevant_stations(network_data)
-
-
-def test_get_relevant_stations_requires_complete_runtime_station_coverage(
-    network_data_preprocessed: NetworkData,
-) -> None:
-    """Verify that relevant-station lookup rejects incomplete runtime-station coverage."""
-    assert network_data_preprocessed.asset_topology is not None
-    relevant_node_ids = {
-        node_id
-        for node_id, is_relevant in zip(
-            network_data_preprocessed.node_ids,
-            network_data_preprocessed.relevant_node_mask,
-            strict=True,
-        )
-        if is_relevant
-    }
-
-    removed_station_id = next(
-        station.bus_group_id
-        for station in network_data_preprocessed.asset_topology.stations
-        if station.bus_group_id in relevant_node_ids
-    )
-    incomplete_stations = [
-        station
-        for station in network_data_preprocessed.asset_topology.stations
-        if station.bus_group_id != removed_station_id
-    ]
-    network_data = NetworkData(
-        **{
-            **network_data_preprocessed.__dict__,
-            "asset_topology": RuntimeAssetTopology(
-                stations=incomplete_stations,
-                circuit_groups=network_data_preprocessed.asset_topology.circuit_groups,
-            ),
-        }
-    )
-
-    with pytest.raises(ValueError, match="Missing runtime asset-topology stations for relevant station extraction"):
-        get_relevant_stations(network_data)
-
-
-def test_map_runtime_stations_by_node_id_prefers_explicit_bus_ids() -> None:
-    """Verify that inactive sibling groups do not steal a live electrical bus via fallback aliases."""
-    active_station = MaterializedStation(
-        bus_group_id="voltage_level_a",
-        voltage_level_id="voltage_level",
-        busbars=[Busbar(grid_model_id="bbs_a", int_id=0, bus_branch_bus_id="voltage_level_0")],
-        couplers=[],
-        branch_switching_table=np.zeros((1, 0), dtype=bool),
-        injection_switching_table=np.zeros((1, 0), dtype=bool),
-        branch_connectivity=np.zeros((1, 0), dtype=bool),
-        injection_connectivity=np.zeros((1, 0), dtype=bool),
-        branch_connections=[],
-        injection_connections=[],
-    )
-    detached_station_b = MaterializedStation(
-        bus_group_id="voltage_level_b",
-        voltage_level_id="voltage_level",
-        busbars=[Busbar(grid_model_id="bbs_b", int_id=0, bus_branch_bus_id="")],
-        couplers=[],
-        branch_switching_table=np.zeros((1, 0), dtype=bool),
-        injection_switching_table=np.zeros((1, 0), dtype=bool),
-        branch_connectivity=np.zeros((1, 0), dtype=bool),
-        injection_connectivity=np.zeros((1, 0), dtype=bool),
-        branch_connections=[],
-        injection_connections=[],
-    )
-    detached_station_c = MaterializedStation(
-        bus_group_id="voltage_level_c",
-        voltage_level_id="voltage_level",
-        busbars=[Busbar(grid_model_id="bbs_c", int_id=0, bus_branch_bus_id="")],
-        couplers=[],
-        branch_switching_table=np.zeros((1, 0), dtype=bool),
-        injection_switching_table=np.zeros((1, 0), dtype=bool),
-        branch_connectivity=np.zeros((1, 0), dtype=bool),
-        injection_connectivity=np.zeros((1, 0), dtype=bool),
-        branch_connections=[],
-        injection_connections=[],
-    )
-
-    stations_by_node_id = map_runtime_stations_by_node_id(
-        [active_station, detached_station_b, detached_station_c],
-        node_ids=["voltage_level_0"],
-    )
-
-    assert stations_by_node_id["voltage_level_0"].bus_group_id == "voltage_level_a"
 
 
 def test_map_branch_injection_ids(network_data_preprocessed: NetworkData) -> None:

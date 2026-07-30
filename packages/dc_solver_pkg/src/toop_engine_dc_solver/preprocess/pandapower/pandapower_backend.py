@@ -44,6 +44,7 @@ from toop_engine_grid_helpers.pandapower.station_extraction import (
     get_busses_from_station,
     get_coupler_from_station,
     get_parameter_from_station,
+    get_substation_buses_from_bus_id,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_busbars_from_df,
@@ -70,6 +71,13 @@ logger = structlog.get_logger(__name__)
 def convert_to_string_list(data: Iterable) -> list[str]:
     """Convert an iterable of anything into a string list, replacing None with an empty string"""
     return [str(d) if d is not None else "" for d in data]
+
+
+def _station_has_legacy_bayless_connections(station: MaterializedStation | TopologyMasterData | object) -> bool:
+    """Return whether a station still contains bay-less asset references."""
+    branch_connections = getattr(station, "branch_connections", [])
+    injection_connections = getattr(station, "injection_connections", [])
+    return any(asset_connection.asset_bay_id is None for asset_connection in [*branch_connections, *injection_connections])
 
 
 def _materialize_station_asset_connections(
@@ -1338,90 +1346,47 @@ class PandaPowerBackend(BackendInterface):
 
     def get_master_data_asset_topology(self) -> Optional[TopologyMasterData]:
         """Get canonical asset-topology master data from the dedicated master-data file."""
-        if self._master_data_asset_topology_loaded:
-            return self._master_data_asset_topology_cache
-
-        if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_master_data_file_path"]):
-            master_data = load_pydantic_model_fs(
-                filesystem=self.data_folder_dirfs,
-                file_path=PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
-                model_class=TopologyMasterData,
-            )
-        else:
-            self._master_data_asset_topology_loaded = True
-            return None
-        branch_from_node_by_id = {
-            branch_id: self.get_node_ids()[from_node]
-            for branch_id, from_node in zip(self.get_branch_ids(), self.get_from_nodes(), strict=True)
-        }
-        updated_stations = []
-        for station in master_data.stations:
-            station_busbar_ids = {busbar.grid_model_id for busbar in station.busbars}
-            updated_branch_connections = []
-            for asset_connection in station.branch_connections:
-                branch_end = asset_connection.branch_end
-                if branch_end is None and asset_connection.asset_id in branch_from_node_by_id:
-                    branch_end = "from" if branch_from_node_by_id[asset_connection.asset_id] in station_busbar_ids else "to"
-                updated_branch_connections.append(asset_connection.model_copy(update={"branch_end": branch_end}, deep=True))
-            updated_stations.append(station.model_copy(update={"branch_connections": updated_branch_connections}, deep=True))
-
-        master_data = master_data.model_copy(update={"stations": updated_stations}, deep=True)
-        self._master_data_asset_topology_cache = master_data
-        self._master_data_asset_topology_loaded = True
+        master_data = load_pydantic_model_fs(
+            filesystem=self.data_folder_dirfs,
+            file_path=PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
+            model_class=TopologyMasterData,
+        )
         return master_data
 
     def get_runtime_asset_topology(self) -> Optional[RuntimeAssetTopology]:
         """Get runtime-enriched topology payloads by combining master data with the current pandapower grid state."""
-        if self._runtime_asset_topology_loaded:
-            return self._runtime_asset_topology_cache
-
         master_data = self.get_master_data_asset_topology()
-        if master_data is None:
-            self._runtime_asset_topology_loaded = True
-            return None
-
         if "substat" not in self.net.bus.columns:
             add_substation_column_to_bus(self.net, substation_col="substat", get_name_col="name", only_closed_switches=False)
 
-        branch_asset_map = {asset.grid_model_id: asset for asset in master_data.branch_assets}
-        injection_asset_map = {asset.grid_model_id: asset for asset in master_data.injection_assets}
-        asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays}
         runtime_stations = []
+        branch_asset_map = {branch.grid_model_id: branch for branch in master_data.branch_assets}
+        injection_asset_map = {injection.grid_model_id: injection for injection in master_data.injection_assets}
+        asset_bay_map = {bay.asset_bay_id: bay for bay in master_data.asset_bays}
         for station in master_data.stations:
-            candidate_bus_ids = [
-                table_id(busbar.grid_model_id)
-                for busbar in station.busbars
-                if table_id(busbar.grid_model_id) in self.net.bus.index
-            ]
-            if not candidate_bus_ids:
-                continue
-            substation_name = self.net.bus.loc[candidate_bus_ids[0], "substat"]
-            station_buses = self.net.bus[self.net.bus["substat"] == substation_name]
-            if len(station_buses.index) == 0:
-                continue
-            representative_busbar = next(
-                (busbar for busbar in station.busbars if table_id(busbar.grid_model_id) in station_buses.index),
-                station.busbars[0],
-            )
-            current_bus_grid_model_id = representative_busbar.grid_model_id
-
-            try:
-                direct_runtime_station = _get_runtime_station_from_station_ids(
-                    self.net,
-                    station_buses.index.tolist(),
-                    station.bus_group_id,
-                )
-            except (AssertionError, KeyError, ValueError):
-                direct_runtime_station = None
-
-            if direct_runtime_station is not None:
-                if {busbar.grid_model_id for busbar in direct_runtime_station.busbars} == {
-                    busbar.grid_model_id for busbar in station.busbars
-                }:
-                    runtime_stations.append(direct_runtime_station)
+            if _station_has_legacy_bayless_connections(station):
+                try:
+                    station_bus_ids = sorted(
+                        get_substation_buses_from_bus_id(
+                            self.net,
+                            table_id(station.busbars[0].grid_model_id),
+                            only_closed_switches=False,
+                        )
+                    )
+                    runtime_stations.append(
+                        _get_runtime_station_from_station_ids(
+                            network=self.net,
+                            station_id_list=station_bus_ids,
+                            bus_group_id=station.bus_group_id,
+                        )
+                    )
                     continue
-                current_bus_grid_model_id = direct_runtime_station.busbars[0].grid_model_id
-
+                except (AssertionError, ValueError):
+                    logger.info(
+                        "Falling back to compact runtime reconstruction for legacy bay-less station",
+                        station_id=station.bus_group_id,
+                    )
+            current_bus_grid_model_id = station.busbars[0].grid_model_id
             runtime_stations.append(
                 materialize_station_from_runtime_state(
                     station=station,
@@ -1429,7 +1394,9 @@ class PandaPowerBackend(BackendInterface):
                     injection_asset_map=injection_asset_map,
                     asset_bay_map=asset_bay_map,
                     runtime_switching_state=RuntimeSwitchingState(
-                        busbar_bus_branch_bus_ids={representative_busbar.grid_model_id: current_bus_grid_model_id},
+                        busbar_bus_branch_bus_ids={
+                            busbar.grid_model_id: current_bus_grid_model_id for busbar in station.busbars
+                        },
                         branch_current_bus_ids=[current_bus_grid_model_id] * len(station.branch_connections),
                         injection_current_bus_ids=[current_bus_grid_model_id] * len(station.injection_connections),
                         busbar_out_of_service_ids=set(),

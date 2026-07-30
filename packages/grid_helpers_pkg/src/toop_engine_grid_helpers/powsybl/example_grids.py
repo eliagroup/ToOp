@@ -6,6 +6,7 @@
 # Mozilla Public License, version 2.0
 
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -23,8 +24,11 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     materialize_stations_from_network_state,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_pandapower_net_for_powsybl
+from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import get_node_breaker_topology_master_data
+from toop_engine_importer.pypowsybl_import.powsybl_masks import create_default_network_masks
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
 from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
+from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
 
 
 def add_phaseshift_transformer_to_line_powsybl(
@@ -667,11 +671,29 @@ def create_busbar_b_in_ieee(net: pypowsybl.network.Network) -> None:
 
 def extract_station_info_powsybl(net: Network, base_folder: Path) -> None:
     relevant_stations = list(net.get_buses().index)
-    master_data = get_bus_breaker_topology_master_data(
-        network=net,
-        relevant_stations=relevant_stations,
-        topology_id="extracted_topology",
-    )
+    topology_kinds = set(net.get_voltage_levels(attributes=["topology_kind"])["topology_kind"].dropna())
+    if "NODE_BREAKER" in topology_kinds:
+        masks = create_default_network_masks(net)
+        masks = replace(
+            masks,
+            relevant_subs=np.ones(len(net.get_buses()), dtype=bool),
+            busbar_for_nminus1=np.ones(len(net.get_busbar_sections()), dtype=bool),
+        )
+        master_data = get_node_breaker_topology_master_data(
+            network=net,
+            network_masks=masks,
+            importer_parameters=CgmesImporterParameters(
+                area_settings=AreaSettings(control_area=[""], view_area=[""], nminus1_area=[""], cutoff_voltage=1),
+                data_folder=base_folder,
+                grid_model_file=base_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+            ),
+        )
+    else:
+        master_data = get_bus_breaker_topology_master_data(
+            network=net,
+            relevant_stations=relevant_stations,
+            topology_id="extracted_topology",
+        )
     stations = materialize_stations_from_network_state(network=net, master_data=master_data)
     target = base_folder / PREPROCESSING_PATHS["asset_topology_runtime_file_path"]
     target.parent.mkdir(parents=True, exist_ok=True)

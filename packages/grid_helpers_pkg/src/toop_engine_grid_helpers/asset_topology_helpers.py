@@ -1958,7 +1958,7 @@ def fuse_all_couplers_with_type(
     return station, fused_couplers
 
 
-def find_station_by_id(stations: list[MaterializedStation], station_id: str) -> MaterializedStation:
+def find_station_by_electrical_bus_id(stations: list[MaterializedStation], station_id: str) -> MaterializedStation:
     """Find a station by its grid_model_id in a list of stations.
 
     Parameters
@@ -1979,6 +1979,6 @@ def find_station_by_id(stations: list[MaterializedStation], station_id: str) -> 
         If no station with the requested identifier is present.
     """
     for station in stations:
-        if station.bus_group_id == station_id:
+        if station.bus_branch_bus_ids and station_id in station.bus_branch_bus_ids:
             return station
     raise ValueError(f"Station {station_id} not found in the list")

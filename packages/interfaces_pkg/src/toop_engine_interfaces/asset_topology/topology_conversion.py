@@ -26,35 +26,26 @@ logger = structlog.get_logger(__name__)
 
 @dataclass(frozen=True)
 class RuntimeSwitchingState:
-    """Compact runtime overlay inputs for materializing one station.
-
-    Attributes
-    ----------
-    busbar_bus_branch_bus_ids : Optional[dict[str, str]]
-        Mapping from canonical busbar ids to current runtime bus-branch bus ids.
-    branch_current_bus_ids : Optional[list[str | None]]
-        Current runtime bus ids for branch connections, aligned with the station's
-        canonical branch connections.
-    injection_current_bus_ids : Optional[list[str | None]]
-        Current runtime bus ids for injection connections, aligned with the station's
-        canonical injection connections.
-    busbar_out_of_service_ids : set[str]
-        Canonical busbar ids that are currently out of service.
-    open_coupler_ids : set[str]
-        Canonical coupler ids that are currently open.
-    out_of_service_coupler_ids : set[str]
-        Canonical coupler ids that are currently out of service.
-    open_switch_ids : set[str]
-        Asset-bay switch ids that are currently open.
-    """
+    """Compact runtime overlay describing the current live switching state of a station."""
 
     busbar_bus_branch_bus_ids: Optional[dict[str, str]] = None
+    """Mapping from canonical busbar ids to current runtime bus-branch bus ids."""
+
     branch_current_bus_ids: Optional[list[str | None]] = None
+    """Current runtime bus ids for branch connections, aligned with the station's
+    canonical branch connections."""
+
     injection_current_bus_ids: Optional[list[str | None]] = None
+    """Current runtime bus ids for injection connections, aligned with the station's
+    canonical injection connections."""
     busbar_out_of_service_ids: set[str] = frozenset()
+    """Canonical busbar ids that are currently out of service."""
     open_coupler_ids: set[str] = frozenset()
+    """Canonical coupler ids that are currently open."""
     out_of_service_coupler_ids: set[str] = frozenset()
+    """Canonical coupler ids that are currently out of service."""
     open_switch_ids: set[str] = frozenset()
+    """Asset-bay switch ids that are currently open."""
 
 
 def _copy_runtime_or_raise(runtime_map: dict[str, object], grid_model_id: str, runtime_kind: str) -> object:
@@ -252,6 +243,14 @@ def _assign_switching_from_connectivity(
         switching_table[int(candidate_busbars[0]), asset_index] = True
         return
     if current_bus_id is None:
+        return
+
+    if len(candidate_busbars) > 1:
+        # Legacy pandapower master data can lack asset-bay mappings while collapsing multiple
+        # physical busbars onto one runtime electrical bus. In that case there is no unique
+        # reconstruction signal left, so keep the realization deterministic by choosing the
+        # first physically admissible busbar slot.
+        switching_table[int(candidate_busbars[0]), asset_index] = True
         return
 
     raise ValueError(

@@ -58,7 +58,14 @@ from toop_engine_grid_helpers.powsybl.powsybl_helpers import save_lf_params_to_f
 from toop_engine_importer.pypowsybl_import import preprocessing
 from toop_engine_importer.pypowsybl_import.powsybl_masks import make_masks, save_masks_to_filesystem
 from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, RuntimeAssetTopology, TopologyMasterData
-from toop_engine_interfaces.asset_topology.assets import AssetBay, BranchAsset, Busbar, BusbarCoupler, InjectionAsset
+from toop_engine_interfaces.asset_topology.assets import (
+    AssetBay,
+    BranchAsset,
+    Busbar,
+    BusbarCoupler,
+    InjectionAsset,
+    build_asset_bay_id,
+)
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.backend import BackendInterface
@@ -184,7 +191,7 @@ def random_station_info_backend(
     Optional[PandapowerCounters]
         The updated pandapower counters, if given
     """
-    switchable_assets = []
+    switchable_assets: list[tuple[BranchAsset | InjectionAsset, str | None]] = []
     for branch_id, branch_type, branch_name, branch_node in zip(
         backend.get_branch_ids(),
         backend.get_branch_types(),
@@ -194,11 +201,14 @@ def random_station_info_backend(
     ):
         if branch_node == node_idx:
             switchable_assets.append(
-                BranchAsset(
-                    grid_model_id=branch_id,
-                    asset_type=branch_type,
-                    name=branch_name,
-                    in_service=True,
+                (
+                    BranchAsset(
+                        grid_model_id=branch_id,
+                        asset_type=branch_type,
+                        name=branch_name,
+                        in_service=True,
+                    ),
+                    "from",
                 )
             )
 
@@ -211,11 +221,14 @@ def random_station_info_backend(
     ):
         if branch_node == node_idx:
             switchable_assets.append(
-                BranchAsset(
-                    grid_model_id=branch_id,
-                    asset_type=branch_type,
-                    name=branch_name,
-                    in_service=True,
+                (
+                    BranchAsset(
+                        grid_model_id=branch_id,
+                        asset_type=branch_type,
+                        name=branch_name,
+                        in_service=True,
+                    ),
+                    "to",
                 )
             )
 
@@ -228,16 +241,20 @@ def random_station_info_backend(
     ):
         if injection_node == node_idx:
             switchable_assets.append(
-                InjectionAsset(
-                    grid_model_id=injection_id,
-                    asset_type=injection_type,
-                    name=injection_name,
-                    in_service=True,
+                (
+                    InjectionAsset(
+                        grid_model_id=injection_id,
+                        asset_type=injection_type,
+                        name=injection_name,
+                        in_service=True,
+                    ),
+                    None,
                 )
             )
 
-    branch_assets = [asset for asset in switchable_assets if isinstance(asset, BranchAsset)]
-    injection_assets = [asset for asset in switchable_assets if isinstance(asset, InjectionAsset)]
+    branch_assets = [asset for asset, _ in switchable_assets if isinstance(asset, BranchAsset)]
+    injection_assets = [asset for asset, _ in switchable_assets if isinstance(asset, InjectionAsset)]
+    branch_terminals = [branch_end for asset, branch_end in switchable_assets if isinstance(asset, BranchAsset)]
 
     branch_switching_table = np.zeros((2, len(branch_assets)), dtype=bool)
     branch_is_on_a = np.random.rand(len(branch_assets)) > 0.5
@@ -265,6 +282,31 @@ def random_station_info_backend(
         bus_b_id = global_id + "_b"
         switch_id = global_id + "_coupler"
 
+    def build_direct_asset_bay(asset_grid_model_id: str, busbar_grid_model_id: str) -> AssetBay:
+        asset_bay_id = build_asset_bay_id(global_id, asset_grid_model_id)
+        return AssetBay(
+            asset_bay_id=asset_bay_id,
+            sl_switch_grid_model_id=None,
+            dv_switch_grid_model_id=f"{asset_bay_id}::dv",
+            sr_switch_grid_model_id={busbar_grid_model_id: f"{asset_bay_id}::sr::{busbar_grid_model_id}"},
+        )
+
+    branch_connections = [
+        MaterializedAssetConnection(
+            asset=asset,
+            branch_end=branch_end,
+            asset_bay=build_direct_asset_bay(asset.grid_model_id, bus_a_id),
+        )
+        for asset, branch_end in zip(branch_assets, branch_terminals, strict=True)
+    ]
+    injection_connections = [
+        MaterializedAssetConnection(
+            asset=asset,
+            asset_bay=build_direct_asset_bay(asset.grid_model_id, bus_a_id),
+        )
+        for asset in injection_assets
+    ]
+
     return MaterializedStation(
         bus_group_id=global_id,
         busbars=[
@@ -287,8 +329,8 @@ def random_station_info_backend(
                 open=False,
             ),
         ],
-        branch_connections=[MaterializedAssetConnection(asset=asset) for asset in branch_assets],
-        injection_connections=[MaterializedAssetConnection(asset=asset) for asset in injection_assets],
+        branch_connections=branch_connections,
+        injection_connections=injection_connections,
         branch_switching_table=branch_switching_table,
         injection_switching_table=injection_switching_table,
         branch_connectivity=np.ones_like(branch_switching_table, dtype=bool),
@@ -431,8 +473,12 @@ def random_topology_info_backend(
     """
     relevant_nodes = np.flatnonzero(backend.get_relevant_node_mask())
     stations = []
+    seen_bus_group_ids: set[str] = set()
     for node_idx in relevant_nodes:
         new_station, pp_counters = random_station_info_backend(backend, node_idx, pp_counters)
+        if new_station.bus_group_id in seen_bus_group_ids:
+            continue
+        seen_bus_group_ids.add(new_station.bus_group_id)
         stations.append(new_station)
     return stations
 

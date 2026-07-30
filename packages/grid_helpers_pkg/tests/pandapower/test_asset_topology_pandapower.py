@@ -8,6 +8,7 @@
 
 import numpy as np
 import pandapower
+import pandapower as pp
 import pytest
 import structlog.testing
 from toop_engine_grid_helpers.pandapower import asset_topology
@@ -325,6 +326,40 @@ def test_get_asset_topology_master_data_from_network_keeps_open_coupler_busbars_
     double_busbar_station = next(station for station in master_data.stations if station.name == "Double Busbar 1")
     assert double_busbar_station.bus_group_id == r"0%%bus_a"
     assert {busbar.grid_model_id for busbar in double_busbar_station.busbars} == {r"0%%bus", r"1%%bus"}
+
+
+def test_get_branches_from_station_creates_synthetic_bay_for_direct_busbar_asset() -> None:
+    net = pp.create_empty_network()
+    busbar_id = pp.create_bus(net, vn_kv=110.0, name="Busbar", type="b")
+    pp.create_load(net, bus=busbar_id, p_mw=1.0, q_mvar=0.0, name="Load")
+    net.bus["substat"] = "Direct Station"
+
+    station_buses = asset_topology.get_busses_from_station(network=net, station_name="Direct Station", station_col="substat")
+    station_branches, switching_matrix, asset_connection = asset_topology.get_branches_from_station(
+        network=net,
+        station_buses=station_buses,
+        foreign_key="name",
+    )
+
+    expected_asset_bay_id = build_asset_bay_id("0%%bus", "Load")
+    assert station_branches.to_dict(orient="records") == [
+        {
+            "grid_model_id": "0%%load",
+            "type": "load",
+            "name": "Load",
+            "branch_end": None,
+            "in_service": True,
+        }
+    ]
+    assert np.array_equal(switching_matrix, np.array([[True]]))
+    assert asset_connection == [
+        AssetBay(
+            asset_bay_id=expected_asset_bay_id,
+            sl_switch_grid_model_id=None,
+            dv_switch_grid_model_id=f"{expected_asset_bay_id}::dv",
+            sr_switch_grid_model_id={"0%%bus": f"{expected_asset_bay_id}::sr::0%%bus"},
+        )
+    ]
 
 
 def test_get_station_bus_df(pp_network_w_switches):

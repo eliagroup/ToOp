@@ -60,8 +60,6 @@ from toop_engine_dc_solver.preprocess.network_data import (
     NetworkData,
     assert_network_data,
     extract_network_data_from_interface,
-    get_runtime_station_lookup_ids,
-    map_runtime_stations_by_node_id,
 )
 from toop_engine_dc_solver.preprocess.preprocess_bb_outage import get_busbar_map_adjacent_branches, preprocess_bb_outages
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import (
@@ -82,15 +80,6 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 )
 
 logger = structlog.get_logger(__name__)
-
-
-def _get_station_node_id_aliases(
-    station: MaterializedStation,
-    *,
-    node_ids: list[str] | None = None,
-) -> set[str]:
-    """Collect lookup ids that may reference the same runtime station."""
-    return {str(lookup_id) for lookup_id in get_runtime_station_lookup_ids(station, node_ids=node_ids)}
 
 
 def _get_runtime_asset_ids_per_bus_id(station: MaterializedStation) -> dict[str, set[str]]:
@@ -339,6 +328,7 @@ def _project_station_to_local_assets(
 
     return station.model_copy(
         update={
+            "bus_branch_bus_ids": [node_id],
             "busbars": kept_busbars,
             "couplers": [
                 coupler
@@ -492,12 +482,7 @@ def filter_relevant_nodes_no_asset_station(network_data: NetworkData) -> Network
     """
     relevant_node_ids = np.array(network_data.node_ids)[np.flatnonzero(network_data.relevant_node_mask)]
     assert network_data.asset_topology is not None, "Missing runtime asset-topology stations"
-    station_bus_ids = set(
-        map_runtime_stations_by_node_id(
-            network_data.asset_topology.stations,
-            node_ids=relevant_node_ids.tolist(),
-        )
-    )
+    station_bus_ids = network_data.electrical_bus_to_station.keys()
 
     keep_mask = np.isin(relevant_node_ids, np.array(sorted(station_bus_ids), dtype=object))
 
@@ -561,10 +546,9 @@ def filter_relevant_nodes_no_double_connections(network_data: NetworkData) -> Ne
     relevant_node_ids = np.array(network_data.node_ids)[np.flatnonzero(network_data.relevant_node_mask)]
     station_ids_without_double_connections = np.array(
         [
-            lookup_id
-            for station in network_data.asset_topology.stations
+            bus_id
+            for bus_id, station in network_data.electrical_bus_to_station.items()
             if not _switching_table_has_double_connections(station.asset_switching_table)
-            for lookup_id in get_runtime_station_lookup_ids(station)
         ]
     )
     keep_mask = np.isin(relevant_node_ids, station_ids_without_double_connections)
@@ -1569,15 +1553,12 @@ def reduce_node_dimension(network_data: NetworkData) -> NetworkData:
         network_data.to_nodes,
         network_data.slack,
     )
-    if network_data.busbar_outage_map is not None:
+    if network_data.busbar_outage_map is not None and network_data.asset_topology is not None:
         busbar_outage_station_ids = set(network_data.busbar_outage_map.keys())
-        if network_data.asset_topology is not None:
-            for station in network_data.asset_topology.stations:
-                station_aliases = _get_station_node_id_aliases(station, node_ids=network_data.node_ids)
-                if station_aliases & busbar_outage_station_ids:
-                    busbar_outage_station_ids.update(station_aliases)
-        busbar_outage_station_mask = np.isin(network_data.node_ids, list(busbar_outage_station_ids))
-        significant_nodes |= busbar_outage_station_mask
+        for station in network_data.asset_topology.stations:
+            if station.bus_group_id in busbar_outage_station_ids:
+                electrical_busses = set(station.bus_branch_bus_ids)
+                significant_nodes |= np.array([node_id in electrical_busses for node_id in network_data.node_ids])
     significant_node_ids = np.flatnonzero(significant_nodes)
     ptdf, nodal_injection = reduce_ptdf_and_nodal_injections(
         network_data.ptdf, network_data.nodal_injection, significant_nodes
@@ -1635,29 +1616,20 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
     NetworkData
         The network data with the simplified asset topology
     """
-    station_ids = [network_data.node_ids[i] for i in network_data.relevant_nodes]
-    runtime_stations_by_node_id: dict[str, MaterializedStation] = {}
+    node_ids = [network_data.node_ids[i] for i in network_data.relevant_nodes]
     assert network_data.asset_topology is not None, (
         "Missing runtime asset-topology stations for asset topology simplification. "
         "Preprocessing requires backend-enriched runtime stations."
     )
-    runtime_stations_by_node_id = map_runtime_stations_by_node_id(
-        network_data.asset_topology.stations,
-        node_ids=station_ids,
-    )
+    runtime_stations_by_node_id: dict[str | None, MaterializedStation] = network_data.electrical_bus_to_station
 
-    not_found = [station_id for station_id in station_ids if station_id not in runtime_stations_by_node_id]
+    not_found = [node_id for node_id in node_ids if node_id not in runtime_stations_by_node_id]
     if not_found:
         raise ValueError(f"Some stations were not found in the asset topology: {not_found}")
 
-    runtime_stations = [runtime_stations_by_node_id[station_id] for station_id in station_ids]
+    runtime_stations = [runtime_stations_by_node_id[node_id] for node_id in node_ids]
 
     stations = []
-    busbar_outage_map = (
-        {station_id: list(busbar_ids) for station_id, busbar_ids in network_data.busbar_outage_map.items()}
-        if network_data.busbar_outage_map is not None
-        else None
-    )
     keep_mask = []
     for _node_index, branches_at_sub, inj_at_sub, station in zip(
         network_data.relevant_nodes,
@@ -1683,15 +1655,9 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
                 injection_ids=injection_ids_local,
                 close_couplers=close_couplers,
             )
-            if busbar_outage_map is not None:
-                station_lookup_ids = _get_station_node_id_aliases(electrical_bus_station, node_ids=station_ids)
+            if (busbar_outage_map := network_data.busbar_outage_map) is not None:
                 simplified_busbar_ids = {busbar.grid_model_id for busbar in simplified_station.busbars}
-                matching_station_ids = [station_id for station_id in busbar_outage_map if station_id in station_lookup_ids]
-                for station_id in matching_station_ids:
-                    busbar_outage_map[station_id] = [
-                        busbar_id for busbar_id in busbar_outage_map[station_id] if busbar_id in simplified_busbar_ids
-                    ]
-
+                busbar_outage_map[simplified_station.bus_group_id] = list(simplified_busbar_ids)
             keep_mask.append(True)
         except ValueError as e:
             logger.warning(
@@ -1699,6 +1665,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
                 f"because {e}, removing it from the relevant nodes."
             )
             simplified_station = electrical_bus_station
+            busbar_outage_map = network_data.busbar_outage_map
             keep_mask.append(has_controllable_pst)
 
         stations.append(simplified_station)

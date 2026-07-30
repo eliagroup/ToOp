@@ -39,7 +39,7 @@ from toop_engine_dc_solver.preprocess.helpers.reduce_node_dimension import get_s
 from toop_engine_dc_solver.preprocess.helpers.relevant_branches import (
     get_relevant_branches,
 )
-from toop_engine_dc_solver.preprocess.network_data import get_runtime_station_lookup_ids, validate_network_data
+from toop_engine_dc_solver.preprocess.network_data import validate_network_data
 from toop_engine_dc_solver.preprocess.pandapower.pandapower_backend import PandaPowerBackend
 from toop_engine_dc_solver.preprocess.preprocess import (
     NetworkData,
@@ -859,9 +859,9 @@ def test_simplify_asset_topology_prunes_fused_busbar_outage_ids(
     station = build_materialized_station(
         grid_model_id="station_1",
         busbars=[
-            Busbar(grid_model_id="busbar1", int_id=1),
-            Busbar(grid_model_id="busbar2", int_id=2),
-            Busbar(grid_model_id="busbar3", int_id=3),
+            Busbar(grid_model_id="busbar1", int_id=1, bus_branch_bus_id="station_1"),
+            Busbar(grid_model_id="busbar2", int_id=2, bus_branch_bus_id="station_1"),
+            Busbar(grid_model_id="busbar3", int_id=3, bus_branch_bus_id="station_1"),
         ],
         couplers=[
             RuntimeBusbarCoupler(
@@ -946,11 +946,7 @@ def test_complex_grid_be_ch_tie_line_stays_in_simplified_station_topology(tmp_pa
     assert "VL_3W_HV_0" in relevant_node_ids
 
     assert network_data.simplified_asset_topology is not None
-    hv_station = next(
-        station
-        for station in network_data.simplified_asset_topology.stations
-        if "VL_3W_HV_0" in get_runtime_station_lookup_ids(station, node_ids=network_data.node_ids)
-    )
+    hv_station = network_data.simplified_asset_topology.stations[relevant_node_ids.index("VL_3W_HV_0")]
     hv_station_asset_ids = [asset.grid_model_id for asset in hv_station.assets]
     assert tie_line_id in hv_station_asset_ids
 
@@ -1335,7 +1331,7 @@ def test_reduce_node_dimension(network_data_filled):
 def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_data_filled: NetworkData) -> None:
     drop_station = build_materialized_station(
         grid_model_id="drop",
-        busbars=[Busbar(grid_model_id="drop_bb", int_id=0)],
+        busbars=[Busbar(grid_model_id="drop_bb", int_id=0, bus_branch_bus_id="drop")],
         couplers=[],
         branch_assets=[],
         injection_assets=[InjectionAsset(grid_model_id="drop_inj", asset_type="load")],

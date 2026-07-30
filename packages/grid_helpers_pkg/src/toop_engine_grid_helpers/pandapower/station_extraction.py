@@ -235,10 +235,14 @@ def get_busses_from_station(
         station_bus_index=station_bus_index,
     )
     bus_df["grid_model_id"] = bus_df.index.astype(str) + SEPARATOR + "bus"
+    bus_df["bus_breaker_bus_id"] = bus_df["grid_model_id"]
+    bus_df["bus_branch_bus_id"] = bus_df["grid_model_id"]
     bus_df["int_id"] = bus_df.index
     if foreign_key in bus_df.columns:
         bus_df["name"] = bus_df[foreign_key].astype(str)
-    station_busses = bus_df[["grid_model_id", "type", "name", "int_id", "in_service"]]
+    station_busses = bus_df[
+        ["grid_model_id", "type", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]
+    ]
     station_busses["name"] = station_busses["name"].astype(str)
     return station_busses
 
@@ -372,6 +376,21 @@ def get_asset_connection_path_to_busbars(
     )
 
 
+def _build_direct_busbar_asset_bay(
+    station_grid_model_id: str,
+    asset_grid_model_id: str,
+    busbar_grid_model_id: str,
+) -> AssetBay:
+    """Build a deterministic synthetic asset bay for a direct busbar connection."""
+    asset_bay_id = build_asset_bay_id(station_grid_model_id, asset_grid_model_id)
+    return AssetBay(
+        asset_bay_id=asset_bay_id,
+        sl_switch_grid_model_id=None,
+        dv_switch_grid_model_id=f"{asset_bay_id}::dv",
+        sr_switch_grid_model_id={busbar_grid_model_id: f"{asset_bay_id}::sr::{busbar_grid_model_id}"},
+    )
+
+
 def get_branch_from_bus_ids(
     branch_df: pd.DataFrame,
     branch_type: str,
@@ -501,7 +520,15 @@ def get_branches_from_station(  # noqa: C901, PLR0912
                     branch_df_all_busses.loc[index, "bus_int_id"] = int(final_bus.split(SEPARATOR)[0])
                     asset_connection_list.append(asset_connection)
             else:
-                asset_connection_list.append(None)
+                asset_connection_list.append(
+                    _build_direct_busbar_asset_bay(
+                        station_grid_model_id=station_grid_model_id,
+                        asset_grid_model_id=(
+                            str(branch[foreign_key]) if foreign_key in branch.index else str(branch["grid_model_id"])
+                        ),
+                        busbar_grid_model_id=f"{asset_bus}{SEPARATOR}bus",
+                    )
+                )
         branch_df_all_busses = branch_df_all_busses[branch_df_all_busses["bus_int_id"] != -1]
         if "in_service" not in branch_df_all_busses.columns:
             branch_df_all_busses["in_service"] = True

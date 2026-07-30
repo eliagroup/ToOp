@@ -8,6 +8,7 @@
 """Provides a powsybl backend for loading powsybl based grids into the DC solver"""
 
 import functools
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -776,7 +777,16 @@ class PowsyblBackend(BackendInterface):
         return RuntimeAssetTopology(stations=runtime_stations, circuit_groups=master_data.circuit_groups)
 
     def get_busbar_outage_map(self) -> Optional[dict[str, Sequence[str]]]:
-        """Get busbar outages grouped by asset-topology station id."""
+        """Get busbar outages grouped by station id.
+
+        This maps the bus_group_id of each station to a list of busbar grid_model_ids that are part of the N-1 definition.
+
+        Returns
+        -------
+        Optional[dict[str, Sequence[str]]]
+            A dictionary mapping station bus_group_ids to lists of busbar grid_model_ids that are part
+            of the N-1 definition. If no busbar outage mask is found, returns None.
+        """
         mask_path = self._get_masks_path() / NETWORK_MASK_NAMES["busbar_for_nminus1"]
         if not self.data_folder_dirfs.exists(str(mask_path)):
             return None
@@ -784,33 +794,16 @@ class PowsyblBackend(BackendInterface):
         busbar_sections = self.net.get_busbar_sections(attributes=["bus_id"])
         busbar_for_nminus1 = load_numpy_filesystem(filesystem=self.data_folder_dirfs, file_path=str(mask_path))
         selected_busbars = busbar_sections[busbar_for_nminus1]
-        selected_busbars = selected_busbars[selected_busbars["bus_id"].isin(self.get_node_ids())]
 
-        asset_topology = self.get_runtime_asset_topology()
-        busbar_to_station_id = {}
-        bus_id_to_station_id = {}
-        if asset_topology is not None:
-            busbar_to_station_id = {
-                busbar.grid_model_id: station.bus_group_id
-                for station in asset_topology.stations
-                for busbar in station.busbars
-            }
-            bus_id_to_station_id = {
-                busbar.bus_breaker_bus_id: station.bus_group_id
-                for station in asset_topology.stations
-                for busbar in station.busbars
-                if busbar.bus_breaker_bus_id is not None
-            }
-
-        outage_map: dict[str, list[str]] = {}
-        for busbar_id, busbar in selected_busbars.iterrows():
-            station_id = busbar_to_station_id.get(str(busbar_id))
-            if station_id is None:
-                station_id = bus_id_to_station_id.get(str(busbar["bus_id"]))
-            if station_id is None:
-                continue
-            outage_map.setdefault(station_id, []).append(str(busbar_id))
-
+        outage_map: dict[str, list[str]] = defaultdict(list)
+        for station in self.get_master_data_asset_topology().stations:
+            busbars = [
+                str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
+            ]
+            if busbars:
+                outage_map[station.bus_group_id] = [
+                    str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
+                ]
         return outage_map
 
     def get_metadata(self) -> dict:

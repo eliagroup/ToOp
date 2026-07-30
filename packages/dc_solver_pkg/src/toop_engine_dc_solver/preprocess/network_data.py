@@ -46,25 +46,6 @@ class OutageData(NamedTuple):
     """
 
 
-def _structural_station_suffix_to_index(suffix: str) -> int | None:
-    """Convert a structural station suffix like ``a`` or ``ab`` to a zero-based index."""
-    if not suffix.isalpha() or not suffix.islower():
-        return None
-
-    index = 0
-    for char in suffix:
-        index = index * 26 + (ord(char) - ord("a") + 1)
-    return index - 1
-
-
-def _node_id_sort_key(node_id: str, voltage_level_id: str) -> tuple[int, int | str]:
-    """Sort node ids within one voltage level by numeric suffix when available."""
-    suffix = node_id.removeprefix(f"{voltage_level_id}_")
-    if suffix.isdigit():
-        return (0, int(suffix))
-    return (1, suffix)
-
-
 @dataclass(frozen=True)
 class NetworkData:
     """The NetworkData class holds all the information about the grid.
@@ -441,87 +422,16 @@ class NetworkData:
             ]
         ).tolist()
 
-
-def get_runtime_station_lookup_ids(
-    station: MaterializedStation,
-    *,
-    node_ids: Sequence[str] | Sequence[int] | None = None,
-) -> set[str]:
-    """Return stable lookup ids for a runtime station.
-
-    Structural station ids stay authoritative. Explicit runtime or canonical bus ids
-    are added as aliases. A voltage-level heuristic is only used when it resolves to
-    exactly one network node.
-    """
-    lookup_ids = {station.bus_group_id}
-    lookup_ids.update(busbar.bus_breaker_bus_id for busbar in station.busbars if busbar.bus_breaker_bus_id not in {None, ""})
-    lookup_ids.update(bus_id for bus_id in station.bus_branch_bus_ids if bus_id not in {None, ""})
-    lookup_ids.update(busbar.bus_branch_bus_id for busbar in station.busbars if busbar.bus_branch_bus_id not in {None, ""})
-
-    if len(lookup_ids) == 1 and station.voltage_level_id is not None and node_ids is not None:
-        voltage_level_node_ids = {
-            str(node_id)
-            for node_id in node_ids
-            if isinstance(node_id, str) and node_id.startswith(f"{station.voltage_level_id}_")
-        }
-        if len(voltage_level_node_ids) == 1:
-            lookup_ids.update(voltage_level_node_ids)
-        else:
-            suffix = station.bus_group_id.removeprefix(f"{station.voltage_level_id}_")
-            structural_group_index = _structural_station_suffix_to_index(suffix)
-            if structural_group_index is not None:
-                ordered_node_ids = sorted(
-                    voltage_level_node_ids,
-                    key=lambda node_id: _node_id_sort_key(node_id, station.voltage_level_id),
-                )
-                if structural_group_index < len(ordered_node_ids):
-                    lookup_ids.add(ordered_node_ids[structural_group_index])
-
-    return lookup_ids
-
-
-def map_runtime_stations_by_node_id(
-    stations: Sequence[MaterializedStation],
-    *,
-    node_ids: Sequence[str] | Sequence[int],
-) -> dict[str | int, MaterializedStation]:
-    """Map runtime stations to network node ids with explicit aliases taking precedence.
-
-    Parameters
-    ----------
-    stations : Sequence[MaterializedStation]
-        Runtime stations that should be matched to network node ids.
-    node_ids : Sequence[str] | Sequence[int]
-        Candidate network node ids that require a runtime-station match.
-
-    Returns
-    -------
-    dict[str | int, MaterializedStation]
-        Mapping from node id to the matched runtime station.
-    """
-    runtime_stations_by_node_id: dict[str | int, MaterializedStation] = {}
-    unresolved_node_ids = list(node_ids)
-    unresolved_node_id_set = set(unresolved_node_ids)
-
-    for station in stations:
-        explicit_lookup_ids = get_runtime_station_lookup_ids(station)
-        for candidate_node_id in explicit_lookup_ids:
-            if candidate_node_id in unresolved_node_id_set:
-                runtime_stations_by_node_id[candidate_node_id] = station
-
-    unresolved_node_ids = [node_id for node_id in unresolved_node_ids if node_id not in runtime_stations_by_node_id]
-    unresolved_node_id_set = set(unresolved_node_ids)
-
-    for station in stations:
-        candidate_node_ids = get_runtime_station_lookup_ids(
-            station,
-            node_ids=unresolved_node_ids,
-        )
-        for candidate_node_id in candidate_node_ids:
-            if candidate_node_id in unresolved_node_id_set:
-                runtime_stations_by_node_id[candidate_node_id] = station
-
-    return runtime_stations_by_node_id
+    @property
+    def electrical_bus_to_station(self) -> dict[str | None, MaterializedStation]:
+        """Get a mapping from electrical bus ids to station ids."""
+        bus_to_station = {}
+        if self.asset_topology is None:
+            return bus_to_station
+        for station in self.asset_topology.stations or []:
+            for busbar in station.busbars:
+                bus_to_station[busbar.bus_branch_bus_id] = station
+        return bus_to_station
 
 
 def extract_network_data_from_interface(interface: BackendInterface) -> NetworkData:
@@ -788,28 +698,15 @@ def get_relevant_stations(network_data: NetworkData) -> list[MaterializedStation
     list[MaterializedStation]
         The relevant runtime stations in the same order as the relevant nodes.
     """
+    assert network_data.asset_topology is not None, "Missing runtime asset-topology stations"
     relevant_node_ids = [
         node for node, mask in zip(network_data.node_ids, network_data.relevant_node_mask, strict=True) if mask
     ]
-
-    assert network_data.asset_topology is not None, (
-        "Missing runtime asset-topology stations for relevant station extraction. "
-        "Preprocessing requires backend-enriched runtime stations."
-    )
-    preferred_stations = network_data.asset_topology.stations
-    stations_by_id = map_runtime_stations_by_node_id(
-        preferred_stations,
-        node_ids=list(relevant_node_ids),
-    )
-
-    missing_station_ids = [node_id for node_id in relevant_node_ids if node_id not in stations_by_id]
-    if missing_station_ids:
-        raise ValueError(
-            "Missing runtime asset-topology stations for relevant station extraction. "
-            f"Missing stations for relevant nodes: {missing_station_ids}"
-        )
-
-    return [stations_by_id[node_id] for node_id in relevant_node_ids]
+    return [
+        network_data.electrical_bus_to_station[node_id]
+        for node_id in relevant_node_ids
+        if node_id in network_data.electrical_bus_to_station
+    ]
 
 
 def _get_station_articulation_busbar_ids(station: MaterializedStation) -> set[str]:
@@ -907,48 +804,6 @@ def _get_always_articulation_indices(network_data: NetworkData, station_index: i
     return always_articulation_indices
 
 
-def _normalize_busbar_outage_station_map(
-    network_data: NetworkData,
-    relevant_station_ids: set[str],
-) -> dict[str, list[str]]:
-    """Normalize configured busbar outage station ids onto runtime station ids.
-
-    Parameters
-    ----------
-    network_data : NetworkData
-        Network data providing the configured busbar outage map and runtime stations.
-    relevant_station_ids : set[str]
-        Relevant node ids used to resolve runtime station lookup aliases.
-
-    Returns
-    -------
-    dict[str, list[str]]
-        Configured busbar outage map keyed by runtime station ``bus_group_id`` while
-        preserving busbar order and removing duplicates per station.
-    """
-    assert network_data.asset_topology is not None
-    assert network_data.busbar_outage_map is not None
-
-    station_ids_by_lookup_id = {
-        lookup_id: station.bus_group_id
-        for station in network_data.asset_topology.stations
-        for lookup_id in get_runtime_station_lookup_ids(
-            station,
-            node_ids=list(relevant_station_ids),
-        )
-    }
-
-    normalized_outage_station_busbars_map: dict[str, list[str]] = {}
-    for station_id, configured_busbars in network_data.busbar_outage_map.items():
-        normalized_station_id = station_ids_by_lookup_id.get(station_id, station_id)
-        normalized_outage_station_busbars_map.setdefault(normalized_station_id, [])
-        for busbar_id in configured_busbars:
-            if busbar_id not in normalized_outage_station_busbars_map[normalized_station_id]:
-                normalized_outage_station_busbars_map[normalized_station_id].append(busbar_id)
-
-    return normalized_outage_station_busbars_map
-
-
 def _get_non_relevant_busbar_outage_ids(
     network_data: NetworkData,
     relevant_station_ids: set[str],
@@ -972,29 +827,21 @@ def _get_non_relevant_busbar_outage_ids(
         Non-relevant busbar outage ids appended in the normalized configuration order.
     """
     assert network_data.asset_topology is not None
-
-    normalized_outage_station_busbars_map = _normalize_busbar_outage_station_map(network_data, relevant_station_ids)
-    stations_by_id = {station.bus_group_id: station for station in network_data.asset_topology.stations}
     articulation_ids_by_station = {
-        station.bus_group_id: _get_station_articulation_busbar_ids(station)
-        for station in network_data.asset_topology.stations
+        station.grid_model_id: _get_station_articulation_busbar_ids(station)
+        for station in (
+            network_data.simplified_asset_topology.stations
+            if network_data.simplified_asset_topology is not None
+            else network_data.asset_topology.stations
+        )
     }
 
     non_relevant_busbar_outage_ids: list[str] = []
-    for station_id, configured_busbars in normalized_outage_station_busbars_map.items():
-        station = stations_by_id.get(station_id)
-        candidate_lookup_ids = (
-            get_runtime_station_lookup_ids(station, node_ids=list(relevant_station_ids))
-            if station is not None
-            else {station_id}
-        )
-        if relevant_station_ids.intersection(candidate_lookup_ids):
+    for station in network_data.asset_topology.stations:
+        if station.grid_model_id in relevant_station_ids:
             continue
-        full_in_service_station_busbars = (
-            {busbar.grid_model_id for busbar in station.busbars if busbar.in_service} if station is not None else set()
-        )
-        uses_full_station_outage = full_in_service_station_busbars.issubset(set(configured_busbars))
-        articulation_ids = set() if uses_full_station_outage else articulation_ids_by_station.get(station_id, set())
+        configured_busbars = network_data.busbar_outage_map.get(station.grid_model_id, [])
+        articulation_ids = articulation_ids_by_station.get(station.grid_model_id, set())
         non_relevant_busbar_outage_ids.extend(
             busbar_id
             for busbar_id in configured_busbars
@@ -1017,7 +864,7 @@ def extract_busbar_outage_ids(network_data: NetworkData) -> list[str]:
     busbar_outage_ids: list[str] = []
     relevant_stations = get_relevant_stations(network_data)
     for station_index, station in enumerate(relevant_stations):
-        configured_busbars = set(network_data.busbar_outage_map.get(station.grid_model_id, []))
+        configured_busbars = set(network_data.busbar_outage_map.get(station.bus_group_id, []))
         representative_station = _get_representative_station_for_busbar_outages(network_data, station_index, station)
         always_articulation_indices = _get_always_articulation_indices(network_data, station_index)
 

@@ -581,6 +581,7 @@ def get_asset_info_from_topology(
         Switching matrix with the shape (n_bus, n_asset) where n_bus is the number of busbars
         and n_asset is the number of assets. True, where the asset is connected to the busbar.
     """
+    station_elements = station_elements.copy()
     # check for TIE_LINE
     station_elements = change_dangling_to_tie(dangling_lines, station_elements)
     # get the name for the branches
@@ -591,7 +592,12 @@ def get_asset_info_from_topology(
         station_elements.reset_index(drop=True, inplace=True)
     else:
         station_elements.reset_index(inplace=True)
-        station_elements.rename(columns={"id": "grid_model_id"}, inplace=True)
+        if "id" in station_elements.columns:
+            station_elements.rename(columns={"id": "grid_model_id"}, inplace=True)
+        elif "index" in station_elements.columns:
+            station_elements.rename(columns={"index": "grid_model_id"}, inplace=True)
+        else:
+            raise ValueError("Station topology elements are missing a grid model id column after index normalization")
     # get the busbar ids for switching matrix
     merged_df = pd.merge(
         station_elements,

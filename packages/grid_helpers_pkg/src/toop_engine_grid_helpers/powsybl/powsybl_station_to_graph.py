@@ -8,7 +8,6 @@
 """Convert a pypowsybl network to a NetworkGraph."""
 
 from string import ascii_lowercase
-from typing import Protocol
 
 import networkx as nx
 import pandas as pd
@@ -48,6 +47,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_coupler_from_df,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import get_voltage_level_with_region
+from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
 from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
@@ -60,12 +60,6 @@ from toop_engine_interfaces.asset_topology.topology_conversion import validate_c
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 
 logger = structlog.get_logger(__name__)
-
-
-class RelevantSubstationMaskProtocol(Protocol):
-    """Minimal protocol for objects carrying the relevant-substation mask."""
-
-    relevant_subs: object
 
 
 def _register_unique_payload(
@@ -1109,7 +1103,7 @@ def _topology_master_data_from_structural_station_views(
 
 def get_node_breaker_topology_master_data(
     network: Network,
-    network_masks: RelevantSubstationMaskProtocol,
+    network_masks: NetworkMasks,
     importer_parameters: CgmesImporterParameters,
 ) -> TopologyMasterData:
     """Return canonical master data derived directly from node-breaker graph extraction.
@@ -1118,7 +1112,7 @@ def get_node_breaker_topology_master_data(
     ----------
     network : Network
         Source powsybl network.
-    network_masks : RelevantSubstationMaskProtocol
+    network_masks : NetworkMasks
         Precomputed masks defining the relevant stations.
     importer_parameters : CgmesImporterParameters
         Import configuration providing the topology identifier and source file name.
@@ -1136,14 +1130,14 @@ def get_node_breaker_topology_master_data(
     )
 
 
-def get_relevant_voltage_levels(network: Network, network_masks: RelevantSubstationMaskProtocol) -> pd.DataFrame:
+def get_relevant_voltage_levels(network: Network, network_masks: NetworkMasks) -> pd.DataFrame:
     """Get all relevant voltage level from the network.
 
     Parameters
     ----------
     network: Network
         pypowsybl network object
-    network_masks: RelevantSubstationMaskProtocol
+    network_masks: NetworkMasks
         Object with a relevant_subs mask aligned to the powsybl bus table
 
     Returns

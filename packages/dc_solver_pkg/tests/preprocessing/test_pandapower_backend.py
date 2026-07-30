@@ -84,6 +84,8 @@ def test_get_asset_topology_runtime_stations(data_folder: Path) -> None:
     runtime_topology = backend.get_runtime_asset_topology()
 
     assert runtime_topology is not None
+    node_ids = set(backend.get_node_ids())
+    assert all(busbar.bus_branch_bus_id in node_ids for station in runtime_topology.stations for busbar in station.busbars)
 
     network_data = extract_network_data_from_interface(backend)
     assert network_data.asset_topology is not None

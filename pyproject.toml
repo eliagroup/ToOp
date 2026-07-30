@@ -52,12 +52,12 @@ source = "uv-dynamic-versioning"
 
 [tool.hatch.build.targets.wheel]
 packages = [
-    "packages/interfaces_pkg/src",
-    "packages/contingency_analysis_pkg/src",
-    "packages/dc_solver_pkg/src",
-    "packages/grid_helpers_pkg/src",
-    "packages/importer_pkg/src",
-    "packages/topology_optimizer_pkg/src",
+    "packages/interfaces_pkg/src/toop_engine_interfaces",
+    "packages/contingency_analysis_pkg/src/toop_engine_contingency_analysis",
+    "packages/dc_solver_pkg/src/toop_engine_dc_solver",
+    "packages/grid_helpers_pkg/src/toop_engine_grid_helpers",
+    "packages/importer_pkg/src/toop_engine_importer",
+    "packages/topology_optimizer_pkg/src/toop_engine_topology_optimizer",
 ]
 
 [tool.uv.sources]

@@ -5,339 +5,473 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
-"""Helper functions for busbar-section outage expansion."""
+"""Helper functions for lookup-oriented outage queries."""
 
-import pandera as pa
+import numpy as np
+import pandas as pd
 import pandera.typing as pat
 from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import (
-    AssetBreakerSchema,
     BranchElectricalCircuitGroupSchema,
-    BusbarCouplerSchema,
-    BusbarSectionOutageGroup,
-    BusbarSectionOutageGroups,
+    CircuitGroupLookupIndex,
+    ElectricalCircuitGroup,
     ElectricalCircuitGroupMap,
+    FailingElementsByLookupId,
+    FailingSwitchesByLookupId,
     InjectionElectricalCircuitGroupSchema,
+    PreparedCircuitGroupLookupData,
     SwitchElectricalCircuitGroupSchema,
 )
 
 
-@pa.check_types
-def extract_secondary_busbar_section_circuit_groups(
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    """Remove duplicates while keeping the first occurrence order."""
+    return list(dict.fromkeys(values))
+
+
+def _group_values_by_key(keys: np.ndarray, values: np.ndarray) -> dict[int, list[str]]:
+    """Group values by integer keys using array sorting instead of pandas groupby."""
+    valid_mask = pd.notna(keys)
+    if not np.any(valid_mask):
+        return {}
+
+    valid_keys = np.asarray(keys[valid_mask], dtype=np.int64)
+    valid_values = np.asarray(values[valid_mask], dtype=object)
+    order = np.argsort(valid_keys, kind="stable")
+    sorted_keys = valid_keys[order]
+    sorted_values = valid_values[order]
+    unique_keys, start_indices = np.unique(sorted_keys, return_index=True)
+    end_indices = np.r_[start_indices[1:], len(sorted_keys)]
+    return {
+        int(group_id): sorted_values[start_index:end_index].tolist()
+        for group_id, start_index, end_index in zip(unique_keys, start_indices, end_indices, strict=False)
+    }
+
+
+def _build_busbar_lookup_maps(
     switches: pat.DataFrame[SwitchElectricalCircuitGroupSchema],
     injection: pat.DataFrame[InjectionElectricalCircuitGroupSchema],
-) -> tuple[pat.DataFrame[BusbarCouplerSchema], pat.DataFrame[AssetBreakerSchema]]:
-    """Extract secondary busbar section circuit groups from switches and busbar sections.
-
-    If a busbar section is outaged, one may want to also know which connected branches and injections are affected.
-
-    Parameters
-    ----------
-    switches : pd.DataFrame
-        DataFrame containing switches with their electrical circuit groups.
-    injection : pd.DataFrame
-        DataFrame containing injections, including busbar sections with their electrical circuit groups.
-
-    Returns
-    -------
-    tuple[DataFrame[BusbarCouplerSchema], DataFrame[AssetBreakerSchema]]
-        Busbar couplers and asset breakers with their corresponding circuit groups.
-    """
+) -> tuple[dict[str, int], dict[str, list[int]]]:
+    """Build busbar-to-primary-group and busbar-to-asset-groups lookup maps."""
     busbar_sections = injection[injection["type"] == "BUSBAR_SECTION"]
-    switch_sides = switches.reset_index().merge(
-        busbar_sections[["bus_breaker_bus_id", "electrical_circuit_group"]],
-        how="left",
-        left_on="bus_breaker_bus1_id",
-        right_on="bus_breaker_bus_id",
-        suffixes=["_side1", "_side2"],
+    busbar_to_primary_group = {
+        busbar_id: int(group_id) for busbar_id, group_id in busbar_sections["electrical_circuit_group"].astype(int).items()
+    }
+    busbar_group_by_bus = (
+        busbar_sections[["bus_breaker_bus_id", "electrical_circuit_group"]]
+        .drop_duplicates(subset=["bus_breaker_bus_id"])
+        .set_index("bus_breaker_bus_id")["electrical_circuit_group"]
     )
-    switch_sides = switch_sides.merge(
-        busbar_sections[["bus_breaker_bus_id", "electrical_circuit_group"]],
-        how="left",
-        left_on="bus_breaker_bus2_id",
-        right_on="bus_breaker_bus_id",
-        suffixes=["_side1", "_side2"],
-    )
-    # get busbar couplers where both sides have a busbar section
-    busbar_coupler = switch_sides[
-        (switch_sides["electrical_circuit_group_side1"].notnull())
-        & (switch_sides["electrical_circuit_group_side2"].notnull())
-    ].copy()
-    busbar_coupler = busbar_coupler[
+
+    switch_sides = switches.copy().reset_index()[
         [
             "id",
             "bus_breaker_bus1_id",
             "bus_breaker_bus2_id",
-            "kind",
             "electrical_circuit_group_bus1",
             "electrical_circuit_group_bus2",
         ]
     ]
+    side1_group = switch_sides["bus_breaker_bus1_id"].map(busbar_group_by_bus)
+    side2_group = switch_sides["bus_breaker_bus2_id"].map(busbar_group_by_bus)
+    side1_present = side1_group.notna().to_numpy(copy=False)
+    side2_present = side2_group.notna().to_numpy(copy=False)
+    asset_mask = side1_present ^ side2_present
 
-    # get asset breakers where one side has a busbar section and the other side does not
-    cond_side1 = switch_sides["electrical_circuit_group_side1"].notnull()
-    cond_side2 = switch_sides["electrical_circuit_group_side2"].notnull()
-    asset_breakers = switch_sides[(cond_side1 | cond_side2) & ~(cond_side1 & cond_side2)].copy()
-    asset_breakers["electrical_circuit_group_busbar"] = asset_breakers["electrical_circuit_group_side1"]
-    cond = asset_breakers["electrical_circuit_group_busbar"].isnull()
-    asset_breakers.loc[cond, "electrical_circuit_group_busbar"] = asset_breakers.loc[cond, "electrical_circuit_group_side2"]
-    # Identify the non-busbar-side circuit group for each asset breaker.
-    cond_side1 = asset_breakers["electrical_circuit_group_bus1"] != asset_breakers["electrical_circuit_group_busbar"]
-    cond_side2 = asset_breakers["electrical_circuit_group_bus2"] != asset_breakers["electrical_circuit_group_busbar"]
-    asset_breakers.loc[cond_side1, "asset_circuit_group"] = asset_breakers.loc[cond_side1, "electrical_circuit_group_bus1"]
-    asset_breakers.loc[cond_side2, "asset_circuit_group"] = asset_breakers.loc[cond_side2, "electrical_circuit_group_bus2"]
-    asset_breakers["asset_circuit_group"] = asset_breakers["asset_circuit_group"].astype(int)
-    asset_breakers["electrical_circuit_group_busbar"] = asset_breakers["electrical_circuit_group_busbar"].astype(int)
-    asset_breakers = asset_breakers[
-        [
-            "id",
-            "bus_breaker_bus1_id",
-            "bus_breaker_bus2_id",
-            "kind",
-            "electrical_circuit_group_busbar",
-            "asset_circuit_group",
-        ]
-    ]
+    asset_groups_by_primary: dict[int, dict[int, None]] = {}
+    if np.any(asset_mask):
+        asset_rows = switch_sides.loc[asset_mask]
+        primary_group = side1_group.loc[asset_mask].where(side1_group.loc[asset_mask].notna(), side2_group.loc[asset_mask])
+        primary_group_values = primary_group.to_numpy(dtype=np.int64, copy=False)
+        bus1_group_values = asset_rows["electrical_circuit_group_bus1"].to_numpy(dtype=np.int64, copy=False)
+        bus2_group_values = asset_rows["electrical_circuit_group_bus2"].to_numpy(dtype=np.int64, copy=False)
+        asset_group_values = np.where(bus1_group_values != primary_group_values, bus1_group_values, bus2_group_values)
+        keep_mask = asset_group_values != primary_group_values
 
-    # set index back to id for both dataframes
-    busbar_coupler.set_index("id", inplace=True)
-    asset_breakers.set_index("id", inplace=True)
-    return busbar_coupler, asset_breakers
+        for primary_group_id, asset_group_id in zip(
+            primary_group_values[keep_mask], asset_group_values[keep_mask], strict=False
+        ):
+            asset_groups_by_primary.setdefault(int(primary_group_id), {}).setdefault(int(asset_group_id), None)
+
+    busbar_to_asset_groups = {
+        busbar_id: list(asset_groups_by_primary.get(primary_group_id, {}).keys())
+        for busbar_id, primary_group_id in busbar_to_primary_group.items()
+    }
+    return busbar_to_primary_group, busbar_to_asset_groups
 
 
-@pa.check_types
-def get_outage_group_ids_by_busbar_section_id(
-    injection: pat.DataFrame[InjectionElectricalCircuitGroupSchema],
+def preprocess_circuit_group_lookup(
+    branches: pat.DataFrame[BranchElectricalCircuitGroupSchema],
     switches: pat.DataFrame[SwitchElectricalCircuitGroupSchema],
-) -> BusbarSectionOutageGroups:
-    """Get outage group IDs for a given busbar section.
+    injection: pat.DataFrame[InjectionElectricalCircuitGroupSchema],
+) -> PreparedCircuitGroupLookupData:
+    """Precompute shared mappings for circuit-group lookup construction.
 
     Parameters
     ----------
-    injection : pd.DataFrame
-        DataFrame containing injection information.
-    switches : pd.DataFrame
-        DataFrame containing switch information.
+    branches : DataFrame[BranchElectricalCircuitGroupSchema]
+        Branch table annotated with electrical circuit group ids.
+    switches : DataFrame[SwitchElectricalCircuitGroupSchema]
+        Switch table annotated with circuit group ids on both bus-breaker sides.
+    injection : DataFrame[InjectionElectricalCircuitGroupSchema]
+        Injection table annotated with electrical circuit group ids.
 
     Returns
     -------
-    dict[str, BusbarSectionOutageGroup]
-        Busbar-section outage expansion metadata keyed by busbar section id.
+    PreparedCircuitGroupLookupData
+        Shared branch, switch, injection, and busbar mappings reused by the
+        busbar and branch lookup builders.
     """
-    busbar_outage_groups: BusbarSectionOutageGroups = {}
-    busbar_coupler, asset_breakers = extract_secondary_busbar_section_circuit_groups(switches=switches, injection=injection)
-
-    busbar_sections = injection[injection["type"] == "BUSBAR_SECTION"]
-    busbar_couplers_by_group: dict[int, list[str]] = {}
-    for column in ["electrical_circuit_group_bus1", "electrical_circuit_group_bus2"]:
-        for component_id, busbar_coupler_ids in busbar_coupler.groupby(column, dropna=True).groups.items():
-            busbar_couplers_by_group.setdefault(int(component_id), []).extend(busbar_coupler_ids.to_list())
-
-    asset_breakers_by_group = {
-        int(component_id): asset_breaker_ids.to_list()
-        for component_id, asset_breaker_ids in asset_breakers.groupby(
-            "electrical_circuit_group_busbar", dropna=True
-        ).groups.items()
-    }
-    asset_circuit_groups_by_group = {
-        int(component_id): [int(group_id) for group_id in group_values]
-        for component_id, group_values in asset_breakers.groupby("electrical_circuit_group_busbar", dropna=True)[
-            "asset_circuit_group"
-        ]
-    }
-
-    for busbar_id, busbar_circuit_group in busbar_sections["electrical_circuit_group"].astype(int).items():
-        busbar_outage_groups[busbar_id] = BusbarSectionOutageGroup(
-            primary_circuit_group=busbar_circuit_group,
-            busbar_couplers=busbar_couplers_by_group.get(busbar_circuit_group, []),
-            primary_asset_breakers=asset_breakers_by_group.get(busbar_circuit_group, []),
-            asset_circuit_groups=asset_circuit_groups_by_group.get(busbar_circuit_group, []),
+    busbar_to_primary_group, busbar_to_asset_groups = _build_busbar_lookup_maps(switches=switches, injection=injection)
+    branch_group_values = branches["electrical_circuit_group"].to_numpy(copy=False)
+    branch_ids = branches.index.to_numpy(dtype=object, copy=False)
+    branch_mask = pd.notna(branch_group_values)
+    branch_to_group = {
+        branch_id: int(component_id)
+        for branch_id, component_id in zip(
+            branch_ids[branch_mask], np.asarray(branch_group_values[branch_mask], dtype=np.int64), strict=False
         )
-    return busbar_outage_groups
+    }
+    group_to_branches = _group_values_by_key(branch_group_values, branch_ids)
+
+    switch_ids = switches.index.to_numpy(dtype=object, copy=False)
+    group_to_switches: dict[int, list[str]] = {}
+    for grouped_switches in (
+        _group_values_by_key(switches["electrical_circuit_group_bus1"].to_numpy(copy=False), switch_ids),
+        _group_values_by_key(switches["electrical_circuit_group_bus2"].to_numpy(copy=False), switch_ids),
+    ):
+        for component_id, grouped_switch_ids in grouped_switches.items():
+            group_to_switches.setdefault(component_id, []).extend(grouped_switch_ids)
+    group_to_switches = {
+        component_id: _dedupe_preserve_order(switch_ids) for component_id, switch_ids in group_to_switches.items()
+    }
+
+    busbar_mask = (injection["type"] == "BUSBAR_SECTION").to_numpy(copy=False)
+    injection_ids = injection.index.to_numpy(dtype=object, copy=False)
+    injection_group_values = injection["electrical_circuit_group"].to_numpy(copy=False)
+    group_to_busbar_sections = _group_values_by_key(injection_group_values[busbar_mask], injection_ids[busbar_mask])
+    group_to_injections = _group_values_by_key(injection_group_values[~busbar_mask], injection_ids[~busbar_mask])
+
+    return PreparedCircuitGroupLookupData(
+        branch_to_group=branch_to_group,
+        busbar_to_primary_group=busbar_to_primary_group,
+        busbar_to_asset_groups=busbar_to_asset_groups,
+        group_to_branches=group_to_branches,
+        group_to_switches=group_to_switches,
+        group_to_injections=group_to_injections,
+        group_to_busbar_sections=group_to_busbar_sections,
+    )
 
 
-def get_all_failing_elements_by_busbar_section_id(
-    busbar_section_id: str, busbar_outage_groups: BusbarSectionOutageGroups, outage_groups: ElectricalCircuitGroupMap
-) -> list[str]:
-    """Get all failing elements for a given busbar section.
-
-    Parameters
-    ----------
-    busbar_section_id : str
-        The ID of the busbar section.
-    busbar_outage_groups : BusbarSectionOutageGroups
-        A dictionary mapping busbar section IDs to their corresponding outage group information.
-    outage_groups : ElectricalCircuitGroupMap
-        A dictionary containing outage groups with their corresponding branch IDs and switch IDs.
-
-    Returns
-    -------
-    list[str]
-        A list of all failing element IDs for the given busbar section.
-    """
-    if busbar_section_id not in busbar_outage_groups:
-        raise ValueError(f"Busbar section {busbar_section_id} not found in busbar_outage_groups.")
-
-    busbar_info = busbar_outage_groups[busbar_section_id]
-    asset_circuit_groups = busbar_info.asset_circuit_groups
-
-    failing_elements = []
-
-    # Add branches and switches from the asset circuit groups
-    for asset_circuit_group in asset_circuit_groups:
-        if asset_circuit_group in outage_groups:
-            failing_elements.extend(outage_groups[asset_circuit_group].branches)
-            failing_elements.extend(outage_groups[asset_circuit_group].injections)
-    # de-duplicate the list of failing elements
-    failing_elements = list(set(failing_elements))
-    return failing_elements
-
-
-def get_all_failing_switches_by_busbar_section_id(
-    busbar_section_id: str, busbar_outage_groups: BusbarSectionOutageGroups, outage_groups: ElectricalCircuitGroupMap
-) -> list[str]:
-    """Get all failing switches for a given busbar section.
+def build_busbar_circuit_group_lookup(preprocessed: PreparedCircuitGroupLookupData) -> CircuitGroupLookupIndex:
+    """Build the busbar-oriented portion of the circuit-group lookup index.
 
     Parameters
     ----------
-    busbar_section_id : str
-        The ID of the busbar section.
-    busbar_outage_groups : dict
-        A dictionary mapping busbar section IDs to their corresponding outage group information.
-    outage_groups : dict
-        A dictionary containing outage groups with their corresponding branch IDs and switch IDs.
+    preprocessed : PreparedCircuitGroupLookupData
+        Shared mappings prepared from the branch, switch, and injection tables.
 
     Returns
     -------
-    list[str]
-        A list of all failing switch IDs for the given busbar section.
+    CircuitGroupLookupIndex
+        Partial lookup index containing busbar mappings and the failing element
+        and switch expansions reachable from each busbar section.
     """
-    if busbar_section_id not in busbar_outage_groups:
-        raise ValueError(f"Busbar section {busbar_section_id} not found in busbar_outage_groups.")
+    busbar_to_failing_elements: dict[str, list[str]] = {}
+    busbar_to_failing_switches: dict[str, list[str]] = {}
+    for busbar_id, asset_group_ids in preprocessed.busbar_to_asset_groups.items():
+        failing_elements: list[str] = []
+        failing_switches: list[str] = []
+        for asset_group_id in asset_group_ids:
+            failing_elements.extend(preprocessed.group_to_branches.get(asset_group_id, []))
+            failing_elements.extend(preprocessed.group_to_injections.get(asset_group_id, []))
+            failing_switches.extend(preprocessed.group_to_switches.get(asset_group_id, []))
+        busbar_to_failing_elements[busbar_id] = _dedupe_preserve_order(failing_elements)
+        busbar_to_failing_switches[busbar_id] = _dedupe_preserve_order(failing_switches)
 
-    busbar_info = busbar_outage_groups[busbar_section_id]
-    asset_circuit_groups = busbar_info.asset_circuit_groups
-
-    failing_switches = []
-
-    # Add switches from the asset circuit groups
-    for asset_circuit_group in asset_circuit_groups:
-        if asset_circuit_group in outage_groups:
-            failing_switches.extend(outage_groups[asset_circuit_group].switches)
-
-    # de-duplicate the list of failing switches
-    failing_switches = list(set(failing_switches))
-
-    return failing_switches
+    return CircuitGroupLookupIndex(
+        busbar_to_primary_group=preprocessed.busbar_to_primary_group,
+        busbar_to_asset_groups=preprocessed.busbar_to_asset_groups,
+        group_to_branches=preprocessed.group_to_branches,
+        group_to_switches=preprocessed.group_to_switches,
+        group_to_injections=preprocessed.group_to_injections,
+        group_to_busbar_sections=preprocessed.group_to_busbar_sections,
+        busbar_to_failing_elements=busbar_to_failing_elements,
+        busbar_to_failing_switches=busbar_to_failing_switches,
+    )
 
 
-@pa.check_types
-def get_all_failing_elements_by_branch_id(
-    branch_id: str,
-    outage_groups: ElectricalCircuitGroupMap,
+def build_branch_circuit_group_lookup(
+    preprocessed: PreparedCircuitGroupLookupData,
+    busbar_lookup_index: CircuitGroupLookupIndex,
+) -> CircuitGroupLookupIndex:
+    """Build the branch-oriented portion of the circuit-group lookup index.
+
+    Parameters
+    ----------
+    preprocessed : PreparedCircuitGroupLookupData
+        Shared mappings prepared from the branch, switch, and injection tables.
+    busbar_lookup_index : CircuitGroupLookupIndex
+        Partial lookup index containing the busbar-level failing element and
+        switch expansions needed to expand full group failures.
+
+    Returns
+    -------
+    CircuitGroupLookupIndex
+        Partial lookup index containing branch-to-group mappings and the full
+        failing element and switch expansions for each electrical circuit group.
+    """
+    all_group_ids = (
+        set(preprocessed.group_to_branches)
+        | set(preprocessed.group_to_switches)
+        | set(preprocessed.group_to_injections)
+        | set(preprocessed.group_to_busbar_sections)
+    )
+    group_to_failing_elements: dict[int, list[str]] = {}
+    group_to_failing_switches: dict[int, list[str]] = {}
+    for component_id in all_group_ids:
+        failing_elements = list(preprocessed.group_to_branches.get(component_id, []))
+        failing_switches = list(preprocessed.group_to_switches.get(component_id, []))
+        for busbar_id in preprocessed.group_to_busbar_sections.get(component_id, []):
+            failing_elements.extend(busbar_lookup_index.busbar_to_failing_elements.get(busbar_id, []))
+            failing_switches.extend(busbar_lookup_index.busbar_to_failing_switches.get(busbar_id, []))
+        group_to_failing_elements[component_id] = _dedupe_preserve_order(failing_elements)
+        group_to_failing_switches[component_id] = _dedupe_preserve_order(failing_switches)
+
+    return CircuitGroupLookupIndex(
+        branch_to_group=preprocessed.branch_to_group,
+        group_to_branches=preprocessed.group_to_branches,
+        group_to_switches=preprocessed.group_to_switches,
+        group_to_injections=preprocessed.group_to_injections,
+        group_to_busbar_sections=preprocessed.group_to_busbar_sections,
+        group_to_failing_elements=group_to_failing_elements,
+        group_to_failing_switches=group_to_failing_switches,
+    )
+
+
+def build_circuit_group_lookup_index(
     branches: pat.DataFrame[BranchElectricalCircuitGroupSchema],
-    busbar_outage_groups: BusbarSectionOutageGroups,
-    include_busbar_id: bool = False,
-) -> list[str]:
-    """Get all failing elements for a given busbar section by branch ID.
-
-    Get all failing branches of this group and if a busbar is directly connected -> add outage cases as well.
+    switches: pat.DataFrame[SwitchElectricalCircuitGroupSchema],
+    injection: pat.DataFrame[InjectionElectricalCircuitGroupSchema],
+) -> CircuitGroupLookupIndex:
+    """Build the complete circuit-group lookup index used by query helpers.
 
     Parameters
     ----------
-    branch_id : str
-        The ID of the branch.
-    outage_groups : dict
-        A dictionary containing outage groups with their corresponding branch IDs and switch IDs.
-    branches : pd.DataFrame
-        DataFrame containing branch information.
-    busbar_outage_groups : BusbarSectionOutageGroups
-        Busbar-section outage expansion metadata keyed by busbar section id.
+    branches : DataFrame[BranchElectricalCircuitGroupSchema]
+        Branch table annotated with electrical circuit group ids.
+    switches : DataFrame[SwitchElectricalCircuitGroupSchema]
+        Switch table annotated with circuit group ids on both bus-breaker sides.
+    injection : DataFrame[InjectionElectricalCircuitGroupSchema]
+        Injection table annotated with electrical circuit group ids.
+
+    Returns
+    -------
+    CircuitGroupLookupIndex
+        Full lookup representation for resolving circuit-group contents and the
+        failing elements or switches induced by branch and busbar lookups.
+    """
+    preprocessed = preprocess_circuit_group_lookup(branches=branches, switches=switches, injection=injection)
+    busbar_lookup_index = build_busbar_circuit_group_lookup(preprocessed=preprocessed)
+    branch_lookup_index = build_branch_circuit_group_lookup(
+        preprocessed=preprocessed,
+        busbar_lookup_index=busbar_lookup_index,
+    )
+
+    return CircuitGroupLookupIndex(
+        branch_to_group=preprocessed.branch_to_group,
+        busbar_to_primary_group=preprocessed.busbar_to_primary_group,
+        busbar_to_asset_groups=preprocessed.busbar_to_asset_groups,
+        group_to_branches=preprocessed.group_to_branches,
+        group_to_switches=preprocessed.group_to_switches,
+        group_to_injections=preprocessed.group_to_injections,
+        group_to_busbar_sections=preprocessed.group_to_busbar_sections,
+        group_to_failing_elements=branch_lookup_index.group_to_failing_elements,
+        group_to_failing_switches=branch_lookup_index.group_to_failing_switches,
+        busbar_to_failing_elements=busbar_lookup_index.busbar_to_failing_elements,
+        busbar_to_failing_switches=busbar_lookup_index.busbar_to_failing_switches,
+    )
+
+
+def build_circuit_group_map(identified_circuit_groups: CircuitGroupLookupIndex | object) -> ElectricalCircuitGroupMap:
+    """Build a group-id keyed circuit-group map from lookup data or a result bundle.
+
+    Parameters
+    ----------
+    identified_circuit_groups : CircuitGroupLookupIndex | object
+        Either a direct lookup index or an object exposing a ``lookup_index``
+        attribute, such as ``ElectricalCircuitGroupIdentification``.
+
+    Returns
+    -------
+    ElectricalCircuitGroupMap
+        Mapping from electrical circuit group id to the grouped branch,
+        switch, injection, and busbar-section ids.
+    """
+    lookup_index = getattr(identified_circuit_groups, "lookup_index", identified_circuit_groups)
+    all_group_ids = (
+        set(lookup_index.group_to_branches)
+        | set(lookup_index.group_to_switches)
+        | set(lookup_index.group_to_injections)
+        | set(lookup_index.group_to_busbar_sections)
+    )
+    return {
+        group_id: ElectricalCircuitGroup(
+            branches=list(lookup_index.group_to_branches.get(group_id, [])),
+            switches=list(lookup_index.group_to_switches.get(group_id, [])),
+            injections=list(lookup_index.group_to_injections.get(group_id, [])),
+            busbar_section=list(lookup_index.group_to_busbar_sections.get(group_id, [])),
+        )
+        for group_id in all_group_ids
+    }
+
+
+def get_failing_elements_by_branch_ids(
+    branch_ids: list[str], lookup_index: CircuitGroupLookupIndex, include_busbar_id: bool = False
+) -> FailingElementsByLookupId:
+    """Get failing element ids for each requested branch id.
+
+    Parameters
+    ----------
+    branch_ids : list[str]
+        Branch ids to resolve.
+    lookup_index : CircuitGroupLookupIndex
+        Precomputed circuit-group lookup index.
     include_busbar_id : bool, optional
-        Whether to include the busbar section ID in the list of failing elements. Default is False
+        Whether to append directly connected busbar-section ids to each returned
+        failing-element list.
 
     Returns
     -------
-    list[str]
-        A list of all failing element IDs for the given busbar section.
+    FailingElementsByLookupId
+        Mapping from each branch id to the list of failing branch, injection,
+        and optionally busbar-section ids.
+
+    Raises
+    ------
+    ValueError
+        If one or more branch ids are not present in the lookup index.
     """
-    if branch_id not in branches.index:
-        raise ValueError(f"Branch {branch_id} not found in branches DataFrame.")
+    missing_branch_ids = [branch_id for branch_id in branch_ids if branch_id not in lookup_index.branch_to_group]
+    if missing_branch_ids:
+        raise ValueError(f"Branch IDs not found in circuit-group lookup index: {missing_branch_ids}")
 
-    branch_info = branches.loc[branch_id]
-    branch_circuit_groups = int(branch_info["electrical_circuit_group"])
+    if not include_busbar_id:
+        return {
+            branch_id: lookup_index.group_to_failing_elements[lookup_index.branch_to_group[branch_id]]
+            for branch_id in branch_ids
+        }
 
-    failing_elements = []
+    failing_elements_with_busbar_by_group: dict[int, list[str]] = {}
+    for component_id in {lookup_index.branch_to_group[branch_id] for branch_id in branch_ids}:
+        failing_elements = list(lookup_index.group_to_failing_elements.get(component_id, []))
+        failing_elements.extend(lookup_index.group_to_busbar_sections.get(component_id, []))
+        failing_elements_with_busbar_by_group[component_id] = _dedupe_preserve_order(failing_elements)
 
-    # Add branches from the asset circuit groups
-    if branch_circuit_groups in outage_groups:
-        failing_elements.extend(outage_groups[branch_circuit_groups].branches)
-    # check if a busbar is directly connected -> add outage cases as well
-    if len(outage_groups[branch_circuit_groups].busbar_section) > 0:
-        busbar_sections = outage_groups[branch_circuit_groups].busbar_section
-        for busbar_id in busbar_sections:
-            if busbar_id in busbar_outage_groups:
-                failing_elements.extend(
-                    get_all_failing_elements_by_busbar_section_id(
-                        busbar_section_id=busbar_id, busbar_outage_groups=busbar_outage_groups, outage_groups=outage_groups
-                    )
-                )
-    if include_busbar_id:
-        failing_elements.extend(busbar_sections)
-
-    # de-duplicate the list of failing elements
-    failing_elements = list(set(failing_elements))
-
-    return failing_elements
+    return {
+        branch_id: failing_elements_with_busbar_by_group[lookup_index.branch_to_group[branch_id]] for branch_id in branch_ids
+    }
 
 
-@pa.check_types
-def get_all_failing_switches_by_branch_id(
-    branch_id: str,
-    outage_groups: ElectricalCircuitGroupMap,
-    branches: pat.DataFrame[BranchElectricalCircuitGroupSchema],
-    busbar_outage_groups: BusbarSectionOutageGroups,
-) -> list[str]:
-    """Get all failing switches for a given busbar section by branch ID.
-
-    Get all failing switches of this group and if a busbar is directly connected -> add outage cases as well.
+def get_failing_switches_by_branch_ids(
+    branch_ids: list[str], lookup_index: CircuitGroupLookupIndex
+) -> FailingSwitchesByLookupId:
+    """Get failing switch ids for each requested branch id.
 
     Parameters
     ----------
-    branch_id : str
-        The ID of the branch.
-    outage_groups : dict
-        A dictionary containing outage groups with their corresponding branch IDs and switch IDs.
-    branches : pd.DataFrame
-        DataFrame containing branch information.
-    busbar_outage_groups : BusbarSectionOutageGroups
-        Busbar-section outage expansion metadata keyed by busbar section id.
+    branch_ids : list[str]
+        Branch ids to resolve.
+    lookup_index : CircuitGroupLookupIndex
+        Precomputed circuit-group lookup index.
 
     Returns
     -------
-    list[str]
-        A list of all failing switch IDs for the given busbar section.
+    FailingSwitchesByLookupId
+        Mapping from each branch id to the list of failing switch ids.
+
+    Raises
+    ------
+    ValueError
+        If one or more branch ids are not present in the lookup index.
     """
-    if branch_id not in branches.index:
-        raise ValueError(f"Branch {branch_id} not found in branches DataFrame.")
+    missing_branch_ids = [branch_id for branch_id in branch_ids if branch_id not in lookup_index.branch_to_group]
+    if missing_branch_ids:
+        raise ValueError(f"Branch IDs not found in circuit-group lookup index: {missing_branch_ids}")
 
-    branch_info = branches.loc[branch_id]
-    branch_circuit_groups = int(branch_info["electrical_circuit_group"])
+    return {
+        branch_id: lookup_index.group_to_failing_switches[lookup_index.branch_to_group[branch_id]]
+        for branch_id in branch_ids
+    }
 
-    failing_switches = []
 
-    # Add switches from the asset circuit groups
-    if branch_circuit_groups in outage_groups:
-        failing_switches.extend(outage_groups[branch_circuit_groups].switches)
-    # check if a busbar is directly connected -> add outage cases as well
-    if len(outage_groups[branch_circuit_groups].busbar_section) > 0:
-        busbar_sections = outage_groups[branch_circuit_groups].busbar_section
-        for busbar_id in busbar_sections:
-            if busbar_id in busbar_outage_groups:
-                failing_switches.extend(
-                    get_all_failing_switches_by_busbar_section_id(busbar_id, busbar_outage_groups, outage_groups)
-                )
+def get_failing_elements_by_busbar_ids(
+    busbar_section_ids: list[str], lookup_index: CircuitGroupLookupIndex
+) -> FailingElementsByLookupId:
+    """Get failing element ids for each requested busbar-section id.
 
-    # de-duplicate the list of failing switches
-    failing_switches = list(set(failing_switches))
+    Parameters
+    ----------
+    busbar_section_ids : list[str]
+        Busbar-section ids to resolve.
+    lookup_index : CircuitGroupLookupIndex
+        Precomputed circuit-group lookup index.
 
-    return failing_switches
+    Returns
+    -------
+    FailingElementsByLookupId
+        Mapping from each busbar-section id to the list of failing branch and
+        injection ids connected through the outage expansion.
+
+    Raises
+    ------
+    ValueError
+        If one or more busbar-section ids are not present in the lookup index.
+    """
+    missing_busbar_ids = [
+        busbar_section_id
+        for busbar_section_id in busbar_section_ids
+        if busbar_section_id not in lookup_index.busbar_to_failing_elements
+    ]
+    if missing_busbar_ids:
+        raise ValueError(f"Busbar sections not found in circuit-group lookup index: {missing_busbar_ids}")
+
+    return {
+        busbar_section_id: lookup_index.busbar_to_failing_elements[busbar_section_id]
+        for busbar_section_id in busbar_section_ids
+    }
+
+
+def get_failing_switches_by_busbar_ids(
+    busbar_section_ids: list[str], lookup_index: CircuitGroupLookupIndex
+) -> FailingSwitchesByLookupId:
+    """Get failing switch ids for each requested busbar-section id.
+
+    Parameters
+    ----------
+    busbar_section_ids : list[str]
+        Busbar-section ids to resolve.
+    lookup_index : CircuitGroupLookupIndex
+        Precomputed circuit-group lookup index.
+
+    Returns
+    -------
+    FailingSwitchesByLookupId
+        Mapping from each busbar-section id to the list of failing switch ids.
+
+    Raises
+    ------
+    ValueError
+        If one or more busbar-section ids are not present in the lookup index.
+    """
+    missing_busbar_ids = [
+        busbar_section_id
+        for busbar_section_id in busbar_section_ids
+        if busbar_section_id not in lookup_index.busbar_to_failing_switches
+    ]
+    if missing_busbar_ids:
+        raise ValueError(f"Busbar sections not found in circuit-group lookup index: {missing_busbar_ids}")
+
+    return {
+        busbar_section_id: lookup_index.busbar_to_failing_switches[busbar_section_id]
+        for busbar_section_id in busbar_section_ids
+    }

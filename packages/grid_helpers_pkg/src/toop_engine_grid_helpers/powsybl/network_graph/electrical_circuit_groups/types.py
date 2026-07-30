@@ -45,6 +45,58 @@ class BusBreakerIdSchema(pa.DataFrameModel):
         strict = True
 
 
+class BusBreakerViewSchema(pa.DataFrameModel):
+    """Schema for the reduced bus-breaker view table fetched from pypowsybl."""
+
+    id: pat.Index[str]
+
+    class Config:
+        """Pandera configuration for strict column validation."""
+
+        strict = True
+
+
+class BranchSchema(pa.DataFrameModel):
+    """Schema for raw branch rows used by circuit-group identification."""
+
+    id: pat.Index[str]
+    bus_breaker_bus1_id: pat.Series[str]
+    bus_breaker_bus2_id: pat.Series[str]
+
+    class Config:
+        """Pandera configuration for strict column validation."""
+
+        strict = True
+
+
+class SwitchSchema(pa.DataFrameModel):
+    """Schema for raw switch rows used by circuit-group identification."""
+
+    id: pat.Index[str]
+    bus_breaker_bus1_id: pat.Series[str]
+    bus_breaker_bus2_id: pat.Series[str]
+    kind: pat.Series[str]
+    fictitious: pat.Series[bool]
+
+    class Config:
+        """Pandera configuration for strict column validation."""
+
+        strict = True
+
+
+class InjectionSchema(pa.DataFrameModel):
+    """Schema for raw injection rows used by circuit-group identification."""
+
+    id: pat.Index[str]
+    bus_breaker_bus_id: pat.Series[str]
+    type: pat.Series[str]
+
+    class Config:
+        """Pandera configuration for strict column validation."""
+
+        strict = True
+
+
 class BranchElectricalCircuitGroupSchema(pa.DataFrameModel):
     """Schema for branches enriched with their electrical circuit group."""
 
@@ -89,38 +141,6 @@ class InjectionElectricalCircuitGroupSchema(pa.DataFrameModel):
         strict = True
 
 
-class BusbarCouplerSchema(pa.DataFrameModel):
-    """Schema for busbar couplers connected between two busbar sections."""
-
-    id: pat.Index[str]
-    bus_breaker_bus1_id: pat.Series[str]
-    bus_breaker_bus2_id: pat.Series[str]
-    kind: pat.Series[str]
-    electrical_circuit_group_bus1: pat.Series[int]
-    electrical_circuit_group_bus2: pat.Series[int]
-
-    class Config:
-        """Pandera configuration for strict column validation."""
-
-        strict = True
-
-
-class AssetBreakerSchema(pa.DataFrameModel):
-    """Schema for breakers connecting a busbar section to an asset circuit group."""
-
-    id: pat.Index[str]
-    bus_breaker_bus1_id: pat.Series[str]
-    bus_breaker_bus2_id: pat.Series[str]
-    kind: pat.Series[str]
-    electrical_circuit_group_busbar: pat.Series[int]
-    asset_circuit_group: pat.Series[int]
-
-    class Config:
-        """Pandera configuration for strict column validation."""
-
-        strict = True
-
-
 class ElectricalCircuitGroup(BaseModel):
     """Outage-group contents for a single electrical circuit group."""
 
@@ -130,13 +150,32 @@ class ElectricalCircuitGroup(BaseModel):
     busbar_section: list[str] = Field(default_factory=list)
 
 
-class BusbarSectionOutageGroup(BaseModel):
-    """Busbar-section outage expansion metadata."""
+class PreparedCircuitGroupLookupData(BaseModel):
+    """Shared preprocessed group mappings reused by circuit-group lookup builders."""
 
-    primary_circuit_group: int
-    busbar_couplers: list[str] = Field(default_factory=list)
-    primary_asset_breakers: list[str] = Field(default_factory=list)
-    asset_circuit_groups: list[int] = Field(default_factory=list)
+    branch_to_group: dict[str, int] = Field(default_factory=dict)
+    busbar_to_primary_group: dict[str, int] = Field(default_factory=dict)
+    busbar_to_asset_groups: dict[str, list[int]] = Field(default_factory=dict)
+    group_to_branches: dict[int, list[str]] = Field(default_factory=dict)
+    group_to_switches: dict[int, list[str]] = Field(default_factory=dict)
+    group_to_injections: dict[int, list[str]] = Field(default_factory=dict)
+    group_to_busbar_sections: dict[int, list[str]] = Field(default_factory=dict)
+
+
+class CircuitGroupLookupIndex(BaseModel):
+    """Lookup-oriented circuit-group representation keyed by group and busbar section."""
+
+    branch_to_group: dict[str, int] = Field(default_factory=dict)
+    busbar_to_primary_group: dict[str, int] = Field(default_factory=dict)
+    busbar_to_asset_groups: dict[str, list[int]] = Field(default_factory=dict)
+    group_to_branches: dict[int, list[str]] = Field(default_factory=dict)
+    group_to_switches: dict[int, list[str]] = Field(default_factory=dict)
+    group_to_injections: dict[int, list[str]] = Field(default_factory=dict)
+    group_to_busbar_sections: dict[int, list[str]] = Field(default_factory=dict)
+    group_to_failing_elements: dict[int, list[str]] = Field(default_factory=dict)
+    group_to_failing_switches: dict[int, list[str]] = Field(default_factory=dict)
+    busbar_to_failing_elements: dict[str, list[str]] = Field(default_factory=dict)
+    busbar_to_failing_switches: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class ElectricalCircuitGroupIdentification(BaseModel):
@@ -144,11 +183,26 @@ class ElectricalCircuitGroupIdentification(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    circuit_group_map: "ElectricalCircuitGroupMap"
+    lookup_index: "CircuitGroupLookupIndex"
     branches: pd.DataFrame
     switches: pd.DataFrame
     injections: pd.DataFrame
 
 
+#: Identifier of one lookup input such as a branch id or busbar-section id.
+LookupInputId: TypeAlias = str
+
+#: Ordered failing element ids returned for one lookup input.
+FailingElementIds: TypeAlias = list[str]
+
+#: Ordered failing switch ids returned for one lookup input.
+FailingSwitchIds: TypeAlias = list[str]
+
+#: Mapping from lookup input id to failing element ids.
+FailingElementsByLookupId: TypeAlias = dict[LookupInputId, FailingElementIds]
+
+#: Mapping from lookup input id to failing switch ids.
+FailingSwitchesByLookupId: TypeAlias = dict[LookupInputId, FailingSwitchIds]
+
+
 ElectricalCircuitGroupMap: TypeAlias = dict[int, ElectricalCircuitGroup]
-BusbarSectionOutageGroups: TypeAlias = dict[str, BusbarSectionOutageGroup]

@@ -11,15 +11,20 @@ import pandera as pa
 import pandera.typing as pat
 import pypowsybl
 import rustworkx as rx
+from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.helper_functions import (
+    build_circuit_group_lookup_index,
+)
 from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import (
     BranchElectricalCircuitGroupSchema,
+    BranchSchema,
     BusBreakerIdSchema,
+    BusBreakerViewSchema,
     EdgeSchema,
-    ElectricalCircuitGroup,
     ElectricalCircuitGroupIdentification,
-    ElectricalCircuitGroupMap,
     InjectionElectricalCircuitGroupSchema,
+    InjectionSchema,
     SwitchElectricalCircuitGroupSchema,
+    SwitchSchema,
 )
 
 
@@ -51,20 +56,22 @@ def _update_switches_for_outage_group_identification(net: pypowsybl.network.Netw
 
 
 @pa.check_types
-def _get_bus_breaker_int_ids(net: pypowsybl.network.Network) -> pat.DataFrame[BusBreakerIdSchema]:
+def _get_bus_breaker_int_ids(
+    bus_breaker_view_buses: pat.DataFrame[BusBreakerViewSchema],
+) -> pat.DataFrame[BusBreakerIdSchema]:
     """Get bus breaker int IDs for the network.
 
     Parameters
     ----------
-    net : pypowsybl.network.Network
-        The network to analyze.
+    bus_breaker_view_buses : DataFrame[BusBreakerViewSchema]
+        Reduced bus-breaker-view table with only the identifier index.
 
     Returns
     -------
     DataFrame[BusBreakerIdSchema]
         A DataFrame containing bus breaker int IDs.
     """
-    bus_breaker_int_id = net.get_bus_breaker_view_buses(attributes=[]).reset_index()
+    bus_breaker_int_id = bus_breaker_view_buses.reset_index()
     bus_breaker_int_id["bus_breaker_id_int"] = bus_breaker_int_id.index
     bus_breaker_int_id.set_index("id", inplace=True)
     return bus_breaker_int_id
@@ -72,7 +79,7 @@ def _get_bus_breaker_int_ids(net: pypowsybl.network.Network) -> pat.DataFrame[Bu
 
 @pa.check_types
 def _get_graph_edges(
-    net: pypowsybl.network.Network, bus_breaker_int_id: pat.DataFrame[BusBreakerIdSchema]
+    branches: pat.DataFrame[BranchSchema], bus_breaker_int_id: pat.DataFrame[BusBreakerIdSchema]
 ) -> pat.DataFrame[EdgeSchema]:
     """Get graph edges for the network.
 
@@ -81,8 +88,8 @@ def _get_graph_edges(
 
     Parameters
     ----------
-    net : pypowsybl.network.Network
-        The network to analyze.
+    branches : DataFrame[BranchSchema]
+        Raw branch table already fetched from pypowsybl.
     bus_breaker_int_id : pat.DataFrame[BusBreakerIdSchema]
         Mapping from bus-breaker bus identifiers to their integer graph node ids.
 
@@ -91,7 +98,7 @@ def _get_graph_edges(
     DataFrame[EdgeSchema]
         A DataFrame containing graph edges.
     """
-    branches = net.get_branches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id"])
+    branches = branches.copy()
     branches.reset_index(inplace=True, drop=False)
     branches.rename(columns={"id": "id_str"}, inplace=True)
     bus_breaker_id_lookup = bus_breaker_int_id["bus_breaker_id_int"]
@@ -149,14 +156,14 @@ def _get_electrical_circuit_group(
 
 @pa.check_types
 def _get_electrical_circuit_group_branches(
-    net: pypowsybl.network.Network, bus_breaker_int_id: pat.DataFrame[BusBreakerIdSchema]
+    branches: pat.DataFrame[BranchSchema], bus_breaker_int_id: pat.DataFrame[BusBreakerIdSchema]
 ) -> pat.DataFrame[BranchElectricalCircuitGroupSchema]:
     """Get electrical circuit groups for branches in the network.
 
     Parameters
     ----------
-    net : pypowsybl.network.Network
-        The network to analyze.
+    branches : DataFrame[BranchSchema]
+        Raw branch table already fetched from pypowsybl.
     bus_breaker_int_id : pat.DataFrame[BusBreakerIdSchema]
         DataFrame containing bus breaker IDs and their electrical circuit groups.
 
@@ -165,7 +172,7 @@ def _get_electrical_circuit_group_branches(
     DataFrame[BranchElectricalCircuitGroupSchema]
         A DataFrame containing branches and their electrical circuit groups.
     """
-    branches = net.get_branches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id"])
+    branches = branches.copy()
     # per definition has one branch the same connected component id on both sides -> sufficient to merge on one side only
     electrical_circuit_group_lookup = bus_breaker_int_id["electrical_circuit_group"]
     branches["electrical_circuit_group"] = branches["bus_breaker_bus1_id"].map(electrical_circuit_group_lookup)
@@ -174,14 +181,16 @@ def _get_electrical_circuit_group_branches(
 
 @pa.check_types
 def _get_electrical_circuit_group_switches(
-    net: pypowsybl.network.Network, bus_breaker_int_id: pat.DataFrame[BusBreakerIdSchema], keep_fictitious: bool = False
+    switches: pat.DataFrame[SwitchSchema],
+    bus_breaker_int_id: pat.DataFrame[BusBreakerIdSchema],
+    keep_fictitious: bool = False,
 ) -> pat.DataFrame[SwitchElectricalCircuitGroupSchema]:
     """Get electrical circuit groups for switches in the network.
 
     Parameters
     ----------
-    net : pypowsybl.network.Network
-        The network to analyze.
+    switches : DataFrame[SwitchSchema]
+        Raw switch table already fetched from pypowsybl.
     bus_breaker_int_id : pat.DataFrame[BusBreakerIdSchema]
         DataFrame containing bus breaker IDs and their electrical circuit groups.
     keep_fictitious : bool, optional
@@ -192,7 +201,7 @@ def _get_electrical_circuit_group_switches(
     DataFrame[SwitchElectricalCircuitGroupSchema]
         A DataFrame containing switches and their electrical circuit groups.
     """
-    switches = net.get_switches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id", "kind", "fictitious"])
+    switches = switches.copy()
     switches = switches[
         ((switches["bus_breaker_bus1_id"] != "") | (switches["bus_breaker_bus2_id"] != "")) & (switches["kind"] == "BREAKER")
     ]
@@ -216,14 +225,14 @@ def _get_electrical_circuit_group_switches(
 
 @pa.check_types
 def _get_electrical_circuit_group_injections(
-    net: pypowsybl.network.Network, bus_breaker_int_id: pat.DataFrame[BusBreakerIdSchema]
+    injection: pat.DataFrame[InjectionSchema], bus_breaker_int_id: pat.DataFrame[BusBreakerIdSchema]
 ) -> pat.DataFrame[InjectionElectricalCircuitGroupSchema]:
     """Get electrical circuit groups for injections in the network.
 
     Parameters
     ----------
-    net : pypowsybl.network.Network
-        The network to analyze.
+    injection : DataFrame[InjectionSchema]
+        Raw injection table already fetched from pypowsybl.
     bus_breaker_int_id : pat.DataFrame[BusBreakerIdSchema]
         DataFrame containing bus breaker IDs and their electrical circuit groups for injections.
 
@@ -232,17 +241,52 @@ def _get_electrical_circuit_group_injections(
     DataFrame[InjectionElectricalCircuitGroupSchema]
         A DataFrame containing injections and their electrical circuit groups.
     """
-    injection = net.get_injections(attributes=["bus_breaker_bus_id", "type"])
+    injection = injection.copy()
     electrical_circuit_group_lookup = bus_breaker_int_id["electrical_circuit_group"]
     injection["electrical_circuit_group"] = injection["bus_breaker_bus_id"].map(electrical_circuit_group_lookup)
     injection = injection[injection["electrical_circuit_group"].notnull()]
     return injection
 
 
+@pa.check_types
+def _get_circuit_group_source_tables(
+    net: pypowsybl.network.Network,
+) -> tuple[
+    pat.DataFrame[BusBreakerViewSchema],
+    pat.DataFrame[BranchSchema],
+    pat.DataFrame[SwitchSchema],
+    pat.DataFrame[InjectionSchema],
+]:
+    """Fetch the post-switch-update tables needed by circuit-group identification once.
+
+    Due to the overhead of fetching the tables from java, it is called once and cached for the downstream helper chain.
+
+    Parameters
+    ----------
+    net : pypowsybl.network.Network
+        Network in the prepared working variant.
+
+    Returns
+    -------
+    tuple[DataFrame[BusBreakerViewSchema], DataFrame[BranchSchema], DataFrame[SwitchSchema], DataFrame[InjectionSchema]]
+        Reduced source tables for the downstream helper chain.
+    """
+    bus_breaker_view_buses = net.get_bus_breaker_view_buses(attributes=[]).iloc[:, 0:0].copy()
+    branches = net.get_branches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id"])
+    switches = net.get_switches(attributes=["bus_breaker_bus1_id", "bus_breaker_bus2_id", "kind", "fictitious"])
+    injection = net.get_injections(attributes=["bus_breaker_bus_id", "type"])
+    return bus_breaker_view_buses, branches, switches, injection
+
+
 def identify_circuit_groups(
     net: pypowsybl.network.Network, keep_fictitious: bool = False
 ) -> ElectricalCircuitGroupIdentification:
-    """Identify electrical circuit groups in the network.
+    """Identify electrical circuit groups for a powsybl network.
+
+    The algorithm switches the network to a temporary variant, retains only the
+    breaker topology relevant for circuit-group detection, computes connected
+    components in the bus-breaker graph, and derives a lookup index together
+    with the validated branch, switch, and injection tables used to build it.
 
     Example layout:
     x = DISCONNECTOR
@@ -265,40 +309,30 @@ def identify_circuit_groups(
     Therefore all lines 1,2,3 are in the same outage group if one has a fault.
     Example output:
         ElectricalCircuitGroupIdentification(
-            circuit_group_map={
-                0: ElectricalCircuitGroup(
-                    branches=["Line1", "Line2", "Line3"],
-                    switches=["BREAKER1", "BREAKER2", "BREAKER3"],
-                    injections=[],
-                    busbar_section=[],
-                )
-            },
+            lookup_index=<lookup-oriented outage index>,
             branches=<validated branch DataFrame>,
             switches=<validated switch DataFrame>,
             injections=<validated injection DataFrame>,
         )
 
-    Note:
-
     Parameters
     ----------
     net : pypowsybl.network.Network
-        The network to analyze.
+        Network to analyze.
     keep_fictitious : bool, optional
-        Whether to keep fictitious switches, by default False.
+        Whether fictitious switches should remain available during circuit-group
+        identification. The default is ``False``.
 
     Returns
     -------
     ElectricalCircuitGroupIdentification
-        The typed electrical circuit group mapping together with the validated branch, switch,
-        and injection tables used to build it.
+        Result bundle containing the circuit-group lookup index and the
+        annotated branch, switch, and injection tables.
 
     Raises
     ------
     NotImplementedError
-        If a three winding transformer is present in the network,
-        as this is not supported by the current implementation.
-
+        If the network still contains three-winding transformers.
     """
     if len(net.get_3_windings_transformers()) > 0:
         raise NotImplementedError(
@@ -313,35 +347,21 @@ def identify_circuit_groups(
     net_variant = net
 
     _update_switches_for_outage_group_identification(net=net_variant, keep_fictitious=keep_fictitious)
-    bus_breaker_int_id = _get_bus_breaker_int_ids(net=net_variant)
-    edges = _get_graph_edges(net=net_variant, bus_breaker_int_id=bus_breaker_int_id)
+    bus_breaker_view_buses, raw_branches, raw_switches, raw_injection = _get_circuit_group_source_tables(net=net_variant)
+    bus_breaker_int_id = _get_bus_breaker_int_ids(bus_breaker_view_buses=bus_breaker_view_buses)
+    edges = _get_graph_edges(branches=raw_branches, bus_breaker_int_id=bus_breaker_int_id)
     bus_breaker_int_id = _get_electrical_circuit_group(bus_breaker_int_id=bus_breaker_int_id, edges=edges)
-    branches = _get_electrical_circuit_group_branches(net=net_variant, bus_breaker_int_id=bus_breaker_int_id)
+    branches = _get_electrical_circuit_group_branches(branches=raw_branches, bus_breaker_int_id=bus_breaker_int_id)
     switches = _get_electrical_circuit_group_switches(
-        net=net_variant, bus_breaker_int_id=bus_breaker_int_id, keep_fictitious=keep_fictitious
+        switches=raw_switches, bus_breaker_int_id=bus_breaker_int_id, keep_fictitious=keep_fictitious
     )
-    injection = _get_electrical_circuit_group_injections(net=net_variant, bus_breaker_int_id=bus_breaker_int_id)
+    injection = _get_electrical_circuit_group_injections(injection=raw_injection, bus_breaker_int_id=bus_breaker_int_id)
 
-    outage_groups: ElectricalCircuitGroupMap = {
-        int(component_id): ElectricalCircuitGroup()
-        for component_id in bus_breaker_int_id["electrical_circuit_group"].dropna().unique()
-    }
-    for component_id, branch_ids in branches.groupby("electrical_circuit_group", dropna=True).groups.items():
-        outage_groups[int(component_id)].branches.extend(branch_ids.to_list())
-    for component_id, switch_ids in switches.groupby("electrical_circuit_group_bus1", dropna=True).groups.items():
-        outage_groups[int(component_id)].switches.extend(switch_ids.to_list())
-    for component_id, switch_ids in switches.groupby("electrical_circuit_group_bus2", dropna=True).groups.items():
-        outage_groups[int(component_id)].switches.extend(switch_ids.to_list())
-    busbar_sections = injection[injection["type"] == "BUSBAR_SECTION"]
-    for component_id, busbar_ids in busbar_sections.groupby("electrical_circuit_group", dropna=True).groups.items():
-        outage_groups[int(component_id)].busbar_section.extend(busbar_ids.to_list())
-    non_busbar_injections = injection[injection["type"] != "BUSBAR_SECTION"]
-    for component_id, injection_ids in non_busbar_injections.groupby("electrical_circuit_group", dropna=True).groups.items():
-        outage_groups[int(component_id)].injections.extend(injection_ids.to_list())
+    lookup_index = build_circuit_group_lookup_index(branches=branches, switches=switches, injection=injection)
 
     net.set_working_variant(original_variant)
     return ElectricalCircuitGroupIdentification(
-        circuit_group_map=outage_groups,
+        lookup_index=lookup_index,
         branches=branches,
         switches=switches,
         injections=injection,

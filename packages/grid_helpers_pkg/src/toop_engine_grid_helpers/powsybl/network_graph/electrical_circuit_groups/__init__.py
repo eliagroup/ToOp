@@ -10,15 +10,33 @@
 from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.electrical_circuit_groups import (
     identify_circuit_groups,
 )
+from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.helper_functions import (
+    build_branch_circuit_group_lookup,
+    build_busbar_circuit_group_lookup,
+    build_circuit_group_lookup_index,
+    build_circuit_group_map,
+    get_failing_elements_by_branch_ids,
+    get_failing_elements_by_busbar_ids,
+    get_failing_switches_by_branch_ids,
+    get_failing_switches_by_busbar_ids,
+    preprocess_circuit_group_lookup,
+)
 from toop_engine_grid_helpers.powsybl.network_graph.electrical_circuit_groups.types import (
-    BusbarSectionOutageGroup,
     ElectricalCircuitGroup,
     ElectricalCircuitGroupIdentification,
 )
 
 __all__ = [
-    "BusbarSectionOutageGroup",
     "ElectricalCircuitGroup",
     "ElectricalCircuitGroupIdentification",
+    "build_branch_circuit_group_lookup",
+    "build_busbar_circuit_group_lookup",
+    "build_circuit_group_lookup_index",
+    "build_circuit_group_map",
+    "get_failing_elements_by_branch_ids",
+    "get_failing_elements_by_busbar_ids",
+    "get_failing_switches_by_branch_ids",
+    "get_failing_switches_by_busbar_ids",
     "identify_circuit_groups",
+    "preprocess_circuit_group_lookup",
 ]

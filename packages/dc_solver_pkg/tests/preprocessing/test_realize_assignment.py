@@ -279,9 +279,9 @@ def test_realize_ba_to_physical_topo_per_station_large():
     station = MaterializedStation(
         bus_group_id="teststation",
         busbars=[
-            Busbar(grid_model_id="BB1", int_id=1),
-            Busbar(grid_model_id="BB2", int_id=2),
-            Busbar(grid_model_id="BB3", int_id=3),
+            Busbar(grid_model_id="BB1", int_id=1, bus_branch_bus_id="teststation_2"),
+            Busbar(grid_model_id="BB2", int_id=2, bus_branch_bus_id="teststation"),
+            Busbar(grid_model_id="BB3", int_id=3, bus_branch_bus_id="teststation_2"),
         ],
         couplers=[
             BusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),

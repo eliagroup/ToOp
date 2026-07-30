@@ -47,7 +47,6 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_coupler_from_df,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import get_voltage_level_with_region
-from toop_engine_importer.pypowsybl_import.powsybl_masks import NetworkMasks
 from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
@@ -58,6 +57,7 @@ from toop_engine_interfaces.asset_topology.assets import (
 from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 from toop_engine_interfaces.asset_topology.topology_conversion import validate_complete_master_data
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
+from toop_engine_interfaces.network_masks import NetworkMasks
 
 logger = structlog.get_logger(__name__)
 
@@ -1103,7 +1103,7 @@ def _topology_master_data_from_structural_station_views(
 
 def get_node_breaker_topology_master_data(
     network: Network,
-    network_masks: NetworkMasks,
+    network_masks: "NetworkMasks",
     importer_parameters: CgmesImporterParameters,
 ) -> TopologyMasterData:
     """Return canonical master data derived directly from node-breaker graph extraction.
@@ -1130,7 +1130,7 @@ def get_node_breaker_topology_master_data(
     )
 
 
-def get_relevant_voltage_levels(network: Network, network_masks: NetworkMasks) -> pd.DataFrame:
+def get_relevant_voltage_levels(network: Network, network_masks: "NetworkMasks") -> pd.DataFrame:
     """Get all relevant voltage level from the network.
 
     Parameters

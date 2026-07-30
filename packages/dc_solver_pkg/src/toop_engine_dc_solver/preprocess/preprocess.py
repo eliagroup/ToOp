@@ -1657,7 +1657,10 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
             )
             if (busbar_outage_map := network_data.busbar_outage_map) is not None:
                 simplified_busbar_ids = {busbar.grid_model_id for busbar in simplified_station.busbars}
-                busbar_outage_map[simplified_station.bus_group_id] = list(simplified_busbar_ids)
+                configured_busbar_ids = busbar_outage_map.get(simplified_station.bus_group_id, [])
+                busbar_outage_map[simplified_station.bus_group_id] = [
+                    busbar_id for busbar_id in configured_busbar_ids if busbar_id in simplified_busbar_ids
+                ]
             keep_mask.append(True)
         except ValueError as e:
             logger.warning(

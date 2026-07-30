@@ -25,10 +25,10 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_pandapower_net_for_powsybl
 from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import get_node_breaker_topology_master_data
-from toop_engine_importer.pypowsybl_import.powsybl_masks import create_default_network_masks
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
 from toop_engine_interfaces.folder_structure import NETWORK_MASK_NAMES, PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
+from toop_engine_interfaces.network_masks import create_default_network_masks
 
 
 def add_phaseshift_transformer_to_line_powsybl(

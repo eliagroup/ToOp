@@ -14,9 +14,9 @@ import numpy as np
 import ray
 from beartype.typing import Optional
 from jaxtyping import Bool, Int
-from toop_engine_dc_solver.preprocess.helpers.ptdf import get_connectivity_matrix
 
 
+# ruff: noqa: ARG001
 def get_graph(
     from_node: Int[np.ndarray, " n_branch"],
     to_node: Int[np.ndarray, " n_branch"],
@@ -43,12 +43,53 @@ def get_graph(
     nx.MultiGraph
         A graph representation of the network
     """
-    connectivity_matrix = get_connectivity_matrix(from_node, to_node, number_of_branches, number_of_nodes, directed=False)
-    # The restricted from-node and to-node vectors form a graph.
-    # Build the graph as a sparse matrix (graph scipy style)
-    graph = connectivity_matrix.T @ connectivity_matrix
-    graph_nx = nx.from_scipy_sparse_array(graph, parallel_edges=True, create_using=nx.MultiGraph)
+    graph_nx = nx.MultiGraph()
+    graph_nx.add_nodes_from(range(number_of_nodes))
+    graph_nx.add_edges_from(zip(from_node, to_node, strict=False))
     return graph_nx
+
+
+def _get_graph_with_branch_keys(
+    from_node: Int[np.ndarray, " n_branch"],
+    to_node: Int[np.ndarray, " n_branch"],
+    number_of_nodes: int,
+) -> nx.MultiGraph:
+    """Build a multigraph keyed by branch index for efficient edge toggling."""
+    graph_nx = nx.MultiGraph()
+    graph_nx.add_nodes_from(range(number_of_nodes))
+    for branch_id, (from_bus, to_bus) in enumerate(zip(from_node, to_node, strict=False)):
+        graph_nx.add_edge(int(from_bus), int(to_bus), key=int(branch_id))
+    return graph_nx
+
+
+def _count_bridges_after_outage_on_static_graph(
+    cases_to_check: Int[np.ndarray, " n_cases"],
+    outage_edges: set[tuple[int, int]],
+    graph: nx.MultiGraph,
+    from_node: Int[np.ndarray, " n_branch"],
+    to_node: Int[np.ndarray, " n_branch"],
+) -> Int[np.ndarray, " n_cases"]:
+    """Count outage-relevant bridges by mutating one keyed graph in place."""
+    n_bridges = np.zeros(len(cases_to_check), dtype=int)
+    for index, branch in enumerate(cases_to_check):
+        from_bus = int(from_node[branch])
+        to_bus = int(to_node[branch])
+        graph.remove_edge(from_bus, to_bus, key=int(branch))
+        n_bridges[index] = len(set(nx.bridges(graph)) & outage_edges)
+        graph.add_edge(from_bus, to_bus, key=int(branch))
+    return n_bridges
+
+
+def _get_number_of_bridges_after_outage_parallel_worker(
+    cases_to_check: Int[np.ndarray, " n_cases"],
+    outage_edges: set[tuple[int, int]],
+    from_node: Int[np.ndarray, " n_branch"],
+    to_node: Int[np.ndarray, " n_branch"],
+    number_of_nodes: int,
+) -> Int[np.ndarray, " n_cases"]:
+    """Process one batch of outage candidates on a worker-local static graph."""
+    graph = _get_graph_with_branch_keys(from_node, to_node, number_of_nodes)
+    return _count_bridges_after_outage_on_static_graph(cases_to_check, outage_edges, graph, from_node, to_node)
 
 
 def find_bridges(
@@ -160,6 +201,7 @@ def find_n_minus_2_safe_branches(
     return n_minus_2_safe
 
 
+# ruff: noqa: ARG001
 def get_number_of_bridges_after_outage(
     cases_to_check: Int[np.ndarray, " n_cases"],
     outage_edges: set[tuple[int, int]],
@@ -192,16 +234,11 @@ def get_number_of_bridges_after_outage(
     Int[np.ndarray, " n_cases"]
         Integer Array of length n_cases with the count of bridges after outaging the cases in cases_to_check
     """
-    n_bridges = np.zeros(len(cases_to_check), dtype=int)
-    for index, branch in enumerate(cases_to_check):
-        from_node_temp = np.delete(from_node, branch)
-        to_node_temp = np.delete(to_node, branch)
-        temp_graph = get_graph(from_node_temp, to_node_temp, number_of_branches - 1, number_of_nodes)
-        bridges = set(nx.bridges(temp_graph))
-        n_bridges[index] = len(bridges & outage_edges)
-    return n_bridges
+    graph = _get_graph_with_branch_keys(from_node, to_node, number_of_nodes)
+    return _count_bridges_after_outage_on_static_graph(cases_to_check, outage_edges, graph, from_node, to_node)
 
 
+# ruff: noqa: ARG001
 def get_number_of_bridges_after_outage_parallel(
     cases_to_check: Int[np.ndarray, " n_cases"],
     outage_edges: set[tuple[int, int]],
@@ -242,13 +279,11 @@ def get_number_of_bridges_after_outage_parallel(
     batch_size = math.ceil(len(cases_to_check) / n_processes)
     work = [cases_to_check[i : i + batch_size] for i in range(0, len(cases_to_check), batch_size)]
     handles = []
-    run_n_2_count_bridges_parallel_worker = ray.remote(get_number_of_bridges_after_outage)
+    run_n_2_count_bridges_parallel_worker = ray.remote(_get_number_of_bridges_after_outage_parallel_worker)
     outage_edges_ref = ray.put(outage_edges)
     for batch in work:
         handles.append(
-            run_n_2_count_bridges_parallel_worker.remote(
-                batch, outage_edges_ref, from_node, to_node, number_of_branches, number_of_nodes
-            )
+            run_n_2_count_bridges_parallel_worker.remote(batch, outage_edges_ref, from_node, to_node, number_of_nodes)
         )
     results = ray.get(handles)
     n_bridges_after_outage = np.concatenate(results)

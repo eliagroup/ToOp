@@ -5,11 +5,48 @@
 # you can obtain one at https://mozilla.org/MPL/2.0/.
 # Mozilla Public License, version 2.0
 
+import networkx as nx
 import numpy as np
+from tests.network_data_pickle import load_network_data
 from toop_engine_dc_solver.preprocess.helpers.find_bridges import (
     find_bridges,
     find_n_minus_2_safe_branches,
+    get_number_of_bridges_after_outage,
 )
+from toop_engine_dc_solver.preprocess.helpers.ptdf import get_connectivity_matrix
+
+
+def _get_graph_old_path(
+    from_node: np.ndarray,
+    to_node: np.ndarray,
+    number_of_branches: int,
+    number_of_nodes: int,
+) -> nx.MultiGraph:
+    connectivity_matrix = get_connectivity_matrix(
+        from_node,
+        to_node,
+        number_of_branches,
+        number_of_nodes,
+        directed=False,
+    )
+    graph = connectivity_matrix.T @ connectivity_matrix
+    return nx.from_scipy_sparse_array(graph, parallel_edges=True, create_using=nx.MultiGraph)
+
+
+def _get_number_of_bridges_after_outage_old_path(
+    cases_to_check: np.ndarray,
+    from_node: np.ndarray,
+    to_node: np.ndarray,
+    number_of_branches: int,
+    number_of_nodes: int,
+) -> np.ndarray:
+    n_bridges = np.zeros(len(cases_to_check), dtype=int)
+    for index, branch in enumerate(cases_to_check):
+        from_node_temp = np.delete(from_node, branch)
+        to_node_temp = np.delete(to_node, branch)
+        temp_graph = _get_graph_old_path(from_node_temp, to_node_temp, number_of_branches - 1, number_of_nodes)
+        n_bridges[index] = len(set(nx.bridges(temp_graph)))
+    return n_bridges
 
 
 def test_find_bridges_2_nodes() -> None:
@@ -120,3 +157,34 @@ def test_find_n_minus_2_safe_branches() -> None:
         dtype=bool,
     )
     assert np.array_equal(n_minus_2_safe, expected_n_minus_2_safe)
+
+
+def test_get_number_of_bridges_after_outage_matches_old_path_for_complex_grid(
+    create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path,
+) -> None:
+    network_data = load_network_data(create_complex_grid_battery_hvdc_svc_3w_trafo_linear_0_0_data_path / "network_data.pkl")
+    from_node = network_data.from_nodes
+    to_node = network_data.to_nodes
+    number_of_branches = len(network_data.branch_ids)
+    number_of_nodes = len(network_data.node_ids)
+    cases_to_check = np.arange(number_of_branches)
+    outage_edges = {(int(from_bus), int(to_bus)) for from_bus, to_bus in zip(from_node, to_node, strict=False)}
+    outage_edges |= {(int(to_bus), int(from_bus)) for from_bus, to_bus in zip(from_node, to_node, strict=False)}
+
+    old_counts = _get_number_of_bridges_after_outage_old_path(
+        cases_to_check=cases_to_check,
+        from_node=from_node,
+        to_node=to_node,
+        number_of_branches=number_of_branches,
+        number_of_nodes=number_of_nodes,
+    )
+    new_counts = get_number_of_bridges_after_outage(
+        cases_to_check=cases_to_check,
+        outage_edges=outage_edges,
+        from_node=from_node,
+        to_node=to_node,
+        number_of_branches=number_of_branches,
+        number_of_nodes=number_of_nodes,
+    )
+
+    assert np.array_equal(new_counts, old_counts)

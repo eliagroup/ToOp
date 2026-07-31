@@ -16,8 +16,7 @@ from toop_engine_dc_solver.preprocess.action_set import make_action_repo
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_optimal_separation_set,
 )
-from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeBusbarCoupler
-from toop_engine_interfaces.asset_topology.assets import RuntimeBusbar as Busbar
+from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
 from toop_engine_interfaces.asset_topology.materialized_topology import (
     MaterializedAssetConnection,
     MaterializedStation,
@@ -35,7 +34,7 @@ def _empty_injection_switching(n_busbars: int) -> np.ndarray:
 def test_realize_ba_to_physical_topo_per_station_simple():
     station = MaterializedStation(
         bus_group_id="teststation",
-        busbars=[Busbar(grid_model_id="BB1", int_id=1), Busbar(grid_model_id="BB2", int_id=2)],
+        busbars=[RuntimeBusbar(grid_model_id="BB1", int_id=1), RuntimeBusbar(grid_model_id="BB2", int_id=2)],
         couplers=[RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False)],
         branch_connections=_asset_connections("line1", "line2", "line3", "line4", "line5"),
         injection_connections=[],
@@ -135,9 +134,9 @@ def test_realize_ba_to_physical_topo_per_station_3_busbars():
     station = MaterializedStation(
         bus_group_id="teststation",
         busbars=[
-            Busbar(grid_model_id="BB1", int_id=1),
-            Busbar(grid_model_id="BB2", int_id=2),
-            Busbar(grid_model_id="BB3", int_id=3),
+            RuntimeBusbar(grid_model_id="BB1", int_id=1),
+            RuntimeBusbar(grid_model_id="BB2", int_id=2),
+            RuntimeBusbar(grid_model_id="BB3", int_id=3),
         ],
         couplers=[
             RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
@@ -280,9 +279,9 @@ def test_realize_ba_to_physical_topo_per_station_large():
     station = MaterializedStation(
         bus_group_id="teststation",
         busbars=[
-            Busbar(grid_model_id="BB1", int_id=1, bus_branch_bus_id="teststation_2"),
-            Busbar(grid_model_id="BB2", int_id=2, bus_branch_bus_id="teststation"),
-            Busbar(grid_model_id="BB3", int_id=3, bus_branch_bus_id="teststation_2"),
+            RuntimeBusbar(grid_model_id="BB1", int_id=1, bus_branch_bus_id="teststation_2"),
+            RuntimeBusbar(grid_model_id="BB2", int_id=2, bus_branch_bus_id="teststation"),
+            RuntimeBusbar(grid_model_id="BB3", int_id=3, bus_branch_bus_id="teststation_2"),
         ],
         couplers=[
             RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
@@ -318,9 +317,9 @@ def test_realize_ba_to_physical_topo_per_station_limited_connectivity():
     station = MaterializedStation(
         bus_group_id="teststation",
         busbars=[
-            Busbar(grid_model_id="BB1", int_id=1),
-            Busbar(grid_model_id="BB2", int_id=2),
-            Busbar(grid_model_id="BB3", int_id=3),
+            RuntimeBusbar(grid_model_id="BB1", int_id=1),
+            RuntimeBusbar(grid_model_id="BB2", int_id=2),
+            RuntimeBusbar(grid_model_id="BB3", int_id=3),
         ],
         couplers=[
             RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
@@ -405,9 +404,9 @@ def test_realize_ba_to_physical_topo_per_station_invalid_actions():
     station = MaterializedStation(
         bus_group_id="teststation",
         busbars=[
-            Busbar(grid_model_id="BB1", int_id=1),
-            Busbar(grid_model_id="BB2", int_id=2),
-            Busbar(grid_model_id="BB3", int_id=3),
+            RuntimeBusbar(grid_model_id="BB1", int_id=1),
+            RuntimeBusbar(grid_model_id="BB2", int_id=2),
+            RuntimeBusbar(grid_model_id="BB3", int_id=3),
         ],
         couplers=[
             RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
@@ -458,9 +457,9 @@ def test_realize_ba_to_physical_topo_per_station_invalid_actions_hard():
     station = MaterializedStation(
         bus_group_id="teststation",
         busbars=[
-            Busbar(grid_model_id="BB1", int_id=1),
-            Busbar(grid_model_id="BB2", int_id=2),
-            Busbar(grid_model_id="BB3", int_id=3),
+            RuntimeBusbar(grid_model_id="BB1", int_id=1),
+            RuntimeBusbar(grid_model_id="BB2", int_id=2),
+            RuntimeBusbar(grid_model_id="BB3", int_id=3),
         ],
         couplers=[
             RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),

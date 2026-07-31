@@ -14,15 +14,7 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 
-from toop_engine_interfaces.asset_topology.assets import (
-    RuntimeBranchAsset as BranchAsset,
-)
-from toop_engine_interfaces.asset_topology.assets import (
-    RuntimeBusbar as Busbar,
-)
-from toop_engine_interfaces.asset_topology.assets import (
-    RuntimeBusbarCoupler as BusbarCoupler,
-)
+from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeBusbar, RuntimeBusbarCoupler
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 
 os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
@@ -892,17 +884,17 @@ def basic_node_breaker_topology():
 
 @pytest.fixture(scope="session")
 def mock_station() -> MaterializedStation:
-    asset1 = BranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
-    asset2 = BranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
-    asset3 = BranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
-    asset4 = BranchAsset(grid_model_id="branch_04", in_service=True, asset_type="line")
+    asset1 = RuntimeBranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    asset2 = RuntimeBranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
+    asset3 = RuntimeBranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
+    asset4 = RuntimeBranchAsset(grid_model_id="branch_04", in_service=True, asset_type="line")
 
     # Create mock Busbar objects
-    busbar_0 = Busbar(grid_model_id="busbar_0", int_id=1)
-    busbar_1 = Busbar(grid_model_id="busbar_1", int_id=2)
-    busbar_2 = Busbar(grid_model_id="busbar_2", int_id=3)
-    busbar_3 = Busbar(grid_model_id="busbar_3", int_id=4)
-    busbar_4 = Busbar(grid_model_id="busbar_4", int_id=5)
+    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=1)
+    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=2)
+    busbar_2 = RuntimeBusbar(grid_model_id="busbar_2", int_id=3)
+    busbar_3 = RuntimeBusbar(grid_model_id="busbar_3", int_id=4)
+    busbar_4 = RuntimeBusbar(grid_model_id="busbar_4", int_id=5)
 
     # 3
     # |
@@ -913,7 +905,7 @@ def mock_station() -> MaterializedStation:
         bus_group_id="station_1",
         busbars=[busbar_0, busbar_1, busbar_2, busbar_3, busbar_4],
         couplers=[
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL4_BREAKER",
                 coupler_type="busbar_coupler",
                 name="VL4_BREAKER",
@@ -922,7 +914,7 @@ def mock_station() -> MaterializedStation:
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL5_BREAKER",
                 coupler_type="busbar_coupler",
                 name="VL5_BREAKER",
@@ -931,7 +923,7 @@ def mock_station() -> MaterializedStation:
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL6_BREAKER",
                 coupler_type="busbar_coupler",
                 name="VL6_BREAKER",
@@ -940,7 +932,7 @@ def mock_station() -> MaterializedStation:
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL7_BREAKER",
                 coupler_type="busbar_coupler",
                 name="VL7_BREAKER",
@@ -949,7 +941,7 @@ def mock_station() -> MaterializedStation:
                 open=False,
                 in_service=True,
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id="VL9_BREAKER",
                 coupler_type="busbar_coupler",
                 name="VL9_BREAKER",

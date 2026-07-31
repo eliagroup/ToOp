@@ -77,16 +77,10 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_ids
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
 from toop_engine_interfaces.asset_topology.assets import (
-    RuntimeBranchAsset as BranchAsset,
-)
-from toop_engine_interfaces.asset_topology.assets import (
-    RuntimeBusbar as Busbar,
-)
-from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeBranchAsset,
+    RuntimeBusbar,
     RuntimeBusbarCoupler,
-)
-from toop_engine_interfaces.asset_topology.assets import (
-    RuntimeInjectionAsset as InjectionAsset,
+    RuntimeInjectionAsset,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -95,10 +89,10 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import Prep
 
 def build_materialized_station(
     grid_model_id: str,
-    busbars: list[Busbar],
+    busbars: list[RuntimeBusbar],
     couplers: list[RuntimeBusbarCoupler],
-    branch_assets: list[BranchAsset],
-    injection_assets: list[InjectionAsset],
+    branch_assets: list[RuntimeBranchAsset],
+    injection_assets: list[RuntimeInjectionAsset],
     branch_switching_table: np.ndarray,
     injection_switching_table: np.ndarray,
     branch_connectivity: np.ndarray | None = None,
@@ -694,7 +688,7 @@ def test_simplify_asset_topology_projects_runtime_station_to_local_assets(networ
         update={
             "branch_connections": [
                 *base_station.branch_connections,
-                MaterializedAssetConnection(asset=BranchAsset(grid_model_id=extra_branch_id, in_service=True)),
+                MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id=extra_branch_id, in_service=True)),
             ],
             "branch_switching_table": np.c_[
                 base_station.branch_switching_table, np.zeros((len(base_station.busbars), 1), dtype=bool)
@@ -728,9 +722,9 @@ def test_simplify_asset_topology_drops_pst_side_bus_group_outside_local_node_sli
     station = MaterializedStation(
         bus_group_id="node_0",
         busbars=[
-            Busbar(grid_model_id="busbar1", int_id=1, bus_branch_bus_id="node_0"),
-            Busbar(grid_model_id="busbar2", int_id=2, bus_branch_bus_id="node_0"),
-            Busbar(grid_model_id="busbar3", int_id=3, bus_branch_bus_id="node_1"),
+            RuntimeBusbar(grid_model_id="busbar1", int_id=1, bus_branch_bus_id="node_0"),
+            RuntimeBusbar(grid_model_id="busbar2", int_id=2, bus_branch_bus_id="node_0"),
+            RuntimeBusbar(grid_model_id="busbar3", int_id=3, bus_branch_bus_id="node_1"),
         ],
         couplers=[
             RuntimeBusbarCoupler(
@@ -749,10 +743,10 @@ def test_simplify_asset_topology_drops_pst_side_bus_group_outside_local_node_sli
             ),
         ],
         branch_connections=[
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id="line_local", in_service=True)),
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id="pst", in_service=True)),
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id="pst", in_service=True)),
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id="L7", in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id="line_local", in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id="pst", in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id="pst", in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id="L7", in_service=True)),
         ],
         injection_connections=[],
         branch_switching_table=np.array(
@@ -798,9 +792,9 @@ def test_project_station_to_local_assets_deduplicates_connectivity_only_duplicat
     station = MaterializedStation(
         bus_group_id="node_0",
         busbars=[
-            Busbar(grid_model_id="busbar1", int_id=1, bus_branch_bus_id="node_0"),
-            Busbar(grid_model_id="busbar2", int_id=2, bus_branch_bus_id="node_0"),
-            Busbar(grid_model_id="busbar3", int_id=3, bus_branch_bus_id="node_1"),
+            RuntimeBusbar(grid_model_id="busbar1", int_id=1, bus_branch_bus_id="node_0"),
+            RuntimeBusbar(grid_model_id="busbar2", int_id=2, bus_branch_bus_id="node_0"),
+            RuntimeBusbar(grid_model_id="busbar3", int_id=3, bus_branch_bus_id="node_1"),
         ],
         couplers=[
             RuntimeBusbarCoupler(
@@ -819,10 +813,10 @@ def test_project_station_to_local_assets_deduplicates_connectivity_only_duplicat
             ),
         ],
         branch_connections=[
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id="line_local", in_service=True)),
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id="pst", in_service=True)),
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id="pst", in_service=True)),
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id="L7", in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id="line_local", in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id="pst", in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id="pst", in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id="L7", in_service=True)),
         ],
         injection_connections=[],
         branch_switching_table=np.array(
@@ -863,9 +857,9 @@ def test_simplify_asset_topology_prunes_fused_busbar_outage_ids(
     station = build_materialized_station(
         grid_model_id="station_1",
         busbars=[
-            Busbar(grid_model_id="busbar1", int_id=1, bus_branch_bus_id="station_1"),
-            Busbar(grid_model_id="busbar2", int_id=2, bus_branch_bus_id="station_1"),
-            Busbar(grid_model_id="busbar3", int_id=3, bus_branch_bus_id="station_1"),
+            RuntimeBusbar(grid_model_id="busbar1", int_id=1, bus_branch_bus_id="station_1"),
+            RuntimeBusbar(grid_model_id="busbar2", int_id=2, bus_branch_bus_id="station_1"),
+            RuntimeBusbar(grid_model_id="busbar3", int_id=3, bus_branch_bus_id="station_1"),
         ],
         couplers=[
             RuntimeBusbarCoupler(
@@ -884,9 +878,9 @@ def test_simplify_asset_topology_prunes_fused_busbar_outage_ids(
             ),
         ],
         branch_assets=[
-            BranchAsset(grid_model_id="line1", asset_type="line"),
-            BranchAsset(grid_model_id="line2", asset_type="line"),
-            BranchAsset(grid_model_id="line3", asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="line1", asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="line2", asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="line3", asset_type="line"),
         ],
         injection_assets=[],
         branch_switching_table=np.array(
@@ -934,12 +928,12 @@ def test_compute_separation_set_for_stations_handles_pst_fallback_station_with_o
     station = MaterializedStation(
         bus_group_id="node_0",
         busbars=[
-            Busbar(grid_model_id="busbar1", int_id=1, bus_branch_bus_id="node_0", in_service=True),
-            Busbar(grid_model_id="busbar2", int_id=2, bus_branch_bus_id="node_0", in_service=False),
+            RuntimeBusbar(grid_model_id="busbar1", int_id=1, bus_branch_bus_id="node_0", in_service=True),
+            RuntimeBusbar(grid_model_id="busbar2", int_id=2, bus_branch_bus_id="node_0", in_service=False),
         ],
         couplers=[],
         branch_connections=[
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id="pst", in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id="pst", in_service=True)),
         ],
         injection_connections=[],
         branch_switching_table=np.array(
@@ -1260,13 +1254,13 @@ def test_filter_relevant_split_asset_stations_keeps_pst_connected_bus_groups(net
         bus_group_id="pst_station",
         voltage_level_id="pst_station",
         busbars=[
-            Busbar(grid_model_id="bb_0", int_id=0, bus_branch_bus_id=network_data.node_ids[0]),
-            Busbar(grid_model_id="bb_1", int_id=1, bus_branch_bus_id=network_data.node_ids[1]),
+            RuntimeBusbar(grid_model_id="bb_0", int_id=0, bus_branch_bus_id=network_data.node_ids[0]),
+            RuntimeBusbar(grid_model_id="bb_1", int_id=1, bus_branch_bus_id=network_data.node_ids[1]),
         ],
         couplers=[],
         branch_connections=[
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id=pst_branch_id, in_service=True)),
-            MaterializedAssetConnection(asset=BranchAsset(grid_model_id=non_pst_branch_id, in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id=pst_branch_id, in_service=True)),
+            MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id=non_pst_branch_id, in_service=True)),
         ],
         injection_connections=[],
         branch_switching_table=np.array([[True, False], [True, True]], dtype=bool),
@@ -1392,10 +1386,10 @@ def test_reduce_node_dimension(network_data_filled):
 def test_reduce_node_dimension_preserves_busbar_outage_station_nodes(network_data_filled: NetworkData) -> None:
     drop_station = build_materialized_station(
         grid_model_id="drop",
-        busbars=[Busbar(grid_model_id="drop_bb", int_id=0, bus_branch_bus_id="drop")],
+        busbars=[RuntimeBusbar(grid_model_id="drop_bb", int_id=0, bus_branch_bus_id="drop")],
         couplers=[],
         branch_assets=[],
-        injection_assets=[InjectionAsset(grid_model_id="drop_inj", asset_type="load")],
+        injection_assets=[RuntimeInjectionAsset(grid_model_id="drop_inj", asset_type="load")],
         branch_switching_table=np.zeros((1, 0), dtype=bool),
         injection_switching_table=np.array([[True]], dtype=bool),
         branch_connectivity=np.zeros((1, 0), dtype=bool),

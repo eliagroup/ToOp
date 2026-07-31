@@ -29,16 +29,10 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
 )
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
 from toop_engine_interfaces.asset_topology.assets import (
-    RuntimeBranchAsset as BranchAsset,
-)
-from toop_engine_interfaces.asset_topology.assets import (
-    RuntimeBusbar as Busbar,
-)
-from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeBranchAsset,
+    RuntimeBusbar,
     RuntimeBusbarCoupler,
-)
-from toop_engine_interfaces.asset_topology.assets import (
-    RuntimeInjectionAsset as InjectionAsset,
+    RuntimeInjectionAsset,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import (
     MaterializedAssetConnection,
@@ -56,10 +50,10 @@ def _combined_asset_switching_table(station: MaterializedStation) -> np.ndarray:
 
 def build_materialized_station(
     grid_model_id: str,
-    busbars: list[Busbar],
+    busbars: list[RuntimeBusbar],
     couplers: list[RuntimeBusbarCoupler],
-    branch_assets: list[BranchAsset],
-    injection_assets: list[InjectionAsset],
+    branch_assets: list[RuntimeBranchAsset],
+    injection_assets: list[RuntimeInjectionAsset],
     branch_switching_table: np.ndarray,
     injection_switching_table: np.ndarray,
     branch_connectivity: np.ndarray | None = None,
@@ -121,9 +115,9 @@ def test_get_total_injection_along_stub_branch(network_data: NetworkData):
 
 def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     # Create mock SwitchableAsset objects
-    asset1 = BranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
-    asset2 = BranchAsset(grid_model_id="branch_12", in_service=False, asset_type="line")
-    asset3 = BranchAsset(grid_model_id="branch_23", in_service=True, asset_type="line")
+    asset1 = RuntimeBranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    asset2 = RuntimeBranchAsset(grid_model_id="branch_12", in_service=False, asset_type="line")
+    asset3 = RuntimeBranchAsset(grid_model_id="branch_23", in_service=True, asset_type="line")
     # asset4 = SwitchableAsset(
     #     grid_model_id="branch_02", in_service=True, branch_end="from"
     # )
@@ -133,7 +127,7 @@ def test_extract_outage_index_injection_from_asset(network_data: NetworkData):
     # asset6 = SwitchableAsset(
     #     grid_model_id="injection_node_0", in_service=True, branch_end=None
     # )
-    asset7 = InjectionAsset(
+    asset7 = RuntimeInjectionAsset(
         grid_model_id="injection_node_2",
         in_service=True,
         asset_type="GENERATOR",
@@ -238,13 +232,13 @@ def test_get_busbar_outage_node_index_falls_back_to_busbar_bus_id(network_data: 
     station = build_materialized_station(
         grid_model_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_1",
         busbars=[
-            Busbar(
+            RuntimeBusbar(
                 grid_model_id="38861c44-57c7-5778-459d-bb997f25d415",
                 int_id=0,
                 bus_branch_bus_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_2",
                 bus_breaker_bus_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_2",
             ),
-            Busbar(
+            RuntimeBusbar(
                 grid_model_id="5fd53822-fbb9-f012-5cbb-ac2d2d6aaf6c",
                 int_id=1,
                 bus_branch_bus_id="ab0e0e4f-10e5-411a-bf4e-6232f521985e_1",
@@ -275,13 +269,13 @@ def test_get_busbar_outage_node_index_falls_back_when_station_lookup_is_ambiguou
     station = build_materialized_station(
         grid_model_id="station_0",
         busbars=[
-            Busbar(
+            RuntimeBusbar(
                 grid_model_id="busbar_0",
                 int_id=0,
                 bus_branch_bus_id="node_0",
                 bus_breaker_bus_id="node_0",
             ),
-            Busbar(
+            RuntimeBusbar(
                 grid_model_id="busbar_1",
                 int_id=1,
                 bus_branch_bus_id="node_1",
@@ -309,17 +303,12 @@ def test_get_busbar_outage_node_index_falls_back_when_station_lookup_is_ambiguou
 
 def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     # Create mock SwitchableAsset objects
-    asset1 = BranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
-    asset2 = BranchAsset(grid_model_id="branch_12", in_service=False, asset_type="line")
-    asset3 = BranchAsset(grid_model_id="branch_23", in_service=True, asset_type="line")
-    asset4 = BranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
-    asset5 = BranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
-    asset6 = InjectionAsset(
-        grid_model_id="injection_node_0",
-        in_service=True,
-        asset_type="GENERATOR",
-    )
-    asset7 = InjectionAsset(
+    asset1 = RuntimeBranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    asset2 = RuntimeBranchAsset(grid_model_id="branch_12", in_service=False, asset_type="line")
+    asset3 = RuntimeBranchAsset(grid_model_id="branch_23", in_service=True, asset_type="line")
+    asset4 = RuntimeBranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
+    asset5 = RuntimeBranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
+    asset7 = RuntimeInjectionAsset(
         grid_model_id="injection_node_2",
         in_service=True,
         asset_type="GENERATOR",
@@ -354,8 +343,8 @@ def test_extract_busbar_outage_data(network_data_preprocessed: NetworkData):
     )
 
     # Create a mock Station object
-    busbar_0 = Busbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    busbar_1 = Busbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_2", bus_breaker_bus_id="node_2")
+    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
+    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_2", bus_breaker_bus_id="node_2")
     station = MaterializedStation(
         bus_group_id="node_2",
         busbars=[busbar_0, busbar_1],
@@ -467,15 +456,15 @@ def test_extract_busbar_outage_data_extends_over_double_connections(network_data
         split_multi_outage_branches=None,
     )
 
-    busbar_0 = Busbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    busbar_1 = Busbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
+    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
+    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
     station = build_materialized_station(
         grid_model_id="node_a",
         busbars=[busbar_0, busbar_1],
         couplers=[],
         branch_assets=[
-            BranchAsset(grid_model_id="branch_local", in_service=True, asset_type="line"),
-            BranchAsset(grid_model_id="branch_shared", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_local", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_shared", in_service=True, asset_type="line"),
         ],
         injection_assets=[],
         branch_switching_table=np.array(
@@ -515,8 +504,8 @@ def test_extract_busbar_outage_data_propagates_over_disconnector(
         split_multi_outage_branches=None,
     )
 
-    busbar_0 = Busbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    busbar_1 = Busbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
+    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
+    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
     station = build_materialized_station(
         grid_model_id="node_0",
         busbars=[busbar_0, busbar_1],
@@ -531,10 +520,10 @@ def test_extract_busbar_outage_data_propagates_over_disconnector(
             )
         ],
         branch_assets=[
-            BranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line"),
-            BranchAsset(grid_model_id="branch_right", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_right", in_service=True, asset_type="line"),
         ],
-        injection_assets=[InjectionAsset(grid_model_id="load_right", in_service=True, asset_type="LOAD")],
+        injection_assets=[RuntimeInjectionAsset(grid_model_id="load_right", in_service=True, asset_type="LOAD")],
         branch_switching_table=np.array(
             [
                 [True, False],
@@ -578,8 +567,8 @@ def test_extract_busbar_outage_data_propagates_over_shared_asset_with_breaker_bl
         split_multi_outage_branches=None,
     )
 
-    busbar_0 = Busbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    busbar_1 = Busbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
+    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
+    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
     station = build_materialized_station(
         grid_model_id="node_0",
         busbars=[busbar_0, busbar_1],
@@ -594,9 +583,9 @@ def test_extract_busbar_outage_data_propagates_over_shared_asset_with_breaker_bl
             )
         ],
         branch_assets=[
-            BranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line"),
-            BranchAsset(grid_model_id="branch_right", in_service=True, asset_type="line"),
-            BranchAsset(grid_model_id="branch_shared", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_right", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_shared", in_service=True, asset_type="line"),
         ],
         injection_assets=[],
         branch_switching_table=np.array(
@@ -636,8 +625,8 @@ def test_extract_busbar_outage_data_does_not_propagate_from_empty_busbar_over_br
         split_multi_outage_branches=None,
     )
 
-    busbar_0 = Busbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
-    busbar_1 = Busbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
+    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
+    busbar_1 = RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1")
     station = build_materialized_station(
         grid_model_id="node_0",
         busbars=[busbar_0, busbar_1],
@@ -651,7 +640,7 @@ def test_extract_busbar_outage_data_does_not_propagate_from_empty_busbar_over_br
                 in_service=True,
             )
         ],
-        branch_assets=[BranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line")],
+        branch_assets=[RuntimeBranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line")],
         injection_assets=[],
         branch_switching_table=np.array(
             [
@@ -678,13 +667,13 @@ def test_extract_busbar_outage_data_uses_realized_station_topology_for_relevant_
     physical_station = build_materialized_station(
         grid_model_id="node_0",
         busbars=[
-            Busbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"),
-            Busbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1"),
+            RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"),
+            RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1"),
         ],
         couplers=[],
         branch_assets=[
-            BranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line"),
-            BranchAsset(grid_model_id="branch_right", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_right", in_service=True, asset_type="line"),
         ],
         injection_assets=[],
         branch_switching_table=np.array(
@@ -699,13 +688,13 @@ def test_extract_busbar_outage_data_uses_realized_station_topology_for_relevant_
     realized_station = build_materialized_station(
         grid_model_id="node_0",
         busbars=[
-            Busbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"),
-            Busbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1"),
+            RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"),
+            RuntimeBusbar(grid_model_id="busbar_1", int_id=1, bus_branch_bus_id="node_1", bus_breaker_bus_id="node_1"),
         ],
         couplers=[],
         branch_assets=[
-            BranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line"),
-            BranchAsset(grid_model_id="branch_right", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_left", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_right", in_service=True, asset_type="line"),
         ],
         injection_assets=[],
         branch_switching_table=np.array(
@@ -757,15 +746,15 @@ def test_extract_busbar_outage_data_preserves_branch_order(network_data_preproce
         split_multi_outage_branches=None,
     )
 
-    busbar_0 = Busbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
+    busbar_0 = RuntimeBusbar(grid_model_id="busbar_0", int_id=0, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0")
     station = build_materialized_station(
         grid_model_id="node_0",
         busbars=[busbar_0],
         couplers=[],
         branch_assets=[
-            BranchAsset(grid_model_id="branch_b", in_service=True, asset_type="line"),
-            BranchAsset(grid_model_id="branch_a", in_service=True, asset_type="line"),
-            BranchAsset(grid_model_id="branch_b", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_b", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_a", in_service=True, asset_type="line"),
+            RuntimeBranchAsset(grid_model_id="branch_b", in_service=True, asset_type="line"),
         ],
         injection_assets=[],
         branch_switching_table=np.array([[True, True, True]], dtype=bool),
@@ -792,10 +781,10 @@ def test_extract_busbar_outage_data_handles_non_rel_stub_branch_compensation(
     # it would isolate node_1 from the reduced network. The preprocessing therefore
     # keeps the bridge branch physically connected, compensates the disconnected stub
     # subtree via delta-p, and marks the bridge-fed subtree branches as zero-flow.
-    asset1 = BranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
-    asset4 = BranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
-    asset5 = BranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
-    asset6 = InjectionAsset(grid_model_id="injection_node_0", in_service=True, asset_type="GENERATOR")
+    asset1 = RuntimeBranchAsset(grid_model_id="branch_01", in_service=True, asset_type="line")
+    asset4 = RuntimeBranchAsset(grid_model_id="branch_02", in_service=True, asset_type="line")
+    asset5 = RuntimeBranchAsset(grid_model_id="branch_03", in_service=True, asset_type="line")
+    asset6 = RuntimeInjectionAsset(grid_model_id="injection_node_0", in_service=True, asset_type="GENERATOR")
     network_data_dummy = replace(
         network_data_preprocessed,
         from_nodes=np.array([0, 2, 0, 0]),
@@ -811,7 +800,7 @@ def test_extract_busbar_outage_data_handles_non_rel_stub_branch_compensation(
         split_multi_outage_branches=None,
     )
 
-    busbar_0 = Busbar(
+    busbar_0 = RuntimeBusbar(
         grid_model_id="busbar_0",
         int_id=0,
         bus_branch_bus_id="node_0",
@@ -861,8 +850,8 @@ def test_get_all_rel_bb_outage_data_preserves_physical_busbar_slots_for_out_of_s
     station = build_materialized_station(
         grid_model_id="node_a",
         busbars=[
-            Busbar(grid_model_id="busbar_0", int_id=0, in_service=True, bus_branch_bus_id="node_0"),
-            Busbar(
+            RuntimeBusbar(grid_model_id="busbar_0", int_id=0, in_service=True, bus_branch_bus_id="node_0"),
+            RuntimeBusbar(
                 grid_model_id="busbar_1", int_id=1, in_service=False, bus_branch_bus_id="node_0", bus_breaker_bus_id="node_0"
             ),
         ],

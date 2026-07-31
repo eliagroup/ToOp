@@ -17,6 +17,7 @@ from beartype.typing import Literal, Optional
 from jaxtyping import Array, Bool, Int
 from toop_engine_dc_solver.preprocess.helpers.switching_distance import per_station_switching_distance
 from toop_engine_dc_solver.preprocess.preprocess_switching import OptimalSeparationSetInfo
+from toop_engine_interfaces.asset_topology.assets import RuntimeBusbarCoupler
 from toop_engine_interfaces.asset_topology.materialized_topology import (
     MaterializedStation,
     _validate_station_physical_assignments,
@@ -25,6 +26,53 @@ from toop_engine_interfaces.asset_topology.materialized_topology import (
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import ReassignmentLimits
 
 logger = structlog.get_logger(__name__)
+
+
+def _construct_runtime_couplers(
+    couplers: list[RuntimeBusbarCoupler],
+    coupler_state_key: tuple[bool, ...],
+) -> list[RuntimeBusbarCoupler]:
+    """Construct runtime couplers for one open-state variant without revalidation."""
+    return [
+        RuntimeBusbarCoupler.model_construct(
+            grid_model_id=coupler.grid_model_id,
+            coupler_type=coupler.coupler_type,
+            name=coupler.name,
+            busbar_from_id=coupler.busbar_from_id,
+            busbar_to_id=coupler.busbar_to_id,
+            asset_bay=coupler.asset_bay,
+            coupler_bay=coupler.coupler_bay,
+            open=open_state,
+            in_service=coupler.in_service,
+        )
+        for coupler, open_state in zip(couplers, coupler_state_key, strict=True)
+    ]
+
+
+def _construct_realized_station(
+    station: MaterializedStation,
+    couplers: list[RuntimeBusbarCoupler],
+    branch_switching_table: np.ndarray,
+) -> MaterializedStation:
+    """Construct one realized station without revalidation in the hot loop."""
+    return MaterializedStation.model_construct(
+        bus_group_id=station.bus_group_id,
+        voltage_level_id=station.voltage_level_id,
+        name=station.name,
+        station_type=station.station_type,
+        region=station.region,
+        voltage_level=station.voltage_level,
+        busbars=station.busbars,
+        bus_branch_bus_ids=station.bus_branch_bus_ids,
+        couplers=couplers,
+        branch_switching_table=branch_switching_table,
+        injection_switching_table=station.injection_switching_table,
+        branch_connectivity=station.branch_connectivity,
+        injection_connectivity=station.injection_connectivity,
+        model_log=station.model_log,
+        branch_connections=station.branch_connections,
+        injection_connections=station.injection_connections,
+    )
 
 
 def _validate_realized_station_update(
@@ -523,7 +571,7 @@ def realise_ba_to_physical_topo_per_station_jax(
 
     # Create the realised stations. This dominates runtime for large action sets, so reuse
     # the already validated station payload and cache the few repeated coupler-state variants.
-    coupler_state_cache: dict[tuple[bool, ...], list] = {}
+    coupler_state_cache: dict[tuple[bool, ...], list[RuntimeBusbarCoupler]] = {}
     realised_stations: list[MaterializedStation] = []
     for action_switching, action_coupler_states in zip(switching_table, chosen_coupler_state, strict=True):
         if validate:
@@ -536,21 +584,10 @@ def realise_ba_to_physical_topo_per_station_jax(
         coupler_state_key = tuple(bool(open_state) for open_state in action_coupler_states)
         cached_couplers = coupler_state_cache.get(coupler_state_key)
         if cached_couplers is None:
-            cached_couplers = [
-                coupler.model_copy(update={"open": open_state}, deep=False)
-                for coupler, open_state in zip(station.couplers, coupler_state_key, strict=True)
-            ]
+            cached_couplers = _construct_runtime_couplers(station.couplers, coupler_state_key)
             coupler_state_cache[coupler_state_key] = cached_couplers
 
-        realised_stations.append(
-            station.model_copy(
-                update={
-                    "couplers": cached_couplers,
-                    "branch_switching_table": action_switching,
-                },
-                deep=False,
-            )
-        )
+        realised_stations.append(_construct_realized_station(station, cached_couplers, action_switching))
 
     # Convert the busbar mapping to a list of busbar A mappings
     busbar_mappings_converted = [np.flatnonzero(~mapping).tolist() for mapping in chosen_busbar_mapping]

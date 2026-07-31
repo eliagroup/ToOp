@@ -29,7 +29,11 @@ from toop_engine_grid_helpers.network_graph.graph_to_asset_topo import (
 )
 from toop_engine_grid_helpers.network_graph.network_graph_helper_functions import add_suffix_to_duplicated_grid_model_id
 from toop_engine_grid_helpers.powsybl.example_grids import create_complex_grid_battery_hvdc_svc_3w_trafo
-from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import materialize_stations_from_network_state
+from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
+    _build_runtime_switching_state,
+    _get_busbar_sections_with_in_service,
+    materialize_stations_from_network_state,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
     _build_master_station_from_busbar_group,
     _build_station_connectivity_by_asset_type,
@@ -48,7 +52,12 @@ from toop_engine_grid_helpers.powsybl.powsybl_station_to_graph import (
 )
 from toop_engine_importer.pypowsybl_import import powsybl_masks
 from toop_engine_importer.pypowsybl_import.cgmes.cgmes_toolset import get_busbar_sections_with_in_service
+from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeInjectionAsset
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
+from toop_engine_interfaces.asset_topology.topology_conversion import (
+    RuntimeSwitchingState,
+    materialize_station_from_runtime_state,
+)
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     AreaSettings,
     CgmesImporterParameters,
@@ -115,48 +124,47 @@ def build_station_from_bus_id(network: Network, bus_id: str, station_info: Subst
         )
     )
     asset_switching_table = remove_double_connections(asset_switching_table, substation_id=station_info.name)
-    branch_switching_table = asset_switching_table[:, branch_mask]
-    injection_switching_table = asset_switching_table[:, [not is_branch for is_branch in branch_mask]]
-    asset_bay_by_id = {asset_bay.asset_bay_id: asset_bay for asset_bay in asset_bays if asset_bay.asset_bay_id is not None}
-    branch_asset_by_id = {asset.grid_model_id: asset for asset in branch_assets}
-    injection_asset_by_id = {asset.grid_model_id: asset for asset in injection_assets}
-    return MaterializedStation(
-        bus_group_id=station.bus_group_id,
-        voltage_level_id=station.voltage_level_id,
-        name=station.name,
-        station_type=station.station_type,
-        region=station.region,
-        voltage_level=station.voltage_level,
-        busbars=[busbar.model_copy(deep=True) for busbar in station.busbars],
-        couplers=[coupler.model_copy(deep=True) for coupler in station.couplers],
-        branch_connections=[
-            MaterializedAssetConnection(
-                asset=branch_asset_by_id[connection.asset_id].model_copy(deep=True),
-                branch_end=connection.branch_end,
-                asset_bay=(
-                    asset_bay_by_id[connection.asset_bay_id].model_copy(deep=True)
-                    if connection.asset_bay_id is not None
-                    else None
-                ),
-            )
-            for connection in branch_connections
-        ],
-        injection_connections=[
-            MaterializedAssetConnection(
-                asset=injection_asset_by_id[connection.asset_id].model_copy(deep=True),
-                branch_end=connection.branch_end,
-                asset_bay=(
-                    asset_bay_by_id[connection.asset_bay_id].model_copy(deep=True)
-                    if connection.asset_bay_id is not None
-                    else None
-                ),
-            )
-            for connection in injection_connections
-        ],
-        branch_switching_table=branch_switching_table,
-        injection_switching_table=injection_switching_table,
-        branch_connectivity=branch_connectivity,
-        injection_connectivity=injection_connectivity,
+    station = station.model_copy(
+        update={
+            "branch_connectivity": branch_connectivity,
+            "injection_connectivity": injection_connectivity,
+        },
+        deep=True,
+    )
+    switches = network.get_switches(all_attributes=True)
+    branches = network.get_branches(
+        attributes=["bus1_id", "bus2_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id", "connected1", "connected2"]
+    )
+    injections = network.get_injections(attributes=["bus_id", "bus_breaker_bus_id", "connected"])
+    busbar_sections = _get_busbar_sections_with_in_service(network=network, attributes=["in_service", "bus_id"])
+    runtime_switching_state = _build_runtime_switching_state(
+        station=station,
+        switch_open_by_id=switches["open"].to_dict(),
+        busbar_bus_id_by_id=busbar_sections["bus_id"].to_dict(),
+        busbar_in_service_by_id=busbar_sections["in_service"].to_dict(),
+        branches=branches,
+        injections=injections,
+        asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in asset_bays},
+    )
+    runtime_switching_state = RuntimeSwitchingState(
+        busbar_bus_branch_bus_ids=runtime_switching_state.busbar_bus_branch_bus_ids,
+        branch_current_bus_ids=runtime_switching_state.branch_current_bus_ids,
+        injection_current_bus_ids=runtime_switching_state.injection_current_bus_ids,
+        busbar_out_of_service_ids=set(),
+        open_coupler_ids=runtime_switching_state.open_coupler_ids,
+        out_of_service_coupler_ids=runtime_switching_state.out_of_service_coupler_ids,
+        open_switch_ids=runtime_switching_state.open_switch_ids,
+    )
+    return materialize_station_from_runtime_state(
+        station=station,
+        branch_asset_map={
+            asset.grid_model_id: RuntimeBranchAsset.model_validate(asset.model_dump()) for asset in branch_assets
+        },
+        injection_asset_map={
+            asset.grid_model_id: RuntimeInjectionAsset.model_validate(asset.model_dump()) for asset in injection_assets
+        },
+        asset_bay_map={asset_bay.asset_bay_id: asset_bay for asset_bay in asset_bays if asset_bay.asset_bay_id is not None},
+        runtime_switching_state=runtime_switching_state,
         model_log=station_logs,
     )
 

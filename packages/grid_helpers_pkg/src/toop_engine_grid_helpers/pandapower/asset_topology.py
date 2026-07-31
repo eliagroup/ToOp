@@ -18,7 +18,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import structlog
-from beartype.typing import List, Literal, Optional, Tuple, Union
+from beartype.typing import Any, List, Literal, Optional, Tuple, Union, get_args
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import SEPARATOR
 from toop_engine_grid_helpers.pandapower.station_extraction import (
     get_all_switches_from_bus_ids,
@@ -32,17 +32,48 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_coupler_from_df,
 )
 from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
     InjectionAsset,
     build_asset_bay_id,
-    normalize_switchable_asset_payload,
 )
-from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
+from toop_engine_interfaces.asset_topology.materialized_topology import StationAssetConnection
 from toop_engine_interfaces.asset_topology.topology_conversion import validate_complete_master_data
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_asset_type(asset_payload: dict[str, Any]) -> str | None:
+    """Return the explicit asset type field from a station asset payload."""
+    raw_asset_type = asset_payload.get("asset_type", asset_payload.get("type"))
+    if raw_asset_type is None or pd.isna(raw_asset_type):
+        return None
+    return str(raw_asset_type)
+
+
+def _get_optional_asset_name(asset_payload: dict[str, Any]) -> str | None:
+    """Return a sanitized optional asset name from a station asset payload."""
+    raw_name = asset_payload.get("name")
+    if raw_name is None or pd.isna(raw_name):
+        return None
+    return str(raw_name)
+
+
+def _build_canonical_asset(asset_payload: dict[str, Any]) -> BranchAsset | InjectionAsset:
+    """Build a canonical branch or injection asset from one prepared payload."""
+    asset_type = _get_asset_type(asset_payload)
+    asset_kwargs = {
+        "grid_model_id": str(asset_payload["grid_model_id"]),
+        "asset_type": asset_type,
+        "name": _get_optional_asset_name(asset_payload),
+    }
+    if asset_type in get_args(AssetBranchType):
+        return BranchAsset(**asset_kwargs)
+    if asset_type in get_args(AssetInjectionType):
+        return InjectionAsset(**asset_kwargs)
+    raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
 
 
 def _structural_station_suffix(group_index: int) -> str:
@@ -204,7 +235,7 @@ def _build_station_assets_and_connections(
         references, branch mask, and referenced asset bays.
     """
     switchable_assets = [
-        normalize_switchable_asset_payload(asset_payload) for asset_payload in station_branches.to_dict(orient="records")
+        _build_canonical_asset(asset_payload) for asset_payload in station_branches.to_dict(orient="records")
     ]
     asset_terminals = (
         station_branches["branch_end"].tolist()
@@ -212,9 +243,6 @@ def _build_station_assets_and_connections(
         else [None] * len(station_branches)
     )
     branch_mask = [isinstance(asset, BranchAsset) for asset in switchable_assets]
-    if any(not isinstance(asset, (BranchAsset, InjectionAsset)) for asset in switchable_assets):
-        raise ValueError("All station assets must normalize to BranchAsset or InjectionAsset")
-
     branch_assets: list[BranchAsset] = []
     injection_assets: list[InjectionAsset] = []
     branch_connections: list[StationAssetConnection] = []
@@ -235,10 +263,10 @@ def _build_station_assets_and_connections(
             asset_bay_id=asset_bay.asset_bay_id if asset_bay is not None else None,
         )
         if is_branch:
-            branch_assets.append(asset.model_copy(update={"in_service": True}, deep=True))
+            branch_assets.append(asset.model_copy(deep=True))
             branch_connections.append(connection)
         else:
-            injection_assets.append(asset.model_copy(update={"in_service": True}, deep=True))
+            injection_assets.append(asset.model_copy(deep=True))
             injection_connections.append(connection)
     return branch_assets, injection_assets, branch_connections, injection_connections, branch_mask, asset_bays
 
@@ -290,14 +318,8 @@ def _build_master_station_from_station_id(
         bus_group_id=str(station_identity["bus_group_id"]),
         name=str(station_identity["name"]),
         voltage_level=float(station_identity["voltage_level"]),
-        busbars=[
-            busbar.model_copy(update={"in_service": True}, deep=True)
-            for busbar in get_list_of_busbars_from_df(station_buses[station_buses["type"] == "b"])
-        ],
-        couplers=[
-            coupler.model_copy(update={"open": False, "in_service": True}, deep=True)
-            for coupler in get_list_of_coupler_from_df(coupler_elements)
-        ],
+        busbars=get_list_of_busbars_from_df(station_buses[station_buses["type"] == "b"]),
+        couplers=get_list_of_coupler_from_df(coupler_elements),
         branch_connections=branch_connections,
         injection_connections=injection_connections,
         branch_connectivity=np.ones_like(switching_matrix[:, branch_mask], dtype=bool),

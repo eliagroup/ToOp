@@ -12,7 +12,11 @@ import pandas as pd
 import pypowsybl
 import pytest
 from toop_engine_grid_helpers.powsybl import powsybl_station_to_graph
-from toop_engine_grid_helpers.powsybl.example_grids import basic_node_breaker_network_powsybl, create_busbar_b_in_ieee
+from toop_engine_grid_helpers.powsybl.example_grids import (
+    basic_node_breaker_network_powsybl,
+    create_busbar_b_in_ieee,
+    create_complex_grid_battery_hvdc_svc_3w_trafo,
+)
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     _get_branch_station_assets_from_df,
     _get_bus_breaker_structural_bus_groups,
@@ -32,7 +36,7 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     materialize_stations_from_network_state,
 )
 from toop_engine_importer.pypowsybl_import import powsybl_masks
-from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset
+from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, CouplerBay, InjectionAsset
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import AreaSettings, CgmesImporterParameters
@@ -93,6 +97,18 @@ def test_get_list_of_coupler_from_df():
             "busbar_to_id": [2, 3],
             "open": [True, False],
             "in_service": [True, True],
+            "coupler_bay": [
+                {
+                    "dv_switch_grid_model_id": "coupler1",
+                    "from_sr_switch_grid_model_id": {"busbar1": "sw1"},
+                    "to_sr_switch_grid_model_id": {"busbar2": "sw2"},
+                },
+                {
+                    "dv_switch_grid_model_id": "coupler2",
+                    "from_sr_switch_grid_model_id": {"busbar2": "sw3"},
+                    "to_sr_switch_grid_model_id": {"busbar3": "sw4"},
+                },
+            ],
         }
     )
     expected_coupler_list = [
@@ -102,8 +118,11 @@ def test_get_list_of_coupler_from_df():
             name="name1",
             busbar_from_id=1,
             busbar_to_id=2,
-            open=True,
-            in_service=True,
+            coupler_bay=CouplerBay(
+                dv_switch_grid_model_id="coupler1",
+                from_sr_switch_grid_model_id={"busbar1": "sw1"},
+                to_sr_switch_grid_model_id={"busbar2": "sw2"},
+            ),
         ),
         BusbarCoupler(
             grid_model_id="coupler2",
@@ -111,8 +130,11 @@ def test_get_list_of_coupler_from_df():
             name="name2",
             busbar_from_id=2,
             busbar_to_id=3,
-            open=False,
-            in_service=True,
+            coupler_bay=CouplerBay(
+                dv_switch_grid_model_id="coupler2",
+                from_sr_switch_grid_model_id={"busbar2": "sw3"},
+                to_sr_switch_grid_model_id={"busbar3": "sw4"},
+            ),
         ),
     ]
     coupler_list = get_list_of_coupler_from_df(coupler_elements)
@@ -143,13 +165,11 @@ def test_get_branch_and_injection_station_assets_from_df(monkeypatch: pytest.Mon
             grid_model_id="asset1",
             asset_type="TIE_LINE",
             name="name1",
-            in_service=True,
         ),
         BranchAsset(
             grid_model_id="asset2",
             asset_type="LINE",
             name="name2",
-            in_service=True,
         ),
     ]
     expected_injection_assets = [
@@ -157,7 +177,6 @@ def test_get_branch_and_injection_station_assets_from_df(monkeypatch: pytest.Mon
             grid_model_id="asset3",
             asset_type="LOAD",
             name="name3",
-            in_service=True,
         )
     ]
 
@@ -202,14 +221,12 @@ def test_get_list_of_busbars_from_df():
             int_id=1,
             busbar_type="type1",
             name="name1",
-            in_service=True,
         ),
         Busbar(
             grid_model_id="busbar2",
             int_id=2,
             busbar_type="type2",
             name="name2",
-            in_service=True,
         ),
     ]
     busbar_list = get_list_of_busbars_from_df(busbar_elements)
@@ -438,7 +455,7 @@ def test_materialize_stations_from_network_state(ucte_file: Path) -> None:
     materialized_stations = materialize_stations_from_network_state(network, master_data)
 
     assert len(materialized_stations) <= len(master_data.stations)
-    assert all(asset.in_service for asset in master_data.branch_assets)
+    assert all(isinstance(asset, BranchAsset) for asset in master_data.branch_assets)
     assert all(isinstance(station, MaterializedStation) for station in materialized_stations)
 
 
@@ -475,6 +492,32 @@ def test_materialize_stations_from_network_state_preserves_bus_branch_bus_ids_no
 
     assert station_bus_ids["VL2"] == {"VL2_0"}
     assert station_bus_ids["VL3"] == {"VL3_0"}
+
+
+def test_materialize_stations_from_network_state_marks_disconnected_transformer_out_of_service() -> None:
+    """Verify that a transformer disconnected on both sides is materialized out of service."""
+    network = create_complex_grid_battery_hvdc_svc_3w_trafo()
+    transformer_id = network.get_2_windings_transformers().index[0]
+    network.update_2_windings_transformers(id=transformer_id, connected1=False, connected2=False)
+
+    relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
+    master_data = get_bus_breaker_topology_master_data(
+        network,
+        relevant_subs,
+        grid_model_file="booga",
+        topology_id="wooga",
+    )
+    materialized_stations = materialize_stations_from_network_state(network, master_data)
+
+    materialized_assets = [
+        asset_connection.asset
+        for station in materialized_stations
+        for asset_connection in station.branch_connections
+        if asset_connection.asset.grid_model_id == transformer_id
+    ]
+
+    assert materialized_assets, "Expected the disconnected transformer to appear in the materialized station view"
+    assert all(not asset.in_service for asset in materialized_assets)
 
 
 def test_get_relevant_network_data_node_breaker():

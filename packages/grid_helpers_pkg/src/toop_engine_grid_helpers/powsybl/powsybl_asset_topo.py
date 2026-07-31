@@ -17,22 +17,29 @@ from string import ascii_lowercase
 import numpy as np
 import pandas as pd
 import structlog
-from beartype.typing import Optional, TypeVar, Union
+from beartype.typing import Any, Optional, TypeVar, Union, get_args
 from jaxtyping import Bool
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import change_dangling_to_tie, get_voltage_level_with_region
 from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
     Busbar,
     BusbarCoupler,
     InjectionAsset,
+    RuntimeBranchAsset,
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
+    RuntimeInjectionAsset,
     SwitchableAsset,
-    normalize_switchable_asset_payload,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
-from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
+from toop_engine_interfaces.asset_topology.materialized_topology import (
+    MaterializedAssetConnection,
+    MaterializedStation,
+    StationAssetConnection,
+)
 from toop_engine_interfaces.asset_topology.topology_conversion import (
     RuntimeSwitchingState,
     materialize_station_from_runtime_state,
@@ -40,6 +47,37 @@ from toop_engine_interfaces.asset_topology.topology_conversion import (
 
 SwitchableAssetType = TypeVar("SwitchableAssetType", bound=SwitchableAsset)
 logger = structlog.get_logger(__name__)
+
+
+def _get_asset_type(asset_payload: dict[str, Any]) -> str | None:
+    """Return the explicit asset type field from a station asset payload."""
+    raw_asset_type = asset_payload.get("asset_type", asset_payload.get("type"))
+    if raw_asset_type is None or pd.isna(raw_asset_type):
+        return None
+    return str(raw_asset_type)
+
+
+def _get_optional_asset_name(asset_payload: dict[str, Any]) -> str | None:
+    """Return a sanitized optional asset name from a station asset payload."""
+    raw_name = asset_payload.get("name")
+    if raw_name is None or pd.isna(raw_name):
+        return None
+    return str(raw_name)
+
+
+def _build_canonical_asset(asset_payload: dict[str, Any]) -> BranchAsset | InjectionAsset:
+    """Build a canonical branch or injection asset from one prepared payload."""
+    asset_type = _get_asset_type(asset_payload)
+    asset_kwargs = {
+        "grid_model_id": str(asset_payload["grid_model_id"]),
+        "asset_type": asset_type,
+        "name": _get_optional_asset_name(asset_payload),
+    }
+    if asset_type in get_args(AssetBranchType):
+        return BranchAsset(**asset_kwargs)
+    if asset_type in get_args(AssetInjectionType):
+        return InjectionAsset(**asset_kwargs)
+    raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
 
 
 def _structural_station_suffix(group_index: int) -> str:
@@ -231,7 +269,17 @@ def get_list_of_coupler_from_df(coupler_elements: pd.DataFrame) -> list[BusbarCo
         List of coupler elements.
     """
     coupler_dict = coupler_elements.to_dict(orient="records")
-    coupler_list = [BusbarCoupler(**coupler) for coupler in coupler_dict]
+    coupler_list = [
+        BusbarCoupler(
+            **{
+                key: value
+                for key, value in coupler.items()
+                if key not in {"open", "in_service", "bus_branch_bus_id", "type", "bus_int_id"}
+            }
+        )
+        for coupler in coupler_dict
+        if coupler.get("busbar_from_id") != coupler.get("busbar_to_id")
+    ]
     return coupler_list
 
 
@@ -250,7 +298,10 @@ def get_list_of_busbars_from_df(station_buses: pd.DataFrame) -> list[Busbar]:
         List of busbars.
     """
     busbar_dict = station_buses.to_dict(orient="records")
-    busbar_list = [Busbar(**busbar) for busbar in busbar_dict]
+    busbar_list = [
+        Busbar(**{key: value for key, value in busbar.items() if key not in {"in_service", "bus_branch_bus_id", "type"}})
+        for busbar in busbar_dict
+    ]
 
     return busbar_list
 
@@ -350,17 +401,10 @@ def _get_branch_station_assets_from_df(
         Branch-only connectivity table.
     """
     normalized_assets = [
-        normalize_switchable_asset_payload(switchable_asset)
-        for switchable_asset in station_elements.to_dict(orient="records")
+        _build_canonical_asset(switchable_asset) for switchable_asset in station_elements.to_dict(orient="records")
     ]
-    if any(not isinstance(asset, (BranchAsset, InjectionAsset)) for asset in normalized_assets):
-        raise ValueError("All station assets must normalize to BranchAsset or InjectionAsset")
     branch_mask = np.asarray([isinstance(asset, BranchAsset) for asset in normalized_assets], dtype=bool)
-    branch_assets = [
-        asset if isinstance(asset, BranchAsset) else BranchAsset.model_validate(asset.model_dump())
-        for asset, is_branch in zip(normalized_assets, branch_mask, strict=True)
-        if is_branch
-    ]
+    branch_assets = [asset for asset, is_branch in zip(normalized_assets, branch_mask, strict=True) if is_branch]
     branch_ends = [branch_end for branch_end, is_branch in zip(asset_branch_ends, branch_mask, strict=True) if is_branch]
     branch_switching_table = switching_matrix[:, branch_mask]
     branch_connectivity = asset_connectivity[:, branch_mask]
@@ -399,17 +443,10 @@ def _get_injection_station_assets_from_df(
         Injection-only connectivity table.
     """
     normalized_assets = [
-        normalize_switchable_asset_payload(switchable_asset)
-        for switchable_asset in station_elements.to_dict(orient="records")
+        _build_canonical_asset(switchable_asset) for switchable_asset in station_elements.to_dict(orient="records")
     ]
-    if any(not isinstance(asset, (BranchAsset, InjectionAsset)) for asset in normalized_assets):
-        raise ValueError("All station assets must normalize to BranchAsset or InjectionAsset")
     injection_mask = np.asarray([isinstance(asset, InjectionAsset) for asset in normalized_assets], dtype=bool)
-    injection_assets = [
-        asset if isinstance(asset, InjectionAsset) else InjectionAsset.model_validate(asset.model_dump())
-        for asset, is_injection in zip(normalized_assets, injection_mask, strict=True)
-        if is_injection
-    ]
+    injection_assets = [asset for asset, is_injection in zip(normalized_assets, injection_mask, strict=True) if is_injection]
     injection_branch_ends = [
         branch_end for branch_end, is_injection in zip(asset_branch_ends, injection_mask, strict=True) if is_injection
     ]
@@ -817,11 +854,27 @@ def get_bus_breaker_topology_master_data(
                     region=str(voltage_level_id)[0:2],
                     voltage_level=representative_row.nominal_v,
                     busbars=[
-                        busbar.model_copy(update={"in_service": True}, deep=True)
+                        Busbar(
+                            grid_model_id=busbar.grid_model_id,
+                            busbar_type=busbar.busbar_type,
+                            name=busbar.name,
+                            int_id=busbar.int_id,
+                            bus_breaker_bus_id=busbar.bus_breaker_bus_id,
+                        )
                         for busbar in get_list_of_busbars_from_df(station_buses)
                     ],
                     couplers=[
-                        coupler.model_copy(update={"open": False, "in_service": True}, deep=True)
+                        BusbarCoupler(
+                            grid_model_id=coupler.grid_model_id,
+                            coupler_type=coupler.coupler_type,
+                            name=coupler.name,
+                            busbar_from_id=coupler.busbar_from_id,
+                            busbar_to_id=coupler.busbar_to_id,
+                            asset_bay=coupler.asset_bay.model_copy(deep=True) if coupler.asset_bay is not None else None,
+                            coupler_bay=(
+                                coupler.coupler_bay.model_copy(deep=True) if coupler.coupler_bay is not None else None
+                            ),
+                        )
                         for coupler in get_list_of_coupler_from_df(coupler_elements)
                     ],
                     branch_connections=[
@@ -964,6 +1017,53 @@ def _get_injection_current_bus_ids(
     ]
 
 
+def _get_runtime_branch_asset_map(
+    master_data: TopologyMasterData,
+    branches: pd.DataFrame,
+    buses: pd.DataFrame,
+) -> dict[str, BranchAsset]:
+    """Build runtime branch assets with an in-service flag derived from the live network state."""
+    in_main_connected_component = buses["connected_component"].fillna(0).eq(0)
+    branch_in_service = (
+        branches["connected1"].fillna(False)
+        & branches["connected2"].fillna(False)
+        & branches["bus1_id"].map(in_main_connected_component).fillna(False)
+        & branches["bus2_id"].map(in_main_connected_component).fillna(False)
+    )
+    runtime_in_service_by_id = branch_in_service.to_dict()
+    return {
+        asset.grid_model_id: RuntimeBranchAsset(
+            grid_model_id=asset.grid_model_id,
+            asset_type=asset.asset_type,
+            name=asset.name,
+            in_service=bool(runtime_in_service_by_id.get(asset.grid_model_id, False)),
+        )
+        for asset in master_data.branch_assets
+    }
+
+
+def _get_runtime_injection_asset_map(
+    master_data: TopologyMasterData,
+    injections: pd.DataFrame,
+    buses: pd.DataFrame,
+) -> dict[str, InjectionAsset]:
+    """Build runtime injection assets with an in-service flag derived from the live network state."""
+    in_main_connected_component = buses["connected_component"].fillna(0).eq(0)
+    injection_in_service = injections["connected"].fillna(False) & injections["bus_id"].map(
+        in_main_connected_component
+    ).fillna(False)
+    runtime_in_service_by_id = injection_in_service.to_dict()
+    return {
+        asset.grid_model_id: RuntimeInjectionAsset(
+            grid_model_id=asset.grid_model_id,
+            asset_type=asset.asset_type,
+            name=asset.name,
+            in_service=bool(runtime_in_service_by_id.get(asset.grid_model_id, False)),
+        )
+        for asset in master_data.injection_assets
+    }
+
+
 def _build_runtime_switching_state(
     station: MasterStation,
     switch_open_by_id: dict[str, object],
@@ -1041,12 +1141,13 @@ def materialize_stations_from_network_state(
         attributes=["bus1_id", "bus2_id", "bus_breaker_bus1_id", "bus_breaker_bus2_id", "connected1", "connected2"]
     )
     injections = network.get_injections(attributes=["bus_id", "bus_breaker_bus_id", "connected"])
+    buses = network.get_buses(attributes=["connected_component"])
     switch_open_by_id = switches["open"].to_dict()
     busbar_sections = _get_busbar_sections_with_in_service(network=network, attributes=["in_service", "bus_id"])
     busbar_in_service_by_id = busbar_sections["in_service"].to_dict()
     busbar_bus_id_by_id = busbar_sections["bus_id"].to_dict()
-    branch_asset_map = {asset.grid_model_id: asset for asset in master_data.branch_assets}
-    injection_asset_map = {asset.grid_model_id: asset for asset in master_data.injection_assets}
+    branch_asset_map = _get_runtime_branch_asset_map(master_data=master_data, branches=branches, buses=buses)
+    injection_asset_map = _get_runtime_injection_asset_map(master_data=master_data, injections=injections, buses=buses)
     asset_bay_map = {asset_bay.asset_bay_id: asset_bay for asset_bay in master_data.asset_bays}
 
     materialized_stations: list[MaterializedStation] = []
@@ -1139,7 +1240,7 @@ def get_stations_and_assets_bus_breaker(
             ]
             busbar_mapper = {grid_model_id: index for index, grid_model_id in enumerate(local_buses.index)}
             busbars = [
-                Busbar(
+                RuntimeBusbar(
                     grid_model_id=grid_model_id,
                     int_id=busbar_mapper[grid_model_id],
                     bus_breaker_bus_id=str(grid_model_id),
@@ -1148,7 +1249,7 @@ def get_stations_and_assets_bus_breaker(
                 for grid_model_id in local_buses.index
             ]
             couplers = [
-                BusbarCoupler(
+                RuntimeBusbarCoupler(
                     grid_model_id=grid_model_id,
                     coupler_type=switch.kind,
                     busbar_from_id=busbar_mapper[switch.bus_breaker_bus1_id],
@@ -1156,6 +1257,7 @@ def get_stations_and_assets_bus_breaker(
                     open=switch.open,
                 )
                 for grid_model_id, switch in local_switches.iterrows()
+                if busbar_mapper[switch.bus_breaker_bus1_id] != busbar_mapper[switch.bus_breaker_bus2_id]
             ]
             from_branch_assets = [
                 BranchAsset(grid_model_id=grid_model_id, asset_type=branch.type)
@@ -1197,11 +1299,19 @@ def get_stations_and_assets_bus_breaker(
                 busbars=busbars,
                 couplers=couplers,
                 branch_connections=[
-                    MaterializedAssetConnection(asset=asset.model_copy(deep=True), branch_end=asset_terminal, asset_bay=None)
+                    MaterializedAssetConnection(
+                        asset=RuntimeBranchAsset.model_validate(asset.model_dump()),
+                        branch_end=asset_terminal,
+                        asset_bay=None,
+                    )
                     for asset, asset_terminal in zip(branch_assets, branch_terminals, strict=True)
                 ],
                 injection_connections=[
-                    MaterializedAssetConnection(asset=asset.model_copy(deep=True), branch_end=None, asset_bay=None)
+                    MaterializedAssetConnection(
+                        asset=RuntimeInjectionAsset.model_validate(asset.model_dump()),
+                        branch_end=None,
+                        asset_bay=None,
+                    )
                     for asset in injection_assets
                 ],
                 branch_switching_table=branch_switching_table,

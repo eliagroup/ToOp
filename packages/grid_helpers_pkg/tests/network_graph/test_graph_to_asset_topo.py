@@ -167,7 +167,10 @@ def test_get_coupler_df_busbar_coupler(network_graph_for_asset_topo: tuple[nx.Gr
     nodes = network_graph_data.nodes
     substation_id = graph.nodes[0]["substation_id"]
     busbar_df = get_busbar_df(nodes, substation_id)
-    expected = [
+    res = get_coupler_df(switches_df, busbar_df, substation_id, graph=graph)
+    assert res[["grid_model_id", "coupler_type", "name", "in_service", "open", "busbar_from_id", "busbar_to_id"]].to_dict(
+        orient="records"
+    ) == [
         {
             "grid_model_id": "5",
             "coupler_type": "BREAKER",
@@ -178,8 +181,12 @@ def test_get_coupler_df_busbar_coupler(network_graph_for_asset_topo: tuple[nx.Gr
             "busbar_to_id": 0,
         }
     ]
-    res = get_coupler_df(switches_df, busbar_df, substation_id, graph=graph)
-    assert res.to_dict(orient="records") == expected
+    assert res.loc[0, "coupler_bay"]["dv_switch_grid_model_id"] == "5"
+    assert res.loc[0, "coupler_bay"]["connection_kind"] == "coupler"
+    expected_from_busbar_grid_model_id = busbar_df.loc[res.loc[0, "busbar_from_id"], "grid_model_id"]
+    expected_to_busbar_grid_model_id = busbar_df.loc[res.loc[0, "busbar_to_id"], "grid_model_id"]
+    assert res.loc[0, "coupler_bay"]["from_busbar_grid_model_ids"] == [expected_from_busbar_grid_model_id]
+    assert res.loc[0, "coupler_bay"]["to_busbar_grid_model_ids"] == [expected_to_busbar_grid_model_id]
 
     # test empty coupler_df
     switches_df = switches_df.iloc[0:1]
@@ -276,23 +283,18 @@ def test_station_coupler(basic_node_breaker_network_powsybl_grid_v2):
     assert station.couplers[0].name == "VL6_BREAKER"
     assert station.couplers[0].busbar_from_id == 1
     assert station.couplers[0].busbar_to_id == 4
-    assert not station.couplers[0].open
 
     assert station.couplers[1].grid_model_id == "VL6_BREAKER_1_1"
     assert station.couplers[1].coupler_type == "BREAKER"
     assert station.couplers[1].name == "VL6_BREAKER_1_1"
     assert station.couplers[1].busbar_from_id == 0
     assert station.couplers[1].busbar_to_id == 1
-    assert not station.couplers[1].open
-    assert station.couplers[1].in_service
 
     assert station.couplers[2].grid_model_id == "VL6_BREAKER_2_1"
     assert station.couplers[2].coupler_type == "BREAKER"
     assert station.couplers[2].name == "VL6_BREAKER_2_1"
     assert station.couplers[2].busbar_from_id == 3
     assert station.couplers[2].busbar_to_id == 4
-    assert not station.couplers[2].open
-    assert station.couplers[2].in_service
 
     assert station.couplers[3].grid_model_id == "VL6_DISCONNECTOR_2_4"
     assert station.couplers[3].coupler_type == "DISCONNECTOR"

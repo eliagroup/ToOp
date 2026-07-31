@@ -31,6 +31,50 @@ from toop_engine_interfaces.asset_topology.assets import (
 logger = structlog.get_logger(__name__)
 
 
+def _get_coupler_side_switches(
+    coupler_index: pd.Index | int | str,
+    bay_df: pd.DataFrame,
+    side: Literal["from", "to"],
+) -> dict[str, str]:
+    """Return selector switches per busbar for one coupler side."""
+    side_busbar_grid_model_ids = list(bay_df.loc[coupler_index, f"{side}_busbar_grid_model_ids"])
+    side_coupler_switch_ids = list(bay_df.loc[coupler_index, f"{side}_coupler_ids"])
+    if len(side_busbar_grid_model_ids) == len(side_coupler_switch_ids):
+        return dict(zip(side_busbar_grid_model_ids, side_coupler_switch_ids, strict=True))
+
+    coupler_side_switch_ids = set(side_coupler_switch_ids)
+    side_switches = bay_df[
+        bay_df["grid_model_id"].isin(coupler_side_switch_ids) & (bay_df["direct_busbar_grid_model_id"] != "")
+    ]
+    selector_switches: dict[str, str] = {}
+    for _, row in side_switches.iterrows():
+        for busbar_grid_model_id in row[f"{side}_busbar_grid_model_ids"]:
+            selector_switches[busbar_grid_model_id] = row["grid_model_id"]
+    return selector_switches
+
+
+def _get_connection_kind(coupler_index: pd.Index | int | str, bay_df: pd.DataFrame) -> Literal["coupler", "disconnector"]:
+    """Classify one busbar connection as coupler or disconnector."""
+    if str(bay_df.loc[coupler_index, "asset_type"]) == "DISCONNECTOR":
+        from_coupler_ids = list(bay_df.loc[coupler_index, "from_coupler_ids"])
+        to_coupler_ids = list(bay_df.loc[coupler_index, "to_coupler_ids"])
+        if len(from_coupler_ids) == 0 and len(to_coupler_ids) == 0:
+            return "disconnector"
+    return "coupler"
+
+
+def _build_coupler_bay_payload(coupler_index: pd.Index | int | str, bay_df: pd.DataFrame) -> dict[str, object]:
+    """Build side-aware coupler-bay metadata for one coupler."""
+    return {
+        "connection_kind": _get_connection_kind(coupler_index=coupler_index, bay_df=bay_df),
+        "dv_switch_grid_model_id": str(bay_df.loc[coupler_index, "grid_model_id"]),
+        "from_busbar_grid_model_ids": list(bay_df.loc[coupler_index, "from_busbar_grid_model_ids"]),
+        "to_busbar_grid_model_ids": list(bay_df.loc[coupler_index, "to_busbar_grid_model_ids"]),
+        "from_sr_switch_grid_model_id": _get_coupler_side_switches(coupler_index=coupler_index, bay_df=bay_df, side="from"),
+        "to_sr_switch_grid_model_id": _get_coupler_side_switches(coupler_index=coupler_index, bay_df=bay_df, side="to"),
+    }
+
+
 def get_busbar_df(nodes_df: pat.DataFrame[NodeSchema], substation_id: str) -> pd.DataFrame:
     """Get the busbar from the NetworkGraphData nodes dataframe.
 
@@ -111,6 +155,7 @@ def get_coupler_df(
     coupler_df["from_busbar_grid_model_id"] = ""
     coupler_df["to_busbar_grid_model_id"] = ""
     coupler_df["coupler_type"] = ""
+    coupler_df["coupler_bay"] = None
 
     # hotfix in case a bay id has not been identified for a switch
     # a missing bay id indecates there is a data quality issue
@@ -150,6 +195,7 @@ def get_coupler_df(
             coupler_index=index,
             bay_df=bay_df,
         )
+        coupler_df.at[index, "coupler_bay"] = _build_coupler_bay_payload(coupler_index=index, bay_df=bay_df)
         if bay_state:
             # coupler is open, if one side has all switches open
             coupler_df.loc[index, "open"] = True
@@ -175,7 +221,16 @@ def get_coupler_df(
     )
     coupler_df.rename(columns={"int_id": "busbar_to_id"}, inplace=True)
     coupler_df = coupler_df[
-        ["grid_model_id", "coupler_type", "name", "in_service", "open", "busbar_from_id", "busbar_to_id"]
+        [
+            "grid_model_id",
+            "coupler_type",
+            "name",
+            "in_service",
+            "open",
+            "busbar_from_id",
+            "busbar_to_id",
+            "coupler_bay",
+        ]
     ]
 
     return coupler_df

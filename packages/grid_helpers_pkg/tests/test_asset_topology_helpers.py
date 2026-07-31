@@ -28,18 +28,24 @@ from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
     Busbar,
-    BusbarCoupler,
     InjectionAsset,
+    RuntimeBranchAsset,
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
+    RuntimeInjectionAsset,
     SwitchableAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
-from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
+from toop_engine_interfaces.asset_topology.materialized_topology import (
+    MaterializedAssetConnection,
+    MaterializedStation,
+    StationAssetConnection,
+)
 
 
 def build_materialized_station(
     grid_model_id: str,
     busbars: list[Busbar],
-    couplers: list[BusbarCoupler],
+    couplers: list[RuntimeBusbarCoupler],
     assets: list[SwitchableAsset],
     asset_switching_table: np.ndarray,
     asset_connectivity: np.ndarray | None = None,
@@ -56,10 +62,11 @@ def build_materialized_station(
     )
     resolved_injection_connectivity = injection_connectivity if injection_connectivity is not None else None
     branch_assets = [
-        asset if isinstance(asset, BranchAsset) else BranchAsset.model_validate(asset.model_dump()) for asset in assets
+        asset if isinstance(asset, RuntimeBranchAsset) else RuntimeBranchAsset.model_validate(asset.model_dump())
+        for asset in assets
     ]
     normalized_injection_assets = [
-        asset if isinstance(asset, InjectionAsset) else InjectionAsset.model_validate(asset.model_dump())
+        asset if isinstance(asset, RuntimeInjectionAsset) else RuntimeInjectionAsset.model_validate(asset.model_dump())
         for asset in resolved_injection_assets
     ]
     return MaterializedStation(
@@ -205,7 +212,7 @@ def test_merge_stations():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -221,7 +228,7 @@ def test_merge_stations():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -237,7 +244,7 @@ def test_merge_stations():
         station1.model_copy(
             update={
                 "couplers": [
-                    BusbarCoupler(
+                    RuntimeBusbarCoupler(
                         busbar_from_id=1,
                         busbar_to_id=2,
                         open=True,
@@ -271,7 +278,7 @@ def test_merge_stations_append_behavior():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -287,7 +294,7 @@ def test_merge_stations_append_behavior():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -303,7 +310,7 @@ def test_merge_stations_append_behavior():
         station1.model_copy(
             update={
                 "couplers": [
-                    BusbarCoupler(
+                    RuntimeBusbarCoupler(
                         busbar_from_id=1,
                         busbar_to_id=2,
                         open=True,
@@ -337,7 +344,7 @@ def test_merge_stations_raise_behavior():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -353,7 +360,7 @@ def test_merge_stations_raise_behavior():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -378,7 +385,7 @@ def test_merge_stations_with_new_station_append():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -394,7 +401,7 @@ def test_merge_stations_with_new_station_append():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -424,12 +431,12 @@ def test_get_connected_assets():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
-            SwitchableAsset(grid_model_id="line1", in_service=True),
-            SwitchableAsset(grid_model_id="line2", in_service=False),
-            SwitchableAsset(grid_model_id="line3", in_service=True),
+            RuntimeBranchAsset(grid_model_id="line1", in_service=True),
+            RuntimeBranchAsset(grid_model_id="line2", in_service=False),
+            RuntimeBranchAsset(grid_model_id="line3", in_service=True),
         ],
         asset_switching_table=np.array([[True, False, True], [False, True, False]]),
         grid_model_id="station1",
@@ -460,23 +467,23 @@ def test_find_busbars_for_coupler():
     ]
 
     # Test case: Valid coupler with matching busbars
-    coupler = BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1")
+    coupler = RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1")
     busbar_from, busbar_to = find_busbars_for_coupler(busbars, coupler)
     assert busbar_from.int_id == 1
     assert busbar_to.int_id == 2
 
     # Test case: Coupler with non-existent busbar_from_id
-    invalid_coupler_from = BusbarCoupler(busbar_from_id=4, busbar_to_id=2, open=False, grid_model_id="coupler2")
+    invalid_coupler_from = RuntimeBusbarCoupler(busbar_from_id=4, busbar_to_id=2, open=False, grid_model_id="coupler2")
     with pytest.raises(ValueError, match="Busbars for coupler coupler2 not found"):
         find_busbars_for_coupler(busbars, invalid_coupler_from)
 
     # Test case: Coupler with non-existent busbar_to_id
-    invalid_coupler_to = BusbarCoupler(busbar_from_id=1, busbar_to_id=5, open=False, grid_model_id="coupler3")
+    invalid_coupler_to = RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=5, open=False, grid_model_id="coupler3")
     with pytest.raises(ValueError, match="Busbars for coupler coupler3 not found"):
         find_busbars_for_coupler(busbars, invalid_coupler_to)
 
     # Test case: Coupler with both busbar_from_id and busbar_to_id non-existent
-    invalid_coupler_both = BusbarCoupler(busbar_from_id=6, busbar_to_id=7, open=False, grid_model_id="coupler4")
+    invalid_coupler_both = RuntimeBusbarCoupler(busbar_from_id=6, busbar_to_id=7, open=False, grid_model_id="coupler4")
     with pytest.raises(ValueError, match="Busbars for coupler coupler4 not found"):
         find_busbars_for_coupler(busbars, invalid_coupler_both)
 
@@ -488,7 +495,7 @@ def test_station_diff_no_changes():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -515,7 +522,7 @@ def test_station_diff_coupler_state_change():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -527,7 +534,7 @@ def test_station_diff_coupler_state_change():
     target_station = start_station.model_copy(
         update={
             "couplers": [
-                BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=True, grid_model_id="coupler1"),
+                RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=True, grid_model_id="coupler1"),
             ]
         }
     )
@@ -549,7 +556,7 @@ def test_station_diff_asset_reassignment():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -581,7 +588,7 @@ def test_station_diff_asset_disconnection():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -613,7 +620,7 @@ def test_station_diff_unsupported_reconnection():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -642,7 +649,7 @@ def test_topology_diff() -> None:
         SwitchableAsset(grid_model_id="line2"),
     ]
     station1_couplers = [
-        BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+        RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
     ]
     start_station_1 = build_materialized_station(
         busbars=station1_busbars,
@@ -669,8 +676,8 @@ def test_topology_diff() -> None:
         SwitchableAsset(grid_model_id="station2_line2"),
     ]
     station2_couplers = [
-        BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
-        BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
+        RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+        RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
     ]
     start_station_2 = build_materialized_station(
         busbars=station2_busbars,
@@ -713,16 +720,16 @@ def test_topology_diff() -> None:
 def test_filter_out_of_service():
     station = build_materialized_station(
         busbars=[
-            Busbar(int_id=1, grid_model_id="busbar1", in_service=True),
-            Busbar(int_id=2, grid_model_id="busbar2", in_service=False),
+            RuntimeBusbar(int_id=1, grid_model_id="busbar1", in_service=True),
+            RuntimeBusbar(int_id=2, grid_model_id="busbar2", in_service=False),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=True, grid_model_id="coupler1", in_service=True),
-            BusbarCoupler(busbar_from_id=2, busbar_to_id=1, open=False, grid_model_id="coupler2", in_service=False),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=True, grid_model_id="coupler1", in_service=True),
+            RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=1, open=False, grid_model_id="coupler2", in_service=False),
         ],
         assets=[
-            SwitchableAsset(grid_model_id="line1", in_service=True),
-            SwitchableAsset(grid_model_id="line2", in_service=False),
+            RuntimeBranchAsset(grid_model_id="line1", in_service=True),
+            RuntimeBranchAsset(grid_model_id="line2", in_service=False),
         ],
         asset_switching_table=np.array([[True, False], [False, True]]),
         grid_model_id="station1",
@@ -749,7 +756,7 @@ def test_filter_disconnected_busbars():
             Busbar(int_id=3, grid_model_id="busbar3"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -777,8 +784,8 @@ def test_filter_disconnected_busbars_open_coupler():
             Busbar(int_id=3, grid_model_id="busbar3"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
-            BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=True, grid_model_id="coupler2"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=True, grid_model_id="coupler2"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -807,7 +814,7 @@ def test_reindex_busbars():
             Busbar(int_id=20, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=10, busbar_to_id=20, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=10, busbar_to_id=20, open=False, grid_model_id="coupler1"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -835,8 +842,8 @@ def test_has_transmission_line_switching():
         ],
         couplers=[],
         assets=[
-            SwitchableAsset(grid_model_id="line1", in_service=True),
-            SwitchableAsset(grid_model_id="line2", in_service=False),
+            RuntimeBranchAsset(grid_model_id="line1", in_service=True),
+            RuntimeBranchAsset(grid_model_id="line2", in_service=False),
         ],
         asset_switching_table=np.array([[False, False], [False, False]]),
         grid_model_id="station1",
@@ -856,9 +863,9 @@ def test_order_station_assets() -> None:
             Busbar(int_id=3, grid_model_id="busbar3"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
-            BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
-            BusbarCoupler(busbar_from_id=3, busbar_to_id=1, open=False, grid_model_id="coupler3"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
+            RuntimeBusbarCoupler(busbar_from_id=3, busbar_to_id=1, open=False, grid_model_id="coupler3"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -915,7 +922,7 @@ def test_order_topology() -> None:
         Busbar(int_id=2, grid_model_id="busbar2"),
     ]
     couplers = [
-        BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+        RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
     ]
     switching_table = np.array(
         [
@@ -1063,8 +1070,8 @@ def test_fuse_coupler():
             Busbar(int_id=3, grid_model_id="busbar3"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
-            BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -1139,35 +1146,35 @@ def test_fuse_all_couplers_with_type():
             Busbar(int_id=5, grid_model_id="busbar5"),
         ],
         couplers=[
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=1,
                 busbar_to_id=2,
                 open=False,
                 grid_model_id="coupler1",
                 coupler_type="BREAKER",
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=2,
                 busbar_to_id=3,
                 open=False,
                 grid_model_id="coupler2",
                 coupler_type="BREAKER",
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=3,
                 busbar_to_id=4,
                 open=False,
                 grid_model_id="coupler3",
                 coupler_type="DISCONNECTOR",
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=4,
                 busbar_to_id=5,
                 open=False,
                 grid_model_id="coupler4",
                 coupler_type="BREAKER",
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=5,
                 busbar_to_id=4,
                 open=False,
@@ -1223,19 +1230,65 @@ def test_fuse_all_couplers_with_type():
     # Test fusing all couplers of type DISCONNECTOR
     fused_station, fused_couplers = fuse_all_couplers_with_type(station, "DISCONNECTOR", copy_info_from=True)
 
-    assert len(fused_station.busbars) == 3
+    assert len(fused_station.busbars) == 4
     assert fused_station.busbars[0].grid_model_id == "busbar1"
     assert fused_station.busbars[1].grid_model_id == "busbar2"
-    assert fused_station.busbars[2].grid_model_id in {"busbar3", "busbar4", "busbar5"}
-    assert len(fused_station.couplers) == 2
-    assert {coupler.grid_model_id for coupler in fused_station.couplers} == {"coupler1", "coupler2"}
-    assert {coupler.grid_model_id for coupler in fused_couplers} == {"coupler3", "coupler4", "coupler5"}
+    assert fused_station.busbars[2].grid_model_id == "busbar3"
+    assert fused_station.busbars[3].grid_model_id == "busbar5"
+    assert len(fused_station.couplers) == 3
+    assert {coupler.grid_model_id for coupler in fused_station.couplers} == {"coupler1", "coupler2", "coupler4"}
+    assert {coupler.grid_model_id for coupler in fused_couplers} == {"coupler3", "coupler5"}
 
     # Test fusing couplers of a non-existent type
     fused_station, fused_couplers = fuse_all_couplers_with_type(station, "NONEXISTENTTYPE", copy_info_from=True)
 
     assert fused_station == station
     assert len(fused_couplers) == 0
+
+
+def test_fuse_all_couplers_with_type_keeps_breaker_over_parallel_disconnector() -> None:
+    station = build_materialized_station(
+        busbars=[
+            Busbar(int_id=1, grid_model_id="busbar1"),
+            Busbar(int_id=2, grid_model_id="busbar2"),
+            Busbar(int_id=3, grid_model_id="busbar3"),
+        ],
+        couplers=[
+            RuntimeBusbarCoupler(
+                busbar_from_id=1,
+                busbar_to_id=2,
+                open=False,
+                grid_model_id="disconnector1",
+                coupler_type="DISCONNECTOR",
+            ),
+            RuntimeBusbarCoupler(
+                busbar_from_id=2,
+                busbar_to_id=3,
+                open=False,
+                grid_model_id="breaker1",
+                coupler_type="BREAKER",
+            ),
+            RuntimeBusbarCoupler(
+                busbar_from_id=1,
+                busbar_to_id=3,
+                open=False,
+                grid_model_id="disconnector2",
+                coupler_type="DISCONNECTOR",
+            ),
+        ],
+        assets=[SwitchableAsset(grid_model_id="line1")],
+        asset_switching_table=np.array([[True], [False], [False]]),
+        asset_connectivity=np.array([[True], [False], [False]]),
+        grid_model_id="station1",
+    )
+
+    fused_station, fused_couplers = fuse_all_couplers_with_type(station, "DISCONNECTOR", copy_info_from=True)
+
+    assert len(fused_station.busbars) == 2
+    assert len(fused_station.couplers) == 1
+    assert fused_station.couplers[0].grid_model_id == "breaker1"
+    assert fused_station.couplers[0].coupler_type == "BREAKER"
+    assert {coupler.grid_model_id for coupler in fused_couplers} == {"disconnector1", "disconnector2"}
 
 
 def test_filter_duplicate_couplers():
@@ -1245,8 +1298,8 @@ def test_filter_duplicate_couplers():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
-            BusbarCoupler(busbar_from_id=2, busbar_to_id=1, open=False, grid_model_id="coupler2"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=1, open=False, grid_model_id="coupler2"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -1271,14 +1324,14 @@ def test_filter_duplicate_couplers_with_type_hierarchy():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=1,
                 busbar_to_id=2,
                 open=False,
                 grid_model_id="coupler1",
                 coupler_type="DISCONNECTOR",
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=2,
                 busbar_to_id=1,
                 open=False,
@@ -1328,8 +1381,8 @@ def test_filter_duplicate_couplers_no_duplicates():
             Busbar(int_id=3, grid_model_id="busbar3"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
-            BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
         ],
         assets=[
             SwitchableAsset(grid_model_id="line1"),
@@ -1351,14 +1404,14 @@ def test_filter_duplicate_couplers_with_unknown_type():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=1,
                 busbar_to_id=2,
                 open=False,
                 grid_model_id="coupler1",
                 coupler_type="KNOWN",
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=2,
                 busbar_to_id=1,
                 open=False,
@@ -1392,21 +1445,21 @@ def test_filter_duplicate_couplers_multiple_duplicates():
             Busbar(int_id=2, grid_model_id="busbar2"),
         ],
         couplers=[
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=1,
                 busbar_to_id=2,
                 open=False,
                 grid_model_id="coupler1",
                 coupler_type="TYPE_A",
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=2,
                 busbar_to_id=1,
                 open=False,
                 grid_model_id="coupler2",
                 coupler_type="TYPE_B",
             ),
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 busbar_from_id=1,
                 busbar_to_id=2,
                 open=True,

@@ -1939,6 +1939,10 @@ def fuse_all_couplers_with_type(
         Couplers removed either by fusion or duplicate filtering.
     """
     fused_couplers = []
+    retain_type_hierarchy = [coupler_type]
+    if coupler_type != "BREAKER":
+        retain_type_hierarchy = ["BREAKER", coupler_type]
+
     while True:
         coupler = next(
             (c for c in station.couplers if (c.coupler_type is not None and c.coupler_type == coupler_type)), None
@@ -1952,7 +1956,7 @@ def fuse_all_couplers_with_type(
         # We want to retain the coupler type that we filter for and remove all other couplers - this way we can
         # make sure that all parallel couplers are removed. Otherwise it would depend on the order of the couplers
         # whether there would be a residual coupler left between the potentially fused busbars.
-        station, removed = filter_duplicate_couplers(station, retain_type_hierarchy=[coupler_type])
+        station, removed = filter_duplicate_couplers(station, retain_type_hierarchy=retain_type_hierarchy)
         fused_couplers.extend(removed)
 
     return station, fused_couplers

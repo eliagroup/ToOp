@@ -27,15 +27,15 @@ from toop_engine_importer.exporter.uct_exporter import validate_ucte_changes
 from toop_engine_importer.ucte_toolset.ucte_io import make_ucte, parse_ucte
 from toop_engine_interfaces.asset_topology.assets import (
     AssetSetpoint,
-    Busbar,
-    BusbarCoupler,
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
 )
 
 
 def test_get_coupler_state_ucte():
     # Test one open coupler
     couplers = [
-        BusbarCoupler(grid_model_id="coupler1", open=True, busbar_from_id=1, busbar_to_id=2),
+        RuntimeBusbarCoupler(grid_model_id="coupler1", open=True, busbar_from_id=1, busbar_to_id=2),
     ]
     expected = [
         {"grid_model_id": "coupler1", "coupler_state_ucte": 7},
@@ -45,8 +45,8 @@ def test_get_coupler_state_ucte():
 
     # Test all closed couplers
     couplers = [
-        BusbarCoupler(grid_model_id="coupler1", open=False, busbar_from_id=1, busbar_to_id=2),
-        BusbarCoupler(grid_model_id="coupler2", open=False, busbar_from_id=1, busbar_to_id=2),
+        RuntimeBusbarCoupler(grid_model_id="coupler1", open=False, busbar_from_id=1, busbar_to_id=2),
+        RuntimeBusbarCoupler(grid_model_id="coupler2", open=False, busbar_from_id=1, busbar_to_id=2),
     ]
     expected = [
         {"grid_model_id": "coupler1", "coupler_state_ucte": 2},
@@ -57,8 +57,8 @@ def test_get_coupler_state_ucte():
 
     # Test one open and one closed coupler
     couplers = [
-        BusbarCoupler(grid_model_id="coupler1", open=True, busbar_from_id=1, busbar_to_id=2),
-        BusbarCoupler(grid_model_id="coupler2", open=False, busbar_from_id=1, busbar_to_id=2),
+        RuntimeBusbarCoupler(grid_model_id="coupler1", open=True, busbar_from_id=1, busbar_to_id=2),
+        RuntimeBusbarCoupler(grid_model_id="coupler2", open=False, busbar_from_id=1, busbar_to_id=2),
     ]
     expected = [
         {"grid_model_id": "coupler1", "coupler_state_ucte": 7},
@@ -342,7 +342,7 @@ def test_get_changes_from_switching_table(ucte_asset_topology, caplog):
     topology_stations[0].branch_switching_table[0][2] = False
     topology_stations[0].branch_switching_table[1][2] = True
     topology_stations[0].busbars.append(
-        Busbar(grid_model_id="D8SU1_13", busbar_type=None, name="", int_id=0, in_service=True)
+        RuntimeBusbar(grid_model_id="D8SU1_13", busbar_type=None, name="", int_id=0, in_service=True)
     )
     topology_stations[0].branch_connections[2].asset.grid_model_id = "D8SU1_11 D8SU1_13 1"
     station = topology_stations[0]

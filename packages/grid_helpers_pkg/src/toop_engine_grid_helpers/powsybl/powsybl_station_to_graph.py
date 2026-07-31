@@ -7,12 +7,14 @@
 
 """Convert a pypowsybl network to a NetworkGraph."""
 
+from dataclasses import dataclass
 from string import ascii_lowercase
 
 import networkx as nx
 import pandas as pd
 import pandera.typing as pat
 import structlog
+from beartype.typing import Any, get_args
 from pydantic import ValidationError
 from pypowsybl.network.impl.network import Network
 from toop_engine_grid_helpers.network_graph.data_classes import (
@@ -48,18 +50,71 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import get_voltage_level_with_region
 from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
+from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
+    Busbar,
+    BusbarCoupler,
     InjectionAsset,
-    normalize_switchable_asset_payload,
 )
-from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
+from toop_engine_interfaces.asset_topology.materialized_topology import StationAssetConnection
 from toop_engine_interfaces.asset_topology.topology_conversion import validate_complete_master_data
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import CgmesImporterParameters
 from toop_engine_interfaces.network_masks import NetworkMasks
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_asset_type(asset_payload: dict[str, Any]) -> str | None:
+    """Return the explicit asset type field from a station asset payload."""
+    raw_asset_type = asset_payload.get("asset_type", asset_payload.get("type"))
+    if raw_asset_type is None or pd.isna(raw_asset_type):
+        return None
+    return str(raw_asset_type)
+
+
+def _get_optional_asset_name(asset_payload: dict[str, Any]) -> str | None:
+    """Return a sanitized optional asset name from a station asset payload."""
+    raw_name = asset_payload.get("name")
+    if raw_name is None or pd.isna(raw_name):
+        return None
+    return str(raw_name)
+
+
+def _build_canonical_asset(asset_payload: dict[str, Any]) -> BranchAsset | InjectionAsset:
+    """Build a canonical branch or injection asset from one prepared payload."""
+    asset_type = _get_asset_type(asset_payload)
+    asset_kwargs = {
+        "grid_model_id": str(asset_payload["grid_model_id"]),
+        "asset_type": asset_type,
+        "name": _get_optional_asset_name(asset_payload),
+    }
+    if asset_type in get_args(AssetBranchType):
+        return BranchAsset(**asset_kwargs)
+    if asset_type in get_args(AssetInjectionType):
+        return InjectionAsset(**asset_kwargs)
+    raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
+
+
+@dataclass
+class _StructuralStationContext:
+    """Cached node-breaker data reused across structural station views."""
+
+    station_info: SubstationInformation
+    graph_data: NetworkGraphData
+    graph: nx.Graph
+    busbar_df: pd.DataFrame
+    full_busbar_connection_info: dict[str, object]
+
+
+@dataclass
+class _StructuralStationView:
+    """Structural station view paired with its cached voltage-level context."""
+
+    structural_station_id: str
+    selected_busbar_ids: set[str]
+    station_context: _StructuralStationContext
 
 
 def _register_unique_payload(
@@ -94,11 +149,30 @@ def _register_unique_payload(
         raise ValueError(f"Conflicting {payload_kind} payload for id {payload_id}")
 
 
-def _get_station_topology_frames(
+def _build_structural_station_context(
     network: Network,
     station_info: SubstationInformation,
+) -> _StructuralStationContext:
+    """Build cached node-breaker data for one voltage level."""
+    graph_data = node_breaker_topology_to_graph_data(network, substation_info=station_info)
+    graph = get_node_breaker_topology_graph(graph_data)
+    busbar_df = get_busbar_df(nodes_df=graph_data.nodes, substation_id=station_info.name)
+    full_busbar_connection_info = get_busbar_connection_info(graph=graph)
+    return _StructuralStationContext(
+        station_info=station_info,
+        graph_data=graph_data,
+        graph=graph,
+        busbar_df=busbar_df,
+        full_busbar_connection_info=full_busbar_connection_info,
+    )
+
+
+def _get_station_topology_frames(
+    network: Network,
     selected_busbar_ids: set[str],
     station_grid_model_id: str,
+    station_info: SubstationInformation | None = None,
+    station_context: _StructuralStationContext | None = None,
 ) -> tuple[
     pd.DataFrame,
     pd.DataFrame,
@@ -112,9 +186,11 @@ def _get_station_topology_frames(
     Parameters
     ----------
     network : Network
-        Source powsybl network.
-    station_info : SubstationInformation
-        Metadata describing the voltage level currently being processed.
+        Source powsybl network used to build a cached context when needed.
+    station_info : SubstationInformation | None
+        Voltage-level metadata used when callers do not provide ``station_context``.
+    station_context : _StructuralStationContext | None
+        Cached node-breaker data for the voltage level currently being processed.
     selected_busbar_ids : set[str]
         Structural busbar ids that belong to the station group.
     station_grid_model_id : str
@@ -133,14 +209,19 @@ def _get_station_topology_frames(
         Filtered busbars, filtered couplers, restricted busbar connection info,
         switchable asset rows, asset bays keyed by lookup id, and collected asset-bay logs.
     """
-    substation_id = station_info.name
-    graph_data = node_breaker_topology_to_graph_data(network, substation_info=station_info)
-    graph = get_node_breaker_topology_graph(graph_data)
+    if station_context is None:
+        if station_info is None:
+            raise ValueError("station_info must be provided when station_context is None")
+        station_context = _build_structural_station_context(network=network, station_info=station_info)
+
+    substation_id = station_context.station_info.name
+    graph_data = station_context.graph_data
+    graph = station_context.graph
 
     busbar_df, selected_busbar_ids, busbar_connection_info = _get_station_busbar_view_from_group(
-        graph=graph,
-        graph_data=graph_data,
+        full_busbar_df=station_context.busbar_df,
         selected_busbar_ids=selected_busbar_ids,
+        full_busbar_connection_info=station_context.full_busbar_connection_info,
         substation_id=substation_id,
     )
 
@@ -305,7 +386,7 @@ def _structural_station_suffix(group_index: int) -> str:
 def _get_structural_station_views(
     network: Network,
     relevant_voltage_level_with_region: pd.DataFrame,
-) -> list[tuple[str, set[str], SubstationInformation]]:
+) -> list[_StructuralStationView]:
     """Enumerate structural station views with synthetic ids and busbar groups.
 
     Parameters
@@ -317,11 +398,11 @@ def _get_structural_station_views(
 
     Returns
     -------
-    list[tuple[str, set[str], SubstationInformation]]
-        Canonical station ids, structural busbar groups, and the corresponding
-        voltage-level metadata.
+    list[_StructuralStationView]
+        Canonical station ids, structural busbar groups, and the cached
+        voltage-level context they reuse.
     """
-    structural_station_views: list[tuple[str, set[str], SubstationInformation]] = []
+    structural_station_views: list[_StructuralStationView] = []
     voltage_level_rows = relevant_voltage_level_with_region.drop_duplicates(subset=["voltage_level_id"])
 
     for _bus_id, row in voltage_level_rows.iterrows():
@@ -331,19 +412,21 @@ def _get_structural_station_views(
             nominal_v=row["nominal_v"],
             voltage_level_id=row["voltage_level_id"],
         )
-        graph_data = node_breaker_topology_to_graph_data(network, substation_info=station_info)
-        graph = get_node_breaker_topology_graph(graph_data)
-        busbar_df = get_busbar_df(nodes_df=graph_data.nodes, substation_id=station_info.name)
-        allowed_busbar_ids = set(busbar_df["grid_model_id"])
-        full_busbar_connection_info = get_busbar_connection_info(graph=graph)
+        station_context = _build_structural_station_context(network=network, station_info=station_info)
         structural_groups = _get_structural_busbar_groups(
-            full_busbar_connection_info=full_busbar_connection_info,
-            allowed_busbar_ids=allowed_busbar_ids,
+            full_busbar_connection_info=station_context.full_busbar_connection_info,
+            allowed_busbar_ids=set(station_context.busbar_df["grid_model_id"]),
         )
 
         for group_index, structural_group in enumerate(structural_groups):
             structural_station_id = f"{station_info.voltage_level_id}_{_structural_station_suffix(group_index)}"
-            structural_station_views.append((structural_station_id, structural_group, station_info))
+            structural_station_views.append(
+                _StructuralStationView(
+                    structural_station_id=structural_station_id,
+                    selected_busbar_ids=structural_group,
+                    station_context=station_context,
+                )
+            )
 
     return structural_station_views
 
@@ -396,21 +479,21 @@ def _get_station_busbar_view(
 
 
 def _get_station_busbar_view_from_group(
-    graph: nx.Graph,
-    graph_data: NetworkGraphData,
+    full_busbar_df: pd.DataFrame,
     selected_busbar_ids: set[str],
+    full_busbar_connection_info: dict[str, object],
     substation_id: str,
 ) -> tuple[pd.DataFrame, set[str], dict[str, object]]:
     """Build the station-local busbar view directly from a structural busbar group.
 
     Parameters
     ----------
-    graph : nx.Graph
-        Graph representation of the node-breaker topology.
-    graph_data : NetworkGraphData
-        Station graph data used to derive busbars.
+    full_busbar_df : pd.DataFrame
+        Cached busbar DataFrame for the voltage level.
     selected_busbar_ids : set[str]
         Structural busbar ids belonging to the current station group.
+    full_busbar_connection_info : dict[str, object]
+        Cached busbar-connection metadata for the voltage level.
     substation_id : str
         Human-readable substation identifier used for error messages.
 
@@ -419,14 +502,12 @@ def _get_station_busbar_view_from_group(
     tuple[pd.DataFrame, set[str], dict[str, object]]
         Filtered busbar DataFrame, retained busbar ids, and restricted connection info.
     """
-    busbar_df = get_busbar_df(nodes_df=graph_data.nodes, substation_id=substation_id)
-    busbar_df = busbar_df[busbar_df["grid_model_id"].isin(selected_busbar_ids)].copy().reset_index(drop=True)
+    busbar_df = full_busbar_df[full_busbar_df["grid_model_id"].isin(selected_busbar_ids)].copy().reset_index(drop=True)
     busbar_df["int_id"] = busbar_df.index
     if busbar_df.empty:
         raise ValueError(f"No busbars found for selected group in substation {substation_id}")
 
     selected_busbar_ids = set(busbar_df["grid_model_id"])
-    full_busbar_connection_info = get_busbar_connection_info(graph=graph)
     busbar_connection_info = {
         busbar_grid_model_id: connection_info
         for busbar_grid_model_id, connection_info in full_busbar_connection_info.items()
@@ -538,16 +619,12 @@ def _get_station_asset_connections(
         references, branch mask, and referenced asset bays.
     """
     asset_bay_lookup_ids = switchable_assets_df["grid_model_id"].to_list()
-    assets = [
-        normalize_switchable_asset_payload(asset_payload) for asset_payload in switchable_assets_df.to_dict(orient="records")
-    ]
+    assets = [_build_canonical_asset(asset_payload) for asset_payload in switchable_assets_df.to_dict(orient="records")]
     remove_suffix_from_switchable_assets(assets)
     branches = network.get_branches(attributes=["voltage_level1_id", "voltage_level2_id", "bus1_id", "bus2_id"])
     local_bus_ids = {bus_id for bus_id in busbar_df["bus_branch_bus_id"].dropna().tolist() if bus_id}
 
     branch_mask = [isinstance(asset, BranchAsset) for asset in assets]
-    if any(not isinstance(asset, (BranchAsset, InjectionAsset)) for asset in assets):
-        raise ValueError("All station assets must normalize to BranchAsset or InjectionAsset")
     branch_assets: list[BranchAsset] = []
     injection_assets: list[InjectionAsset] = []
     branch_connections: list[StationAssetConnection] = []
@@ -570,10 +647,10 @@ def _get_station_asset_connections(
             asset_bay_id=asset_bay.asset_bay_id if asset_bay is not None else None,
         )
         if is_branch:
-            branch_assets.append(asset.model_copy(update={"in_service": True}, deep=True))
+            branch_assets.append(asset.model_copy(deep=True))
             branch_connections.append(connection)
         else:
-            injection_assets.append(asset.model_copy(update={"in_service": True}, deep=True))
+            injection_assets.append(asset.model_copy(deep=True))
             injection_connections.append(connection)
 
     return branch_assets, injection_assets, branch_connections, injection_connections, branch_mask, asset_bays
@@ -685,9 +762,10 @@ def _infer_same_voltage_level_branch_end(branch_entry: pd.Series, local_bus_ids:
 
 def _build_master_station_from_busbar_group(
     network: Network,
-    station_info: SubstationInformation,
     selected_busbar_ids: set[str],
     station_grid_model_id: str,
+    station_info: SubstationInformation | None = None,
+    station_context: _StructuralStationContext | None = None,
 ) -> tuple[MasterStation, list[BranchAsset], list[InjectionAsset], list[AssetBay]]:
     """Build one canonical master station for a structural busbar group.
 
@@ -695,8 +773,10 @@ def _build_master_station_from_busbar_group(
     ----------
     network : Network
         Source powsybl network.
-    station_info : SubstationInformation
-        Metadata for the voltage level owning the station group.
+    station_info : SubstationInformation | None
+        Voltage-level metadata used when callers do not provide ``station_context``.
+    station_context : _StructuralStationContext | None
+        Cached node-breaker data for the voltage level owning the station group.
     selected_busbar_ids : set[str]
         Structural busbar ids belonging to the station group.
     station_grid_model_id : str
@@ -707,10 +787,17 @@ def _build_master_station_from_busbar_group(
     tuple[MasterStation, list[BranchAsset], list[InjectionAsset], list[AssetBay]]
         Canonical station plus the topology-owned payloads it references.
     """
+    if station_context is None:
+        if station_info is None:
+            raise ValueError("station_info must be provided when station_context is None")
+        station_context = _build_structural_station_context(network=network, station_info=station_info)
+
+    station_info = station_context.station_info
     busbar_df, coupler_df, busbar_connection_info, switchable_assets_df, asset_bays_by_asset_id, _station_logs = (
         _get_station_topology_frames(
             network=network,
             station_info=station_info,
+            station_context=station_context,
             selected_busbar_ids=selected_busbar_ids,
             station_grid_model_id=station_grid_model_id,
         )
@@ -739,8 +826,28 @@ def _build_master_station_from_busbar_group(
         name=station_info.name,
         region=station_info.region,
         voltage_level=float(station_info.nominal_v),
-        busbars=[busbar.model_copy(update={"in_service": True}, deep=True) for busbar in busbars],
-        couplers=[coupler.model_copy(update={"open": False, "in_service": True}, deep=True) for coupler in couplers],
+        busbars=[
+            Busbar(
+                grid_model_id=busbar.grid_model_id,
+                busbar_type=busbar.busbar_type,
+                name=busbar.name,
+                int_id=busbar.int_id,
+                bus_breaker_bus_id=busbar.bus_breaker_bus_id,
+            )
+            for busbar in busbars
+        ],
+        couplers=[
+            BusbarCoupler(
+                grid_model_id=coupler.grid_model_id,
+                coupler_type=coupler.coupler_type,
+                name=coupler.name,
+                busbar_from_id=coupler.busbar_from_id,
+                busbar_to_id=coupler.busbar_to_id,
+                asset_bay=coupler.asset_bay.model_copy(deep=True) if coupler.asset_bay is not None else None,
+                coupler_bay=coupler.coupler_bay.model_copy(deep=True) if coupler.coupler_bay is not None else None,
+            )
+            for coupler in couplers
+        ],
         branch_connections=branch_connections,
         injection_connections=injection_connections,
         branch_connectivity=branch_connectivity,
@@ -1052,16 +1159,17 @@ def _topology_master_data_from_structural_station_views(
     injection_assets_by_id: dict[str, InjectionAsset] = {}
     asset_bays_by_id: dict[str, AssetBay] = {}
 
-    for structural_station_id, selected_busbar_ids, station_info in _get_structural_station_views(
+    for structural_station_view in _get_structural_station_views(
         network=network,
         relevant_voltage_level_with_region=relevant_voltage_level_with_region,
     ):
+        station_info = structural_station_view.station_context.station_info
         try:
             master_station, branch_assets, injection_assets, asset_bays = _build_master_station_from_busbar_group(
                 network=network,
-                station_info=station_info,
-                selected_busbar_ids=selected_busbar_ids,
-                station_grid_model_id=structural_station_id,
+                selected_busbar_ids=structural_station_view.selected_busbar_ids,
+                station_grid_model_id=structural_station_view.structural_station_id,
+                station_context=structural_station_view.station_context,
             )
             master_stations.append(master_station)
             for asset in branch_assets:

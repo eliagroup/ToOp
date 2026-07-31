@@ -1291,6 +1291,43 @@ def test_fuse_all_couplers_with_type_keeps_breaker_over_parallel_disconnector() 
     assert {coupler.grid_model_id for coupler in fused_couplers} == {"disconnector1", "disconnector2"}
 
 
+def test_fuse_all_couplers_with_type_skips_open_disconnectors() -> None:
+    station = build_materialized_station(
+        busbars=[
+            Busbar(int_id=1, grid_model_id="busbar1"),
+            Busbar(int_id=2, grid_model_id="busbar2"),
+            Busbar(int_id=3, grid_model_id="busbar3"),
+        ],
+        couplers=[
+            RuntimeBusbarCoupler(
+                busbar_from_id=1,
+                busbar_to_id=2,
+                open=True,
+                grid_model_id="disconnector_open",
+                coupler_type="DISCONNECTOR",
+            ),
+            RuntimeBusbarCoupler(
+                busbar_from_id=2,
+                busbar_to_id=3,
+                open=False,
+                grid_model_id="disconnector_closed",
+                coupler_type="DISCONNECTOR",
+            ),
+        ],
+        assets=[SwitchableAsset(grid_model_id="line1")],
+        asset_switching_table=np.array([[True], [False], [False]]),
+        asset_connectivity=np.array([[True], [False], [False]]),
+        grid_model_id="station1",
+    )
+
+    fused_station, fused_couplers = fuse_all_couplers_with_type(station, "DISCONNECTOR", copy_info_from=True)
+
+    assert len(fused_station.busbars) == 2
+    assert {coupler.grid_model_id for coupler in fused_station.couplers} == {"disconnector_open"}
+    assert fused_station.couplers[0].open is True
+    assert {coupler.grid_model_id for coupler in fused_couplers} == {"disconnector_closed"}
+
+
 def test_filter_duplicate_couplers():
     station = build_materialized_station(
         busbars=[

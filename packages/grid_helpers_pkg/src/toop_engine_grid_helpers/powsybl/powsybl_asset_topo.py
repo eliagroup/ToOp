@@ -601,6 +601,8 @@ def get_coupler_info_from_topology(
 
     coupler_rows: list[dict[str, Any]] = []
     for station_switch in station_switches.itertuples():
+        if hasattr(station_switch, "retained") and not bool(station_switch.retained):
+            continue
         busbar_from_id = busbar_int_id_by_grid_model_id.get(station_switch.bus1_id)
         busbar_to_id = busbar_int_id_by_grid_model_id.get(station_switch.bus2_id)
         if busbar_from_id is None or busbar_to_id is None:
@@ -1113,6 +1115,7 @@ def _get_runtime_injection_asset_map(
 def _build_runtime_switching_state(
     station: MasterStation,
     switch_open_by_id: dict[str, object],
+    switch_retained_by_id: dict[str, object],
     busbar_bus_id_by_id: dict[str, object],
     busbar_in_service_by_id: dict[str, object],
     branches: pd.DataFrame,
@@ -1127,6 +1130,8 @@ def _build_runtime_switching_state(
         Canonical station definition.
     switch_open_by_id : dict[str, object]
         Runtime switch open-state mapping.
+    switch_retained_by_id : dict[str, object]
+        Runtime switch retained-state mapping.
     busbar_bus_id_by_id : dict[str, object]
         Runtime mapping from busbar id to current bus id.
     busbar_in_service_by_id : dict[str, object]
@@ -1149,6 +1154,13 @@ def _build_runtime_switching_state(
         busbar_bus_id_by_id=busbar_bus_id_by_id,
         busbar_in_service_by_id=busbar_in_service_by_id,
     )
+    non_retained_coupler_ids = {
+        coupler.grid_model_id
+        for coupler in station.couplers
+        if coupler.grid_model_id in switch_retained_by_id
+        and pd.notna(switch_retained_by_id[coupler.grid_model_id])
+        and not bool(switch_retained_by_id[coupler.grid_model_id])
+    }
     open_coupler_ids = {
         coupler.grid_model_id for coupler in station.couplers if bool(switch_open_by_id.get(coupler.grid_model_id, False))
     }
@@ -1159,7 +1171,7 @@ def _build_runtime_switching_state(
         injection_current_bus_ids=_get_injection_current_bus_ids(station=station, injections=injections),
         busbar_out_of_service_ids=busbar_out_of_service_ids,
         open_coupler_ids=open_coupler_ids,
-        out_of_service_coupler_ids=set(),
+        out_of_service_coupler_ids=non_retained_coupler_ids,
         open_switch_ids=open_switch_ids,
     )
 
@@ -1189,6 +1201,7 @@ def materialize_stations_from_network_state(
     injections = network.get_injections(attributes=["bus_id", "bus_breaker_bus_id", "connected"])
     buses = network.get_buses(attributes=["connected_component"])
     switch_open_by_id = switches["open"].to_dict()
+    switch_retained_by_id = switches["retained"].to_dict() if "retained" in switches.columns else {}
     busbar_sections = _get_busbar_sections_with_in_service(network=network, attributes=["in_service", "bus_id"])
     busbar_in_service_by_id = busbar_sections["in_service"].to_dict()
     busbar_bus_id_by_id = busbar_sections["bus_id"].to_dict()
@@ -1202,6 +1215,7 @@ def materialize_stations_from_network_state(
             runtime_switching_state = _build_runtime_switching_state(
                 station=station,
                 switch_open_by_id=switch_open_by_id,
+                switch_retained_by_id=switch_retained_by_id,
                 busbar_bus_id_by_id=busbar_bus_id_by_id,
                 busbar_in_service_by_id=busbar_in_service_by_id,
                 branches=branches,

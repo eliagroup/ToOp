@@ -1919,7 +1919,9 @@ def fuse_all_couplers_with_type(
     """Fuse all couplers of a given type in a station.
 
     Duplicate couplers are filtered after each fusion step so chained merges do not
-    leave residual parallel couplers between already fused busbars.
+    leave residual parallel couplers between already fused busbars. Only closed
+    couplers are fused because open couplers do not represent an electrical
+    connection in the current station state.
 
     Parameters
     ----------
@@ -1945,7 +1947,8 @@ def fuse_all_couplers_with_type(
 
     while True:
         coupler = next(
-            (c for c in station.couplers if (c.coupler_type is not None and c.coupler_type == coupler_type)), None
+            (c for c in station.couplers if c.coupler_type is not None and c.coupler_type == coupler_type and not c.open),
+            None,
         )
         if coupler is None:
             break

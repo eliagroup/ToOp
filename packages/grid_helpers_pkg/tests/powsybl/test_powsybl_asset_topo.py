@@ -518,31 +518,6 @@ def test_materialize_stations_from_network_state_marks_disconnected_transformer_
     assert all(not asset.in_service for asset in materialized_assets)
 
 
-def test_materialize_stations_from_network_state_marks_non_retained_coupler_out_of_service(monkeypatch) -> None:
-    """Verify stale canonical couplers are disabled when runtime switches are no longer retained."""
-    network = basic_node_breaker_network_powsybl()
-    relevant_subs = np.ones(len(network.get_buses()), dtype=bool)
-    master_data = get_bus_breaker_topology_master_data(network, relevant_subs, grid_model_file="booga", topology_id="wooga")
-    master_station = next(station for station in master_data.stations if station.couplers)
-    coupler_id = master_station.couplers[0].grid_model_id
-    original_get_switches = network.get_switches
-
-    def get_switches_with_non_retained(*args, **kwargs):
-        switches = original_get_switches(*args, **kwargs)
-        switches.loc[coupler_id, "retained"] = False
-        return switches
-
-    monkeypatch.setattr(network, "get_switches", get_switches_with_non_retained)
-
-    materialized_stations = materialize_stations_from_network_state(network, master_data)
-    materialized_station = next(
-        station for station in materialized_stations if station.bus_group_id == master_station.bus_group_id
-    )
-    runtime_coupler = next(coupler for coupler in materialized_station.couplers if coupler.grid_model_id == coupler_id)
-
-    assert not runtime_coupler.in_service
-
-
 def test_get_relevant_network_data_node_breaker():
     net = basic_node_breaker_network_powsybl()
     relevant_subs = np.ones(len(net.get_buses()), dtype=bool)

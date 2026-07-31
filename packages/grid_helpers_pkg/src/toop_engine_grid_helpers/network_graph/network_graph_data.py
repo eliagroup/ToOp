@@ -40,7 +40,19 @@ def add_graph_specific_data(network_graph_data: NetworkGraphData) -> None:
     add_node_tuple_column(network_graph_data)
     set_all_weights(network_graph_data.branches, network_graph_data.switches, network_graph_data.helper_branches)
     add_suffix_to_duplicated_grid_model_id(df=network_graph_data.node_assets)
-    network_graph_data.validate_network_graph_data()
+    validate_graph_specific_data(network_graph_data)
+
+
+def validate_graph_specific_data(network_graph_data: NetworkGraphData) -> NetworkGraphData:
+    """Validate only the graph-data frames that are mutated during graph enrichment."""
+    if network_graph_data.branches.empty and network_graph_data.node_assets.empty:
+        raise ValueError("Branches or node_assets must be provided.")
+
+    network_graph_data.switches = SwitchSchema.validate(network_graph_data.switches)
+    network_graph_data.branches = BranchSchema.validate(network_graph_data.branches)
+    network_graph_data.node_assets = NodeAssetSchema.validate(network_graph_data.node_assets)
+    network_graph_data.helper_branches = HelperBranchSchema.validate(network_graph_data.helper_branches)
+    return network_graph_data
 
 
 def add_node_tuple_column(network_graph_data: NetworkGraphData) -> None:

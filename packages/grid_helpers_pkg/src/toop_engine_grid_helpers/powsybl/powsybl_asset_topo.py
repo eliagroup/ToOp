@@ -20,7 +20,7 @@ import structlog
 from beartype.typing import Any, Optional, TypeVar, Union, get_args
 from jaxtyping import Bool
 from pypowsybl.network.impl.network import Network
-from toop_engine_grid_helpers.powsybl.powsybl_helpers import change_dangling_to_tie, get_voltage_level_with_region
+from toop_engine_grid_helpers.powsybl.powsybl_helpers import get_voltage_level_with_region
 from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, TopologyMasterData
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
 from toop_engine_interfaces.asset_topology.assets import (
@@ -166,17 +166,30 @@ def _get_bus_breaker_station_bus_info_from_group(
     pd.DataFrame
         Formatted busbar rows ready for conversion into canonical station busbars.
     """
-    group_station_buses = station_buses.loc[station_buses.index.isin(selected_busbar_ids)].copy()
-    group_station_buses["in_service"] = True
-    group_station_buses["bus_breaker_bus_id"] = group_station_buses.index.astype(str)
-    group_station_buses["bus_branch_bus_id"] = group_station_buses["bus_id"].astype(str)
-    group_station_buses = (
-        group_station_buses.sort_index()
-        .reset_index()
-        .reset_index()
-        .rename(columns={"index": "int_id", "id": "grid_model_id"})
+    sorted_busbar_ids = sorted(selected_busbar_ids)
+    if not sorted_busbar_ids:
+        return pd.DataFrame(
+            columns=["grid_model_id", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]
+        )
+
+    bus_names: list[str | None] = []
+    bus_branch_bus_ids: list[str] = []
+    for _busbar_int_id, busbar_id in enumerate(sorted_busbar_ids):
+        bus_entry = station_buses.loc[busbar_id]
+        bus_names.append(bus_entry["name"])
+        bus_branch_bus_ids.append(str(bus_entry["bus_id"]))
+
+    group_station_bus_info = pd.DataFrame(
+        {
+            "grid_model_id": sorted_busbar_ids,
+            "name": bus_names,
+            "int_id": np.arange(len(sorted_busbar_ids), dtype=int),
+            "in_service": True,
+            "bus_breaker_bus_id": sorted_busbar_ids,
+            "bus_branch_bus_id": bus_branch_bus_ids,
+        }
     )
-    return group_station_buses[["grid_model_id", "name", "int_id", "in_service", "bus_breaker_bus_id", "bus_branch_bus_id"]]
+    return group_station_bus_info
 
 
 def get_all_element_names(network: Network, line_trafo_name_col: str = "elementName") -> pd.Series:
@@ -238,18 +251,20 @@ def get_asset_switching_table(station_buses: pd.DataFrame, station_elements: pd.
         Switching matrix with the shape (n_bus, n_asset) where n_bus is the number of busbars
         and n_asset is the number of assets.
     """
-    assert station_buses["int_id"].is_monotonic_increasing, "station_buses not sorted"
-    station_buses_ranged = station_buses.copy().reset_index(drop=True)
-
     n_bus = station_buses.shape[0]
     n_asset = station_elements.shape[0]
     switching_matrix = np.zeros((n_bus, n_asset), dtype=bool)
 
-    for asset_idx, bus_id in enumerate(station_elements["bus_int_id"]):
-        # if asset is not connected -> -1
-        if bus_id != -1:
-            bus_idx = station_buses_ranged[station_buses_ranged["int_id"] == bus_id].index[0]
-            switching_matrix[bus_idx, asset_idx] = True
+    if n_asset == 0 or n_bus == 0:
+        return switching_matrix
+
+    bus_indices = station_elements["bus_int_id"].to_numpy(dtype=int, copy=False)
+    connected_asset_mask = bus_indices != -1
+    if np.any(connected_asset_mask):
+        switching_matrix[
+            bus_indices[connected_asset_mask],
+            np.flatnonzero(connected_asset_mask),
+        ] = True
 
     return switching_matrix
 
@@ -268,18 +283,19 @@ def get_list_of_coupler_from_df(coupler_elements: pd.DataFrame) -> list[BusbarCo
     coupler_list: list[BusbarCoupler]
         List of coupler elements.
     """
-    coupler_dict = coupler_elements.to_dict(orient="records")
-    coupler_list = [
-        BusbarCoupler(
-            **{
-                key: value
-                for key, value in coupler.items()
-                if key not in {"open", "in_service", "bus_branch_bus_id", "type", "bus_int_id"}
-            }
+    coupler_list: list[BusbarCoupler] = []
+    for coupler in coupler_elements.itertuples(index=False):
+        if coupler.busbar_from_id == coupler.busbar_to_id:
+            continue
+        coupler_list.append(
+            BusbarCoupler.model_construct(
+                grid_model_id=str(coupler.grid_model_id),
+                name=coupler.name,
+                coupler_type=coupler.coupler_type,
+                busbar_from_id=int(coupler.busbar_from_id),
+                busbar_to_id=int(coupler.busbar_to_id),
+            )
         )
-        for coupler in coupler_dict
-        if coupler.get("busbar_from_id") != coupler.get("busbar_to_id")
-    ]
     return coupler_list
 
 
@@ -297,11 +313,18 @@ def get_list_of_busbars_from_df(station_buses: pd.DataFrame) -> list[Busbar]:
     busbar_list: list[Busbar]
         List of busbars.
     """
-    busbar_dict = station_buses.to_dict(orient="records")
-    busbar_list = [
-        Busbar(**{key: value for key, value in busbar.items() if key not in {"in_service", "bus_branch_bus_id", "type"}})
-        for busbar in busbar_dict
-    ]
+    busbar_list: list[Busbar] = []
+    for busbar in station_buses.itertuples(index=False):
+        busbar_type = getattr(busbar, "busbar_type", None)
+        busbar_list.append(
+            Busbar.model_construct(
+                grid_model_id=str(busbar.grid_model_id),
+                busbar_type=busbar_type,
+                name=busbar.name,
+                int_id=int(busbar.int_id),
+                bus_breaker_bus_id=busbar.bus_breaker_bus_id,
+            )
+        )
 
     return busbar_list
 
@@ -330,7 +353,7 @@ def _get_station_asset_inputs_from_topology(
     station_buses: pd.DataFrame,
     dangling_lines: pd.DataFrame,
     element_names: pd.Series,
-) -> tuple[pd.DataFrame, list[str | None], np.ndarray, np.ndarray]:
+) -> tuple[pd.DataFrame, list[BranchAsset | InjectionAsset], list[str | None], np.ndarray, np.ndarray]:
     """Build the shared station asset inputs used by the split extraction helpers.
 
     Parameters
@@ -348,6 +371,8 @@ def _get_station_asset_inputs_from_topology(
     -------
     station_elements : pd.DataFrame
         Normalized station asset rows used for asset materialization.
+    normalized_assets : list[BranchAsset | InjectionAsset]
+        Canonical station assets aligned with `station_elements`.
     asset_branch_ends : list[str | None]
         Branch-end labels aligned with `station_elements`.
     switching_matrix : np.ndarray
@@ -361,17 +386,30 @@ def _get_station_asset_inputs_from_topology(
         dangling_lines,
         element_names,
     )
-    asset_connectivity = np.ones_like(switching_matrix, dtype=bool)
-    asset_branch_ends = (
-        station_elements["branch_end"].tolist()
-        if "branch_end" in station_elements.columns
-        else [None] * len(station_elements)
-    )
-    return station_elements, asset_branch_ends, switching_matrix, asset_connectivity
+    normalized_assets: list[BranchAsset | InjectionAsset] = []
+    asset_branch_ends: list[str | None] = []
+    include_branch_end = "branch_end" in station_elements.columns
+    for station_element in station_elements.itertuples(index=False):
+        asset_type = station_element.asset_type
+        asset_kwargs = {
+            "grid_model_id": str(station_element.grid_model_id),
+            "asset_type": asset_type,
+            "name": station_element.name,
+        }
+        if asset_type in get_args(AssetBranchType):
+            normalized_assets.append(BranchAsset.model_construct(**asset_kwargs))
+        elif asset_type in get_args(AssetInjectionType):
+            normalized_assets.append(InjectionAsset.model_construct(**asset_kwargs))
+        else:
+            raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
+        asset_branch_ends.append(station_element.branch_end if include_branch_end else None)
+
+    asset_connectivity = np.ones(switching_matrix.shape, dtype=bool)
+    return station_elements, normalized_assets, asset_branch_ends, switching_matrix, asset_connectivity
 
 
 def _get_branch_station_assets_from_df(
-    station_elements: pd.DataFrame,
+    normalized_assets: list[BranchAsset | InjectionAsset],
     asset_branch_ends: list[str | None],
     switching_matrix: np.ndarray,
     asset_connectivity: np.ndarray,
@@ -380,8 +418,8 @@ def _get_branch_station_assets_from_df(
 
     Parameters
     ----------
-    station_elements : pd.DataFrame
-        Normalized station asset rows.
+    normalized_assets : list[BranchAsset | InjectionAsset]
+        Canonical station assets aligned with the switching arrays.
     asset_branch_ends : list[str | None]
         Branch-end labels aligned with `station_elements`.
     switching_matrix : np.ndarray
@@ -400,9 +438,6 @@ def _get_branch_station_assets_from_df(
     branch_connectivity : np.ndarray
         Branch-only connectivity table.
     """
-    normalized_assets = [
-        _build_canonical_asset(switchable_asset) for switchable_asset in station_elements.to_dict(orient="records")
-    ]
     branch_mask = np.asarray([isinstance(asset, BranchAsset) for asset in normalized_assets], dtype=bool)
     branch_assets = [asset for asset, is_branch in zip(normalized_assets, branch_mask, strict=True) if is_branch]
     branch_ends = [branch_end for branch_end, is_branch in zip(asset_branch_ends, branch_mask, strict=True) if is_branch]
@@ -413,7 +448,7 @@ def _get_branch_station_assets_from_df(
 
 
 def _get_injection_station_assets_from_df(
-    station_elements: pd.DataFrame,
+    normalized_assets: list[BranchAsset | InjectionAsset],
     asset_branch_ends: list[str | None],
     switching_matrix: np.ndarray,
     asset_connectivity: np.ndarray,
@@ -422,8 +457,8 @@ def _get_injection_station_assets_from_df(
 
     Parameters
     ----------
-    station_elements : pd.DataFrame
-        Normalized station asset rows.
+    normalized_assets : list[BranchAsset | InjectionAsset]
+        Canonical station assets aligned with the switching arrays.
     asset_branch_ends : list[str | None]
         Branch-end labels aligned with `station_elements`.
     switching_matrix : np.ndarray
@@ -442,9 +477,6 @@ def _get_injection_station_assets_from_df(
     injection_connectivity : np.ndarray
         Injection-only connectivity table.
     """
-    normalized_assets = [
-        _build_canonical_asset(switchable_asset) for switchable_asset in station_elements.to_dict(orient="records")
-    ]
     injection_mask = np.asarray([isinstance(asset, InjectionAsset) for asset in normalized_assets], dtype=bool)
     injection_assets = [asset for asset, is_injection in zip(normalized_assets, injection_mask, strict=True) if is_injection]
     injection_branch_ends = [
@@ -517,7 +549,7 @@ def get_bus_info_from_topology(station_buses: pd.DataFrame, bus_id: str) -> pd.D
 
 
 def get_coupler_info_from_topology(
-    station_switches: pd.DataFrame, switches_df: pd.DataFrame, station_buses: pd.DataFrame
+    station_switches: pd.DataFrame, switch_names: pd.Series, station_buses: pd.DataFrame
 ) -> pd.DataFrame:
     """Get the coupler elements that are connected to the busbars of the station.
 
@@ -526,8 +558,8 @@ def get_coupler_info_from_topology(
     station_switches: pd.DataFrame
         Dataframe of all switches at the station and which busbars they connect
         Comes from BusBreakerTopology.switches
-    switches_df: pd.DataFrame
-        DataFrame of all switches in the network
+    switch_names: pd.Series
+        Switch names indexed by grid-model id.
     station_buses: pd.DataFrame
         Formatted dataframe of all busbars at the station.
 
@@ -537,40 +569,30 @@ def get_coupler_info_from_topology(
         DataFrame with the coupler elements of the station.
         Note: The DataFrame columns are the same as in the pydantic model.
     """
-    # get the coupler elements information
-    coupler_elements = station_switches.merge(switches_df, how="left", left_index=True, right_index=True)
-    # for UCTE model: if not in service, asset will not appear
-    coupler_elements["in_service"] = True
-    coupler_elements.reset_index(inplace=True)
-    # rename the columns to match the pydantic model
-    coupler_elements.rename(
-        columns={
-            "kind": "coupler_type",
-            "bus1_id": "busbar_from_id",
-            "bus2_id": "busbar_to_id",
-            "id": "grid_model_id",
-        },
-        inplace=True,
+    busbar_int_id_by_grid_model_id = dict(
+        zip(station_buses["grid_model_id"].tolist(), station_buses["int_id"].tolist(), strict=True)
     )
-    # get the busbar ids
-    merged_df = pd.merge(
-        coupler_elements,
-        station_buses,
-        left_on="busbar_from_id",
-        right_on="grid_model_id",
-        how="left",
-    )
-    coupler_elements["busbar_from_id"] = merged_df["int_id"]
-    merged_df = pd.merge(
-        coupler_elements,
-        station_buses,
-        left_on="busbar_to_id",
-        right_on="grid_model_id",
-        how="left",
-    )
-    coupler_elements["busbar_to_id"] = merged_df["int_id"]
+    coupler_rows: list[dict[str, Any]] = []
+    for station_switch in station_switches.itertuples():
+        busbar_from_id = busbar_int_id_by_grid_model_id.get(station_switch.bus1_id)
+        busbar_to_id = busbar_int_id_by_grid_model_id.get(station_switch.bus2_id)
+        if busbar_from_id is None or busbar_to_id is None:
+            continue
+        coupler_rows.append(
+            {
+                "grid_model_id": station_switch.Index,
+                "name": switch_names.get(station_switch.Index),
+                "coupler_type": station_switch.kind,
+                "in_service": True,
+                "busbar_from_id": busbar_from_id,
+                "busbar_to_id": busbar_to_id,
+            }
+        )
 
-    return coupler_elements.dropna()
+    return pd.DataFrame(
+        coupler_rows,
+        columns=["grid_model_id", "name", "coupler_type", "in_service", "busbar_from_id", "busbar_to_id"],
+    )
 
 
 def get_name_of_station_elements(station_elements: pd.DataFrame, element_names: pd.Series) -> pd.DataFrame:
@@ -589,7 +611,7 @@ def get_name_of_station_elements(station_elements: pd.DataFrame, element_names: 
     station_elements: pd.DataFrame
         DataFrame with the names of the elements attached
     """
-    station_elements["name"] = element_names
+    station_elements["name"] = station_elements.index.map(element_names)
     return station_elements
 
 
@@ -618,45 +640,50 @@ def get_asset_info_from_topology(
         Switching matrix with the shape (n_bus, n_asset) where n_bus is the number of busbars
         and n_asset is the number of assets. True, where the asset is connected to the busbar.
     """
-    station_elements = station_elements.copy()
-    # check for TIE_LINE
-    station_elements = change_dangling_to_tie(dangling_lines, station_elements)
-    # get the name for the branches
-    station_elements = get_name_of_station_elements(station_elements, element_names)
-    # for UCTE model: if not in service, asset will not appear
-    station_elements["in_service"] = True
-    if "grid_model_id" in station_elements.columns:
-        station_elements.reset_index(drop=True, inplace=True)
-    else:
-        station_elements.reset_index(inplace=True)
-        if "id" in station_elements.columns:
-            station_elements.rename(columns={"id": "grid_model_id"}, inplace=True)
-        elif "index" in station_elements.columns:
-            station_elements.rename(columns={"index": "grid_model_id"}, inplace=True)
-        else:
-            raise ValueError("Station topology elements are missing a grid model id column after index normalization")
-    # get the busbar ids for switching matrix
-    merged_df = pd.merge(
-        station_elements,
-        station_buses,
-        left_on="bus_id",
-        right_on="grid_model_id",
-        how="left",
+    busbar_int_id_by_grid_model_id = dict(
+        zip(station_buses["grid_model_id"].tolist(), station_buses["int_id"].tolist(), strict=True)
     )
-    station_elements["bus_int_id"] = merged_df["int_id"].fillna(-1).astype(int)
+    dangling_tie_line_ids = dangling_lines["tie_line_id"].to_dict()
+    include_branch_end = "branch_end" in station_elements.columns
 
-    station_elements = station_elements[station_elements["type"] != "BUSBAR_SECTION"]
-    # TODO: change selection to bus_id -> keep disconnected assets
-    # currently disconnected assets are not shown in the topology
-    station_elements = station_elements[station_elements["bus_id"].isin(station_buses["grid_model_id"])]
-    switching_matrix = get_asset_switching_table(station_buses=station_buses, station_elements=station_elements)
-    # get columns for pydantic model
-    station_elements = station_elements.rename(columns={"type": "asset_type"})
+    normalized_rows: list[dict[str, Any]] = []
+    bus_indices: list[int] = []
+    for station_element in station_elements.itertuples():
+        grid_model_id = getattr(station_element, "grid_model_id", station_element.Index)
+        asset_type = station_element.type
+
+        if asset_type == "BOUNDARY_LINE":
+            tie_line_id = dangling_tie_line_ids.get(grid_model_id)
+            if tie_line_id is not None and tie_line_id != "":
+                grid_model_id = tie_line_id
+                asset_type = "TIE_LINE"
+
+        if asset_type == "BUSBAR_SECTION":
+            continue
+
+        bus_int_id = busbar_int_id_by_grid_model_id.get(station_element.bus_id)
+        if bus_int_id is None:
+            continue
+
+        normalized_row: dict[str, Any] = {
+            "grid_model_id": grid_model_id,
+            "asset_type": asset_type,
+            "name": element_names.get(grid_model_id),
+            "in_service": True,
+        }
+        if include_branch_end:
+            normalized_row["branch_end"] = station_element.branch_end
+        normalized_rows.append(normalized_row)
+        bus_indices.append(bus_int_id)
+
+    switching_matrix = np.zeros((station_buses.shape[0], len(normalized_rows)), dtype=bool)
+    if bus_indices:
+        switching_matrix[np.asarray(bus_indices, dtype=int), np.arange(len(bus_indices), dtype=int)] = True
+
     station_element_columns = ["grid_model_id", "asset_type", "name", "in_service"]
-    if "branch_end" in station_elements.columns:
+    if include_branch_end:
         station_element_columns.append("branch_end")
-    station_elements = station_elements[station_element_columns].reset_index(drop=True)
-    return station_elements, switching_matrix
+    return pd.DataFrame(normalized_rows, columns=station_element_columns), switching_matrix
 
 
 def _infer_branch_end_from_branch_table(
@@ -801,8 +828,8 @@ def get_bus_breaker_topology_master_data(
             if relevant_bus_ids.isdisjoint(local_bus_ids):
                 continue
 
-            coupler_elements = get_coupler_info_from_topology(station_topology.switches, switches, station_buses)
-            station_elements, asset_terminals, switching_matrix, asset_connectivity = (
+            coupler_elements = get_coupler_info_from_topology(station_topology.switches, switches["name"], station_buses)
+            _station_elements, normalized_assets, asset_terminals, switching_matrix, asset_connectivity = (
                 _get_station_asset_inputs_from_topology(
                     station_topology.elements,
                     station_buses,
@@ -816,7 +843,7 @@ def get_bus_breaker_topology_master_data(
                 _branch_switching_table,
                 branch_connectivity,
             ) = _get_branch_station_assets_from_df(
-                station_elements,
+                normalized_assets,
                 asset_terminals,
                 switching_matrix,
                 asset_connectivity,
@@ -838,11 +865,14 @@ def get_bus_breaker_topology_master_data(
                 _injection_switching_table,
                 injection_connectivity,
             ) = _get_injection_station_assets_from_df(
-                station_elements,
+                normalized_assets,
                 asset_terminals,
                 switching_matrix,
                 asset_connectivity,
             )
+
+            station_busbars = get_list_of_busbars_from_df(station_buses)
+            station_couplers = get_list_of_coupler_from_df(coupler_elements)
 
             topology_branch_assets.extend(station_branch_assets)
             topology_injection_assets.extend(station_injection_assets)
@@ -853,30 +883,8 @@ def get_bus_breaker_topology_master_data(
                     name=representative_row.substation_id,
                     region=str(voltage_level_id)[0:2],
                     voltage_level=representative_row.nominal_v,
-                    busbars=[
-                        Busbar(
-                            grid_model_id=busbar.grid_model_id,
-                            busbar_type=busbar.busbar_type,
-                            name=busbar.name,
-                            int_id=busbar.int_id,
-                            bus_breaker_bus_id=busbar.bus_breaker_bus_id,
-                        )
-                        for busbar in get_list_of_busbars_from_df(station_buses)
-                    ],
-                    couplers=[
-                        BusbarCoupler(
-                            grid_model_id=coupler.grid_model_id,
-                            coupler_type=coupler.coupler_type,
-                            name=coupler.name,
-                            busbar_from_id=coupler.busbar_from_id,
-                            busbar_to_id=coupler.busbar_to_id,
-                            asset_bay=coupler.asset_bay.model_copy(deep=True) if coupler.asset_bay is not None else None,
-                            coupler_bay=(
-                                coupler.coupler_bay.model_copy(deep=True) if coupler.coupler_bay is not None else None
-                            ),
-                        )
-                        for coupler in get_list_of_coupler_from_df(coupler_elements)
-                    ],
+                    busbars=station_busbars,
+                    couplers=station_couplers,
                     branch_connections=[
                         StationAssetConnection(asset_id=asset.grid_model_id, branch_end=asset_terminal, asset_bay_id=None)
                         for asset, asset_terminal in zip(station_branch_assets, branch_terminals, strict=True)

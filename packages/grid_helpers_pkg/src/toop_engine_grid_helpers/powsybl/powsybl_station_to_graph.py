@@ -109,6 +109,17 @@ class _StructuralStationContext:
 
 
 @dataclass
+class _NodeBreakerNetworkContext:
+    """Cached network-wide node-breaker data reused across voltage levels."""
+
+    all_names_df: pd.Series
+    asset_in_service: pd.Series
+    boundary_line_tie_ids: pd.Series
+    bus_breaker_view_buses_df: pd.DataFrame
+    busbar_sections_names_df: pd.DataFrame
+
+
+@dataclass
 class _StructuralStationView:
     """Structural station view paired with its cached voltage-level context."""
 
@@ -152,9 +163,14 @@ def _register_unique_payload(
 def _build_structural_station_context(
     network: Network,
     station_info: SubstationInformation,
+    network_context: _NodeBreakerNetworkContext | None = None,
 ) -> _StructuralStationContext:
     """Build cached node-breaker data for one voltage level."""
-    graph_data = node_breaker_topology_to_graph_data(network, substation_info=station_info)
+    graph_data = node_breaker_topology_to_graph_data(
+        network,
+        substation_info=station_info,
+        network_context=network_context,
+    )
     graph = get_node_breaker_topology_graph(graph_data)
     busbar_df = get_busbar_df(nodes_df=graph_data.nodes, substation_id=station_info.name)
     full_busbar_connection_info = get_busbar_connection_info(graph=graph)
@@ -404,6 +420,7 @@ def _get_structural_station_views(
     """
     structural_station_views: list[_StructuralStationView] = []
     voltage_level_rows = relevant_voltage_level_with_region.drop_duplicates(subset=["voltage_level_id"])
+    network_context = _build_node_breaker_network_context(network)
 
     for _bus_id, row in voltage_level_rows.iterrows():
         station_info = SubstationInformation(
@@ -412,7 +429,11 @@ def _get_structural_station_views(
             nominal_v=row["nominal_v"],
             voltage_level_id=row["voltage_level_id"],
         )
-        station_context = _build_structural_station_context(network=network, station_info=station_info)
+        station_context = _build_structural_station_context(
+            network=network,
+            station_info=station_info,
+            network_context=network_context,
+        )
         structural_groups = _get_structural_busbar_groups(
             full_busbar_connection_info=station_context.full_busbar_connection_info,
             allowed_busbar_ids=set(station_context.busbar_df["grid_model_id"]),
@@ -862,30 +883,20 @@ def normalize_nullable_bool(series: pd.Series, default: bool) -> pd.Series:
     return series.astype("boolean").fillna(default).astype(bool)
 
 
-def node_breaker_topology_to_graph_data(net: Network, substation_info: SubstationInformation) -> NetworkGraphData:
-    """Convert a node breaker topology to a NetworkGraph.
-
-    This function is WIP.
-
-    Parameters
-    ----------
-    net : Network
-        The network to convert.
-    substation_info : SubstationInformation
-        The substation information to retrieve the node breaker topology.
-
-    Returns
-    -------
-    NetworkGraphData.
-    """
+def _build_node_breaker_network_context(net: Network) -> _NodeBreakerNetworkContext:
+    """Build global node-breaker inputs reused across all voltage levels of one network."""
     all_names_df = get_all_element_names(net, line_trafo_name_col="name")
     branches_df = net.get_branches(attributes=["connected1", "connected2", "bus1_id", "bus2_id"])
     boundary_line_tie_ids = net.get_boundary_lines(attributes=["tie_line_id"])["tie_line_id"]
     injections_df = net.get_injections(attributes=["connected", "bus_id"])
     buses_df = net.get_buses(attributes=["connected_component"])
     bus_breaker_view_buses_df = net.get_bus_breaker_view_buses(attributes=["bus_id"])
-    in_main_connected_component = buses_df["connected_component"].fillna(0).eq(0)
+    busbar_sections_names_df = _get_busbar_sections_with_in_service(
+        network=net,
+        attributes=["name", "bus_id", "in_service"],
+    )
 
+    in_main_connected_component = buses_df["connected_component"].fillna(0).eq(0)
     branch_in_service = (
         normalize_nullable_bool(branches_df["connected1"], default=False)
         & normalize_nullable_bool(branches_df["connected2"], default=False)
@@ -897,34 +908,58 @@ def node_breaker_topology_to_graph_data(net: Network, substation_info: Substatio
         & normalize_nullable_bool(injections_df["bus_id"].map(in_main_connected_component), default=False)
     ).rename("in_service")
 
-    asset_in_service = pd.concat(
-        [
-            branch_in_service,
-            injection_in_service,
-        ]
+    return _NodeBreakerNetworkContext(
+        all_names_df=all_names_df,
+        asset_in_service=pd.concat([branch_in_service, injection_in_service]),
+        boundary_line_tie_ids=boundary_line_tie_ids,
+        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
+        busbar_sections_names_df=busbar_sections_names_df,
     )
+
+
+def node_breaker_topology_to_graph_data(
+    net: Network,
+    substation_info: SubstationInformation,
+    network_context: _NodeBreakerNetworkContext | None = None,
+) -> NetworkGraphData:
+    """Convert a node breaker topology to a NetworkGraph.
+
+    This function is WIP.
+
+    Parameters
+    ----------
+    net : Network
+        The network to convert.
+    substation_info : SubstationInformation
+        The substation information to retrieve the node breaker topology.
+    network_context : _NodeBreakerNetworkContext | None
+        The network context to use for the conversion. If None, a new context will be built
+
+    Returns
+    -------
+    NetworkGraphData.
+    """
+    if network_context is None:
+        network_context = _build_node_breaker_network_context(net)
+
     nbt = net.get_node_breaker_topology(substation_info.voltage_level_id)
     bbt = net.get_bus_breaker_topology(substation_info.voltage_level_id)
 
     switches_df = get_switches(switches_df=nbt.switches)
-    busbar_sections_names_df = _get_busbar_sections_with_in_service(
-        network=net,
-        attributes=["name", "bus_id", "in_service"],
-    )
     nodes_df = get_nodes(
-        busbar_sections_names_df=busbar_sections_names_df,
+        busbar_sections_names_df=network_context.busbar_sections_names_df,
         nodes_df=nbt.nodes,
         bus_breaker_elements_df=bbt.elements,
-        bus_breaker_view_buses_df=bus_breaker_view_buses_df,
+        bus_breaker_view_buses_df=network_context.bus_breaker_view_buses_df,
         switches_df=switches_df,
         substation_info=substation_info,
     )
     helper_branches = get_helper_branches(internal_connections_df=nbt.internal_connections)
     node_assets_df = get_node_assets(
         nodes_df=nodes_df,
-        all_names_df=all_names_df,
-        asset_in_service=asset_in_service,
-        boundary_line_tie_ids=boundary_line_tie_ids,
+        all_names_df=network_context.all_names_df,
+        asset_in_service=network_context.asset_in_service,
+        boundary_line_tie_ids=network_context.boundary_line_tie_ids,
     )
 
     graph_data = NetworkGraphData(

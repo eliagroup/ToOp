@@ -183,7 +183,6 @@ def test_get_number_of_bridges_after_outage_matches_old_path_for_complex_grid(
         outage_edges=outage_edges,
         from_node=from_node,
         to_node=to_node,
-        number_of_branches=number_of_branches,
         number_of_nodes=number_of_nodes,
     )
 

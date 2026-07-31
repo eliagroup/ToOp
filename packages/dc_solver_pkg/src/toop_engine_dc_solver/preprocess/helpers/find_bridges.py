@@ -186,11 +186,20 @@ def find_n_minus_2_safe_branches(
     n_bridges = len(set(nx.bridges(base_case)) & outage_edges)
     if n_processes == 1:
         n_bridge_per_outage_case = get_number_of_bridges_after_outage(
-            cases_to_check, outage_edges, from_node, to_node, number_of_branches, number_of_nodes
+            cases_to_check=cases_to_check,
+            outage_edges=outage_edges,
+            from_node=from_node,
+            to_node=to_node,
+            number_of_nodes=number_of_nodes,
         )
     else:
         n_bridge_per_outage_case = get_number_of_bridges_after_outage_parallel(
-            cases_to_check, outage_edges, from_node, to_node, number_of_branches, number_of_nodes, n_processes
+            cases_to_check=cases_to_check,
+            outage_edges=outage_edges,
+            from_node=from_node,
+            to_node=to_node,
+            number_of_nodes=number_of_nodes,
+            n_processes=n_processes,
         )
     n_minus_2_safe = n_bridge_per_outage_case == n_bridges
     return n_minus_2_safe
@@ -201,7 +210,6 @@ def get_number_of_bridges_after_outage(
     outage_edges: set[tuple[int, int]],
     from_node: Int[np.ndarray, " n_branch"],
     to_node: Int[np.ndarray, " n_branch"],
-    number_of_branches: int,  # noqa: ARG001
     number_of_nodes: int,
 ) -> Int[np.ndarray, " n_cases"]:
     """Get the number of bridges in the network after outaging the cases in cases_to_check.
@@ -218,8 +226,6 @@ def get_number_of_bridges_after_outage(
     to_node : Int[np.ndarray, " n_branch"]
         The to-nodes vector. Changes if the topology changes, e.g. the to-bus
         of a branch can be set to the second bus of a substation.
-    number_of_branches: int
-        How many branches are in the system
     number_of_nodes: int
         How many busbars are in the system
 
@@ -237,7 +243,6 @@ def get_number_of_bridges_after_outage_parallel(
     outage_edges: set[tuple[int, int]],
     from_node: Int[np.ndarray, " n_branch"],
     to_node: Int[np.ndarray, " n_branch"],
-    number_of_branches: int,  # noqa: ARG001
     number_of_nodes: int,
     n_processes: int,
 ) -> Int[np.ndarray, " n_cases"]:
@@ -257,8 +262,6 @@ def get_number_of_bridges_after_outage_parallel(
     to_node : Int[np.ndarray, " n_branch"]
         The to-nodes vector. Changes if the topology changes, e.g. the to-bus
         of a branch can be set to the second bus of a substation.
-    number_of_branches: int
-        How many branches are in the system
     number_of_nodes: int
         How many busbars are in the system
     n_processes: int

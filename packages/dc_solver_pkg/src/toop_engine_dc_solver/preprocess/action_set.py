@@ -22,8 +22,6 @@ The action creation routines are flexible and can be customized to include or ex
 specific configurations based on user-defined rules or constraints.
 """
 
-from functools import partial
-
 import jax
 import numpy as np
 import structlog
@@ -48,9 +46,9 @@ from toop_engine_interfaces.messages.preprocess.preprocess_commands import Reass
 logger = structlog.get_logger(__name__)
 
 
-@partial(jax.jit, static_argnames=("batch_size",))
-def _filter_splits_by_bsdf_valid_mask(  # noqa: PLR0913
-    repo: Bool[Array, " possible_configurations sub_degree"],
+@jax.jit
+def _filter_splits_by_bsdf_valid_mask_batch(  # noqa: PLR0913
+    repo_batch: Bool[Array, " n_repo_batch sub_degree"],
     ptdf: Float[Array, " n_branches n_bus"],
     i_stat: Int[Array, ""],
     i_stat_rel: Int[Array, ""],
@@ -63,12 +61,11 @@ def _filter_splits_by_bsdf_valid_mask(  # noqa: PLR0913
     n_stat: Int[Array, ""],
     branches_to_outage: Int[Array, " n_branches_to_outage"],
     multi_outage_branches: tuple[Int[Array, " n_multi_outages n_branches_failed"], ...],
-    batch_size: int,
-) -> Bool[Array, " possible_configurations"]:
-    """Return the valid-mask for BSDF/LODF split filtering.
+) -> Bool[Array, " n_repo_batch"]:
+    """Return the valid mask for one fixed-size BSDF/LODF validation batch.
 
-    This helper exists so JAX can cache the traced program across repeated calls with the same
-    argument shapes instead of recompiling a new closure for every substation.
+    The outer Python wrapper feeds padded batches of a fixed size into this function so that the
+    compiled repo-batch dimension stays stable across substations with different action counts.
     """
     valid_mask = jax.lax.map(
         lambda substation_topology: is_valid_bsdf_lodf(
@@ -86,10 +83,21 @@ def _filter_splits_by_bsdf_valid_mask(  # noqa: PLR0913
             branches_to_outage=branches_to_outage,
             multi_outage_branches=list(multi_outage_branches),
         ),
-        repo,
-        batch_size=batch_size,
+        repo_batch,
     )
-    return valid_mask | ~jnp.any(repo, axis=1)
+    return valid_mask | ~jnp.any(repo_batch, axis=1)
+
+
+def _pad_repo_batch(repo_batch: Bool[np.ndarray, " n_repo_batch sub_degree"], batch_size: int) -> Bool[np.ndarray, " _ _"]:
+    """Pad the last BSDF-validation batch to a fixed shape for JAX caching."""
+    if repo_batch.shape[0] == batch_size:
+        return repo_batch
+    return np.pad(
+        repo_batch,
+        pad_width=((0, batch_size - repo_batch.shape[0]), (0, 0)),
+        mode="constant",
+        constant_values=False,
+    )
 
 
 def set_unsplit_action_as_first(
@@ -380,6 +388,9 @@ def filter_splits_by_bsdf(
     """
     assert network_data.ptdf_is_extended is False, "This assumes an un-extended ptdf"
     assert network_data.split_multi_outage_branches is not None, "Process multi-outages first"
+    if repo.shape[0] == 0:
+        return repo
+
     ptdf = jnp.array(get_extended_ptdf(network_data.ptdf, network_data.relevant_node_mask))
 
     # Gather some data needed for the BSDF computation and curry it to is_valid_bsdf_lodf
@@ -388,22 +399,33 @@ def filter_splits_by_bsdf(
 
     assert tot_stat.shape == from_stat_bool.shape == (repo.shape[1],)
     assert network_data.split_multi_outage_branches is not None
-    valid_mask = _filter_splits_by_bsdf_valid_mask(
-        repo=jnp.array(repo),
-        ptdf=ptdf,
-        i_stat=jnp.array(network_data.relevant_nodes[sub_id]),
-        i_stat_rel=jnp.array(sub_id),
-        tot_stat=jnp.array(tot_stat),
-        from_stat_bool=jnp.array(from_stat_bool),
-        to_node=jnp.array(network_data.to_nodes),
-        from_node=jnp.array(network_data.from_nodes),
-        susceptance=jnp.array(network_data.susceptances),
-        slack=jnp.array(network_data.slack),
-        n_stat=jnp.array(network_data.n_original_nodes),
-        branches_to_outage=jnp.flatnonzero(network_data.outaged_branch_mask),
-        multi_outage_branches=tuple(jnp.array(x) for x in network_data.split_multi_outage_branches),
-        batch_size=batch_size,
-    )
+    effective_batch_size = max(1, batch_size)
+    valid_mask_parts: list[np.ndarray] = []
+    common_kwargs = {
+        "ptdf": ptdf,
+        "i_stat": jnp.array(network_data.relevant_nodes[sub_id]),
+        "i_stat_rel": jnp.array(sub_id),
+        "tot_stat": jnp.array(tot_stat),
+        "from_stat_bool": jnp.array(from_stat_bool),
+        "to_node": jnp.array(network_data.to_nodes),
+        "from_node": jnp.array(network_data.from_nodes),
+        "susceptance": jnp.array(network_data.susceptances),
+        "slack": jnp.array(network_data.slack),
+        "n_stat": jnp.array(network_data.n_original_nodes),
+        "branches_to_outage": jnp.flatnonzero(network_data.outaged_branch_mask),
+        "multi_outage_branches": tuple(jnp.array(x) for x in network_data.split_multi_outage_branches),
+    }
+    for batch_start in range(0, repo.shape[0], effective_batch_size):
+        repo_batch = repo[batch_start : batch_start + effective_batch_size]
+        actual_batch_size = repo_batch.shape[0]
+        padded_repo_batch = _pad_repo_batch(repo_batch, effective_batch_size)
+        local_valid_mask = _filter_splits_by_bsdf_valid_mask_batch(
+            repo_batch=jnp.array(padded_repo_batch),
+            **common_kwargs,
+        )
+        valid_mask_parts.append(np.asarray(local_valid_mask[:actual_batch_size]))
+
+    valid_mask = np.concatenate(valid_mask_parts)
     return repo[np.asarray(valid_mask), :]
 
 

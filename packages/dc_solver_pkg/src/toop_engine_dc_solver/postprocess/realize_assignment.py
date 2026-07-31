@@ -110,29 +110,41 @@ def _validate_realized_station_update(
     )
 
 
-@partial(jax.jit, static_argnames=("batch_size", "choice_heuristic"))
-def _compute_switching_tables_for_actions(
-    local_branch_action_set: Bool[Array, " n_combinations n_assets"],
+def _get_padded_action_batch_size(n_actions: int, max_batch_size: int) -> int:
+    """Round batch sizes to powers of two to reduce JAX recompilations.
+
+    For the hot station-realization path, the dominant source of wall time is repeated JAX
+    compilation for slightly different action counts. Rounding the action-batch length to a small
+    family of powers of two keeps execution batches bounded while collapsing many compile shapes.
+    """
+    if n_actions <= 1:
+        return 1
+    return min(max_batch_size, 1 << (n_actions - 1).bit_length())
+
+
+@partial(jax.jit, static_argnames=("choice_heuristic",))
+def _compute_switching_tables_for_action_batch(
+    local_branch_action_batch: Bool[Array, " n_batch_actions n_assets"],
     current_coupler_state: Bool[Array, " n_couplers"],
     separation_set: Bool[Array, " n_separations 2 n_assets"],
     coupler_states: Bool[Array, " n_separations n_couplers"],
     busbar_mapping: Bool[Array, " n_separations n_busbars"],
     current_switching_table: Bool[Array, " n_busbars n_assets"],
     asset_connectivity: Bool[Array, " n_busbars n_assets"],
-    batch_size: int,
     choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"],
 ) -> tuple[
-    Bool[Array, " n_combinations n_busbars n_assets"],
-    Bool[Array, " n_combinations n_couplers"],
-    Bool[Array, " n_combinations n_busbars"],
-    Int[Array, " n_combinations"],
-    Int[Array, " n_combinations"],
-    Bool[Array, " n_combinations"],
+    Bool[Array, " n_batch_actions n_busbars n_assets"],
+    Bool[Array, " n_batch_actions n_couplers"],
+    Bool[Array, " n_batch_actions n_busbars"],
+    Int[Array, " n_batch_actions"],
+    Int[Array, " n_batch_actions"],
+    Bool[Array, " n_batch_actions"],
 ]:
-    """Compute switching tables for a batch of local branch actions.
+    """Compute switching tables for one padded action batch.
 
-    This helper exists so JAX can cache the traced program across repeated calls with the same
-    station-local argument shapes instead of recompiling a new closure for every station.
+    The batch length is rounded outside this function to a small family of powers of two.
+    This keeps the compiled shapes stable across stations that differ mainly in the number of
+    candidate branch actions.
     """
     return jax.lax.map(
         lambda local_action: compute_switching_table(
@@ -145,8 +157,97 @@ def _compute_switching_tables_for_actions(
             asset_connectivity=asset_connectivity,
             choice_heuristic=choice_heuristic,
         ),
-        local_branch_action_set,
-        batch_size=batch_size,
+        local_branch_action_batch,
+    )
+
+
+def _compute_switching_tables_for_actions(
+    local_branch_action_set: Bool[Array, " n_combinations n_assets"],
+    current_coupler_state: Bool[Array, " n_couplers"],
+    separation_set: Bool[Array, " n_separations 2 n_assets"],
+    coupler_states: Bool[Array, " n_separations n_couplers"],
+    busbar_mapping: Bool[Array, " n_separations n_busbars"],
+    current_switching_table: Bool[Array, " n_busbars n_assets"],
+    asset_connectivity: Bool[Array, " n_busbars n_assets"],
+    batch_size: int,
+    choice_heuristic: Literal["first", "least_connected_busbar", "most_connected_busbar"],
+) -> tuple[
+    Bool[np.ndarray, " n_combinations n_busbars n_assets"],
+    Bool[np.ndarray, " n_combinations n_couplers"],
+    Bool[np.ndarray, " n_combinations n_busbars"],
+    Int[np.ndarray, " n_combinations"],
+    Int[np.ndarray, " n_combinations"],
+    Bool[np.ndarray, " n_combinations"],
+]:
+    """Compute switching tables while collapsing action-count-specific JAX shapes."""
+    n_combinations = local_branch_action_set.shape[0]
+    if n_combinations == 0:
+        n_busbars, n_assets = current_switching_table.shape
+        n_couplers = current_coupler_state.shape[0]
+        return (
+            np.zeros((0, n_busbars, n_assets), dtype=bool),
+            np.zeros((0, n_couplers), dtype=bool),
+            np.zeros((0, n_busbars), dtype=bool),
+            np.zeros((0,), dtype=int),
+            np.zeros((0,), dtype=int),
+            np.zeros((0,), dtype=bool),
+        )
+
+    switching_tables: list[np.ndarray] = []
+    chosen_coupler_states: list[np.ndarray] = []
+    chosen_busbar_mappings: list[np.ndarray] = []
+    electrical_reassignment_distances: list[np.ndarray] = []
+    physical_reassignment_distances: list[np.ndarray] = []
+    failed_assignment_masks: list[np.ndarray] = []
+
+    batch_start = 0
+    while batch_start < n_combinations:
+        remaining_actions = n_combinations - batch_start
+        padded_batch_size = _get_padded_action_batch_size(remaining_actions, batch_size)
+        batch_stop = min(batch_start + padded_batch_size, n_combinations)
+        local_action_batch = np.asarray(local_branch_action_set[batch_start:batch_stop], dtype=bool)
+        actual_batch_size = local_action_batch.shape[0]
+        if actual_batch_size < padded_batch_size:
+            local_action_batch = np.pad(
+                local_action_batch,
+                pad_width=((0, padded_batch_size - actual_batch_size), (0, 0)),
+                mode="constant",
+                constant_values=False,
+            )
+
+        (
+            local_switching_table,
+            local_chosen_coupler_state,
+            local_chosen_busbar_mapping,
+            local_el_reassignment_distance,
+            local_phy_reassignment_distance,
+            local_failed_assignments,
+        ) = _compute_switching_tables_for_action_batch(
+            local_branch_action_batch=jnp.asarray(local_action_batch, dtype=bool),
+            current_coupler_state=current_coupler_state,
+            separation_set=separation_set,
+            coupler_states=coupler_states,
+            busbar_mapping=busbar_mapping,
+            current_switching_table=current_switching_table,
+            asset_connectivity=asset_connectivity,
+            choice_heuristic=choice_heuristic,
+        )
+
+        switching_tables.append(np.asarray(local_switching_table[:actual_batch_size]))
+        chosen_coupler_states.append(np.asarray(local_chosen_coupler_state[:actual_batch_size]))
+        chosen_busbar_mappings.append(np.asarray(local_chosen_busbar_mapping[:actual_batch_size]))
+        electrical_reassignment_distances.append(np.asarray(local_el_reassignment_distance[:actual_batch_size]))
+        physical_reassignment_distances.append(np.asarray(local_phy_reassignment_distance[:actual_batch_size]))
+        failed_assignment_masks.append(np.asarray(local_failed_assignments[:actual_batch_size]))
+        batch_start = batch_stop
+
+    return (
+        np.concatenate(switching_tables, axis=0),
+        np.concatenate(chosen_coupler_states, axis=0),
+        np.concatenate(chosen_busbar_mappings, axis=0),
+        np.concatenate(electrical_reassignment_distances, axis=0),
+        np.concatenate(physical_reassignment_distances, axis=0),
+        np.concatenate(failed_assignment_masks, axis=0),
     )
 
 

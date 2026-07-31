@@ -87,6 +87,20 @@ def enumerate_station_realisations(
             strict=True,
         )
     ):
+        if local_branch_action_set.shape[0] == 0:
+            all_rel_realised_stations.append([])
+            all_rel_subs_busbar_a_mappings.append([])
+            all_rel_subs_reassignment_distances.append(np.array([], dtype=int))
+            branch_action_set[index] = local_branch_action_set
+            continue
+
+        if not np.any(local_branch_action_set[1:]):
+            all_rel_realised_stations.append([station])
+            all_rel_subs_busbar_a_mappings.append([list(range(len(station.busbars)))])
+            all_rel_subs_reassignment_distances.append(np.array([0], dtype=int))
+            branch_action_set[index] = local_branch_action_set[:1].copy()
+            continue
+
         effective_reassignment_limits = reassignment_limits
         if reassignment_limits is not None:
             station_limit_key = station.voltage_level_id or station.bus_group_id
@@ -108,8 +122,7 @@ def enumerate_station_realisations(
         all_rel_realised_stations.append(realised_stations)
         all_rel_subs_busbar_a_mappings.append(local_busbar_a_mappings)
         all_rel_subs_reassignment_distances.append(np.array(local_reassignment_distances, dtype=int))
-        if not np.array_equal(local_branch_action_set, local_updated_branch_action_set):
-            branch_action_set[index] = local_updated_branch_action_set
+        branch_action_set[index] = local_updated_branch_action_set
 
     network_data = replace(
         network_data,

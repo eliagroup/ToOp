@@ -7,16 +7,17 @@
 
 """Classes that represent Assets in the grid"""
 
-import math
 from enum import Enum
 
-from beartype.typing import Any, Optional, get_args
-from pydantic import BaseModel, field_validator
+from beartype.typing import Literal, Optional
+from pydantic import BaseModel, ConfigDict, field_validator
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType, AssetType
 
 
 class Busbar(BaseModel):
-    """Busbar data describing a single busbar a station."""
+    """Canonical busbar data describing a physical busbar in a station."""
+
+    model_config = ConfigDict(extra="forbid")
 
     grid_model_id: str
     """ The unique identifier of the busbar.
@@ -31,9 +32,6 @@ class Busbar(BaseModel):
     int_id: int
     """ Is used to reference busbars in the couplers. Needs to be unique per station"""
 
-    in_service: bool = True
-    """ Whether the busbar is in service. If False, it will be ignored in the switching table"""
-
     bus_breaker_bus_id: Optional[str] = None
     """Physical bus-breaker bus id backing this busbar section.
 
@@ -42,15 +40,15 @@ class Busbar(BaseModel):
     reflect runtime regrouping after switching operations.
     """
 
-    bus_branch_bus_id: Optional[str] = None
-    """Runtime-only electrical bus id for this physical busbar.
 
-    The busbar ``grid_model_id`` identifies the physical busbar in the structural station view.
-    ``bus_branch_bus_id`` stores the currently active bus-branch bus id that this busbar belongs to
-    at runtime. Several busbars in one structural station may share the same value, and one
-    structural station may span multiple runtime bus ids when switches are open.
-    Canonical master-data station ids must not be derived from this field.
-    """
+class RuntimeBusbar(Busbar):
+    """Runtime busbar with live service and electrical-bus state."""
+
+    in_service: bool = True
+    """Whether the busbar is in service in the current runtime state."""
+
+    bus_branch_bus_id: Optional[str] = None
+    """Runtime-only electrical bus id for this physical busbar."""
 
 
 class AssetBay(BaseModel):
@@ -134,8 +132,30 @@ class AssetBay(BaseModel):
         return v
 
 
+class CouplerBay(BaseModel):
+    """Physical switch-path metadata for one busbar coupler."""
+
+    connection_kind: Literal["coupler", "disconnector"] = "coupler"
+    """Structural kind of this busbar connection."""
+
+    dv_switch_grid_model_id: str
+    """Grid-model id of the coupler power switch itself."""
+
+    from_busbar_grid_model_ids: list[str] = []
+    """Directly reachable canonical busbars on the from side."""
+
+    to_busbar_grid_model_ids: list[str] = []
+    """Directly reachable canonical busbars on the to side."""
+
+    from_sr_switch_grid_model_id: dict[str, str]
+    """Selector switches on the coupler from side keyed by canonical busbar id."""
+
+    to_sr_switch_grid_model_id: dict[str, str]
+    """Selector switches on the coupler to side keyed by canonical busbar id."""
+
+
 class BusbarCoupler(BaseModel):
-    """Coupler data describing a single coupler at a station.
+    """Canonical coupler data describing a physical busbar coupler at a station.
 
     This references only busbar couplers, i.e. couplers connecting two busbars.
     Switches connecting assets to a busbar are represented in the asset_switching_table in the station model.
@@ -143,6 +163,8 @@ class BusbarCoupler(BaseModel):
     Note: A busbar couple is a physical connection between two busbars, this can be also a
     cross coupler. To further specify the connection of an asset to a busbar, the asset connection
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     grid_model_id: str
     """ The unique identifier of the coupler.
@@ -164,14 +186,6 @@ class BusbarCoupler(BaseModel):
     """ Is used to determine where the coupler is connected to the busbars on the "to" side.
     Refers to the int_id of the busbar"""
 
-    open: bool
-    """ The status of the coupler. True if the coupler is open, False if the coupler is closed.
-    TODO: Switch to using the connectivity table instead of this field.
-    """
-
-    in_service: bool = True
-    """ Whether the coupler is in-service. Out-of-service couplers are assumed to be always open"""
-
     asset_bay: Optional[AssetBay] = None
     """ The asset bay (Schaltfeld) of the coupler.
     Note: A coupler can have multiple from and to busbars.
@@ -181,9 +195,22 @@ class BusbarCoupler(BaseModel):
 
     """
 
+    coupler_bay: Optional[CouplerBay] = None
+    """Side-aware coupler bay metadata used to reconstruct runtime endpoints."""
+
+
+class RuntimeBusbarCoupler(BusbarCoupler):
+    """Runtime coupler with live open and service state."""
+
+    open: bool = False
+    """Whether the coupler is open in the current runtime state."""
+
+    in_service: bool = True
+    """Whether the coupler is in service in the current runtime state."""
+
 
 class SwitchableAsset(BaseModel):
-    """Asset data describing a single asset at a station.
+    """Canonical asset data describing a single switchable asset.
 
     An asset can be for instance a transformer, line, generator, load, shunt.
     Note: An asset can be connected to multiple busbars through the switching grid, however if
@@ -192,6 +219,8 @@ class SwitchableAsset(BaseModel):
     Note: An asset that is out-of-service can be represented, but its switching entries will be
     ignored.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     grid_model_id: str
     """ The unique identifier of the asset.
@@ -204,40 +233,32 @@ class SwitchableAsset(BaseModel):
     name: Optional[str] = None
     """ The name of the asset, might be useful for finding the asset later on """
 
-    in_service: bool = True
-    """ If the element is in service. False means the switching entry for this element will be
-    ignored. This shall not be used for elements intentionally disconnected, instead set all zeros
-    in the switching table."""
-
 
 class BranchAsset(SwitchableAsset):
-    """Switchable asset representing a branch-type element."""
+    """Canonical switchable asset representing a branch-type element."""
 
     asset_type: Optional[AssetBranchType] = None
 
 
 class InjectionAsset(SwitchableAsset):
-    """Switchable asset representing an injection-type element."""
+    """Canonical switchable asset representing an injection-type element."""
 
     asset_type: Optional[AssetInjectionType] = None
 
 
-def normalize_switchable_asset_payload(asset: dict[str, Any]) -> SwitchableAsset:
-    """Normalize an asset payload to the matching branch or injection subclass when possible."""
-    if isinstance(asset, (BranchAsset, InjectionAsset)):
-        return asset
+class RuntimeSwitchableAsset(SwitchableAsset):
+    """Runtime switchable asset with live service state."""
 
-    asset_data = asset.model_dump() if isinstance(asset, SwitchableAsset) else dict(asset)
-    if isinstance(asset_data.get("name"), float) and math.isnan(asset_data["name"]):
-        asset_data["name"] = None
-    if "asset_type" not in asset_data and "type" in asset_data:
-        asset_data["asset_type"] = asset_data.pop("type")
-    asset_type = asset_data.get("asset_type")
-    if asset_type in get_args(AssetBranchType):
-        return BranchAsset(**asset_data)
-    if asset_type in get_args(AssetInjectionType):
-        return InjectionAsset(**asset_data)
-    return SwitchableAsset(**asset_data)
+    in_service: bool = True
+    """Whether the asset is in service in the current runtime state."""
+
+
+class RuntimeBranchAsset(BranchAsset, RuntimeSwitchableAsset):
+    """Runtime switchable asset representing a branch-type element."""
+
+
+class RuntimeInjectionAsset(InjectionAsset, RuntimeSwitchableAsset):
+    """Runtime switchable asset representing an injection-type element."""
 
 
 class AssetSetpoint(BaseModel):

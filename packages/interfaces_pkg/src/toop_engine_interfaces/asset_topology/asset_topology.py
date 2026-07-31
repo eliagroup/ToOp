@@ -18,8 +18,8 @@ from toop_engine_interfaces.asset_topology.assets import (
     BusbarCoupler,
     InjectionAsset,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedStation
-from toop_engine_interfaces.asset_topology.station_models import (
+from toop_engine_interfaces.asset_topology.materialized_topology import (
+    MaterializedStation,
     StationAssetConnection,
     StationSwitchingArray,
     _merged_round_trip_payload,

@@ -22,6 +22,7 @@ AssetBranchTypePandapower: TypeAlias = Literal[
 AssetBranchTypePowsybl: TypeAlias = Literal[
     "LINE",
     "TWO_WINDINGS_TRANSFORMER",
+    "THREE_WINDINGS_TRANSFORMER",
     "TIE_LINE",
 ]
 AssetBranchType: TypeAlias = Literal[AssetBranchTypePandapower, AssetBranchTypePowsybl]

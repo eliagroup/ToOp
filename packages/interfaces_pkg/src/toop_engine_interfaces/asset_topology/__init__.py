@@ -25,8 +25,8 @@ from toop_engine_interfaces.asset_topology.assets import AssetBay, AssetSetpoint
 from toop_engine_interfaces.asset_topology.materialized_topology import (
     MaterializedAssetConnection,
     MaterializedStation,
+    StationAssetConnection,
 )
-from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
 
 __all__ = [
     "AppliedStation",

@@ -77,12 +77,16 @@ from toop_engine_grid_helpers.pandapower.pandapower_helpers import (
 from toop_engine_grid_helpers.pandapower.pandapower_id_helpers import table_ids
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
 from toop_engine_interfaces.asset_topology.assets import (
-    BranchAsset,
-    Busbar,
-    InjectionAsset,
+    RuntimeBranchAsset as BranchAsset,
 )
 from toop_engine_interfaces.asset_topology.assets import (
-    BusbarCoupler as RuntimeBusbarCoupler,
+    RuntimeBusbar as Busbar,
+)
+from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeBusbarCoupler,
+)
+from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeInjectionAsset as InjectionAsset,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
@@ -922,6 +926,63 @@ def test_simplify_asset_topology_prunes_fused_busbar_outage_ids(
         "busbar1",
         "busbar3",
     ]
+
+
+def test_compute_separation_set_for_stations_handles_pst_fallback_station_with_out_of_service_busbar(
+    network_data_filled: NetworkData,
+) -> None:
+    station = MaterializedStation(
+        bus_group_id="node_0",
+        busbars=[
+            Busbar(grid_model_id="busbar1", int_id=1, bus_branch_bus_id="node_0", in_service=True),
+            Busbar(grid_model_id="busbar2", int_id=2, bus_branch_bus_id="node_0", in_service=False),
+        ],
+        couplers=[],
+        branch_connections=[
+            MaterializedAssetConnection(asset=BranchAsset(grid_model_id="pst", in_service=True)),
+        ],
+        injection_connections=[],
+        branch_switching_table=np.array(
+            [
+                [True],
+                [False],
+            ],
+            dtype=bool,
+        ),
+        injection_switching_table=np.zeros((2, 0), dtype=bool),
+        branch_connectivity=np.array(
+            [
+                [True],
+                [False],
+            ],
+            dtype=bool,
+        ),
+        injection_connectivity=np.zeros((2, 0), dtype=bool),
+    )
+    network_data = replace(
+        network_data_filled,
+        node_ids=["node_0"],
+        relevant_node_mask=np.array([True]),
+        branch_ids=["pst"],
+        injection_ids=[],
+        branches_at_nodes=[np.array([0], dtype=int)],
+        injection_idx_at_nodes=[np.array([], dtype=int)],
+        controllable_phase_shift_mask=np.array([True]),
+        asset_topology=RuntimeAssetTopology(stations=[station]),
+    )
+
+    network_data = simplify_asset_topology(network_data)
+
+    assert network_data.simplified_asset_topology is not None
+    simplified_station = network_data.simplified_asset_topology.stations[0]
+    assert [busbar.grid_model_id for busbar in simplified_station.busbars] == ["busbar1"]
+
+    network_data = compute_separation_set_for_stations(network_data)
+
+    assert network_data.separation_sets_info is not None
+    separation_set = network_data.separation_sets_info[0]
+    assert separation_set.separation_set.shape == (0, 2, 1)
+    assert separation_set.coupler_states.shape == (0, 0)
 
 
 def test_complex_grid_be_ch_tie_line_stays_in_simplified_station_topology(tmp_path: Path) -> None:

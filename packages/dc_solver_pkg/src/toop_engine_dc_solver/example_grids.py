@@ -61,13 +61,18 @@ from toop_engine_interfaces.asset_topology.asset_topology import MasterStation, 
 from toop_engine_interfaces.asset_topology.assets import (
     AssetBay,
     BranchAsset,
-    Busbar,
-    BusbarCoupler,
     InjectionAsset,
+    RuntimeBranchAsset,
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
+    RuntimeInjectionAsset,
     build_asset_bay_id,
 )
-from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
-from toop_engine_interfaces.asset_topology.station_models import StationAssetConnection
+from toop_engine_interfaces.asset_topology.materialized_topology import (
+    MaterializedAssetConnection,
+    MaterializedStation,
+    StationAssetConnection,
+)
 from toop_engine_interfaces.backend import BackendInterface
 from toop_engine_interfaces.folder_structure import (
     NETWORK_MASK_NAMES,
@@ -202,7 +207,7 @@ def random_station_info_backend(
         if branch_node == node_idx:
             switchable_assets.append(
                 (
-                    BranchAsset(
+                    RuntimeBranchAsset(
                         grid_model_id=branch_id,
                         asset_type=branch_type,
                         name=branch_name,
@@ -222,7 +227,7 @@ def random_station_info_backend(
         if branch_node == node_idx:
             switchable_assets.append(
                 (
-                    BranchAsset(
+                    RuntimeBranchAsset(
                         grid_model_id=branch_id,
                         asset_type=branch_type,
                         name=branch_name,
@@ -242,7 +247,7 @@ def random_station_info_backend(
         if injection_node == node_idx:
             switchable_assets.append(
                 (
-                    InjectionAsset(
+                    RuntimeInjectionAsset(
                         grid_model_id=injection_id,
                         asset_type=injection_type,
                         name=injection_name,
@@ -310,23 +315,26 @@ def random_station_info_backend(
     return MaterializedStation(
         bus_group_id=global_id,
         busbars=[
-            Busbar(
+            RuntimeBusbar(
                 grid_model_id=bus_a_id,
                 name=backend.get_node_names()[node_idx],
                 int_id=0,
+                in_service=True,
             ),
-            Busbar(
+            RuntimeBusbar(
                 grid_model_id=bus_b_id,
                 name=backend.get_node_names()[node_idx],
                 int_id=1,
+                in_service=True,
             ),
         ],
         couplers=[
-            BusbarCoupler(
+            RuntimeBusbarCoupler(
                 grid_model_id=switch_id,
                 busbar_from_id=0,
                 busbar_to_id=1,
                 open=False,
+                in_service=True,
             ),
         ],
         branch_connections=branch_connections,

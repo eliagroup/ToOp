@@ -16,7 +16,8 @@ from toop_engine_dc_solver.preprocess.action_set import make_action_repo
 from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_optimal_separation_set,
 )
-from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import RuntimeBranchAsset, RuntimeBusbarCoupler
+from toop_engine_interfaces.asset_topology.assets import RuntimeBusbar as Busbar
 from toop_engine_interfaces.asset_topology.materialized_topology import (
     MaterializedAssetConnection,
     MaterializedStation,
@@ -24,7 +25,7 @@ from toop_engine_interfaces.asset_topology.materialized_topology import (
 
 
 def _asset_connections(*asset_ids: str) -> list[MaterializedAssetConnection]:
-    return [MaterializedAssetConnection(asset=SwitchableAsset(grid_model_id=asset_id)) for asset_id in asset_ids]
+    return [MaterializedAssetConnection(asset=RuntimeBranchAsset(grid_model_id=asset_id)) for asset_id in asset_ids]
 
 
 def _empty_injection_switching(n_busbars: int) -> np.ndarray:
@@ -35,7 +36,7 @@ def test_realize_ba_to_physical_topo_per_station_simple():
     station = MaterializedStation(
         bus_group_id="teststation",
         busbars=[Busbar(grid_model_id="BB1", int_id=1), Busbar(grid_model_id="BB2", int_id=2)],
-        couplers=[BusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False)],
+        couplers=[RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False)],
         branch_connections=_asset_connections("line1", "line2", "line3", "line4", "line5"),
         injection_connections=[],
         branch_connectivity=np.ones((2, 5), dtype=bool),
@@ -139,8 +140,8 @@ def test_realize_ba_to_physical_topo_per_station_3_busbars():
             Busbar(grid_model_id="BB3", int_id=3),
         ],
         couplers=[
-            BusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
-            BusbarCoupler(grid_model_id="BC2", busbar_from_id=2, busbar_to_id=3, open=False),
+            RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
+            RuntimeBusbarCoupler(grid_model_id="BC2", busbar_from_id=2, busbar_to_id=3, open=False),
         ],
         branch_connections=_asset_connections("line1", "line2", "line3", "line4", "line5"),
         injection_connections=[],
@@ -284,8 +285,8 @@ def test_realize_ba_to_physical_topo_per_station_large():
             Busbar(grid_model_id="BB3", int_id=3, bus_branch_bus_id="teststation_2"),
         ],
         couplers=[
-            BusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
-            BusbarCoupler(grid_model_id="BC2", busbar_from_id=2, busbar_to_id=3, open=False),
+            RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
+            RuntimeBusbarCoupler(grid_model_id="BC2", busbar_from_id=2, busbar_to_id=3, open=False),
         ],
         branch_connections=_asset_connections(*[f"line{i + 1}" for i in range(n_assets)]),
         injection_connections=[],
@@ -322,8 +323,8 @@ def test_realize_ba_to_physical_topo_per_station_limited_connectivity():
             Busbar(grid_model_id="BB3", int_id=3),
         ],
         couplers=[
-            BusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
-            BusbarCoupler(grid_model_id="BC2", busbar_from_id=2, busbar_to_id=3, open=False),
+            RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
+            RuntimeBusbarCoupler(grid_model_id="BC2", busbar_from_id=2, busbar_to_id=3, open=False),
         ],
         branch_connections=_asset_connections("line1", "line2", "line3", "line4", "line5"),
         injection_connections=[],
@@ -409,8 +410,8 @@ def test_realize_ba_to_physical_topo_per_station_invalid_actions():
             Busbar(grid_model_id="BB3", int_id=3),
         ],
         couplers=[
-            BusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
-            BusbarCoupler(grid_model_id="BC2", busbar_from_id=2, busbar_to_id=3, open=False),
+            RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
+            RuntimeBusbarCoupler(grid_model_id="BC2", busbar_from_id=2, busbar_to_id=3, open=False),
         ],
         branch_connections=_asset_connections("line1", "line2", "line3", "line4", "line5"),
         injection_connections=[],
@@ -462,8 +463,8 @@ def test_realize_ba_to_physical_topo_per_station_invalid_actions_hard():
             Busbar(grid_model_id="BB3", int_id=3),
         ],
         couplers=[
-            BusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
-            BusbarCoupler(grid_model_id="BC2", busbar_from_id=2, busbar_to_id=3, open=False),
+            RuntimeBusbarCoupler(grid_model_id="BC1", busbar_from_id=1, busbar_to_id=2, open=False),
+            RuntimeBusbarCoupler(grid_model_id="BC2", busbar_from_id=2, busbar_to_id=3, open=False),
         ],
         branch_connections=_asset_connections("line1", "line2", "line3", "line4", "line5"),
         injection_connections=[],

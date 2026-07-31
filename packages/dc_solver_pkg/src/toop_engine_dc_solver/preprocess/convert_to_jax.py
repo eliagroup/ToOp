@@ -71,6 +71,8 @@ from toop_engine_interfaces.messages.preprocess.preprocess_heartbeat import (
 )
 from toop_engine_interfaces.messages.preprocess.preprocess_results import StaticInformationStats
 
+jax.config.update("jax_enable_x64", True)
+
 logger = structlog.get_logger(__name__)
 
 

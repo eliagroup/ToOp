@@ -14,10 +14,12 @@ import jax.numpy as jnp
 import numpy as np
 import pypowsybl as pp
 import pytest
+import toop_engine_dc_solver.jax.busbar_outage as busbar_outage_module
 from fsspec.implementations.dirfs import DirFileSystem
 from jaxtyping import Array, Bool, Float, Int
 from toop_engine_dc_solver.jax.bsdf import compute_bus_splits
 from toop_engine_dc_solver.jax.busbar_outage import (
+    _build_single_branch_retry_outages,
     filter_already_outaged_branches_single_outage,
     get_busbar_outage_penalty,
     get_busbar_outage_penalty_batched,
@@ -248,6 +250,57 @@ def test_perform_rel_bb_outage_single_topo_filters_padded_busbar_slots() -> None
 
     assert lfs.shape[0] == 1
     assert success.shape[0] == 1
+
+
+def test_build_single_branch_retry_outages() -> None:
+    outages = jnp.array([10, 20, int_max(), 30], dtype=int)
+
+    retry_outages = _build_single_branch_retry_outages(outages)
+
+    np.testing.assert_array_equal(
+        np.asarray(retry_outages),
+        np.asarray(
+            [
+                [int_max(), 20, int_max(), 30],
+                [10, int_max(), int_max(), 30],
+                [10, 20, int_max(), 30],
+                [10, 20, int_max(), int_max()],
+            ]
+        ),
+    )
+
+
+def test_perform_outage_single_busbar_selects_non_first_successful_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    expected_retry = jnp.array([10, int_max(), 30], dtype=int)
+
+    def fake_compute_multi_outage(
+        ptdf: Float[Array, " n_branches n_nodes"],
+        from_node: Int[Array, " n_branches"],
+        to_node: Int[Array, " n_branches"],
+        n_0_flow: Float[Array, " n_timesteps n_branches"],
+        multi_outages: Int[Array, " max_n_branches_failed"],
+        branches_monitored: Int[Array, " n_branches_monitored"],
+    ) -> tuple[Float[Array, " n_timesteps n_branches_monitored"], Bool[Array, " "]]:
+        success = jnp.all(multi_outages == expected_retry)
+        loadflows = jnp.where(success, 1.0, -1.0) * jnp.ones((1, branches_monitored.shape[0]), dtype=float)
+        return loadflows, success
+
+    monkeypatch.setattr(busbar_outage_module, "compute_multi_outage", fake_compute_multi_outage)
+
+    lfs, success = perform_outage_single_busbar(
+        connected_branches_to_outage=jnp.array([10, 20, 30], dtype=int),
+        injection_deltap_to_outage=jnp.array([0.0], dtype=float),
+        node_index_busbar=jnp.array(0, dtype=int),
+        ptdf=jnp.zeros((3, 1), dtype=float),
+        nodal_injections=jnp.zeros((1, 1), dtype=float),
+        from_node=jnp.array([0, 0, 0], dtype=int),
+        to_node=jnp.array([1, 1, 1], dtype=int),
+        n_0_flows=jnp.zeros((1, 3), dtype=float),
+        branches_monitored=jnp.array([0, 1, 2], dtype=int),
+    )
+
+    assert bool(success)
+    np.testing.assert_allclose(np.asarray(lfs), np.ones((1, 3)))
 
 
 def test_perform_outage_single_busbar_with_disconnections(

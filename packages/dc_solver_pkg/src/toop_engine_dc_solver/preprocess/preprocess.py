@@ -70,6 +70,10 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     make_optimal_separation_set,
     prepare_for_separation_set,
 )
+from toop_engine_grid_helpers.asset_topology_helpers import (
+    filter_disconnected_busbars,
+    filter_out_of_service,
+)
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.backend import BackendInterface
@@ -1631,6 +1635,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
 
     stations = []
     keep_mask = []
+    busbar_outage_map = network_data.busbar_outage_map
     for _node_index, branches_at_sub, inj_at_sub, station in zip(
         network_data.relevant_nodes,
         network_data.branches_at_nodes,
@@ -1655,7 +1660,7 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
                 injection_ids=injection_ids_local,
                 close_couplers=close_couplers,
             )
-            if (busbar_outage_map := network_data.busbar_outage_map) is not None:
+            if busbar_outage_map is not None:
                 simplified_busbar_ids = {busbar.grid_model_id for busbar in simplified_station.busbars}
                 configured_busbar_ids = busbar_outage_map.get(simplified_station.bus_group_id, [])
                 busbar_outage_map[simplified_station.bus_group_id] = [
@@ -1667,8 +1672,8 @@ def simplify_asset_topology(network_data: NetworkData, close_couplers: bool = Fa
                 f"Station {electrical_bus_station.bus_group_id}/{electrical_bus_station.name} could not be simplified "
                 f"because {e}, removing it from the relevant nodes."
             )
-            simplified_station = electrical_bus_station
-            busbar_outage_map = network_data.busbar_outage_map
+            simplified_station = filter_out_of_service(electrical_bus_station)
+            simplified_station, _ = filter_disconnected_busbars(simplified_station, respect_coupler_open=True)
             keep_mask.append(has_controllable_pst)
 
         stations.append(simplified_station)

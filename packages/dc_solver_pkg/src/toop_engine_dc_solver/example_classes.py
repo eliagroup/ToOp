@@ -8,7 +8,12 @@
 """Example classes for testing purposes."""
 
 import numpy as np
-from toop_engine_interfaces.asset_topology.assets import AssetBay, BranchAsset, Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.assets import (
+    AssetBay,
+    RuntimeBranchAsset,
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
+)
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 
 
@@ -26,17 +31,17 @@ def get_basic_node_breaker_topology() -> list[MaterializedStation]:
         MaterializedStation(
             bus_group_id="VL4_0",
             name="VLevel4",
-            type=None,
+            station_type=None,
             region="BE",
             voltage_level=225.0,
             busbars=[
-                Busbar(grid_model_id="BBS4_1", type="busbar", name="bus1", int_id=0, in_service=True),
-                Busbar(grid_model_id="BBS4_2", type="busbar", name="bus2", int_id=1, in_service=True),
+                RuntimeBusbar(grid_model_id="BBS4_1", busbar_type="busbar", name="bus1", int_id=0, in_service=True),
+                RuntimeBusbar(grid_model_id="BBS4_2", busbar_type="busbar", name="bus2", int_id=1, in_service=True),
             ],
             couplers=[
-                BusbarCoupler(
+                RuntimeBusbarCoupler(
                     grid_model_id="VL4_BREAKER",
-                    type="busbar_coupler",
+                    coupler_type="busbar_coupler",
                     name="VL4_BREAKER",
                     busbar_from_id=1,
                     busbar_to_id=0,
@@ -46,7 +51,7 @@ def get_basic_node_breaker_topology() -> list[MaterializedStation]:
             ],
             branch_connections=[
                 MaterializedAssetConnection(
-                    asset=BranchAsset(grid_model_id="L4", type="LINE", name="", in_service=True),
+                    asset=RuntimeBranchAsset(grid_model_id="L4", asset_type="LINE", name="", in_service=True),
                     branch_end=None,
                     asset_bay=AssetBay(
                         asset_bay_id="VL4_0::L4::bay",
@@ -56,7 +61,7 @@ def get_basic_node_breaker_topology() -> list[MaterializedStation]:
                     ),
                 ),
                 MaterializedAssetConnection(
-                    asset=BranchAsset(grid_model_id="L5", type="LINE", name="", in_service=True),
+                    asset=RuntimeBranchAsset(grid_model_id="L5", asset_type="LINE", name="", in_service=True),
                     branch_end=None,
                     asset_bay=AssetBay(
                         asset_bay_id="VL4_0::L5::bay",
@@ -66,7 +71,7 @@ def get_basic_node_breaker_topology() -> list[MaterializedStation]:
                     ),
                 ),
                 MaterializedAssetConnection(
-                    asset=BranchAsset(grid_model_id="L8", type="LINE", name="", in_service=True),
+                    asset=RuntimeBranchAsset(grid_model_id="L8", asset_type="LINE", name="", in_service=True),
                     branch_end=None,
                     asset_bay=AssetBay(
                         asset_bay_id="VL4_0::L8::bay",

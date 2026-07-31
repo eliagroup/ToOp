@@ -20,7 +20,13 @@ from toop_engine_dc_solver.preprocess.preprocess_switching import (
     prepare_for_separation_set,
 )
 from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
-from toop_engine_interfaces.asset_topology.assets import Busbar, BusbarCoupler, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeBranchAsset,
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
+    RuntimeInjectionAsset,
+    RuntimeSwitchableAsset,
+)
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 
 
@@ -34,9 +40,9 @@ def _combined_asset_switching_table(station: MaterializedStation) -> np.ndarray:
 
 def build_materialized_station(
     grid_model_id: str,
-    busbars: list[Busbar],
-    couplers: list[BusbarCoupler],
-    assets: list[SwitchableAsset],
+    busbars: list[RuntimeBusbar],
+    couplers: list[RuntimeBusbarCoupler],
+    assets: list[RuntimeSwitchableAsset],
     asset_switching_table: np.ndarray,
 ) -> MaterializedStation:
     return MaterializedStation(
@@ -53,22 +59,22 @@ def build_materialized_station(
 def test_make_configurations_table():
     station = build_materialized_station(
         busbars=[
-            Busbar(int_id=1, grid_model_id="busbar1"),
-            Busbar(int_id=2, grid_model_id="busbar2"),
-            Busbar(int_id=3, grid_model_id="busbar3"),
-            Busbar(int_id=4, grid_model_id="busbar4"),
+            RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
+            RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
+            RuntimeBusbar(int_id=3, grid_model_id="busbar3"),
+            RuntimeBusbar(int_id=4, grid_model_id="busbar4"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
-            BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
-            BusbarCoupler(busbar_from_id=3, busbar_to_id=4, open=False, grid_model_id="coupler3"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
+            RuntimeBusbarCoupler(busbar_from_id=3, busbar_to_id=4, open=False, grid_model_id="coupler3"),
         ],
         assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4"),
-            SwitchableAsset(grid_model_id="line5"),
+            RuntimeSwitchableAsset(grid_model_id="line1"),
+            RuntimeSwitchableAsset(grid_model_id="line2"),
+            RuntimeSwitchableAsset(grid_model_id="line3"),
+            RuntimeSwitchableAsset(grid_model_id="line4"),
+            RuntimeSwitchableAsset(grid_model_id="line5"),
         ],
         asset_switching_table=np.array(
             [
@@ -159,21 +165,21 @@ def test_identify_unnecessary_combinations() -> None:
 def test_preprocess_station() -> None:
     station = build_materialized_station(
         busbars=[
-            Busbar(int_id=1, grid_model_id="busbar1"),
-            Busbar(int_id=2, grid_model_id="busbar2"),
-            Busbar(int_id=3, grid_model_id="busbar3"),
+            RuntimeBusbar(int_id=1, grid_model_id="busbar1"),
+            RuntimeBusbar(int_id=2, grid_model_id="busbar2"),
+            RuntimeBusbar(int_id=3, grid_model_id="busbar3"),
         ],
         couplers=[
-            BusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
-            BusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
-            BusbarCoupler(busbar_from_id=3, busbar_to_id=1, open=False, grid_model_id="coupler3"),
+            RuntimeBusbarCoupler(busbar_from_id=1, busbar_to_id=2, open=False, grid_model_id="coupler1"),
+            RuntimeBusbarCoupler(busbar_from_id=2, busbar_to_id=3, open=False, grid_model_id="coupler2"),
+            RuntimeBusbarCoupler(busbar_from_id=3, busbar_to_id=1, open=False, grid_model_id="coupler3"),
         ],
         assets=[
-            SwitchableAsset(grid_model_id="line1"),
-            SwitchableAsset(grid_model_id="line2"),
-            SwitchableAsset(grid_model_id="line3"),
-            SwitchableAsset(grid_model_id="line4"),
-            SwitchableAsset(grid_model_id="line5"),
+            RuntimeSwitchableAsset(grid_model_id="line1"),
+            RuntimeSwitchableAsset(grid_model_id="line2"),
+            RuntimeSwitchableAsset(grid_model_id="line3"),
+            RuntimeSwitchableAsset(grid_model_id="line4"),
+            RuntimeSwitchableAsset(grid_model_id="line5"),
         ],
         asset_switching_table=jnp.array(
             [
@@ -220,15 +226,35 @@ def test_prepare_for_separation_set_node_breaker_test_station():
     asset_bays = station_data.pop("asset_bays", [None] * len(assets))
     combined_switching_table = np.asarray(station_data.pop("asset_switching_table"), dtype=bool)
     station_data["branch_connections"] = [
-        {"asset": asset, "branch_end": asset_terminal, "asset_bay": asset_bay}
+        {
+            "asset": RuntimeBranchAsset(
+                grid_model_id=asset["grid_model_id"],
+                asset_type=asset["asset_type"],
+                name=asset.get("name"),
+                in_service=asset.get("in_service", True),
+            ),
+            "branch_end": asset_terminal,
+            "asset_bay": asset_bay,
+        }
         for asset, asset_terminal, asset_bay in zip(assets, asset_terminals, asset_bays, strict=True)
         if asset["asset_type"] in get_args(AssetBranchType)
     ]
     station_data["injection_connections"] = [
-        {"asset": asset, "branch_end": asset_terminal, "asset_bay": asset_bay}
+        {
+            "asset": RuntimeInjectionAsset(
+                grid_model_id=asset["grid_model_id"],
+                asset_type=asset["asset_type"],
+                name=asset.get("name"),
+                in_service=asset.get("in_service", True),
+            ),
+            "branch_end": asset_terminal,
+            "asset_bay": asset_bay,
+        }
         for asset, asset_terminal, asset_bay in zip(assets, asset_terminals, asset_bays, strict=True)
         if asset["asset_type"] in get_args(AssetInjectionType)
     ]
+    station_data["busbars"] = [RuntimeBusbar.model_validate(busbar) for busbar in station_data["busbars"]]
+    station_data["couplers"] = [RuntimeBusbarCoupler.model_validate(coupler) for coupler in station_data["couplers"]]
     station_data["branch_switching_table"] = combined_switching_table[:, branch_mask]
     station_data["injection_switching_table"] = combined_switching_table[:, injection_mask]
     station = MaterializedStation.model_validate(station_data)

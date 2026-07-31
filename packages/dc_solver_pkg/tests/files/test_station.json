@@ -170,8 +170,8 @@
          "type": "BREAKER",
          "name": "VL2_BREAKER",
          "busbar_from_id": 12,
-         "busbar_to_id": 5,
-         "open": false,
+         "busbar_to_id": 15,
+         "open": true,
          "in_service": true,
          "asset_bay": null
       },
@@ -189,9 +189,9 @@
          "grid_model_id": "VL2_BREAKER_2_2",
          "type": "BREAKER",
          "name": "VL2_BREAKER_2_2",
-         "busbar_from_id": 9,
-         "busbar_to_id": 10,
-         "open": false,
+         "busbar_from_id": 1,
+         "busbar_to_id": 2,
+         "open": true,
          "in_service": true,
          "asset_bay": null
       },

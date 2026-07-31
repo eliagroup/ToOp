@@ -14,7 +14,15 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 
-from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeBranchAsset as BranchAsset,
+)
+from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeBusbar as Busbar,
+)
+from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeBusbarCoupler as BusbarCoupler,
+)
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 
 os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")

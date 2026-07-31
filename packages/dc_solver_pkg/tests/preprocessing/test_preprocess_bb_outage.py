@@ -29,12 +29,16 @@ from toop_engine_dc_solver.preprocess.preprocess_bb_outage import (
 )
 from toop_engine_dc_solver.preprocess.preprocess_station_realisations import enumerate_station_realisations
 from toop_engine_interfaces.asset_topology.assets import (
-    BranchAsset,
-    Busbar,
-    InjectionAsset,
+    RuntimeBranchAsset as BranchAsset,
 )
 from toop_engine_interfaces.asset_topology.assets import (
-    BusbarCoupler as RuntimeBusbarCoupler,
+    RuntimeBusbar as Busbar,
+)
+from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeBusbarCoupler,
+)
+from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeInjectionAsset as InjectionAsset,
 )
 from toop_engine_interfaces.asset_topology.materialized_topology import (
     MaterializedAssetConnection,

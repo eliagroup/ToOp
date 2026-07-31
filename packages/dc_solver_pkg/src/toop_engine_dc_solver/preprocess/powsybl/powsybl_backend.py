@@ -30,7 +30,6 @@ from toop_engine_dc_solver.preprocess.powsybl.powsybl_helpers import (
 )
 from toop_engine_grid_helpers.powsybl.loadflow_parameters import CGMES_DISTRIBUTED_SLACK
 from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
-    get_all_element_names,
     materialize_stations_from_network_state,
 )
 from toop_engine_grid_helpers.powsybl.powsybl_helpers import load_powsybl_from_fs, sort_powsybl_element_frame_by_id
@@ -76,55 +75,6 @@ def _runtime_stations_preserve_master_connectivity(
         ):
             narrowed_station_ids.append(station.bus_group_id)
     return not narrowed_station_ids, narrowed_station_ids
-
-
-def _enrich_master_data_asset_names(master_data: TopologyMasterData, network: pp.network.Network) -> TopologyMasterData:
-    """Fill missing canonical asset names from the live powsybl network."""
-    try:
-        element_names = get_all_element_names(network)
-    except KeyError:
-        element_names = get_all_element_names(network, line_trafo_name_col="name")
-    branch_assets = [
-        asset.model_copy(update={"name": element_names.get(asset.grid_model_id, asset.name)})
-        if asset.name is None
-        else asset
-        for asset in master_data.branch_assets
-    ]
-    injection_assets = [
-        asset.model_copy(update={"name": element_names.get(asset.grid_model_id, asset.name)})
-        if asset.name is None
-        else asset
-        for asset in master_data.injection_assets
-    ]
-    is_bus_branch_grid = network.get_busbar_sections().empty
-    stations = [
-        station.model_copy(
-            update={
-                "busbars": [
-                    busbar.model_copy(
-                        update={
-                            "bus_breaker_bus_id": (
-                                busbar.grid_model_id
-                                if is_bus_branch_grid and busbar.bus_breaker_bus_id in {None, ""}
-                                else busbar.bus_breaker_bus_id
-                            )
-                        },
-                        deep=True,
-                    )
-                    for busbar in station.busbars
-                ]
-            },
-            deep=True,
-        )
-        for station in master_data.stations
-    ]
-    return master_data.model_copy(
-        update={
-            "stations": stations,
-            "branch_assets": branch_assets,
-            "injection_assets": injection_assets,
-        }
-    )
 
 
 class PowsyblBackend(BackendInterface):
@@ -740,12 +690,11 @@ class PowsyblBackend(BackendInterface):
     def get_master_data_asset_topology(self) -> Optional[TopologyMasterData]:
         """Get canonical asset-topology master data if it exists."""
         if self.data_folder_dirfs.exists(PREPROCESSING_PATHS["asset_topology_master_data_file_path"]):
-            master_data = load_pydantic_model_fs(
+            return load_pydantic_model_fs(
                 filesystem=self.data_folder_dirfs,
                 file_path=PREPROCESSING_PATHS["asset_topology_master_data_file_path"],
                 model_class=TopologyMasterData,
             )
-            return _enrich_master_data_asset_names(master_data, self.net)
         return None
 
     @functools.lru_cache
@@ -796,7 +745,7 @@ class PowsyblBackend(BackendInterface):
         selected_busbars = busbar_sections[busbar_for_nminus1]
 
         outage_map: dict[str, list[str]] = defaultdict(list)
-        for station in self.get_master_data_asset_topology().stations:
+        for station in self.get_runtime_asset_topology().stations:
             busbars = [
                 str(busbar.grid_model_id) for busbar in station.busbars if busbar.grid_model_id in selected_busbars.index
             ]

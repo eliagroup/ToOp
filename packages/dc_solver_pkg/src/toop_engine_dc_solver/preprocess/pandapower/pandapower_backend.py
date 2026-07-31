@@ -14,7 +14,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import structlog
-from beartype.typing import Iterable, Optional
+from beartype.typing import Iterable, Optional, get_args
 from fsspec import AbstractFileSystem
 from jaxtyping import Bool, Float, Int
 from pandapower.pypower.idx_brch import F_BUS, SHIFT, T_BUS
@@ -51,7 +51,12 @@ from toop_engine_grid_helpers.powsybl.powsybl_asset_topo import (
     get_list_of_coupler_from_df,
 )
 from toop_engine_interfaces.asset_topology.asset_topology import RuntimeAssetTopology, TopologyMasterData
-from toop_engine_interfaces.asset_topology.assets import BranchAsset, InjectionAsset, normalize_switchable_asset_payload
+from toop_engine_interfaces.asset_topology.asset_types import AssetBranchType, AssetInjectionType
+from toop_engine_interfaces.asset_topology.assets import (
+    BranchAsset,
+    RuntimeBranchAsset,
+    RuntimeInjectionAsset,
+)
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.asset_topology.topology_conversion import (
     RuntimeSwitchingState,
@@ -85,17 +90,30 @@ def _materialize_station_asset_connections(
     asset_connection_path: list[object | None],
 ) -> tuple[list[MaterializedAssetConnection], list[MaterializedAssetConnection], list[bool]]:
     """Build split runtime asset connections aligned with the station branch rows."""
-    switchable_assets = [
-        normalize_switchable_asset_payload(asset_payload) for asset_payload in station_branches.to_dict(orient="records")
-    ]
+    switchable_assets = []
+    for asset_payload in station_branches.to_dict(orient="records"):
+        raw_asset_type = asset_payload.get("asset_type", asset_payload.get("type"))
+        asset_type = None if raw_asset_type is None or pd.isna(raw_asset_type) else str(raw_asset_type)
+        name = asset_payload.get("name")
+        asset_kwargs = {
+            "grid_model_id": str(asset_payload["grid_model_id"]),
+            "asset_type": asset_type,
+            "name": None if name is None or pd.isna(name) else str(name),
+            "in_service": bool(asset_payload.get("in_service", True)),
+        }
+        if asset_type in get_args(AssetBranchType):
+            switchable_assets.append(RuntimeBranchAsset(**asset_kwargs))
+            continue
+        if asset_type in get_args(AssetInjectionType):
+            switchable_assets.append(RuntimeInjectionAsset(**asset_kwargs))
+            continue
+        raise ValueError(f"Unsupported asset_type {asset_type!r} for asset {asset_kwargs['grid_model_id']}")
     asset_terminals = (
         station_branches["branch_end"].tolist()
         if "branch_end" in station_branches.columns
         else [None] * len(station_branches)
     )
     branch_mask = [isinstance(asset, BranchAsset) for asset in switchable_assets]
-    if any(not isinstance(asset, (BranchAsset, InjectionAsset)) for asset in switchable_assets):
-        raise ValueError("All station assets must normalize to BranchAsset or InjectionAsset")
 
     branch_connections: list[MaterializedAssetConnection] = []
     injection_connections: list[MaterializedAssetConnection] = []
@@ -106,7 +124,15 @@ def _materialize_station_asset_connections(
         branch_mask,
         strict=True,
     ):
-        connection = MaterializedAssetConnection(asset=asset, branch_end=asset_terminal, asset_bay=asset_bay)
+        connection = MaterializedAssetConnection(
+            asset=(
+                RuntimeBranchAsset.model_validate(asset.model_dump())
+                if is_branch
+                else RuntimeInjectionAsset.model_validate(asset.model_dump())
+            ),
+            branch_end=asset_terminal,
+            asset_bay=asset_bay,
+        )
         if is_branch:
             branch_connections.append(connection)
         else:

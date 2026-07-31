@@ -319,7 +319,7 @@ def convert_file(
     network = load_powsybl_from_fs(
         filesystem=unprocessed_gridfile_fs,
         file_path=importer_parameters.grid_model_file,
-        parameters={"iidm.import.cgmes.post-processors": "cgmesGLImport"},
+        parameters={"iidm.import.cgmes.post-processors": "cgmesGLImport", "iidm.import.cgmes.cgm-with-subnetworks": "false"},
     )
 
     network_analysis.remove_branches_with_same_bus(network)

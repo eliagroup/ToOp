@@ -841,7 +841,6 @@ def perform_ac_analysis(
 
         logger.info("Applying topology and saving modified network...")
         modified_net = apply_topology_and_save(grid_path, actions, disconnections, action_set, out_modified)
-        loadflow_runner.load_base_grid(out_modified)
 
         logger.info("Running AC loadflow...")
         ac_loadflow_results, ac_action_info = calculate_and_save_loadflow_results(

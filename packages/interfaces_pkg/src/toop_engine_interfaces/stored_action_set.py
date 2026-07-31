@@ -632,6 +632,7 @@ def save_action_set_fs(
     diff_file_path: Union[str, Path],
     action_set: ActionSet,
     validate_diff_hypothesis: bool = False,
+    revalidate_action_set: bool = True,
 ) -> None:
     """Save an action set to a file system.
 
@@ -648,8 +649,12 @@ def save_action_set_fs(
     validate_diff_hypothesis : bool
         Whether to validate that local action changes only affect coupler open states and switching tables.
         This is intended for debugging and can make saving slower.
+    revalidate_action_set : bool
+        Whether to round-trip the action set through Pydantic validation before saving.
+        Disable this in hot paths when the caller already constructed a validated ``ActionSet``.
     """
-    action_set = ActionSet.model_validate(action_set.model_dump(mode="python", round_trip=True))
+    if revalidate_action_set:
+        action_set = ActionSet.model_validate(action_set.model_dump(mode="python", round_trip=True))
     station_diffs = compress_actions_to_station_diffs_from_starting_stations(
         starting_stations=action_set.get_simplified_starting_stations(),
         actions=action_set.local_actions,
@@ -668,6 +673,7 @@ def save_action_set(
     diff_file_path: Union[str, Path],
     action_set: ActionSet,
     validate_diff_hypothesis: bool = False,
+    revalidate_action_set: bool = True,
 ) -> None:
     """Save an action set to a file.
 
@@ -682,6 +688,8 @@ def save_action_set(
     validate_diff_hypothesis : bool
         Whether to validate that local action changes only affect coupler open states and switching tables.
         This is intended for debugging and can make saving slower.
+    revalidate_action_set : bool
+        Whether to round-trip the action set through Pydantic validation before saving.
 
     """
     save_action_set_fs(
@@ -690,6 +698,7 @@ def save_action_set(
         diff_file_path=diff_file_path,
         action_set=action_set,
         validate_diff_hypothesis=validate_diff_hypothesis,
+        revalidate_action_set=revalidate_action_set,
     )
 
 

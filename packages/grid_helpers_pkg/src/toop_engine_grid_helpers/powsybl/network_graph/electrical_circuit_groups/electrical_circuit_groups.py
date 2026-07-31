@@ -33,7 +33,7 @@ def _update_switches_for_outage_group_identification(net: pypowsybl.network.Netw
 
     This function relies on the bus_breaker topology in powsybl. It updates all switches,
     that all elements are not separated by a breaker remain connected.
-    Note: DISCONNECTORs are not set to retained == False, as this is a BREAKER only search
+    Note: DISCONNECTORs are set to retained == False, as this is a BREAKER only search
     Note: Network updated in place.
 
     Parameters
@@ -360,6 +360,7 @@ def identify_circuit_groups(
     lookup_index = build_circuit_group_lookup_index(branches=branches, switches=switches, injection=injection)
 
     net.set_working_variant(original_variant)
+    net.remove_variant(variant_name)
     return ElectricalCircuitGroupIdentification(
         lookup_index=lookup_index,
         branches=branches,

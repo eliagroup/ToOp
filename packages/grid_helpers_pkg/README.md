@@ -42,7 +42,7 @@ At a high level, it can:
 - Group branches, breaker switches, injections, and busbar sections into electrical circuit groups.
 - Answer branch-driven queries such as "which elements fail if this branch is outaged?".
 - Answer busbar-driven queries such as "which elements and switches are reachable behind this busbar section?".
-- It returnes in the case of the busbar the primary switches, the secondary elements and the secondary switches
+- It returns in the case of the busbar the primary switches, the secondary elements and the secondary switches
 - Reuse one cached identification result for many downstream queries instead of recomputing graph connectivity.
 - Build a human-readable group map when you want to inspect the grouped assets directly.
 

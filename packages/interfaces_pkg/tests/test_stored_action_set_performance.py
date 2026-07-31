@@ -11,7 +11,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 from fsspec.implementations.local import LocalFileSystem
-from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler
+from toop_engine_interfaces.asset_topology.assets import (
+    RuntimeBranchAsset,
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
+)
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.filesystem_helper import save_pydantic_model_fs
 from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set, load_action_set_fs, save_action_set
@@ -19,8 +23,8 @@ from toop_engine_interfaces.stored_action_set import ActionSet, load_action_set,
 
 def _build_materialized_station(
     bus_group_id: str,
-    busbars: list[Busbar],
-    couplers: list[BusbarCoupler],
+    busbars: list[RuntimeBusbar],
+    couplers: list[RuntimeBusbarCoupler],
     branch_connections: list[MaterializedAssetConnection],
     branch_switching_table: np.ndarray,
 ) -> MaterializedStation:
@@ -83,7 +87,7 @@ def _build_large_random_action_set(
         n_busbars = 2
 
         busbars = [
-            Busbar.model_construct(
+            RuntimeBusbar.model_construct(
                 grid_model_id=f"{grid_model_id}_busbar_{busbar_idx}",
                 busbar_type=None,
                 name=None,
@@ -96,7 +100,7 @@ def _build_large_random_action_set(
         ]
 
         couplers = [
-            BusbarCoupler.model_construct(
+            RuntimeBusbarCoupler.model_construct(
                 grid_model_id=f"{grid_model_id}_coupler_{coupler_idx}",
                 coupler_type=None,
                 name=None,
@@ -110,7 +114,7 @@ def _build_large_random_action_set(
         ]
 
         assets = [
-            BranchAsset.model_construct(
+            RuntimeBranchAsset.model_construct(
                 grid_model_id=f"{grid_model_id}_asset_{asset_idx}",
                 asset_type=None,
                 name=None,

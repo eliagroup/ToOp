@@ -12,7 +12,15 @@ import numpy as np
 import pytest
 from fsspec.implementations.dirfs import DirFileSystem
 from pydantic import ValidationError
-from toop_engine_interfaces.asset_topology.assets import BranchAsset, Busbar, BusbarCoupler, InjectionAsset, SwitchableAsset
+from toop_engine_interfaces.asset_topology.assets import (
+    Busbar,
+    BusbarCoupler,
+    RuntimeBranchAsset,
+    RuntimeBusbar,
+    RuntimeBusbarCoupler,
+    RuntimeInjectionAsset,
+    SwitchableAsset,
+)
 from toop_engine_interfaces.asset_topology.materialized_topology import MaterializedAssetConnection, MaterializedStation
 from toop_engine_interfaces.stored_action_set import (
     ActionSet,
@@ -357,19 +365,20 @@ def test_validate_actions_grouped_raises_for_non_grouped_actions():
 
 def test_action_set_model_validator_rejects_non_grouped_local_actions():
     busbars = [
-        Busbar.model_construct(
+        RuntimeBusbar.model_construct(
             grid_model_id="station_a_busbar_0",
-            type=None,
+            busbar_type=None,
             name=None,
             int_id=0,
             in_service=True,
             bus_breaker_bus_id=None,
+            bus_branch_bus_id=None,
         )
     ]
     assets = [
-        BranchAsset.model_construct(
+        RuntimeBranchAsset.model_construct(
             grid_model_id="station_a_asset_0",
-            type=None,
+            asset_type=None,
             name=None,
             in_service=True,
         )
@@ -438,29 +447,30 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
         n_actions = int(rng.integers(1, 6))
 
         busbars = [
-            Busbar.model_construct(
+            RuntimeBusbar.model_construct(
                 grid_model_id=f"{grid_model_id}_busbar_{busbar_idx}",
-                type=None,
+                busbar_type=None,
                 name=None,
                 int_id=busbar_idx,
                 in_service=True,
+                bus_breaker_bus_id=None,
                 bus_branch_bus_id=None,
             )
             for busbar_idx in range(n_busbars)
         ]
         branch_assets = [
-            BranchAsset.model_construct(
+            RuntimeBranchAsset.model_construct(
                 grid_model_id=f"{grid_model_id}_asset_{asset_idx}",
-                type=None,
+                asset_type=None,
                 name=None,
                 in_service=True,
             )
             for asset_idx in range(n_branch_assets)
         ]
         injection_assets = [
-            InjectionAsset.model_construct(
+            RuntimeInjectionAsset.model_construct(
                 grid_model_id=f"{grid_model_id}_inj_{asset_idx}",
-                type=None,
+                asset_type=None,
                 name=None,
                 in_service=True,
             )
@@ -468,9 +478,9 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
         ]
 
         starting_couplers = [
-            BusbarCoupler.model_construct(
+            RuntimeBusbarCoupler.model_construct(
                 grid_model_id=f"{grid_model_id}_coupler_{coupler_idx}",
-                type=None,
+                coupler_type=None,
                 name=None,
                 busbar_from_id=coupler_idx % n_busbars,
                 busbar_to_id=(coupler_idx + 1) % n_busbars,
@@ -539,27 +549,29 @@ def test_compress_and_expand_station_diffs_random_roundtrip():
 
 def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
     busbars = [
-        Busbar.model_construct(
+        RuntimeBusbar.model_construct(
             grid_model_id="station_x_busbar_1",
-            type=None,
+            busbar_type=None,
             name=None,
             int_id=1,
             in_service=True,
+            bus_breaker_bus_id=None,
             bus_branch_bus_id=None,
         ),
-        Busbar.model_construct(
+        RuntimeBusbar.model_construct(
             grid_model_id="station_x_busbar_2",
-            type=None,
+            busbar_type=None,
             name=None,
             int_id=2,
             in_service=True,
+            bus_breaker_bus_id=None,
             bus_branch_bus_id=None,
         ),
     ]
     couplers = [
-        BusbarCoupler.model_construct(
+        RuntimeBusbarCoupler.model_construct(
             grid_model_id="station_x_coupler_0",
-            type=None,
+            coupler_type=None,
             name=None,
             busbar_from_id=1,
             busbar_to_id=2,
@@ -569,15 +581,15 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
         )
     ]
     assets = [
-        BranchAsset.model_construct(
+        RuntimeBranchAsset.model_construct(
             grid_model_id="station_save_load_asset_1",
-            type=None,
+            asset_type=None,
             name=None,
             in_service=True,
         ),
-        BranchAsset.model_construct(
+        RuntimeBranchAsset.model_construct(
             grid_model_id="station_save_load_asset_2",
-            type=None,
+            asset_type=None,
             name=None,
             in_service=True,
         ),
@@ -605,9 +617,9 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
     invalid_action_payload.update(
         {
             "couplers": [
-                BusbarCoupler.model_construct(
+                RuntimeBusbarCoupler.model_construct(
                     grid_model_id=starting_station.couplers[0].grid_model_id,
-                    type=starting_station.couplers[0].coupler_type,
+                    coupler_type=starting_station.couplers[0].coupler_type,
                     name=starting_station.couplers[0].name,
                     busbar_from_id=99,
                     busbar_to_id=starting_station.couplers[0].busbar_to_id,
@@ -633,27 +645,29 @@ def test_compress_station_diffs_raises_on_non_diff_hypothesis_change():
 
 def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
     busbars = [
-        Busbar.model_construct(
+        RuntimeBusbar.model_construct(
             grid_model_id="busbar1",
-            type=None,
+            busbar_type=None,
             name=None,
             int_id=1,
             in_service=True,
+            bus_breaker_bus_id=None,
             bus_branch_bus_id=None,
         ),
-        Busbar.model_construct(
+        RuntimeBusbar.model_construct(
             grid_model_id="busbar2",
-            type=None,
+            busbar_type=None,
             name=None,
             int_id=2,
             in_service=True,
+            bus_breaker_bus_id=None,
             bus_branch_bus_id=None,
         ),
     ]
     couplers = [
-        BusbarCoupler.model_construct(
+        RuntimeBusbarCoupler.model_construct(
             grid_model_id="coupler1",
-            type=None,
+            coupler_type=None,
             name=None,
             busbar_from_id=1,
             busbar_to_id=2,
@@ -663,15 +677,15 @@ def test_save_and_load_action_set_split_files_roundtrip(tmp_path: Path):
         )
     ]
     assets = [
-        BranchAsset.model_construct(
+        RuntimeBranchAsset.model_construct(
             grid_model_id="asset1",
-            type=None,
+            asset_type=None,
             name=None,
             in_service=True,
         ),
-        BranchAsset.model_construct(
+        RuntimeBranchAsset.model_construct(
             grid_model_id="asset2",
-            type=None,
+            asset_type=None,
             name=None,
             in_service=True,
         ),

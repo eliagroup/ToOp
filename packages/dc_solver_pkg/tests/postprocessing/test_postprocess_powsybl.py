@@ -35,7 +35,7 @@ from toop_engine_dc_solver.jax.topology_looper import run_solver_symmetric
 from toop_engine_dc_solver.jax.types import ActionIndexComputations, NodalInjOptimResults, NodalInjStartOptions
 from toop_engine_dc_solver.postprocess.postprocess_powsybl import (
     PowsyblRunner,
-    apply_disconnections,
+    apply_bus_branch_disconnections,
     apply_topology,
     compute_cross_coupler_flows,
 )
@@ -89,7 +89,7 @@ def test_apply_topology(preprocessed_powsybl_data_folder: Path) -> None:
         assert dc_res[0].status == pypowsybl.loadflow.ComponentStatus.CONVERGED
 
 
-def test_apply_disconnections(preprocessed_powsybl_data_folder: Path) -> None:
+def test_apply_bus_branch_disconnections(preprocessed_powsybl_data_folder: Path) -> None:
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     assert net.get_branches().connected1.iloc[0]
@@ -101,7 +101,7 @@ def test_apply_disconnections(preprocessed_powsybl_data_folder: Path) -> None:
 
     disconnections = [0]
 
-    apply_disconnections(net, disconnections, action_set)
+    apply_bus_branch_disconnections(net, disconnections, action_set)
 
     assert not net.get_branches().connected1.iloc[0]
     assert not net.get_branches().connected2.iloc[0]
@@ -423,8 +423,8 @@ def test_powsybl_runner_reuses_branch_limit_cache_for_contingency_only_updates(
     net = pypowsybl.network.load(preprocessed_powsybl_data_folder / PREPROCESSING_PATHS["grid_file_path_powsybl"])
 
     monkeypatch.setattr(
-        "toop_engine_dc_solver.postprocess.postprocess_powsybl.is_node_breaker_grid",
-        lambda *_args, **_kwargs: False,
+        "toop_engine_dc_solver.postprocess.postprocess_powsybl.is_bus_branch_grid",
+        lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
         "toop_engine_dc_solver.postprocess.postprocess_powsybl.get_current_branch_limits_for_powsybl",

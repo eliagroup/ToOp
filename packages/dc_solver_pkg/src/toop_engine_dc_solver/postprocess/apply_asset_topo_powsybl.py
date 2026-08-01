@@ -600,6 +600,11 @@ def is_node_breaker_grid(net: Network, relevant_station: Optional[str] = None) -
     )
 
 
+def is_bus_branch_grid(net: Network, relevant_station: Optional[str] = None) -> bool:
+    """Check if the network is in bus-branch format."""
+    return not is_node_breaker_grid(net=net, relevant_station=relevant_station)
+
+
 def apply_station(net: Network, station: Station) -> Union[pa.typing.DataFrame[SwitchUpdateSchema], RealizedStation]:
     """Apply a station topology to a powsybl model
 
@@ -624,13 +629,14 @@ def apply_station(net: Network, station: Station) -> Union[pa.typing.DataFrame[S
         The realized station object which contains the input station plus a diff of switched couplers, reassignments and
         disconnections or a dataframe of switches that were updated.
     """
-    if is_node_breaker_grid(net=net, relevant_station=station.grid_model_id):
-        return apply_node_breaker_topology(
-            net=net,
-            target_topology=Topology(
-                topology_id="this_id_will_be_ignored",
-                stations=[station],
-                timestamp=datetime.now(),
-            ),
-        )
-    return apply_station_bus_branch(net=net, station=station)
+    if is_bus_branch_grid(net=net, relevant_station=station.grid_model_id):
+        return apply_station_bus_branch(net=net, station=station)
+
+    return apply_node_breaker_topology(
+        net=net,
+        target_topology=Topology(
+            topology_id="this_id_will_be_ignored",
+            stations=[station],
+            timestamp=datetime.now(),
+        ),
+    )

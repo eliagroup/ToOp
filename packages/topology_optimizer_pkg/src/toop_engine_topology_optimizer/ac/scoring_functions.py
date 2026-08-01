@@ -12,7 +12,6 @@ from copy import deepcopy
 from dataclasses import dataclass
 
 import numpy as np
-import pandas as pd
 import polars as pl
 import structlog
 from beartype.typing import Collection, Optional
@@ -26,6 +25,7 @@ from toop_engine_interfaces.loadflow_result_helpers_polars import (
 from toop_engine_interfaces.loadflow_results import ConvergenceStatus
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
+from toop_engine_interfaces.node_breaker_update import NodeBreakerUpdate
 from toop_engine_topology_optimizer.ac.evolution_functions import INF_FITNESS, get_contingency_indices_from_ids
 from toop_engine_topology_optimizer.ac.storage import ACOptimTopology
 from toop_engine_topology_optimizer.ac.types import EarlyStoppingStageResult, RunnerGroup, TopologyScoringResult
@@ -167,8 +167,8 @@ def extract_switching_distance(additional_info: AdditionalActionInfo) -> int:
     """
     if isinstance(additional_info, RealizedTopology):
         return len(additional_info.reassignment_diff)
-    if isinstance(additional_info, pd.DataFrame):
-        return len(additional_info)
+    if isinstance(additional_info, NodeBreakerUpdate):
+        return len(additional_info.switch_updates)
     raise ValueError("Unknown format for additional info")
 
 

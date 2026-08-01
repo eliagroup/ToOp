@@ -9,15 +9,19 @@ import json
 import multiprocessing as mp
 from pathlib import Path
 
+import pandapower
 import pytest
 from omegaconf import DictConfig
+from toop_engine_interfaces.folder_structure import PREPROCESSING_PATHS
 from toop_engine_interfaces.messages.preprocess.preprocess_commands import (
     CgmesImporterParameters,
     PreprocessParameters,
     UcteImporterParameters,
 )
+from toop_engine_interfaces.stored_action_set import load_action_set
 from toop_engine_topology_optimizer.benchmark.benchmark_utils import (
     PipelineConfig,
+    apply_topology_and_save,
     get_paths,
     prepare_importer_parameters,
     run_pipeline,
@@ -223,6 +227,43 @@ def test_run_pipeline(pipeline_and_configs, preprocessing_parameters):
         assert _get_serialized_topology_fitness(ac_metrics["dc_info"]) == _get_serialized_topology_fitness(expected_topology)
         assert ac_metrics["dc_info"]["actions"] == (expected_topology.get("actions") or [])
         assert ac_metrics["dc_info"]["disconnections"] == (expected_topology.get("disconnections") or [])
+
+
+def test_apply_topology_and_save_rejects_bus_branch_powsybl_grids(grid_folder: Path, tmp_path: Path) -> None:
+    action_set = load_action_set(
+        grid_folder / "case57" / PREPROCESSING_PATHS["action_set_file_path"],
+        grid_folder / "case57" / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
+
+    with pytest.raises(ValueError, match="bus-branch powsybl grids"):
+        apply_topology_and_save(
+            grid_path=grid_folder / "case57" / PREPROCESSING_PATHS["grid_file_path_powsybl"],
+            actions=[],
+            disconnections=[],
+            action_set=action_set,
+            save_path=tmp_path / "modified_network.xiidm",
+        )
+
+
+def test_apply_topology_and_save_supports_pandapower_grids(grid_folder: Path, tmp_path: Path) -> None:
+    action_set = load_action_set(
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_file_path"],
+        grid_folder / "case14" / PREPROCESSING_PATHS["action_set_diff_path"],
+    )
+
+    save_path = tmp_path / "modified_network.json"
+    modified_net = apply_topology_and_save(
+        grid_path=grid_folder / "case14" / PREPROCESSING_PATHS["grid_file_path_pandapower"],
+        actions=[],
+        disconnections=[],
+        action_set=action_set,
+        save_path=save_path,
+        is_pandapower_grid=True,
+    )
+
+    assert save_path.exists()
+    reloaded_net = pandapower.from_json(save_path)
+    assert len(modified_net.bus) == len(reloaded_net.bus)
 
 
 def test_run_pipeline_no_optimization_stage(pipeline_and_configs, preprocessing_parameters):

@@ -19,16 +19,15 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from pathlib import Path
 
-import pandera.typing as pat
 from beartype.typing import Optional, TypeAlias, Union
 from fsspec import AbstractFileSystem
 from toop_engine_interfaces.asset_topology import RealizedTopology
 from toop_engine_interfaces.loadflow_results_polars import LoadflowResultsPolars
 from toop_engine_interfaces.nminus1_definition import Nminus1Definition
-from toop_engine_interfaces.node_breaker_update import SwitchUpdateSchema
+from toop_engine_interfaces.node_breaker_update import NodeBreakerUpdate
 from toop_engine_interfaces.stored_action_set import ActionSet
 
-AdditionalActionInfo: TypeAlias = Union[pat.DataFrame[SwitchUpdateSchema], RealizedTopology]
+AdditionalActionInfo: TypeAlias = Union[NodeBreakerUpdate, RealizedTopology]
 
 
 class AbstractLoadflowRunner(ABC):
